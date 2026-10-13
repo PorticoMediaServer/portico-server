@@ -8,7 +8,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"strconv"
@@ -284,7 +283,13 @@ func (s *Service) IssueReceipts(ctx context.Context, p identity.Principal, serve
 		return out, ErrPolicy
 	}
 	if raw != "" {
-		return out, json.Unmarshal([]byte(raw), &out)
+		if e = json.Unmarshal([]byte(raw), &out); e != nil {
+			return out, e
+		}
+		if e = s.checkReceiptReplay(ctx, tx, p, out, nil, now); e != nil {
+			return out, e
+		}
+		return out, gated2.Commit()
 	}
 	keyID, secret, e := signingKey(tx, now)
 	if e != nil {
@@ -310,7 +315,7 @@ func (s *Service) IssueReceipts(ctx context.Context, p identity.Principal, serve
 			out = append(out, ReceiptOutcome{PreparationID: id, Outcome: OutcomeRefused, Code: ReasonFailed})
 			continue
 		}
-		if err = contentaccess.VisibleKnownItemTx(ctx, tx, p, item); err != nil {
+		if err = s.visibleItem(ctx, tx, p, item); err != nil {
 			// A catalogue change still publishing is a retry, not a refusal.
 			if !errors.Is(err, identity.ErrContentRestricted) {
 				return out, err
@@ -413,7 +418,13 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 		if !allowed {
 			return out, ErrPolicy
 		}
-		return out, json.Unmarshal([]byte(raw), &out)
+		if e = json.Unmarshal([]byte(raw), &out); e != nil {
+			return out, e
+		}
+		if e = s.checkReceiptReplay(ctx, tx, p, out, guard, now); e != nil {
+			return out, e
+		}
+		return out, gated3.Commit()
 	}
 	disabled, e := AccountDisabled(tx, p.Viewer)
 	if e != nil {
@@ -457,14 +468,14 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 				// Renewal never withdraws a copy because a catalogue edit is
 				// still publishing: that answers retry. Only a published refusal
 				// does.
-				if err = contentaccess.VisibleKnownItemTx(ctx, tx, p, item); errors.Is(err, identity.ErrContentRestricted) {
+				if err = s.visibleItem(ctx, tx, p, item); errors.Is(err, identity.ErrContentRestricted) {
 					refuse = ReasonItemDeleted
 				} else if err != nil {
 					return out, err
 				}
 			}
 		}
-		if refuse == "" && guard != nil && library != "" {
+		if refuse == "" && library != "" {
 			// The title's library is still on this server (or the title is):
 			// the viewer must still be let into it. A library that is gone
 			// altogether took its titles with it, which is the server tidying,
@@ -473,8 +484,15 @@ func (s *Service) Revalidate(ctx context.Context, p identity.Principal, serverID
 			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries WHERE id=?)`, library).Scan(&exists); err != nil {
 				return out, err
 			}
-			if exists && guard(tx, library) != nil {
-				refuse = ReasonItemDeleted
+			if exists {
+				if err = s.checkLibrary(ctx, tx, p, library); err == nil && guard != nil {
+					err = guard(tx, library)
+				}
+				if permissionDenied(err) {
+					refuse = ReasonItemDeleted
+				} else if err != nil {
+					return out, err
+				}
 			}
 		}
 		if refuse != "" {
@@ -652,4 +670,76 @@ func (s *Service) Revocations(ctx context.Context, p identity.Principal, cursor 
 		out.NextCursor = strconv.FormatInt(out.Items[limit-1].Sequence, 10)
 	}
 	return out, gated5.Commit()
+}
+
+// Cached signatures never bypass the current receipt and access rows.
+func (s *Service) checkReceiptReplay(ctx context.Context, tx *sql.Tx, p identity.Principal, out []ReceiptOutcome, guard LibraryGuard, now int64) error {
+	for i := range out {
+		entry := &out[i]
+		if entry.Receipt == nil {
+			continue
+		}
+		var item, library string
+		var revoked int64
+		err := tx.QueryRowContext(ctx, `SELECT item_public,library_id,revoked_ms FROM download_receipts WHERE id=? AND profile_key=?`, entry.ReceiptID, operations.ViewerKey(p)).Scan(&item, &library, &revoked)
+		code := ""
+		if errors.Is(err, sql.ErrNoRows) {
+			code = ReasonUnknownReceipt
+		} else if err != nil {
+			return err
+		} else if revoked != 0 {
+			code = ReasonRevoked
+		}
+		if code == "" {
+			var present bool
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE public_id=pid_blob(?))`, item).Scan(&present); err != nil {
+				return err
+			}
+			if present {
+				err = s.visibleItem(ctx, tx, p, item)
+			} else {
+				var exists bool
+				if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries WHERE id=?)`, library).Scan(&exists); err != nil {
+					return err
+				}
+				if exists {
+					err = s.checkLibrary(ctx, tx, p, library)
+				}
+			}
+			if err == nil && guard != nil {
+				var current string
+				e := tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, item).Scan(&current)
+				if e == nil {
+					library = current
+				} else if !errors.Is(e, sql.ErrNoRows) {
+					return e
+				}
+				var exists bool
+				if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries WHERE id=?)`, library).Scan(&exists); e != nil {
+					return e
+				}
+				if exists {
+					err = guard(tx, library)
+				}
+			}
+			if permissionDenied(err) {
+				code = ReasonItemDeleted
+			} else if err != nil {
+				return err
+			}
+		}
+		if code != "" {
+			if code != ReasonUnknownReceipt && revoked == 0 {
+				if err = revokeReceipt(tx, entry.ReceiptID, code, now); err != nil {
+					return err
+				}
+			}
+			*entry = ReceiptOutcome{PreparationID: entry.PreparationID, ReceiptID: entry.ReceiptID, Outcome: OutcomeRefused, Code: code}
+		}
+	}
+	return nil
+}
+
+func permissionDenied(err error) bool {
+	return errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, identity.ErrNotVisible) || errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, identity.ErrForbidden)
 }

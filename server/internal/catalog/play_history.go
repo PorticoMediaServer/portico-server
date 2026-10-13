@@ -38,7 +38,7 @@ func recordPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind
 	case err != nil:
 		return false, err
 	default:
-		if _, err = tx.Exec(`UPDATE play_history SET updated_ms=?,position_ms=max(position_ms,?),completed=max(completed,?) WHERE id=?`, nowMs, positionMs, completed, id); err != nil {
+		if _, err = tx.Exec(`UPDATE play_history SET updated_ms=max(updated_ms,?),position_ms=max(position_ms,?),completed=max(completed,?) WHERE id=?`, nowMs, positionMs, completed, id); err != nil {
 			return false, err
 		}
 	}
@@ -48,7 +48,7 @@ func recordPlay(tx *sql.Tx, v identity.Viewer, playbackID string, entityID, kind
 	if !share {
 		return true, nil
 	}
-	_, err = tx.Exec(`INSERT INTO play_counts(item_id,plays,last_played_ms) VALUES(?,1,?) ON CONFLICT(item_id) DO UPDATE SET plays=plays+1,last_played_ms=max(last_played_ms,excluded.last_played_ms)`, entityID, nowMs)
+	_, err = tx.Exec(`INSERT INTO play_counts(item_id,plays,last_played_ms) VALUES(?,1,?) ON CONFLICT(item_id) DO UPDATE SET plays=plays+1,last_played_ms=max(play_counts.last_played_ms,excluded.last_played_ms)`, entityID, nowMs)
 	return err == nil, err
 }
 

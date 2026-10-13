@@ -70,13 +70,18 @@ func AcceptOfflinePlay(tx *sql.Tx, p identity.Principal, play OfflinePlay, write
 	}
 	canonical := false
 	if play.Newest {
-		ordinal, err := reservePersonalIntent(tx, "offline:"+play.ID)
+		ordinal, err := reservePersonalIntent(tx, "offline:"+play.ID+":"+play.At.UTC().Format(time.RFC3339Nano))
 		if err != nil {
 			return err
 		}
+		// Freshness is established by the caller. A later observation of the
+		// same play can reclaim the writer from a play observed in between.
+		if _, err = tx.Exec(`UPDATE playback_personal_claims SET accepted_ordinal=? WHERE playback_id=? AND profile_key=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, ordinal, play.ID, identity.PersonalKey(p.Viewer), play.Item); err != nil {
+			return err
+		}
 		// The resume point is written by the writer below from the play's own
-		// position; activation only decides who the writer is. A play that has
-		// already been activated keeps the place it was first given.
+		// position; activation only decides who the writer is for this fresh
+		// observation. Repeated observations remain one play in history.
 		var before sql.NullInt64
 		if err = tx.QueryRow(`SELECT position FROM progress WHERE profile_id=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, identity.PersonalKey(p.Viewer), play.Item).Scan(&before); err != nil && err != sql.ErrNoRows {
 			return err

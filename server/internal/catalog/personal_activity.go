@@ -114,7 +114,8 @@ func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item stri
 	previousPosition := out.ProgressSeconds
 	previousLastPlayed := out.LastPlayedAt
 	meaningful := personalCounted || counted || completed && (!out.Watched || kind == int64(compactcatalog.Part) && positionMillis(position) != positionMillis(previousPosition)) || !completed && position >= threshold && (positionMillis(position) != positionMillis(previousPosition) || out.LastPlayedAt == "")
-	if meaningful {
+	previous, previousErr := time.Parse(time.RFC3339Nano, previousLastPlayed)
+	if meaningful && (previousErr != nil || clock.After(previous)) {
 		out.LastPlayedAt = now
 	}
 	var blocked int

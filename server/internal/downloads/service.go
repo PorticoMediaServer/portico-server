@@ -55,22 +55,23 @@ type Options struct {
 }
 
 type Service struct {
-	access       RequestAccess
-	accessMu     sync.RWMutex
-	advanceMu    sync.Mutex
-	tidied       time.Time
-	pruned       time.Time
-	db           *sql.DB
-	now          func() time.Time
-	openOriginal SourceOpener
-	artifacts    ArtifactOpener
-	optimizer    Optimizer
-	notifier     DownloadNotifier
-	plays        playback.OfflineWriter
-	grantPath    string
-	wake         *worker.Signal
-	done         chan struct{}
-	cancel       context.CancelFunc
+	libraryAccess LibraryAccess
+	access        RequestAccess
+	accessMu      sync.RWMutex
+	advanceMu     sync.Mutex
+	tidied        time.Time
+	pruned        time.Time
+	db            *sql.DB
+	now           func() time.Time
+	openOriginal  SourceOpener
+	artifacts     ArtifactOpener
+	optimizer     Optimizer
+	notifier      DownloadNotifier
+	plays         playback.OfflineWriter
+	grantPath     string
+	wake          *worker.Signal
+	done          chan struct{}
+	cancel        context.CancelFunc
 }
 
 func New(o Options) (*Service, error) {
@@ -424,6 +425,12 @@ func (s *Service) Get(ctx context.Context, p identity.Principal, id string) (Pre
 	if e != nil {
 		return out, e
 	}
+	if e = s.visiblePreparation(ctx, tx, p, r); e != nil {
+		if errors.Is(e, identity.ErrContentRestricted) {
+			return out, ErrNotFound
+		}
+		return out, e
+	}
 	return s.publish(r, settings.RetentionDays), gated4.Commit()
 }
 
@@ -431,6 +438,7 @@ func (s *Service) Get(ctx context.Context, p identity.Principal, id string) (Pre
 // routes layer has established as the server owner; a viewer naming another
 // profile reads their own, because a download list is personal state.
 type ListQuery struct {
+	IDs       []string
 	State     string
 	ProfileID string
 	Cursor    string
@@ -451,6 +459,17 @@ func (s *Service) List(ctx context.Context, p identity.Principal, q ListQuery, a
 	}
 	if q.ProfileID != "" && !validID.MatchString(q.ProfileID) {
 		return out, ErrInput
+	}
+	if len(q.IDs) > 200 || len(q.IDs) > 0 && q.Cursor != "" {
+		return out, ErrInput
+	}
+	for _, id := range q.IDs {
+		if !validID.MatchString(id) {
+			return out, ErrInput
+		}
+	}
+	if len(q.IDs) > 0 {
+		q.Limit = 200
 	}
 	before := int64(0)
 	after := ""
@@ -479,6 +498,11 @@ func (s *Service) List(ctx context.Context, p identity.Principal, q ListQuery, a
 	} else {
 		query += `profile_key=?`
 		args = append(args, operations.ViewerKey(p))
+	}
+	if len(q.IDs) > 0 {
+		ids, _ := json.Marshal(q.IDs)
+		query += ` AND id IN (SELECT value FROM json_each(?))`
+		args = append(args, string(ids))
 	}
 	if q.State != "" {
 		query += ` AND state=?`
@@ -514,6 +538,13 @@ func (s *Service) List(ctx context.Context, p identity.Principal, q ListQuery, a
 		collected = collected[:q.Limit]
 	}
 	for _, r := range collected {
+		if !(anyProfile && q.ProfileID != "") {
+			if e = s.visiblePreparation(ctx, tx, p, r); errors.Is(e, identity.ErrContentRestricted) {
+				continue
+			} else if e != nil {
+				return out, e
+			}
+		}
 		out.Items = append(out.Items, s.publish(r, settings.RetentionDays))
 	}
 	return out, gated5.Commit()

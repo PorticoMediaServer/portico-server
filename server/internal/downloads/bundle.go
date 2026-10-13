@@ -7,7 +7,6 @@ import (
 	"errors"
 	"strconv"
 
-	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
@@ -162,7 +161,7 @@ func (s *Service) Bundle(ctx context.Context, p identity.Principal, id string) (
 	if e != nil {
 		return out, e
 	}
-	if e = contentaccess.VisibleKnownItemTx(ctx, tx, p, current.ItemID); e != nil {
+	if e = s.visibleItem(ctx, tx, p, current.ItemID); e != nil {
 		if errors.Is(e, identity.ErrContentRestricted) {
 			return out, ErrNotFound
 		}

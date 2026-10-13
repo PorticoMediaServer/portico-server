@@ -30,6 +30,8 @@ export class DownloadsService{
  private listeners=new Set<()=>void>();private timer?:ReturnType<typeof setTimeout>;private generation=0;private disposed=false;private watching=false;
  /** Failed reads in a row. The list is tried again by itself, a little later each time. */
  private failures=0;
+ /** Rotate bounded probes through claims outside the first active pages. */
+ private probeOffset=0;
  /** The waits of request followers, so disposal leaves no timer behind. */
  private waits=new Set<ReturnType<typeof setTimeout>>();
  /** Whole-container requests followed on this device, by request id. */
@@ -96,9 +98,9 @@ export class DownloadsService{
   else if(this.state.items.some(p=>ACTIVE.has(p.state)))this.timer=setTimeout(()=>void this.poll(),this.pollMs);
  }
  /** PERF-S12: the 5 s poll reads only active preparations — one page each of `queued` and
-  * `running` (the server caps live preparations at 200, so two pages cover them) — never the
-  * whole list. Items that left the active set are re-read once by id, so a finished preparation
-  * settles without a full reload. Stops when nothing is active. */
+  * `running`. Queued claims are not capped, so a third sparse page reads up to 200 loaded
+  * claims absent from those pages, rotating through older rows. Finished preparations
+  * settle without a full reload or individual requests. Stops when nothing is active. */
  private async poll():Promise<void>{
   const generation=this.generation;clearTimeout(this.timer);
   try{
@@ -111,18 +113,19 @@ export class DownloadsService{
    const seen=new Set(active.map(p=>p.id));
    const byId=new Map(this.state.items.map(p=>[p.id,p]));
    for(const p of active)byId.set(p.id,p);
-   // Anything that was active and is gone from both polls has transitioned: re-read it once.
-   for(const p of this.state.items){
-    if(!ACTIVE.has(p.state)||seen.has(p.id))continue;
-    try{
-     const current=parseDownloadPreparation(await this.api.request<unknown>('/v1/downloads/preparations/'+encodeURIComponent(p.id)));
-     byId.set(current.id,current);
-    }catch(e){
-     // Gone server-side (removed elsewhere): drop it rather than polling it forever. Anything
-     // else is retried on the next poll (or a manual refresh picks it up).
-     if((e as {status?:number}|null)?.status===404)byId.delete(p.id);
-    }
+   // A sparse page reads older loaded claims together, including transitions
+   // out of active states. One bounded request replaces a request per claim.
+   const missing=this.state.items.filter(p=>ACTIVE.has(p.state)&&!seen.has(p.id));
+   const start=missing.length?this.probeOffset%missing.length:0;
+   const probes=Array.from({length:Math.min(200,missing.length)},(_,i)=>missing[(start+i)%missing.length]);
+   this.probeOffset=start+probes.length;
+   if(probes.length){
+    const page=parseDownloadPage(await this.api.request<unknown>('/v1/downloads/preparations?'+new URLSearchParams({limit:'200',ids:probes.map(p=>p.id).join(',')})));
+    const returned=new Set(page.items.map(p=>p.id));
+    for(const p of page.items)byId.set(p.id,p);
+    for(const p of probes)if(!returned.has(p.id))byId.delete(p.id);
    }
+   if(generation!==this.generation||this.disposed)return;
    // Page order first, then actives from beyond the loaded pages.
    const paged:DownloadPreparation[]=[];
    for(const p of this.state.items){const current=byId.get(p.id);if(current)paged.push(current);}

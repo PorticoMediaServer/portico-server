@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"math"
-	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/personalstate"
@@ -145,7 +144,7 @@ func (s *Service) SyncProgress(ctx context.Context, p identity.Principal, operat
 		}
 		// A title this viewer may not see answers exactly as one that does not
 		// exist, and nothing is written about it.
-		if err = contentaccess.VisibleKnownItemTx(ctx, tx, p, entry.ItemID); errors.Is(err, identity.ErrContentRestricted) {
+		if err = s.visibleItem(ctx, tx, p, entry.ItemID); errors.Is(err, identity.ErrContentRestricted) {
 			conflict(result, ProgressMissing)
 			continue
 		} else if err != nil {

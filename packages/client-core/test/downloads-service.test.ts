@@ -21,7 +21,8 @@ function server(items:any[]){
    const state=query.get('state');
    const limit=Number(query.get('limit')??'100');
    const cursor=Number(query.get('cursor')??'0');
-   const pool=state?items.filter(p=>p.state===state):items;
+   const ids=query.get('ids')?.split(',');
+   const pool=ids?items.filter(p=>ids.includes(p.id)):state?items.filter(p=>p.state===state):items;
    const slice=pool.slice(cursor,cursor+limit);
    return {items:slice,nextCursor:cursor+limit<pool.length?String(cursor+limit):''} as T;
   }
@@ -173,7 +174,7 @@ test('PERF-S12: with 1,100 preparations a poll reads only the active pages (<= 2
   assert.ok(polls.length>=4,'polled while active: '+polls.length);
   assert.ok(polls.length%2===0,'polls come in queued+running pairs: '+polls.length);
   assert.ok(polls.every(c=>c.path==='/v1/downloads/preparations?limit=100&state=queued'||c.path==='/v1/downloads/preparations?limit=100&state=running'));
-  assert.equal(pages().length-polls.length,1,'one unfiltered first page, never a full re-read');
+  assert.equal(pages().filter(c=>!c.path.includes('state=')&&!c.path.includes('ids=')).length,1,'one unfiltered first page, never a full re-read');
   // Finish it server-side: one single read settles it, then polling stops (<= 2 per poll held).
   s.set([settled(0),...Array.from({length:1099},(_,i)=>settled(i+1))]);
   await new Promise(r=>setTimeout(r,80));
@@ -204,9 +205,9 @@ test('PERF-S12: every preparation is reachable by paging, and a finished one set
   assert.equal(service.getSnapshot().items.find(p=>p.id==='prep-0')?.state,'ready','the finished preparation settled via the poll');
   const pages=s.calls.filter(c=>c.path.startsWith('/v1/downloads/preparations?'));
   assert.ok(pages.length>0);
-  const unfiltered=pages.filter(c=>!c.path.includes('state='));
+  const unfiltered=pages.filter(c=>!c.path.includes('state=')&&!c.path.includes('ids='));
   assert.equal(unfiltered.length,12,'only the refresh/loadMore reads are unfiltered pages (1 + 10 + start refresh); every poll reads active states');
-  const singles=s.calls.filter(c=>/^\/v1\/downloads\/preparations\/[^/]+$/.test(c.path));
+  const singles=s.calls.filter(c=>c.path.includes('ids='));
   assert.ok(singles.length>=1&&singles.length<=3,'the transition took only single reads: '+singles.length);
   const settled=pages.length;
   await new Promise(r=>setTimeout(r,60));
@@ -273,4 +274,30 @@ test('a list from a newer server shows every download this app can read, and act
  await service.act(state.items[1],'pause');
  assert.deepEqual(s.calls.find(c=>c.path.endsWith('/actions'))!.body,{operationId:'op-9',action:'pause',expectedRevision:3});
  service.dispose();
+});
+
+test('large queued lists use one bounded sparse page and rotate older claims',async()=>{
+ const rows=Array.from({length:350},(_,i)=>({...running(),id:'queued-'+i,itemId:'item-'+i,state:'queued'}));
+ const s=server(rows),service=new DownloadsService(s.api,()=>'op',10000);
+ try{
+  await service.refresh();await service.loadMore();await service.loadMore();await service.loadMore();
+  assert.equal(service.getSnapshot().items.length,350);
+  let before=s.calls.length;
+  await (service as any).poll();
+  const first=s.calls.slice(before);
+  assert.equal(first.length,3,'two active pages and one sparse page');
+  assert.ok(first.every(c=>c.path.includes('?')),'no individual requests');
+  const firstIds=new URL(first.find(c=>c.path.includes('ids='))!.path,'https://server.test').searchParams.get('ids')!.split(',');
+  assert.equal(firstIds.length,200);
+  const changed=rows[340];
+  s.set(rows.map(p=>p.id===changed.id?preparation({id:p.id,itemId:p.itemId}):p));
+  before=s.calls.length;
+  await (service as any).poll();
+  const second=s.calls.slice(before);
+  assert.equal(second.length,3);
+  const secondIds=new URL(second.find(c=>c.path.includes('ids='))!.path,'https://server.test').searchParams.get('ids')!.split(',');
+  assert.ok(secondIds.some(id=>!firstIds.includes(id)),'older claims are not starved');
+  assert.equal(service.getSnapshot().items.find(p=>p.id===changed.id)?.state,'ready');
+  assert.equal(service.getSnapshot().items.length,350,'paging content is preserved');
+ }finally{service.dispose();}
 });
