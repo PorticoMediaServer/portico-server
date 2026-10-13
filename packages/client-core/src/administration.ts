@@ -409,3 +409,14 @@ export function versionDeletionService(request:<T>(path:string,method?:string,bo
   async remove(preview:VersionDeletePreview,confirmation:string,operationId:string){return parseDeleteResult(await request<unknown>(path(preview.targets[0].itemId,preview.assetId),'DELETE',{confirmation,operationId,previewKey:preview.previewKey}));},
  });
 }
+
+export type LiveSourceChoicePage=Readonly<{sourceId:string;generation:string;kind:'groups'|'channels';total:number;items:readonly Readonly<{id:string;name:string;group:string;channels:number}>[];nextCursor:string}>;
+export function parseLiveSourceChoicePage(v:unknown):LiveSourceChoicePage{
+ if(!object(v)||!filled(v.sourceId,128)||!text(v.generation,128)||!count(v.total)||!text(v.nextCursor,4096))invalid('source choices');
+ const kind=choice(v.kind,['groups','channels'] as const,'source choice kind');
+ const items=readable(v.items,200,'source choices',e=>{if(!object(e)||!filled(e.id,256)||!text(e.name,512)||!text(e.group,256)||!count(e.channels))invalid('source choice');return Object.freeze({id:e.id,name:e.name,group:e.group,channels:e.channels});});
+ return Object.freeze({sourceId:v.sourceId,generation:v.generation,kind,total:v.total,items:Object.freeze(items),nextCursor:v.nextCursor});
+}
+export function liveSourceChoicesService(request:<T>(path:string,method?:string,body?:unknown)=>Promise<T>,source:string){return Object.freeze({
+ async list(kind:'groups'|'channels',cursor='',limit=50,q=''){return parseLiveSourceChoicePage(await request<unknown>(`/v1/admin/live/sources/${encodeURIComponent(source)}/${kind}?cursor=${encodeURIComponent(cursor)}&limit=${limit}&q=${encodeURIComponent(q)}`));},
+});}

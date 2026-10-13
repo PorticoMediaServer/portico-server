@@ -76,6 +76,8 @@ type ContentEntityRef struct {
 	Name string `json:"name"`
 }
 type ContentEntry struct {
+	DiscNumber     *int          `json:"discNumber,omitempty"`
+	Missing        bool          `json:"missing"`
 	WatchedCount   *int64        `json:"watchedCount,omitempty"`
 	UnwatchedCount *int64        `json:"unwatchedCount,omitempty"`
 	Watched        *bool         `json:"watched,omitempty"`

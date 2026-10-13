@@ -399,7 +399,11 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 		}
 		return out, terminal(ctx, gated2, id, StateUnavailable, ReasonItemDeleted, now)
 	}
-	found, err := resolveSource(ctx, tx, item)
+	var version string
+	if e = tx.QueryRowContext(ctx, `SELECT source_asset_id FROM download_preparations WHERE id=?`, id).Scan(&version); e != nil {
+		return out, e
+	}
+	found, err := resolveVersionSource(ctx, tx, item, version)
 	if reason := sourceReason(found, err); reason != "" {
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
 			return out, err
@@ -493,7 +497,7 @@ func (s *Service) advanceOptimized(ctx context.Context, gatedArg *dbwork.Write, 
 		return e
 	}
 	for _, v := range versions {
-		if v.ProfileID != profileID || !v.Selectable || !validDigest.MatchString(v.Digest) {
+		if v.SourceID != found.Asset || v.ProfileID != profileID || !v.Selectable || !validDigest.MatchString(v.Digest) {
 			continue
 		}
 		if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='ready',reason='',artifact_kind='prepared',artifact_ref=?,artifact_digest=?,artifact_container=?,source_modified_ns=0,bytes_total=?,bytes_done=?,estimated=0,ready_ms=?,revision=revision+1,updated_ms=? WHERE id=?`,
@@ -514,7 +518,7 @@ func (s *Service) advanceOptimized(ctx context.Context, gatedArg *dbwork.Write, 
 	if e != nil {
 		return terminal(ctx, gatedArg, id, StateUnavailable, ReasonItemDeleted, now)
 	}
-	e = tx.QueryRowContext(ctx, `SELECT state,bytes FROM prepared_media_jobs WHERE item_id=? AND profile_id=? ORDER BY created_ms DESC LIMIT 1`, itemEntity, profileID).Scan(&state, &bytes)
+	e = tx.QueryRowContext(ctx, `SELECT state,bytes FROM prepared_media_jobs WHERE item_id=? AND profile_id=? AND asset_id=? ORDER BY created_ms DESC LIMIT 1`, itemEntity, profileID, found.Asset).Scan(&state, &bytes)
 	if errors.Is(e, sql.ErrNoRows) {
 		return terminal(ctx, gatedArg, id, StateUnavailable, ReasonNotOptimized, now)
 	}

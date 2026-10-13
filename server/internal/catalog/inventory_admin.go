@@ -63,7 +63,7 @@ func (s *Service) Inventory(ctx context.Context, r AdminRequest, source, state s
 	if err := s.read().QueryRowContext(ctx, `SELECT revision FROM library_configuration WHERE library_id=?`, r.LibraryID).Scan(&out.Revision); err != nil {
 		return out, err
 	}
-	scope := cursorScope{Profile: r.Profile, Viewer: r.ViewerFence, Library: r.LibraryID, View: "inventory", Entity: source, Category: state, Limit: r.Limit}
+	scope := cursorScope{Profile: r.Profile, Viewer: r.ViewerFence, Library: r.LibraryID, View: "inventory", Entity: source, Category: state + ":" + r.AssetID, Limit: r.Limit}
 	rev := ContentRevision{Catalog: out.Revision}
 	after := ""
 	if r.Cursor != "" {
@@ -78,6 +78,13 @@ func (s *Service) Inventory(ctx context.Context, r AdminRequest, source, state s
 	if source != "" {
 		where += ` AND s.id=?`
 		args = append(args, source)
+	}
+	if r.AssetID != "" {
+		if len(r.AssetID) > 160 {
+			return out, ErrAdminQuery
+		}
+		where += ` AND o.asset_id=?`
+		args = append(args, r.AssetID)
 	}
 	switch state {
 	case "missing":
@@ -286,6 +293,9 @@ func (s *Service) SeparateInventoryVersion(ctx context.Context, library, object,
 		if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO catalog_book_files(entity_id,book_id,disc_number,part_number) SELECT ?,book_id,disc_number,part_number FROM catalog_book_files WHERE entity_id=?`, separate, current); err != nil {
 			return "", err
 		}
+	}
+	if err = moveDownloadClaimsTx(ctx, tx, current, separate, asset); err != nil {
+		return "", err
 	}
 	if err = compactcatalog.LinkAssetTx(ctx, tx, separate, assetID, compactcatalog.Link{}); err != nil {
 		return "", err

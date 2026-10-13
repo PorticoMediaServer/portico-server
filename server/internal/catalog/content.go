@@ -36,7 +36,7 @@ func contentItem(item Item) ContentEntry {
 		}
 		overview = string(runes)
 	}
-	entry := ContentEntry{Watched: item.Watched, LibraryID: item.LibraryID, Overview: overview, BackdropURL: item.BackdropURL, StillURL: item.StillURL, ID: item.ID, Kind: item.Kind, Title: item.Title, PosterURL: item.PosterURL, Available: &item.Available, Duration: &item.Duration, ProgressSeconds: &item.ProgressSeconds, AddedAt: item.AddedAt, Navigation: &ContentNavigation{View: "item", EntityID: item.ID}, Playback: &ContentPlayback{ItemID: item.ID}}
+	entry := ContentEntry{Missing: item.Missing, Watched: item.Watched, LibraryID: item.LibraryID, Overview: overview, BackdropURL: item.BackdropURL, StillURL: item.StillURL, ID: item.ID, Kind: item.Kind, Title: item.Title, PosterURL: item.PosterURL, Available: &item.Available, Duration: &item.Duration, ProgressSeconds: &item.ProgressSeconds, AddedAt: item.AddedAt, Navigation: &ContentNavigation{View: "item", EntityID: item.ID}, Playback: &ContentPlayback{ItemID: item.ID}}
 	if !item.Available {
 		entry.Playback = nil
 	}
@@ -51,6 +51,7 @@ func contentItem(item Item) ContentEntry {
 	if item.Song != nil {
 		entry.Subtitle = item.Song.Artist
 		entry.TrackNumber = item.Song.TrackNumber
+		entry.DiscNumber = item.Song.DiscNumber
 		if item.Song.AlbumID != "" && item.Song.AlbumTitle != "" {
 			entry.Album = &ContentEntityRef{ID: item.Song.AlbumID, Name: item.Song.AlbumTitle}
 		}

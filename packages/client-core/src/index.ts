@@ -1968,3 +1968,4 @@ export * from './client-reports.ts';
 
 export * from './metadata-attention.ts';
 export * from './metadata-settings.ts';
+export * from './playback-controls.ts';

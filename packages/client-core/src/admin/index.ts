@@ -17,3 +17,5 @@ export * from "../administration.ts";
 export {RemoteSourceService,readSourceAvailability,sourceAvailabilityMessage} from "../remote-sources.ts";
 export type {RemoteSource,RemoteReceipt,RemoteState,DAVConfiguration,AnalysisPolicy,SourceAvailability,NetworkPolicy} from "../remote-sources.ts";
 export * from "../media-analysis.ts";
+
+export * from '../storage-status.ts';

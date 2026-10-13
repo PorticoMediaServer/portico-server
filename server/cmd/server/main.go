@@ -866,6 +866,7 @@ func run() (runErr error) {
 		worker.Run(life, "cmd.listening-groups", wake, cat.ListeningGroupStep(changed))
 	})
 	meta.LocalArtwork = localMeta.Open
+	meta.LocalArtworkUsage = localMeta.ArtworkUsage
 	if e = meta.SetArtworkDirectory(filepath.Join(state, "artwork")); e != nil {
 		return e
 	}
@@ -914,6 +915,7 @@ func run() (runErr error) {
 	doneConsole := reporter.step("console", "Open the operations console")
 	console, scheduler, e := initializeConsole(db, scanner, player, hls, cat, lyricFetch, state)
 	if console != nil {
+		console.FFmpegValidation = operations.FFmpegValidator(ffmpegTool)
 		console.AppliedTemporaryDirectory = &appliedConversionSetting
 	}
 	doneConsole(e)
@@ -1069,7 +1071,7 @@ func run() (runErr error) {
 	if manager := claimHandler.Remote(); manager != nil {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
-	handler := httpapi.New(httpapi.Dependencies{Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
+	handler := httpapi.New(httpapi.Dependencies{CacheDirectory: cache, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {
 		control.NotifySettingsChanged(ctx)
 		supervise.Go("delivery-settings.refresh", func() { deliverySettings.Refresh(ctx) })
 		claimHandler.Remote().Wake()

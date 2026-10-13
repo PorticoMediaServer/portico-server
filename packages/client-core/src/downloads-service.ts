@@ -1,3 +1,4 @@
+import {unreadableServerResponse} from './server-messages.ts';
 import {randomId} from './random-id.ts';
 /** The server side of downloads, as one framework-free service shared by web and Apple: what
  * the server is preparing for this profile, what may be asked for, and the actions on each.
@@ -11,7 +12,7 @@ import {createDownloadRequest,getDownloadRequest,isDownloadRequestTerminal,listD
 export type DownloadsApi={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
 /** Items for one preparation batch. A whole container (show, season, album, book, playlist) is
  * never a batch target: it goes through `requestContainer`, the durable container request. */
-export type DownloadTarget=Readonly<{mediaId?:string;mediaIds?:readonly string[];nextAfterMediaId?:string}>;
+export type DownloadTarget=Readonly<{versionId?:string;mediaId?:string;mediaIds?:readonly string[];nextAfterMediaId?:string}>;
 /** A whole-container request (show, season, album, book or playlist — never TV). */
 export type ContainerDownloadTarget=Readonly<{kind:DownloadRequestKind;id:string;title?:string}>;
 export type ContainerDownloadPolicy=Readonly<{episodes:DownloadEpisodes;keepNext?:number}>;
@@ -142,6 +143,10 @@ export class DownloadsService{
  }
  /** The qualities a whole show, season, album, book or playlist may be asked for: the original,
   * and each smaller quality this server can make. The server decides; nothing is assumed here. */
+ async revokeProfile(profileKey:string){const raw=await this.api.request<unknown>('/v1/admin/downloads/revoke','POST',{profileKey,operationId:this.operationId()});if(typeof raw!=='object'||raw===null||!Number.isSafeInteger((raw as any).claims)||!Number.isSafeInteger((raw as any).receipts)||typeof (raw as any).more!=='boolean')throw new Error(unreadableServerResponse);return raw as Readonly<{claims:number;receipts:number;more:boolean}>;}
+
+ async serverUsage(cursor='',limit=256){return parseDownloadUsage(await this.api.request<unknown>(`/v1/downloads/usage?scope=server&cursor=${encodeURIComponent(cursor)}&limit=${limit}`));}
+
  async qualities(signal?:AbortSignal):Promise<readonly DownloadQualityChoice[]>{
   return parseDownloadSettings(await this.api.request<unknown>('/v1/downloads/settings','GET',undefined,signal)).qualities;
  }
@@ -149,7 +154,7 @@ export class DownloadsService{
   * A batch is partial by design: what could not be accepted is reported, the rest proceeds. */
  async request(target:DownloadTarget,quality:string):Promise<DownloadBatch>{
   // Only the item fields are sent, whatever else the caller's object carries (containers are durable requests).
-  const body={operationId:this.operationId(),...(target.mediaId?{mediaId:target.mediaId}:{}),...(target.mediaIds?{mediaIds:[...target.mediaIds]}:{}),...(target.nextAfterMediaId?{nextAfterMediaId:target.nextAfterMediaId}:{}),quality};
+  const body={operationId:this.operationId(),...(target.versionId?{versionId:target.versionId}:{}),...(target.mediaId?{mediaId:target.mediaId}:{}),...(target.mediaIds?{mediaIds:[...target.mediaIds]}:{}),...(target.nextAfterMediaId?{nextAfterMediaId:target.nextAfterMediaId}:{}),quality};
   const batch=parseDownloadBatch(await this.api.request<unknown>('/v1/downloads/preparations','POST',body));
   void this.refresh();return batch;
  }

@@ -2029,6 +2029,39 @@
                           ],
                           "type": "object"
                         },
+                        "ffmpegValidation": {
+                          "properties": {
+                            "checkedAt": {
+                              "type": "string"
+                            },
+                            "inUse": {
+                              "type": "boolean"
+                            },
+                            "missingFeatures": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "reasonCode": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "state",
+                            "inUse",
+                            "missingFeatures",
+                            "checkedAt"
+                          ],
+                          "type": "object"
+                        },
                         "registryRevision": {
                           "type": "string"
                         },
@@ -2926,6 +2959,39 @@
                           ],
                           "type": "object"
                         },
+                        "ffmpegValidation": {
+                          "properties": {
+                            "checkedAt": {
+                              "type": "string"
+                            },
+                            "inUse": {
+                              "type": "boolean"
+                            },
+                            "missingFeatures": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "path": {
+                              "type": "string"
+                            },
+                            "reasonCode": {
+                              "type": "string"
+                            },
+                            "state": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "state",
+                            "inUse",
+                            "missingFeatures",
+                            "checkedAt"
+                          ],
+                          "type": "object"
+                        },
                         "registryRevision": {
                           "type": "string"
                         },
@@ -3547,6 +3613,71 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/downloads/revoke": {
+      "post": {
+        "operationId": "revoke_profile_downloads",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "profileKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "profileKey",
+                  "operationId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "claims": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "more": {
+                      "type": "boolean"
+                    },
+                    "receipts": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "claims",
+                    "receipts",
+                    "more"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Withdraw one bounded page of a profile’s download claims and offline permissions; repeat while more is true",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "security",
+        "x-max-body-bytes": 4096,
+        "x-scope": "playback"
+      }
+    },
     "/v1/admin/dvr/tuners": {
       "get": {
         "operationId": "get_live_tuners",
@@ -4107,6 +4238,137 @@
         "x-lane": "default",
         "x-max-body-bytes": 4096,
         "x-scope": "admin"
+      }
+    },
+    "/v1/admin/libraries/{id}/inventory": {
+      "get": {
+        "operationId": "get_library_inventory",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "analysisError": {
+                            "type": "string"
+                          },
+                          "analysisState": {
+                            "type": "string"
+                          },
+                          "assetId": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "missingSince": {
+                            "type": "string"
+                          },
+                          "modifiedNs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "relativePath": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "type": "string"
+                          },
+                          "size": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "unsupportedReason": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "sourceId",
+                          "assetId",
+                          "itemId",
+                          "title",
+                          "relativePath",
+                          "revision",
+                          "state",
+                          "size",
+                          "modifiedNs",
+                          "missingSince",
+                          "analysisState",
+                          "analysisError",
+                          "unsupportedReason"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "scope": {
+                      "properties": {
+                        "serverId": {
+                          "type": "string"
+                        },
+                        "viewerFence": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "serverId",
+                        "viewerFence"
+                      ],
+                      "type": "object"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "scope",
+                    "libraryId",
+                    "sourceId",
+                    "revision",
+                    "items",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read one page of library files, optionally locating one file by its asset id",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "library"
       }
     },
     "/v1/admin/live-sources": {
@@ -6224,6 +6486,160 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/live/sources/{id}/channels": {
+      "get": {
+        "operationId": "list_live_source_channels",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "group",
+                          "channels"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "generation",
+                    "kind",
+                    "total",
+                    "items",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List source choices, including groups and channels excluded from the line-up",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/live/sources/{id}/groups": {
+      "get": {
+        "operationId": "list_live_source_groups",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "generation": {
+                      "type": "string"
+                    },
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "group": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "group",
+                          "channels"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "sourceId": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "sourceId",
+                    "generation",
+                    "kind",
+                    "total",
+                    "items",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List source choices, including groups and channels excluded from the line-up",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
     "/v1/admin/maintenance/settings": {
       "get": {
         "operationId": "get_admin_maintenance_settings",
@@ -6773,6 +7189,230 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/metadata/attention": {
+      "get": {
+        "operationId": "get_server_metadata_attention",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "entries": {
+                      "items": {
+                        "properties": {
+                          "actions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "candidates": {
+                            "items": {
+                              "properties": {
+                                "confidence": {
+                                  "type": "number"
+                                },
+                                "identity": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "provider",
+                                    "type",
+                                    "id"
+                                  ],
+                                  "type": "object"
+                                },
+                                "key": {
+                                  "type": "string"
+                                },
+                                "orders": {
+                                  "items": {
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "name"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                "reasons": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "key",
+                                "identity",
+                                "title",
+                                "year",
+                                "confidence",
+                                "reasons",
+                                "orders"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "confidence": {
+                            "type": "number"
+                          },
+                          "entityId": {
+                            "type": "string"
+                          },
+                          "itemKind": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "parentId": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "libraryId",
+                          "itemKind",
+                          "parentId",
+                          "actions",
+                          "entityId",
+                          "kind",
+                          "title",
+                          "revision",
+                          "reason",
+                          "confidence",
+                          "candidates"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "total",
+                    "libraryId",
+                    "entries",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List unmatched and uncertain titles with their best candidates",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "browsing",
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/metadata/attention/counts": {
+      "get": {
+        "operationId": "get_metadata_attention_counts",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "libraries": {
+                      "items": {
+                        "properties": {
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "total": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "libraryId",
+                          "total"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "total",
+                    "libraries"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Count titles waiting for attention per library and across the server",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "browsing",
+        "x-scope": "library"
+      }
+    },
     "/v1/admin/metadata/settings": {
       "get": {
         "operationId": "get_metadata_settings",
@@ -6790,6 +7430,11 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "localArtworkUsedBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -6803,6 +7448,7 @@
                     }
                   },
                   "required": [
+                    "localArtworkUsedBytes",
                     "revision",
                     "localArtworkLimitBytes",
                     "includeAdult",
@@ -6874,6 +7520,11 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "localArtworkUsedBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -6887,6 +7538,7 @@
                     }
                   },
                   "required": [
+                    "localArtworkUsedBytes",
                     "revision",
                     "localArtworkLimitBytes",
                     "includeAdult",
@@ -7384,6 +8036,134 @@
         "x-scope": "playback"
       }
     },
+    "/v1/admin/sessions/{id}/controls": {
+      "get": {
+        "operationId": "get_admin_session_controls",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "actions": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "revision": {
+                      "type": "string"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "sessionId",
+                    "revision",
+                    "state",
+                    "positionMs",
+                    "actions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read the transport controls and current revision of any administrable session",
+        "x-access": "admin_scope",
+        "x-cost": "constant",
+        "x-lane": "media",
+        "x-scope": "playback"
+      },
+      "post": {
+        "operationId": "control_admin_session",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "type": "string"
+                  },
+                  "positionMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "action",
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "actions": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "positionMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "revision": {
+                      "type": "string"
+                    },
+                    "sessionId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "sessionId",
+                    "revision",
+                    "state",
+                    "positionMs",
+                    "actions"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Pause, resume or seek any administrable session using its current revision",
+        "x-access": "admin_scope",
+        "x-cost": "constant",
+        "x-lane": "media",
+        "x-max-body-bytes": 4096,
+        "x-scope": "playback"
+      }
+    },
     "/v1/admin/sessions/{id}:terminate": {
       "post": {
         "operationId": "terminate_admin_session",
@@ -7465,6 +8245,112 @@
         "x-cost": "constant",
         "x-lane": "default",
         "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/storage/status": {
+      "get": {
+        "operationId": "get_storage_status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "backupDirectory": {
+                      "type": "string"
+                    },
+                    "cacheDirectory": {
+                      "type": "string"
+                    },
+                    "databasePath": {
+                      "type": "string"
+                    },
+                    "lastReclaimedAt": {
+                      "type": "string"
+                    },
+                    "lastReclaimedBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "reclaimableBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "upgradeCopies": {
+                      "items": {
+                        "properties": {
+                          "bytes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "path": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "createdAt",
+                          "bytes",
+                          "path"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "databasePath",
+                    "cacheDirectory",
+                    "backupDirectory",
+                    "reclaimableBytes",
+                    "lastReclaimedBytes",
+                    "upgradeCopies"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read upgrade copies, active storage destinations and reclaimable database space",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/storage/upgrade-copies/{id}": {
+      "delete": {
+        "operationId": "delete_upgrade_copy",
+        "responses": {
+          "204": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Delete one automatic pre-upgrade database copy",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
         "x-scope": "admin"
       }
     },
@@ -11590,9 +12476,13 @@
                           },
                           "updatedAt": {
                             "type": "string"
+                          },
+                          "versionId": {
+                            "type": "string"
                           }
                         },
                         "required": [
+                          "versionId",
                           "id",
                           "itemId",
                           "libraryId",
@@ -11656,6 +12546,9 @@
                     "type": "string"
                   },
                   "quality": {
+                    "type": "string"
+                  },
+                  "versionId": {
                     "type": "string"
                   }
                 },
@@ -11860,9 +12753,13 @@
                           },
                           "updatedAt": {
                             "type": "string"
+                          },
+                          "versionId": {
+                            "type": "string"
                           }
                         },
                         "required": [
+                          "versionId",
                           "id",
                           "itemId",
                           "libraryId",
@@ -12103,9 +13000,13 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "versionId": {
+                      "type": "string"
                     }
                   },
                   "required": [
+                    "versionId",
                     "id",
                     "itemId",
                     "libraryId",
@@ -12343,9 +13244,13 @@
                     },
                     "updatedAt": {
                       "type": "string"
+                    },
+                    "versionId": {
+                      "type": "string"
                     }
                   },
                   "required": [
+                    "versionId",
                     "id",
                     "itemId",
                     "libraryId",
@@ -14045,9 +14950,13 @@
                               },
                               "updatedAt": {
                                 "type": "string"
+                              },
+                              "versionId": {
+                                "type": "string"
                               }
                             },
                             "required": [
+                              "versionId",
                               "id",
                               "itemId",
                               "libraryId",
@@ -14337,9 +15246,13 @@
                               },
                               "updatedAt": {
                                 "type": "string"
+                              },
+                              "versionId": {
+                                "type": "string"
                               }
                             },
                             "required": [
+                              "versionId",
                               "id",
                               "itemId",
                               "libraryId",
@@ -14646,6 +15559,15 @@
                     "profiles": {
                       "items": {
                         "properties": {
+                          "accountId": {
+                            "type": "string"
+                          },
+                          "accountName": {
+                            "type": "string"
+                          },
+                          "authority": {
+                            "type": "string"
+                          },
                           "bytes": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -14658,9 +15580,26 @@
                           },
                           "profileId": {
                             "type": "string"
+                          },
+                          "profileKey": {
+                            "type": "string"
+                          },
+                          "profileName": {
+                            "type": "string"
+                          },
+                          "storedBytes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
+                          "profileKey",
+                          "authority",
+                          "accountId",
+                          "accountName",
+                          "profileName",
+                          "storedBytes",
                           "profileId",
                           "bytes",
                           "count"
@@ -14668,6 +15607,9 @@
                         "type": "object"
                       },
                       "type": "array"
+                    },
+                    "profilesNextCursor": {
+                      "type": "string"
                     },
                     "remainingBytes": {
                       "maximum": 9007199254740991,
@@ -14692,6 +15634,7 @@
                     }
                   },
                   "required": [
+                    "profilesNextCursor",
                     "profileId",
                     "profileBytes",
                     "profileCount",
@@ -25956,6 +26899,9 @@
                           "kind": {
                             "type": "string"
                           },
+                          "libraryId": {
+                            "type": "string"
+                          },
                           "parentId": {
                             "type": "string"
                           },
@@ -25972,6 +26918,7 @@
                           }
                         },
                         "required": [
+                          "libraryId",
                           "itemKind",
                           "parentId",
                           "actions",
@@ -25992,9 +26939,15 @@
                     },
                     "nextCursor": {
                       "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
+                    "total",
                     "libraryId",
                     "entries",
                     "nextCursor"
@@ -28462,6 +29415,107 @@
         "x-lane": "security",
         "x-max-body-bytes": 4096,
         "x-scope": "session"
+      }
+    },
+    "/v1/playback/controls": {
+      "get": {
+        "operationId": "get_remote_playback_controls",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "actions": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "device": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name"
+                            ],
+                            "type": "object"
+                          },
+                          "item": {
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title"
+                            ],
+                            "type": "object"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "positionMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "revision": {
+                            "type": "string"
+                          },
+                          "sessionId": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "sessionId",
+                          "revision",
+                          "state",
+                          "positionMs",
+                          "actions",
+                          "device",
+                          "kind"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read what this profile is playing on each device and the controls it may use",
+        "x-access": "device",
+        "x-cost": "page_sized",
+        "x-lane": "media",
+        "x-scope": "playback"
       }
     },
     "/v1/playback/sessions": {

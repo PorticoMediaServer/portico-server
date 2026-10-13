@@ -5,6 +5,11 @@
  * to a shared area in `en-US.ts` (and rename it) when both platforms use it.
  */
 export const webMessages = {
+ 'ffmpeg.validation.unreadable': 'This FFmpeg file could not be read.',
+ 'ffmpeg.validation.cannotRun': 'This FFmpeg build could not be run with the server’s process restrictions.',
+ 'ffmpeg.validation.missingFeatures': 'This FFmpeg build does not have all the media features Portico needs.',
+ 'ffmpeg.validation.timedOut': 'Checking this FFmpeg build took too long. Try again.',
+
   'web.setup.alreadyComplete': 'This server is already set up.',
   'web.connectivity.httpOutsideHome': 'This connection uses HTTP outside your home networks.',
   'web.connectivity.connectionLimit': 'Connection limit',

@@ -443,12 +443,19 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		out, e := d.Downloads.SyncProgress(ctx, p, body.OperationID, body.Entries)
 		return out, downloadError(e)
 	})
-	v1Route(r, route("get_download_usage", "GET", "/v1/downloads/usage", "Read how much this viewer, or the whole server, has claimed", apikit.Device, apikit.Default, apikit.PageSized, 200, 0, []string{"scope"}), func(ctx context.Context, q *http.Request, _ noBody) (downloads.Usage, error) {
+	v1Route(r, route("get_download_usage", "GET", "/v1/downloads/usage", "Read how much this viewer, or the whole server, has claimed", apikit.Device, apikit.Default, apikit.PageSized, 200, 0, []string{"scope", "cursor", "limit"}), func(ctx context.Context, q *http.Request, _ noBody) (downloads.Usage, error) {
 		p, owner, e := d.downloadViewer(q)
 		if e != nil {
 			return downloads.Usage{}, e
 		}
-		out, e := d.Downloads.Usage(ctx, p, owner && q.URL.Query().Get("scope") == "server")
+		limit := 256
+		if raw := q.URL.Query().Get("limit"); raw != "" {
+			limit, e = strconv.Atoi(raw)
+			if e != nil {
+				return downloads.Usage{}, &apierror.Error{Code: "invalid_request"}
+			}
+		}
+		out, e := d.Downloads.UsagePage(ctx, p, owner && q.URL.Query().Get("scope") == "server", q.URL.Query().Get("cursor"), limit)
 		return out, downloadError(e)
 	})
 	v1Route(r, route("get_download_settings", "GET", "/v1/downloads/settings", "Read the owner's download settings", apikit.Device, apikit.Default, apikit.Constant, 200, 0, nil), func(ctx context.Context, q *http.Request, _ noBody) (downloads.Settings, error) {

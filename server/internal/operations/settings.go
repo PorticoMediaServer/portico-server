@@ -219,13 +219,14 @@ func DefaultSettings() Settings {
 }
 
 type SettingsDocument struct {
-	Revision         int64    `json:"revision"`
-	Digest           string   `json:"digest"`
-	Requested        Settings `json:"requested"`
-	Effective        Settings `json:"effective"`
-	ActiveRevision   int64    `json:"activeRevision"`
-	RestartFields    []string `json:"restartFields"`
-	RegistryRevision string   `json:"registryRevision"`
+	FFmpegValidation *FFmpegStatus `json:"ffmpegValidation,omitempty"`
+	Revision         int64         `json:"revision"`
+	Digest           string        `json:"digest"`
+	Requested        Settings      `json:"requested"`
+	Effective        Settings      `json:"effective"`
+	ActiveRevision   int64         `json:"activeRevision"`
+	RestartFields    []string      `json:"restartFields"`
+	RegistryRevision string        `json:"registryRevision"`
 }
 type SettingsChange struct {
 	ExpectedRevision int64    `json:"expectedRevision"`
@@ -269,7 +270,7 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 	v.DeviceApprovalRequired = approval == identity.DeviceApprovalOwner
 	b, _ := json.Marshal(v)
 	effective, pending := effectiveMediaSettings(v)
-	return SettingsDocument{revision, Hash(string(b)), v, effective, revision, pending, RegistryRevision}, nil
+	return SettingsDocument{Revision: revision, Digest: Hash(string(b)), Requested: v, Effective: effective, ActiveRevision: revision, RestartFields: pending, RegistryRevision: RegistryRevision}, nil
 }
 
 // restartFields reports restart-applied settings the running process has not adopted.
@@ -278,6 +279,10 @@ func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocum
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error { var err error; out, err = readSettings(tx); return err })
 	if e == nil {
 		s.projectAppliedSettings(&out)
+		if s.FFmpegValidation != nil {
+			v := s.FFmpegValidation(ctx, out.Requested.FFmpegPath)
+			out.FFmpegValidation = &v
+		}
 	}
 	return
 }
@@ -470,6 +475,10 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 	})
 	if e == nil {
 		s.projectAppliedSettings(&out)
+		if s.FFmpegValidation != nil {
+			v := s.FFmpegValidation(ctx, out.Requested.FFmpegPath)
+			out.FFmpegValidation = &v
+		}
 	}
 	return
 }

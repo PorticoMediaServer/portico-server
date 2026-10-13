@@ -31,7 +31,7 @@ type LibraryGuard func(tx *sql.Tx, library string) error
 // rather than admitting the work twice.
 func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, guard LibraryGuard) (Batch, error) {
 	out := Batch{Items: []Preparation{}, Rejected: []Rejection{}}
-	if !validID.MatchString(r.OperationID) {
+	if !validID.MatchString(r.OperationID) || (r.VersionID != "" && (!validID.MatchString(r.VersionID) || r.MediaID == "" || len(r.MediaIDs) > 0 || r.NextAfterMediaID != "")) {
 		return out, ErrInput
 	}
 	if e := preparationQuality(r.Quality); e != nil {
@@ -128,11 +128,20 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 		if err = retireStrays(ctx, tx, key, entity, item, now); err != nil {
 			return out, err
 		}
+
+		found, err := resolveVersionSource(ctx, tx, item, r.VersionID)
+		if reason := sourceReason(found, err); reason != "" {
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return out, err
+			}
+			out.Rejected = append(out.Rejected, Rejection{item, reason})
+			continue
+		}
 		// A live claim on the same item and quality is the same claim. Returning
 		// it keeps a client that retried a batch from accumulating duplicates.
 		// One that failed is what the viewer is asking to have another go at:
 		// asking again starts it again, rather than handing back the failure.
-		existing, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND state IN('queued','running','ready','paused','failed')`, key, entity, r.Quality))
+		existing, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE profile_key=? AND item_id=? AND quality=? AND source_asset_id=? AND state IN('queued','running','ready','paused','failed')`, key, entity, r.Quality, found.Asset))
 		if err == nil && existing.State == StateFailed {
 			if err = s.restart(ctx, tx, p, existing, now); errors.Is(err, ErrStorageFull) {
 				out.Rejected = append(out.Rejected, Rejection{item, ReasonStorageFull})
@@ -155,14 +164,6 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 		if !errors.Is(err, sql.ErrNoRows) {
 			return out, err
 		}
-		found, err := resolveSource(ctx, tx, item)
-		if reason := sourceReason(found, err); reason != "" {
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return out, err
-			}
-			out.Rejected = append(out.Rejected, Rejection{item, reason})
-			continue
-		}
 		if reason := qualityReason(ctx, tx, r.Quality, found); reason != "" {
 			out.Rejected = append(out.Rejected, Rejection{item, reason})
 			continue
@@ -184,8 +185,8 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 		if err != nil {
 			return out, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,quality,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?)`,
-			id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, library, titleSnapshot(title), r.Quality, origin, batch, estimate, flag, now, now); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,source_asset_id,quality,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?)`,
+			id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, library, titleSnapshot(title), found.Asset, r.Quality, origin, batch, estimate, flag, now, now); err != nil {
 			return out, err
 		}
 		fresh, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE id=?`, id))

@@ -1258,3 +1258,42 @@ func TestAudioItemsPublishOneOptimizedOption(t *testing.T) {
 		}
 	}
 }
+
+func TestDownloadPinsRequestedVersionAndClaimsFollowMerge(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	first, err := h.service.Submit(ctx, h.viewer, Request{OperationID: "version-first", MediaID: h.item, VersionID: h.asset, Quality: QualityOriginal}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(h.root, "Film-4K.mp4")
+	if err = os.WriteFile(path, []byte("other version"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, _ := addCompactFixtureAsset(t, h.db, h.itemID, path, info, "mp4", "h264", "aac", 3840, 2160, 60)
+	second, err := h.service.Submit(ctx, h.viewer, Request{OperationID: "version-second", MediaID: h.item, VersionID: other, Quality: QualityOriginal}, nil)
+	if err != nil || len(second.Items) != 1 || second.Items[0].ID == first.Items[0].ID {
+		t.Fatal(second, err)
+	}
+	h.advance(t)
+	h.advance(t)
+	ready, err := h.service.Get(ctx, h.viewer, first.Items[0].ID)
+	if err != nil || ready.State != StateReady || ready.Artifact.Ref != h.asset {
+		t.Fatal(ready, err)
+	}
+	into, intoID := addCompactFixtureItem(t, h.db, "lib", compactcatalog.Movie, "survivor", "Survivor", 0, "", nil)
+	err = dbwork.WithWriteTx(ctx, h.db, dbwork.ClassInteractive, func(tx *sql.Tx) error { return catalog.MergeTitlesTx(ctx, tx, h.itemID, intoID) })
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, claim := range []Preparation{first.Items[0], second.Items[0]} {
+		out, err := h.service.Get(ctx, h.viewer, claim.ID)
+		if err != nil || out.ItemID != into {
+			t.Fatal(out, err)
+		}
+	}
+}

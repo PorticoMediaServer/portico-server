@@ -33,17 +33,18 @@ var ErrHomeRowUnknown = errors.New("that home row does not exist for this viewer
 var ErrHomeLayoutRow = errors.New("home layout refers to a row that does not exist")
 
 type HomeRow struct {
-	ID                 string     `json:"id"`
-	Title              string     `json:"title"`
-	TitleText          ServerText `json:"titleText"`
-	Kind               string     `json:"kind"`
-	ArtworkShape       string     `json:"artworkShape"`
-	Explanation        string     `json:"explanation,omitempty"`
-	Endpoint           string     `json:"endpoint"`
-	LibraryID          string     `json:"libraryId,omitempty"`
-	PrivacySensitivity string     `json:"privacySensitivity"`
-	PolicyState        string     `json:"policyState"`
-	Relation           string     `json:"relation,omitempty"`
+	SeeAll             *ContentSeeAll `json:"seeAll,omitempty"`
+	ID                 string         `json:"id"`
+	Title              string         `json:"title"`
+	TitleText          ServerText     `json:"titleText"`
+	Kind               string         `json:"kind"`
+	ArtworkShape       string         `json:"artworkShape"`
+	Explanation        string         `json:"explanation,omitempty"`
+	Endpoint           string         `json:"endpoint"`
+	LibraryID          string         `json:"libraryId,omitempty"`
+	PrivacySensitivity string         `json:"privacySensitivity"`
+	PolicyState        string         `json:"policyState"`
+	Relation           string         `json:"relation,omitempty"`
 	// Family groups rows the layout arranges as one ("for_you": the personal
 	// rows, which vary with the profile and the day).
 	Family          string          `json:"family,omitempty"`
@@ -105,6 +106,7 @@ type HomeRowPage struct {
 }
 
 type homeRowSpec struct {
+	SeeAll       *ContentSeeAll
 	ID           string
 	Title        string
 	TitleCode    string // the catalogue id, when not the fixed rows' own
@@ -172,7 +174,7 @@ type homeSource struct {
 }
 
 func (spec homeRowSpec) descriptor() HomeRow {
-	return HomeRow{ID: spec.ID, Title: spec.Title, TitleText: spec.titleText(), Kind: spec.Kind, ArtworkShape: spec.ArtworkShape, Explanation: spec.Explanation,
+	return HomeRow{SeeAll: spec.SeeAll, ID: spec.ID, Title: spec.Title, TitleText: spec.titleText(), Kind: spec.Kind, ArtworkShape: spec.ArtworkShape, Explanation: spec.Explanation,
 		Endpoint: "/v1/home/rows/" + spec.ID, LibraryID: spec.LibraryID, PrivacySensitivity: spec.Privacy, PolicyState: spec.PolicyState,
 		Priority: spec.Priority, CacheTTLSeconds: spec.CacheTTL, Required: spec.Required, Hideable: spec.Hideable,
 		Reorderable: spec.Reorderable, Critical: spec.Critical, CursorCapable: spec.Cursors, Family: spec.Family, Entries: []ContentEntry{}}
@@ -372,7 +374,7 @@ func (s *Service) homeSpecs(r HomeRequest) ([]homeRowSpec, error) {
 		return nil, e
 	}
 	for index, library := range libraries {
-		specs = append(specs, homeRowSpec{Direction: "desc", ID: "recent_" + library.ID, Title: "Recently added in " + library.Name, TitleParams: map[string]string{"library": library.Name}, Kind: "recent",
+		specs = append(specs, homeRowSpec{SeeAll: &ContentSeeAll{Pivot: defaultPivot(library.Kind), Sort: []BrowseSortSelection{{Field: "added", Direction: "desc"}}}, Direction: "desc", ID: "recent_" + library.ID, Title: "Recently added in " + library.Name, TitleParams: map[string]string{"library": library.Name}, Kind: "recent",
 			// Straight after what the viewer is in the middle of, in the owner's library order.
 			ArtworkShape: homeArtwork(library.Kind), LibraryID: library.ID, Priority: 30, Rank: index, CacheTTL: 120,
 			Hideable: true, Reorderable: true, Cursors: true, Privacy: "catalog", PolicyState: "available"})

@@ -408,6 +408,11 @@ func restrictionWriteRoutes() map[string]writeRoute {
 			return out
 		}),
 		"POST /v1/items/{id}/delete":                                      perHidden("POST", "/v1/items/ID/delete", `{"operationId":"OP"}`, "item"),
+		"DELETE /v1/admin/storage/upgrade-copies/{id}":                    writeExempt("owner-only database backup deletion"),
+		"POST /v1/admin/downloads/revoke":                                 writeExempt("owner revocation of offline permission"),
+		"POST /v1/admin/sessions/{id}/controls":                           writeExempt("administrator transport control without catalogue writes"),
+		"POST /v1/admin/items/{id}/files/{fileId}/delete/preview":         writeExempt("owner-only file deletion preview"),
+		"DELETE /v1/admin/items/{id}/files/{fileId}":                      writeExempt("owner-only file deletion"),
 		"POST /v1/items/{id}/delete/preview":                              perHidden("POST", "/v1/items/ID/delete/preview", `{}`, "item"),
 		"POST /v1/items/{id}/metadata/refresh":                            perHidden("POST", "/v1/items/ID/metadata/refresh", `{}`, "item"),
 		"POST /v1/items/{id}/metadata/local-audio/policy":                 perHidden("POST", "/v1/items/ID/metadata/local-audio/policy", `{}`, "item"),

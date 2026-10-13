@@ -117,6 +117,11 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 		}
 	}
 
+	registerStorageStatus(r, d)
+	registerLiveChoices(r, d)
+	registerInventoryRead(r, d)
+	registerPlaybackControls(r, d)
+	registerDownloadProfileRevoke(r, d)
 	ownerErrors := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}
 	v1Route(r, apikit.Metadata{ID: "list_missing_titles", Method: "GET", Path: "/v1/admin/missing-titles", Summary: "List titles whose files are no longer on disk, oldest first, with when each will be removed",
 		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"libraryId", "cursor", "limit"}, Errors: ownerErrors},

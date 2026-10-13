@@ -41,6 +41,7 @@ type Library struct {
 	Pinned bool `json:"pinned"`
 }
 type Item struct {
+	Missing     bool          `json:"missing"`
 	Watched     *bool         `json:"watched,omitempty"`
 	AddedAt     *string       `json:"addedAt"`
 	Song        *SongInfo     `json:"song,omitempty"`
@@ -295,6 +296,11 @@ func (s *Service) Get(profile, id string) (Item, error) {
 	if e != nil {
 		return i, e
 	}
+	since, err := s.MissingSince(s.Context(), id)
+	if err != nil {
+		return i, err
+	}
+	i.Missing = since != ""
 	i.Sources, i.Available, i.Duration, e = s.compactItemAssets(id)
 	if e != nil {
 		return i, e

@@ -57,6 +57,7 @@ func auditAnchor(tx *sql.Tx) (AuditAnchor, error) {
 }
 
 type Store struct {
+	FFmpegValidation func(context.Context, string) FFmpegStatus
 	// Set once at startup by the conversion consumer. Nil is a store without a running converter.
 	AppliedTemporaryDirectory *string
 	DB                        *sql.DB

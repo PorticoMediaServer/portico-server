@@ -48,25 +48,26 @@ type Service struct {
 	// The artist chain's sources (Spec — Page Content §8): MusicBrainz artist
 	// details plus Wikidata, Wikipedia and Commons. One transport each, so
 	// each keeps the standard pacing. Tests substitute bounded fakes.
-	wikidata         wikidataArtistSource
-	wikipedia        wikipediaSource
-	commons          commonsSource
-	LocalArtwork     func(string) (*os.File, string, error)
-	db               *sql.DB
-	token            string
-	client           *http.Client
-	base             string
-	cacheRoot        string
-	settingsMu       sync.Mutex
-	settingsRevision int64
-	artDirMu         sync.Mutex
-	missingMu        sync.Mutex
-	missingArtwork   map[missingArtwork]struct{}
-	missingWake      worker.Broadcast
-	acoustid         AcousticProvider
-	acoustidConfig   string
-	artClient        *http.Client
-	artDirectory     *os.File
+	wikidata          wikidataArtistSource
+	wikipedia         wikipediaSource
+	commons           commonsSource
+	LocalArtworkUsage func(context.Context) (int64, error)
+	LocalArtwork      func(string) (*os.File, string, error)
+	db                *sql.DB
+	token             string
+	client            *http.Client
+	base              string
+	cacheRoot         string
+	settingsMu        sync.Mutex
+	settingsRevision  int64
+	artDirMu          sync.Mutex
+	missingMu         sync.Mutex
+	missingArtwork    map[missingArtwork]struct{}
+	missingWake       worker.Broadcast
+	acoustid          AcousticProvider
+	acoustidConfig    string
+	artClient         *http.Client
+	artDirectory      *os.File
 }
 
 func New(db *sql.DB, token string) *Service {

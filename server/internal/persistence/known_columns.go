@@ -1263,6 +1263,9 @@ continue_show_dismissals.last_activity
 continue_show_dismissals.playback_id
 continue_show_dismissals.profile_id
 continue_show_dismissals.show_id
+database_maintenance_status.last_ran_ms
+database_maintenance_status.last_reclaimed_bytes
+database_maintenance_status.singleton
 detail_jobs.attempts
 detail_jobs.error
 detail_jobs.item_id
@@ -1343,6 +1346,7 @@ download_preparations.quality
 download_preparations.ready_ms
 download_preparations.reason
 download_preparations.revision
+download_preparations.source_asset_id
 download_preparations.source_modified_ns
 download_preparations.started_ms
 download_preparations.state
@@ -1936,6 +1940,10 @@ live_channel_attributes.catchup_source
 live_channel_attributes.channel_id
 live_channel_attributes.country
 live_channel_attributes.generation_id
+live_channel_choices.channel_key
+live_channel_choices.generation_id
+live_channel_choices.group_name
+live_channel_choices.name
 live_channel_logos.channel_id
 live_channel_logos.generation_id
 live_channel_logos.url

@@ -665,3 +665,6 @@ func max64(a, b int64) int64 {
 	}
 	return b
 }
+
+// Directory is the destination currently used for backups.
+func (s *Service) Directory() string { return s.backupRoot() }

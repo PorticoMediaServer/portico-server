@@ -1,0 +1,35 @@
+package httpapi
+
+import (
+	"context"
+	"net/http"
+	"strconv"
+
+	"portico.local/apikit"
+	"portico.local/apikit/apierror"
+	"portico.local/server/internal/administration"
+)
+
+func registerLiveChoices(registry *apikit.Registry, d Dependencies) {
+	for _, kind := range []string{"groups", "channels"} {
+		v1Route(registry, apikit.Metadata{ID: "list_live_source_" + kind, Method: "GET", Path: "/v1/admin/live/sources/{id}/" + kind, Summary: "List source choices, including groups and channels excluded from the line-up", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit", "q"}, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "administration_unavailable", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (administration.LiveSourceChoicePage, error) {
+			p, e := d.owner(r)
+			if e != nil {
+				return administration.LiveSourceChoicePage{}, e
+			}
+			if d.Administration == nil {
+				return administration.LiveSourceChoicePage{}, &apierror.Error{Code: "administration_unavailable"}
+			}
+			limit := 50
+			if value := r.URL.Query().Get("limit"); value != "" {
+				var err error
+				limit, err = strconv.Atoi(value)
+				if err != nil {
+					return administration.LiveSourceChoicePage{}, &apierror.Error{Code: "invalid_request"}
+				}
+			}
+			out, e := d.Administration.SourceChoices(ctx, d.administrationAuthority(p), r.PathValue("id"), kind, r.URL.Query().Get("cursor"), r.URL.Query().Get("q"), limit)
+			return out, versionDeletionError(e)
+		})
+	}
+}

@@ -404,7 +404,7 @@ func (s *Service) DiscoverWithRestrictions(library, profile string, restrictions
 		} else if e = s.read().QueryRow(`SELECT count(*) FROM (`+src.base+`)`, src.args...).Scan(&total); e != nil {
 			return out, e
 		}
-		out.Sections = append(out.Sections, DiscoverySection{ID: id, Title: spec.Title, TitleText: spec.titleText(), Items: entries, Total: total})
+		out.Sections = append(out.Sections, DiscoverySection{SeeAll: spec.SeeAll, ID: id, Title: spec.Title, TitleText: spec.titleText(), Items: entries, Total: total})
 	}
 	// The personal rows, scoped to this library, after Recommended (or first).
 	personal, e := s.recPersonalRowsFor(r, lib.Kind)

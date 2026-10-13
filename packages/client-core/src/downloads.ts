@@ -44,7 +44,7 @@ export type DownloadTitle = Readonly<{
 export type DownloadArtifact = Readonly<{kind: DownloadArtifactKind; ref: string; sha256: string; bytes: number; estimated: boolean; container: string; contentType: string; fileName: string}>;
 export type DownloadProgress = Readonly<{bytesDone: number; bytesTotal: number; bytesTotalEstimated: boolean; percent: number; etaSeconds: number|null}>;
 export type DownloadPreparation = Readonly<{
-  id: string; itemId: string; libraryId: string; profileId: string; title: DownloadTitle; quality: string; origin: DownloadOrigin;
+  id: string; versionId?:string; itemId: string; libraryId: string; profileId: string; title: DownloadTitle; quality: string; origin: DownloadOrigin;
   batchId: string; state: DownloadState; reason: string; artifact: DownloadArtifact; progress: DownloadProgress;
   actions: readonly DownloadAction[]; revision: number; createdAt: string; updatedAt: string; readyAt: string; expiresAt: string;
 }>;
@@ -110,7 +110,7 @@ export type DeferredProgressReceipt = Readonly<{applied: number; conflicts: numb
 export type DownloadUsage = Readonly<{
   profileId: string; profileBytes: number; profileCount: number; serverBytes: number; serverCount: number;
   distinctArtifactBytes: number; maxPreparedBytes: number; remainingBytes: number|null; retentionDays: number;
-  profiles: readonly Readonly<{profileId: string; bytes: number; count: number}>[];
+  profilesNextCursor?:string; profiles: readonly Readonly<{profileId: string;profileKey?:string;authority?:string;accountId?:string;accountName?:string;profileName?:string;storedBytes?:number; bytes: number; count: number}>[];
 }>;
 /** One quality a download may be asked for when there is no single file to read a menu for (a
  * whole show, season, album, book or playlist). */
@@ -196,7 +196,7 @@ export function parseDownloadPreparation(raw: unknown): DownloadPreparation {
   if (state === 'ready' ? bytes.sha256 === '' || bytes.kind === '' : false) invalid();
   // An action this app does not know, or one offered twice, is left out: the row then offers less, never more.
   const actions = firstOfEach('downloads', 'preparation.actions', keepReadable('downloads', 'preparation.actions', offered, v => oneOf(v, downloadActions)), v => v);
-  return Object.freeze({
+  return Object.freeze({...(id(raw.versionId)?{versionId:raw.versionId}:{}),
     id: raw.id, itemId: raw.itemId, libraryId: raw.libraryId, profileId: raw.profileId, title: shownTitle(raw.title),
     quality: raw.quality, origin: oneOfOr('downloads', 'preparation.origin', raw.origin, ['item','items','container','next'] as const, 'item'), batchId: String(raw.batchId ?? ''),
     state, reason: String(raw.reason ?? ''), artifact: bytes, progress: shownProgress(raw.progress),
@@ -465,12 +465,12 @@ export function parseDownloadUsage(raw: unknown): DownloadUsage {
   if (raw.maxPreparedBytes === 0 ? remaining !== null : remaining === null) invalid();
   const profiles = firstOfEach('download-usage', 'profiles', keepReadable('download-usage', 'profiles', array(raw.profiles, 256), v => {
     if (!object(v) || !id(v.profileId) || !count(v.bytes) || !count(v.count)) invalid();
-    return Object.freeze({profileId: v.profileId, bytes: v.bytes, count: v.count});
-  }), v => v.profileId);
+    return Object.freeze({profileId:v.profileId,bytes:v.bytes,count:v.count,...(text(v.profileKey,1024)?{profileKey:v.profileKey}:{}),...(text(v.authority,32)?{authority:v.authority}:{}),...(text(v.accountId,160)?{accountId:v.accountId}:{}),...(text(v.accountName,512)?{accountName:v.accountName}:{}),...(text(v.profileName,512)?{profileName:v.profileName}:{}),...(count(v.storedBytes)?{storedBytes:v.storedBytes}: {})});
+  }), v => v.profileKey??v.profileId);
   return Object.freeze({
     profileId: raw.profileId, profileBytes: raw.profileBytes, profileCount: raw.profileCount,
     serverBytes: raw.serverBytes, serverCount: raw.serverCount, distinctArtifactBytes: raw.distinctArtifactBytes,
-    maxPreparedBytes: raw.maxPreparedBytes, remainingBytes: remaining, retentionDays: raw.retentionDays, profiles: Object.freeze(profiles),
+    profilesNextCursor:text(raw.profilesNextCursor,1024)?raw.profilesNextCursor:"",maxPreparedBytes: raw.maxPreparedBytes, remainingBytes: remaining, retentionDays: raw.retentionDays, profiles: Object.freeze(profiles),
   });
 }
 
