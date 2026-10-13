@@ -15,7 +15,6 @@ var (
 	ErrStreamLimit   = errors.New("This account already has as many streams playing as its limit allows.")
 	ErrSchedule      = errors.New("This account is outside the hours it is allowed to watch.")
 	ErrChannelDenied = errors.New("This channel is not allowed for this account.")
-	ErrDeviceTrust   = errors.New("This device is waiting for approval on this server.")
 )
 
 // Enforcer applies per-member limits at admission. It reads the limits envelope
@@ -27,11 +26,6 @@ var (
 // administrative account is applied like any other.
 type Enforcer struct {
 	Store *Store
-	// ApprovalRequired is the server's device approval policy. The caller reads
-	// it from the settings registry and passes the answer in, rather than handing
-	// over a closure: SQLite runs on a single writer connection here, so a nested
-	// read inside the admission transaction would deadlock against it.
-	ApprovalRequired bool
 }
 
 // Admission is what the caller asks about.
@@ -39,8 +33,6 @@ type Admission struct {
 	// Remote is true when the request arrived over a non-LAN transport; the
 	// remote bitrate cap applies only then.
 	Remote bool
-	// DeviceID is the client's device identifier, when it sent one.
-	DeviceID string
 	// ReplanSessionID is the v1 session this admission continues or replaces
 	// (a quality/version/audio/part change, a queue transition, a replacing
 	// start). It already holds its stream, so it is not counted again against
@@ -81,8 +73,10 @@ func (e *Enforcer) AdmitAccount(ctx context.Context, tx *sql.Tx, account string)
 	return withinSchedule(limits.Schedule, e.now())
 }
 
-// AdmitPlayback is the playback side: concurrent stream count, the schedule,
-// device trust and the remote bitrate cap. It runs before a playback lease
+// AdmitPlayback is the playback side: concurrent stream count, the schedule
+// and the remote bitrate cap. Whether the device may be used at all is not
+// decided here: a session exists only on an approved device, and every
+// request re-checks that (identity_devices.approval_state). It runs before a playback lease
 // exists, so the count it reads excludes the request being admitted. Whether
 // the member may see the title at all (rating, unrated, denied labels) is not
 // decided here: that is the one catalogue predicate, which the caller applies
@@ -96,15 +90,6 @@ func (e *Enforcer) AdmitPlayback(ctx context.Context, tx *sql.Tx, p identity.Pri
 	now := e.now()
 	if err = withinSchedule(limits.Schedule, now); err != nil {
 		return out, err
-	}
-	if q.DeviceID != "" && e.ApprovalRequired {
-		trust, err := DeviceTrust(ctx, tx, q.DeviceID)
-		if err != nil {
-			return out, err
-		}
-		if trust != "approved" {
-			return out, ErrDeviceTrust
-		}
 	}
 	if limits.MaxStreams > 0 {
 		// One stream is one count, whatever protocol holds it. Legacy

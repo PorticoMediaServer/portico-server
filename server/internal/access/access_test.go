@@ -468,56 +468,6 @@ func TestAPIKeysAuthenticateAsADistinctPrincipalAndStopWhenRevoked(t *testing.T)
 	}
 }
 
-func TestDeviceTrustGatesPlaybackAndBlockingStopsLiveLeases(t *testing.T) {
-	store, db, ids := fixture(t)
-	ctx := context.Background()
-	member := identity.Principal{Viewer: identity.Viewer{AccountID: "member", ProfileID: "member-profile", Authority: "local", Role: identity.TierMember}}
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = store.Observe(ctx, tx, member, "living-room", "Living Room", "tvos"); err != nil {
-		t.Fatal(err)
-	}
-	if err = tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	page, err := store.Devices(ctx, nil, DeviceQuery{}, true)
-	if err != nil || len(page.Items) != 1 || page.Items[0].Trust != "pending" || !page.ApprovalRequired {
-		t.Fatalf("inventory: %v %+v", err, page)
-	}
-	enforcer := &Enforcer{Store: store, ApprovalRequired: true}
-	admit := func() error {
-		tx, err := db.Begin()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer tx.Rollback()
-		_, err = enforcer.AdmitPlayback(ctx, tx, member, Admission{DeviceID: "living-room"})
-		return err
-	}
-	if err = admit(); !errors.Is(err, ErrDeviceTrust) {
-		t.Fatalf("a pending device played: %v", err)
-	}
-	if _, err = store.SetDeviceTrust(ctx, nil, "living-room", TrustChange{ExpectedRevision: 1, OperationID: "trust-set-1", Trust: "approved"}); err != nil {
-		t.Fatal(err)
-	}
-	if err = admit(); err != nil {
-		t.Fatalf("an approved device was refused: %v", err)
-	}
-	if _, err = db.Exec(`INSERT INTO playback_sessions(id,session_hash,account_id,profile_id,item_id,asset_id,generation,state,grant_hash,grant_token,expires_at,request_id,duration)
- VALUES('s','h','member','member-profile',?, ?,1,'playing','g','t','2099-01-01T00:00:00Z','r',1)`, ids.familyID, ids.asset); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = store.SetDeviceTrust(ctx, nil, "living-room", TrustChange{ExpectedRevision: 2, OperationID: "trust-set-2", Trust: "blocked"}); err != nil {
-		t.Fatal(err)
-	}
-	var state string
-	if err = db.QueryRow(`SELECT state FROM playback_sessions WHERE id='s'`).Scan(&state); err != nil || state != "stopped" {
-		t.Fatalf("blocking left a lease running: %v %q", err, state)
-	}
-}
-
 func TestListsPageByCursorRatherThanOffset(t *testing.T) {
 	store, _, _ := fixture(t)
 	ctx := context.Background()

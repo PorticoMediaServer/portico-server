@@ -163,8 +163,6 @@ func v1Error(err error) error {
 		code = "not_controllable"
 	case errors.Is(err, playbackv1.ErrStreamExists):
 		code = "stream_exists"
-	case errors.Is(err, access.ErrDeviceTrust):
-		code = "not_permitted"
 	case errors.Is(err, identity.ErrDeviceUnknown):
 		code = "device_not_found"
 	case errors.Is(err, playbackv1.ErrNoTuner):

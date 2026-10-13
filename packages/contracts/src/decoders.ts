@@ -11,8 +11,10 @@ export function decodeCreateQueueResponse(input: unknown): types.CreateQueueResp
 export function decodeDeleteAdminBackupResponse(input: unknown): types.DeleteAdminBackupResponse { return decode("DeleteAdminBackupResponse", input) as types.DeleteAdminBackupResponse; }
 export function decodeDeleteDeviceResponse(input: unknown): types.DeleteDeviceResponse { return decode("DeleteDeviceResponse", input) as types.DeleteDeviceResponse; }
 export function decodeDeleteDeviceSessionsResponse(input: unknown): types.DeleteDeviceSessionsResponse { return decode("DeleteDeviceSessionsResponse", input) as types.DeleteDeviceSessionsResponse; }
+export function decodeDeleteDirectMemberResponse(input: unknown): types.DeleteDirectMemberResponse { return decode("DeleteDirectMemberResponse", input) as types.DeleteDirectMemberResponse; }
 export function decodeDeleteDirectSessionResponse(input: unknown): types.DeleteDirectSessionResponse { return decode("DeleteDirectSessionResponse", input) as types.DeleteDirectSessionResponse; }
 export function decodeDeleteQueueResponse(input: unknown): types.DeleteQueueResponse { return decode("DeleteQueueResponse", input) as types.DeleteQueueResponse; }
+export function decodeGetAdminAccessDevicesResponse(input: unknown): types.GetAdminAccessDevicesResponse { return decode("GetAdminAccessDevicesResponse", input) as types.GetAdminAccessDevicesResponse; }
 export function decodeGetAdminBackupsResponse(input: unknown): types.GetAdminBackupsResponse { return decode("GetAdminBackupsResponse", input) as types.GetAdminBackupsResponse; }
 export function decodeGetAdminMaintenanceSettingsResponse(input: unknown): types.GetAdminMaintenanceSettingsResponse { return decode("GetAdminMaintenanceSettingsResponse", input) as types.GetAdminMaintenanceSettingsResponse; }
 export function decodeGetAdminUpdatesResponse(input: unknown): types.GetAdminUpdatesResponse { return decode("GetAdminUpdatesResponse", input) as types.GetAdminUpdatesResponse; }
@@ -24,6 +26,7 @@ export function decodeGetContainerPersonalStateResponse(input: unknown): types.G
 export function decodeGetDeviceCapabilitiesResponse(input: unknown): types.GetDeviceCapabilitiesResponse { return decode("GetDeviceCapabilitiesResponse", input) as types.GetDeviceCapabilitiesResponse; }
 export function decodeGetDevicesResponse(input: unknown): types.GetDevicesResponse { return decode("GetDevicesResponse", input) as types.GetDevicesResponse; }
 export function decodeGetDirectAccountResponse(input: unknown): types.GetDirectAccountResponse { return decode("GetDirectAccountResponse", input) as types.GetDirectAccountResponse; }
+export function decodeGetDirectMemberDeletionPreviewResponse(input: unknown): types.GetDirectMemberDeletionPreviewResponse { return decode("GetDirectMemberDeletionPreviewResponse", input) as types.GetDirectMemberDeletionPreviewResponse; }
 export function decodeGetDirectPinRecoveryResponse(input: unknown): types.GetDirectPinRecoveryResponse { return decode("GetDirectPinRecoveryResponse", input) as types.GetDirectPinRecoveryResponse; }
 export function decodeGetDirectProfileAvatarsResponse(input: unknown): types.GetDirectProfileAvatarsResponse { return decode("GetDirectProfileAvatarsResponse", input) as types.GetDirectProfileAvatarsResponse; }
 export function decodeGetDirectProfileRestrictionsResponse(input: unknown): types.GetDirectProfileRestrictionsResponse { return decode("GetDirectProfileRestrictionsResponse", input) as types.GetDirectProfileRestrictionsResponse; }
@@ -54,6 +57,7 @@ export function decodePostDirectProfilePinResetResponse(input: unknown): types.P
 export function decodePostDirectSignOutEverywhereResponse(input: unknown): types.PostDirectSignOutEverywhereResponse { return decode("PostDirectSignOutEverywhereResponse", input) as types.PostDirectSignOutEverywhereResponse; }
 export function decodePrepareQueueNextResponse(input: unknown): types.PrepareQueueNextResponse { return decode("PrepareQueueNextResponse", input) as types.PrepareQueueNextResponse; }
 export function decodePreviewInvitationResponse(input: unknown): types.PreviewInvitationResponse { return decode("PreviewInvitationResponse", input) as types.PreviewInvitationResponse; }
+export function decodePutAdminAccessDeviceTrustResponse(input: unknown): types.PutAdminAccessDeviceTrustResponse { return decode("PutAdminAccessDeviceTrustResponse", input) as types.PutAdminAccessDeviceTrustResponse; }
 export function decodePutAdminMaintenanceSettingsResponse(input: unknown): types.PutAdminMaintenanceSettingsResponse { return decode("PutAdminMaintenanceSettingsResponse", input) as types.PutAdminMaintenanceSettingsResponse; }
 export function decodePutDeviceCapabilitiesResponse(input: unknown): types.PutDeviceCapabilitiesResponse { return decode("PutDeviceCapabilitiesResponse", input) as types.PutDeviceCapabilitiesResponse; }
 export function decodePutDirectProfileRestrictionsResponse(input: unknown): types.PutDirectProfileRestrictionsResponse { return decode("PutDirectProfileRestrictionsResponse", input) as types.PutDirectProfileRestrictionsResponse; }

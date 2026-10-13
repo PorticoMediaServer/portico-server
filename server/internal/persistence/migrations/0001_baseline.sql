@@ -2232,6 +2232,7 @@ CREATE TABLE identity_devices(
  approval_state TEXT NOT NULL DEFAULT 'approved' CHECK(approval_state IN('approved','pending','denied')),
  last_profile_id TEXT NOT NULL DEFAULT '',
  remember_account INTEGER NOT NULL DEFAULT 1 CHECK(remember_account IN(0,1)),
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0),
  UNIQUE(authority,account_id,installation_id)
 ) STRICT;
 CREATE TABLE identity_device_families(
@@ -2605,12 +2606,6 @@ CREATE TABLE access_limits(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0), updated_ms INTEGER NOT NULL,
  body TEXT NOT NULL CHECK(json_valid(body))) STRICT;
-CREATE TABLE access_devices(
- id TEXT PRIMARY KEY, account_id TEXT NOT NULL, profile_id TEXT NOT NULL DEFAULT '',
- name TEXT NOT NULL DEFAULT '', platform TEXT NOT NULL DEFAULT '',
- trust TEXT NOT NULL DEFAULT 'pending' CHECK(trust IN('pending','approved','blocked')),
- first_seen_ms INTEGER NOT NULL, last_seen_ms INTEGER NOT NULL,
- revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
 CREATE TABLE access_api_keys(
  id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
  profile_id TEXT NOT NULL, name TEXT NOT NULL,
@@ -3812,9 +3807,8 @@ CREATE INDEX admin_trash_expiry ON admin_trash(state,expires_ms);
 CREATE INDEX admin_dvr_groups_page ON admin_dvr_groups(created_ms DESC,id DESC);
 CREATE INDEX admin_channel_presets_page ON admin_channel_presets(name_key,id);
 CREATE UNIQUE INDEX direct_one_owner ON direct_memberships(role) WHERE role='owner';
+CREATE INDEX identity_devices_recent ON identity_devices(last_seen DESC,id DESC);
 CREATE INDEX access_invitation_page ON access_invitations(created_ms DESC,id DESC);
-CREATE INDEX access_devices_page ON access_devices(last_seen_ms DESC,id DESC);
-CREATE INDEX access_devices_account ON access_devices(account_id,id);
 CREATE INDEX access_api_keys_page ON access_api_keys(created_ms DESC,id DESC);
 CREATE INDEX client_log_uploads_page ON client_log_uploads(received_ms DESC,id DESC);
 CREATE INDEX audio_tag_evidence_asset ON audio_tag_evidence(asset_id,field,value);

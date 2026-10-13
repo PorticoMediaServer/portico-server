@@ -27,6 +27,12 @@ var ErrDeviceDenied = errors.New("The account owner refused this device.")
 
 const deviceApprovalKey = "identity.deviceApproval"
 
+// DeviceApprovalSettingKey is where the owner's device approval choice is
+// stored. The settings document's "require approval" switch reads and writes
+// this one value, so the switch and the rule every request is held to cannot
+// disagree.
+const DeviceApprovalSettingKey = deviceApprovalKey
+
 const (
 	// DeviceApprovalAuto registers a new device already approved.
 	DeviceApprovalAuto = "auto"
@@ -190,12 +196,31 @@ func (s *Service) registerDeviceTx(ctx context.Context, tx *sql.Tx, c deviceCall
 	if e != nil {
 		return Device{}, e
 	}
+	// With the owner's approval required, a device nobody has seen before
+	// waits. Three kinds of device never wait:
+	//   - the owner's own. The owner is the one who approves, so a policy that
+	//     held the owner's new phone would leave nobody able to approve it;
+	//   - one a signed-in, approved device vouched for by pairing it as a Cast
+	//     target, which gets a playback-only session and nothing else;
+	//   - any device while the policy is off, including one left waiting from
+	//     when it was on: turning the policy off lets waiting devices in. A
+	//     device the owner blocked stays blocked either way.
 	state := "approved"
-	if policy == DeviceApprovalOwner {
-		state = "pending"
+	if policy == DeviceApprovalOwner && ctx.Value(vouchedDeviceKey{}) != true {
+		var role string
+		if c.authority == "local" {
+			if e = tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=?`, c.account).Scan(&role); e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return Device{}, e
+			}
+		}
+		if role != TierOwner {
+			state = "pending"
+		}
 	}
 	if _, e := tx.ExecContext(ctx, `INSERT INTO identity_devices(id,authority,account_id,installation_id,name,platform,app,app_version,ip,first_seen,last_seen,trusted,approval_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,0,?)
- ON CONFLICT(authority,account_id,installation_id) DO UPDATE SET platform=excluded.platform,app=excluded.app,app_version=excluded.app_version,ip=excluded.ip,last_seen=excluded.last_seen`,
+ ON CONFLICT(authority,account_id,installation_id) DO UPDATE SET platform=excluded.platform,app=excluded.app,app_version=excluded.app_version,ip=excluded.ip,last_seen=excluded.last_seen,
+ approval_state=CASE WHEN identity_devices.approval_state='pending' AND excluded.approval_state='approved' THEN 'approved' ELSE identity_devices.approval_state END,
+ revision=CASE WHEN identity_devices.approval_state='pending' AND excluded.approval_state='approved' THEN identity_devices.revision+1 ELSE identity_devices.revision END`,
 		Token(), c.authority, c.account, q.InstallationID, name, platform, app, version, clientIP(peer), now, now, state); e != nil {
 		return Device{}, e
 	}
@@ -439,13 +464,8 @@ func (s *Service) ApproveDevice(ctx context.Context, bearer, id string, approved
 	if !approved {
 		state = "denied"
 	}
-	if _, e = tx.ExecContext(ctx, `UPDATE identity_devices SET approval_state=? WHERE id=? AND authority=? AND account_id=?`, state, id, c.authority, c.account); e != nil {
+	if e = s.setDeviceApprovalTx(ctx, tx, c, id, state); e != nil {
 		return Device{}, e
-	}
-	if !approved {
-		if e = s.revokeDeviceFamiliesTx(ctx, tx, c, id, RevokedDeviceDisapproved); e != nil {
-			return Device{}, e
-		}
 	}
 	device, e := s.deviceTx(ctx, tx, c.authority, c.account, "", id)
 	if e != nil {

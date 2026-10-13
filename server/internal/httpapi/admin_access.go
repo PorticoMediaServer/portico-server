@@ -189,43 +189,6 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 201, out)
 	})
-	mux.HandleFunc("GET /v1/admin/access/devices", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.administrator(r)
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		document, e := d.settingsDocument(r.Context())
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		query := r.URL.Query()
-		out, e := store.Devices(r.Context(), d.accessAuthority(p, identity.TierAdmin), access.DeviceQuery{Cursor: query.Get("cursor"), Limit: query.Get("limit"), Trust: query.Get("trust"), Account: query.Get("account")}, document.Effective.DeviceApprovalRequired)
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		write(w, 200, out)
-	})
-	mux.HandleFunc("PUT /v1/admin/access/devices/{id}/trust", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.administrator(r)
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		var body access.TrustChange
-		if e = decodeLegacyRevision(w, r, &body); e != nil {
-			failure(w, e)
-			return
-		}
-		out, e := store.SetDeviceTrust(r.Context(), d.accessAuthority(p, identity.TierAdmin), r.PathValue("id"), body)
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		write(w, 200, out)
-	})
 	mux.HandleFunc("GET /v1/admin/access/api-keys", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.owner(r)
 		if e != nil {

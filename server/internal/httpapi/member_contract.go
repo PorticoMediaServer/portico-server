@@ -2,9 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"portico.local/apikit"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/identity"
 )
 
@@ -21,10 +23,49 @@ func registerMemberRoutes(registry *apikit.Registry, d Dependencies) error {
 	}}); err != nil {
 		return err
 	}
+	// Every member's devices, for the owner and administrators: the same device
+	// records sessions are bound to, with their approval. An administrator
+	// who is not the owner sees and decides about plain members' devices.
+	if err := apikit.Register(registry, apikit.Route[struct{}, identity.MemberDevicePage]{Metadata: apikit.Metadata{
+		ID: "get_admin_access_devices", Method: "GET", Path: "/v1/admin/access/devices", Summary: "List members' devices and whether each is approved", Access: apikit.Admin, Scope: "members", Lane: apikit.Security, Cost: apikit.PageSized, Query: []string{"cursor", "limit", "trust", "account"}, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "internal"},
+	}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.MemberDevicePage, error) {
+		p, err := d.foundationCaller(r.WithContext(ctx))
+		if err != nil {
+			return identity.MemberDevicePage{}, foundationAuthError(err)
+		}
+		query := r.URL.Query()
+		out, err := d.Identity.MemberDevices(ctx, p, identity.MemberDeviceQuery{Cursor: query.Get("cursor"), Limit: query.Get("limit"), Trust: query.Get("trust"), Account: query.Get("account")})
+		return out, memberDeviceError(err)
+	}}); err != nil {
+		return err
+	}
+	if err := apikit.Register(registry, apikit.Route[identity.MemberDeviceTrust, identity.MemberDevice]{Metadata: apikit.Metadata{
+		ID: "put_admin_access_device_trust", Method: "PUT", Path: "/v1/admin/access/devices/{id}/trust", Summary: "Approve a member's device, block it, or put it back to waiting", Access: apikit.Admin, Scope: "members", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "revision_mismatch", "internal"},
+	}, Handler: func(ctx context.Context, r *http.Request, body identity.MemberDeviceTrust) (identity.MemberDevice, error) {
+		p, err := d.foundationCaller(r.WithContext(ctx))
+		if err != nil {
+			return identity.MemberDevice{}, foundationAuthError(err)
+		}
+		out, err := d.Identity.SetMemberDeviceTrust(ctx, p, r.PathValue("id"), body)
+		return out, memberDeviceError(err)
+	}}); err != nil {
+		return err
+	}
 	return apikit.Register(registry, apikit.Route[identity.MemberDeletion, struct{}]{Metadata: apikit.Metadata{
 		ID: "delete_direct_member", Method: "DELETE", Path: "/v1/direct/members/{id}", Summary: "Delete a member, their profiles, devices and saved data", Access: apikit.Device, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 204, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "revision_mismatch", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body identity.MemberDeletion) (struct{}, error) {
 		err := d.Identity.DeleteDirectMember(ctx, directBearer(r), r.PathValue("id"), body)
 		return struct{}{}, foundationAuthErrorOrNil(err)
 	}})
+}
+
+func memberDeviceError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var changed *identity.DeviceChangedError
+	if errors.As(err, &changed) {
+		return &apierror.Error{Code: "revision_mismatch", Cause: err}
+	}
+	return foundationAuthError(err)
 }

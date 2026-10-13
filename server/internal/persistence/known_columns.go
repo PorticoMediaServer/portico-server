@@ -20,15 +20,6 @@ access_api_keys.revision
 access_api_keys.revoked
 access_api_keys.scope
 access_api_keys.secret_hash
-access_devices.account_id
-access_devices.first_seen_ms
-access_devices.id
-access_devices.last_seen_ms
-access_devices.name
-access_devices.platform
-access_devices.profile_id
-access_devices.revision
-access_devices.trust
 access_invitations.accepted_ms
 access_invitations.account_id
 access_invitations.allowed_libraries
@@ -1635,6 +1626,7 @@ identity_devices.last_seen
 identity_devices.name
 identity_devices.platform
 identity_devices.remember_account
+identity_devices.revision
 identity_devices.trusted
 identity_factor_challenges.account_id
 identity_factor_challenges.attempts

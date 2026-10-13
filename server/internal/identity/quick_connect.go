@@ -364,6 +364,17 @@ func (s *Service) PollQuick(ctx context.Context, secret string) (Envelope, error
 	}
 	if status == "approved" && tokenHash == "" {
 		out, e := s.issueQuickTx(ctx, tx, id, cipher)
+		if errors.Is(e, ErrDevicePending) || errors.Is(e, ErrDeviceDenied) {
+			// The server requires the owner to approve new devices, and this one
+			// is new (or was blocked). Its record is kept, so the owner has
+			// something to approve; rolling it back would leave the television
+			// waiting for an approval nobody could give. The code stays
+			// approved: once the device is approved, the next poll collects it.
+			if commitErr := gated3.Commit(); commitErr != nil {
+				return Envelope{}, commitErr
+			}
+			return Envelope{}, e
+		}
 		if e != nil {
 			return Envelope{}, e
 		}

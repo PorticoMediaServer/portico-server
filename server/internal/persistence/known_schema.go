@@ -15,10 +15,7 @@ import (
 // for, and a count of foreign objects is how an owner finds out that is what
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
-const knownSchemaObjects = `
-index access_api_keys_page
-index access_devices_account
-index access_devices_page
+const knownSchemaObjects = `index access_api_keys_page
 index access_invitation_page
 index access_invitation_pending
 index admin_channel_presets_page
@@ -208,6 +205,7 @@ index hosted_identity_nonces_expiry
 index identity_browser_accounts_recent
 index identity_device_families_device
 index identity_devices_account
+index identity_devices_recent
 index identity_factor_challenge_expiry
 index identity_refresh_device
 index identity_refresh_predecessors_family
@@ -423,7 +421,6 @@ index tvdb_publication_terminal
 index video_nfo_asset
 index video_nfo_status_asset_id_fk
 table access_api_keys
-table access_devices
 table access_invitations
 table access_limits
 table access_receipts
@@ -1688,8 +1685,7 @@ view authorization_access
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context
-`
+view listening_book_context`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

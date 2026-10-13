@@ -147,7 +147,7 @@ func accessFailure(w http.ResponseWriter, e error) {
 		status, code, message = 403, "device_session_required", "Sign in on this device to upload logs."
 	case errors.Is(e, access.ErrSchedule):
 		status, code, message = 403, "outside_allowed_hours", publicErrorMessage("outside_allowed_hours")
-	case errors.Is(e, access.ErrStreamLimit), errors.Is(e, access.ErrDeviceTrust):
+	case errors.Is(e, access.ErrStreamLimit):
 		status, code, message = 403, "access_limit", publicErrorMessage("access_limit")
 	case errors.Is(e, ErrRemoteSignIn):
 		status, code, message = 403, "remote_sign_in_not_allowed", publicErrorMessage("remote_sign_in_not_allowed")
@@ -194,10 +194,7 @@ func (d Dependencies) settingsDocument(ctx context.Context) (operations.Settings
 	return d.Console.Settings(ctx, operations.AllowServerScope)
 }
 
-// enforcer builds the admission enforcer. The device approval policy is read
-// before the admission transaction opens and passed in as a value: the server
-// runs SQLite on a single connection, so a settings read inside the admission
-// transaction would deadlock against it.
-func (d Dependencies) enforcer(approvalRequired bool) *access.Enforcer {
-	return &access.Enforcer{Store: d.Access.Access, ApprovalRequired: approvalRequired}
+// enforcer builds the admission enforcer over the member limits store.
+func (d Dependencies) enforcer() *access.Enforcer {
+	return &access.Enforcer{Store: d.Access.Access}
 }

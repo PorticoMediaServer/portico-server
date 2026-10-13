@@ -54,7 +54,9 @@ func controlItemID(raw []byte) string {
 //	remote bitrate cap    — admitPlayback returns it as a delivery clamp.
 //	channel policy        — admitChannel, on v1 channel session starts only
 //	                        (canonical v1 ids), with the schedule.
-//	device trust          — admitPlayback, when the server requires approval.
+//	device approval       — not here: a session exists only on an approved
+//	                        device and every request re-checks that
+//	                        (identity_devices.approval_state).
 
 // withSessionAdmission prepares the two rules every session this request
 // creates or renews must pass, and hands them to the identity service through
@@ -86,7 +88,7 @@ func (d Dependencies) withSessionAdmission(r *http.Request) context.Context {
 	}
 	ctx = identity.WithSignInAdmission(ctx, admission)
 	if d.Access.Access != nil {
-		enforcer := d.enforcer(false)
+		enforcer := d.enforcer()
 		ctx = identity.WithAccountAdmitter(ctx, func(ctx context.Context, tx *sql.Tx, account string) error {
 			return enforcer.AdmitAccount(ctx, tx, account)
 		})
@@ -125,8 +127,7 @@ func (d Dependencies) admitPlayback(r *http.Request, p identity.Principal, item 
 	}
 	tx := gated2.Tx()
 	defer gated2.Rollback()
-	device := r.Header.Get("X-Portico-Device-Id")
-	decision, err := d.enforcer(document.Effective.DeviceApprovalRequired).AdmitPlayback(r.Context(), tx, p, access.Admission{Remote: remote, DeviceID: device, ReplanSessionID: playbackv1.ReplanOf(r.Context()).Session, ReplanMediaID: playbackv1.ReplanOf(r.Context()).Media})
+	decision, err := d.enforcer().AdmitPlayback(r.Context(), tx, p, access.Admission{Remote: remote, ReplanSessionID: playbackv1.ReplanOf(r.Context()).Session, ReplanMediaID: playbackv1.ReplanOf(r.Context()).Media})
 	if err != nil {
 		return decision, err
 	}
@@ -138,9 +139,6 @@ func (d Dependencies) admitPlayback(r *http.Request, p identity.Principal, item 
 		}
 		decision.MaxVideoBitrateBPS = narrowBitrate(decision.MaxVideoBitrateBPS, ceiling)
 		budgeted, exhausted = true, full
-	}
-	if err = d.Access.Access.Observe(r.Context(), tx, p, device, r.Header.Get("X-Portico-Device-Name"), r.Header.Get("X-Portico-Device-Platform")); err != nil {
-		return decision, err
 	}
 	if err = gated2.Commit(); err != nil {
 		return decision, err
@@ -166,5 +164,5 @@ func (d Dependencies) admitChannel(r *http.Request, p identity.Principal, channe
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
-	return d.enforcer(false).AdmitChannel(r.Context(), tx, p, channel)
+	return d.enforcer().AdmitChannel(r.Context(), tx, p, channel)
 }

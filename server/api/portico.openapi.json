@@ -71,6 +71,207 @@
         "x-max-body-bytes": 4096
       }
     },
+    "/v1/admin/access/devices": {
+      "get": {
+        "operationId": "get_admin_access_devices",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "approvalRequired": {
+                      "type": "boolean"
+                    },
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "accountId": {
+                            "type": "string"
+                          },
+                          "app": {
+                            "type": "string"
+                          },
+                          "appVersion": {
+                            "type": "string"
+                          },
+                          "firstSeenAt": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "lastSeenAt": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "platform": {
+                            "type": "string"
+                          },
+                          "profileId": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "trust": {
+                            "type": "string"
+                          },
+                          "username": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "accountId",
+                          "username",
+                          "name",
+                          "platform",
+                          "app",
+                          "appVersion",
+                          "trust",
+                          "firstSeenAt",
+                          "lastSeenAt",
+                          "revision"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "limit": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "limit",
+                    "approvalRequired",
+                    "items"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List members' devices and whether each is approved",
+        "x-access": "admin_scope",
+        "x-cost": "page_sized",
+        "x-lane": "security"
+      }
+    },
+    "/v1/admin/access/devices/{id}/trust": {
+      "put": {
+        "operationId": "put_admin_access_device_trust",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "trust": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "operationId",
+                  "trust"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "app": {
+                      "type": "string"
+                    },
+                    "appVersion": {
+                      "type": "string"
+                    },
+                    "firstSeenAt": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "lastSeenAt": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "platform": {
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "trust": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "accountId",
+                    "username",
+                    "name",
+                    "platform",
+                    "app",
+                    "appVersion",
+                    "trust",
+                    "firstSeenAt",
+                    "lastSeenAt",
+                    "revision"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Approve a member's device, block it, or put it back to waiting",
+        "x-access": "admin_scope",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-max-body-bytes": 4096
+      }
+    },
     "/v1/admin/backups": {
       "get": {
         "operationId": "get_admin_backups",
@@ -2693,6 +2894,127 @@
           }
         },
         "summary": "Read the current direct account and its profiles",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "security"
+      }
+    },
+    "/v1/direct/members/{id}": {
+      "delete": {
+        "operationId": "delete_direct_member",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Delete a member, their profiles, devices and saved data",
+        "x-access": "device",
+        "x-cost": "constant",
+        "x-lane": "security",
+        "x-max-body-bytes": 4096
+      }
+    },
+    "/v1/direct/members/{id}/deletion-preview": {
+      "get": {
+        "operationId": "get_direct_member_deletion_preview",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "devices": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "playlists": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "playsKept": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "porticoAccount": {
+                      "type": "boolean"
+                    },
+                    "profiles": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "savedResources": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "username": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "accountId",
+                    "username",
+                    "role",
+                    "revision",
+                    "porticoAccount",
+                    "profiles",
+                    "devices",
+                    "playlists",
+                    "savedResources",
+                    "playsKept"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read what deleting a member will remove",
         "x-access": "device",
         "x-cost": "constant",
         "x-lane": "security"

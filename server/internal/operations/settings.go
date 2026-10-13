@@ -107,7 +107,7 @@ func Registry() []Field {
 		field("customCertificateKeyPath", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener", "Path to the PEM private key for the custom certificate."),
 		field("customCertificateDomain", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener and route publication", "The domain the custom certificate serves. It is published to members as an access URL on the remote access port."),
 		field("lanDiscoveryEnabled", "connectivity", "boolean", true, nil, nil, nil, "hot", "LAN discovery advertisement", "Advertise this server on the local network with mDNS/Bonjour. The connectivity status report says whether this host can."),
-		field("deviceApprovalRequired", "access", "boolean", false, nil, nil, nil, "next-operation", "playback admission", "Require an administrator to approve a device before it can play anything."),
+		field("deviceApprovalRequired", "access", "boolean", false, nil, nil, nil, "next-operation", "identity device registration", "Hold each new device until the owner or an administrator approves it. The owner's own devices are never held. Devices already in use stay approved."),
 		field("logLevel", "diagnostics", "enumeration", "info", nil, nil, LogLevels, "hot", "servicelog.Recorder", "How much detail the message log keeps. A debug window raises this temporarily without changing the saved value."),
 		field("logRetention", "diagnostics", "log-retention-list", []LogRetention{}, nil, nil, LogCategories, "hot", "servicelog.Recorder prune", "Days of message log history to keep per category. A category with no entry keeps whatever the bounded ring holds."),
 	}
@@ -233,6 +233,14 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 	if e = tx.QueryRow(`SELECT transcoding_enabled,per_account_cap,server_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&v.TranscodingEnabled, &v.PerAccountCap, &v.ServerCap); e != nil {
 		return SettingsDocument{}, e
 	}
+	// Device approval is the identity service's own value, read on every
+	// device registration. The switch here shows and sets that value.
+	var approval string
+	e = tx.QueryRow(`SELECT value FROM configuration WHERE key=?`, identity.DeviceApprovalSettingKey).Scan(&approval)
+	if e != nil && !errors.Is(e, sql.ErrNoRows) {
+		return SettingsDocument{}, e
+	}
+	v.DeviceApprovalRequired = approval == identity.DeviceApprovalOwner
 	b, _ := json.Marshal(v)
 	return SettingsDocument{revision, Hash(string(b)), v, v, revision, restartFields(v), RegistryRevision}, nil
 }
@@ -368,6 +376,13 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 			return err
 		}
 		if _, err = tx.Exec(`INSERT INTO configuration VALUES('name',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, c.Values.Name); err != nil {
+			return err
+		}
+		approval := identity.DeviceApprovalAuto
+		if c.Values.DeviceApprovalRequired {
+			approval = identity.DeviceApprovalOwner
+		}
+		if _, err = tx.Exec(`INSERT INTO configuration VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value`, identity.DeviceApprovalSettingKey, approval); err != nil {
 			return err
 		}
 		if _, err = tx.Exec(`UPDATE playback_owner_policy SET revision=revision+1,transcoding_enabled=?,per_account_cap=?,server_cap=? WHERE singleton=1`, c.Values.TranscodingEnabled, c.Values.PerAccountCap, c.Values.ServerCap); err != nil {

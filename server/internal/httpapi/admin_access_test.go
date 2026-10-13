@@ -661,39 +661,6 @@ func TestClaimedRequiredConnectionsRefusePlainHTTPAndAdvertiseHTTPS(t *testing.T
 	}
 }
 
-func TestDeviceInventoryRecordsSightingsAtPlaybackAdmission(t *testing.T) {
-	f := administrationFixtureNew(t)
-	p := identity.Principal{Viewer: identity.Viewer{AccountID: "member", ProfileID: "member-profile", Authority: "local", Role: "member"}}
-	r := httptest.NewRequest("POST", "/v1/playback/sessions", nil)
-	r.Header.Set("X-Portico-Device-Id", "living-room")
-	r.Header.Set("X-Portico-Device-Name", "Living Room")
-	r.Header.Set("X-Portico-Device-Platform", "tvos")
-	if _, e := f.deps.admitPlayback(r, p, ""); e != nil {
-		t.Fatal(e)
-	}
-	w := f.call("GET", "/v1/admin/access/devices", f.admin, "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"name":"Living Room"`) || !strings.Contains(w.Body.String(), `"trust":"pending"`) {
-		t.Fatalf("inventory: %d %s", w.Code, w.Body)
-	}
-	var page access.DevicePage
-	if e := json.Unmarshal(w.Body.Bytes(), &page); e != nil || len(page.Items) != 1 || page.ApprovalRequired {
-		t.Fatalf("page: %v %+v", e, page)
-	}
-	body := `{"expectedRevision":1,"operationId":"device-trust-1","trust":"approved"}`
-	if w = f.call("PUT", "/v1/admin/access/devices/living-room/trust", f.admin, body); w.Code != 200 {
-		t.Fatalf("approve: %d %s", w.Code, w.Body)
-	}
-	// The same operation replays its receipt rather than applying twice.
-	if w = f.call("PUT", "/v1/admin/access/devices/living-room/trust", f.admin, body); w.Code != 200 || !strings.Contains(w.Body.String(), `"revision":2`) {
-		t.Fatalf("replay: %d %s", w.Code, w.Body)
-	}
-	// A new operation against the old revision is a conflict.
-	stale := strings.Replace(body, "device-trust-1", "device-trust-2", 1)
-	if w = f.call("PUT", "/v1/admin/access/devices/living-room/trust", f.admin, stale); w.Code != 409 {
-		t.Fatalf("a stale trust write was accepted: %d %s", w.Code, w.Body)
-	}
-}
-
 func TestLiveLogTailStreamsEvents(t *testing.T) {
 	f := administrationFixtureNew(t)
 	r := httptest.NewRequest("GET", "/v1/admin/logs/events?level=info", nil)
