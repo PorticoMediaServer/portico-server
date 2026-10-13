@@ -109,11 +109,12 @@ export function consoleOperationId():string{return globalThis.crypto?.randomUUID
 export class ConsoleClient {
  private disposed=false;private fence?:string;private requests=new Set<AbortController>();private intents=new Map<string,{body:string;key:string;method:string;parse:(v:unknown)=>unknown}>();private reconciled=new Set<()=>void>();private listeners=new Set<()=>void>();
  private drafts=new Map<string,unknown>();private denied=false;private recoveredExport?:SupportExport;
+ private settingsRead = new Map<number,RuntimeSettings>();
  private api:ConsoleAPI;readonly scope:ConsoleScope;
  constructor(api:ConsoleAPI,scope:ConsoleScope){if(!scope.serverId||!scope.viewerId)throw new Error('A selected viewer is required.');this.api=api;this.scope={...scope};}
  onDenied=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
- private revoke(){this.denied=true;this.recoveredExport=undefined;this.drafts.clear();this.intents.clear();for(const c of this.requests)c.abort();for(const fn of this.listeners)fn();}
- dispose(){this.disposed=true;this.recoveredExport=undefined;for(const c of this.requests)c.abort();this.requests.clear();this.drafts.clear();this.intents.clear();this.listeners.clear();this.reconciled.clear();}
+ private revoke(){this.denied=true;this.recoveredExport=undefined;this.drafts.clear();this.intents.clear();this.settingsRead.clear();for(const c of this.requests)c.abort();for(const fn of this.listeners)fn();}
+ dispose(){this.disposed=true;this.recoveredExport=undefined;for(const c of this.requests)c.abort();this.requests.clear();this.drafts.clear();this.intents.clear();this.settingsRead.clear();this.listeners.clear();this.reconciled.clear();}
  setDraft(key:string,value:unknown){if(this.disposed||this.denied)return;if(value===undefined)this.drafts.delete(key);else this.drafts.set(key,value);}
  getDraft<T>(key:string):T|undefined{return this.drafts.get(key) as T|undefined;}
  hasDrafts(){return this.drafts.size>0||this.intents.size>0;}
@@ -142,18 +143,23 @@ export class ConsoleClient {
  }
  /**
   * A change guarded by the revision that was read. When the document moved in between (another
-  * device, a job's own progress), the server says so and names its current revision. A change
-  * that only names what to alter (a PATCH of the changed values, a command on a row) still means
-  * the same thing against the newer document, so it is sent again with that revision, quietly.
-  * A PUT replaces the whole value and is never re-sent: that conflict is the person's to see.
+  * device, a job's own progress), a caller may reread and prove that its edited fields or command
+  * still apply. A revision alone is never evidence that replaying an edit is safe.
   */
- private async mutate<T>(path:string,method:string,body:Record<string,unknown>,parse:(v:unknown)=>T):Promise<T>{
+ private async mutate<T>(path:string,method:string,body:Record<string,unknown>,parse:(v:unknown)=>T,rebase?:()=>Promise<number|undefined>):Promise<T>{
+  const pending=this.intents.get(path);
+  if(pending&&pending.method===method&&'expectedRevision' in body){
+   const sent=JSON.parse(pending.body) as Record<string,unknown>;
+   // A rebased write whose answer was lost is still the same intent: replay its exact receipt key.
+   if(JSON.stringify({...body,expectedRevision:sent.expectedRevision})===pending.body)body=sent;
+  }
   for(let retries=0;;retries++){
    try{return await this.mutateOnce(path,method,body,parse);}
    catch(e){
     const current=obj(e)?e.currentRevision:undefined;
-    if(retries>=2||method==='PUT'||!obj(e)||!['console_conflict','revision_mismatch'].includes(String(e.code))||typeof current!=='number'||!('expectedRevision' in body)||current===body.expectedRevision)throw e;
-    body={...body,expectedRevision:current};
+    if(retries>=2||!rebase||method==='PUT'||!obj(e)||!['console_conflict','revision_mismatch'].includes(String(e.code))||typeof current!=='number'||!('expectedRevision' in body)||current===body.expectedRevision)throw e;
+    const revision=await rebase();if(revision===undefined)throw e;
+    body={...body,expectedRevision:revision};
    }
   }
  }
@@ -166,8 +172,21 @@ export class ConsoleClient {
 
  }
  registry(){return this.call(routePath("get_console_registry"),'GET',undefined,base);}
- settings(){return this.call(routePath("get_console_settings"),'GET',undefined,parseSettings);}
- applySettings(expectedRevision:number,values:RuntimeSettings){return this.mutate(routePath("change_console_settings"),'PATCH',{expectedRevision,values},parseSettings);}
+ async settings(){const doc=await this.call(routePath("get_console_settings"),'GET',undefined,parseSettings);this.rememberSettings(doc);return doc;}
+ private rememberSettings(doc:SettingsDocument){this.settingsRead.set(doc.revision,JSON.parse(JSON.stringify(doc.requested)) as RuntimeSettings);if(this.settingsRead.size>8)this.settingsRead.delete(this.settingsRead.keys().next().value!);}
+ async applySettings(expectedRevision:number,values:Partial<RuntimeSettings>,saved?:RuntimeSettings){
+  const baseline=saved??this.settingsRead.get(expectedRevision), patch:Record<string,unknown>={};
+  for(const [key,value] of Object.entries(values))if(!baseline||JSON.stringify(value)!==JSON.stringify((baseline as unknown as Record<string,unknown>)[key]))patch[key]=value;
+  const doc=await this.mutate(routePath("change_console_settings"),'PATCH',{expectedRevision,values:patch},parseSettings,baseline?async()=>{
+   const current=await this.settings();
+   for(const [key,value] of Object.entries(patch)){
+    const now=(current.requested as unknown as Record<string,unknown>)[key],before=(baseline as unknown as Record<string,unknown>)[key];
+    if(JSON.stringify(now)!==JSON.stringify(before)&&JSON.stringify(now)!==JSON.stringify(value))return undefined;
+   }
+   return current.revision;
+  }:undefined);
+  this.rememberSettings(doc);return doc;
+ }
  preferences(deviceClass:DeviceClass){return this.call(routePath("get_preferences") + "?deviceClass=" + (deviceClass),'GET',undefined,parsePreferenceSnapshot);}
  /** `values` carries only the keys that change; `null` clears that override. */
  applyPreferences(scope:PreferenceScope,deviceClass:DeviceClass,expectedRevision:number,values:PreferencePatch){return this.mutate(routePath("patch_preferences"),'PATCH',{scope,deviceClass,expectedRevision,values},parsePreferenceSnapshot);}
@@ -182,7 +201,7 @@ export class ConsoleClient {
  jobs(cursor=''){return this.call(routePath("get_admin_console_jobs") + "?cursor=" + (encodeURIComponent(cursor)),'GET',undefined,v=>parsePage(v,parseJob));}
  jobKinds(){return this.call(routePath("get_admin_console_job_kinds"),'GET',undefined,v=>list(v,k=>{const d=base(k);if(!id(d.kind)||typeof d.resourceRequired!=='boolean')invalid();return d as JobKind;}));}
  runJob(kind:string,resource:string){return this.mutate(routePath("post_admin_console_jobs"),'POST',{kind,resource},parseJob);}
- jobCommand(job:Job,action:'cancel'|'retry'|'pause'|'resume'){return this.mutate(encodedRoutePath("post_admin_console_jobs_id_action", {"id": encodeURIComponent(job.id), "action": action}),'POST',{expectedRevision:job.revision},parseJob);}
+ jobCommand(job:Job,action:'cancel'|'retry'|'pause'|'resume'){return this.mutate(encodedRoutePath("post_admin_console_jobs_id_action", {"id": encodeURIComponent(job.id), "action": action}),'POST',{expectedRevision:job.revision},parseJob,async()=>{const current=(await this.jobs()).items.find(j=>j.id===job.id);return current?.actions.includes(action)?current.revision:undefined;});}
  schedules(){return this.call(routePath("get_admin_console_schedules"),'GET',undefined,v=>list(v,parseSchedule));}
  saveSchedule(value:Schedule,expectedRevision:number){const {revision:_revision,lastSlot:_lastSlot,createdAt:_createdAt,...editable}=value;return this.mutate(routePath("put_admin_console_schedules"),'PUT',{expectedRevision,value:editable},parseSchedule);}
  measurement(name:string){return this.call(encodedRoutePath("get_admin_console_panels_panel", {"panel": encodeURIComponent(name)}),'GET',undefined,v=>{const p=base(wireInstants(v,["observedAt","freshUntil"]));if(p.name!==name||!integer(p.observedAt)||p.freshUntil!==p.observedAt+30000||!obj(p.facts)||Object.keys(p.facts).length>30)invalid();const facts:Measurement['facts']={};for(const [key,f] of Object.entries(p.facts)){if(obj(f)&&text(f.state,40))facts[key]=f as Measurement['facts'][string];else noteSkipped('console','measurement.fact');}return {...p,facts} as Measurement;});}

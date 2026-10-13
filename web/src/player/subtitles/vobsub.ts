@@ -7,7 +7,7 @@
  * palette colours and transparencies the pixel values mean, where the picture sits, and when it
  * goes on and off.
  */
-import {bitmapLimits, checkedSize, finishCues, type BitmapCue, type BitmapRect, type BitmapTrack} from './bitmap.ts';
+import {bitmapDecodeLimits, type BitmapDecodeLimits, SubtitleDataError, bitmapLimits, checkedSize, finishCues, type BitmapCue, type BitmapRect, type BitmapTrack} from './bitmap.ts';
 
 export type VobSubIndex = Readonly<{
   width: number; height: number; originX: number; originY: number; alpha: number;
@@ -70,10 +70,11 @@ function clock(value: string): number | null {
  * whichever one the first packet belongs to (the index pointed here); packets of other languages
  * in between are passed over.
  */
-export function readSubpicture(sub: Uint8Array, position: number): {data: Uint8Array; ptsMs: number | null} | null {
+export function readSubpicture(sub: Uint8Array, position: number, spend: (bytes: number) => boolean = () => true): {data: Uint8Array; ptsMs: number | null} | null {
   let p = position, want = 0, have = 0, pts: number | null = null, stream = -1;
   const parts: Uint8Array[] = [];
   for (let packs = 0; packs < 64 && p + 4 <= sub.length; packs++) {
+    if (!spend(14)) return null;
     if (sub[p] !== 0 || sub[p + 1] !== 0 || sub[p + 2] !== 1) return null;
     const code = sub[p + 3]!;
     if (code === 0xba) {
@@ -85,7 +86,7 @@ export function readSubpicture(sub: Uint8Array, position: number): {data: Uint8A
     if (code === 0xb9) break;
     if (p + 6 > sub.length) return null;
     const length = (sub[p + 4]! << 8) | sub[p + 5]!, end = p + 6 + length;
-    if (end > sub.length) return null;
+    if (end > sub.length || !spend(length)) return null;
     if (code === 0xbd && length >= 4) {
       const header = sub[p + 8]!, payload = p + 9 + header;
       if (payload < end && (sub[payload]! & 0xe0) === 0x20 && (stream < 0 || (sub[payload]! & 0x1f) === stream)) {
@@ -123,7 +124,7 @@ export function readSubpictureControl(data: Uint8Array): Control | null {
   for (let sequences = 0; sequences < 64 && p + 4 <= data.length; sequences++) {
     const delayMs = (((data[p]! << 8) | data[p + 1]!) * 1024) / 90, next = (data[p + 2]! << 8) | data[p + 3]!;
     let q = p + 4, done = false;
-    while (!done && q < data.length) {
+    while (!done && q < (next > p && next < data.length ? next : data.length)) {
       const command = data[q++]!;
       switch (command) {
         case 0x00: control.forced = true; control.startMs ??= delayMs; break;
@@ -169,15 +170,28 @@ function decodeField(data: Uint8Array, offset: number, out: Uint8Array, width: n
   }
 }
 
-export function parseVobSub(indexText: string, sub: Uint8Array): BitmapTrack {
+export function parseVobSub(indexText: string, sub: Uint8Array, lower: BitmapDecodeLimits = {}): BitmapTrack {
+  if (sub.byteLength > bitmapLimits.maxBytes) throw new SubtitleDataError('Subtitle file is too large.');
+  const limits = bitmapDecodeLimits(lower);
+  let retainedBytes = sub.byteLength, workBytes = 0;
+  const units = new Map<number, {unit: {data: Uint8Array; ptsMs: number | null}; control: Control} | null>();
   const index = parseVobSubIndex(indexText);
   if (!checkedSize(index.width, index.height)) return {kind: 'vobsub', width: 0, height: 0, cues: [], skipped: index.entries.length};
   let skipped = 0;
   const cues: (BitmapCue & {startMs: number; endMs: number})[] = [];
   for (const entry of index.entries) {
     if (entry.position < 0 || entry.position >= sub.length) { skipped++; continue; }
-    const unit = readSubpicture(sub, entry.position);
-    const control = unit ? readSubpictureControl(unit.data) : null;
+    let cached = units.get(entry.position);
+    if (!units.has(entry.position)) {
+      const unit = readSubpicture(sub, entry.position, count => { workBytes += count; return workBytes <= limits.maxWorkPixels; });
+      if (unit) workBytes += unit.data.length;
+      const control = unit && workBytes <= limits.maxWorkPixels ? readSubpictureControl(unit.data) : null;
+      cached = unit && control ? {unit, control} : null;
+      if (cached && retainedBytes + cached.unit.data.length > limits.maxRetainedBytes) { skipped++; continue; }
+      if (cached) retainedBytes += cached.unit.data.length;
+      units.set(entry.position, cached);
+    }
+    const unit = cached?.unit, control = cached?.control;
     if (!unit || !control) { skipped++; continue; }
     const startMs = entry.timeMs + (control.startMs ?? 0);
     const endMs = control.stopMs !== null && control.stopMs > (control.startMs ?? 0) ? entry.timeMs + control.stopMs : 0;

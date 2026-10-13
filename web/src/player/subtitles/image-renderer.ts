@@ -117,7 +117,7 @@ export class ImageSubtitleRenderer implements DrawnSubtitleRenderer {
   }
 
   private ask(index: number) {
-    if (this.frames.has(index) || this.asked.has(index)) return;
+    if (this.frames.has(index) || this.asked.has(index) || this.asked.size >= 2) return;
     this.asked.add(index);
     this.worker?.postMessage({type: 'paint', index});
   }

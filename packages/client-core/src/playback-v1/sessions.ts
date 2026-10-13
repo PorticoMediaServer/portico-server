@@ -193,6 +193,8 @@ export class PlaybackSessionController {
   private listeners = new Set<() => void>();
   private offPlayer: () => void;
   private startToken = 0;
+  private disposed = false;
+  private updateSerial = 0;
   private changeChain: Promise<unknown> = Promise.resolve();
   private changeSerial = 0;
   private leaseAtRisk = false;
@@ -221,6 +223,7 @@ export class PlaybackSessionController {
    * (`replacesSessionId`), so queue advance, version switch and channel surfing keep one slot.
    */
   async start(target: StartTarget, options: StartOptions = {}, signal?: AbortSignal): Promise<Session | undefined> {
+    if (this.disposed) return undefined;
     const token = ++this.startToken;
     const previous = this.state.session;
     const body: StartOptions = {...options, ...(previous && this.state.phase === 'active' && !options.replacesSessionId ? {replacesSessionId: previous.id} : {})};
@@ -229,8 +232,14 @@ export class PlaybackSessionController {
     this.publish({phase: 'starting', error: undefined, ended: undefined});
     try {
       const session = await this.client.start(target, body, this.key(), {signal, onPreparing: () => { if (token === this.startToken) this.publish({phase: 'preparing'}); }});
-      if (token !== this.startToken) return undefined;
+      if (token !== this.startToken || this.disposed || signal?.aborted) {
+        // The request may have created a session even though its caller moved on.
+        if (this.state.session?.id !== session.id || this.disposed) await this.client.stop(session.id).catch(() => {});
+        return undefined;
+      }
       this.gate.reset();
+      this.carriedFor = undefined;
+      this.state = Object.freeze({...this.state, observation: undefined});
       this.leaseAtRisk = false;
       this.adopt(session, options.state !== 'paused');
       return session;
@@ -247,13 +256,14 @@ export class PlaybackSessionController {
    * `startPositionMs` overrides the presentation's (an explicit position the viewer chose).
    */
   attach(session: Session, options: Readonly<{autoplay?: boolean; startPositionMs?: number}> = {}): void {
+    if (this.disposed) return;
     if (this.state.session?.id !== session.id) {
       this.startToken++;
       this.retireReporter();
       this.gate.reset();
       this.leaseAtRisk = false;
       this.carriedFor = undefined;
-      this.state = Object.freeze({...this.state, observation: undefined, error: undefined, ended: undefined});
+      this.state = Object.freeze({...this.state, observation: undefined, error: undefined, ended: undefined, changing: false});
     }
     this.adopt(session, options.autoplay ?? this.autoplay(session), options.startPositionMs);
   }
@@ -274,9 +284,11 @@ export class PlaybackSessionController {
 
   /** Adopt a server session (start, 412 recovery, `session.updated`): load a new generation's URL. */
   private adopt(session: Session, autoplay: boolean, startPositionMs?: number) {
+    if (this.disposed || (this.gate.value !== undefined && session.presentation.generation < this.gate.value)) return;
+    if (session.state === 'ended') { this.publish({session}); void this.serverEnded(session.end ?? {reason: 'stopped'}); return; }
     const fresh = this.gate.advance(session.presentation.generation);
     if (!this.reporter) this.reporter = this.newReporter(session.id);
-    this.publish({session, phase: session.state === 'ended' ? 'ended' : 'active', ended: session.state === 'ended' ? session.end ?? {reason: 'stopped'} : undefined});
+    this.publish({session, phase: 'active', ended: undefined});
     if (!fresh) return;
     this.reporter.setGeneration(session.presentation.generation);
     this.player.load({
@@ -292,8 +304,8 @@ export class PlaybackSessionController {
       ...this.reporterOptions,
       now: this.timers.now, setTimer: this.timers.setTimer, clearTimer: this.timers.clearTimer,
       send: report => this.client.timeline(sessionId, report),
-      onLeaseRisk: () => { this.leaseAtRisk = true; },
-      onEnded: () => void this.serverEnded(),
+      onLeaseRisk: () => { if (this.state.session?.id === sessionId) this.leaseAtRisk = true; },
+      onEnded: () => { if (this.state.session?.id === sessionId) void this.serverEnded(); },
     });
   }
 
@@ -305,9 +317,10 @@ export class PlaybackSessionController {
   /** The server ended our session. Why comes with the event, or from re-reading the session. */
   private async serverEnded(end?: SessionEnd) {
     const session = this.state.session;
+    const token = this.startToken;
     this.retireReporter();
     if (!end && session) end = await this.client.get(session.id).then(s => s.end, () => undefined);
-    if (session && this.state.session?.id !== session.id) return; // replaced while its end was read
+    if (this.disposed || token !== this.startToken || (session && this.state.session?.id !== session.id)) return; // replaced while its end was read
     // Only a lapsed lease is resumed; an administrator's stop or a move elsewhere is final. The
     // server names a lapse; when the reason can't be read, a lease this device knew was at risk is one.
     const lapsed = end ? end.reason === 'lease_expired' : this.leaseAtRisk;
@@ -380,6 +393,8 @@ export class PlaybackSessionController {
    * re-applies this change only if no newer change is waiting (newest intent wins, invariant 2).
    */
   change(change: SessionChange): Promise<Session | undefined> {
+    const token = this.startToken, sessionId = this.state.session?.id;
+    const owns = () => !this.disposed && token === this.startToken && sessionId === this.state.session?.id && this.state.phase === 'active';
     // A change that re-plans carries where the player is, so the new presentation starts there
     // and not at the last report (which can be a report interval old).
     const at = this.state.observation?.positionMs;
@@ -387,22 +402,26 @@ export class PlaybackSessionController {
     const serial = ++this.changeSerial;
     const run = async (): Promise<Session | undefined> => {
       const session = this.state.session;
-      if (!session || this.state.phase === 'ended') return undefined;
+      if (!session || !owns()) return undefined;
       this.publish({changing: true});
       try {
         // A change that makes new bytes resumes where the server last heard this device was:
         // tell it now, so the new stream starts at the picture's position, not ten seconds back.
         if (change.quality || change.audio || change.versionId || change.partIndex !== undefined) await this.reporter?.flush().catch(() => {});
+        if (!owns()) return undefined;
         let updated: Session;
         try {
           updated = await this.client.patch(session.id, session.revision, change);
         } catch (e) {
+          if (!owns()) return undefined;
           if (!(e instanceof PlaybackApiError) || e.status !== 412 || !e.current) throw e;
+          if ((e.current as Session).id !== session.id) throw e;
+          if ((e.current as Session).state === 'ended') { void this.serverEnded((e.current as Session).end); return undefined; }
           this.adopt(e.current as Session, this.wantsPlaying ? this.wantsPlaying() : this.state.observation?.state !== 'paused');
           if (serial !== this.changeSerial) return this.state.session;
           updated = await this.client.patch((e.current as Session).id, (e.current as Session).revision, change);
         }
-        if (this.state.session?.id !== session.id) return undefined; // replaced meanwhile
+        if (!owns()) return undefined; // replaced meanwhile
         // The old stream kept playing while the server prepared the new one: the new one starts
         // where the picture is now, not where it was when the change was asked for.
         const now = this.player.observe();
@@ -410,11 +429,12 @@ export class PlaybackSessionController {
         this.adopt(updated, this.autoplay(updated), resume);
         return updated;
       } catch (e) {
+        if (!owns()) return undefined;
         if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410)) { void this.serverEnded(); return undefined; }
         this.publish({error: e as Error});
         throw e;
       } finally {
-        if (serial === this.changeSerial) this.publish({changing: false});
+        if (owns() && serial === this.changeSerial) this.publish({changing: false});
       }
     };
     const p = this.changeChain.then(run, run);
@@ -475,14 +495,19 @@ export class PlaybackSessionController {
    * with its reason is taken as is; otherwise the session is re-read if its revision moved. */
   async sessionUpdated(sessionId: string, revision?: string, data?: unknown): Promise<void> {
     const session = this.state.session;
-    if (!session || session.id !== sessionId || this.state.phase === 'ended' || (revision !== undefined && revision === session.revision)) return;
+    if (this.disposed || !session || session.id !== sessionId || this.state.phase !== 'active' || (revision !== undefined && revision === session.revision)) return;
+    const token = this.startToken, serial = ++this.updateSerial;
+    const owns = () => !this.disposed && token === this.startToken && serial === this.updateSerial && this.state.session?.id === sessionId && this.state.phase === 'active';
     const end = data && typeof data === 'object' && (data as {state?: unknown}).state === 'ended' ? parseSessionEnd(data) : undefined;
     if (end) { void this.serverEnded(end); return; }
     try {
       const fresh = await this.client.get(sessionId);
+      if (!owns()) return;
       if (fresh.state === 'ended') { void this.serverEnded(fresh.end ?? {reason: 'stopped'}); return; }
+      if (this.state.session?.revision !== session.revision && fresh.presentation.generation <= (this.gate.value ?? 0)) return;
       this.adopt(fresh, this.autoplay(fresh));
     } catch (e) {
+      if (!owns()) return;
       if (e instanceof PlaybackApiError && (e.status === 404 || e.status === 410)) void this.serverEnded();
     }
   }
@@ -490,16 +515,20 @@ export class PlaybackSessionController {
   /** Stop playing: report the final position, end the session, pause the player. Idempotent. */
   async stop(): Promise<void> {
     const session = this.state.session;
-    this.startToken++;
+    ++this.startToken;
     const at = this.state.observation?.positionMs;
-    if (this.reporter) { await this.reporter.flush().catch(() => {}); }
+    const finalReport = this.reporter?.flush().catch(() => {});
     this.retireReporter();
     this.player.pause();
-    this.publish({phase: 'ended'});
+    this.publish({phase: 'ended', changing: false});
+    await finalReport;
     if (session) await this.client.stop(session.id, at).catch(() => {});
   }
 
   dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    ++this.startToken;
     this.retireReporter();
     this.offPlayer();
     this.listeners.clear();

@@ -106,6 +106,12 @@ export class LibraryMemory {
   readonly ready: Promise<void>;
   private libraries = new Map<string, RememberedLibrary>();
   private loaded = false;
+  private changedBeforeLoad = false;
+  private forgotten = new Set<string>();
+  private forgotAll = false;
+  private initialEdits = new Map<string, Map<string, Partial<RememberedTab>>>();
+  private writing = false;
+  private pendingWrite?: {text: string | null};
   private disposed = false;
   private readonly key: string;
   private readonly storage: LibraryMemoryStorage;
@@ -143,18 +149,25 @@ export class LibraryMemory {
   /** The person chose a sort on this tab; undefined puts the tab back on its own default. */
   rememberSort(libraryId: string, tab: string, sort: RememberedSort | undefined): void {
     const kept = sort === undefined ? undefined : readSort(sort);
+    this.initialEdit(libraryId, tab, {sort: kept});
     this.patchTab(libraryId, tab, current => ({...(kept ? {sort: kept} : {}), ...(current?.filters ? {filters: current.filters} : {})}));
   }
 
   /** The person changed this tab's filters; an empty list remembers that they cleared them. */
   rememberFilters(libraryId: string, tab: string, filters: readonly RememberedFilter[]): void {
     const kept = readFilters(filters);
+    this.initialEdit(libraryId, tab, {filters: kept?.length ? kept : undefined});
     // Filters too large to keep are not half-remembered: the tab reopens unfiltered.
     this.patchTab(libraryId, tab, current => ({...(current?.sort ? {sort: current.sort} : {}), ...(kept && kept.length ? {filters: kept} : {})}));
   }
 
   /** Forgets one library's choices, or every library's. */
   forget(libraryId?: string): void {
+    if (libraryId !== undefined && !name(libraryId, 256)) return;
+    if (!this.loaded) {
+      if (libraryId === undefined) { this.forgotAll = true; this.forgotten.clear(); this.initialEdits.clear(); }
+      else { this.forgotten.add(libraryId); this.initialEdits.delete(libraryId); if (this.forgotten.size > MAX_REMEMBERED_LIBRARIES) { this.forgotAll = true; this.forgotten.clear(); } }
+    }
     if (libraryId === undefined) this.libraries.clear(); else this.libraries.delete(libraryId);
     this.persist();
   }
@@ -171,12 +184,37 @@ export class LibraryMemory {
 
   private adopt(text: string | null | undefined): void {
     // Choices made before a slow store answered are newer than what it held: they win.
-    const saved = parseLibraryMemory(text);
-    for (const [id, library] of this.libraries) { saved.delete(id); saved.set(id, library); }
+    if (this.disposed) return;
+    const saved = this.forgotAll ? new Map<string, RememberedLibrary>() : parseLibraryMemory(text);
+    for (const id of this.forgotten) saved.delete(id);
+    for (const id of new Set([...this.libraries.keys(), ...this.initialEdits.keys()])) {
+      const library = this.libraries.get(id);
+      const before = saved.get(id), tabs = {...before?.tabs, ...library?.tabs};
+      for (const [tab, edit] of this.initialEdits.get(id) ?? []) {
+        const merged = {...before?.tabs[tab], ...edit};
+        delete tabs[tab];
+        if (merged.sort || merged.filters) tabs[tab] = Object.freeze(merged);
+      }
+      const keys = Object.keys(tabs);
+      for (const tab of keys.slice(0, Math.max(0, keys.length - MAX_TABS))) delete tabs[tab];
+      saved.delete(id);
+      if (library?.tab || before?.tab || Object.keys(tabs).length) saved.set(id, Object.freeze({...before, ...library, tabs: Object.freeze(tabs)}));
+    }
+    this.forgotten.clear(); this.initialEdits.clear();
     this.libraries = saved;
     this.trim();
     this.loaded = true;
     this.announce();
+    if (this.changedBeforeLoad) this.writeStored(this.storedText());
+  }
+
+  private initialEdit(libraryId: string, tab: string, edit: Partial<RememberedTab>): void {
+    if (this.loaded || !name(libraryId, 256) || !name(tab, 64)) return;
+    let tabs = this.initialEdits.get(libraryId);
+    if (!tabs) { tabs = new Map(); this.initialEdits.set(libraryId, tabs); }
+    tabs.set(tab, {...tabs.get(tab), ...edit});
+    if (tabs.size > MAX_TABS) tabs.delete(tabs.keys().next().value!);
+    if (this.initialEdits.size > MAX_REMEMBERED_LIBRARIES) this.initialEdits.delete(this.initialEdits.keys().next().value!);
   }
 
   private patchTab(libraryId: string, tab: string, change: (current: RememberedTab | undefined) => RememberedTab): void {
@@ -207,17 +245,32 @@ export class LibraryMemory {
   }
 
   private trim(): void {
-    while (this.libraries.size > MAX_REMEMBERED_LIBRARIES) this.libraries.delete(this.libraries.keys().next().value as string);
+    while (this.libraries.size > MAX_REMEMBERED_LIBRARIES || (this.libraries.size > 0 && serializeLibraryMemory(this.libraries).length > MAX_STORED_TEXT)) this.libraries.delete(this.libraries.keys().next().value as string);
   }
 
   private persist(): void {
     this.announce();
     if (this.disposed) return;
-    // Remembering is a convenience: storage that is full or switched off never breaks the screen.
+    if (!this.loaded) { this.changedBeforeLoad = true; return; }
+    this.writeStored(this.storedText());
+  }
+
+  private storedText(): string | null { return this.libraries.size ? serializeLibraryMemory(this.libraries) : null; }
+
+  /** Synchronous web stores still write at once; asynchronous stores get one ordered writer. */
+  private writeStored(text: string | null): void {
+    if (this.writing) { this.pendingWrite = {text}; return; }
+    const finished = () => {
+      this.writing = false;
+      const pending = this.pendingWrite; this.pendingWrite = undefined;
+      if (pending) this.writeStored(pending.text);
+    };
+    this.writing = true;
     try {
-      const done = this.libraries.size ? this.storage.write(this.key, serializeLibraryMemory(this.libraries)) : this.storage.remove(this.key);
-      if (done && typeof (done as Promise<void>).then === 'function') (done as Promise<void>).then(undefined, () => {});
-    } catch { /* kept for this run only */ }
+      const done = text === null ? this.storage.remove(this.key) : this.storage.write(this.key, text);
+      if (done && typeof (done as Promise<void>).then === 'function') { Promise.resolve(done).then(finished, finished); return; }
+    } catch { /* remembering never breaks the current screen */ }
+    finished();
   }
 
   private announce(): void {
