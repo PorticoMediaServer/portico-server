@@ -9,7 +9,7 @@
 import type {PlaybackApi, PlaybackSession} from '../index.ts';
 import {idempotencyKey, PlaybackApiError, type V1Http} from './http.ts';
 import {PlaybackOptionsClient} from './options.ts';
-import {SessionsClient, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
+import {SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
 import type {TimelineReport, TimelineState} from './timeline.ts';
 import {parseSessionEnd, type Session, type SessionEnd} from './types.ts';
 
@@ -93,6 +93,24 @@ export class V1PlaybackApi implements PlaybackApi {
     tracked.everyMs = session.lease.reportEveryMs;
     this.tracked.set(session.id, tracked);
     return toPlaybackSession(session, durationSeconds);
+  }
+
+  /** Re-plans a live session (quality, version, audio track, spec §5.7): the same session with a
+   * new presentation at its position. A revision that moved meanwhile is read again once. */
+  async change(id: string, change: SessionChange, durationSeconds: number): Promise<{session: Session; playback: PlaybackSession}> {
+    const t = this.tracked.get(id);
+    // The new stream starts where the server last heard this device was: say where that is first.
+    if (t && !t.stopping && t.state !== 'ended') await this.report(id, t).catch(() => {});
+    let current = await this.sessions.get(id);
+    let updated: Session;
+    try {
+      updated = await this.sessions.patch(id, current.revision, change);
+    } catch (e) {
+      if (!(e instanceof PlaybackApiError) || e.status !== 412) throw e;
+      current = (e.current as Session | undefined) ?? await this.sessions.get(id);
+      updated = await this.sessions.patch(id, current.revision, change);
+    }
+    return {session: updated, playback: this.adopt(updated, durationSeconds)};
   }
 
   createPlayback(itemId: string, requestId: string, signal?: AbortSignal): Promise<PlaybackSession> {
