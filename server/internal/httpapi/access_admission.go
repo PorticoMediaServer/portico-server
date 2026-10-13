@@ -126,7 +126,7 @@ func (d Dependencies) admitPlayback(r *http.Request, p identity.Principal, item 
 	tx := gated2.Tx()
 	defer gated2.Rollback()
 	device := r.Header.Get("X-Portico-Device-Id")
-	decision, err := d.enforcer(document.Effective.DeviceApprovalRequired).AdmitPlayback(r.Context(), tx, p, access.Admission{ItemID: item, Remote: remote, DeviceID: device, ReplanSessionID: playbackv1.ReplanOf(r.Context()).Session, ReplanMediaID: playbackv1.ReplanOf(r.Context()).Media})
+	decision, err := d.enforcer(document.Effective.DeviceApprovalRequired).AdmitPlayback(r.Context(), tx, p, access.Admission{Remote: remote, DeviceID: device, ReplanSessionID: playbackv1.ReplanOf(r.Context()).Session, ReplanMediaID: playbackv1.ReplanOf(r.Context()).Media})
 	if err != nil {
 		return decision, err
 	}

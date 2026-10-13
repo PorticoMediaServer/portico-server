@@ -76,6 +76,7 @@ func (s *Store) Members(ctx context.Context, auth Authorize, q MemberQuery) (out
 					return e
 				}
 			}
+			m.Limits.MaximumAge = m.Limits.Ceiling()
 			out.Items = append(out.Items, m)
 		}
 		return rows.Err()
@@ -173,6 +174,7 @@ func readMember(ctx context.Context, tx *sql.Tx, account string) (Member, error)
 			return m, e
 		}
 	}
+	m.Limits.MaximumAge = m.Limits.Ceiling()
 	return m, nil
 }
 

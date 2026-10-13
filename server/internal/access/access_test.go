@@ -236,7 +236,7 @@ func TestChannelPolicyAcceptsOnlyCanonicalV1IDs(t *testing.T) {
 	}
 }
 
-func TestAdmissionAppliesStreamsRatingLabelsAndSchedule(t *testing.T) {
+func TestAdmissionAppliesStreamsAndTheRemoteClamp(t *testing.T) {
 	store, db, ids := fixture(t)
 	ctx := context.Background()
 	limits := Limits{MaxStreams: 1, MaxContentRating: "PG", AllowUnrated: true, Tags: TagPolicy{DeniedLabels: []string{"spoilers"}}}
@@ -245,19 +245,13 @@ func TestAdmissionAppliesStreamsRatingLabelsAndSchedule(t *testing.T) {
 	}
 	member := identity.Principal{Viewer: identity.Viewer{AccountID: "member", ProfileID: "member-profile", Authority: "local", Role: identity.TierMember}}
 	enforcer := &Enforcer{Store: store}
-	run := func(item string, remote bool) (Decision, error) {
+	run := func(_ string, remote bool) (Decision, error) {
 		tx, err := db.Begin()
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer tx.Rollback()
-		return enforcer.AdmitPlayback(ctx, tx, member, Admission{ItemID: item, Remote: remote})
-	}
-	if _, err := run(ids.adult, false); !errors.Is(err, ErrContentRating) {
-		t.Fatalf("a TV-MA title passed a PG ceiling: %v", err)
-	}
-	if _, err := run(ids.family, false); !errors.Is(err, ErrLabelDenied) {
-		t.Fatalf("a denied label passed: %v", err)
+		return enforcer.AdmitPlayback(ctx, tx, member, Admission{Remote: remote})
 	}
 	// Remove the label and the same title is admitted, with the remote clamp.
 	if err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
@@ -459,7 +453,7 @@ func TestDeviceTrustGatesPlaybackAndBlockingStopsLiveLeases(t *testing.T) {
 			t.Fatal(err)
 		}
 		defer tx.Rollback()
-		_, err = enforcer.AdmitPlayback(ctx, tx, member, Admission{ItemID: ids.family, DeviceID: "living-room"})
+		_, err = enforcer.AdmitPlayback(ctx, tx, member, Admission{DeviceID: "living-room"})
 		return err
 	}
 	if err = admit(); !errors.Is(err, ErrDeviceTrust) {
@@ -509,43 +503,6 @@ func TestListsPageByCursorRatherThanOffset(t *testing.T) {
 	}
 	if _, err = store.Invitations(ctx, nil, InvitationQuery{Limit: "9999"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("an oversized limit was accepted: %v", err)
-	}
-}
-
-func TestVisibilityClauseHidesWhatAdmissionWouldRefuse(t *testing.T) {
-	store, db, _ := fixture(t)
-	ctx := context.Background()
-	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "limits-visibility",
-		Limits: Limits{MaxContentRating: "PG", AllowUnrated: true, Tags: TagPolicy{DeniedLabels: []string{"spoilers"}}}}); err != nil {
-		t.Fatal(err)
-	}
-	member := identity.Principal{Viewer: identity.Viewer{AccountID: "member", Role: identity.TierMember}}
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-	clause, args, err := (&Enforcer{Store: store}).VisibilityClause(ctx, tx, member, "e.id")
-	if err != nil || clause == "" {
-		t.Fatalf("clause: %v %q", err, clause)
-	}
-	rows, err := tx.Query(`SELECT pid(e.public_id) FROM catalog_entities e WHERE `+clause+` ORDER BY 1`, args...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	visible := []string{}
-	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
-			t.Fatal(err)
-		}
-		visible = append(visible, id)
-	}
-	// The adult title is above the ceiling and the family title carries a
-	// denied label, so a member with these limits sees neither.
-	if len(visible) != 0 {
-		t.Fatalf("visible: %v", visible)
 	}
 }
 
@@ -777,40 +734,58 @@ func TestPorticoAcceptanceNeverChangesTheOwner(t *testing.T) {
 	}
 }
 
-// A rating change applies synchronously now: there is no publication lag for
-// a pending classification to hide behind.
-func TestMemberVisibilityDeniesChangedRating(t *testing.T) {
-	store, db, ids := fixture(t)
+// The account rating limit is one value of one published rating system, or any
+// spelling the rating table knows, and resolves to an admission age.
+func TestRatingLimitIsValidatedAndResolvedToAnAge(t *testing.T) {
+	store, _, _ := fixture(t)
 	ctx := context.Background()
-	_, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "compact-pending", Limits: Limits{MaxContentRating: "PG", AllowUnrated: true}})
-	if err != nil {
-		t.Fatal(err)
+	revision := int64(1)
+	for i, c := range []struct {
+		system, rating string
+		age            int
+		ok             bool
+	}{
+		{"", "", -1, true},
+		{"", "PG", 8, true},
+		{"", "tv-pg", 8, true},
+		{"", "  pg-13 ", 13, true},
+		{"mpaa", "PG-13", 13, true},
+		{"us-tv", "TV-14", 14, true},
+		{"bbfc", "15", 15, true},
+		{"fsk", "16", 16, true},
+		{"mpaa", "TV-14", 0, false},
+		{"nonsense", "PG", 0, false},
+		{"", "Banana", 0, false},
+		{"", "NR", 0, false},
+	} {
+		limits := DefaultLimits()
+		limits.RatingSystem, limits.MaxContentRating = c.system, c.rating
+		out, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: revision, OperationID: "rating-limit-" + string(rune('a'+i)) + "-00000", Limits: limits})
+		if !c.ok {
+			var fields *ValidationError
+			if !errors.As(err, &fields) || len(fields.Fields) != 1 || fields.Fields[0] != "limits.maxContentRating" {
+				t.Fatalf("%q %q was accepted: %v", c.system, c.rating, err)
+			}
+			continue
+		}
+		if err != nil || out.Limits.MaximumAge != c.age {
+			t.Fatalf("%q %q: age %d want %d: %v", c.system, c.rating, out.Limits.MaximumAge, c.age, err)
+		}
+		revision = out.Revision
+		read, err := store.Limits(ctx, nil, "member")
+		if err != nil || read.Limits.MaximumAge != c.age || read.Limits.Ceiling() != c.age {
+			t.Fatalf("%q %q read back: %+v %v", c.system, c.rating, read.Limits, err)
+		}
 	}
-	if err = dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-		return compactcatalog.SetAttributesTx(ctx, tx, ids.familyID, "contentRating", []string{"TV-MA"})
-	}); err != nil {
-		t.Fatal(err)
+	// A system with no rating means no ceiling, and is stored without the system.
+	limits := DefaultLimits()
+	limits.RatingSystem = "mpaa"
+	out, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: revision, OperationID: "rating-limit-system-only", Limits: limits})
+	if err != nil || out.Limits.RatingSystem != "" || out.Limits.MaximumAge != -1 {
+		t.Fatalf("system without a rating: %+v %v", out.Limits, err)
 	}
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-	p := identity.Principal{Viewer: identity.Viewer{AccountID: "member", Role: identity.TierMember}}
-	enforcer := &Enforcer{Store: store}
-	if err = enforcer.VisibleItem(ctx, tx, p, ids.family); !errors.Is(err, ErrContentRating) {
-		t.Fatalf("changed rating admitted: %v", err)
-	}
-	clause, args, err := enforcer.VisibilityClause(ctx, tx, p, "e.id")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var visible bool
-	queryArgs := append([]any{ids.familyID}, args...)
-	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=? AND `+clause+`)`, queryArgs...).Scan(&visible); err != nil {
-		t.Fatal(err)
-	}
-	if visible {
-		t.Fatal("set predicate admitted changed rating")
+	// A stored rating the table no longer knows admits all-ages titles only.
+	if got := (Limits{MaxContentRating: "no-longer-known"}).Ceiling(); got != 0 {
+		t.Fatalf("an unreadable stored rating resolved to %d", got)
 	}
 }

@@ -101,20 +101,29 @@ func TestPendingRatingIsUnratedUntilBackgroundClassification(t *testing.T) {
 
 func TestCompactAttributePermissionsApplyOnWrite(t *testing.T) {
 	db, s, names := tl10RestrictionFixture(t)
-	viewer := Viewer{Profile: "p", Libraries: []string{"a"}, Restrictions: identity.ContentRestrictions{MemberMaxRating: "PG"}}
+	viewer := Viewer{Profile: "p", Libraries: []string{"a"}, Restrictions: identity.ContentRestrictions{}.Narrow(8, true, nil, 0)}
 	if err := s.VisibleItem(context.Background(), viewer, names["kids"].Public); err != nil {
 		t.Fatalf("settled child-safe movie hidden: %v", err)
 	}
 	c := catalogtest.New(t, db)
-	// Facts are written synchronously: the first source's rating (G) applies
-	// at once, before and after the worker runs.
-	c.Attributes(names["kids"].ID, "contentRating", "G", "R")
+	// Facts are written synchronously: a rating applies at once, before and
+	// after the worker runs.
+	c.Attributes(names["kids"].ID, "contentRating", "G")
 	if err := s.VisibleItem(context.Background(), viewer, names["kids"].Public); err != nil {
-		t.Fatalf("first source rating G hidden before the worker ran: %v", err)
+		t.Fatalf("a G rating hidden before the worker ran: %v", err)
 	}
 	settleCompact(t, db)
 	if err := s.VisibleItem(context.Background(), viewer, names["kids"].Public); err != nil {
-		t.Fatalf("first source rating should remain G: %v", err)
+		t.Fatalf("a G rating hidden after the worker ran: %v", err)
+	}
+	// A title carrying two ratings is judged by every one of them, for an
+	// account limit exactly as for a profile's: the stricter rating decides.
+	c.Attributes(names["kids"].ID, "contentRating", "G", "R")
+	if _, err := s.ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.VisibleItem(context.Background(), viewer, names["kids"].Public); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("a title rated both G and R passed a PG limit: %v", err)
 	}
 	// A tightened rating hides the item in the same write: no window in which
 	// stale derived data admits it.
@@ -233,7 +242,7 @@ func browsedIDs(t *testing.T, s *Service, names catalogtest.Names, r identity.Co
 func TestViewerScopeKeepsPositionsCountsAndDetailPrivate(t *testing.T) {
 	_, s, names := tl10RestrictionFixture(t)
 	age := 0
-	viewer := Viewer{Profile: "p", Fence: "restricted", Libraries: []string{"a"}, Restrictions: restrictionOf(ceiling(13), true, "Halloween"), MemberMaximumAge: &age}
+	viewer := Viewer{Profile: "p", Fence: "restricted", Libraries: []string{"a"}, Restrictions: restrictionOf(ceiling(13), true, "Halloween").Narrow(age, false, nil, 0)}
 	catalogtest.New(t, s.db).Drain()
 	if err := s.RebuildVisibilityClass(context.Background(), "a", viewer.EffectiveRestrictions()); err != nil {
 		t.Fatal(err)
@@ -261,7 +270,9 @@ func TestViewerScopeKeepsPositionsCountsAndDetailPrivate(t *testing.T) {
 
 func TestViewerMemberRatingLadderUnratedAndDeniedLabels(t *testing.T) {
 	_, s, names := tl10RestrictionFixture(t)
-	viewer := Viewer{Profile: "p", Fence: "member", Libraries: []string{"a"}, MemberMaxRating: "PG", MemberAllowUnrated: false, MemberDeniedLabels: []string{"Halloween"}}
+	// The account's limit arrives as an age ceiling (PG is 8), an unrated rule
+	// and a denied list, already folded into the viewer's restrictions.
+	viewer := Viewer{Profile: "p", Fence: "member", Libraries: []string{"a"}, Restrictions: identity.ContentRestrictions{}.Narrow(8, true, []string{"Halloween"}, 0)}
 	catalogtest.New(t, s.db).Drain()
 	if err := s.RebuildVisibilityClass(context.Background(), "a", viewer.EffectiveRestrictions()); err != nil {
 		t.Fatal(err)
@@ -280,7 +291,7 @@ func TestViewerMemberRatingLadderUnratedAndDeniedLabels(t *testing.T) {
 	if !equal(got, []string{"family", "kids"}) || page.PageInfo.Total != 2 {
 		t.Fatalf("member ladder, unrated and label scope: %v total=%d", got, page.PageInfo.Total)
 	}
-	viewer.MemberAllowUnrated = true
+	viewer.Restrictions = identity.ContentRestrictions{}.Narrow(8, false, []string{"Halloween"}, 0)
 	catalogtest.New(t, s.db).Drain()
 	if err := s.RebuildVisibilityClass(context.Background(), "a", viewer.EffectiveRestrictions()); err != nil {
 		t.Fatal(err)
@@ -296,7 +307,9 @@ func TestViewerMemberRatingLadderUnratedAndDeniedLabels(t *testing.T) {
 	}
 	got = names.All(ids)
 	sort.Strings(got)
-	if !equal(got, []string{"family", "foreign", "kids", "notrated", "unrated"}) || page.PageInfo.Total != 5 {
+	// "foreign" carries a rating qualified by its region ("US:PG-13"). It is
+	// judged by the age that rating stands for, not passed off as unrated.
+	if !equal(got, []string{"family", "kids", "notrated", "unrated"}) || page.PageInfo.Total != 4 {
 		t.Fatalf("member allowUnrated: %v total=%d", got, page.PageInfo.Total)
 	}
 }

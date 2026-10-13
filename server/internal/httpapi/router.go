@@ -289,7 +289,7 @@ func failure(w http.ResponseWriter, e error) {
 	if errors.Is(e, identity.ErrRestrictionChanged) {
 		status, code = 409, "restrictions_changed"
 	}
-	if errors.Is(e, identity.ErrContentRestricted) || errors.Is(e, access.ErrContentRating) || errors.Is(e, access.ErrLabelDenied) {
+	if errors.Is(e, identity.ErrContentRestricted) {
 		status, code = 404, "not_found"
 	}
 	if errors.Is(e, identity.ErrAvatarUpload) {

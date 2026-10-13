@@ -51,10 +51,12 @@ type ContentRestrictions struct {
 	BlockUnrated  bool
 	BlockedLabels []string
 	Revision      int64
-	// Member limits are an independent, narrowing authority. They use the
-	// access rating ladder, whose unknown values follow AllowUnrated.
-	MemberMaxRating    string
-	MemberAllowUnrated bool
+	// The account's limits (set by the owner or an administrator) narrow the
+	// profile's own: Narrow folds the account's rating ceiling and unrated rule
+	// into MaximumAge and BlockUnrated above, on the same age scale, so there
+	// is one rating rule and it cannot disagree with itself. What stays
+	// separate is the account's denied list, which matches a title's tags as
+	// well as its labels, and the revision that fences open pages.
 	MemberDeniedLabels []string
 	MemberRevision     int64
 	// BlockRecordings is the profile's Recordings switch turned off (P8).
@@ -70,7 +72,25 @@ type ContentRestrictions struct {
 // restriction must compile to no SQL at all so unrestricted reads keep their
 // existing plans.
 func (r ContentRestrictions) Active() bool {
-	return r.MaximumAge != nil || r.BlockUnrated || len(r.BlockedLabels) > 0 || r.MemberMaxRating != "" || len(r.MemberDeniedLabels) > 0
+	return r.MaximumAge != nil || r.BlockUnrated || len(r.BlockedLabels) > 0 || len(r.MemberDeniedLabels) > 0
+}
+
+// Narrow applies an account-level limit on top of these restrictions. It can
+// only tighten: the lower of the two rating ceilings holds, unrated titles are
+// blocked when either side blocks them, and the denied list is added. A
+// negative ceiling means the account has none.
+func (r ContentRestrictions) Narrow(ceiling int, blockUnrated bool, denied []string, revision int64) ContentRestrictions {
+	if ceiling >= 0 && (r.MaximumAge == nil || ceiling < *r.MaximumAge) {
+		age := ceiling
+		r.MaximumAge = &age
+	} else if r.MaximumAge != nil {
+		age := *r.MaximumAge
+		r.MaximumAge = &age
+	}
+	r.BlockUnrated = r.BlockUnrated || blockUnrated
+	r.MemberDeniedLabels = append([]string{}, denied...)
+	r.MemberRevision = revision
+	return r
 }
 
 // Content projects the catalog-visible subset.

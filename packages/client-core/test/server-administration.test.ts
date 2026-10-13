@@ -10,21 +10,29 @@ const limits={maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allow
  schedule:{timezone:'UTC',windows:[{days:[1,3],startMinute:600,endMinute:780}]},
  channelPolicy:{mode:'deny',channels:['news']},tagPolicy:{deniedLabels:['Spoilers']}};
 
-test('member limits round-trip and reject a rating this client does not know', () => {
+test('member limits round-trip, with the rating kept as the server stored it', () => {
  const parsed = parseMemberLimits(limits);
  assert.equal(parsed.maxContentRating, 'PG-13');
+ assert.equal(parsed.ratingSystem, '');
+ assert.equal(parsed.maximumAge, -1, 'an older document without the resolved age reads as no limit');
+ // A limit set from a published rating system comes back with its system and the age it stands for.
+ const british = parseMemberLimits({...limits, ratingSystem: 'bbfc', maxContentRating: '15', maximumAge: 15});
+ assert.deepEqual([british.ratingSystem, british.maxContentRating, british.maximumAge], ['bbfc', '15', 15]);
+ assert.throws(() => parseMemberLimits({...limits, maximumAge: 40}));
+ assert.throws(() => parseMemberLimits({...limits, ratingSystem: 7}));
  // The retired maxSessions field is never sent: it is absent from the parsed
  // document, so a limits save cannot carry it back to a server that rejects it.
  assert.equal('maxSessions' in parsed, false);
   assert.equal(parsed.channelPolicy.mode, 'deny');
   assert.deepEqual([...parsed.tagPolicy.deniedLabels], ['Spoilers']);
   assert.deepEqual([...parsed.schedule.windows[0].days], [1, 3]);
-  assert.throws(() => parseMemberLimits({...limits, maxContentRating: 'XX'}));
+  assert.throws(() => parseMemberLimits({...limits, maxContentRating: 'X'.repeat(40)}));
   assert.throws(() => parseMemberLimits({...limits, maxStreams: 100000}));
   assert.throws(() => parseMemberLimits({...limits, schedule: {timezone: 'UTC', windows: [{days: [], startMinute: 0, endMinute: 10}]}}));
   // An absent envelope is an unrestricted one, not a parse failure.
   const empty = parseMemberLimits({});
   assert.equal(empty.maxContentRating, '');
+  assert.equal(empty.maximumAge, -1);
   assert.equal(empty.allowUnrated, true);
   assert.deepEqual([...empty.tagPolicy.deniedLabels], []);
 });

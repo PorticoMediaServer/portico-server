@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"strings"
 	"time"
 
 	"portico.local/server/internal/identity"
@@ -15,8 +14,6 @@ import (
 var (
 	ErrStreamLimit   = errors.New("This account already has as many streams playing as its limit allows.")
 	ErrSchedule      = errors.New("This account is outside the hours it is allowed to watch.")
-	ErrContentRating = errors.New("This title's rating is above the limit set for this account.")
-	ErrLabelDenied   = errors.New("This title carries a label that is not allowed for this account.")
 	ErrChannelDenied = errors.New("This channel is not allowed for this account.")
 	ErrDeviceTrust   = errors.New("This device is waiting for approval on this server.")
 )
@@ -39,7 +36,6 @@ type Enforcer struct {
 
 // Admission is what the caller asks about.
 type Admission struct {
-	ItemID string
 	// Remote is true when the request arrived over a non-LAN transport; the
 	// remote bitrate cap applies only then.
 	Remote bool
@@ -85,10 +81,12 @@ func (e *Enforcer) AdmitAccount(ctx context.Context, tx *sql.Tx, account string)
 	return withinSchedule(limits.Schedule, e.now())
 }
 
-// AdmitPlayback is the playback side: concurrent stream count, the schedule, the
-// maximum content rating, denied labels, device trust and the remote bitrate
-// cap. It runs before a playback lease exists, so the count it reads excludes
-// the request being admitted.
+// AdmitPlayback is the playback side: concurrent stream count, the schedule,
+// device trust and the remote bitrate cap. It runs before a playback lease
+// exists, so the count it reads excludes the request being admitted. Whether
+// the member may see the title at all (rating, unrated, denied labels) is not
+// decided here: that is the one catalogue predicate, which the caller applies
+// to the same item before asking (contentaccess.VisibleItemTx).
 func (e *Enforcer) AdmitPlayback(ctx context.Context, tx *sql.Tx, p identity.Principal, q Admission) (Decision, error) {
 	var out Decision
 	limits, err := e.limits(ctx, tx, p.AccountID)
@@ -126,11 +124,6 @@ func (e *Enforcer) AdmitPlayback(ctx context.Context, tx *sql.Tx, p identity.Pri
 			return out, ErrStreamLimit
 		}
 	}
-	if q.ItemID != "" {
-		if err = itemAllowed(ctx, tx, limits, q.ItemID); err != nil {
-			return out, err
-		}
-	}
 	if q.Remote && limits.RemoteBitrateKbps > 0 {
 		out.MaxVideoBitrateBPS = limits.RemoteBitrateKbps * 1000
 	}
@@ -162,117 +155,6 @@ func (e *Enforcer) AdmitChannel(ctx context.Context, tx *sql.Tx, p identity.Prin
 		return err
 	}
 	return channelAllowed(limits.Channels, channel)
-}
-
-// VisibleItem is the catalog-visibility side of the content rating and label
-// limits: a title a member may not play is also a title the member may not see.
-// Detail and playback call it per item; the browse projection applies the same
-// rule in bulk through VisibilityClause.
-func (e *Enforcer) VisibleItem(ctx context.Context, tx *sql.Tx, p identity.Principal, item string) error {
-	limits, err := e.limits(ctx, tx, p.AccountID)
-	if err != nil {
-		return err
-	}
-	return itemAllowed(ctx, tx, limits, item)
-}
-
-// VisibilityClause returns a SQL predicate and its arguments that keep only rows
-// a member may see, given an expression yielding the integer catalogue entity id.
-// It returns an empty string when the member's limits hide nothing, so a caller
-// can skip the join entirely in the common case.
-func (e *Enforcer) VisibilityClause(ctx context.Context, tx *sql.Tx, p identity.Principal, itemColumn string) (string, []any, error) {
-	limits, err := e.limits(ctx, tx, p.AccountID)
-	if err != nil {
-		return "", nil, err
-	}
-	clauses, args := []string{}, []any{}
-	if limits.MaxContentRating != "" {
-		// Ratings are compared through the published ladder, so an unknown value
-		// is "unrated" and follows allowUnrated rather than sorting as text.
-		ladder, values := ratingLadderSQL(itemColumn, limits.MaxContentRating, limits.AllowUnrated)
-		clauses = append(clauses, ladder)
-		args = append(args, values...)
-	}
-	for _, label := range limits.Tags.DeniedLabels {
-		clauses = append(clauses, `NOT EXISTS(SELECT 1 FROM catalog_item_attribute_edges dca JOIN catalog_attribute_terms term ON term.id=dca.term_id WHERE dca.item_id=`+itemColumn+` AND term.field_id IN(2,3) AND lower(dca.source_value)=?)`)
-		args = append(args, strings.ToLower(label))
-	}
-	if len(clauses) == 0 {
-		return "", nil, nil
-	}
-	return publishedItemSQL(itemColumn) + ` AND (` + strings.Join(clauses, " AND ") + `)`, args, nil
-}
-
-// publishedItemSQL fences removed facts even for an unrestricted caller: the
-// entity exists, is not retired, and its library is live. It replaces the
-// deleted compactcatalog.PublishedItemSQL: catalogue facts are written
-// synchronously now, so there is no projection lag to fence and no separate
-// attribute fence. Inputs are trusted SQL expressions, never request text.
-func publishedItemSQL(itemColumn string) string {
-	return `EXISTS(SELECT 1 FROM catalog_entities pe JOIN catalog_libraries l ON l.id=pe.library_id WHERE pe.id=` + itemColumn + ` AND l.retired=0 AND pe.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements r WHERE r.item_id=pe.id))`
-}
-
-// ratingLadderSQL builds an "allowed values" test from the ladder for the item
-// id expression named by column. A rating that is not on the ladder is unrated,
-// and unrated titles pass only when the limit allows them.
-func ratingLadderSQL(column, max string, allowUnrated bool) (string, []any) {
-	// Same source as itemAllowed: the catalog attribute, else the item's own rating.
-	rating := `upper(trim(COALESCE((SELECT rca.source_value FROM catalog_item_attribute_edges rca JOIN catalog_attribute_terms term ON term.id=rca.term_id WHERE rca.item_id=` + column + ` AND term.field_id=1 ORDER BY rca.source_rowid LIMIT 1),(SELECT d.content_rating FROM catalog_item_details d WHERE d.entity_id=` + column + `),'')))`
-	ceiling := ratingRank(max)
-	allowed, marks := []any{}, []string{}
-	ladder, ladderMarks := []any{}, []string{}
-	for _, r := range ContentRatings {
-		ladder, ladderMarks = append(ladder, r), append(ladderMarks, "?")
-		if ratingRank(r) <= ceiling {
-			allowed, marks = append(allowed, r), append(marks, "?")
-		}
-	}
-	clause := rating + ` IN(` + strings.Join(marks, ",") + `)`
-	if !allowUnrated {
-		return clause, allowed
-	}
-	return `(` + rating + ` NOT IN(` + strings.Join(ladderMarks, ",") + `) OR ` + clause + `)`, append(ladder, allowed...)
-}
-
-func itemAllowed(ctx context.Context, tx *sql.Tx, limits Limits, item string) error {
-	if limits.MaxContentRating == "" && len(limits.Tags.DeniedLabels) == 0 {
-		return nil
-	}
-	var itemID int64
-	if err := tx.QueryRowContext(ctx, `SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, item).Scan(&itemID); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return ErrContentRating
-		}
-		return err
-	}
-	var published bool
-	if err := tx.QueryRowContext(ctx, `SELECT `+publishedItemSQL("?"), itemID).Scan(&published); err != nil {
-		return err
-	}
-	if !published {
-		return ErrContentRating
-	}
-	if limits.MaxContentRating != "" {
-		var rating string
-		e := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT a.source_value FROM catalog_item_attribute_edges a JOIN catalog_attribute_terms term ON term.id=a.term_id WHERE a.item_id=? AND term.field_id=1 ORDER BY a.source_rowid LIMIT 1),(SELECT d.content_rating FROM catalog_item_details d WHERE d.entity_id=?),'')`, itemID, itemID).Scan(&rating)
-		if e != nil && !errors.Is(e, sql.ErrNoRows) {
-			return e
-		}
-		rank := ratingRank(rating)
-		if rank == 0 && !limits.AllowUnrated || rank > ratingRank(limits.MaxContentRating) {
-			return ErrContentRating
-		}
-	}
-	for _, label := range limits.Tags.DeniedLabels {
-		var carries bool
-		if e := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_item_attribute_edges a JOIN catalog_attribute_terms term ON term.id=a.term_id WHERE a.item_id=? AND term.field_id IN(2,3) AND lower(a.source_value)=?)`, itemID, strings.ToLower(label)).Scan(&carries); e != nil {
-			return e
-		}
-		if carries {
-			return ErrLabelDenied
-		}
-	}
-	return nil
 }
 
 func channelAllowed(policy ChannelPolicy, channel string) error {

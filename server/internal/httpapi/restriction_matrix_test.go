@@ -959,7 +959,7 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 	// background rebuilder after first use; the matrix probes a server whose
 	// classes serve, not the build window (which answers "building" for every
 	// id alike). Build them here, then publish them.
-	effective := catalog.Viewer{Restrictions: restrictions, MemberMaxRating: restrictions.MemberMaxRating, MemberAllowUnrated: restrictions.MemberAllowUnrated, MemberDeniedLabels: restrictions.MemberDeniedLabels}.EffectiveRestrictions()
+	effective := catalog.Viewer{Restrictions: restrictions}.EffectiveRestrictions()
 	for _, library := range m.libraries {
 		if err := cat.RebuildVisibilityClass(ctx, library, effective); err != nil {
 			t.Fatal(err)

@@ -143,7 +143,7 @@ func (s *Service) computeFacets(request FacetRequest, source facetSource, revisi
 		return out, err
 	}
 	shows := lib.Kind == "tv" || lib.Kind == "anime"
-	if r.MemberMaxRating == "" && len(r.MemberDeniedLabels) == 0 && !(shows && r.Active()) && s.compactProjectionReady(33) == nil {
+	if len(r.MemberDeniedLabels) == 0 && !(shows && r.Active()) && s.compactProjectionReady(33) == nil {
 		if out.Values, err = s.facetsFromCounts(request); err != nil {
 			return out, err
 		}

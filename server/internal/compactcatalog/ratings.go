@@ -64,3 +64,46 @@ func ClassifyPendingRatings(ctx context.Context, db *sql.DB, age func(string) (i
 	err = read.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM content_rating_pending)`).Scan(&more)
 	return more, err
 }
+
+// ReclassifyRatings judges every spelling already classified against the
+// current rating table and corrects the ones whose age changed. It is run once
+// after the table changes (the caller remembers which table it last applied),
+// so a title rated in a spelling the table has since learned stops counting as
+// unrated without a rescan. The table of spellings is small: one row per
+// distinct rating in the library, not per title.
+func ReclassifyRatings(ctx context.Context, db *sql.DB, age func(string) (int, bool)) error {
+	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	rows, err := dbwork.ReadHandle(ctx, db).QueryContext(ctx, `SELECT value_key,minimum_age FROM content_rating_ages`)
+	if err != nil {
+		return err
+	}
+	changed := map[string]int{}
+	for rows.Next() {
+		var key string
+		var stored int
+		if err = rows.Scan(&key, &stored); err != nil {
+			rows.Close()
+			return err
+		}
+		minimum := -1
+		if resolved, ok := age(key); ok {
+			minimum = resolved
+		}
+		if minimum != stored {
+			changed[key] = minimum
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil || len(changed) == 0 {
+		return err
+	}
+	return dbwork.WithWriteTx(ctx, db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+		for key, minimum := range changed {
+			if _, err := tx.ExecContext(ctx, `UPDATE content_rating_ages SET minimum_age=? WHERE value_key=?`, minimum, key); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}

@@ -118,7 +118,7 @@ func v1Error(err error) error {
 		code = "not_permitted"
 	case errors.Is(err, identity.ErrUnauthorized):
 		code = "unauthorized"
-	case errors.Is(err, identity.ErrContentRestricted), errors.Is(err, access.ErrContentRating), errors.Is(err, access.ErrLabelDenied), errors.Is(err, access.ErrChannelDenied),
+	case errors.Is(err, identity.ErrContentRestricted), errors.Is(err, access.ErrChannelDenied),
 		errors.Is(err, sql.ErrNoRows), errors.Is(err, playbackv1.ErrNotFound):
 		code = "not_found"
 	case errors.Is(err, errFeatureRestricted):
@@ -205,7 +205,7 @@ func itemAdmission(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, sql.ErrNoRows) || errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, access.ErrContentRating) || errors.Is(err, access.ErrLabelDenied) || errors.Is(err, playbackv1.ErrNotFound) {
+	if errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, sql.ErrNoRows) || errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, playbackv1.ErrNotFound) {
 		return &apierror.Error{Code: "not_found", Cause: err}
 	}
 	return v1Error(err)

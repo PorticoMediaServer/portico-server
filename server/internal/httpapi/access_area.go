@@ -127,7 +127,7 @@ func accessFailure(w http.ResponseWriter, e error) {
 		status, code, message = 403, "forbidden", identity.ErrForbidden.Error()
 	case errors.Is(e, identity.ErrUnauthorized):
 		status, code, message = 401, "unauthorized", "Authentication is required."
-	case errors.Is(e, identity.ErrContentRestricted), errors.Is(e, access.ErrContentRating), errors.Is(e, access.ErrLabelDenied), errors.Is(e, access.ErrChannelDenied):
+	case errors.Is(e, identity.ErrContentRestricted), errors.Is(e, access.ErrChannelDenied):
 		status, code, message = 404, "not_found", publicErrorMessage("not_found")
 	case errors.Is(e, errFeatureRestricted):
 		status, code, message = 403, "feature_restricted", publicErrorMessage("feature_restricted")
