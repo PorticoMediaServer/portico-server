@@ -11,6 +11,9 @@ export const settingsMessages = {
   'settings.saved': 'Saved',
   'settings.notSaved': 'That change wasn’t saved. Try again.',
   'settings.thisDevice': 'This device',
+  'settings.scope.allBrowsers': 'All web browsers',
+  'settings.scope.allPhones': 'All phones and tablets',
+  'settings.scope.allTVs': 'All TVs',
   'settings.pages': 'Settings pages',
 
   'settings.page.profile': 'Profile & account',
