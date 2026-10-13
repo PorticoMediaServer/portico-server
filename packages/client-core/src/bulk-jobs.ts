@@ -18,7 +18,7 @@ export type JobSelector=
  | Readonly<{container:Readonly<{kind:JobContainerKind;id:string}>}>
  | Readonly<{items:Readonly<{ids:readonly string[]}>}>
  | Readonly<{query:Readonly<{libraryId:string;pivot:string;filter?:unknown;sort?:readonly {field:string;direction:'asc'|'desc'}[]}>}>;
-export type JobCommand='personal-state'|'playlist-add'|'collection-add'|'metadata-edit'|'refresh'|'trash';
+export type JobCommand='personal-state'|'playlist-add'|'collection-add'|'metadata-edit'|'refresh';
 export type JobPlacement='end'|'next'|Readonly<{after:string}>;
 export type JobArgs=Readonly<{
  watched?:boolean;favorite?:boolean;watchlist?:boolean;rating?:number|null;
@@ -61,7 +61,7 @@ const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&
 const id=(v:unknown):v is string=>typeof v==='string'&&v.length>0&&v.length<=256&&!/[\x00-\x1f\x7f]/.test(v);
 const operationId=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const count=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
-const commands:readonly string[]=Object.freeze(['personal-state','playlist-add','collection-add','metadata-edit','refresh','trash']);
+const commands:readonly string[]=Object.freeze(['personal-state','playlist-add','collection-add','metadata-edit','refresh']);
 const states:readonly string[]=Object.freeze(['queued','running','complete','partial','failed']);
 const errorCodes:readonly string[]=Object.freeze(['selection_changed','selection_too_large','authority_revoked','execution_failed','revision_mismatch','destination_not_found']);
 const containerKinds:readonly string[]=Object.freeze(['show','season','album','artist','book','collection','playlist','library']);

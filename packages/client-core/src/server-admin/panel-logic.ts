@@ -84,13 +84,6 @@ export function davConfiguration(source: {generation: number} | null, draft: Web
   return {name, root, username: draft.username, password: draft.password, keepPassword: false, keepConnection: false, insecureLocal: draft.insecureLocal, expectedGeneration: source.generation};
 }
 
-// ── Deleted titles ──────────────────────────────────────────────────────────────────────────
-
-/** CD-42: "Remove what's due" may run only when the loaded page is the whole held listing. */
-export function isFullTrashList(page: {items: readonly unknown[]; heldCount: number} | undefined, canPrevious: boolean, canNext: boolean): boolean {
-  return !!page && !canPrevious && !canNext && page.items.length === page.heldCount;
-}
-
 // ── Viewer feedback ─────────────────────────────────────────────────────────────────────────
 
 export const feedbackStatusLabel: Readonly<Record<FeedbackStatus, string>> = {open: 'Open', 'in-progress': 'In progress', resolved: 'Resolved', closed: 'Closed'};
@@ -148,7 +141,7 @@ export const scanTierHelp: Readonly<Record<ScanTier, string>> = {file_list_only:
 
 /** CD-08: a new folder starts from the loaded configuration revision; zero is never submittable. */
 export function addSourceSettings(revision: number): SourceSettings {
-  return {name: '', path: '', classification: 'local', followSymlinks: false, missingGraceSeconds: 86400, intervalSeconds: 3600, expectedRevision: revision, acceptReplacement: false};
+  return {name: '', path: '', classification: 'local', followSymlinks: false, intervalSeconds: 3600, expectedRevision: revision, acceptReplacement: false};
 }
 export function canAddSource(revision: number | undefined): revision is number {
   return typeof revision === 'number' && revision > 0;
@@ -209,7 +202,7 @@ export async function createLibraryAndScan(service: LibraryManagementService, in
  */
 const RETENTION_ROWS: readonly (readonly [string, MessageId])[] = [
   ['logs', 'settings.server.keep.logs'], ['conversions', 'settings.server.keep.conversions'], ['prepared', 'settings.server.keep.prepared'],
-  ['downloads', 'settings.server.keep.downloads'], ['subtitles', 'settings.server.keep.subtitles'], ['trickplay', 'settings.server.keep.trickplay'], ['trash', 'settings.server.keep.trash'],
+  ['downloads', 'settings.server.keep.downloads'], ['subtitles', 'settings.server.keep.subtitles'], ['trickplay', 'settings.server.keep.trickplay'],
 ];
 
 export function retentionRows(keys: readonly string[], categoryName: (key: string) => string | undefined, t: (id: MessageId, values?: Record<string, string | number>) => string): readonly Readonly<{key: string; label: string}>[] {

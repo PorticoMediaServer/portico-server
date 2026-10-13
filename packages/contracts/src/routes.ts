@@ -248,6 +248,25 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "empty_missing_titles",
+    "method": "POST",
+    "path": "/v1/admin/missing-titles/empty",
+    "summary": "Remove missing titles and missing files now, whatever the owner's rule says; call again while more is true",
+    "access": "owner",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "optionalBody": true
+  },
+  {
     "id": "get_admin_backups",
     "method": "GET",
     "path": "/v1/admin/backups",
@@ -769,6 +788,29 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "list_missing_titles",
+    "method": "GET",
+    "path": "/v1/admin/missing-titles",
+    "summary": "List titles whose files are no longer on disk, oldest first, with when each will be removed",
+    "access": "owner",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "libraryId",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "list_queue_entries",
     "method": "GET",
     "path": "/v1/queues/{id}/entries",
@@ -786,6 +828,24 @@ export const routes = [
       "invalid_request",
       "unauthorized",
       "not_found"
+    ],
+    "status": 200
+  },
+  {
+    "id": "merge_titles",
+    "method": "POST",
+    "path": "/v1/admin/titles/merge",
+    "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions and everyone's state combined",
+    "access": "owner",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
     ],
     "status": 200
   },
@@ -1099,6 +1159,27 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "remove_library",
+    "method": "DELETE",
+    "path": "/v1/admin/libraries/{id}",
+    "summary": "Remove a library: it disappears at once and is taken apart in the background; files on disk are not touched and each profile's state is kept in case its titles return",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "revision_mismatch",
+      "confirmation_mismatch",
+      "administration_unavailable",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 202
   },
   {
     "id": "remove_queue_entry",

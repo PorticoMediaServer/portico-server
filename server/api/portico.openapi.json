@@ -390,6 +390,64 @@
         "x-lane": "default"
       }
     },
+    "/v1/admin/libraries/{id}": {
+      "delete": {
+        "operationId": "remove_library",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "confirmation": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "confirmation",
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "removing": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "libraryId",
+                    "removing"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Remove a library: it disappears at once and is taken apart in the background; files on disk are not touched and each profile's state is kept in case its titles return",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 4096
+      }
+    },
     "/v1/admin/maintenance/settings": {
       "get": {
         "operationId": "get_admin_maintenance_settings",
@@ -925,6 +983,150 @@
         "x-max-body-bytes": 65536
       }
     },
+    "/v1/admin/missing-titles": {
+      "get": {
+        "operationId": "list_missing_titles",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "days": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "items": {
+                      "items": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "libraryId": {
+                            "type": "string"
+                          },
+                          "missingSince": {
+                            "type": "string"
+                          },
+                          "parentTitle": {
+                            "type": "string"
+                          },
+                          "removedAt": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "libraryId",
+                          "kind",
+                          "title",
+                          "missingSince"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    },
+                    "rule": {
+                      "type": "string"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "items",
+                    "total",
+                    "rule",
+                    "days"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List titles whose files are no longer on disk, oldest first, with when each will be removed",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default"
+      }
+    },
+    "/v1/admin/missing-titles/empty": {
+      "post": {
+        "operationId": "empty_missing_titles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "libraryId": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "files": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "more": {
+                      "type": "boolean"
+                    },
+                    "titles": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "titles",
+                    "files",
+                    "more"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Remove missing titles and missing files now, whatever the owner's rule says; call again while more is true",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "default",
+        "x-max-body-bytes": 4096
+      }
+    },
     "/v1/admin/sessions": {
       "get": {
         "operationId": "list_admin_sessions",
@@ -1260,6 +1462,58 @@
         "summary": "Tighten state folder permissions",
         "x-access": "owner",
         "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 4096
+      }
+    },
+    "/v1/admin/titles/merge": {
+      "post": {
+        "operationId": "merge_titles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "fromId": {
+                    "type": "string"
+                  },
+                  "intoId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "fromId",
+                  "intoId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "itemId"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions and everyone's state combined",
+        "x-access": "owner",
+        "x-cost": "page_sized",
         "x-lane": "default",
         "x-max-body-bytes": 4096
       }
@@ -4778,8 +5032,7 @@
                       "playlist-add",
                       "collection-add",
                       "metadata-edit",
-                      "refresh",
-                      "trash"
+                      "refresh"
                     ],
                     "type": "string"
                   },

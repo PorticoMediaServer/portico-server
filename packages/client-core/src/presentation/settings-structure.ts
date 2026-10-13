@@ -78,7 +78,7 @@ export type SettingsCustomId =
   | 'server.accounts' | 'server.invitations' | 'server.apiKeys'
   | 'server.transcodeStatus'
   | 'server.remoteStatus' | 'server.accountConnection' | 'server.certificateStatus' | 'server.addresses'
-  | 'server.diskUsage' | 'server.retention' | 'server.remoteSources' | 'server.backups' | 'server.deletedTitles'
+  | 'server.diskUsage' | 'server.retention' | 'server.remoteSources' | 'server.backups' | 'server.missingTitles'
   | 'server.windows' | 'server.jobs'
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
   | 'server.identity' | 'server.updates';
@@ -426,7 +426,11 @@ const serverPages: readonly AuthoredPage[] = [
     ]},
     panel('sources', 'server.remoteSources', 'settings.server.remoteSources'),
     panel('backups', 'server.backups', 'settings.server.backups'),
-    panel('deleted', 'server.deletedTitles', 'settings.server.deletedTitles'),
+    {id: 'missing', title: 'settings.server.missingTitles', description: 'settings.server.missingTitlesLede', rows: [
+      setting('runtime', 'library.missingTitles', 'settings.server.missingTitlesRule', {type: 'choice', choices: choices('settings.server.missingTitlesRule', ['immediately', 'after_days', 'never'])}, {help: 'settings.server.missingTitlesRuleHelp'}),
+      setting('runtime', 'library.missingTitlesDays', 'settings.server.missingTitlesDays', {type: 'number', min: 1, max: 3650, unit: 'settings.unit.days'}, {when: {key: 'library.missingTitles', equals: 'after_days'}}),
+      custom('server.missingTitles'),
+    ]},
   ]},
   {id: 'schedule', title: 'settings.server.schedule', icon: 'calendar', sections: [
     panel('jobs', 'server.jobs', 'settings.server.jobs'),

@@ -882,18 +882,6 @@ paths:
         '200': { description: The item., content: { application/json: { schema: { $ref: '#/components/schemas/Item' } } } }
         default: { $ref: '#/components/responses/Error' }
       x-error-codes: [unauthorized, not_found, persistence_error]
-    delete:
-      operationId: deleteItem
-      tags: [items]
-      summary: Remove an item from the catalogue
-      description: >-
-        Server owner only. Removes the catalogue row and its personal state; it does not delete
-        media from disk. A later scan of a source that still contains the file will re-create the
-        item. Responds 204.
-      responses:
-        '204': { description: The item was removed. }
-        default: { $ref: '#/components/responses/Error' }
-      x-error-codes: [unauthorized, not_found, source_busy, persistence_error]
   /v1/items/{id}/art/{kind}:
     get:
       operationId: getItemArtwork
@@ -4093,16 +4081,18 @@ paths:
     post:
       operationId: actOnInventoryObject
       tags: [admin-libraries]
-      summary: Associate or trash an inventory object
+      summary: Say which title a file belongs to
       description: >-
-        Server owner only. With `action=associate` the body's `itemId` binds this object's version to
-        a catalogue item — the manual fix for a file the scanner could not match. Any other action is
-        a trash verb applied to the object. `revision` in the body fences the object's version.
-        Responds 204.
+        Server owner only. With `action=associate` the body's `itemId` makes this file another
+        version of that title: the manual fix for a file the scanner could not place. With
+        `action=separate` the file stops being a version of the title it was grouped with and
+        becomes a title of its own (answers 200 with `{itemId}`): the fix for two different films
+        or tracks taken for one. Either decision is remembered, so a later scan does not undo it.
+        `revision` in the body fences the object's version. `associate` responds 204.
       parameters:
         - $ref: '#/components/parameters/LibraryId'
         - { name: object, in: path, required: true, schema: { type: string }, description: Inventory object id. }
-        - { name: action, in: path, required: true, schema: { type: string }, description: '`associate`, or a trash verb.' }
+        - { name: action, in: path, required: true, schema: { type: string }, description: '`associate` or `separate`.' }
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [revision], properties: { revision: { type: string, description: The inventory object version being acted on. }, itemId: { type: string, description: 'Target item for `associate`.' } }, additionalProperties: false } } } }
       responses:
         '204': { description: The action was applied. }
@@ -6038,7 +6028,6 @@ components:
         path: { type: string, description: Root path or remote locator. }
         classification: { type: string }
         followSymlinks: { type: boolean }
-        missingGraceSeconds: { type: integer, format: int64, description: How long a file may be missing before it is treated as gone. }
         intervalSeconds: { type: integer, format: int64, description: Automatic re-scan interval. }
         expectedRevision: { type: integer, format: int64 }
         acceptReplacement: { type: boolean, description: Explicit confirmation that a changed root may replace the existing one. }

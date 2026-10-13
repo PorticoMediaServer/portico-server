@@ -56,7 +56,7 @@ test('requests validate selectors, args and fences', () => {
   assert.throws(() => jobRequestBody({...base, selector: {container: {kind: 'show', id: 's'}, items: {ids: ['a']}} as any}));
   assert.throws(() => jobRequestBody({...base, args: {}}));
   assert.throws(() => jobRequestBody({...base, args: {watched: true, playlistId: 'p'}}));
-  assert.throws(() => jobRequestBody({...base, command: 'trash' as const, args: {watched: true}}));
+  assert.throws(() => jobRequestBody({...base, command: 'refresh' as const, args: {watched: true}}));
   const query = jobRequestBody({
     operationId: 'op-2', command: 'personal-state', args: {favorite: true},
     selector: {query: {libraryId: 'lib', pivot: 'movies', filter: {all: []}, sort: [{field: 'title', direction: 'asc'}]}},
@@ -128,7 +128,7 @@ test('job.updated frames parse progress and ignore other events', () => {
   assert.equal(event?.done, 2);
   assert.equal(parseJobUpdatedFrame('queue.updated', '{}'), null);
   assert.throws(() => parseJobUpdatedFrame('job.updated', 'not json'));
-  assert.deepEqual(parseJobUpdatedEvent(job({command: 'trash'})).command, 'trash');
+  assert.deepEqual(parseJobUpdatedEvent(job({command: 'refresh'})).command, 'refresh');
 });
 
 test('M25-4: runBulkRequests runs one job per request with preparing/working progress', async () => {
@@ -178,8 +178,8 @@ test('M25-4: runBulkRequests maps the failures page to per-target outcomes; a fa
   assert.equal(outcome.ok, 1);
   assert.deepEqual(outcome.failed, [{itemId: 'b', code: 'metadata_conflict'}]);
   assert.deepEqual(bulkFailureCounts(outcome.failed), {metadata_conflict: 1});
-  const failing = {request: async <T>(): Promise<T> => ({jobId: 'job-9', command: 'trash', state: 'failed', total: 0, totalKnown: true, done: 0, failed: 0, errorCode: 'selection_changed'}) as T};
-  await assert.rejects(runBulkRequests(failing, 'trash', {}, [{selector: {items: {ids: ['a']}}, operationId: 'op-1', ids: ['a']}]), (e: unknown) => (e as {code?: string}).code === 'selection_changed');
+  const failing = {request: async <T>(): Promise<T> => ({jobId: 'job-9', command: 'refresh', state: 'failed', total: 0, totalKnown: true, done: 0, failed: 0, errorCode: 'selection_changed'}) as T};
+  await assert.rejects(runBulkRequests(failing, 'refresh', {}, [{selector: {items: {ids: ['a']}}, operationId: 'op-1', ids: ['a']}]), (e: unknown) => (e as {code?: string}).code === 'selection_changed');
 });
 
 test('M25-4: runBulkJobs chunks explicit ids one job per 200', async () => {

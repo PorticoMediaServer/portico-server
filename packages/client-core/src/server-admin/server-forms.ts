@@ -215,6 +215,8 @@ export function createServerForm(id: ServerFormId, deps: ServerFormDeps): DraftF
 
 /** Reads a dotted path from a draft (`keepPolicy.mode`). */
 export function formValue(draft: unknown, path: string): unknown {
+  // A setting whose own name has a dot in it ("library.missingTitles") is one key, not a path.
+  if (draft !== null && typeof draft === 'object' && path in (draft as object)) return (draft as Record<string, unknown>)[path];
   let at: unknown = draft;
   for (const part of path.split('.')) {
     if (at === null || typeof at !== 'object') return undefined;
@@ -225,6 +227,7 @@ export function formValue(draft: unknown, path: string): unknown {
 
 /** The draft with a dotted path set, copying only the objects on the way. */
 export function withFormValue<T extends object>(draft: T, path: string, value: unknown): T {
+  if (path in draft) return {...draft, [path]: value};
   const [head, ...rest] = path.split('.');
   const current = (draft as Record<string, unknown>)[head!];
   return {...draft, [head!]: rest.length ? withFormValue((current ?? {}) as object, rest.join('.'), value) : value};

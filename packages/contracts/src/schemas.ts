@@ -3324,8 +3324,7 @@ export const schemas = {
           "playlist-add",
           "collection-add",
           "metadata-edit",
-          "refresh",
-          "trash"
+          "refresh"
         ],
         "type": "string"
       },
@@ -4516,6 +4515,38 @@ export const schemas = {
   "DeleteQueueResponse": {
     "properties": {},
     "required": [],
+    "type": "object"
+  },
+  "EmptyMissingTitlesRequest": {
+    "properties": {
+      "libraryId": {
+        "type": "string"
+      }
+    },
+    "required": [],
+    "type": "object"
+  },
+  "EmptyMissingTitlesResponse": {
+    "properties": {
+      "files": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "more": {
+        "type": "boolean"
+      },
+      "titles": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "titles",
+      "files",
+      "more"
+    ],
     "type": "object"
   },
   "GetAdminBackupsRequest": {
@@ -8099,6 +8130,79 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ListMissingTitlesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ListMissingTitlesResponse": {
+    "properties": {
+      "days": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "items": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "missingSince": {
+              "type": "string"
+            },
+            "parentTitle": {
+              "type": "string"
+            },
+            "removedAt": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "libraryId",
+            "kind",
+            "title",
+            "missingSince"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "nextCursor": {
+        "type": "string"
+      },
+      "rule": {
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "items",
+      "total",
+      "rule",
+      "days"
+    ],
+    "type": "object"
+  },
   "ListQueueEntriesRequest": {
     "properties": {},
     "required": [],
@@ -8196,6 +8300,32 @@ export const schemas = {
     "required": [
       "items",
       "page"
+    ],
+    "type": "object"
+  },
+  "MergeTitlesRequest": {
+    "properties": {
+      "fromId": {
+        "type": "string"
+      },
+      "intoId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "fromId",
+      "intoId"
+    ],
+    "type": "object"
+  },
+  "MergeTitlesResponse": {
+    "properties": {
+      "itemId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "itemId"
     ],
     "type": "object"
   },
@@ -10604,6 +10734,38 @@ export const schemas = {
     "required": [
       "selfRegistration",
       "deviceApproval"
+    ],
+    "type": "object"
+  },
+  "RemoveLibraryRequest": {
+    "properties": {
+      "confirmation": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "confirmation",
+      "expectedRevision"
+    ],
+    "type": "object"
+  },
+  "RemoveLibraryResponse": {
+    "properties": {
+      "libraryId": {
+        "type": "string"
+      },
+      "removing": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "libraryId",
+      "removing"
     ],
     "type": "object"
   },

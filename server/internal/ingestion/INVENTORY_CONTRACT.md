@@ -37,7 +37,8 @@ its admitted metadata grouping is unchanged.
 `mediasource.InventoryEvidence.Revision()` hashes a versioned encoding of source
 incarnation scope, provider kind, observed object identity, size, modification
 nanoseconds, change token and optional provider version. Local evidence uses
-filesystem device/inode and change-time evidence. This is invalidation evidence,
+the file's inode (without the device number, which a restart may change) and
+change-time evidence. This is invalidation evidence,
 NOT a cryptographic digest, `NoInPlaceMutation` claim or playback byte-version
 grant. Contract-32 admission still performs its own validation. Analysis is
 fenced by location revision, source generation/incarnation, policy revision and
@@ -81,29 +82,43 @@ it is NOT a promise that the whole job or every analysis stage completed.
 `running`, `paused`, `cancelled`, `failed`, `complete` and
 `complete_with_warnings`. A failed analysis does not erase committed inventory.
 
-Only completed, current-root inventories contribute absence evidence. A missing
-candidate remains available during grace; at least two distinct completed
-inventories AND the configured elapsed grace are required for `missing`.
-Previously unavailable/missing locations never become available from absence
-alone. The nearest fully enumerated ancestor is rechecked outside the database
-writer immediately before each missing publication. Permission failure,
-interruption, changed directories, source outage or root replacement is never
-an authoritative empty listing. Reappearance clears missing/trash state through
-a fresh admitted object observation.
+Only completed, current-root inventories contribute absence evidence. A file
+that a complete listing of its folder does not contain is `missing` from that
+scan on: there is no second scan and no waiting period. The nearest fully
+enumerated ancestor is rechecked outside the database writer immediately before
+each missing publication. Permission failure, interruption, changed directories,
+source outage or root replacement is never an authoritative empty listing, and
+neither is a root that lists nothing at all where the source held available
+files before: that is what an unmounted disk looks like, so the scan fails as
+source unavailable and nothing is marked. Reappearance clears the missing state
+through a fresh admitted object observation.
 
-The default grace is 24 hours; network-classified sources enforce at least one
-hour. Scheduling is optional, persisted per source, has a 15-minute minimum
-interval and applies jitter. It coalesces paused/in-flight jobs. Source edits
-clear completion evidence and require fresh inventory for cleanup.
+Missing is not removal. A missing file is no longer a version of its title; a
+title left with no file stays in the catalogue, marked missing with the time
+its last file went (`catalog_missing_titles`). The owner's rule (immediately,
+after a number of days, never; thirty days by default) decides when missing
+files and missing titles are removed, and "empty now" removes them at once.
+Removing a title keeps each profile's state under the title's identities so
+the same title coming back gets it back. A file that resolves to a missing
+title (the same provider identity, or read as the same title) re-attaches to
+it.
 
-Owner trash/forget is catalog-only: no file deletion, mount changes or physical
-trash moves. It requires two completed absence observations, a current
-completed inventory no older than ten minutes, a fresh unchanged-ancestor check,
-exact location revision, no active scan/playback, and transactional owner and
-generation revalidation. Restore returns a trashed location to missing until
-observed. Forget retires the location from normal inventory; logical history is
-retained. Source removal disables its head and cancels work without a bulk
-asset deletion. A surviving available version keeps the logical item available.
+A file at the same place with the same size and modified time is the same
+file whatever identity its filesystem reports: device numbers are left out of
+kept identities (`storage.StableObjectIdentity`), a root whose device number
+alone changed is the same root (`storage.SameRoot`), and a changed inode with
+unchanged size and time keeps the file's catalogue record and analysis.
+
+Scheduling is optional, persisted per source, has a 15-minute minimum interval
+and applies jitter. It coalesces paused/in-flight jobs. Source edits clear
+completion evidence and require fresh inventory for cleanup.
+
+Owner actions on a file are `associate` (this file is another version of that
+title) and `separate` (this file is not a version of the title it was grouped
+with). Both are remembered across scans. Source removal disables its head,
+cancels work and marks the files under it missing in the background; their
+titles then follow the rule for missing titles. A surviving available version
+keeps the logical item available.
 
 ## Analysis and resource ownership
 
@@ -148,8 +163,8 @@ duplicating events. There is no automatic event-log retention/purge in P04A.
 
 Kinds include `created`, `revision_changed`, `reappeared`, `relocated`,
 `replaced`, `missing`, `analysis_completed`, `inventory_completed`,
-`root_identity_confirmation_required`, `trash`, `restore`, `forget` and
-`version_associated`. A changed revision takes precedence over a separate
+`root_identity_confirmation_required`, `version_associated` and
+`version_separated`. A changed revision takes precedence over a separate
 relocation/reappearance label; consumers must read the current location state,
 not infer a complete snapshot from one label. Owner-generated changes use an
 `owner:` operation token rather than a scan job ID. Completion records have

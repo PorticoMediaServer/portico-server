@@ -3,7 +3,7 @@ info:
   title: Portico bulk jobs and container personal state
   version: '1.0.0'
   description: |
-    Implements personal-state, playlist-add, collection-add, metadata-edit, refresh and trash.
+    Implements personal-state, playlist-add, collection-add, metadata-edit and refresh.
     A job returns 202 with totalKnown false and captures membership asynchronously
     in durable keyset pages of at most 20. It then executes batches of at most 20.
     The accepted catalogue/personal revision fence must remain unchanged during
@@ -30,12 +30,8 @@ info:
     captured per item; subsequent changes yield metadata_conflict failures. Refresh
     queues the existing movie metadata pipeline; other leaf kinds fail unsupported_item_kind.
     Completion of refresh means durable enqueue, not completion of provider work.
-    Trash requires current owner authority and library media-deletion permission.
-    It is a single-step recoverable move, with no preview or confirmation argument.
-    Emptying trash remains a separate confirmed action. Zero retention holds trash
-    indefinitely until explicitly emptied; it never causes immediate permanent deletion.
-    File moves are journaled outside the SQLite writer. Each item effect and job
-    cursor commit together; restart recovery finishes or rolls back the file move.
+    There is no bulk delete: deleting media always goes through the delete
+    preview and its typed confirmation (`POST /v1/admin/media/delete`).
 servers: [{url: /}]
 security: [{bearerAuth: []}]
 paths:
@@ -230,7 +226,7 @@ components:
       additionalProperties: false
       properties:
         operationId: {type: string, pattern: '^[A-Za-z0-9_-]{1,128}$'}
-        command: {type: string, enum: [personal-state, playlist-add, collection-add, metadata-edit, refresh, trash]}
+        command: {type: string, enum: [personal-state, playlist-add, collection-add, metadata-edit, refresh]}
         selector: {$ref: '#/components/schemas/Selector'}
         args:
           oneOf:
@@ -270,7 +266,7 @@ components:
                 lists: {type: object, additionalProperties: {$ref: '#/components/schemas/MetadataList'}}
                 genres: {$ref: '#/components/schemas/MetadataList'}
                 lockEdited: {type: boolean}
-            - {type: object, additionalProperties: false, description: Refresh and trash have no arguments}
+            - {type: object, additionalProperties: false, description: Refresh has no arguments}
         expected:
           type: object
           properties:
@@ -282,7 +278,7 @@ components:
       required: [jobId, command, state, total, totalKnown, done, failed]
       properties:
         jobId: {type: string}
-        command: {type: string, enum: [personal-state, playlist-add, collection-add, metadata-edit, refresh, trash]}
+        command: {type: string, enum: [personal-state, playlist-add, collection-add, metadata-edit, refresh]}
         state: {type: string, enum: [queued, running, complete, partial, failed]}
         total: {type: integer, minimum: 0, description: Captured membership so far; exact once totalKnown is true}
         totalKnown: {type: boolean}
