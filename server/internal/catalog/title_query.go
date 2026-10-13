@@ -248,7 +248,11 @@ func (s *Service) QueryTitles(viewer Viewer, q TitleQuery) (TitlePage, error) {
 		if descending {
 			direction = "DESC"
 		}
-		query = `SELECT ` + columns + `,CAST(` + strings.TrimSuffix(sortExpression, " COLLATE NOCASE") + ` AS TEXT) FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id WHERE ` + where + ` AND ` + restriction +
+		// The sort value is selected as it is stored, not cast: an expression
+		// over the serving rows makes SQLite build and sort everything after
+		// the cursor instead of walking the two ordered generations together.
+		// A year scans into the cursor's text just as well.
+		query = `SELECT ` + columns + `,` + strings.TrimSuffix(sortExpression, " COLLATE NOCASE") + ` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id WHERE ` + where + ` AND ` + restriction +
 			` ORDER BY ` + sortExpression + ` ` + direction + `,e.entity_id ` + direction + ` LIMIT ?`
 		args = append(args, restrictionArgs...)
 		args = append(args, q.Limit+1)
