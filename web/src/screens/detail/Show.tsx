@@ -23,11 +23,12 @@ import {EpisodePanel} from './EpisodePanel';
 import s from './Show.module.css';
 import {useViewerScope} from '../../app/viewer-scope';
 import {useContainerWatched} from '../shared/container-watched';
-import {WatchedUndo} from '../shared/WatchedUndo';
 import {getContainerState} from '@core/container-state.ts';
 import {useI18n, type I18n} from '../../app/i18n';
+import {GroupBar, GroupRows} from '../shared/GroupBrowse';
+import {useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-browse';
 
-type ShowSearch = {library?: string; season?: string; episode?: string; title?: string};
+type ShowSearch = {library?: string; season?: string; episode?: string; title?: string; sort?: string; direction?: 'asc' | 'desc'; filters?: string};
 /** Up to this many seasons show as tabs; beyond it, a menu (Spec — Title Pages §2). */
 const MAX_SEASON_TABS = 8;
 type EpisodeLayout = 'list' | 'grid';
@@ -138,7 +139,23 @@ export function ShowScreen() {
     player.playSequence(list, 0, startSeconds ?? episode.playback?.startSeconds ?? episode.progressSeconds ?? 0, container);
   }, [player, sequenceFrom, selected?.seasonId, selected?.group]);
 
-  const showSearch = useCallback((extra: Partial<ShowSearch> = {}): ShowSearch => ({library: search.library, ...(search.title ? {title: search.title} : {}), ...(seasonParam ? {season: seasonParam} : {}), ...extra}), [search.library, search.title, seasonParam]);
+  // The episode list's sort and filters travel with the address, so they hold across seasons, the episode panel and Back.
+  const showSearch = useCallback((extra: Partial<ShowSearch> = {}): ShowSearch => ({library: search.library, ...(search.title ? {title: search.title} : {}), ...(seasonParam ? {season: seasonParam} : {}), ...(search.sort ? {sort: search.sort, direction: search.direction} : {}), ...(search.filters ? {filters: search.filters} : {}), ...extra}), [search.library, search.title, seasonParam, search.sort, search.direction, search.filters]);
+  // The library's sort and filters on the episodes on screen: the season's, or the whole show's when it has no seasons. An owner's episode ranges are their own lists and keep their order.
+  const libraryKind: string = show?.libraryKind ?? '';
+  const episodeMembers = selected?.group ? undefined : selected?.seasonId ?? show?.id;
+  const episodeSpec = useMemo<GroupSpec | undefined>(() => (show && episodeMembers && (libraryKind === 'tv' || libraryKind === 'anime') ? {libraryId: show.libraryId, libraryKind, pivot: 'episodes', base: [{field: 'memberOf', operator: 'equals', value: episodeMembers}], own: 'season'} : undefined), [show, episodeMembers, libraryKind]);
+  const episodeGroup = useGroupBrowse(episodeSpec, {sort: search.sort, direction: search.direction, filters: search.filters}, useCallback((next: GroupChoice) => void navigate({to: params.episodeId ? '/show/$showId/episode/$episodeId' : '/show/$showId', params: {showId, ...(params.episodeId ? {episodeId: params.episodeId} : {})}, search: showSearch({sort: next.sort, direction: next.direction, filters: next.filters}), replace: true, resetScroll: false}), [navigate, showId, params.episodeId, showSearch]));
+  // A sorted or filtered list plays on in the order shown: the episodes loaded after the one pressed.
+  const playListed = useCallback((episode: ContentEntry, startSeconds?: number) => {
+    const list = episodeGroup.collection;
+    const queue: ContentEntry[] = [];
+    const total = list?.getSnapshot().total ?? 0;
+    let at = -1;
+    for (let i = 0; list && i < total && i < 2000; i++) { const item = list.itemAt(i); if (at < 0) { if (item?.id === episode.id) at = i; else continue; } if (!item || queue.length >= 200) break; if (item.playback) queue.push(item); }
+    if (!queue.length && episode.playback) queue.push(episode);
+    if (queue.length) player.playSequence(queue, 0, startSeconds ?? episode.playback?.startSeconds ?? episode.progressSeconds ?? 0);
+  }, [episodeGroup.collection, player]);
   const openedHere = useRef(false);
   const openEpisode = useCallback((episode: ContentEntry) => {
     openedHere.current = true;
@@ -165,12 +182,14 @@ export function ShowScreen() {
     const loaded = firstPage.entries;
     pinnedNextUp.current = {showId: show.id, entry: loaded.find(e => e.playback && (e.progressSeconds ?? 0) > 0 && !e.watched) ?? loaded.find(e => e.playback && !e.watched) ?? loaded.find(e => e.playback)};
   }
+  const markedSeason = seasons.find(x => x.id === selected?.seasonId);
   const back = useBack(() => void navigate({to: '/'}));
   // Show and season watched go through the container personal-state
   // route (O(1)) — never one write per episode. Every hook stays above the
   // error return below; the hook idles until the show has loaded.
-  const showWatched = useContainerWatched(api, show ? 'show' : undefined, show?.id);
-  const seasonWatched = useContainerWatched(api, selected?.seasonId ? 'season' : undefined, selected?.seasonId ?? undefined);
+  // A mark (or its Undo, or a mark from a card's menu) re-reads the page, so every episode's tick follows.
+  const showWatched = useContainerWatched(api, show ? 'show' : undefined, show?.id, {title: show?.title, onChanged: retry});
+  const seasonWatched = useContainerWatched(api, selected?.seasonId ? 'season' : undefined, selected?.seasonId ?? undefined, {title: show && markedSeason ? `${show.title} · ${seasonName(t, markedSeason)}` : show?.title, onChanged: retry});
   if ((snapshot.phase === 'error' && !data) || missing) {
     return (
       <div style={{position: 'relative'}}>
@@ -217,7 +236,7 @@ export function ShowScreen() {
   const onSeasonMenu = (id: string) => {
     if (id === 'show-settings') setEditingSettings(true);
     if (id === 'play-season' && firstEpisode) playEpisode(firstEpisode, 0);
-    if (id === 'season-watched' && selected?.seasonId) void seasonWatched.setWatched(!(seasonWatched.state?.watched ?? false)).then(done => { if (done) retry(); });
+    if (id === 'season-watched' && selected?.seasonId) void seasonWatched.setWatched(!(seasonWatched.state?.watched ?? false));
   };
   const found = episodeId ? findResident(episodes, episodeId) : undefined;
 
@@ -241,7 +260,7 @@ export function ShowScreen() {
               {/* The same row as a movie (Justin, 2 Oct 2026): Watchlist · Favorite · Watched · ⋯. The flags are the show's own, on the container route. */}
               <Button variant="secondary" size="lg" icon={watchlisted ? 'bookmarkFilled' : 'bookmark'} label={t(watchlisted ? 'title.inWatchlist' : 'title.watchlist')} selected={watchlisted} disabled={!showWatched.state} onClick={() => void showWatched.setFlag('watchlisted', !watchlisted)} />
               <Button variant="secondary" size="lg" icon={favorite ? 'heartFilled' : 'heart'} aria-label={t(favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} title={t(favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} selected={favorite} disabled={!showWatched.state} onClick={() => void showWatched.setFlag('favorite', !favorite)} />
-              <Button variant="secondary" size="lg" icon={showWatched.state?.watched ? 'watched' : 'check'} aria-label={t(showWatched.state?.watched ? 'entry.markShowUnwatched' : 'entry.markShowWatched')} title={t(showWatched.state?.watched ? 'entry.markShowUnwatched' : 'entry.markShowWatched')} selected={showWatched.state?.watched} disabled={showWatched.saving} onClick={() => void showWatched.setWatched(!(showWatched.state?.watched ?? false)).then(done => { if (done) retry(); })} />
+              <Button variant="secondary" size="lg" icon={showWatched.state?.watched ? 'watched' : 'check'} aria-label={t(showWatched.state?.watched ? 'entry.markShowUnwatched' : 'entry.markShowWatched')} title={t(showWatched.state?.watched ? 'entry.markShowUnwatched' : 'entry.markShowWatched')} selected={showWatched.state?.watched} disabled={showWatched.saving} onClick={() => void showWatched.setWatched(!(showWatched.state?.watched ?? false))} />
               {showEntry ? <Button variant="secondary" size="lg" icon="more" aria-label={t('title.moreActions')} title={t('title.moreActions')} onClick={(e: React.MouseEvent<HTMLElement>) => player.more(showEntry, anchorOf(e.currentTarget), 'page')} /> : null}
             </div>
           ) : undefined}
@@ -249,8 +268,6 @@ export function ShowScreen() {
       {show && editingSettings ? <ShowSettingsDialog libraryId={show.libraryId} showId={show.id} settings={settings} onClose={() => setEditingSettings(false)} onSaved={() => { setEditingSettings(false); retry(); }} /> : null}
       <Page>
         <div style={{position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 32}}>
-          <WatchedUndo watched={showWatched} onUndone={retry} />
-          <WatchedUndo watched={seasonWatched} onUndone={retry} />
           {snapshot.phase === 'error' && data ? <Inset><ErrorNotice error={snapshot.error} context="show" retry={retry} /></Inset> : null}
           {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="show" refresh={retry} /></Inset> : null}
           <Section title={t('title.episodes')}>
@@ -273,13 +290,29 @@ export function ShowScreen() {
                 {seasonMenu.length ? <Menu label={t('title.moreActions')} trigger={<Button variant="ghost" size="sm" icon="more" aria-label={t('title.moreActions')} title={t('title.moreActions')} />} items={seasonMenu} onSelect={onSeasonMenu} /> : null}
               </div>
             </div>
-            {pinned ? (
+            <Inset><GroupBar group={episodeGroup} total={firstPage?.totalCount} /></Inset>
+            {pinned && !episodeGroup.active ? (
               <div className={s.nextUp} style={placeholderTint(show?.id)} onKeyDown={episodeListKeys}>
                 <span className={s.nextUpLabel}>{t(resuming ? 'title.continueEpisode' : 'title.nextUp')}</span>
                 <EpisodeRow episode={pinned} showSeason onPlay={playNextUp} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={pinned.id === episodeId} />
               </div>
             ) : null}
-            {episodes ? (
+            {episodeGroup.active ? (
+              <GroupRows
+                key={layout}
+                group={episodeGroup}
+                context="show"
+                label={selectedSeason ? `${seasonName(t, selectedSeason)} · ${t('title.episodes')}` : t('title.episodes')}
+                columnMin={layout === 'grid' ? 'clamp(240px, 24vw, 320px)' : undefined}
+                estimateRowHeight={layout === 'grid' ? 240 : 112}
+                className={layout === 'list' ? s.episodeList : undefined}
+                wrap={list => <div style={placeholderTint(show?.id)} onKeyDown={layout === 'list' ? episodeListKeys : undefined}>{list}</div>}
+                renderItem={episode => layout === 'grid'
+                  ? <EpisodeCard episode={episode} onPlay={playListed} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />
+                  : <EpisodeRow episode={episode} showSeason={!selected?.seasonId} onPlay={playListed} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />}
+                renderPlaceholder={() => layout === 'grid' ? <EpisodePlaceholder /> : <div className={s.episodeRowPlaceholderRow} aria-hidden />}
+              />
+            ) : episodes ? (
               <div style={placeholderTint(show?.id)} onKeyDown={layout === 'list' ? episodeListKeys : undefined}>
               <WindowedGrid
                 key={layout}

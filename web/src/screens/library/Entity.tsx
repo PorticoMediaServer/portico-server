@@ -1,6 +1,6 @@
 import {useSelectionRefresh} from '../../app/selection';
 import {useBack} from '../../app/back';
-import React, {useMemo} from 'react';
+import React, {useCallback, useMemo} from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import type {ContentEntry, ContentRoute, ContentView} from '@core/library-content.ts';
 import {useContent} from '../../app/content';
@@ -14,9 +14,11 @@ import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
 import {useDownloads} from '../../app/downloads';
 import {containerKindFor, useContainerWatched} from '../shared/container-watched';
-import {WatchedUndo} from '../shared/WatchedUndo';
-import {Button, Inset, KeyValue, ListRow, Page, Section, StateView, Text, TitleHero, type MenuAnchor} from '../../ui';
-import {LoadingShelves, SectionView} from '../shared/Sections';
+import {Button, Inset, KeyValue, ListRow, Page, Section, Skeleton, StateView, Text, TitleHero, type MenuAnchor} from '../../ui';
+import {LoadingShelves, SectionView, sectionHeading} from '../shared/Sections';
+import {GroupBar, GroupGrid, GroupRows} from '../shared/GroupBrowse';
+import {entityGroups, useGroupBrowse, type GroupChoice} from '../../app/group-browse';
+import {useLibrariesContext} from '../../app/libraries';
 import body from '../detail/Detail.module.css';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
@@ -30,9 +32,11 @@ import {useI18n} from '../../app/i18n';
  * and "Disc N" subheadings inside the list for multi-disc albums.
  */
 export function EntityScreen() {
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const {libraryId, view, entityId} = useParams({from: '/app/library/$libraryId/$view/$entityId'});
-  const {title} = useSearch({from: '/app/library/$libraryId/$view/$entityId'});
+  const address = useSearch({from: '/app/library/$libraryId/$view/$entityId'});
+  const {title} = address;
   const navigate = useNavigate();
   const player = usePlayerActions();
   const open = useOpenEntry();
@@ -47,6 +51,13 @@ export function EntityScreen() {
   const projection = snapshot.projection;
   const entity = projection?.entity;
   const kind = entity?.kind ?? view;
+  // The library's sort and filters on what the page lists: a collection's or an author's titles, an
+  // artist's albums and songs, an album's songs. The page's own list stands until one is chosen.
+  const libraryKind = useLibrariesContext().items.find(l => l.id === libraryId)?.kind ?? '';
+  const groups = useMemo(() => entityGroups(libraryId, libraryKind, {kind, id: entityId}), [libraryId, libraryKind, kind, entityId]);
+  const choose = useCallback((patch: Record<string, string | undefined>) => void navigate({to: '/library/$libraryId/$view/$entityId', params: {libraryId, view, entityId}, search: {...address, ...patch}, replace: true, resetScroll: false}), [navigate, libraryId, view, entityId, address]);
+  const titleGroup = useGroupBrowse(groups.titles, {sort: address.sort, direction: address.direction, filters: address.filters}, useCallback((next: GroupChoice) => choose({sort: next.sort, direction: next.direction, filters: next.filters}), [choose]));
+  const songGroup = useGroupBrowse(groups.songs, {sort: address.songSort, direction: address.songDirection, filters: address.songFilters}, useCallback((next: GroupChoice) => choose({songSort: next.sort, songDirection: next.direction, songFilters: next.filters}), [choose]));
   const isAlbum = kind === 'album' || kind === 'disc';
   const isArtist = kind === 'artist';
   const isMusicList = isAlbum || isArtist;
@@ -85,11 +96,19 @@ export function EntityScreen() {
     if (!queue.length) return;
     player.playSequence(queue, 0, queue[0]!.playback!.startSeconds ?? 0, container);
   };
+  // A sorted or filtered song list plays on in the order shown, as the Songs tab does: the songs loaded after the one pressed.
+  const playSorted = (index: number) => {
+    const list = songGroup.collection;
+    if (!list) return;
+    const queue: ContentEntry[] = [];
+    for (let i = index; i < index + 200; i++) { const item = list.itemAt(i); if (!item) break; if (item.playback) queue.push(item); }
+    if (queue.length) player.playSequence(queue, 0, 0);
+  };
   // An album, book or artist keeps its own personal state on the container route (O(1)): the
   // watched default for a book, and Favorite for all three. Music has no "watched" at all. Other
   // kinds have no container state, so the hook idles. Every hook stays above the returns below.
   const containerKind = entity ? containerKindFor(entity.kind) : undefined;
-  const containerWatched = useContainerWatched(api, containerKind, containerKind && entity ? entity.id : undefined);
+  const containerWatched = useContainerWatched(api, containerKind, containerKind && entity ? entity.id : undefined, {title: entity?.title, onChanged: refresh});
   const watchedKind = entity?.kind === 'book' ? containerKind : undefined;
   const canFavorite = containerWatched.carries('favorite');
   // My List: a book to listen to sits beside the shows and films to watch.
@@ -152,6 +171,7 @@ export function EntityScreen() {
   const parts = entity?.kind === 'book' ? appendedSections.find(section => section.entries.length > 0 && section.entries.every(e => e.kind === 'audiobook_file')) : undefined;
   const onePart = !!parts && parts.entries.length === 1 && !parts.nextCursor;
   const legacySections = !isMusicList ? appendedSections.filter(section => !(section.entries.length === 1 && section.entries[0]!.kind === 'disc') && !(onePart && section === parts)) : [];
+  const titleBar = groups.titles && snapshot.sections.length ? <Inset><GroupBar group={titleGroup} total={isArtist ? releases?.totalCount : legacySections[0]?.totalCount} /></Inset> : null;
   return (
     <div style={{position: 'relative'}}>
         <TitleHero
@@ -172,7 +192,7 @@ export function EntityScreen() {
               {music && loaded.length > 1 ? <Button variant="secondary" size="lg" icon="shuffle" label={t('title.shuffle')} onClick={shuffle} /> : null}
               {canList && entity ? <Button variant="secondary" size="lg" icon={listed ? 'bookmarkFilled' : 'bookmark'} label={t(listed ? 'title.inWatchlist' : 'title.watchlist')} selected={listed} disabled={!containerWatched.state} onClick={() => void containerWatched.setFlag('watchlisted', !listed)} /> : null}
               {canFavorite && entity ? <Button variant="secondary" size="lg" icon={favorite ? 'heartFilled' : 'heart'} aria-label={t(favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} title={t(favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} selected={favorite} disabled={!containerWatched.state} onClick={() => void containerWatched.setFlag('favorite', !favorite)} /> : null}
-              {watchedKind && entity ? <Button variant="secondary" size="lg" icon={containerWatched.state?.watched ? 'watched' : 'check'} aria-label={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} title={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} selected={containerWatched.state?.watched} disabled={containerWatched.saving} onClick={() => void containerWatched.setWatched(!(containerWatched.state?.watched ?? false)).then(done => { if (done) retry(); })} /> : null}
+              {watchedKind && entity ? <Button variant="secondary" size="lg" icon={containerWatched.state?.watched ? 'watched' : 'check'} aria-label={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} title={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} selected={containerWatched.state?.watched} disabled={containerWatched.saving} onClick={() => void containerWatched.setWatched(!(containerWatched.state?.watched ?? false))} /> : null}
               {canDownload && downloadKind && entity ? <Button variant="secondary" size="lg" icon="download" aria-label={t('entry.download')} title={t('entry.download')} onClick={() => downloads.ask({target: {containerId: entity.id, containerKind: downloadKind}, title: entity.title})} /> : null}
               {entityMore ? <Button variant="secondary" size="lg" icon="more" aria-label={t('title.moreActions')} title={t('title.moreActions')} onClick={(e: React.MouseEvent<HTMLElement>) => player.more(entityMore, anchorOf(e.currentTarget), 'page')} /> : null}
             </>
@@ -181,7 +201,6 @@ export function EntityScreen() {
       <Page>
         {snapshot.phase === 'loading' && !snapshot.sections.length ? <LoadingShelves density={shape === 'square' ? 'square' : 'poster'} /> : null}
         {snapshot.phase === 'error' && !snapshot.sections.length ? <ErrorState error={snapshot.error} context="collection" retry={retry} refresh={refresh} /> : null}
-        <WatchedUndo watched={containerWatched} onUndone={refresh} />
         {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="collection" refresh={refresh} /></Inset> : null}
         {/* Entity sections sit above the backdrop scrim (Detail `.body` rule). */}
         <div className={body.body}>
@@ -199,6 +218,17 @@ export function EntityScreen() {
           ) : null}
           {isMusicList && songs?.entries.length ? (
             <ArtistSongsHeading show={isArtist} title={t('title.tracks')}>
+            <Inset><GroupBar group={songGroup} total={songs.totalCount} /></Inset>
+            {songGroup.active ? (
+              <GroupRows
+                group={songGroup}
+                label={t('title.tracks')}
+                context="collection"
+                estimateRowHeight={64}
+                renderItem={(entry, index) => <TrackRow kind={isArtist ? 'artist' : 'album'} albumArtist={isAlbum ? entity?.subtitle : undefined} entry={entry} index={index} onPlay={playSorted} onMore={(e, el) => open(e, 'more', libraryId, anchorOf(el))} />}
+                renderPlaceholder={() => <div style={{height: 64, padding: '8px 16px'}}><Skeleton height={48} /></div>}
+              />
+            ) : (
             <MusicTracks
               kind={isArtist ? 'artist' : 'album'}
               albumArtist={isAlbum ? entity?.subtitle : undefined}
@@ -207,24 +237,38 @@ export function EntityScreen() {
               onMore={(entry, el) => open(entry, 'more', libraryId, anchorOf(el))}
               onShowMore={songs.nextCursor ? () => next(songs.id) : undefined}
             />
+            )}
             </ArtistSongsHeading>
           ) : null}
+          {/* An artist's albums, a collection's or an author's titles: the library's toolbar under their heading, and the library's own grid once a sort or filter is chosen. */}
+          {titleGroup.active ? (
+            <Section title={isArtist ? t('title.albums') : legacySections[0] ? sectionHeading(i18n, legacySections[0].heading) : undefined}>
+              {titleBar}
+              <GroupGrid group={titleGroup} square={libraryKind === 'music' || libraryKind === 'audiobook'} />
+            </Section>
+          ) : null}
           {/* Releases by type: Albums, Singles & EPs, Compilations, Appears on (client-core `artistReleaseGroups`). */}
-          {isArtist && hasReleaseRoles && releases ? releaseGroups.map((group, index) => {
+          {isArtist && hasReleaseRoles && releases && !titleGroup.active ? releaseGroups.map((group, index) => {
             const last = index === releaseGroups.length - 1;
-            return (
+            const barred = index === 0 && !!titleBar;
+            const view = (
               <SectionView
                 key={group.id}
                 section={{...releases, id: group.id, heading: {key: group.label, fallback: t(group.label)}, entries: group.entries, totalCount: group.entries.length, nextCursor: last ? releases.nextCursor : ''}}
                 libraryId={libraryId}
+                hideTitle={barred}
                 loadingMore={snapshot.phase === 'loading'}
                 onMore={last && releases.nextCursor ? () => next(releases.id) : undefined}
               />
             );
+            return barred ? <Section key={group.id} title={t(group.label)}>{titleBar}{view}</Section> : view;
           }) : null}
-          {isMusicList
-            ? rest.map(section => <SectionView key={section.id} section={section} libraryId={libraryId} loadingMore={snapshot.phase === 'loading'} onMore={section.nextCursor ? () => next(section.id) : undefined} />)
-            : legacySections.map(section => <SectionView key={section.id} section={section} libraryId={libraryId} loadingMore={snapshot.phase === 'loading'} onMore={section.nextCursor ? () => next(section.id) : undefined} />)}
+          {(isMusicList ? rest.filter(section => !(titleGroup.active && section.id === 'releases')) : titleGroup.active ? [] : legacySections).map((section, index) => {
+            // The list the toolbar is for: an artist's undivided releases, or a collection's or author's titles.
+            const barred = !!titleBar && (isArtist ? section.id === 'releases' : !isMusicList && index === 0);
+            const view = <SectionView key={section.id} section={section} libraryId={libraryId} hideTitle={barred} loadingMore={snapshot.phase === 'loading'} onMore={section.nextCursor ? () => next(section.id) : undefined} />;
+            return barred ? <Section key={section.id} title={sectionHeading(i18n, section.heading)}>{titleBar}{view}</Section> : view;
+          })}
         </div>
         {entity && (detailRows.length || entity.overviewSource) ? (
           <Section title={t('title.details')}>
@@ -260,26 +304,8 @@ function MusicTracks({kind, albumArtist, entries, onPlay, onMore, onShowMore}: {
 }) {
   const {t} = useI18n();
   const wordsT = t as unknown as WordsT;
-  // The playing track is marked in its list.
-  const playingId = usePlayingItemId();
   if (!entries.length) return null;
-  const row = (entry: ContentEntry, index: number) => {
-    const subtitle = kind === 'album' ? trackSubtitleForAlbum(entry.subtitle, albumArtist) : undefined;
-    return (
-      <ListRow
-        key={`${entry.id}:${index}`}
-        index={kind === 'album' ? entry.trackNumber ?? index + 1 : undefined}
-        title={entry.title}
-        subtitle={subtitle}
-        meta={entry.duration ? formatClock(entry.duration) : undefined}
-        art={kind === 'artist' ? {path: entry.posterUrl ?? entry.backdropUrl, icon: !entry.posterUrl && !entry.backdropUrl ? iconFor(entry.kind) : undefined} : undefined}
-        artShape="square"
-        selected={!!playingId && playingId === (entry.playback?.itemId ?? entry.id)}
-        onClick={entry.playback ? () => onPlay(index) : undefined}
-        actions={entry.navigation ? <Button variant="ghost" size="sm" icon="more" aria-label={t('card.more', {title: entry.title})} onClick={(e: React.MouseEvent<HTMLElement>) => onMore(entry, e.currentTarget)} /> : undefined}
-      />
-    );
-  };
+  const row = (entry: ContentEntry, index: number) => <TrackRow key={`${entry.id}:${index}`} kind={kind} albumArtist={albumArtist} entry={entry} index={index} onPlay={onPlay} onMore={onMore} />;
   // Multi-disc albums group rows under one Section per disc ("Disc N"); a
   // single disc — or tracks without a disc number — renders with no heading
   // (never "Unnumbered disc").
@@ -322,5 +348,25 @@ function MusicTracks({kind, albumArtist, entries, onPlay, onMore, onShowMore}: {
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** One track: its number on an album (square art on an artist's page), title, a guest artist, duration and ⋯. The playing track is marked. */
+function TrackRow({kind, albumArtist, entry, index, onPlay, onMore}: {kind: 'album' | 'artist'; albumArtist?: string; entry: ContentEntry; index: number; onPlay: (index: number) => void; onMore: (entry: ContentEntry, el: Element) => void}) {
+  const {t} = useI18n();
+  const playingId = usePlayingItemId();
+  const subtitle = kind === 'album' ? trackSubtitleForAlbum(entry.subtitle, albumArtist) : undefined;
+  return (
+    <ListRow
+      index={kind === 'album' ? entry.trackNumber ?? index + 1 : undefined}
+      title={entry.title}
+      subtitle={subtitle}
+      meta={entry.duration ? formatClock(entry.duration) : undefined}
+      art={kind === 'artist' ? {path: entry.posterUrl ?? entry.backdropUrl, icon: !entry.posterUrl && !entry.backdropUrl ? iconFor(entry.kind) : undefined} : undefined}
+      artShape="square"
+      selected={!!playingId && playingId === (entry.playback?.itemId ?? entry.id)}
+      onClick={entry.playback ? () => onPlay(index) : undefined}
+      actions={entry.navigation ? <Button variant="ghost" size="sm" icon="more" aria-label={t('card.more', {title: entry.title})} onClick={(e: React.MouseEvent<HTMLElement>) => onMore(entry, e.currentTarget)} /> : undefined}
+    />
   );
 }

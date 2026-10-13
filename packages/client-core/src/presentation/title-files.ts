@@ -99,3 +99,53 @@ export function titleFileLines(file: TitleFile, t: Translate, languageName: (cod
     available: file.available,
   });
 }
+
+/** What tells one version from another when their headline reads the same. */
+export type VersionFacts = Readonly<{edition?: string; bitRate?: number; size?: number}>;
+
+/**
+ * The names of a title's versions as the Version control lists them. A version is its headline
+ * ("1080p · H.264 · MKV") and its edition when it has one. Versions that would still read the same
+ * each gain the first fact that tells them all apart: the bit rate, else the file size, else their
+ * number in the title's Files list ("Version 2"). No two versions ever read alike.
+ */
+export function versionNames(versions: readonly Readonly<{id: string; label: string}>[], facts: Readonly<Record<string, VersionFacts>>, t: Translate): readonly Readonly<{id: string; label: string}>[] {
+  const base = versions.map(v => [v.label, facts[v.id]?.edition].filter(Boolean).join(' · '));
+  return versions.map((version, index) => {
+    const same = versions.map((_, i) => i).filter(i => base[i] === base[index]);
+    if (same.length < 2) return {id: version.id, label: base[index]!};
+    const told = (words: (id: string) => string) => { const said = same.map(i => words(versions[i]!.id)); return said.every(Boolean) && new Set(said).size === said.length ? words(version.id) : ''; };
+    const extra = told(id => formatBitRate(facts[id]?.bitRate)) || told(id => (facts[id]?.size ? formatBytes(facts[id]!.size!) : '')) || t('mediaInfo.version', {number: index + 1});
+    return {id: version.id, label: [base[index], extra].filter(Boolean).join(' · ')};
+  });
+}
+
+/** A subtitle track as the menus need it named. */
+export type NamedSubtitleTrack = Readonly<{id: string; language?: string; title?: string; format?: string; forced?: boolean; hearingImpaired?: boolean}>;
+
+/**
+ * The names of a title's subtitle tracks as a menu lists them: the language and what the track
+ * says of itself (`trackName`), then "Forced" or "SDH" when the track is marked so and its title
+ * did not already say it. Tracks that would still read the same (two unnamed English files) each
+ * gain their format ("SRT", "ASS", "PGS"), and where that is the same too, a number. No two
+ * tracks ever read alike, so a choice is never a guess.
+ */
+export function subtitleTrackNames(tracks: readonly NamedSubtitleTrack[], t: Translate, locale?: string): ReadonlyMap<string, string> {
+  const said = (name: string, word: string) => name.toLowerCase().includes(word.toLowerCase());
+  const base = tracks.map((track, index) => {
+    const name = trackName(track, locale) || (track.title ?? '').trim() || t('mediaInfo.track', {number: index + 1});
+    const forced = track.forced && !said(name, 'forced') ? t('player.opt.forced') : '';
+    const sdh = track.hearingImpaired && !/\b(sdh|cc|hearing)\b/i.test(name) ? 'SDH' : '';
+    return [name, forced, sdh].filter(Boolean).join(' · ');
+  });
+  const withFormat = base.map((name, index) => (base.filter(other => other === name).length > 1 && tracks[index]!.format ? `${name} · ${codecLabel(tracks[index]!.format!)}` : name));
+  const seen = new Map<string, number>();
+  const names = new Map<string, string>();
+  withFormat.forEach((name, index) => {
+    const repeats = withFormat.filter(other => other === name).length > 1;
+    const number = (seen.get(name) ?? 0) + 1;
+    seen.set(name, number);
+    names.set(tracks[index]!.id, repeats ? `${name} (${number})` : name);
+  });
+  return names;
+}

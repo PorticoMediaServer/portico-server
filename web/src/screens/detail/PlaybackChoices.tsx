@@ -7,7 +7,7 @@ import {useFreshDocument} from '../../app/freshness';
 import {useSession} from '../../app/session';
 import {useViewerScope} from '../../app/viewer-scope';
 import {Select} from '../../ui';
-import {channelsLabel, codecLabel, resolutionLabel} from '@core/presentation/index.ts';
+import {channelsLabel, codecLabel, resolutionLabel, subtitleTrackNames, versionNames, type VersionFacts} from '@core/presentation/index.ts';
 import s from './Detail.module.css';
 import {useI18n, type I18n} from '../../app/i18n';
 
@@ -26,7 +26,7 @@ export type PlaybackChoice = Readonly<{prepared?: PreparedChoice; quality?: stri
    * copy the quality it was made at (the server then plays that copy). */
   choices?: StartChoices}>;
 
-export function PlaybackChoices({libraryId, itemId, onChange, compact, editions}: {libraryId: string; itemId: string; onChange: (choice: PlaybackChoice) => void; /** Phones: one row that wraps. */ compact?: boolean; /** A version's edition by its file id (the title's Files list), so two versions that differ only by edition read differently. */ editions?: Readonly<Record<string, string>>}) {
+export function PlaybackChoices({libraryId, itemId, onChange, compact, facts}: {libraryId: string; itemId: string; onChange: (choice: PlaybackChoice) => void; /** Phones: one row that wraps. */ compact?: boolean; /** What tells one version from another, by its file id (the title's Files list): its edition, bit rate and size. Two versions never read the same. */ facts?: Readonly<Record<string, VersionFacts>>}) {
   const {api} = useSession();
   const scope = useViewerScope();
   const service = useMemo(() => new PlayerOffersService({api, scope: {serverId: scope.serverId, viewerId: scope.viewerId}}), [api, scope.serverId, scope.viewerId]);
@@ -66,12 +66,12 @@ export function PlaybackChoices({libraryId, itemId, onChange, compact, editions}
   }, [data, version, audio, subtitle]);
   if (!data) return null;
   const versions = [
-    ...data.sources.map(x => ({value: x.id, label: [sourceLabel(i18n, x.height, x.videoCodec, x.container), editions?.[x.id]].filter(Boolean).join(' · ')})),
+    ...versionNames(data.sources.map(x => ({id: x.id, label: sourceLabel(i18n, x.height, x.videoCodec, x.container)})), facts ?? {}, t).map(x => ({value: x.id, label: x.label})),
     ...data.preparedVersions.filter(v => v.selectable && v.state === 'published').map(v => ({value: `prepared:${v.id}`, label: `${sourceLabel(i18n, v.facts.height, v.facts.videoCodec, v.facts.container)} · ${t('title.preparedVersion')}`})),
   ];
   const audioOptions = audioStreams.map((x, i) => ({value: String(x.index), label: audioLabel(i18n, x, i + 1)}));
   const subtitleTracks = subtitleResources.some(r => r.enabled)
-    ? subtitleResources.filter(r => r.enabled).map(r => ({value: r.id, label: [r.language && r.language !== 'und' ? i18n.languageName(r.language) : undefined, r.title].filter(Boolean).join(' · ') || r.id}))
+    ? (names => subtitleResources.filter(r => r.enabled).map(r => ({value: r.id, label: names.get(r.id) ?? r.id})))(subtitleTrackNames(subtitleResources.filter(r => r.enabled), t, i18n.locale))
     : [...new Map(subtitleStreams.map(x => [x.language!, {value: `lang:${x.language}`, label: i18n.languageName(x.language!)}])).values()];
   const subtitleOptions = [{value: '', label: t('title.subtitlesAutomatic')}, {value: 'off', label: t('title.subtitlesOff')}, ...subtitleTracks];
   // One control is noise; the row appears when there is a choice to make somewhere.

@@ -6,7 +6,7 @@ import {QueueList} from './QueueList';
 import {useI18n} from '../app/i18n';
 import {syncRate} from '../bridge/sync-rate';
 import {FeedbackDialog} from '../screens/shared/FeedbackDialog';
-import {trackName} from '@core/presentation/index.ts';
+import {subtitleTrackNames, trackName} from '@core/presentation/index.ts';
 import React, {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {playbackUserMessage} from '@core/playback-messages.ts';
 import {playbackFailure} from './failure';
@@ -306,7 +306,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const toggleSubtitles = () => {
     const plan = subtitles.snapshot.plan;
     if (!subtitles.service || !plan || subtitles.snapshot.busy) return;
-    if (plan.mode === 'track' && !subtitles.snapshot.suppressed) { lastSubtitle.current = plan.selected?.id; void subtitles.turnOff().catch(() => {}); return; }
+    if (plan.mode === 'track' && !subtitles.snapshot.suppressed) { lastSubtitle.current = plan.selected?.id; void subtitles.turnOff().catch(() => subtitleChangeFailed()); return; }
     const pick = plan.resources.find(r => r.id === lastSubtitle.current && r.enabled) ?? plan.resources.find(r => r.enabled && !burnsIn(r)) ?? plan.resources.find(r => r.enabled);
     if (pick) chooseSubtitle(pick); else flash(i18n.t('web.player.subtitles.none'));
   };
@@ -434,7 +434,13 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const watchSubtitles = subtitlePlan?.mode === 'track' || openBox === 'subtitles';
   useEffect(() => { subtitles.service?.setPolling(watchSubtitles); }, [subtitles.service, watchSubtitles]);
   // The pill names the language ("French", "English · SDH"), not the file's stock track title.
-  const currentSubtitle = subtitlePlan?.mode === 'track' && !subtitles.snapshot.suppressed ? (subtitlePlan.selected ? trackName(subtitlePlan.selected, i18n.locale) : '') || 'On' : 'Off';
+  // Every track reads differently in the menu: two unnamed files in one language gain their format (the shared rule).
+  const subtitleNames = useMemo(() => subtitleTrackNames(subtitlePlan?.resources ?? [], i18n.t, i18n.locale), [subtitlePlan?.resources, i18n]);
+  const subtitleName = (r: {id: string; title: string; language?: string}) => subtitleNames.get(r.id) ?? (trackName(r, i18n.locale) || r.title);
+  const subtitlesOn = subtitlePlan?.mode === 'track' && !subtitles.snapshot.suppressed;
+  const currentSubtitle = subtitlesOn ? (subtitlePlan?.selected ? subtitleName(subtitlePlan.selected) : '') || i18n.t('player.opt.on') : i18n.t('player.opt.off');
+  // A choice the playing session refused is said, and the subtitles stay as they were.
+  const subtitleChangeFailed = () => setNotice(i18n.t('player.subtitles.changeFailed'));
   const offersData = offers.data;
   // The playing source's height, from its offers (PERF-24: the item isn't read again for it).
   const originalHeight = offersData?.sources.find(x => x.id === offersData.current?.sourceId)?.height || identity.item?.sources?.[0]?.height;
@@ -456,7 +462,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     if (burnsIn(resource)) {
       const text = textTrackForLanguage(subtitlePlan?.resources ?? [], resource.language);
       if (text && text.id !== resource.id) {
-        void subtitles.choose(text).catch(() => {});
+        void subtitles.choose(text).catch(subtitleChangeFailed);
         setNotice(i18n.t('player.subtitles.preferredText'));
         setOpenBox(null);
         return;
@@ -466,7 +472,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
         return;
       }
     }
-    void subtitles.choose(resource).catch(() => {});
+    void subtitles.choose(resource).catch(subtitleChangeFailed);
     setOpenBox(null);
   };
   const confirmBitmap = () => {
@@ -474,7 +480,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     setBitmapPending(null);
     if (!pending || !subtitles.service) return;
     bitmapAcknowledged.current.add(pending.id);
-    void subtitles.choose(pending).catch(() => {});
+    void subtitles.choose(pending).catch(subtitleChangeFailed);
     setOpenBox(null);
   };
   /* Pick before play: the title page's audio/subtitle choice, applied by the shared rule
@@ -491,7 +497,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     }, {
       selectRendition: id => { service.selectAudio(id); },
       selectTrack: stream => { void service.selectAudioTrack(stream); },
-      chooseSubtitle: id => { const resource = id ? subtitlePlan?.resources.find(r => r.id === id) : null; if (resource === null) void subtitles.turnOff().catch(() => {}); else if (resource) void subtitles.choose(resource).catch(() => {}); },
+      chooseSubtitle: id => { const resource = id ? subtitlePlan?.resources.find(r => r.id === id) : null; if (resource === null) void subtitles.turnOff().catch(subtitleChangeFailed); else if (resource) void subtitles.choose(resource).catch(subtitleChangeFailed); },
     });
   }, [state.session?.id, state.itemId, audioPlan.plan, audioPlan.availability, state.audioTracks, subtitlePlan, subtitles.service, subtitles.snapshot.busy, service]);
   /* Quality. Original is the default; Automatic starts at Original and moves down, and back up,
@@ -645,7 +651,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     <button key={label + meta} type="button" role="menuitemradio" aria-checked={checked} className={s.option} onClick={onSelect} disabled={disabled}><span>{label}</span>{meta ? <span className={s.optionMeta}>{meta}</span> : checked ? <Icon name="check" size={16} /> : null}</button>
   );
   return (
-    <div ref={stage} className={cx(s.stage, isAudio && s.audio, hidden && s.hidden)} hidden={!visible} aria-label={`Playing ${identity.title}`} role="region" onPointerMove={e => { if (e.pointerType === 'mouse') reveal(); }} onPointerDown={e => { pointerKind.current = e.pointerType || 'mouse'; hiddenAtDown.current = chromeHidden && canHide; reveal(); }} tabIndex={-1}>
+    <div ref={stage} className={cx(s.stage, isAudio && s.audio, hidden && s.hidden)} hidden={!visible} aria-label={i18n.t('player.stageLabel', {title: identity.title})} role="region" onPointerMove={e => { if (e.pointerType === 'mouse') reveal(); }} onPointerDown={e => { pointerKind.current = e.pointerType || 'mouse'; hiddenAtDown.current = chromeHidden && canHide; reveal(); }} tabIndex={-1}>
       {isAudio ? <Backdrop path={identity.backdropUrl ?? identity.posterUrl} height="100%" opacity={0.35} position="center" /> : null}
       <video
         ref={video}
@@ -704,7 +710,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
           <div className={s.identity}>
             {/* Now Playing says the title once, under the cover. */}
             {isAudio ? null : <span className={s.title}>{linear ? linear.name : identity.title}</span>}
-            <span className={s.subtitle}>{isAudio ? null : linear ? `On now: ${linear.programme?.title ?? 'Program information unavailable'}${linear.next ? ` · Next: ${linear.next.title}` : ''}` : identity.subtitle}</span>
+            <span className={s.subtitle}>{isAudio ? null : linear ? [i18n.t('player.live.onNow', {title: linear.programme?.title ?? i18n.t('player.live.noProgramme')}), linear.next ? i18n.t('player.live.next', {title: linear.next.title}) : null].filter(Boolean).join(' · ') : identity.subtitle}</span>
             <GroupPill />
           </div>
           <div className={s.topActions}>
@@ -716,8 +722,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                 MU4 FEAT-07: linear sessions get Guide (mini guide) and Record here, never new top-bar buttons. */}
             <Menu label={i18n.t('player.more')} trigger={<IconButton name="more" label={i18n.t('player.more')} variant="ghost" />} items={[...(linear ? [{id: 'guide', label: i18n.t('player.live.guide'), icon: 'channels' as IconName}, ...(canRecordLive ? [{id: 'record', label: i18n.t('guide.record'), icon: 'dvr' as IconName}] : [])] : [...(!isAudio && !inRoom && state.itemId ? [{id: 'together', label: i18n.t('player.watchTogether'), icon: 'people' as IconName}] : []), ...(!isAudio ? [{id: 'fit', label: i18n.t(fill ? 'web.player.fit.contain' : 'web.player.fit.fill'), icon: 'fullscreen' as IconName}] : []), {id: 'info', label: i18n.t('player.opt.info'), icon: 'info' as IconName}, {id: 'report', label: i18n.t('player.reportProblem'), icon: 'flag' as IconName}]), ...(!compact ? [{id: 'shortcuts', label: i18n.t('player.shortcuts'), icon: 'keyboard' as IconName}] : [])]} onSelect={id => (id === 'report' ? setReport(true) : id === 'guide' ? setMiniGuide(true) : id === 'record' ? recordLive() : id === 'info' ? setInfo(v => !v) : id === 'together' ? watchTogether() : id === 'fit' ? toggleFill() : setLegend(true))} />
             {!isAudio ? <IconButton name={fullscreen ? 'exitFullscreen' : 'fullscreen'} label={i18n.t(fullscreen ? 'web.player.exitFullscreen' : 'web.player.fullscreen')} variant="ghost" onClick={() => void toggleFullscreen()} /> : null}
-            {isAudio ? <IconButton name="chevronDown" label="Minimize player" variant="ghost" onClick={engine.collapse} /> : null}
-            <IconButton name="close" label="Close player" variant="ghost" onClick={close} />
+            {isAudio ? <IconButton name="chevronDown" label={i18n.t('player.minimize')} variant="ghost" onClick={engine.collapse} /> : null}
+            <IconButton name="close" label={i18n.t('player.close')} variant="ghost" onClick={close} />
           </div>
         </header>
         <div className={s.bottom} ref={bottom}>
@@ -731,44 +737,44 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
               {!compact && queue && isAudio ? <QueuePreference queue={queue} kind="shuffle" onError={setNotice} /> : null}
             </div>
             <div className={s.cluster}>
-              {engine.canPrevious && queueCount > 1 ? <button type="button" className={s.control} aria-label="Previous" disabled={!usable} onClick={engine.previous}><Icon name="previous" size={22} /></button> : null}
-              {isMusic ? null : <button type="button" className={s.control} aria-label={`Back ${skipBack} seconds`} disabled={!usable} onClick={() => engine.seekBy(-skipBack)}><Icon name="back10" size={24} /><span className={s.seekBadge} aria-hidden>{skipBack}</span></button>}
-              <button type="button" className={cx(s.control, s.play)} aria-label={hostControls ? i18n.t('web.together.pill.hostControls') : state.intent === 'playing' ? 'Pause' : 'Play'} title={hostControls ? i18n.t('web.together.pill.hostControls') : undefined} disabled={hostControls || (!state.session && state.phase !== 'starting' && state.phase !== 'error')} onClick={engine.toggle}><Icon name={state.phase === 'error' ? 'refresh' : state.intent === 'playing' ? 'pause' : 'play'} size={28} /></button>
-              {isMusic ? null : <button type="button" className={s.control} aria-label={`Forward ${skipForward} seconds`} disabled={!usable} onClick={() => engine.seekBy(skipForward)}><Icon name="forward10" size={24} /><span className={s.seekBadge} aria-hidden>{skipForward}</span></button>}
-              {engine.canNext ? <button type="button" className={s.control} aria-label="Next" disabled={!usable} onClick={engine.next}><Icon name="next" size={22} /></button> : null}
+              {engine.canPrevious && queueCount > 1 ? <button type="button" className={s.control} aria-label={i18n.t('player.previous')} disabled={!usable} onClick={engine.previous}><Icon name="previous" size={22} /></button> : null}
+              {isMusic ? null : <button type="button" className={s.control} aria-label={i18n.t('player.skipBackSeconds', {seconds: skipBack})} disabled={!usable} onClick={() => engine.seekBy(-skipBack)}><Icon name="back10" size={24} /><span className={s.seekBadge} aria-hidden>{skipBack}</span></button>}
+              <button type="button" className={cx(s.control, s.play)} aria-label={hostControls ? i18n.t('web.together.pill.hostControls') : i18n.t(state.intent === 'playing' ? 'action.pause' : 'action.play')} title={hostControls ? i18n.t('web.together.pill.hostControls') : undefined} disabled={hostControls || (!state.session && state.phase !== 'starting' && state.phase !== 'error')} onClick={engine.toggle}><Icon name={state.phase === 'error' ? 'refresh' : state.intent === 'playing' ? 'pause' : 'play'} size={28} /></button>
+              {isMusic ? null : <button type="button" className={s.control} aria-label={i18n.t('player.skipForwardSeconds', {seconds: skipForward})} disabled={!usable} onClick={() => engine.seekBy(skipForward)}><Icon name="forward10" size={24} /><span className={s.seekBadge} aria-hidden>{skipForward}</span></button>}
+              {engine.canNext ? <button type="button" className={s.control} aria-label={i18n.t('player.next')} disabled={!usable} onClick={engine.next}><Icon name="next" size={22} /></button> : null}
             </div>
             <div className={s.clusterRight}>
               {!compact && queue && isAudio ? <QueuePreference queue={queue} kind="repeat" onError={setNotice} /> : null}
               <div className={s.volume}>
-                <button type="button" className={s.control} aria-label={engine.muted ? 'Unmute' : 'Mute'} onClick={() => engine.setMuted(!engine.muted)}><Icon name={engine.muted || engine.volume === 0 ? 'mute' : 'audio'} size={20} /></button>
-                <input className={s.volumeRange} type="range" min={0} max={1} step={0.05} value={engine.muted ? 0 : engine.volume} aria-label="Volume" onChange={e => { engine.setVolume(Number(e.target.value)); engine.setMuted(false); }} />
+                <button type="button" className={s.control} aria-label={i18n.t(engine.muted ? 'player.unmute' : 'player.mute')} onClick={() => engine.setMuted(!engine.muted)}><Icon name={engine.muted || engine.volume === 0 ? 'mute' : 'audio'} size={20} /></button>
+                <input className={s.volumeRange} type="range" min={0} max={1} step={0.05} value={engine.muted ? 0 : engine.volume} aria-label={i18n.t('player.volume')} onChange={e => { engine.setVolume(Number(e.target.value)); engine.setMuted(false); }} />
               </div>
             </div>
           </div>
           {!linear && compact ? (
             <div className={s.options}>
-              <button type="button" className={s.box} onClick={() => setSheet(true)} aria-label="Playback options"><Icon name="settings" size={16} />Options <strong>{[currentAudio?.label, !isAudio && currentSubtitle !== 'Off' ? `Subtitles ${currentSubtitle}` : null, rate === 1 ? null : `${rate}×`].filter(Boolean).join(' · ') || (isAudio ? 'Speed, sleep' : 'Audio, subtitles, quality')}</strong></button>
+              <button type="button" className={s.box} onClick={() => setSheet(true)} aria-label={i18n.t('player.opt.menu')}><Icon name="settings" size={16} />{i18n.t('player.opt.short')} <strong>{[currentAudio?.label, !isAudio && subtitlesOn ? i18n.t('player.opt.subtitlesNamed', {name: currentSubtitle}) : null, rate === 1 ? null : `${rate}×`].filter(Boolean).join(' · ') || i18n.t(isAudio ? 'player.opt.summaryListening' : 'player.opt.summaryWatching')}</strong></button>
             </div>
           ) : null}
           {/* WEB-PLAYER-03: the row stays mounted while the chrome fades, so the first click lands on a box, not the video. */}
           {!linear ? (
             <div className={cx(s.options, compact && s.optionsSheet)} hidden={compact && !sheet}>
-              {box('audio', 'audio', 'Audio', audioPlan.availability === 'loading' ? '…' : currentAudio?.label ?? (audioPlan.availability === 'available' ? 'Default' : 'Default'), (
+              {box('audio', 'audio', i18n.t('player.opt.audio'), audioPlan.availability === 'loading' ? '…' : currentAudio?.label ?? i18n.t('player.opt.defaultTrack'), (
                 <>
                   {(!audioPlan.plan || audioPlan.availability==='unavailable') ? state.audioTracks?.tracks.map(t => optionRow(t.label,t.streamIndex===(state.audioTracks?.pending??state.audioTracks?.selected),()=>{void service.selectAudioTrack(t.streamIndex).catch(()=>setNotice(i18n.t('web.player.audio.changeFailed')));setOpenBox(null);},undefined,state.audioTracks?.pending!==undefined)) : null}
-                  {audioPlan.availability!=='unavailable' && audioPlan.plan?.renditions.map(r => optionRow(r.label, r.id === (audioPlan.pending?.renditionId ?? audioPlan.observedRenditionId), () => { service.selectAudio(r.id); setOpenBox(null); }, (r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id))?'Unavailable':undefined, !!audioPlan.pending||!!r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id)))}
-                  {!audioPlan.plan?.renditions.length ? <Text variant="caption" tone="tertiary">{audioPlan.reason ?? 'This stream has one audio track.'}</Text> : null}
-                  {audioPlan.failed && !audioPlan.failed.unavailable ? <Button size="sm" variant="outline" label="Try again" onClick={() => service.selectAudio(audioPlan.failed!.renditionId)} /> : null}
-                  {state.session?.mode === 'hls' ? <Button size="sm" variant="ghost" icon="refresh" label="Refresh" onClick={refreshAudio} /> : null}
+                  {audioPlan.availability!=='unavailable' && audioPlan.plan?.renditions.map(r => optionRow(r.label, r.id === (audioPlan.pending?.renditionId ?? audioPlan.observedRenditionId), () => { service.selectAudio(r.id); setOpenBox(null); }, (r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id))?i18n.t('player.opt.unavailable'):undefined, !!audioPlan.pending||!!r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id)))}
+                  {!audioPlan.plan?.renditions.length ? <Text variant="caption" tone="tertiary">{audioPlan.reason ?? i18n.t('player.opt.oneAudioTrack')}</Text> : null}
+                  {audioPlan.failed && !audioPlan.failed.unavailable ? <Button size="sm" variant="outline" label={i18n.t('action.tryAgain')} onClick={() => service.selectAudio(audioPlan.failed!.renditionId)} /> : null}
+                  {state.session?.mode === 'hls' ? <Button size="sm" variant="ghost" icon="refresh" label={i18n.t('action.refresh')} onClick={refreshAudio} /> : null}
                 </>
               ))}
-              {!isAudio ? box('subtitles', 'subtitles', 'Subtitles', currentSubtitle, (
+              {!isAudio ? box('subtitles', 'subtitles', i18n.t('player.opt.subtitles'), currentSubtitle, (
                 <>
                   {subtitles.service && subtitlePlan ? (
                     <>
-                      {optionRow('Off', subtitlePlan.mode === 'off', () => { void subtitles.turnOff().catch(() => {}); setOpenBox(null); })}
-                      {(subtitlePlan.resources ?? []).map(r => optionRow(trackName(r, i18n.locale) || r.title, !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : burnsIn(r) ? i18n.t('player.subtitles.bitmapNote') : r.origin === 'embedded' ? 'In file' : r.origin === 'sidecar' ? 'File' : r.origin === 'upload' ? 'Uploaded' : 'Provider', subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
-                      {(subtitlePlan.discovered ?? []).filter(d => !(subtitlePlan.resources ?? []).some(r => r.discoveryId === d.id && r.enabled)).map(d => optionRow(trackName(d, i18n.locale) || d.title, false, () => { void subtitles.service!.import(d); setOpenBox(null); }, d.enabled ? 'Import' : subtitleReason(d.reason), subtitles.snapshot.busy || !d.enabled))}
+                      {optionRow(i18n.t('player.opt.off'), subtitlePlan.mode === 'off', () => { void subtitles.turnOff().catch(subtitleChangeFailed); setOpenBox(null); })}
+                      {(subtitlePlan.resources ?? []).map(r => optionRow(subtitleName(r), !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : burnsIn(r) ? i18n.t('player.subtitles.bitmapNote') : i18n.t('player.opt.origin', {origin: r.origin}), subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
+                      {(subtitlePlan.discovered ?? []).filter(d => !(subtitlePlan.resources ?? []).some(r => r.discoveryId === d.id && r.enabled)).map(d => optionRow(trackName(d, i18n.locale) || d.title, false, () => { void subtitles.add(d).catch(subtitleChangeFailed); setOpenBox(null); }, d.enabled ? i18n.t('player.opt.add') : subtitleReason(d.reason), subtitles.snapshot.busy || !d.enabled))}
                       {subtitles.snapshot.catalog?.provider.enabled ? (
                         subtitleSearch ? (
                           subtitles.snapshot.busy && !subtitles.snapshot.candidates.length ? <Text variant="caption" tone="tertiary">{i18n.t('player.opt.lookingForSubtitles')}</Text>
@@ -779,54 +785,54 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                       {subtitlePlan.selected ? <div style={{display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap'}} title={i18n.t('player.opt.timingHelp')}><Text variant="caption" tone="tertiary">{i18n.t('player.opt.timing')} {i18n.t('player.opt.offsetSeconds', {seconds: subtitles.offsetSeconds.toFixed(1)})}</Text>{[-0.5, -0.1, 0.1, 0.5].map(step => <Button key={step} size="sm" variant="ghost" label={(step > 0 ? '+' : '−') + Math.abs(step)} onClick={() => { subtitles.nudge(step); }} />)}</div> : null}
                       {subtitles.drawnKind ? <div style={{display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap'}} title={i18n.t('player.subtitles.positionHelp')}><Text variant="caption" tone="tertiary">{subtitles.drawing ? i18n.t('player.subtitles.loadingDrawn') : i18n.t('player.subtitles.position')}</Text><Button size="sm" variant="ghost" label={i18n.t('player.subtitles.moveUp')} onClick={() => moveSubtitles(2)} /><Button size="sm" variant="ghost" label={i18n.t('player.subtitles.moveDown')} onClick={() => moveSubtitles(-2)} />{subtitleRaise !== 0 ? <Button size="sm" variant="ghost" label={i18n.t('player.subtitles.positionReset')} onClick={() => moveSubtitles(null)} /> : null}</div> : null}
                     </>
-                  ) : <Text variant="caption" tone="tertiary">{subtitles.snapshot.loading ? 'Loading subtitle choices…' : subtitles.snapshot.error ?? subtitles.rendererError ?? 'Subtitles are available once playback starts.'}</Text>}
+                  ) : <Text variant="caption" tone="tertiary">{subtitles.snapshot.loading ? i18n.t('player.opt.loadingSubtitles') : subtitles.snapshot.error ?? subtitles.rendererError ?? i18n.t('player.opt.subtitlesLater')}</Text>}
                 </>
               )) : null}
               {!isAudio ? box('quality', 'quality', i18n.t('player.opt.quality'), qualityLabelNow, qualityContent()) : null}
-              {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...audiobookRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
+              {isMusic ? null : box('speed', 'speed', i18n.t('player.opt.speed'), rate === 1 ? i18n.t('player.opt.normalSpeed') : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...audiobookRates] : rates).map(v => optionRow(v === 1 ? i18n.t('player.opt.normalSpeed') : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
               {box('sleep', 'sleep', i18n.t('player.opt.sleep'), sleepLabel, (
                 <>
                   {sleepChoices.map(c => optionRow(sleepChoiceLabel(c), (isAudio ? listening?.timer?.choice ?? 'off' : sleepAt ? videoSleep : 'off') === c, () => setSleep(c)))}
                 </>
               ))}
               {queueCount > 1 && queue ? box('queue', 'queue', i18n.t('player.queue'), String(queueCount - 1), <QueueList queue={queue} />) : null}
-              {!isAudio && chapters.data?.status === 'available' && chapters.data.chapters.length ? box('chapters', 'chapters', 'Chapters', String(chapters.data.chapters.length), (
+              {!isAudio && chapters.data?.status === 'available' && chapters.data.chapters.length ? box('chapters', 'chapters', i18n.t('player.opt.chapters'), String(chapters.data.chapters.length), (
                 <div className={s.chapters}>
                   {chapters.data?.status === 'available' ? chapters.data.chapters.map(ch => (
                     <button key={ch.id} type="button" role="menuitemradio" aria-checked={state.positionSeconds >= ch.startSeconds && state.positionSeconds < ch.endSeconds} className={s.option} onClick={() => { service.seek(ch.action.positionSeconds); setOpenBox(null); }}>
                       <span className={s.chapterRow}>{ch.thumbnailUrl ? <span className={s.chapterThumb}><Artwork path={ch.thumbnailUrl} shape="landscape" alt="" /></span> : null}<span>{ch.index}. {ch.title}</span></span>
                       <span className={s.optionMeta}>{formatClock(ch.startSeconds)}</span>
                     </button>
-                  )) : <Text variant="caption" tone="tertiary">{chapters.state.phase === 'loading' ? 'Loading chapters…' : chapters.data?.status === 'none' ? 'This title has no chapters.' : 'Chapters are unavailable for this stream.'}</Text>}
+                  )) : <Text variant="caption" tone="tertiary">{i18n.t(chapters.state.phase === 'loading' ? 'player.opt.loadingChapters' : chapters.data?.status === 'none' ? 'player.opt.noChapters' : 'player.opt.chaptersUnavailable')}</Text>}
                 </div>
               )) : null}
             </div>
           ) : null}
         </div>
         {compact ? (
-          <Dialog open={sheet} onOpenChange={setSheet} title="Playback options" description={identity.title}>
+          <Dialog open={sheet} onOpenChange={setSheet} title={i18n.t('player.opt.menu')} description={identity.title}>
             <div className={s.sheetList}>
-              {box('audio', 'audio', 'Audio', currentAudio?.label ?? 'Default', (
+              {box('audio', 'audio', i18n.t('player.opt.audio'), currentAudio?.label ?? i18n.t('player.opt.defaultTrack'), (
                 <>
                   {(!audioPlan.plan || audioPlan.availability==='unavailable') ? state.audioTracks?.tracks.map(t => optionRow(t.label,t.streamIndex===(state.audioTracks?.pending??state.audioTracks?.selected),()=>{void service.selectAudioTrack(t.streamIndex).catch(()=>setNotice(i18n.t('web.player.audio.changeFailed')));setOpenBox(null);},undefined,state.audioTracks?.pending!==undefined)) : null}
-                  {audioPlan.availability!=='unavailable' && audioPlan.plan?.renditions.map(r => optionRow(r.label, r.id === (audioPlan.pending?.renditionId ?? audioPlan.observedRenditionId), () => { service.selectAudio(r.id); setOpenBox(null); }, (r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id))?'Unavailable':undefined, !!audioPlan.pending||!!r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id)))}
-                  {!audioPlan.plan?.renditions.length ? <Text variant="caption" tone="tertiary">{audioPlan.reason ?? 'This stream has one audio track.'}</Text> : null}
+                  {audioPlan.availability!=='unavailable' && audioPlan.plan?.renditions.map(r => optionRow(r.label, r.id === (audioPlan.pending?.renditionId ?? audioPlan.observedRenditionId), () => { service.selectAudio(r.id); setOpenBox(null); }, (r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id))?i18n.t('player.opt.unavailable'):undefined, !!audioPlan.pending||!!r.unavailable||audioPlan.unavailableRenditionIds?.includes(r.id)))}
+                  {!audioPlan.plan?.renditions.length ? <Text variant="caption" tone="tertiary">{audioPlan.reason ?? i18n.t('player.opt.oneAudioTrack')}</Text> : null}
                 </>
               ))}
-              {!isAudio ? box('subtitles', 'subtitles', 'Subtitles', currentSubtitle, subtitles.service && subtitlePlan ? (
+              {!isAudio ? box('subtitles', 'subtitles', i18n.t('player.opt.subtitles'), currentSubtitle, subtitles.service && subtitlePlan ? (
                 <>
-                  {optionRow('Off', subtitlePlan.mode === 'off', () => { void subtitles.turnOff().catch(() => {}); })}
-                  {(subtitlePlan.resources ?? []).map(r => optionRow(trackName(r, i18n.locale) || r.title, !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : burnsIn(r) ? i18n.t('player.subtitles.bitmapNote') : undefined, subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
+                  {optionRow(i18n.t('player.opt.off'), subtitlePlan.mode === 'off', () => { void subtitles.turnOff().catch(subtitleChangeFailed); })}
+                  {(subtitlePlan.resources ?? []).map(r => optionRow(subtitleName(r), !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : burnsIn(r) ? i18n.t('player.subtitles.bitmapNote') : undefined, subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
                 </>
-              ) : <Text variant="caption" tone="tertiary">Subtitles are available once playback starts.</Text>) : null}
+              ) : <Text variant="caption" tone="tertiary">{i18n.t('player.opt.subtitlesLater')}</Text>) : null}
               {!isAudio ? box('quality', 'quality', i18n.t('player.opt.quality'), qualityLabelNow, qualityContent()) : null}
-              {isMusic ? null : box('speed', 'speed', 'Speed', rate === 1 ? 'Normal' : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...audiobookRates] : rates).map(v => optionRow(v === 1 ? 'Normal' : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
+              {isMusic ? null : box('speed', 'speed', i18n.t('player.opt.speed'), rate === 1 ? i18n.t('player.opt.normalSpeed') : `${rate}×`, <div className={s.speedGrid}>{(isAudio ? [...audiobookRates] : rates).map(v => optionRow(v === 1 ? i18n.t('player.opt.normalSpeed') : `${v}×`, v === rate, () => setSpeed(v)))}</div>)}
               {box('sleep', 'sleep', i18n.t('player.opt.sleep'), sleepLabel, sleepChoices.map(c => optionRow(sleepChoiceLabel(c), (isAudio ? listening?.timer?.choice ?? 'off' : sleepAt ? videoSleep : 'off') === c, () => setSleep(c))))}
               {queueCount > 1 && queue ? box('queue', 'queue', i18n.t('player.queue'), String(queueCount - 1), <QueueList queue={queue} />) : null}
             </div>
           </Dialog>
         ) : null}
-        <Dialog open={legend} onOpenChange={setLegend} title="Keyboard shortcuts" width={420}><ShortcutLegend skipBack={skipBack} skipForward={skipForward} live={!!linear} audio={isAudio} /></Dialog>
+        <Dialog open={legend} onOpenChange={setLegend} title={i18n.t('player.shortcuts')} width={420}><ShortcutLegend skipBack={skipBack} skipForward={skipForward} live={!!linear} audio={isAudio} /></Dialog>
         {/* MU4 FEAT-07: the mini guide over the video (previous/current/next, tune on select). */}
         {linear ? <MiniGuide open={miniGuide} onOpenChange={setMiniGuide} onTune={c => engine.tune(c)} /> : null}
         {/* MU4 COMPAT-01: bitmap subtitles on a 4K/HDR source confirm once per play, like Dolby Vision. */}
@@ -836,8 +842,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
         {message ? (
           <div className={s.notice} role={state.error || state.seekError ? 'alert' : 'status'}>
             {message}
-            {state.seekError && state.failedSeek ? <Button size="sm" variant="outline" label="Try again" onClick={() => state.failedSeek && service.seek(state.failedSeek.positionSeconds)} /> : null}
-            {notice ? <IconButton name="close" label="Dismiss" variant="ghost" size="sm" onClick={() => setNotice('')} /> : null}
+            {state.seekError && state.failedSeek ? <Button size="sm" variant="outline" label={i18n.t('action.tryAgain')} onClick={() => state.failedSeek && service.seek(state.failedSeek.positionSeconds)} /> : null}
+            {notice ? <IconButton name="close" label={i18n.t('action.dismiss')} variant="ghost" size="sm" onClick={() => setNotice('')} /> : null}
           </div>
         ) : null}
       </div>
@@ -852,29 +858,29 @@ function MiniBar({engine}: {engine: PlayerEngine}) {
   // WEB-PLAYER-05: on a desktop-width window the bar can seek and set the volume; handhelds keep the compact bar.
   const wide = !useNarrow();
   return (
-    <div className={s.mini} role="region" aria-label={`Now playing: ${identity.title}`}>
+    <div className={s.mini} role="region" aria-label={i18n.t('player.nowPlayingTitle', {title: identity.title})}>
       {wide && state.duration > 0 ? (
-        <input className={s.miniScrub} type="range" min={0} max={state.duration} step={1} value={Math.min(state.duration, state.positionSeconds)} aria-label="Position" aria-valuetext={`${formatClock(state.positionSeconds)} of ${formatClock(state.duration)}`} style={{'--p': `${progress * 100}%`} as React.CSSProperties} onChange={e => engine.seekTo(Number(e.target.value))} />
+        <input className={s.miniScrub} type="range" min={0} max={state.duration} step={1} value={Math.min(state.duration, state.positionSeconds)} aria-label={i18n.t('player.position')} aria-valuetext={i18n.t('player.clockOf', {position: formatClock(state.positionSeconds), duration: formatClock(state.duration)})} style={{'--p': `${progress * 100}%`} as React.CSSProperties} onChange={e => engine.seekTo(Number(e.target.value))} />
       ) : <div className={s.miniProgress} aria-hidden><i style={{width: `${progress * 100}%`}} /></div>}
       <div className={s.miniArt}><Artwork path={identity.posterUrl} shape="square" icon="music" alt="" /></div>
-      <button type="button" className={s.miniCopy} onClick={engine.expand} aria-label="Open now playing">
+      <button type="button" className={s.miniCopy} onClick={engine.expand} aria-label={i18n.t('player.openNowPlaying')}>
         <span className={s.miniTitle}>{identity.title}</span>
-        <span className={s.miniSub}>{ownerStopOf(state.ended) ? i18n.t('web.player.ownerStopped.short') : state.phase === 'error' ? i18n.t(playbackFailure(state.error).title) : identity.subtitle ?? (state.intent === 'playing' ? 'Playing' : 'Paused')}</span>
+        <span className={s.miniSub}>{ownerStopOf(state.ended) ? i18n.t('web.player.ownerStopped.short') : state.phase === 'error' ? i18n.t(playbackFailure(state.error).title) : identity.subtitle ?? i18n.t(state.intent === 'playing' ? 'player.miniPlaying' : 'player.miniPaused')}</span>
       </button>
       <div className={s.miniActions}>
         {wide && engine.queue ? <QueuePreference queue={engine.queue} kind="shuffle" onError={() => {}} /> : null}
-        {engine.canPrevious ? <IconButton name="previous" label="Previous" variant="ghost" onClick={engine.previous} /> : null}
-        <button type="button" className={s.miniPlay} aria-label={state.intent === 'playing' ? 'Pause' : 'Play'} onClick={engine.toggle}><Icon name={state.intent === 'playing' ? 'pause' : 'play'} size={18} /></button>
-        {engine.canNext ? <IconButton name="next" label="Next" variant="ghost" onClick={engine.next} /> : null}
+        {engine.canPrevious ? <IconButton name="previous" label={i18n.t('player.previous')} variant="ghost" onClick={engine.previous} /> : null}
+        <button type="button" className={s.miniPlay} aria-label={i18n.t(state.intent === 'playing' ? 'action.pause' : 'action.play')} onClick={engine.toggle}><Icon name={state.intent === 'playing' ? 'pause' : 'play'} size={18} /></button>
+        {engine.canNext ? <IconButton name="next" label={i18n.t('player.next')} variant="ghost" onClick={engine.next} /> : null}
         {wide && engine.queue ? <QueuePreference queue={engine.queue} kind="repeat" onError={() => {}} /> : null}
         {engine.queue ? <MiniQueue queue={engine.queue} /> : null}
         {wide ? (
           <div className={s.volume}>
-            <button type="button" className={s.control} aria-label={engine.muted ? 'Unmute' : 'Mute'} onClick={() => engine.setMuted(!engine.muted)}><Icon name={engine.muted || engine.volume === 0 ? 'mute' : 'audio'} size={18} /></button>
-            <input className={cx(s.volumeRange, s.miniVolume)} type="range" min={0} max={1} step={0.05} value={engine.muted ? 0 : engine.volume} aria-label="Volume" onChange={e => { engine.setVolume(Number(e.target.value)); engine.setMuted(false); }} />
+            <button type="button" className={s.control} aria-label={i18n.t(engine.muted ? 'player.unmute' : 'player.mute')} onClick={() => engine.setMuted(!engine.muted)}><Icon name={engine.muted || engine.volume === 0 ? 'mute' : 'audio'} size={18} /></button>
+            <input className={cx(s.volumeRange, s.miniVolume)} type="range" min={0} max={1} step={0.05} value={engine.muted ? 0 : engine.volume} aria-label={i18n.t('player.volume')} onChange={e => { engine.setVolume(Number(e.target.value)); engine.setMuted(false); }} />
           </div>
         ) : null}
-        <IconButton name="close" label="Stop" variant="ghost" onClick={engine.leave} />
+        <IconButton name="close" label={i18n.t('action.stop')} variant="ghost" onClick={engine.leave} />
       </div>
     </div>
   );

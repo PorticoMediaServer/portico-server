@@ -100,7 +100,6 @@
 .sheetActions { display: flex; flex-wrap: wrap; gap: 8px; }
 .radioRow { display: flex; flex-direction: column; gap: 8px; }
 
-.toast { position: fixed; left: 50%; bottom: calc(24px + var(--player-reserve, 0px)); transform: translateX(-50%); z-index: var(--layer-notice); display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 16px; border-radius: var(--radius-panel); background: var(--surface-overlay); border: 1px solid var(--line-soft); box-shadow: var(--shadow-overlay); color: var(--text-primary); font-size: 13.5px; max-width: calc(100vw - 32px); }
 
 /* ── A channel's timeline (§6) ── */
 .timeline { display: flex; flex-direction: column; gap: 4px; max-height: min(70vh, 720px); overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }

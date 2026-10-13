@@ -51,7 +51,8 @@ export function useOpenEntry() {
         return;
       }
       if (intent === 'more') {
-        player.more(entry, anchor, origin);
+        // A card in a library grid knows its library even when the entry does not name it (a show, an album): the menu needs it to read what the title offers.
+        player.more(entry.libraryId || !libraryId ? entry : {...entry, libraryId}, anchor, origin);
         return;
       }
       const route = entryRoute(entry, libraryId);

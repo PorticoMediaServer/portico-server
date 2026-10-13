@@ -1,4 +1,5 @@
 import React, {createContext, useContext, useEffect, useMemo, useRef, useSyncExternalStore} from 'react';
+import {holdPaused} from './hold-paused.ts';
 import {currentI18n, useI18n} from './i18n';
 import {GroupFollower, GroupSessionService, type GroupPlayer, type GroupSessionSnapshot} from '@core/index.ts';
 import {syncRate} from '../bridge/sync-rate';
@@ -39,8 +40,11 @@ export function TogetherProvider({children}: {children: React.ReactNode}) {
         const s = live.current.service.getSnapshot();
         return {itemId: s.itemId ?? '', positionSeconds: s.pendingSeek?.positionSeconds ?? s.positionSeconds, playing: s.phase === 'ready' && s.intent === 'playing', buffering: !!s.recovering || s.phase === 'starting', ready: s.phase === 'ready', seeking: !!s.pendingSeek, durationSeconds: s.duration > 0 ? s.duration : undefined};
       },
-      load: (itemId, positionSeconds) => {
+      load: (itemId, positionSeconds, playing) => {
         live.current.play(itemId, positionSeconds);
+        // A group that is paused loads the title paused: it is held from the moment the start is asked
+        // for until the title is ready, so nothing is heard or seen moving before the group plays.
+        if (!playing) holdPaused(live.current.service, itemId);
         // The group only supplies an id; the title and artwork come from the library.
         void api.item(itemId).then(item => { if (live.current.state.itemId === itemId) live.current.describe({itemId, title: item.title, posterUrl: item.posterUrl, backdropUrl: item.backdropUrl, kind: item.kind, libraryId: item.libraryId}); }, () => {});
       },

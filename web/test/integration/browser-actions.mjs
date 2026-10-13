@@ -88,11 +88,17 @@ try{
    await driver.viewport(width,height);
    for(const [kind,view,title,expected] of [['music','artists','Browser Artist','Browser Song'],['music','releases','Browser Album','Browser Song'],['audiobook','authors','Browser Author','Browser Book']]){
     await step(viewport+'-'+view+'-group',async()=>{
-     const lib=libraries.find(l=>l.kind===kind);await go(`/library/${lib.id}?view=${view}`);
+     // A music library's Artists tab is its main one ("browse"): named, so the check does not depend on which tab was open last.
+     const lib=libraries.find(l=>l.kind===kind);await go(`/library/${lib.id}?view=${view==='artists'?'browse':view}`);
      await driver.waitFor(`[...document.querySelectorAll('a')].some(a=>a.getAttribute('aria-label')?.startsWith(${JSON.stringify(title)}))`);
      const label=await driver.evaluate(`[...document.querySelectorAll('a')].find(a=>a.getAttribute('aria-label')?.startsWith(${JSON.stringify(title)})).getAttribute('aria-label')`);
      await driver.clickText(label,'a');await driver.waitFor(`document.body.innerText.includes(${JSON.stringify(expected)})`,15000);
-     return {route:await driver.evaluate('location.pathname'),member:expected};
+     // The group's page carries the library's Sort and filters, kept to the group: choosing a sort leaves its member on the page.
+     await driver.waitFor(`[...document.querySelectorAll('button')].some(b=>b.getClientRects().length&&b.getAttribute('aria-label')==='Sort by')`,15000);
+     await driver.clickText('Sort by','button');await driver.waitFor(`[...document.querySelectorAll('[role="menuitem"]')].some(m=>m.innerText.trim()==='Title')`);
+     await driver.clickText('Title','[role="menuitem"]');
+     await driver.waitFor(`/[?&](song)?[sS]ort=title/.test(location.search) && document.body.innerText.includes(${JSON.stringify(expected)})`,15000);
+     return {route:await driver.evaluate('location.pathname'),member:expected,sorted:await driver.evaluate('location.search')};
     });
    }
    await step(viewport+'-book-author-context',async()=>{

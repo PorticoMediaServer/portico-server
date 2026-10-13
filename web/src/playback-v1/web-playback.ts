@@ -618,6 +618,13 @@ export class WebPlayback implements PlaybackAdapter {
    */
   pageHidden(final: boolean): void {
     const held = this.controller.getSnapshot();
+    // A live channel's session belongs to the channel control, not the controller: closing the tab
+    // ends it too, so its tuner (or its conversion) is free at once instead of when its lease lapses.
+    const tuned = this.service?.getSnapshot();
+    if (final && this.host.farewell && tuned?.channel && tuned.session?.id && !held.session) {
+      this.host.farewell(`/v1/playback/sessions/${encodeURIComponent(tuned.session.id)}`, 'DELETE', undefined);
+      return;
+    }
     if (!held.session || held.phase === 'ended') return;
     if (!final || !this.host.farewell) { void this.controller.flush().catch(() => {}); return; }
     const service = this.service?.getSnapshot();

@@ -1,11 +1,11 @@
-import {useCallback, useEffect, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {currentI18n} from './i18n';
 import {createWindowedCollection, type FetchPage, type WindowedCollection} from '@core/collections/index.ts';
 import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {usePooled} from './freshness';
 import type {ContentEntry} from '@core/library-content.ts';
-import {parseBrowseCapabilities, parseBrowseFacets, type BrowseCapabilities, type BrowseFacetValue, type BrowseSortSelection} from '@core/browse.ts';
-import {appliedFilterLabel} from '@core/presentation/index.ts';
+import {parseBrowseCapabilities, parseBrowseFacets, type BrowseCapabilities, type BrowseFacetValue, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
+import {appliedFilterLabel, browseNameId} from '@core/presentation/index.ts';
 import type {MessageId} from '@i18n';
 import {sessionIdentity, useSession} from './session';
 import {errorText} from './errors';
@@ -58,17 +58,19 @@ export const BROWSE_PAGE = 60;
 type BrowseStore = {collection?: WindowedCollection<ContentEntry>; /** What a quiet read asks for: the filters and sort on screen now. */ source?: () => FetchPage<ContentEntry>; getSnapshot(): unknown; subscribe(listener: () => void): () => void; dispose(): void};
 const idleStore = (): BrowseStore => ({getSnapshot: () => undefined, subscribe: () => () => {}, dispose: () => {}});
 
-export function useBrowseCollection(input: {libraryId?: string; pivot?: string; predicates: readonly Predicate[]; sort?: BrowseSortSelection; enabled: boolean; pageSize?: number}) {
+export function useBrowseCollection(input: {libraryId?: string; pivot?: string; /** What the list is of (a collection's titles, an album's songs). Always applied; the viewer's filters only narrow it. */ base?: readonly BrowseNode[]; predicates: readonly Predicate[]; sort?: BrowseSortSelection; enabled: boolean; pageSize?: number}) {
   const {api} = useSession();
-  const {libraryId, pivot, predicates, sort, enabled} = input;
+  const {libraryId, pivot, base, predicates, sort, enabled} = input;
   const pageSize = Math.max(1, Math.min(BROWSE_PAGE, input.pageSize ?? BROWSE_PAGE));
   const query = JSON.stringify([predicates, sort]);
+  // Each group is its own list: an album's songs are not the library's Songs tab.
+  const baseKey = base?.length ? ':' + JSON.stringify(base) : '';
   const on = enabled && !!libraryId && !!pivot;
   // One collection per library and pivot, kept for the signed-in viewer: Back returns to the
   // same list at the same place without a request. A new query is a new generation of it.
   const latest = useRef<() => FetchPage<ContentEntry>>(undefined);
-  latest.current = () => browsePageSource(api, {libraryId: libraryId!, pivot: pivot!, predicates, sort});
-  const {service: store, document, memo} = usePooled<BrowseStore, unknown>(on ? `browse:${libraryId}:${pivot}:${pageSize}` : 'browse:idle', () => {
+  latest.current = () => browsePageSource(api, {libraryId: libraryId!, pivot: pivot!, base, predicates, sort});
+  const {service: store, document, memo} = usePooled<BrowseStore, unknown>(on ? `browse:${libraryId}:${pivot}:${pageSize}${baseKey}` : 'browse:idle', () => {
     if (!on) return {service: idleStore(), document: {dependencies: [], revalidate: async () => {}}};
     const collection = createWindowedCollection<ContentEntry>({fetchPage: latest.current!(), pageSize, maxResidentPages: 10, keyOf: e => e.id});
     const service: BrowseStore = {collection, getSnapshot: collection.getSnapshot, subscribe: collection.subscribe, dispose: collection.dispose};
@@ -128,18 +130,35 @@ export function decodePredicates(raw: string | undefined): Predicate[] {
 }
 
 /** Field and quick-filter names come from the catalogue (`filter.field.*`, `filter.quick.*`; US English, CON-19). */
-function catalogueLabel(prefix: 'filter.field.' | 'filter.quick.', ...keys: string[]): string | undefined {
+function catalogueLabel(prefix: 'filter.quick.', ...keys: string[]): string | undefined {
   const i18n = currentI18n();
   for (const key of keys) { const id = prefix + key; if (i18n.has(id)) return i18n.t(id); }
   return undefined;
 }
 const sentence = (key: string) => key.replace(/([A-Z])/g, ' $1').toLowerCase().replace(/^./, c => c.toUpperCase());
-/** Sorts that are not fields name themselves (`sort.forYou`: the profile's taste ranks the list). */
-const OWN_SORT_LABELS: ReadonlySet<string> = new Set(['sort.forYou']);
+/** A filter field's or a sort's name, from the catalogue by the shared rule (client-core `browseNameId`); an id the catalogue has no name for reads as words. */
 export function fieldLabel(id: string, labelKey?: string): string {
-  if (labelKey && OWN_SORT_LABELS.has(labelKey) && currentI18n().has(labelKey)) return currentI18n().t(labelKey as MessageId);
-  const key = (labelKey ?? '').replace(/^browse\.field\./, '').replace(/^sort\./, '') || id;
-  return catalogueLabel('filter.field.', key, id) ?? sentence(key);
+  const i18n = currentI18n();
+  const named = browseNameId(id, labelKey, messageId => i18n.has(messageId));
+  if (named) return i18n.t(named as MessageId);
+  return sentence((labelKey ?? '').replace(/^browse\.field\./, '').replace(/^sort\./, '') || id);
+}
+
+/**
+ * Random order is drawn once and kept while the app is open: paging, Back and a quiet update all
+ * read the same shuffle. Choosing Random again draws another.
+ */
+let shuffleSeed = Math.floor(Math.random() * 0x100000000) >>> 0;
+const shuffleListeners = new Set<() => void>();
+export function reshuffle(): void {
+  shuffleSeed = Math.floor(Math.random() * 0x100000000) >>> 0;
+  for (const listener of [...shuffleListeners]) listener();
+}
+const subscribeShuffle = (listener: () => void) => { shuffleListeners.add(listener); return () => { shuffleListeners.delete(listener); }; };
+/** The sort as the server is asked for it: Random carries the current shuffle. */
+export function useShuffled(sort: BrowseSortSelection): BrowseSortSelection {
+  const seed = useSyncExternalStore(subscribeShuffle, () => shuffleSeed);
+  return useMemo(() => (sort.field === 'random' ? {field: sort.field, direction: sort.direction, seed} : sort), [sort, seed]);
 }
 
 export {seeAllPredicates} from './see-all.ts';

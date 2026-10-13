@@ -167,7 +167,8 @@ export function DetailScreen() {
   const [choice, setChoice] = useState<PlaybackChoice>({});
   const [splitting, setSplitting] = useState<{file: TitleFile; summary: string}>();
   const [deletingVersion, setDeletingVersion] = useState<{file: TitleFile; summary: string}>();
-  const editions = useMemo(() => Object.fromEntries((data?.files ?? []).filter(file => file.edition).map(file => [file.id, file.edition!])), [data?.files]);
+  // What tells one version from another in the Version control: its edition, and where two still read the same, a bit rate or size.
+  const versionFacts = useMemo(() => Object.fromEntries((data?.files ?? []).map(file => [file.id, {edition: file.edition, bitRate: file.bitRate, size: file.size}])), [data?.files]);
   useEffect(() => { setAllPeople(false); setChoice({}); setSplitting(undefined); }, [itemId]);
   // The detail carries the cast's first page and the key crew; the rest of
   // either group pages in as its row scrolls (nothing is cut off).
@@ -230,7 +231,7 @@ export function DetailScreen() {
           tagline={data?.facts?.tagline}
           synopsis={item?.overview}
           credits={creditLines}
-          choices={item && library && play?.playback ? <PlaybackChoices libraryId={library} itemId={play.playback.itemId} onChange={setChoice} editions={editions} /> : undefined}
+          choices={item && library && play?.playback ? <PlaybackChoices libraryId={library} itemId={play.playback.itemId} onChange={setChoice} facts={versionFacts} /> : undefined}
           primary={item && play?.playback ? {label: resume ? (remaining ? t('title.resumeRemaining', {remaining}) : t('entry.resume')) : t('action.play'), onClick: () => playWithChoice(play.playback!.startSeconds), progress: resume && item.duration ? item.progressSeconds / item.duration : undefined} : undefined}
           secondary={item ? (
             <div className={s.actionsRow} ref={actionsRow}>

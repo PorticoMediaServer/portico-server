@@ -28,7 +28,8 @@
 .choicesRow > * { min-width: 160px; max-width: 280px; }
 .choicesCompact { display: flex; flex-direction: column; gap: 8px; }
 /* Details: two columns of facts on wide pages, one on phones. */
-.details { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px 40px; padding: 0 var(--page-gutter); max-width: 1100px; }
+/* Each column keeps its own height: beside a tall Files list the facts stay together at the top instead of being spread down its length. */
+.details { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); align-items: start; gap: 12px 40px; padding: 0 var(--page-gutter); max-width: 1100px; }
 .fileRow { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13.5px; color: var(--text-secondary); }
 .fileRow strong { color: var(--text-primary); font-weight: 600; }
 .peopleList { display: flex; flex-direction: column; gap: 2px; }

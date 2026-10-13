@@ -18,11 +18,10 @@ import {getDeviceEvents, setDeviceEvents} from '../app/device-events';
 import {browserEventStream, browserFeedEnvironment} from '../app/event-feed';
 import {runEventFeed} from '@core/event-feed.ts';
 import type {MenuAnchor} from '../ui/Menu';
-import {ConfirmDialog} from '../ui';
 import {errorText} from '../app/errors';
 import {currentI18n} from '../app/i18n';
 import {ownerStopOf} from './owner-stop';
-import {dolbyVisionWarningNeeded, mayCarryVideo} from './dolby-vision';
+import {mayCarryVideo} from './video-kinds';
 import {sourceFactsOf, type SourceFacts} from '@core/presentation/index.ts';
 import {musicAudioEffects, musicQueueDefaults} from '@core/music-preferences.ts';
 import {noteTunedChannel} from './live';
@@ -212,13 +211,7 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
   const [moreOrigin, setMoreOrigin] = useState<EntryOrigin>();
   const [qualityChoice, setQualityChoice] = useState<QualityChoice>();
   const more = useCallback((entry: ContentEntry, anchor?: MenuAnchor, origin?: EntryOrigin) => { setMoreAnchor(anchor); setMoreOrigin(origin); setMoreEntry(entry); }, []);
-  /* M27 Dolby Vision warning: pending play intent awaiting confirmation, and item ids already
-   * acknowledged for this session (so it isn't asked twice per item). */
-  type DolbyPendingSingle = {kind: 'single'; itemId: string; startSeconds: number; entry?: ContentEntry; prepared?: PreparedChoice; quality?: string; choices?: PlaybackChoices};
-  type DolbyPendingSequence = {kind: 'sequence'; entries: readonly ContentEntry[]; index: number; startSeconds: number; container?: SequenceContainer};
-  const [dolbyPending, setDolbyPending] = useState<DolbyPendingSingle | DolbyPendingSequence | null>(null);
-  const dolbyAcknowledged = useRef<Set<string>>(new Set());
-  /* MU4 COMPAT-01: 4K/HDR facts per item, parsed from the same pre-play read (never a new request). */
+  /* MU4 COMPAT-01: 4K/HDR facts per item, for the bitmap subtitle warning. Read beside the start, never before it. */
   const sourceFactsRef = useRef(new Map<string, SourceFacts>());
   const sourceFacts = useCallback((itemId: string | undefined) => (itemId ? sourceFactsRef.current.get(itemId) : undefined), []);
   const [volume, setVolumeState] = useState(() => {
@@ -271,25 +264,22 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
     // replay asks for again.
     void service.play(itemId, startSeconds, prepared, quality, undefined, choices).catch(() => {});
   }, [v1, service]);
-  /** Behind presence: older servers have no Dolby reason and read as no warning (fail open). */
-  const checkDolbyFor = useCallback(async (itemId: string): Promise<boolean> => {
-    try {
-      const raw = await api.request<unknown>('/v1/items/' + encodeURIComponent(itemId) + '/playback-options');
-      // MU4 COMPAT-01: keep the source facts from this same answer for the subtitle warning.
+  /**
+   * A video's source facts (4K, HDR), read beside its start for the bitmap subtitle warning. Play
+   * never waits for it: nothing is asked before a title starts. (The server no longer plays Dolby
+   * Vision in approximate colors, so there is no warning to raise before a start.)
+   */
+  const noteSourceFacts = useCallback((itemId: string, kind?: string) => {
+    if (!mayCarryVideo(kind) || sourceFactsRef.current.has(itemId)) return;
+    void api.request<unknown>('/v1/items/' + encodeURIComponent(itemId) + '/playback-options').then(raw => {
       sourceFactsRef.current.set(itemId, sourceFactsOf(raw));
       if (sourceFactsRef.current.size > 50) sourceFactsRef.current.delete(sourceFactsRef.current.keys().next().value!);
-      return dolbyVisionWarningNeeded(raw);
-    } catch {
-      return false;
-    }
+    }, () => {});
   }, [api]);
   const play = useCallback((itemId: string, startSeconds: number, entry?: ContentEntry, prepared?: PreparedChoice, quality?: string, choices?: PlaybackChoices) => {
-    if (!mayCarryVideo(entry?.kind) || dolbyAcknowledged.current.has(itemId)) { startSingle(itemId, startSeconds, entry, prepared, quality, choices); return; }
-    void checkDolbyFor(itemId).then(needs => {
-      if (!needs) startSingle(itemId, startSeconds, entry, prepared, quality, choices);
-      else setDolbyPending({kind: 'single', itemId, startSeconds, entry, prepared, quality, choices});
-    });
-  }, [startSingle, checkDolbyFor]);
+    startSingle(itemId, startSeconds, entry, prepared, quality, choices);
+    noteSourceFacts(itemId, entry?.kind);
+  }, [startSingle, noteSourceFacts]);
   const startSequenceInner = useCallback((entries: readonly ContentEntry[], index: number, startSeconds: number, container?: SequenceContainer) => {
     const playable = entries.slice(index).filter(e => e.playback);
     const first = playable[0];
@@ -312,27 +302,9 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
   const playSequence = useCallback((entries: readonly ContentEntry[], index: number, startSeconds: number, container?: SequenceContainer) => {
     const first = entries.slice(index).filter(e => e.playback)[0];
     const firstId = first?.playback?.itemId;
-    if (!firstId) { startSequenceInner(entries, index, startSeconds, container); return; }
-    if (!mayCarryVideo(first?.kind) || dolbyAcknowledged.current.has(firstId)) { startSequenceInner(entries, index, startSeconds, container); return; }
-    void checkDolbyFor(firstId).then(needs => {
-      if (!needs) startSequenceInner(entries, index, startSeconds, container);
-      else setDolbyPending({kind: 'sequence', entries, index, startSeconds, container});
-    });
-  }, [startSequenceInner, checkDolbyFor]);
-  const confirmDolbyPending = useCallback(() => {
-    const pending = dolbyPending;
-    if (!pending) return;
-    if (pending.kind === 'single') {
-      dolbyAcknowledged.current.add(pending.itemId);
-      setDolbyPending(null);
-      startSingle(pending.itemId, pending.startSeconds, pending.entry, pending.prepared, pending.quality, pending.choices);
-    } else {
-      const first = pending.entries.slice(pending.index).filter(e => e.playback)[0];
-      if (first?.playback) dolbyAcknowledged.current.add(first.playback.itemId);
-      setDolbyPending(null);
-      startSequenceInner(pending.entries, pending.index, pending.startSeconds, pending.container);
-    }
-  }, [dolbyPending, startSingle, startSequenceInner]);
+    startSequenceInner(entries, index, startSeconds, container);
+    if (firstId) noteSourceFacts(firstId, first?.kind);
+  }, [startSequenceInner, noteSourceFacts]);
   const tune = useCallback((channel: GuideChannel) => {
     // MU4 FEAT-07: the mini guide works on the channels this player tuned.
     noteTunedChannel(channel);
@@ -398,8 +370,7 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
   }), [activeService, v1, state, activeQueue, queueNotice, identity, active, isAudio, expanded, volume, muted, moreEntry, moreAnchor, moreOrigin, sourceFacts, qualityChoice, more, play, playSequence, tune, toggle, retry, seekBy, seekTo, leave, next, previous, advance, queueView, setGroupControl]);
   const actions = useMemo<PlayerIntents>(() => ({play, playSequence, tune, more}), [play, playSequence, tune, more]);
   const handOff = useMemo<MoreHandOff>(() => ({moreEntry, moreAnchor, moreOrigin, clearMore: () => setMoreEntry(undefined)}), [moreEntry, moreAnchor, moreOrigin]);
-  const t = currentI18n().t;
-  return <ActionsCtx.Provider value={actions}><MoreCtx.Provider value={handOff}><V1EventsCtx.Provider value={v1.events}><PlayingCtx.Provider value={active ? identity.itemId : undefined}><Ctx.Provider value={value}>{children}<ConfirmDialog open={!!dolbyPending} onOpenChange={o => { if (!o) setDolbyPending(null); }} title={t('player.dolbyVisionWarning')} confirmLabel={t('player.playAnyway')} cancelLabel={t('action.cancel')} destructive={false} onConfirm={confirmDolbyPending} /></Ctx.Provider></PlayingCtx.Provider></V1EventsCtx.Provider></MoreCtx.Provider></ActionsCtx.Provider>;
+  return <ActionsCtx.Provider value={actions}><MoreCtx.Provider value={handOff}><V1EventsCtx.Provider value={v1.events}><PlayingCtx.Provider value={active ? identity.itemId : undefined}><Ctx.Provider value={value}>{children}</Ctx.Provider></PlayingCtx.Provider></V1EventsCtx.Provider></MoreCtx.Provider></ActionsCtx.Provider>;
 }
 
 /** The engine when there is one. Pages that only offer a shortcut into the player use this. */

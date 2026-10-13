@@ -1,6 +1,6 @@
 import {cardCaptionOf} from '../../app/content';
 import {useBack} from '../../app/back';
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import React from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import {SavedService, type SavedRoute, type SavedSnapshot, type PlaylistOccurrence} from '@core/saved.ts';
@@ -12,7 +12,7 @@ import {useEntryHref, useOpenEntry} from '../../app/open';
 import {sequenceContainer} from '../../app/container-play';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
-import {AnchoredMenu, Artwork, Button, Card, ConfirmDialog, Grid, Inset, ListRow, Menu, MenuRow, Notice, Page, PageHeader, Skeleton, StateView, Surface, Switch, WindowedGrid, createStaticCollection, type MenuAnchor, type MenuItem} from '../../ui';
+import {AnchoredMenu, Artwork, Button, Card, ConfirmDialog, Grid, Inset, ListRow, Menu, MenuRow, Notice, Page, PageHeader, Skeleton, StateView, Surface, Switch, WindowedGrid, anchorOf, createStaticCollection, type MenuAnchor, type MenuItem} from '../../ui';
 import {LoadingGrid, SECTION_WINDOW_AT, useAppendedPages} from '../shared/Sections';
 import {ErrorNotice, errorText} from '../../app/errors';
 import {NameDialog} from './Saved';
@@ -21,6 +21,10 @@ import {useFreshDocument} from '../../app/freshness';
 import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 
 import {useI18n} from '../../app/i18n';
+import type {BrowseNode} from '@core/browse.ts';
+import {itemPivot, spanningGroup, useGroupBrowse, useGroupLibraries, type GroupChoice, type GroupSpec} from '../../app/group-browse';
+import {useLibrariesContext} from '../../app/libraries';
+import {GroupBar, GroupGrid, GroupLibraryChips, GroupRows} from '../shared/GroupBrowse';
 
 const requestId = () => Promise.resolve(crypto.randomUUID());
 type Visible = Extract<PlaylistOccurrence, {hidden: false}>;
@@ -32,7 +36,8 @@ const resourceDependencies = Object.freeze([...titlesWithPersonalState()]);
 export function SavedResourceScreen() {
   const {t} = useI18n();
   const {kind, resourceId} = useParams({from: '/app/saved/$kind/$resourceId'});
-  const {title} = useSearch({from: '/app/saved/$kind/$resourceId'});
+  const address = useSearch({from: '/app/saved/$kind/$resourceId'});
+  const {title} = address;
   const navigate = useNavigate();
   const {api} = useSession();
   const scope = useViewerScope();
@@ -76,6 +81,23 @@ export function SavedResourceScreen() {
   const savedAll = useAppendedPages(`playlist:${resourceId}`, savedBinding.snapshot.pagination.cursor, savedPage, e => e.id);
   const personalPage = personalBinding.snapshot.entries;
   const personalAll = useAppendedPages(`resource:${resourceId}`, personalBinding.snapshot.cursor, personalPage, e => e.id);
+
+  // The library's sort and filters on what is listed here. A playlist spans libraries, so with
+  // entries from several the viewer picks one; a saved view is one library's already, and its own
+  // conditions stay in force under whatever is added. A personal collection has no such list on
+  // the server yet and keeps its own order.
+  const libraries = useLibrariesContext().items;
+  const listBase = useMemo<readonly BrowseNode[]>(() => [{field: 'list', operator: 'equals', value: resourceId}], [resourceId]);
+  const held = useGroupLibraries(playlist ? listBase : undefined, itemPivot);
+  const listScope = useMemo(() => spanningGroup(held.libraries, address.library, listBase, 'playlist'), [held.libraries, address.library, listBase]);
+  const definition = !playlist && personalBinding.snapshot.resource?.kind === 'view' ? personalBinding.snapshot.resource.definition : undefined;
+  const viewSpec = useMemo<GroupSpec | undefined>(() => {
+    if (!definition) return undefined;
+    const library = libraries.find(l => l.id === definition.libraryId);
+    return library ? {libraryId: library.id, libraryKind: library.kind, pivot: definition.pivot, base: definition.query ? [definition.query as BrowseNode] : [], opening: definition.sort[0]} : undefined;
+  }, [definition, libraries]);
+  const choose = useCallback((next: {library?: string} & GroupChoice) => void navigate({to: '/saved/$kind/$resourceId', params: {kind, resourceId}, search: {...(title ? {title} : {}), ...next}, replace: true, resetScroll: false}), [navigate, kind, resourceId, title]);
+  const group = useGroupBrowse(playlist ? listScope.spec : viewSpec, {sort: address.sort, direction: address.direction, filters: address.filters}, useCallback((next: GroupChoice) => choose({library: playlist ? listScope.chosen : undefined, ...next}), [choose, playlist, listScope.chosen]));
 
   if (playlist) {
     const snap = savedBinding.snapshot;
@@ -139,13 +161,22 @@ export function SavedResourceScreen() {
         {problem && !deleting ? <Inset><Notice tone="error" action={{label: t('action.dismiss'), onClick: () => setProblem('')}}>{problem}</Notice></Inset> : null}
         {snap.phase === 'loading' && !entries.length ? <LoadingGrid /> : null}
         {snap.phase === 'ready' && !media.length ? <StateView icon="queue" title={t('web.saved.playlistEmpty')} body={t('web.saved.playlistEmptyBody')} /> : null}
-        {media.length > SECTION_WINDOW_AT ? (
+        {media.length && listScope.choose ? <Inset><GroupLibraryChips libraries={held.libraries} value={listScope.chosen} onChange={library => choose(library ? {library} : {})} /></Inset> : null}
+        {media.length && listScope.spec ? <Inset><GroupBar group={group} total={p?.entryCount} /></Inset> : null}
+        {group.pending ? <LoadingGrid /> : group.active ? (
+          // Sorted or filtered, the playlist is a list of titles: its own order, and moving entries within it, belong to Playlist order.
+          <GroupRows group={group} context="playlist" label={name} estimateRowHeight={72}
+            // The same framed rows as Playlist order; the frame supplies the page's gutter, so the list inside it has none of its own.
+            wrap={list => <Inset><Surface padless><div style={{'--page-gutter': '0px'} as React.CSSProperties}>{list}</div></Surface></Inset>}
+            renderItem={entry => <ListRow title={entry.title} subtitle={cardCaptionOf(entry)} meta={formatDuration(entry.duration)} art={{path: entry.posterUrl, icon: iconFor(entry.kind), progress: progressFor(entry)}} artShape={shapeFor(entry.kind)} onClick={() => open(entry, entry.playback ? 'play' : 'open')} actions={<Button variant="ghost" icon="more" size="sm" aria-label={t('card.more', {title: entry.title})} onClick={(e: React.MouseEvent<HTMLElement>) => open(entry, 'more', undefined, anchorOf(e.currentTarget))} />} />}
+            renderPlaceholder={() => <div style={{height: 72, padding: '8px 16px'}}><Skeleton height={56} /></div>} />
+        ) : media.length > SECTION_WINDOW_AT ? (
           <WindowedRows items={media} estimateRowHeight={72} label={name} renderItem={(e, i) => playlistRow(e, i)} />
         ) : media.length ? (
           <Inset><Surface padless>{media.map((e, i) => playlistRow(e, i))}</Surface></Inset>
         ) : null}
-        {loadingMore ? <Inset><Skeleton height={48} /></Inset> : null}
-        {pageable || loadingMore ? <ScrollSentinel cursor={pageable?.nextCursor ?? ''} disabled={snap.phase !== 'ready'} onMore={() => { const at = savedBinding.snapshot.projection?.sections.find(s => s.nextCursor); if (at) void service.next(at.id).catch(() => {}); }} /> : null}
+        {loadingMore && !group.active ? <Inset><Skeleton height={48} /></Inset> : null}
+        {(pageable || loadingMore) && !group.active && !group.pending ? <ScrollSentinel cursor={pageable?.nextCursor ?? ''} disabled={snap.phase !== 'ready'} onMore={() => { const at = savedBinding.snapshot.projection?.sections.find(s => s.nextCursor); if (at) void service.next(at.id).catch(() => {}); }} /> : null}
         <NameDialog open={renaming} title={t('web.saved.renamePlaylist')} action={t('action.save')} context="playlist" initialName={p?.name} initialSummary={p?.summary} onClose={() => setRenaming(false)} onSave={(n, summary) => service.mutate({action: 'rename', name: n, ...(can('summary') ? {summary} : {})})} />
         <ConfirmDialog open={deleting} onOpenChange={o => !o && setDeleting(false)} title={t('web.saved.deleteTitle', {name})} body={t('web.saved.deletePlaylistBody')} confirmLabel={t('web.saved.deletePlaylistAction')} destructive busy={busy} error={problem || undefined} onConfirm={() => void change(() => service.mutate({action: 'delete'}), () => { setDeleting(false); directory(); })} />
       </Page>
@@ -179,11 +210,12 @@ export function SavedResourceScreen() {
       {problem && !deleting ? <Inset><Notice tone="error" action={{label: t('action.dismiss'), onClick: () => setProblem('')}}>{problem}</Notice></Inset> : null}
       {snap.loading && !items.length ? <LoadingGrid /> : null}
       {!snap.loading && !items.length && !snap.error ? <StateView icon="collection" title={view ? t('web.saved.viewEmpty') : t('web.saved.collectionEmpty')} /> : null}
-      {items.length > SECTION_WINDOW_AT ? (
+      {view && viewSpec ? <Inset><GroupBar group={group} total={r?.entryCount} /></Inset> : null}
+      {group.active ? <GroupGrid group={group} square={viewSpec?.libraryKind === 'music' || viewSpec?.libraryKind === 'audiobook'} /> : items.length > SECTION_WINDOW_AT ? (
         <WindowedRows items={items} estimateRowHeight={300} columnMin="clamp(120px, 11vw, 168px)" label={name} renderItem={e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} href={hrefOf(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />} />
       ) : items.length ? <Grid density="poster">{items.map(e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} href={hrefOf(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />)}</Grid> : null}
-      {loadingMore ? <Inset><Skeleton height={48} /></Inset> : null}
-      {snap.nextCursor || loadingMore ? <ScrollSentinel cursor={snap.nextCursor} disabled={snap.loading} onMore={() => void service.next().catch(() => {})} /> : null}
+      {loadingMore && !group.active ? <Inset><Skeleton height={48} /></Inset> : null}
+      {(snap.nextCursor || loadingMore) && !group.active ? <ScrollSentinel cursor={snap.nextCursor} disabled={snap.loading} onMore={() => void service.next().catch(() => {})} /> : null}
       <AnchoredMenu anchor={entryMenu?.anchor} open={!!entryMenu} onOpenChange={o => !o && setEntryMenu(null)} label={t('web.saved.collectionOptions')}>
         <MenuRow icon="info" label={t('web.saved.goToItem')} onSelect={() => { const m = items.find(x => x.id === entryMenu?.id)?.media; setEntryMenu(null); if (m) open(m); }} />
         <MenuRow icon="minus" destructive label={t('web.saved.removeFromCollection')} onSelect={() => { const id = entryMenu!.id; setEntryMenu(null); void change(() => done(service.mutate({action: 'entries', removeEntryIds: [id]}))); }} />
