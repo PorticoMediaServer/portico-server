@@ -97,3 +97,36 @@ func TestDeleteVersionReconcilesDiskDeletionBeforeALaterConflict(t *testing.T) {
 		t.Fatal("physically deleted file is still available after conflict")
 	}
 }
+
+func TestDeleteVersionReconcilesDiskDeletionBeforeRevocation(t *testing.T) {
+	s, db, _, item, paths := deletionFixture(t)
+	ctx := context.Background()
+	var asset string
+	if err := db.QueryRow(`SELECT token FROM catalog_assets WHERE path=?`, paths[0]).Scan(&asset); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.PreviewDeleteVersion(ctx, allow, item, asset)
+	if err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	auth := func(context.Context, *sql.Tx) error {
+		calls++
+		if calls == 2 {
+			return ErrDenied
+		}
+		return nil
+	}
+	_, err = s.DeleteVersion(ctx, auth, item, asset, VersionDeleteRequest{Confirmation: p.Confirmation, PreviewKey: p.PreviewKey, OperationID: "revoked-during-delete"})
+	if !errors.Is(err, ErrDenied) {
+		t.Fatalf("want denial, got %v", err)
+	}
+	var available bool
+	var links int
+	if err = db.QueryRow(`SELECT available,(SELECT count(*) FROM catalog_asset_links WHERE asset_id=catalog_assets.id) FROM catalog_assets WHERE token=?`, asset).Scan(&available, &links); err != nil {
+		t.Fatal(err)
+	}
+	if available || links != 1 {
+		t.Fatalf("availability %v, links %d: reconcile must record absence without unlink authority", available, links)
+	}
+}

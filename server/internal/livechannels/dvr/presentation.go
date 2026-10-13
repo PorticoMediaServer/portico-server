@@ -143,26 +143,31 @@ func (s *Store) ChannelChoices(ctx context.Context, a livechannels.Authority, o 
 			}
 			after = parts[1]
 		}
-		rows, e := tx.QueryContext(ctx, `SELECT channel_id,name,number FROM live_channel_versions WHERE generation_id=? AND channel_id>? AND (?='' OR instr(lower(name),lower(?))>0 OR instr(lower(number),lower(?))>0) ORDER BY channel_id LIMIT 31`, out.Generation, after, search, search, search)
+		rows, e := tx.QueryContext(ctx, `SELECT channel_id,name,number FROM live_channel_versions WHERE generation_id=? AND channel_id>? AND (?='' OR instr(lower(name),lower(?))>0 OR instr(lower(number),lower(?))>0) ORDER BY channel_id LIMIT 257`, out.Generation, after, search, search, search)
 		if e != nil {
 			return e
 		}
 		defer rows.Close()
+		examined := 0
 		for rows.Next() {
+			// Bound the raw walk as well as the visible page. A denied prefix
+			// must still advance the cursor so later allowed channels are reachable.
+			if examined == 256 || len(out.Channels) == 30 {
+				out.NextCursor = out.Generation + "." + after
+				break
+			}
 			var v ChannelChoice
 			if e = rows.Scan(&v.ID, &v.Name, &v.Number); e != nil {
 				return e
 			}
+			examined++
+			after = v.ID
 			if allowed(source, v.ID) {
 				out.Channels = append(out.Channels, v)
 			}
 		}
 		if e = rows.Err(); e != nil {
 			return e
-		}
-		if len(out.Channels) > 30 {
-			out.Channels = out.Channels[:30]
-			out.NextCursor = out.Generation + "." + out.Channels[29].ID
 		}
 		return nil
 	})

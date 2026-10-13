@@ -37,35 +37,43 @@ func TestChannelChoicesPagePastRestrictedPrefix(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	auth := func(context.Context, *sql.Tx, bool) (string, func(string, string) bool, error) {
-		return "restricted", func(source, channel string) bool {
-			return source == src && (channel == "" || channel >= fmt.Sprintf("%064x", 351))
-		}, nil
-	}
-	owner := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "profile"}
-	s := &Store{db: db}
-	cursor := ""
-	seen := map[string]bool{}
-	for pages := 0; pages < 20; pages++ {
-		page, err := s.ChannelChoices(context.Background(), auth, owner, src, "", cursor)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, ch := range page.Channels {
-			if ch.ID < fmt.Sprintf("%064x", 351) || seen[ch.ID] {
-				t.Fatalf("excluded or duplicated channel %s", ch.ID)
+	for _, first := range []int{1, 31, 351, 401} {
+		t.Run(fmt.Sprint(first), func(t *testing.T) {
+			threshold := fmt.Sprintf("%064x", first)
+			auth := func(context.Context, *sql.Tx, bool) (string, func(string, string) bool, error) {
+				return "restricted", func(source, channel string) bool {
+					return source == src && (channel == "" || channel >= threshold)
+				}, nil
 			}
-			seen[ch.ID] = true
-		}
-		if page.NextCursor == "" {
-			break
-		}
-		if page.NextCursor == cursor {
-			t.Fatal("cursor did not advance")
-		}
-		cursor = page.NextCursor
-	}
-	if len(seen) != 50 {
-		t.Fatalf("got %d allowed choices, want 50", len(seen))
+			owner := livechannels.Owner{Authority: "local", AccountID: "account", ProfileID: "profile"}
+			s := &Store{db: db}
+			cursor := ""
+			seen := map[string]bool{}
+			for pages := 0; pages < 20; pages++ {
+				page, err := s.ChannelChoices(context.Background(), auth, owner, src, "", cursor)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if len(page.Channels) > 30 {
+					t.Fatal("unbounded visible page")
+				}
+				for _, ch := range page.Channels {
+					if ch.ID < threshold || seen[ch.ID] {
+						t.Fatalf("excluded or duplicated channel %s", ch.ID)
+					}
+					seen[ch.ID] = true
+				}
+				if page.NextCursor == "" {
+					break
+				}
+				if page.NextCursor == cursor {
+					t.Fatal("cursor did not advance")
+				}
+				cursor = page.NextCursor
+			}
+			if len(seen) != 401-first {
+				t.Fatalf("got %d allowed choices, want %d", len(seen), 401-first)
+			}
+		})
 	}
 }

@@ -378,7 +378,7 @@ func (s *Service) Act(ctx context.Context, p identity.Principal, id string, c Co
 		_, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='cancelled',reason=?,hash_state=NULL,bytes_done=0,revision=revision+1,updated_ms=? WHERE id=?`, reason, now, id)
 	case ActionRetry:
 		// A claim that ended (unavailable) is outside the one-live-claim rule,
-		// so a newer claim for the same title and quality may exist by now.
+		// so a newer claim for the same title, version and quality may exist.
 		// That newer claim is the retry: this one steps aside for it instead of
 		// colliding with it.
 		var sibling string
