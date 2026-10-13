@@ -1,187 +1,94 @@
-# 1. Overview
+# 1. API conventions
 
-## Base URL
+## Address and contract
 
-The server is its own origin. `openapi.yaml` declares `servers: [{url: /}]` — the
-LAN address, remote hostname, or `http://localhost:32500` in development. There
-is no separate API host. Start with `GET /v1/system (openapi.yaml, operationId
-getSystemInfo)`, which is unauthenticated and returns the stable server id,
-name, `setupRequired`, `hostedConfigured`, and build fingerprint.
+The API and bundled web app share the server's origin and listening port.
+`GET /v1/system` is public and reports the server ID, name, version and setup
+status. It does not publish a build fingerprint. The default port is 32500.
+Use a hostname of its own; hosting under `/portico` or any other sub-path is
+unsupported. HTTP is accepted from any address. Use TLS for untrusted networks.
 
-<!-- example: overview-system-response file=openapi.yaml operationId=getSystemInfo direction=response status=200 schema=#/components/schemas/SystemInfo -->
-```json
-{
-  "id": "srv_01J6X7QZ9MAB0CDEF123456789",
-  "name": "Harbor",
-  "setupRequired": false,
-  "hostedConfigured": true,
-  "version": "0.9.0",
-  "buildId": "1038c2ad"
-}
-```
+There is no stable API yet. Current routes use `/v1`; former `/v2` playback and
+`POST /v1/sessions` sign-in routes were removed. Changes during prerelease need
+matching consumer updates. The registry contract is
+[portico.openapi.json](../portico.openapi.json). Not all hand-registered routes
+have moved there yet; their current handlers take precedence over old YAML.
 
-## Versioning
+## Time and numeric values
 
-Three namespaces are in use (see `server/api/README.md` and the
-`openapi.yaml` info block):
+Calendar timestamps normally use RFC 3339 UTC, for example
+`2026-10-13T18:22:04Z`. Some surfaces require whole seconds (the TV guide); do
+not assume a fixed millisecond suffix. Notification timestamps are integer
+Unix milliseconds. Catalogue durations and progress are seconds, often fractional;
+playback session positions use integer milliseconds. Subtitle cue documents and
+social timelines use decimal microsecond strings. Use the unit named in the
+field and preserve decimal strings. Revisions and IDs are opaque even when a
+revision looks numeric; keep the exact JSON type returned by that route.
 
-- `/v1` is the product surface: identity, catalogue, browsing, personal state,
-  metadata, storage, live TV, and the original single-session playback model
-  (`POST /v1/playback/sessions (openapi.yaml, operationId createPlaybackSession)`).
-- `/v2` is the renderer-independent playback control plane — controllers,
-  command lanes, occurrences and queues (for example `POST
-  /v2/playback/controllers (openapi.yaml, operationId
-  registerPlaybackController)` and `PUT /v2/queues/{id} (openapi.yaml,
-  operationId createQueue)`). It is a different model, not a newer spelling of
-  `/v1`.
-- Capability URLs (`GET /v1/media/{grant} (openapi.yaml, operationId
-  getMediaStream)`) are grant-bound byte streams, not REST resources.
+## Paging
 
-There is no `/v3` Portico namespace. Additive evolution rules, `api.level`, and
-a deprecation window are **not specified** in the OpenAPI: this is pre-release
-software and routes are reshaped rather than deprecated.
+Cursor reads return `nextCursor`. Treat absent or empty cursors as exhaustion;
+a short page alone is not exhaustion. Send a cursor back unchanged, with the
+same query and identity. Defaults, maxima and validation differ by operation;
+read its contract. For example, title query pages default to 50 and allow 1–100;
+needs-attention pages allow 1–50. Do not assume all pages allow 100.
 
-## Error envelope
+A cursor rejected with `invalid_cursor` cannot be repaired by editing it.
+`stale_continuation` means the read's permissions or projection changed: discard
+the continuation and reread. Windowed content may instead carry a starting
+position, total and revision. Send the revision that belongs to that window.
+The title query has a separate 30-minute cursor that can finish a walk during
+a scan; see [tools](08-for-tools.md).
 
-Every JSON error is `{"error": {"code", "message", "retryable"}}`
-(`openapi.yaml`, schemas `Error` / `ErrorEnvelope`). `code` is stable and
-machine-readable; `message` is safe to display; `retryable` says whether
-repeating the identical request could succeed. Some handlers add sibling fields
-next to `error` (`current`, `serverId`, `viewerFence`, `currentRevision`,
-`fields`, `serverTime`), and the `/v2` control routes wrap the envelope with
-`protocolVersion: "2.0"` plus `stage` and `action`. Each operation lists the
-codes it can produce under `x-error-codes`.
+## Errors and retries
 
-<!-- example: overview-error-envelope file=openapi.yaml operationId=getItem direction=response status=default contentType=application/json schema=@response /v1/items/{id} get default -->
-```json
-{
-  "error": {
-    "code": "not_found",
-    "message": "Nothing here matches that address.",
-    "retryable": false
-  }
-}
-```
+Errors contain an `error` object with a machine-readable `code` and a plain
+`message`. Existing handler errors carry `retryable`; registry errors also use
+`retry` (`never`, `same_request`, `after_refresh`, `after_reauth`) and may carry `fields`,
+`current`, `requestId` or a delay. Some older handlers put current state beside
+`error`. Handle the actual response rather than assume every error has the same
+optional fields.
 
-Handle two families explicitly:
+Typical responses are 400 for invalid input, 401 for unusable credentials, 403
+for scope or role refusal, 404 for unavailable/hidden resources, 409 or 412 for
+a changed resource, 428 for a missing required precondition, 429 for a limit,
+and 503 for temporary capacity or dependency trouble. Follow `Retry-After`
+(seconds, or an HTTP date). Retry the same request only when instructed; reconcile
+first where asked. Back off and keep already displayed content during failures.
 
-- Optimistic concurrency: writes carry a body fence (`expectedRevision` and
-  friends). A mismatch answers `409` with a `*_conflict` code and often the
-  current state beside `error`. Re-read, re-plan, retry.
-- Idempotency: mutations carry a body key (`operationId`, `requestId`, or
-  `idempotencyKey`). Replaying the same key returns the original receipt;
-  personal-state and saved-resource receipts are replayable for 30 days
-  (`receiptLifetimeSeconds: 2592000`). Reusing a key for a different payload
-  answers `409`/`422` depending on the family.
+## Revision preconditions
 
-The style guide's extended envelope (`detail`, `retry`, `retryAfterSeconds`,
-`fields[]`, `current`, `requestId`, fixed status mapping) is **not specified**
-in the current OpenAPI.
+Read before editing, and send the returned resource revision. There are two
+forms, chosen per route:
 
-## Pagination and cursors
+- Body `expectedRevision` on settings, metadata and many personal-state writes.
+  A missing or null required field answers **428 `revision_required`**.
+  A changed revision normally answers 409 with the route's conflict code.
+- Header `If-Match` on playback sessions, queues and device capabilities. Use
+  the returned ETag or quoted revision. Missing required headers answer
+  **428 `revision_required`**; a stale header answers **412 `revision_mismatch`**
+  with current state where the route supplies it.
 
-Paged reads take `cursor` and `limit` and return `nextCursor`. An empty
-`nextCursor` (`""`) means the listing is exhausted; anything else is opaque and
-must be sent back verbatim. Never construct or mutate a cursor — an
-unrecognised one answers `400 invalid_cursor`. A page may be shorter than
-`limit` while still returning a `nextCursor`: rows the viewer may not see are
-removed after the page is read, so only an empty `nextCursor` ends the walk.
-Composed surfaces re-check the permission fence after composing and answer
-`409 stale_continuation` when it moved mid-read; discard the cursor and start
-over.
+An explicit zero is different from an omitted revision; only use zero where
+that operation defines creation or an initial state that way. After a conflict,
+read current state and retry quietly if the intended fields have not changed.
+Do not overwrite a person's intervening edit. Metadata value revisions are
+separate from background candidate revisions.
 
-Limits vary by surface and are documented per operation: most catalogue reads
-default to 40; `GET /v1/search (openapi.yaml, operationId search)` caps at 40;
-structured browse (`POST /v1/libraries/{id}/browse (browse.openapi.yaml,
-operationId browseLibrary)`) caps at 100. Clamp-vs-reset behavior differs by
-family (catalogue lists reset out-of-range limits to the default; browse,
-search and home clamp; console/admin reads reject), so read the operation's
-description rather than assuming one rule.
+Conditional GETs on supporting routes accept `If-None-Match` and can answer
+304. Reuse the stored response; do not parse a 304 as JSON. Binary artwork and
+media have their own validators and grant checks.
 
-<!-- example: overview-listitems-response file=openapi.yaml operationId=listItems direction=response status=200 schema=@response /v1/items get 200 -->
-```json
-{
-  "items": [
-    {
-      "id": "item_0001",
-      "libraryId": "lib_movies",
-      "title": "Harbor Lights",
-      "kind": "movie",
-      "duration": 6540.0,
-      "progressSeconds": 0.0,
-      "available": true,
-      "addedAt": "2026-09-01T12:00:00.000Z"
-    },
-    {
-      "id": "item_0002",
-      "libraryId": "lib_movies",
-      "title": "North Ferry",
-      "kind": "movie",
-      "duration": 5820.0,
-      "progressSeconds": 320.5,
-      "available": true,
-      "addedAt": "2026-09-02T12:00:00.000Z"
-    }
-  ],
-  "nextCursor": ""
-}
-```
+## Idempotency and request bounds
 
-Signed, versioned cursors with a published TTL, `total`/`revision` envelopes,
-and `start`+`positionIndex` random access are **not specified** as a uniform
-contract: cursor encoding, `total` presence, and window parameters differ per
-family (browse and home rows expose their own `revision`/`positionIndex`
-shapes — see section 3).
+Idempotency is per operation: some mutations use body `operationId` or
+`idempotencyKey`; playback starts use `Idempotency-Key`. Retain a key until the
+result is known and retry an identical payload with that key. Reusing it for a
+different request is refused. Replay windows differ by resource. Playback starts
+without the required key answer **428 `idempotency_key_required`**.
 
-## Idempotency keys
-
-There is no `Idempotency-Key` header in the OpenAPI. Idempotency is per-route
-body fields: `operationId` on personal-state writes (`PUT
-/v1/items/{id}/personal-state (openapi.yaml, operationId
-setItemPersonalState)`), `requestId` on playback session creation (`POST
-/v1/playback/sessions (openapi.yaml, operationId createPlaybackSession)`),
-`operationId` on bulk jobs (`POST /v1/jobs (jobs.openapi.yaml, operationId
-create_job)`), and `idempotencyKey` on layout writes (`PUT /v1/home/layout
-(home.openapi.yaml, operationId putHomeLayout)`). Key grammars, replay windows,
-and conflict codes (`operation_conflict`, `queue_operation_conflict`,
-`operation_expired`, `idempotency_key_reused`) differ per family — read the
-operation. A single header, scope rule, `Idempotent-Replayed` response header,
-and uniform `422`/`409` mapping are **not specified**.
-
-## Revisions and If-Match
-
-There is no `If-Match` / `If-None-Match` / `ETag`-on-JSON contract in the
-OpenAPI and no `412` / `428` statuses. Concurrency is body fenced:
-`expectedRevision` (usually integer) on the mutating body, with `409`
-`*_conflict` answers. Strong `ETag` handling exists only on a few binary
-reads (tile and chapter images). Uniform opaque-string revisions, mandatory
-preconditions, and `current`-on-`412` are **not specified**.
-
-## Rate limits with Retry-After
-
-Back-pressure is explicit. `429` with a `Retry-After` header means a rate limit
-or admission cap. Documented cases include 20 authentication attempts per
-minute per peer (`POST /v1/sessions (openapi.yaml, operationId createSession)`,
-`POST /v1/direct/sign-in (openapi.yaml, operationId directSignIn)`), 120
-personal writes per minute per profile, queue command/event poll caps (`429
-queue_busy` with `Retry-After`), and per-peer/per-account caps on `POST
-/v1/quick-connect/review (openapi.yaml, operationId reviewQuickConnect)`
-(`rate_limited`). `503` with `retryable: true` means a dependency is
-unavailable and the request is worth retrying (`search_unavailable`,
-`playback_source_unavailable`, and friends).
-
-<!-- example: overview-rate-limited file=openapi.yaml operationId=reviewQuickConnect direction=response status=default contentType=application/json schema=@response /v1/quick-connect/review post default -->
-```json
-{
-  "error": {
-    "code": "rate_limited",
-    "message": "Too many attempts. Try again shortly.",
-    "retryable": true
-  }
-}
-```
-
-Requests made with an API key or personal access token are also limited per
-credential, and carry `RateLimit` and `RateLimit-Policy` headers; the numbers
-are in `07-keys-tokens-and-scopes.md`. Per-session limit headers and
-operation-counted quotas are **not specified**.
+Typed routes reject unknown and repeated query parameters and bound JSON bodies.
+Bounds are published as `x-max-body-bytes`; other handlers have their own read
+bounds. A limit is not permission to send unbounded nested data. Session sign-in
+has per-address, network and account budgets; API keys and tokens have their own
+rate and concurrency budgets, documented in [keys and tokens](07-keys-tokens-and-scopes.md).

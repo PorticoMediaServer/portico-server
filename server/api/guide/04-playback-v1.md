@@ -1,152 +1,78 @@
-# 4. Playback v1
+# 4. Playback
 
-Two playback models are registered side by side. `/v1` is the original
-single-session model (open a session, read its stream URL, report progress).
-`/v2` is the renderer-independent control plane (controllers, lanes,
-occurrences, queues). This section covers the `/v1` path a simple player
-needs and points at the `/v2` routes it graduates to; it does not re-specify
-the `/v2` protocol state machine (see `playback-v2-protocol.md`).
+Playback uses sessions and device queues under `/v1`. The former `/v2`
+controller/occurrence API is removed. The generated registry contract describes
+the current resources; `internal/httpapi/playback_v1_routes.go` wires them.
 
-## Sessions
+## Capabilities and options
 
-`POST /v1/playback/sessions (openapi.yaml, operationId createPlaybackSession)`
-opens one session for one item:
+Publish this device's one capability document with
+`PUT /v1/me/devices/current/capabilities`, using `If-Match` against the revision
+read from GET on that address. It describes engines, codecs, containers,
+subtitles and display/audio limits; do not claim capabilities the player lacks.
+`GET /v1/items/{itemId}/playback-options` returns sources, controls and the
+server's decision for this device. Use the selected `presentation.engine`.
+Original is the default quality; Automatic is an explicit viewer option.
 
-<!-- example: playback-create-request file=openapi.yaml operationId=createPlaybackSession direction=request schema=@request /v1/playback/sessions post -->
-```json
-{
-  "itemId": "item_0001"
-}
+## Start, change and report
+
+```text
+POST /v1/playback/sessions
+Authorization: Bearer <token>
+Idempotency-Key: play-20261013-1
+Content-Type: application/json
 ```
 
-The response is the ready session with its grant-bound `streamUrl`:
-
-<!-- example: playback-session-response file=openapi.yaml operationId=createPlaybackSession direction=response status=201 schema=#/components/schemas/PlaybackSession -->
 ```json
-{
-  "id": "sess_play_1",
-  "generation": 1,
-  "streamUrl": "/v1/media/grant_01J6X7QZ9MAB0CDEF123456789",
-  "mode": "direct",
-  "duration": 6540.0,
-  "resumeSeconds": 320.5
-}
+{"itemId":"<item-id>"}
 ```
 
-`GET /v1/playback/sessions/{id} (openapi.yaml, operationId getPlaybackSession)`
-re-reads the session (generation increments on renewal — re-read before
-sending progress); `DELETE /v1/playback/sessions/{id} (openapi.yaml,
-operationId stopPlaybackSession)` stops it, releases delivery resources, and
-invalidates the grant immediately (in-flight bytes stop mid-stream).
-`GET /v1/playback/sessions/{id}/chapters (openapi.yaml, operationId
-getSessionChapters)` reads chapters. Before choosing a source or quality, read
-`GET /v1/items/{id}/playback-offers (openapi.yaml, operationId
-getPlaybackOffers)` (`sessionId` ties offers to a session, `revision` fences
-them; a newer projection answers `stale_playback_offer`):
+201 returns a session with `id`, `revision`, `state`, `lease` and `presentation`.
+Play `presentation.url` using its selected engine and start position. 202 means
+preparation is still running: follow `Retry-After`/`retryAfterMs` and replay the
+same start/key; do not make a new session for every poll. Grants in returned
+media and subtitle URLs authorize bytes; do not invent media paths.
 
-<!-- example: playback-offers-response file=openapi.yaml operationId=getPlaybackOffers direction=response status=200 schema=#/components/schemas/PlaybackOffers -->
+`GET /v1/playback/sessions/{id}` rereads the resource and returns its ETag.
+`PATCH` with `If-Match` changes state, quality, version, audio, subtitles or seek.
+For example, `{"state":"paused"}`. A change that changes the bytes keeps the
+session and queue but advances `presentation.generation`. Adopt the returned
+presentation and new URLs. Missing preconditions are 428; stale revisions are
+412 `revision_mismatch`. DELETE stops the session (optional `positionMs` body).
+
+`POST /v1/playback/sessions/{id}/timeline` reports renderer evidence:
+
 ```json
-{
-  "scope": {},
-  "revision": "rev_7",
-  "sources": [],
-  "controls": [],
-  "preparedVersions": [],
-  "preparedOffersRevision": "rev_7"
-}
+{"seq":1,"generation":1,"state":"playing","positionMs":321500}
 ```
 
-Session resources with `ETag`/`If-Match`, `Idempotency-Key` headers, and PATCH
-semantics are **not specified**; the body `requestId` on creation is the
-idempotency key.
+Use the actual presentation generation and strictly increasing `seq`. Reports
+renew the lease and update progress/history; follow `lease.reportEveryMs` and
+`Report-Every-Ms`. Serialize reports and retry a lost response unchanged. Read
+[reporting and overload recovery](../playback-admission.md) for admission rules.
+A session resource is transport intent; timeline reports are what the device
+actually did. A failed player can report `failure` in PATCH for server replanning.
 
-## Queues and selectors
+## Queues
 
-`/v1` has no queue resource. Queues live under `/v2`: `PUT /v2/queues/{id}
-(openapi.yaml, operationId createQueue)` creates or replaces a queue, `GET
-/v2/queues/{id} (openapi.yaml, operationId getQueue)` reads it, `POST
-/v2/queues/{id}/commands (openapi.yaml, operationId mutateQueue)` mutates it,
-`POST /v2/queues/{id}/playback (openapi.yaml, operationId startQueuePlayback)`
-starts an entry (200 ready, 202 preparing — then poll `GET
-/v2/queues/{id}/playback/requests/{request} (openapi.yaml, operationId
-getQueuePlaybackRequest)`), and `GET /v2/queues/{id}/playback (openapi.yaml,
-operationId getQueuePlayback)` returns the combined queue/occurrence/next/media
-view. Every queue read is bounded and answers `429 queue_busy` past 8 command
-slots (24 separate event-poll slots).
+`POST /v1/queues` with an `Idempotency-Key` creates this device's queue from
+exactly one selector form (container, query or explicit item IDs), or segments:
 
-Selectors as a tagged union (`container` | `query` | `items`) exist for bulk
-jobs (`POST /v1/jobs (jobs.openapi.yaml, operationId create_job)`, schema
-`Selector`), not for queues — queue entries address items directly. The job
-selector shape is:
-
-<!-- example: playback-selector-items file=jobs.openapi.yaml operationId=create_job direction=request schema=#/components/schemas/Selector -->
 ```json
-{
-  "items": {
-    "ids": ["item_0001", "item_0002"]
-  }
-}
+{"selector":{"items":{"ids":["<item-id>"]}}}
 ```
 
-Queue segments-from-selectors, seeded shuffle orders, and play-from-here
-anchors are **not specified** in the registered queue routes.
+The queue header is a bounded resource; read its entries through
+`GET /v1/queues/{id}/window` or `/entries`. Do not download a whole queue to
+move to its next entry. Header reads include current entry, repeat/shuffle,
+segments and available post-play information. Mutation routes use `If-Match`:
+`POST …/segments`, `DELETE …/entries/{entryId}`, `POST …/entries/{entryId}:move`,
+`PATCH /v1/queues/{id}` and `POST /v1/queues/{id}:advance`.
+Prepare/commit-next and save-as-playlist routes also use idempotency keys.
+Use the operation's request shape in [portico.openapi.json](../portico.openapi.json).
 
-## Timeline
-
-The renderer reports position and transport state to `POST
-/v1/playback/sessions/{id}/progress (openapi.yaml, operationId
-reportPlaybackProgress)` (204 on acceptance). `generation` must equal the
-session's current generation and `sequence` must increase monotonically, so a
-delayed or duplicated report is discarded instead of rewinding resume state.
-That report is what advances watched state, resume positions, and history:
-
-<!-- example: playback-progress-request file=openapi.yaml operationId=reportPlaybackProgress direction=request schema=#/components/schemas/PlaybackProgress -->
-```json
-{
-  "generation": 1,
-  "sequence": 120,
-  "positionSeconds": 321.5,
-  "state": "playing"
-}
-```
-
-Marker skips are recorded evidence, not lane commands: `POST
-/v1/playback/occurrences/{playbackId}/marker-skip (openapi.yaml, operationId
-recordMarkerSkip)`. The `/v2` occurrence path uses `POST
-/v2/playback/occurrences/{playbackId}/intent (openapi.yaml, operationId
-setPlaybackIntent)` (control) versus `POST
-/v2/playback/occurrences/{playbackId}/observations (openapi.yaml, operationId
-observePlayback)` (renderer evidence); channel occurrences use their own
-channel-intents/channel-observations routes and never enter personal state.
-Microsecond clocks and `seq`-ordered worklets are **not specified** for `/v1`.
-
-## Media grants
-
-`GET /v1/media/{grant} (openapi.yaml, operationId getMediaStream)` reads the
-media body authorized by the grant in the path — no bearer token. The grant
-resolves to a principal and item, access is re-checked around every read, and
-range requests are supported (`206` for ranges). There is no JSON body to show:
-success is `video/mp4`, `audio/mp4`, `audio/mpeg`, or `audio/aac` bytes.
-Subtitle documents, lyric revisions, audio renders, analysis artifacts,
-trickplay tiles, and download artifacts follow the same grant-in-path pattern
-with their own routes. Short-lived signed artwork URLs for third parties are
-**not specified** beyond the registered grant routes.
-
-## Events
-
-Queue followers poll `GET /v2/queues/{id}/events (openapi.yaml, operationId
-pollQueueEvents)` (up to two seconds against an opaque cursor), and any viewer
-can resume the unified feed at `GET /v1/events (openapi.yaml, operationId
-getEvents)` (SSE, or long-poll with `after`+`waitSeconds` — see section 6).
-Occurrence lifecycle (`POST /v2/playback/occurrences (openapi.yaml, operationId
-createPlaybackOccurrence)`, `GET /v2/playback/occurrences/{playbackId}
-(openapi.yaml, operationId getPlaybackOccurrence)`), lanes (`POST
-/v2/playback/lanes (openapi.yaml, operationId establishCommandLane)`), and
-controllers (`POST /v2/playback/controllers (openapi.yaml, operationId
-registerPlaybackController)`, every `/v2` call also carrying
-`X-Playback-Controller-Token`) are control-plane setup, not per-play calls.
-Typed invalidation topics beyond the registered `notification.changed`,
-`operation.updated`, and `stream.resync` event types are **not specified**.
+`session.updated`, `queue.updated` and related [feed hints](06-events.md) tell a
+client to reread; they do not replace the resource. Revocation ends grant access.
 
 ## Subtitle delivery
 

@@ -8,7 +8,7 @@ sign in the way an app does. It carries a credential that somebody made for it:
 | **API key** | the owner | the console, or `POST /v1/admin/api-keys (portico.openapi.json, operationId create_api_key)` | `pk.` |
 | **Personal access token** | any member, for themselves | their settings, or `POST /v1/me/access-tokens (portico.openapi.json, operationId create_access_token)` | `pat.` |
 
-Both are used the same way, on any route:
+Both are used the same way, on routes their scopes and role allow:
 
 ```
 Authorization: Bearer pk.3q2-7w...
@@ -51,6 +51,10 @@ Refusals:
 | `403` | `not_permitted` / `forbidden` | The scope is fine but the member's role is not (a member's token on an owner's route). |
 
 ## Creating and revoking
+
+Credential-management routes require a signed-in session. A key or token, even
+with `admin`, cannot list, create or revoke credentials. In the web app, owners
+use Server → Integrations; other members use Personal access tokens in settings.
 
 `POST /v1/admin/api-keys (portico.openapi.json, operationId create_api_key)`
 and `POST /v1/me/access-tokens (portico.openapi.json, operationId
@@ -129,8 +133,8 @@ A key or token has a lifetime of its own. It stops working only when:
 
 It does **not** stop when its member changes their password, signs out
 everywhere, or signs out a device, and it does not stop when the owner changes
-the member's library access. Those end the member's signed-in sessions and
-leave what they have connected working.
+the member's library access. Password changes and sign-out end signed-in sessions. Permission changes apply
+live. All leave what the member has connected working, under current permissions.
 
 A key or token always acts as its member **as they are now**. If the member's
 role is lowered it can no longer do what that role allowed (the calls answer

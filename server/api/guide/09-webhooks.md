@@ -18,7 +18,7 @@ Manage them in the console or with an owner's key that has the `admin` scope:
 ```json
 {
   "name": "Home Assistant",
-  "url": "http://homeassistant.local:8123/api/webhook/portico",
+  "url": "https://automation.example.com/hooks/portico",
   "events": ["playback.started", "playback.paused", "playback.resumed", "playback.stopped"]
 }
 ```
@@ -27,7 +27,7 @@ The URL may be any `http` or `https` address, including one on your own
 network. It may not contain a user name or password. The answer to adding a
 webhook, or to `{"rotateSecret": true}`, carries the signing `secret` once;
 lists show only `secretHint`. You may supply your own `secret` (16–128
-printable characters) instead. Up to 20 webhooks.
+printable, non-space ASCII characters) instead. Up to 20 webhooks.
 
 ## What is sent
 
@@ -93,8 +93,18 @@ To check a delivery:
 import hashlib, hmac, time
 
 def verify(secret: str, signature_header: str, body: bytes, tolerance=300) -> bool:
-    parts = dict(p.split("=", 1) for p in signature_header.split(","))
-    t, v1 = parts.get("t", ""), parts.get("v1", "")
+    try:
+        pairs = [p.strip().split("=", 1) for p in signature_header.split(",")]
+        if any(len(p) != 2 for p in pairs) or len(pairs) != 2:
+            return False
+        parts = dict(pairs)
+        if set(parts) != {"t", "v1"}:
+            return False
+        t, v1 = parts["t"], parts["v1"]
+    except (TypeError, ValueError, AttributeError):
+        return False
+    if len(t) > 20 or len(v1) != 64 or any(c not in "0123456789abcdef" for c in v1):
+        return False
     if not t.isdigit() or abs(time.time() - int(t)) > tolerance:
         return False
     expected = hmac.new(secret.encode(), t.encode() + b"." + body, hashlib.sha256).hexdigest()

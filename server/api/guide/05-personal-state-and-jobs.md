@@ -1,152 +1,52 @@
-# 5. Personal state and jobs
+# 5. Personal state, jobs and downloads
 
-Personal state is per viewer (profile), revision-fenced, and receipted. Small
-writes go straight at items or containers; large or mixed sets go through bulk
-jobs; files for offline go through downloads. History is a read, not a second
-write path.
+Watched state, ratings, favourites, My List and history belong to the viewer's
+profile. Reads and writes use live visibility rules. A key/token needs
+`playback` for personal writes and `read` for catalogue reads.
 
-## Watched, favorites, watchlist
+## Item and container state
 
-One item: `PUT /v1/items/{id}/personal-state (openapi.yaml, operationId
-setItemPersonalState)` with a mandatory `expectedRevision` fence and an
-`operationId` idempotency key. A mismatch answers `409` with the current state
-beside the error — re-read, re-plan, retry:
+Read the item's detail for its current personal state. Then send
+`PUT /v1/items/{id}/personal-state`:
 
-<!-- example: personal-mutation-request file=openapi.yaml operationId=setItemPersonalState direction=request schema=@request /v1/items/{id}/personal-state put -->
 ```json
-{
-  "operationId": "op_01J6X7QZ9MAB0CDEF123456789",
-  "expectedRevision": 41,
-  "watched": true
-}
+{"operationId":"watched-20261013-1","expectedRevision":41,"watched":true}
 ```
 
-Up to 200 intents at once: `PUT /v1/items/personal-state:batch
-(search-people.openapi.yaml, operationId setPersonalStateBatch)`. Each row
-applies under the same conflict rules independently — one rejected row never
-rolls back the rest — and `expectedRevision` per row is optional (omit to apply
-to whatever the row is at now). The batch carries the retry receipt: replaying
-the identical body under the same `operationId` returns the first outcome:
+Use the actual returned revision. Other intents include favourite, My List,
+rating and progress. A conflict returns current state for reconciliation;
+missing required revision is 428. Replay an identical body with the same
+operation ID after a lost response.
 
-<!-- example: personal-batch-request file=search-people.openapi.yaml operationId=setPersonalStateBatch direction=request schema=#/components/schemas/PersonalBatchRequest -->
-```json
-{
-  "operationId": "batch_01J6X7QZ9MAB0CDEF123456789",
-  "items": [
-    { "itemId": "item_0001", "watched": true },
-    { "itemId": "item_0002", "favorite": true }
-  ]
-}
-```
+`PUT /v1/items/personal-state:batch` supports up to 200 item intents, with one
+operation ID. Each row has its own outcome. `GET` and `PUT
+/v1/containers/{kind}/{id}/personal-state` cover shows, seasons, albums and books.
+A container mark applies to visible members present at its watermark; later
+additions remain unwatched. Explicit item intent takes precedence. Container
+undo and progress reset have separate routes in the registry contract.
 
-Favorites, watchlist, and rating ride the same mutation shape (`favorite`,
-`watchlisted`/`watchlist`, `rating`, `progressSeconds`) — there are
-no separate favorite or watchlist resources. Whole containers (show, season,
-album, book) use `GET /v1/containers/{kind}/{id}/personal-state
-(jobs.openapi.yaml, operationId get_container_personal_state)` (revision plus
-visible-member watched/unwatched counts) and `PUT
-/v1/containers/{kind}/{id}/personal-state (jobs.openapi.yaml, operationId
-set_container_personal_state)` (one watermark write; explicit item intent wins,
-inheritance requires `added_at <= watermark`, later items stay unwatched):
-
-<!-- example: personal-container-write file=jobs.openapi.yaml operationId=set_container_personal_state direction=request schema=@request /v1/containers/{kind}/{id}/personal-state put -->
-```json
-{
-  "expectedRevision": 3,
-  "watched": true
-}
-```
-
-<!-- example: personal-container-read file=jobs.openapi.yaml operationId=get_container_personal_state direction=response status=200 schema=@response /v1/containers/{kind}/{id}/personal-state get 200 -->
-```json
-{
-  "revision": 4,
-  "watched": true,
-  "watermark": "2026-09-01T12:00:00.000Z",
-  "watchedCount": 11,
-  "unwatchedCount": 2
-}
-```
-
-Reads: `GET /v1/personal-history (openapi.yaml, operationId getPersonalHistory)`
-and `POST /v1/personal-history/actions (openapi.yaml, operationId
-mutatePersonalHistory)`. Removing from Continue Watching, per-item quotas, and
-a `personal-state:apply` selector endpoint are **not specified**.
+`GET /v1/personal-history` and `POST /v1/personal-history/actions` read and change
+the viewer's own history. This does not erase the owner's play history.
 
 ## Bulk jobs
 
-`POST /v1/jobs (jobs.openapi.yaml, operationId create_job)` captures a
-selection and enqueues one of `personal-state | playlist-add | collection-add
-| metadata-edit | refresh`. The selector is the tagged union
-(`container` with `kind=show|season|album|artist|book|collection|playlist|library`
-plus `id`; `items` with 1–200 `ids`; `query` with `libraryId`, `pivot`, and the
-browse expression `filter`/`sort`):
-
-<!-- example: personal-job-request file=jobs.openapi.yaml operationId=create_job direction=request schema=#/components/schemas/JobRequest -->
-```json
-{
-  "operationId": "job_01J6X7QZ9MAB0CDEF123456789",
-  "command": "personal-state",
-  "selector": {
-    "items": { "ids": ["item_0001", "item_0002"] }
-  },
-  "args": { "watched": true }
-}
-```
-
-Creation answers `202` with the durable job; `totalKnown` is false until
-immutable membership capture finishes. `GET /v1/jobs/{id} (jobs.openapi.yaml,
-operationId get_job)` polls it and `GET /v1/jobs/{id}/failures
-(jobs.openapi.yaml, operationId get_job_failures)` pages at most 100 visible
-failures:
-
-<!-- example: personal-job-response file=jobs.openapi.yaml operationId=create_job direction=response status=202 schema=#/components/schemas/Job -->
-```json
-{
-  "jobId": "job_01J6X7QZ9MAB0CDEF123456789",
-  "command": "personal-state",
-  "state": "running",
-  "total": 2,
-  "totalKnown": true,
-  "done": 1,
-  "failed": 0
-}
-```
-
-A single `operations` resource with progress events, selection preview tokens,
-`exclude`/`range`/`asOf` selector modifiers, and cancel verbs are **not
-specified**.
+`POST /v1/jobs` accepts an operation ID, command, selector and arguments.
+Selectors choose explicit items, a container or a bounded browse query.
+Commands include personal state, playlist/collection additions, metadata edit
+and refresh. Membership is captured in the background; `totalKnown` is false
+until that step finishes. Poll `GET /v1/jobs/{id}` and page its `/failures`.
+A 202 receipt means accepted work, not completed work. Use the per-operation
+schema and returned outcomes rather than assuming a partial failure rolled back
+all rows. Source: `internal/httpapi/jobs_routes.go` and `internal/jobs/`.
 
 ## Downloads
 
-Offline starts with preparations: `POST /v1/downloads/preparations
-(portico.openapi.json, operationId create_download_preparations)` (exactly one
-of `mediaId`, `mediaIds` ≤ 100, `containerId`, or `nextAfterMediaId`, plus
-`quality`):
-
-<!-- example: personal-preparation-request file=portico.openapi.json operationId=create_download_preparations direction=request schema=@request /v1/downloads/preparations post -->
-```json
-{
-  "operationId": "dl_01J6X7QZ9MAB0CDEF123456789",
-  "mediaId": "item_0001",
-  "quality": "original"
-}
-```
-
-Then `GET /v1/downloads/preparations (portico.openapi.json, operationId
-list_download_preparations)`, `GET /v1/downloads/preparations/{id}
-(portico.openapi.json, operationId get_download_preparation)`, `POST
-/v1/downloads/preparations/{id}/grant (portico.openapi.json, operationId
-create_download_grant)` (mint the transfer grant), and `GET
-/v1/downloads/artifacts/{grant} (portico.openapi.json, operationId
-get_download_artifact)` (bytes). Receipts are `POST
-/v1/downloads/receipts (portico.openapi.json, operationId
-issue_download_receipts)` with revalidate/revoke/revocation reads; usage and
-settings are `GET /v1/downloads/usage (portico.openapi.json, operationId
-get_download_usage)` and the settings pair. Request-style offline (`POST
-/v1/downloads/requests (portico.openapi.json, operationId
-create_download_request)`, `GET /v1/downloads/requests/{id}
-(portico.openapi.json, operationId get_download_request)`) is the
-newer queue for the same lifecycle. Rolling subscriptions (`mode=all|unwatched|
-next` with `maxBytes`), whole-show-in-one-call semantics beyond `containerId`,
-and download progress over events are **not specified**.
+Use the [download lifecycle reference](../downloads.md). Request-style offline
+work begins at `POST /v1/downloads/requests`; preparations and transfer grants
+are separate resources. Original is the default. A playable offline copy needs
+its media, receipt, title metadata, artwork and subtitle companions retained
+locally. These assets are transferred before the server can tidy its preparation.
+Revalidate access and send reconciled progress on reconnect. Client storage and
+platform scheduling are the client's responsibility. Downloads may outlive
+server preparation cleanup; an existing device copy is not an instruction to
+keep its server preparation forever.

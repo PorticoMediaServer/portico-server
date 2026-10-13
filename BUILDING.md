@@ -10,18 +10,40 @@ should install a package from the [latest release](https://github.com/PorticoMed
 - Make
 - FFmpeg and FFprobe for playback and transcoding tests
 
-Clone the repository, install the JavaScript dependencies, and run the main
-verification commands:
+From the repository root:
 
 ```sh
 npm ci
-make test
-make build-server
+make build-web
+GOFLAGS=-p=2 make build-server
+mkdir -p .scratch/state
+PORTICO_STATE_DIR="$PWD/.scratch/state" PORTICO_WEB_DIR="$PWD/web/dist" \
+  PORTICO_BIND=127.0.0.1:32500 ./dist/portico-server
 ```
 
-The server binary is written to `dist/portico-server` unless `SERVER_OUTPUT` is
-set. During development, `make dev-api` starts the server and `make dev-web`
-starts the browser interface.
+The binary is written to `dist/portico-server` unless `SERVER_OUTPUT` is set.
+Use disposable development state. A raw development binary otherwise defaults
+to a relative state path; setting the absolute path avoids sharing another run's
+database accidentally. FFmpeg/FFprobe must be available for probing and playback;
+qualified release bundles are validated against `third_party/ffmpeg`.
+
+For browser development, run `npm run dev:web` in another terminal. Vite proxies
+`/v1` to port 32500. `make dev-api` runs Go source; provide the same explicit
+state and web environment. Development and release trust roots differ.
+
+Run focused checks while editing, for example:
+
+```sh
+(cd web && npx tsc --noEmit)
+(cd server && GOFLAGS=-p=2 go test ./internal/naming -run Test)
+```
+
+`make test` is the broader Go/client verification entry point and can be costly;
+`scripts/vet-go.sh` handles the maintained SQLite driver's inherited pointer
+warnings. These commands do not establish real-device playback or service
+installation acceptance. Read package-specific test instructions before running
+media/performance tiers. Do not use a database or collection you care about for
+fixtures or tests.
 
 ## Repository layout
 
@@ -34,15 +56,15 @@ starts the browser interface.
 | `packages/contracts` | TypeScript contract generated from the server's API registry |
 | `apikit` | The Go API toolkit (routes, schemas, cursors, idempotency) |
 | `fixtures` | Test fixtures |
-| `third_party` | The qualified FFmpeg build recipe and the patched hls.js |
+| `third_party` | FFmpeg recipe, patched hls.js, libass WebAssembly and subtitle fonts |
 | `trust` | The Hosted root public key compiled into release builds |
 | `packaging` | Linux, macOS and Windows package definitions used by releases |
 | `scripts` | Build, release and test scripts |
 
 The shared client packages here are the source of truth. The
 [React Native clients](https://github.com/PorticoMediaServer/portico-react-native)
-keep an identical copy, and the [Roku client](https://github.com/PorticoMediaServer/portico-roku)
-reads them from a sibling checkout of this repository.
+copy selected packages through their shared-package sync script. Verify the
+recorded package versions when changing both repositories.
 
 Release builds cover Linux x64/ARM64, Windows x64/ARM64, and Apple Silicon
 macOS. Installer creation belongs to the release workflow because it requires

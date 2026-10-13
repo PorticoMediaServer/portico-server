@@ -1,33 +1,23 @@
-# Portico server API — developer guide
+# Portico API developer guide
 
-Derived from the actual OpenAPI files in `server/api/` (integration base)
-and the normative `Spec — API v1 Style Guide.md`. Each endpoint citation names the
-file and `operationId` so it can be checked mechanically. Every JSON example is
-extracted and schema-validated by `check-examples.mjs` in this directory:
+Use the server's own origin, such as `http://127.0.0.1:32500` or
+`https://media.example.com`. Hosted is not needed for local API integrations.
+The [generated registry contract](../portico.openapi.json) describes typed
+routes. This guide also covers hand-registered routes by reading their handlers;
+the old YAML files and their example checker have not caught up with the router.
+Examples below are illustrative requests, with IDs and secrets to replace.
 
-```bash
-node server/api/guide/check-examples.mjs
-```
+1. [Conventions](01-overview.md): time, paging, errors, revisions and limits.
+2. [Authentication](02-authentication.md): sessions, direct sign-in, refresh and TV codes.
+3. [Browsing](03-browsing.md): libraries, content, search and title details.
+4. [Playback](04-playback-v1.md): capabilities, sessions, queues and subtitles.
+5. [Personal state and jobs](05-personal-state-and-jobs.md).
+6. [Events](06-events.md): changes while a screen is open.
+7. [Keys, tokens and scopes](07-keys-tokens-and-scopes.md).
+8. [Tools](08-for-tools.md): title query and Sonarr/Radarr changed-path reports.
+9. [Webhooks](09-webhooks.md): events, signatures and delivery.
+10. [MCP](10-mcp.md): connect a desktop assistant and discover its tools.
 
-Conventions used in every section:
-
-- `METHOD /v1/...` always names a route that exists in the cited OpenAPI file.
-  Where the style guide describes behavior the OpenAPI does not define, the text
-  says **not specified** instead of inventing it.
-- `code` values are the stable machine-readable strings from `x-error-codes`.
-- Timestamps in examples use RFC 3339 millisecond UTC; durations on catalogue
-  shapes are float seconds (the style guide's integer-millisecond rule is a
-  target, not the current wire format — see `01-overview.md`).
-
-Sections:
-
-1. `01-overview.md` — base URL, versioning, errors, pagination, idempotency, revisions, rate limits.
-2. `02-authentication.md` — direct sign-in, Portico Account challenge, sessions, refresh, TV code.
-3. `03-browsing.md` — libraries, browse and content, anchors, search, Home and layout.
-4. `04-playback-v1.md` — sessions, queues and selectors, timeline, media grants, events.
-5. `05-personal-state-and-jobs.md` — watched, favorites, watchlist, bulk jobs, downloads.
-6. `06-events.md` — the `/v1/events` feed and notifications.
-7. `07-keys-tokens-and-scopes.md` — API keys, personal access tokens, scopes, rate and concurrency limits.
-8. `08-for-tools.md` — the bounded title query and the "these paths changed" report.
-9. `09-webhooks.md` — outbound webhooks: events, payloads, checking the signature, retries.
-10. `10-mcp.md` — the built-in MCP server for AI assistants.
+For owner setup and media organisation, see [installation](../../../INSTALLING.md)
+and [libraries](../../../docs/libraries.md). Topic references in the API folder
+cover metadata editing, downloads, administration and social playback.

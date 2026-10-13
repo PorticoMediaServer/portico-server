@@ -13,27 +13,14 @@ It shares code with the other clients through:
 
 ## Running it
 
-1. Start a development server (never against a server whose data you care about):
+Follow [BUILDING.md](../BUILDING.md) to build/run the server with disposable
+state. From the repository root, `npm ci` installs the shared workspace and
+`npm run dev:web` starts Vite on `http://127.0.0.1:5173`, proxying `/v1` to
+`127.0.0.1:32500`. There is no `/v2` playback API.
 
-   ```bash
-   (cd server && go build -o ../.scratch/portico-server ./cmd/server)
-   PORTICO_DEV_DIR=/path/to/a/copied/state server/dev/run-demo.sh   # listens on :32500
-   ```
-
-2. Start the web app:
-
-   ```bash
-   cd web && npm install && npm run dev
-   ```
-
-   Vite serves http://127.0.0.1:5173 and proxies `/v1` and `/v2` to
-   `127.0.0.1:32500`.
-
-3. Before committing:
-
-   ```bash
-   npm run check    # regenerate tokens, design-boundary lint, tsc
-   ```
+For a focused type check, use `(cd web && npx tsc --noEmit)`. The broader
+`npm run check --workspace portico-web` also regenerates tokens, runs design,
+preference and string checks, and runs the web tests; it is not just a type check.
 
 ## Layout
 
@@ -64,14 +51,9 @@ from `base.css` (`--surface-*`, `--text-*`, `--layer-*`) instead.
 - Compact layout (≤720px) is decided by `useCompact()`; dialogs become bottom
   sheets and the player's five option boxes collapse to one Options sheet.
 
-## Known gaps
+## Administration and integrations
 
-- Hosted account workspace (`/account`: profiles, sessions, security,
-  invitations) is not built; dev testing is direct-sign-in only.
-- Remove library is disabled pending a server-side confirmation flow.
-- The player has no explicit ended/replay state; it returns to the previous
-  screen when the queue drains.
-- The library header crowds on the narrowest phones when a library has more
-  than four views.
-- Inventory file browser in Server → Libraries shows sources only, not a
-  directory tree.
+Owner pages are described in [administration.md](docs/administration.md).
+The server's [developer guide](../server/api/guide/README.md) describes the same
+API used by this app. Source checks and automated tests do not establish browser
+layout or native feature parity; use a browser and target devices for acceptance.

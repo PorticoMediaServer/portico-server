@@ -22,8 +22,9 @@ session id to keep: every request stands alone.
    scopes the assistant should have (`07-keys-tokens-and-scopes.md`). `read` is
    enough to look things up; add `playback`, `library` or `admin` only for what
    you want it to be able to change.
-2. Give the assistant the address and the key. Most clients take a URL and a
-   header:
+2. Give the assistant the address and the key. A desktop client that supports remote Streamable HTTP needs a URL and a
+   bearer header. Client configuration syntax differs; this is a generic shape,
+   not a promise that every desktop application accepts it:
 
 ```json
 {
@@ -57,7 +58,7 @@ apply exactly as they do to a direct request.
 | `mark_watched`, `control_playback`, `schedule_recording`, `cancel_recording` | `playback` (and `read` where it looks something up first) | anyone | The member's own watch state, playback and recordings. |
 | `now_playing`, `stop_playback` | `playback` | administrator | What everyone is playing; stop a session. |
 | `start_library_scan`, `report_changed_paths` | `library` | owner | Scan a library, or only the folders that changed. |
-| `list_scan_jobs`, `list_unmatched_files`, `get_match`, `search_match_candidates`, `fix_match` | `library` | owner | Scan history, files that could not be matched, fixing a match. |
+| `list_scan_jobs`, `list_unmatched_files`, `list_needs_attention`, `library_needs_attention`, `count_needs_attention`, `get_match`, `search_match_candidates`, `fix_match` | `library` | owner | Scan history, files that could not be matched, fixing a match. |
 | `list_members`, `play_history`, `read_logs` | `admin` | administrator | People, what was played, the server log. |
 | `server_health`, `storage_usage`, `get_settings`, `change_settings`, `list_backups`, `run_backup` | `admin` | owner | Health and free space, settings, backups. |
 | `list_webhooks`, `create_webhook`, `update_webhook`, `delete_webhook`, `test_webhook`, `list_webhook_deliveries` | `admin` | owner | Webhooks. |
