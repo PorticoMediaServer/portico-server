@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"portico.local/server/internal/livechannels"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -121,7 +122,7 @@ type ChannelChoices struct {
 // locators, credentials, or inaccessible sources are part of this projection.
 func (s *Store) ChannelChoices(ctx context.Context, a livechannels.Authority, o livechannels.Owner, source, search, cursor string) (ChannelChoices, error) {
 	out := ChannelChoices{Channels: []ChannelChoice{}}
-	if !hexID.MatchString(source) || len(search) > 120 || strings.ContainsAny(search, "\x00\r\n") {
+	if !hexID.MatchString(source) || len(search) > 120 || len(cursor) > 160 || strings.ContainsAny(search, "\x00\r\n") {
 		return out, ErrInvalid
 	}
 	e := s.snapshot(ctx, a, o, func(tx *sql.Tx, allowed func(string, string) bool) error {
@@ -132,37 +133,45 @@ func (s *Store) ChannelChoices(ctx context.Context, a livechannels.Authority, o 
 		if e := tx.QueryRowContext(ctx, `SELECT active_generation,state FROM live_sources WHERE id=?`, source).Scan(&out.Generation, &state); e != nil {
 			return ErrDenied
 		}
-		after := ""
+		after := -1
 		if cursor != "" {
 			parts := strings.Split(cursor, ".")
-			if len(parts) != 2 || !hexID.MatchString(parts[0]) || !canonicalID.MatchString(parts[1]) {
+			if len(parts) != 2 || !hexID.MatchString(parts[0]) {
 				return ErrInvalid
 			}
 			if parts[0] != out.Generation {
 				return ErrConflict
 			}
-			after = parts[1]
+			position, err := strconv.Atoi(parts[1])
+			if err != nil || position < 0 || strconv.Itoa(position) != parts[1] {
+				return ErrInvalid
+			}
+			after = position
 		}
-		rows, e := tx.QueryContext(ctx, `SELECT channel_id,name,number FROM live_channel_versions WHERE generation_id=? AND channel_id>? AND (?='' OR instr(lower(name),lower(?))>0 OR instr(lower(number),lower(?))>0) ORDER BY channel_id LIMIT 31`, out.Generation, after, search, search, search)
+		rows, e := tx.QueryContext(ctx, `SELECT channel_id,name,number,position FROM live_channel_versions WHERE generation_id=? AND position>? AND (?='' OR instr(lower(name),lower(?))>0 OR instr(lower(number),lower(?))>0) ORDER BY position LIMIT 257`, out.Generation, after, search, search, search)
 		if e != nil {
 			return e
 		}
 		defer rows.Close()
+		examined := 0
 		for rows.Next() {
+			// Bound the raw walk as well as the visible page. A denied prefix
+			// must still advance the cursor so later allowed channels are reachable.
+			if examined == 256 || len(out.Channels) == 30 {
+				out.NextCursor = out.Generation + "." + strconv.Itoa(after)
+				break
+			}
 			var v ChannelChoice
-			if e = rows.Scan(&v.ID, &v.Name, &v.Number); e != nil {
+			if e = rows.Scan(&v.ID, &v.Name, &v.Number, &after); e != nil {
 				return e
 			}
+			examined++
 			if allowed(source, v.ID) {
 				out.Channels = append(out.Channels, v)
 			}
 		}
 		if e = rows.Err(); e != nil {
 			return e
-		}
-		if len(out.Channels) > 30 {
-			out.Channels = out.Channels[:30]
-			out.NextCursor = out.Generation + "." + out.Channels[29].ID
 		}
 		return nil
 	})
