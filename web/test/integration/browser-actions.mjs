@@ -82,6 +82,166 @@ try{
   });
   await driver.clickText('Close player');
  }
+ if(mode==='tokens'){
+  await driver.viewport(1440,1000);await driver.navigate(base);await driver.waitFor(`document.querySelector('button[class*="avatarItem"]')`);
+  const member={username:'member-'+crypto.randomUUID().slice(0,8),password:'Test-'+crypto.randomUUID()+'9x'};
+  writeFileSync(path.join(output,'member-credentials.json'),JSON.stringify(member),{mode:0o600});
+  const owner=JSON.parse(readFileSync(path.join(output,'credentials.json')));
+  async function signIn(credentials){
+   await driver.clickSelector('button[class*="avatarItem"]');await driver.clickText('Sign out','[role="menuitem"]');await driver.waitFor(`document.querySelector('input[autocomplete="username"]')`);
+   await driver.fill('input[autocomplete="username"]',credentials.username);await driver.fill('input[autocomplete="current-password"]',credentials.password);await driver.clickText('Sign in','button[type="submit"]');
+   await driver.waitFor(`document.querySelector('button[class*="avatarItem"]')||document.body.innerText.includes('Who’s watching')`);
+   if(await driver.evaluate(`document.body.innerText.includes('Who’s watching')`)){
+    const option=await driver.evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes(${JSON.stringify(credentials.username)})).innerText.trim()`);await driver.clickText(option,'button');
+   }
+   await driver.waitFor(`document.querySelector('button[class*="avatarItem"]')`);
+  }
+  await step('desktop-member-account-created',async()=>{
+   await go('/settings/server-people');await driver.waitFor(`document.body.innerText.includes('Add account')`);await driver.clickText('Add account');await driver.waitFor(`document.querySelector('[role="dialog"] input')`);
+   const fields=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] input')].map(i=>i.id)`);
+   await driver.fill('#'+fields[0],member.username);await driver.fill('#'+fields[1],'Browser Member');await driver.fill('#'+fields[2],member.password);await pause(120);await driver.clickText('Add account','[role="dialog"] button');await driver.waitFor(`!document.querySelector('[role="dialog"]')`);return {created:true};
+  });
+  await step('desktop-member-token-issued',async()=>{
+   await signIn(member);await go('/settings/profile');await driver.waitFor(`document.body.innerText.includes('Personal access tokens')`);await driver.clickText('Personal access tokens','summary');await driver.waitFor(`document.body.innerText.includes('Create a token')`);
+   await driver.clickText('Create a token');await driver.waitFor(`document.querySelector('[role="dialog"] input')`);await driver.fill('[role="dialog"] input','Browser member token');await pause(120);await driver.clickText('Create','[role="dialog"] button');await driver.waitFor(`document.querySelector('[role="dialog"] textarea')`);
+   const secret=await driver.evaluate(`document.querySelector('[role="dialog"] textarea').value`);
+   const read=await fetch(base+'/v1/libraries',{headers:{Authorization:'Bearer '+secret}});assert.equal(read.status,200);await driver.screenshot('desktop-member-token-secret');await driver.clickText('I’ve copied it');await driver.waitFor(`!document.querySelector('[role="dialog"]')`);return {created:true,readScopeWorks:true};
+  });
+  await step('desktop-owner-member-token-revoked',async()=>{
+   await signIn(owner);await go('/settings/server-integrations?tab=tokens');await driver.waitFor(`document.body.innerText.includes('Browser member token')`);await driver.screenshot('desktop-owner-member-token');await driver.clickText('Revoke');await driver.waitFor(`document.querySelector('[role="dialog"]')`);await driver.clickText('Revoke','[role="dialog"] button');await driver.waitFor(`!document.querySelector('[role="dialog"]')`);return {revoked:true};
+  });
+ }
+ if(mode==='downloads'){
+  await driver.viewport(1440,1000);await driver.navigate(base);await driver.waitFor(`document.body.innerText.includes('Recently added')`);
+  await step('desktop-download-prepared',async()=>{
+   const library=libraries.find(l=>l.kind==='movie');await go(`/library/${library.id}?view=browse`);await driver.waitFor(`document.querySelector('a[aria-label^="Browser Film"]')`);const label=await driver.evaluate(`document.querySelector('a[aria-label^="Browser Film"]').getAttribute('aria-label')`);await driver.clickText(label,'a');await driver.waitFor(`document.querySelector('button[aria-label="More actions"]')`);
+   await driver.clickText('More actions');await driver.waitFor(`document.querySelector('[role="menuitem"]')`);await driver.clickText('Download…','[role="menuitem"]');await driver.waitFor(`document.querySelector('[role="dialog"]')`);
+   const original=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.innerText.startsWith('Original')).innerText.trim()`);await driver.clickText(original,'[role="dialog"] button');await driver.waitFor(`document.querySelector('a[href="/downloads"]')`);await driver.clickText('View downloads','a');await driver.waitFor(`document.body.innerText.includes('Ready to save')&&!document.querySelector('[role="dialog"]')`);return {readyToSave:true};
+  });
+  await step('desktop-download-saved',async()=>{
+   const directory=path.join(output,'saved-downloads');await driver.send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:directory,eventsEnabled:true});await driver.clickText('Save file');
+   const {readdirSync,statSync}=await import('node:fs');for(let i=0;i<80;i++){let files=[];try{files=readdirSync(directory).filter(f=>!f.endsWith('.crdownload'));}catch{}if(files.length){const bytes=statSync(path.join(directory,files[0])).size;assert(bytes>1000);return {file:files[0],bytes};}await pause(150);}throw new Error('The original download did not finish');
+  });
+  await driver.viewport(390,844);await driver.screenshot('phone-download-prepared');
+ }
+ if(mode==='csp'){
+  await driver.viewport(1440,1000);await driver.navigate(base+'/settings/server-integrations?tab=keys');await driver.waitFor(`document.body.innerText.includes('Create a key')`);
+  await step('desktop-dialog-csp',async()=>{
+   await driver.clickText('Create a key');await driver.waitFor(`document.querySelector('[role="dialog"]')`);
+   const state=await driver.evaluate(`({nonce:document.querySelector('meta[name="portico-style-nonce"]').content,global:window.__webpack_nonce__,overflow:getComputedStyle(document.body).overflow,accepted:[...document.querySelectorAll('style')].some(s=>s.nonce&&s.sheet)})`);
+   assert.equal(state.nonce,state.global);assert.equal(state.overflow,'hidden');assert(state.accepted);await driver.clickText('Cancel','[role="dialog"] button');return state;
+  });
+  await step('desktop-untrusted-style-refused',async()=>{
+   const refused=await driver.evaluate(`(()=>{const style=document.createElement('style');style.textContent='.portico-csp-probe {color:rgb(1, 2, 3)}';document.head.append(style);const denied=!style.sheet;style.remove();return denied;})()`);
+   assert(refused);return {arbitraryInlineStyleBlocked:true,expectedPolicyViolation:true};
+  });
+ }
+ if(mode==='profiles'){
+  const credentials=JSON.parse(readFileSync(path.join(output,'credentials.json')));
+  await driver.viewport(1440,1000);await driver.navigate(base);await driver.waitFor(`document.body.innerText.includes('Recently added')`);
+  await step('desktop-profile-created',async()=>{
+   await go('/settings/profile');await driver.waitFor(`document.body.innerText.includes('Add profile')`);
+   if(await driver.evaluate(`document.body.innerText.includes('Browser Viewer')`))return {alreadyCreated:true};
+   await driver.clickText('Add profile');await driver.waitFor(`document.querySelector('[role="dialog"] input')`);
+   await driver.fill('[role="dialog"] input','Browser Viewer');await driver.clickText('Save','[role="dialog"] button');await driver.waitFor(`!document.querySelector('[role="dialog"]')&&document.body.innerText.includes('Browser Viewer')`);
+   return {created:true};
+  });
+  for(const [viewport,width,height] of [['desktop',1440,1000],['phone',390,844]]){
+   await driver.viewport(width,height);
+   await step(viewport+'-profile-switched',async()=>{
+    await driver.clickSelector(viewport==='desktop'?'button[class*="avatarItem"]':'button[class*="topAvatar"]');await driver.waitFor(`document.querySelector('[role="menuitem"]')`);await driver.clickText('Switch profile…','[role="menuitem"]');
+    await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('Browser Viewer')`);
+    const option=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.innerText.includes('Browser Viewer')).innerText.trim()`);await driver.clickText(option,'[role="dialog"] button');
+    await driver.waitFor(`!document.querySelector('[role="dialog"]')`);await pause(450);
+    await driver.screenshot(viewport+'-viewer-profile');
+    await driver.clickSelector(viewport==='desktop'?'button[class*="avatarItem"]':'button[class*="topAvatar"]');await driver.clickText('Switch profile…','[role="menuitem"]');await driver.waitFor(`document.querySelector('[role="dialog"]')?.innerText.includes('Browser Viewer')`);
+    const owner=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] button')].find(b=>b.innerText.includes(${JSON.stringify(credentials.username)})).innerText.trim()`);await driver.clickText(owner,'[role="dialog"] button');await driver.waitFor(`!document.querySelector('[role="dialog"]')`);
+    return {switchedToViewerAndBack:true};
+   });
+  }
+  const previous=await api('/v1/admin/connectivity/policy');
+  await api('/v1/admin/connectivity/policy','PATCH',{expectedRevision:previous.revision,operationId:crypto.randomUUID(),lanNetworks:['10.0.0.0/8'],lanDiscoveryEnabled:false});
+  try{
+   await step('phone-plain-http-sign-in',async()=>{
+    await driver.clickSelector('button[class*="topAvatar"]');await driver.clickText('Sign out','[role="menuitem"]');await driver.waitFor(`document.querySelector('input[autocomplete="username"]')`);
+    await driver.navigate(base);await driver.waitFor(`document.querySelector('input[autocomplete="username"]')`);
+    await driver.waitFor(`document.body.innerText.includes('This connection uses HTTP outside your home networks.')`);
+    await driver.screenshot('phone-plain-http-note');
+    await driver.fill('input[autocomplete="username"]',credentials.username);await driver.fill('input[autocomplete="current-password"]',credentials.password);
+    await driver.clickText('Sign in','button[type="submit"]');await driver.waitFor(`document.body.innerText.includes('Who’s watching')`);
+    const option=await driver.evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.includes(${JSON.stringify(credentials.username)})).innerText.trim()`);await driver.clickText(option,'button');await driver.waitFor(`document.body.innerText.includes('Recently added')`);
+    return {httpNoteShown:true,signedIn:true};
+   });
+  }finally{const current=await api('/v1/admin/connectivity/policy');await api('/v1/admin/connectivity/policy','PATCH',{expectedRevision:current.revision,operationId:crypto.randomUUID(),lanNetworks:previous.lanNetworks,lanDiscoveryEnabled:false});}
+ }
+ if(mode==='media'){
+  await driver.viewport(1440,1000);await driver.navigate(base);await driver.waitFor(`document.body.innerText.includes('Recently added')`);
+  await step('desktop-next-episode',async()=>{
+   const tv=libraries.find(l=>l.kind==='tv');await go(`/library/${tv.id}?view=browse`);await driver.waitFor(`document.querySelector('a[aria-label="Browser Show"]')`);await driver.clickText('Browser Show','a');
+   await driver.waitFor(`location.pathname.startsWith('/show/')&&[...document.querySelectorAll('button')].some(b=>b.innerText.startsWith('Play S')||b.innerText==='Play')`);
+   const label=await driver.evaluate(`[...document.querySelectorAll('button')].find(b=>b.innerText.startsWith('Play S')||b.innerText==='Play').innerText`);await driver.clickText(label,'button');
+   await driver.waitFor(`document.querySelector('video')?.currentTime>1`,30000);
+   const first=await driver.evaluate(`document.querySelector('video').currentSrc`);await driver.screenshot('desktop-first-episode');
+   await driver.clickText('Next');await driver.waitFor(`document.querySelector('video').currentSrc!==${JSON.stringify(first)}&&document.querySelector('video').currentTime>1`,30000);
+   await driver.clickText('Pause');await driver.waitFor(`document.querySelector('video').paused`);
+   const text=await driver.evaluate('document.body.innerText');assert(/Episode 2|Second Episode/.test(text));
+   return {nextEpisodeAdvanced:true};
+  });
+  if(await driver.evaluate(`!!document.querySelector('video')`))await driver.clickText('Close player');
+  await step('desktop-music-playing',async()=>{
+   const music=libraries.find(l=>l.kind==='music');await go(`/library/${music.id}?view=songs`);await driver.waitFor(`document.querySelector('button[aria-label="Play Browser Song"]')`);await driver.clickText('Play Browser Song');
+   await driver.waitFor(`document.body.innerText.includes('Browser Song')&&document.querySelector('button[aria-label="Pause"]')`);
+   const before=await driver.evaluate(`[...document.querySelectorAll('input[type="range"]')].map(e=>({label:e.getAttribute('aria-label'),value:e.value}))`);
+   await pause(1600);const after=await driver.evaluate(`[...document.querySelectorAll('input[type="range"]')].map(e=>({label:e.getAttribute('aria-label'),value:e.value}))`);
+   assert(after.some((e,i)=>Number(e.value)>Number(before[i]?.value)),'Music position must advance');
+   await driver.screenshot('desktop-music-mini');
+   const open=await driver.evaluate(`[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-label')?.includes('Now Playing')||b.getAttribute('aria-label')?.includes('Now playing'))?.getAttribute('aria-label')`);
+   if(open)await driver.clickText(open);
+   await driver.viewport(390,844);await driver.screenshot('phone-music-playing');
+   await driver.clickText('Pause');return {positionAdvanced:true,before,after};
+  });
+ }
+ if(mode==='console'){
+  await driver.viewport(1440,1000);await driver.navigate(base);await driver.waitFor(`document.body.innerText.includes('Recently added')`);
+  await step('desktop-webhook-created',async()=>{
+   await go('/settings/server-integrations?tab=webhooks');await driver.waitFor(`document.body.innerText.includes('Add a webhook')`);if(await driver.evaluate(`document.body.innerText.includes('Browser webhook')`))return {alreadyCreated:true};await driver.clickText('Add a webhook');
+   await driver.waitFor(`document.querySelector('[role="dialog"]')`);await driver.fill('[role="dialog"] input:not([type="password"])','Browser webhook');
+   const inputs=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] input')].filter(i=>i.type==='text').map(i=>i.id)`);
+   await driver.fill('#'+inputs[1],process.env.PORTICO_WEBHOOK_URL||'http://127.0.0.1:32763/events');
+   const checkbox=await driver.evaluate(`[...document.querySelectorAll('[role="dialog"] label')].find(l=>l.innerText==='A library scan finishes').htmlFor`);
+   await driver.clickSelector('#'+checkbox);await pause(100);
+   await driver.clickText('Add a webhook','[role="dialog"] button');await driver.waitFor(`document.querySelector('[role="dialog"] textarea')`);
+   await driver.screenshot('desktop-webhook-secret');await driver.clickText('I’ve copied it');await driver.waitFor(`!document.querySelector('[role="dialog"]')`);
+   return {created:true};
+  });
+  await step('desktop-webhook-test',async()=>{
+   const toggle=await driver.evaluate(`[...document.querySelectorAll('button[role="switch"]')].find(b=>b.getAttribute('aria-label')?.includes('Browser webhook')&&b.getAttribute('aria-checked')==='false')?.getAttribute('aria-label')`);if(toggle){await driver.clickText(toggle);await pause(250);}
+   const label=await driver.evaluate(`[...document.querySelectorAll('button')].find(b=>b.getAttribute('aria-haspopup')==='menu'&&b.getAttribute('aria-label')?.includes('Browser webhook')).getAttribute('aria-label')`);
+   await driver.clickText(label);await driver.waitFor(`document.querySelector('[role="menuitem"]')`);
+   const testLabel=await driver.evaluate(`[...document.querySelectorAll('[role="menuitem"]')].find(e=>e.innerText.toLowerCase().includes('test')).innerText`);
+   await driver.clickText(testLabel,'[role="menuitem"]');await driver.waitFor(`document.querySelector('[role="dialog"]')`);
+   await driver.waitFor(`document.querySelector('[role="dialog"]').innerText.includes('Delivered')`,20000);
+   await driver.clickText('Done','[role="dialog"] button');return {deliveredToLoopback:true};
+  });
+  await step('desktop-backup-created',async()=>{
+   await go('/settings/server-storage');await driver.waitFor(`document.body.innerText.includes('Back up now')`);await driver.clickText('Back up now');
+   await driver.waitFor(`document.body.innerText.includes('Restore')&&!document.body.innerText.includes('No backups yet')`,30000);
+   return {backupListed:true};
+  });
+  await step('desktop-support-export',async()=>{
+   await go('/settings/server-troubleshooting');await driver.waitFor(`document.body.innerText.includes('Prepare export')`);await driver.clickText('Prepare','button');
+   await driver.waitFor(`document.body.innerText.includes('Download JSON')`,20000);return {exportPrepared:true};
+  });
+  for(const [viewport,width,height] of [['desktop',1440,1000],['phone',390,844]]){
+   await driver.viewport(width,height);
+   for(const tab of ['general','metadata','attention','scanning','advanced']){
+    await step(viewport+'-library-'+tab,async()=>{
+     const lib=libraries.find(l=>l.kind==='movie');await go(`/settings/server-libraries?id=${lib.id}&tab=${tab}`);await pause(650);
+     const text=await driver.evaluate('document.body.innerText');assert(text.includes('Films'));assert(!text.includes('Try again'));return {loaded:true};
+    });
+   }
+  }
+ }
  if(mode==='browse'){
   await driver.navigate(base);await driver.waitFor(`document.body.innerText.includes('Recently added')`);
   for(const [viewport,width,height] of [['desktop',1440,1000],['phone',390,844]]){

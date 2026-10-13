@@ -11,6 +11,12 @@ export function fixtureApi(base, output) {
     const issued=await response.json();
     if(!response.ok||!issued.session?.accessToken)throw new Error('Generated fixture account could not sign in');
     token=issued.session.accessToken;
+    if (issued.session.viewer?.role==='account' && issued.profiles?.length) {
+      const primary=issued.profiles.find(p=>p.primary);
+      if(!primary)throw new Error('Fixture account has no primary profile');
+      const selected=await fetch(base+'/v1/direct/profiles/'+encodeURIComponent(primary.id)+'/select',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token,'X-Portico-Installation-Id':installation},body:JSON.stringify({pin:'',installationId:installation,trustToken:'',trust:false})});
+      const viewing=await selected.json();if(!selected.ok||!viewing.session?.accessToken)throw new Error('Fixture primary profile could not be selected');token=viewing.session.accessToken;
+    }
   };
   return async(route,method='GET',body)=>{
     if(!route.startsWith('/v1/'))throw new Error('Fixture requests must use the local API');

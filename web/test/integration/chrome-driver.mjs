@@ -49,8 +49,8 @@ export class ChromeDriver {
         const url = this.requests.get(event.params.requestId);
         if (url && /subtitles|playback-offers/.test(url) && !url.includes('/media/')) this.send('Network.getResponseBody', {requestId:event.params.requestId}).then(body=>{try{this.responses.set(url,JSON.parse(body.body));}catch{}}).catch(()=>{});
       }
-      if (event.method === 'Runtime.exceptionThrown') this.record({kind: 'exception', detail: event.params.exceptionDetails});
-      if (event.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(event.params.type)) this.record({kind: 'console', detail: event.params});
+      if (event.method === 'Runtime.exceptionThrown' && event.params.timestamp >= this.started) this.record({kind: 'exception', detail: event.params.exceptionDetails});
+      if (event.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(event.params.type) && event.params.timestamp >= this.started) this.record({kind: 'console', detail: event.params});
       if (event.method === 'Log.entryAdded' && ['error', 'warning'].includes(event.params.entry.level) && event.params.entry.timestamp >= this.started) this.record({kind: 'log', detail: event.params.entry});
       if (event.method === 'Network.loadingFailed') this.record({kind: 'network', url: this.requests.get(event.params.requestId), detail: event.params});
       if (event.method === 'Network.responseReceived' && event.params.response.status >= 400) this.record({kind: 'http', url: event.params.response.url, status: event.params.response.status});

@@ -16,7 +16,8 @@ def video(rel, title, extra=""):
     file = root / rel
     file.parent.mkdir(parents=True, exist_ok=True)
     run(["-f", "lavfi", "-i", "testsrc2=size=640x360:rate=24:duration=45", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=45", "-c:v", "libx264", "-threads", "1", "-preset", "ultrafast", "-crf", "28", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+faststart", "-shortest", "-metadata", "title="+title, str(file)])
-    file.with_suffix(".nfo").write_text(f"<movie><title>{escape(title)}</title><year>2024</year><genre>Testing</genre><plot>Synthetic browser test media.</plot>{extra}</movie>")
+    nfo_root = "episodedetails" if rel.startswith(("tv/", "anime/")) else "movie"
+    file.with_suffix(".nfo").write_text(f"<{nfo_root}><title>{escape(title)}</title><year>2024</year><genre>Testing</genre><plot>Synthetic browser test media.</plot>{extra}</{nfo_root}>")
     return file
 film = video("movies/Browser Film (2024)/Browser Film (2024).mp4", "Browser Film")
 video("movies/Second Film (2024)/Second Film (2024).mp4", "Second Film")
