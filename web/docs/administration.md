@@ -2,8 +2,10 @@
 
 Server administration is the **Server** heading of Settings (since the frontend
 rework of 2 October 2026). There is no separate console: the rail stays where it
-is, and an owner sees the Server pages listed under the account pages. The same
-pages are native on iPhone and iPad; Apple TV lists the Dashboard (an Apple TV
+is, and an owner sees the Server pages listed under the account pages.
+Availability is declared per platform; the Integrations and Metadata pages are
+web-only in the current settings structure. Phone/tablet renderers support their
+available server pages; Apple TV lists the Dashboard (an Apple TV
 linked with a code is signed in as whoever approved it, so the owner's TV shows it).
 
 The pages, their sections and their rows are **authored** in
@@ -15,9 +17,11 @@ rules and words the panels share are in `packages/client-core/src/server-admin/`
 | --- | --- | --- | --- |
 | `/settings/server-dashboard` | Dashboard | Is the server healthy? Who is watching? What needs attention? | |
 | `/settings/server-history` | Play history | What has been played on this server, by whom, on which device and when? | |
-| `/settings/server-libraries` | Libraries | What media does the server know about, in what order, and how is each library scanned and matched? | a library opens with General · Metadata · Scanning · Advanced (`?id=&tab=`) |
+| `/settings/server-libraries` | Libraries | What media does the server know about, in what order, and how is each library scanned and matched? | a library opens with General · Metadata · Scanning · Needs attention · Advanced (`?id=&tab=`) |
 | `/settings/server-live` | Live TV & Channels | Which tuners and playlists feed the guide, how are recordings kept, and which channels are built from the libraries? | Sources · Recording · Library Channels |
-| `/settings/server-people` | People | Who can use this server and what may they see? | Accounts · Invitations · API keys |
+| `/settings/server-people` | People | Who can use this server and what may they see? | Accounts · Invitations |
+| `/settings/server-integrations` | Integrations (web) | Which keys, tokens, webhooks and assistants may use the local API? | API keys · Members’ tokens · Webhooks · Assistants |
+| `/settings/server-metadata` | Metadata (web) | Which server-wide provider credentials and artwork limits apply? | |
 | `/settings/server-streaming` | Playback | May the server convert media, how, and how much at once? | |
 | `/settings/server-remote` | Remote access | How do devices reach this server from outside the home? | |
 | `/settings/server-storage` | Storage & backups | Which storage is attached, which titles are missing, and are backups healthy? | |

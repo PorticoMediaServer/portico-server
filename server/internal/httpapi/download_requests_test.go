@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/downloads"
+	"strings"
 	"testing"
 )
 
@@ -60,6 +61,10 @@ func (m *restrictionEnv) downloadRequestSecurity(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
+	// While one episode is visible the request is listed, by the show's name.
+	if code, raw = m.call("GET", "/v1/downloads/requests?deviceId="+device, "", "restricted"); code != 200 || !strings.Contains(raw, show.Public) || !strings.Contains(raw, `"Downloads"`) {
+		t.Fatal("the device's request is not listed", code, raw)
+	}
 	path := "/v1/downloads/requests/" + job.RequestID
 	code, raw = m.call("GET", path, "", "restricted")
 	if e := json.Unmarshal([]byte(raw), &job); e != nil || code != 200 || job.Total != 1 || len(job.Items) != 1 || job.Items[0].ItemID != episodes["download-matrix-0"].Public {
@@ -81,5 +86,10 @@ func (m *restrictionEnv) downloadRequestSecurity(t *testing.T) {
 	code, raw = m.call("GET", path, "", "restricted")
 	if e := json.Unmarshal([]byte(raw), &job); e != nil || code != 200 || job.Total != 0 || len(job.Items) != 0 {
 		t.Fatal("newly hidden request content", code, raw, e)
+	}
+	// With nothing of the show left that the profile may see, the list of the
+	// device's requests no longer names it or its title.
+	if code, raw = m.call("GET", "/v1/downloads/requests?deviceId="+device, "", "restricted"); code != 200 || strings.Contains(raw, show.Public) || strings.Contains(raw, `"Downloads"`) {
+		t.Fatal("a request for a show that is now hidden is still listed by name", code, raw)
 	}
 }

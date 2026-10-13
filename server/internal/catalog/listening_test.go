@@ -104,15 +104,15 @@ func TestOrderedMusicSelectionWalksOrderIndexes(t *testing.T) {
 			CROSS JOIN catalog_songs s INDEXED BY catalog_songs_listening_order ON s.album_id=a.entity_id
 			CROSS JOIN catalog_entities i ON i.id=s.entity_id
 			WHERE ar.library_id=(SELECT id FROM catalog_libraries WHERE library_id='music') AND ar.kind=6 AND i.library_id=ar.library_id AND i.kind=7
-			ORDER BY ar.sort_key COLLATE NOCASE,ar.entity_id,COALESCE(s.disc_number,0),COALESCE(s.track_number,0),s.entity_id LIMIT 100`, "catalog_browse_title", nil},
+			ORDER BY ar.sort_key COLLATE NOCASE,ar.entity_id,COALESCE(s.disc_number,1),COALESCE(s.track_number,0),s.entity_id LIMIT 100`, "catalog_browse_title", nil},
 		{`SELECT i.id FROM catalog_songs s INDEXED BY catalog_songs_listening_order
 			CROSS JOIN catalog_entities i ON i.id=s.entity_id
 			WHERE s.album_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?) AND kind=6) AND i.library_id=(SELECT id FROM catalog_libraries WHERE library_id='music') AND i.kind=7
-			ORDER BY COALESCE(s.disc_number,0),COALESCE(s.track_number,0),s.entity_id LIMIT 100`, "catalog_songs_listening_order", []any{names["album"].Public}},
+			ORDER BY COALESCE(s.disc_number,1),COALESCE(s.track_number,0),s.entity_id LIMIT 100`, "catalog_songs_listening_order", []any{names["album"].Public}},
 		{`SELECT i.id FROM catalog_book_files f INDEXED BY catalog_book_files_listening_order
 			CROSS JOIN catalog_entities i ON i.id=f.entity_id
 			WHERE f.book_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?) AND kind=8) AND i.library_id=(SELECT id FROM catalog_libraries WHERE library_id='books') AND i.kind=9
-			ORDER BY COALESCE(f.disc_number,0),COALESCE(f.part_number,0),f.entity_id LIMIT 100`, "catalog_book_files_listening_order", []any{names["book-a"].Public}},
+			ORDER BY COALESCE(f.disc_number,1),COALESCE(f.part_number,0),f.entity_id LIMIT 100`, "catalog_book_files_listening_order", []any{names["book-a"].Public}},
 	}
 	for _, tc := range queries {
 		rows, err := db.Query(`EXPLAIN QUERY PLAN `+tc.query, tc.args...)
@@ -310,8 +310,8 @@ func TestListeningWholeSelectionMixAndContinuationFence(t *testing.T) {
 	if _, e = db.Exec(`INSERT INTO audio_tag_evidence(library_id,asset_id,field,source,value) VALUES('music',?,'genre','embedded','Jazz')`, names["song-001"].Token); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.ListeningSelection(r, target, "ordered", "", false, ""); !errors.Is(e, ErrStaleContinuation) {
-		t.Fatal("local evidence did not invalidate cursor", e)
+	if _, e = s.ListeningSelection(r, target, "ordered", "", false, ""); e != nil {
+		t.Fatal("local evidence prevented continuation", e)
 	}
 }
 func TestListeningBookResumeUnavailableAndExplicitPartRecovery(t *testing.T) {

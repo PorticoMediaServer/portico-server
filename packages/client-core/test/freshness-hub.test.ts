@@ -292,3 +292,18 @@ test('a hint that arrives while the first load is still on its way is answered o
   assert.equal(quiet, 1);
   assert.equal(held.document.getState().stale, false);
 });
+
+test('History observations refresh history dependencies without moving personal membership', async () => {
+  const c = clock(), hub = new FreshnessHub(c.env);
+  let history = 0, personalReads = 0;
+  const historyDoc = hub.document({dependencies: [dependsOn.progress(), dependsOn.personal()], revalidate: async () => { history++; }});
+  const personalDoc = hub.document({dependencies: [dependsOn.personal()], revalidate: async () => { personalReads++; }});
+  historyDoc.setOpen(true); personalDoc.setOpen(true);
+  hub.accept({id: '1', type: 'progress.changed', resource: {kind: 'personal', id: 'history'}, revision: '5', data: {observation: '5'}});
+  await c.advance(4000);
+  assert.deepEqual([history, personalReads], [1, 0]);
+  hub.accept({id: '2', type: 'personal.changed', resource: {kind: 'personal', id: 'history'}, revision: '6'});
+  await c.advance(1000);
+  assert.deepEqual([history, personalReads], [2, 1]);
+  historyDoc.dispose(); personalDoc.dispose(); hub.dispose();
+});

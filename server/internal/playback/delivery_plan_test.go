@@ -133,8 +133,15 @@ func TestDeliveryCopyRemuxSelection(t *testing.T) {
 	// A rung that constrains the picture is not a container problem.
 	rung := base
 	rung.Target = QualityRung{ID: "480p", Kind: QualityFixed, TargetDisplayHeight: 480, MaxVideoBitrateBPS: 2_000_000, MaxAudioBitrateBPS: 96_000}.Target(open, 1080)
-	if p := planFor(t, rung); p.Strategy != DeliveryVideoConversion || p.TargetHeight != 480 || p.VideoBitrateBPS != 2_000_000 {
+	// The picture is encoded at the published rate for its height (1.5 Mbit/s
+	// at 480p), and the rung's own figure is a ceiling on that, not a target.
+	if p := planFor(t, rung); p.Strategy != DeliveryVideoConversion || p.TargetHeight != 480 || p.VideoBitrateBPS != decoder.CodecVideoBitrate("h264", 480) || p.VideoBitrateBPS > 2_000_000 {
 		t.Fatal("fixed rung did not force conversion", p)
+	}
+	tight := base
+	tight.Target = QualityRung{ID: "480p", Kind: QualityFixed, TargetDisplayHeight: 480, MaxVideoBitrateBPS: 1_000_000, MaxAudioBitrateBPS: 96_000}.Target(open, 1080)
+	if p := planFor(t, tight); p.Strategy != DeliveryVideoConversion || p.TargetHeight != 480 || p.VideoBitrateBPS != 1_000_000 {
+		t.Fatal("a rung's ceiling below the published rate was not kept", p)
 	}
 
 	// Direct play is still preferred over remux when the source already fits.
@@ -305,6 +312,20 @@ func TestDeliveryToneMapArguments(t *testing.T) {
 	}
 	if p.Trace == nil || !contains(p.Trace.Notes, NoteToneMapOwnerOff) {
 		t.Fatal("the trace does not say why an HDR picture was left unmapped", p.Trace)
+	}
+	// The title still plays: the conversion is one the converter will run,
+	// with no tone-mapping stage in it.
+	if p.VideoAction != "convert" || !p.ToneMapOff {
+		t.Fatal("owner disabled tone mapping and the title lost its conversion", p)
+	}
+	_, args, stages, err = p.CodecArgs()
+	if err != nil || strings.Contains(strings.Join(args, " "), "tonemap") {
+		t.Fatal("the unmapped conversion cannot be run, or was mapped after all", err, args)
+	}
+	for _, s := range stages {
+		if s.Operation == decoder.StageToneMap {
+			t.Fatal("a tone-map stage was planned with tone mapping off", stages)
+		}
 	}
 }
 

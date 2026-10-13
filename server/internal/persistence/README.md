@@ -22,9 +22,8 @@ every open), and each change is a new migration that follows the rules below.
 
 ## Migration rules
 
-Every migration after the baseline follows these rules. They exist so that a
-library of 5–10 million items upgrades in seconds and so that photos, books or
-any future kind arrive without rewriting an existing large table.
+Every migration after the baseline follows these rules. They keep migration
+work bounded and allow new kinds without rewriting an existing large table. They are design rules, not a measured upgrade-time claim.
 
 1. **Additive only.** Add tables, add nullable or defaulted columns
    (`ALTER TABLE ... ADD COLUMN`), add indexes, add triggers. Never drop or

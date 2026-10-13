@@ -25,8 +25,11 @@ var processSpawns = map[string]string{
 	"internal/decoder/prepared_file.go:PreparedFileSandboxAvailable": "bubblewrap --help, to read its capabilities",
 	// Helpers: the server binary re-executed for one bounded storage or subtitle
 	// operation. They run media tools only through mediaexec argv.
-	"internal/storage/client.go:ReadSmall":                                    "storage helper (server binary)",
-	"internal/storage/client.go:run":                                          "storage helper (server binary)",
+	"internal/storage/client.go:readBlob":                                     "storage helper (server binary)",
+	"internal/storage/client.go:runWithStem":                                  "storage helper (server binary)",
+	"internal/storage/audio_tags.go:ReadAudioTags":                            "storage helper (server binary); reads tags with the server's own bounded reader, runs no tool",
+	"internal/storage/audio_cover.go:ReadAudioCover":                          "storage helper (server binary); reads the embedded picture with the server's own bounded reader, runs no tool",
+	"internal/storage/inventory_watch.go:WatchInventory":                      "storage helper (server binary) watching library folders for changes; opens no media",
 	"internal/storage/inventory_page.go:inventoryRequest":                     "storage helper (server binary)",
 	"internal/storage/inventory_page_stream.go:produce":                       "storage helper (server binary)",
 	"internal/storage/observed_playback.go:OpenObservedPlayback":              "storage helper (server binary)",
@@ -49,6 +52,7 @@ var processSpawns = map[string]string{
 	"internal/networking/topology.go:defaultGateway": "/sbin/route on macOS",
 	"internal/telemetry/command.go:runCommand":       "fixed read-only platform reporters",
 	"internal/httpapi/fixture/fixture.go:cloneFile":  "test fixture copy (cp), not built into the server",
+	"internal/supervise/process.go:Process":          "the server starting itself as its own worker, so a restart stays inside the service",
 }
 
 type spawn struct{ file, function string }

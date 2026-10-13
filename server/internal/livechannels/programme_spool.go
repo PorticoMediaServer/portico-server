@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"os"
 	"time"
+
+	"portico.local/server/internal/dbwork"
 )
 
 // Large guides use a private, disposable SQLite spool. It is separate from the
@@ -16,7 +18,7 @@ const spoolColumns = `key,channel,title,lineage,series,episode,new_evidence,desc
 type programmeSpool struct {
 	db      *sql.DB
 	path    string
-	tx      *sql.Tx
+	tx      *dbwork.Write
 	pending int
 	count   int
 }
@@ -36,7 +38,7 @@ func newProgrammeSpool() (*programmeSpool, error) {
 	db.SetMaxOpenConns(1)
 	spool := &programmeSpool{db: db, path: path}
 	for _, query := range []string{`PRAGMA cache_size=-4096`, `PRAGMA journal_mode=DELETE`, `CREATE TABLE programmes(key TEXT PRIMARY KEY,channel TEXT NOT NULL,title TEXT NOT NULL,lineage TEXT NOT NULL,series TEXT NOT NULL,episode TEXT NOT NULL,new_evidence TEXT NOT NULL,description TEXT NOT NULL,icon TEXT NOT NULL,facts TEXT NOT NULL,start_ms INTEGER NOT NULL,end_ms INTEGER,UNIQUE(channel,start_ms)) STRICT`, `CREATE INDEX programmes_time ON programmes(channel,start_ms)`} {
-		if _, e = db.Exec(query); e != nil {
+		if _, e = dbwork.ExecWrite(context.Background(), db, dbwork.ClassBackgroundMedia, query); e != nil {
 			spool.close()
 			return nil, e
 		}
@@ -63,7 +65,7 @@ func (s *programmeSpool) flush() error {
 func (s *programmeSpool) add(p parsedProgramme) (bool, error) {
 	var e error
 	if s.tx == nil {
-		s.tx, e = s.db.Begin()
+		s.tx, e = dbwork.Begin(context.Background(), s.db, dbwork.ClassBackgroundMedia)
 		if e != nil {
 			return false, e
 		}
@@ -72,7 +74,7 @@ func (s *programmeSpool) add(p parsedProgramme) (bool, error) {
 	if !p.end.IsZero() {
 		end = p.end.UnixMilli()
 	}
-	result, e := s.tx.Exec(`INSERT INTO programmes VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, p.key, p.channel, p.title, p.lineage, p.series, p.episode, p.newEvidence, p.description, p.icon, p.facts, p.start.UnixMilli(), end)
+	result, e := s.tx.Tx().Exec(`INSERT INTO programmes VALUES(?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, p.key, p.channel, p.title, p.lineage, p.series, p.episode, p.newEvidence, p.description, p.icon, p.facts, p.start.UnixMilli(), end)
 	if e != nil {
 		return false, e
 	}
@@ -81,7 +83,7 @@ func (s *programmeSpool) add(p parsedProgramme) (bool, error) {
 		s.count++
 	}
 	s.pending++
-	if s.pending >= 1000 {
+	if s.pending >= 128 {
 		e = s.flush()
 	}
 	return n == 1, e
@@ -121,13 +123,13 @@ func (d *parsedSource) normaliseSpool(days int) error {
 		return e
 	}
 	next := `(SELECT min(b.start_ms) FROM programmes b WHERE b.channel=programmes.channel AND b.start_ms>programmes.start_ms)`
-	result, e := s.db.Exec(`UPDATE programmes SET end_ms=` + next + ` WHERE end_ms IS NULL AND ` + next + ` IS NOT NULL AND ` + next + `-start_ms<=604800000`)
+	result, e := dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `UPDATE programmes SET end_ms=`+next+` WHERE end_ms IS NULL AND `+next+` IS NOT NULL AND `+next+`-start_ms<=604800000`)
 	if e != nil {
 		return e
 	}
 	n, _ := result.RowsAffected()
 	d.diagnostics.AdjustedProgrammes += int(n)
-	result, e = s.db.Exec(`DELETE FROM programmes WHERE end_ms IS NULL`)
+	result, e = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `DELETE FROM programmes WHERE end_ms IS NULL`)
 	if e != nil {
 		return e
 	}
@@ -136,7 +138,7 @@ func (d *parsedSource) normaliseSpool(days int) error {
 		d.diagnostics.SkippedProgrammes += int(n)
 		d.diagnostics.note("live.import.programmeEndMissing")
 	}
-	result, e = s.db.Exec(`UPDATE programmes SET end_ms=` + next + ` WHERE end_ms>` + next)
+	result, e = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `UPDATE programmes SET end_ms=`+next+` WHERE end_ms>`+next)
 	if e != nil {
 		return e
 	}
@@ -144,7 +146,7 @@ func (d *parsedSource) normaliseSpool(days int) error {
 	d.diagnostics.AdjustedProgrammes += int(n)
 	if days > 0 {
 		now := time.Now()
-		if _, e = s.db.Exec(`DELETE FROM programmes WHERE end_ms<=? OR start_ms>=?`, now.Add(-24*time.Hour).UnixMilli(), now.Add(time.Duration(days)*24*time.Hour).UnixMilli()); e != nil {
+		if _, e = dbwork.ExecWrite(context.Background(), s.db, dbwork.ClassBackgroundMedia, `DELETE FROM programmes WHERE end_ms<=? OR start_ms>=?`, now.Add(-24*time.Hour).UnixMilli(), now.Add(time.Duration(days)*24*time.Hour).UnixMilli()); e != nil {
 			return e
 		}
 	}

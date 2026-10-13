@@ -264,7 +264,9 @@ func TestEveryRouteMustDeclareACredentialScopeAndTheGateRunsFirst(t *testing.T) 
 
 func TestAccessLabelsMustNameWhatTheAuthorizerChecks(t *testing.T) {
 	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
-	handler := func(context.Context, *http.Request, struct{}) (testResponse, error) { return testResponse{"ok", []string{}}, nil }
+	handler := func(context.Context, *http.Request, struct{}) (testResponse, error) {
+		return testResponse{"ok", []string{}}, nil
+	}
 	for path, access := range map[string]Access{"/v1/items/{id}/thing": ViewerItem, "/v1/things": ViewerItem, "/v1/libraries/{id}/thing": ViewerLibrary, "/v1/list": ViewerLibrary} {
 		m := Metadata{ID: "labelled", Method: "GET", Path: path, Summary: "Labelled", Access: access, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
 		if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: handler}); err == nil {

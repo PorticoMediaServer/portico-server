@@ -19,8 +19,10 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/access"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/downloads"
 	"portico.local/server/internal/hosted"
@@ -30,6 +32,7 @@ import (
 	"portico.local/server/internal/livechannels/dvr"
 	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/metadata"
+	"portico.local/server/internal/notify"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/playback"
@@ -92,6 +95,25 @@ func TestRestrictedProfileRouteMatrix(t *testing.T) {
 		status, response := m.callWithin("GET", path, "restricted", 300*time.Millisecond)
 		if status == 401 {
 			t.Errorf("%s: GET %s answered 401 to a valid restricted session: %s", pattern, path, strings.TrimSpace(response))
+		}
+	}
+
+	// 2b. Owner administration refuses the member outright, whatever it
+	// names. Every GET under /v1/admin/ is exempted from probing on that
+	// ground, so the ground itself is checked here, as it is for writes.
+	for pattern := range routeLanes {
+		if !strings.HasPrefix(pattern, "GET /v1/admin/") {
+			continue
+		}
+		for _, id := range append(m.hiddenSamples(), m.reports...) {
+			path := pathParameter.ReplaceAllString(strings.TrimPrefix(pattern, "GET "), url.PathEscape(id))
+			status, response := m.call("GET", path, "", "restricted")
+			if status != 403 && status != 404 {
+				t.Errorf("%s: GET %s answered %d to a member profile; owner administration must refuse (403): %s", pattern, path, status, clip(response))
+			}
+			if found := m.marker.FindString(response); found != "" {
+				t.Errorf("%s: refusal carries a hidden identifier %q", pattern, found)
+			}
 		}
 	}
 
@@ -176,6 +198,10 @@ func refusedStatus(token string) int {
 // nonSessionCredential are the GET routes authenticated by something other than
 // the session, so a session bearer there is rightly "not a credential" (401).
 var nonSessionCredential = map[string]string{
+	"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         "download transfer grant, resolved and reauthorized by downloadExtra",
+	"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    "download transfer grant, resolved and reauthorized by downloadExtra",
+	"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": "download transfer grant, resolved and reauthorized by downloadExtra",
+
 	"GET /v1/topshelf":                                                   "Top Shelf device token",
 	"GET /v1/topshelf/art/{id}":                                          "Top Shelf device token",
 	"GET /v1/media/{grant}":                                              "media grant",
@@ -257,11 +283,69 @@ const (
 // restrictionRoutes classifies every GET route the router registers.
 func restrictionRoutes() map[string]restrictionRoute {
 	return map[string]restrictionRoute{
-		"GET /v1/networking/connection":                                      exempt(reasonNoTitles),
-		"GET /v1/me/api-access":                                              exempt(reasonNoTitles),
-		"GET /v1/me/access-tokens":                                           exempt("the caller's credentials, not catalogue content"),
-		"GET /v1/mcp":                                                        exempt("GET refuses the method; scoped tools use POST"),
-		"GET /v1/titles":                                                     static("/v1/titles?limit=50"),
+		"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
+		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
+		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
+		// The list for the session's own device (any other device is not this
+		// session's to read). A request whose container has since become hidden
+		// is checked in the download-request-security subtest.
+		"GET /v1/downloads/requests": probe(func(m *restrictionEnv) []string {
+			return []string{"/v1/downloads/requests?deviceId=" + url.QueryEscape(m.device)}
+		}),
+
+		// The profile's inbox: notices written in the past, and by the owner,
+		// whose links can lead to what the profile may not see now.
+		"GET /v1/notifications/inbox":        static("/v1/notifications/inbox?limit=100", "/v1/notifications/inbox?state=unread&limit=100", "/v1/notifications/inbox?audience=profile&state=all&limit=100"),
+		"GET /v1/notifications/unread-count": static("/v1/notifications/unread-count", "/v1/notifications/unread-count?audience=profile"),
+		"GET /v1/notifications":              static("/v1/notifications?limit=40"),
+		// The profile's own reports, each naming the title it was about.
+		"GET /v1/feedback":         static("/v1/feedback?limit=40"),
+		"GET /v1/feedback/reports": static("/v1/feedback/reports?limit=100"),
+		"GET /v1/feedback/{id}": probe(func(m *restrictionEnv) []string {
+			return prefixed("/v1/feedback/", m.reports)
+		}),
+		"GET /v1/feedback/reports/{id}": probe(func(m *restrictionEnv) []string {
+			return prefixed("/v1/feedback/reports/", m.reports)
+		}),
+		"GET /v1/admin/feedback":                   exempt(reasonAdmin),
+		"GET /v1/admin/feedback/{id}":              exempt(reasonAdmin),
+		"GET /v1/admin/feedback/reports":           exempt(reasonAdmin),
+		"GET /v1/admin/feedback/reports/{id}":      exempt(reasonAdmin),
+		"GET /v1/admin/playback/history":           exempt(reasonAdmin),
+		"GET /v1/admin/console/alerts":             exempt(reasonAdmin),
+		"GET /v1/admin/console/diagnostics/{lane}": exempt(reasonAdmin),
+		"GET /v1/admin/console/exports/{id}":       exempt(reasonAdmin),
+		"GET /v1/admin/console/jobs":               exempt(reasonAdmin),
+		"GET /v1/admin/console/panels/{panel}":     exempt(reasonAdmin),
+		"GET /v1/admin/console/schedules":          exempt(reasonAdmin),
+
+		// A download asked for before the restriction: what travels with it
+		// (its title, artwork, chapters) is refused once the film is hidden.
+		"GET /v1/downloads/preparations/{id}/bundle": probe(func(m *restrictionEnv) []string {
+			return prefixed("/v1/downloads/preparations/", m.preparations, "/bundle")
+		}),
+		"GET /v1/admin/catalogue/failures":                exempt(reasonAdmin),
+		"GET /v1/admin/resource-usage":                    exempt(reasonAdmin),
+		"GET /v1/admin/libraries/{id}/scans/{job}/issues": exempt(reasonAdmin),
+		"GET /v1/console/registry":                        exempt("owner setting definitions only; no catalogue titles"),
+
+		"GET /v1/networking/connection": exempt(reasonNoTitles),
+		"GET /v1/me/api-access":         exempt(reasonNoTitles),
+		"GET /v1/me/access-tokens":      exempt("the caller's credentials, not catalogue content"),
+		"GET /v1/mcp":                   exempt("GET refuses the method; scoped tools use POST"),
+		// The title list a script pages through: every kind in every library,
+		// in each order.
+		"GET /v1/titles": probe(func(m *restrictionEnv) []string {
+			out := []string{}
+			for _, library := range m.libraries {
+				for _, kind := range []string{"movie", "show", "episode", "album", "song", "book"} {
+					for _, sort := range []string{"title", "year", "added"} {
+						out = append(out, "/v1/titles?library="+url.QueryEscape(library)+"&kind="+kind+"&sort="+sort+"&limit=100")
+					}
+				}
+			}
+			return out
+		}),
 		"GET /v1/items/{id}/metadata/screen":                                 perItem("/metadata/screen"),
 		"GET /v1/shows/{id}/metadata/screen":                                 perEntity("/v1/shows/", "show", "/metadata/screen"),
 		"GET /v1/admin/live/sources/{id}/groups":                             exempt("owner-only line-up choices"),
@@ -339,9 +423,11 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/groups/{id}/events": exempt(reasonStream),
 
 		// Grants, sessions, jobs and social objects created by admitted requests.
-		"GET /v1/cast/bootstrap/{id}":                                   exempt(reasonGrant),
-		"GET /v1/downloads/artifacts/{grant}":                           exempt(reasonGrant),
-		"GET /v1/downloads/preparations/{id}":                           exempt(reasonGrant),
+		"GET /v1/cast/bootstrap/{id}":         exempt(reasonGrant),
+		"GET /v1/downloads/artifacts/{grant}": exempt(reasonGrant),
+		"GET /v1/downloads/preparations/{id}": probe(func(m *restrictionEnv) []string {
+			return prefixed("/v1/downloads/preparations/", m.preparations)
+		}),
 		"GET /v1/groups/{id}":                                           exempt(reasonGrant),
 		"GET /v1/groups/{id}/queue":                                     exempt(reasonGrant),
 		"GET /v1/handoffs/{id}":                                         exempt(reasonGrant),
@@ -417,10 +503,11 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/library-kinds/{kind}/metadata-agents":          exempt(reasonAdmin),
 
 		// Catalogue: global lists.
-		"GET /v1/bootstrap":             static("/v1/bootstrap"),
-		"GET /v1/home":                  static("/v1/home"),
-		"GET /v1/home/layout":           static("/v1/home/layout"),
-		"GET /v1/content":               static("/v1/content?view=home"),
+		"GET /v1/bootstrap":   static("/v1/bootstrap"),
+		"GET /v1/home":        static("/v1/home"),
+		"GET /v1/home/layout": static("/v1/home/layout"),
+		// The viewer's own saved lists (Home has its own route now).
+		"GET /v1/content":               static("/v1/content?view=watchlist&limit=100", "/v1/content?view=favorites&limit=100", "/v1/content?view=playlists&limit=100"),
 		"GET /v1/suggestions":           static("/v1/suggestions?limit=50"),
 		"GET /v1/libraries":             static("/v1/libraries"),
 		"GET /v1/me/library-navigation": static("/v1/me/library-navigation"),
@@ -484,18 +571,31 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/people/{id}/portrait":       probe(func(m *restrictionEnv) []string { return prefixed("/v1/people/", m.people, "/portrait") }),
 
 		// Catalogue: one library.
-		"GET /v1/libraries/{id}/artists":              perLibrary("/artists"),
-		"GET /v1/libraries/{id}/books":                perLibrary("/books"),
-		"GET /v1/libraries/{id}/browse":               perLibrary("/browse"),
-		"GET /v1/libraries/{id}/browse-capabilities":  perLibrary("/browse-capabilities"),
-		"GET /v1/libraries/{id}/categories":           perLibrary("/categories"),
-		"GET /v1/libraries/{id}/collections":          perLibrary("/collections"),
-		"GET /v1/libraries/{id}/content":              probe(func(m *restrictionEnv) []string { return m.contentPaths() }),
-		"GET /v1/libraries/{id}/discover":             perLibrary("/discover"),
-		"GET /v1/libraries/{id}/episode-issues":       perLibrary("/episode-issues"),
-		"GET /v1/libraries/{id}/facets":               probe(func(m *restrictionEnv) []string { return m.facetPaths() }),
-		"GET /v1/libraries/{id}/inventory-status":     perLibrary("/inventory-status"),
-		"GET /v1/libraries/{id}/listening/selection":  perLibrary("/listening/selection"),
+		"GET /v1/libraries/{id}/artists":             perLibrary("/artists"),
+		"GET /v1/libraries/{id}/books":               perLibrary("/books"),
+		"GET /v1/libraries/{id}/browse":              perLibrary("/browse"),
+		"GET /v1/libraries/{id}/browse-capabilities": perLibrary("/browse-capabilities"),
+		"GET /v1/libraries/{id}/categories":          perLibrary("/categories"),
+		"GET /v1/libraries/{id}/collections":         perLibrary("/collections"),
+		"GET /v1/libraries/{id}/content":             probe(func(m *restrictionEnv) []string { return m.contentPaths() }),
+		"GET /v1/libraries/{id}/discover":            perLibrary("/discover"),
+		"GET /v1/libraries/{id}/episode-issues":      perLibrary("/episode-issues"),
+		"GET /v1/libraries/{id}/facets":              probe(func(m *restrictionEnv) []string { return m.facetPaths() }),
+		"GET /v1/libraries/{id}/inventory-status":    perLibrary("/inventory-status"),
+		// What plays when a library, an album, an artist or a book is started.
+		"GET /v1/libraries/{id}/listening/selection": probe(func(m *restrictionEnv) []string {
+			out := []string{}
+			for _, library := range m.libraries {
+				base := "/v1/libraries/" + library + "/listening/selection?mode=ordered&kind="
+				out = append(out, base+"library&entityId="+url.QueryEscape(library))
+				for _, kind := range []string{"album", "artist", "book"} {
+					for _, id := range append(append([]string{}, m.hiddenEntities[kind]...), m.visibleEntities[kind]...) {
+						out = append(out, base+kind+"&entityId="+url.QueryEscape(id))
+					}
+				}
+			}
+			return out
+		}),
 		"GET /v1/libraries/{id}/metadata/agent":       perLibrary("/metadata/agent"),
 		"GET /v1/libraries/{id}/metadata/screen":      perLibrary("/metadata/screen"),
 		"GET /v1/libraries/{id}/network-roots":        perLibrary("/network-roots"),
@@ -569,6 +669,18 @@ type restrictionEnv struct {
 	markers         []string
 	statuses        map[string][]int
 	marker          *regexp.Regexp
+	// The restricted session's own device, and what was recorded in its name
+	// before it was restricted: reports about titles it can no longer see, and
+	// notices whose links lead to them.
+	device  string
+	reports []string
+	// preparations are downloads the profile asked for before it was
+	// restricted: one of a film now hidden from it, one of a film it may see.
+	preparations []string
+	// callAs sends a request with a bearer that is not one of the named
+	// sessions (a personal access token).
+	callAs func(token, method, path, body string) (int, string)
+	tokens map[string]string
 }
 
 func (m *restrictionEnv) hiddenItemSamples() []string {
@@ -735,8 +847,19 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 	if err != nil {
 		t.Fatal(err)
 	}
-	scheduler := operations.NewScheduler(operations.New(db))
-	handler := New(Dependencies{Scheduler: scheduler, DB: db, Identity: ident, Catalog: cat, Hosted: host, Playback: playback.New(db), Downloads: offline, Metadata: metadata.New(db, ""), Analysis: analysis, LiveChannels: live, DVR: recordings})
+	console := operations.New(db)
+	scheduler := operations.NewScheduler(console)
+	deps := Dependencies{Console: console, Access: AccessArea{Access: access.New(db)}, Scheduler: scheduler, DB: db, Identity: ident, Catalog: cat, Hosted: host, Playback: playback.New(db), Downloads: offline, Metadata: metadata.New(db, ""), Analysis: analysis, LiveChannels: live, DVR: recordings}
+	// The tool endpoint authenticates a personal access token and then calls
+	// this same handler as that token's profile.
+	deps.credentials = newCredentialGate()
+	deps.self = &selfHandler{}
+	handler := New(deps)
+	t.Cleanup(func() {
+		flush, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = FlushCredentialUse(flush, handler)
+	})
 
 	all := []string{libraries.Movies, libraries.Shows, libraries.Music, libraries.Books}
 	allJSON, _ := json.Marshal(all)
@@ -934,7 +1057,89 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 		}
 	}
 
+	// Reports the profile sent while it could still see the title, through
+	// both report routes, and one about a title it can see.
+	before := func(context.Context, *sql.Tx, string) error { return nil }
+	for i, item := range []string{m.hiddenItems["movie"][0], m.visibleMovie} {
+		filed, err := console.SubmitFeedback(ctx, restricted, before, operations.FeedbackSubmission{OperationID: fmt.Sprint("matrix-feedback-", i), Kind: "library", Category: "wrong-details", Message: fmt.Sprint("The year is wrong on this one, report ", i), ItemID: item})
+		if err != nil {
+			t.Fatal(err)
+		}
+		older, err := console.Submit(ctx, restricted, before, operations.SubmitReport{IdempotencyKey: fmt.Sprint("matrix-report-", i), Category: "metadata", Message: fmt.Sprint("The poster is wrong on this one, report ", i), ItemID: item})
+		if err != nil {
+			t.Fatal(err)
+		}
+		m.reports = append(m.reports, filed.Report.ID, older.ID)
+	}
+	// Downloads asked for while the film could still be seen: the claim keeps
+	// the film's name with it, as every download does.
+	for i, item := range []string{m.hiddenItems["movie"][0], m.visibleMovie} {
+		var title, library string
+		if err = db.QueryRow(`SELECT e.title,cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, item).Scan(&title, &library); err != nil {
+			t.Fatal(err)
+		}
+		id := fmt.Sprint("matrix-preparation-", i)
+		if _, err = db.Exec(`INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,quality,origin,state,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,'original','item','queued',?,?)`,
+			id, operations.ViewerKey(restricted), restricted.Authority, restricted.AccountID, restricted.ProfileID, m.itemsByID[item].ID, item, library, mustJSON(map[string]any{"kind": "movie", "title": title}), time.Now().UnixMilli(), time.Now().UnixMilli()); err != nil {
+			t.Fatal(err)
+		}
+		m.preparations = append(m.preparations, id)
+	}
+	// Notices in the profile's inbox whose links lead to a hidden film, a
+	// hidden show and a library it is not given, as a message the owner sent
+	// to everyone would, and one that leads somewhere it may go.
+	links := [][]notify.Action{
+		{{Kind: "navigate", Label: "Open", Target: &notify.NavigateTarget{View: "item", EntityID: m.hiddenItems["movie"][0]}}},
+		{{Kind: "navigate", Label: "Open", Target: &notify.NavigateTarget{View: "item", EntityID: m.visibleMovie}}},
+	}
+	if shows := m.hiddenEntities["show"]; len(shows) > 0 {
+		links = append(links, []notify.Action{{Kind: "navigate", Label: "Open", Target: &notify.NavigateTarget{View: "show", EntityID: shows[0]}}})
+	}
+	for _, library := range all {
+		if !oracle.AllowsLibrary(library) {
+			links = append(links, []notify.Action{
+				{Kind: "navigate", Label: "Open", Target: &notify.NavigateTarget{View: "library", EntityID: library}},
+				{Kind: "navigate", Label: "Browse", Target: &notify.NavigateTarget{View: "search", LibraryID: library}},
+			})
+		}
+	}
+	if len(links) < 3 {
+		t.Fatalf("fixture gives the inbox too few hidden destinations: %d", len(links))
+	}
+	if err = dbwork.WithWriteTx(ctx, db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		for i, actions := range links {
+			if _, err := notify.Raise(tx, time.Now().UnixMilli(), notify.Draft{Audience: notify.AudienceProfile, Scope: notify.ProfileScope(restricted.Authority, restricted.AccountID, restricted.ProfileID),
+				Severity: notify.SeverityInfo, Source: notify.SourceBroadcast, Category: "server.message", Title: "From the owner", Body: "Have a look at this.", Actions: actions, DedupeKey: fmt.Sprint("matrix-link-", i)}); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	hidden = append(hidden, "MatrixAdultProgramme")
+	// A hidden title's name gives it away as surely as its identifier does.
+	// Every hidden title whose name no other title shares is a marker too, so
+	// a route that drops the id but still says the name (in a message, a
+	// notice, a label) fails the same way.
+	named, err := db.Query(`SELECT e.title FROM catalog_entities e WHERE e.public_id IN(SELECT pid_blob(value) FROM json_each(?)) AND length(e.title)>12 AND (SELECT count(*) FROM catalog_entities o WHERE o.title=e.title)=1 ORDER BY e.id`, mustJSON(hidden))
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := 0
+	for named.Next() {
+		var title string
+		if err = named.Scan(&title); err != nil {
+			t.Fatal(err)
+		}
+		hidden = append(hidden, title)
+		names++
+	}
+	named.Close()
+	if names < 10 {
+		t.Fatalf("fixture gives only %d hidden titles with a name of their own", names)
+	}
 	m.markers = hidden
 	quoted := make([]string, 0, len(hidden))
 	for _, id := range hidden {
@@ -952,6 +1157,20 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, r)
 		return w.Code, w.Body.String()
+	}
+	m.tokens = tokens
+	m.callAs = func(token, method, path, body string) (int, string) {
+		r := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+		r.Header.Set("Authorization", "Bearer "+token)
+		if body != "" {
+			r.Header.Set("Content-Type", "application/json")
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, r)
+		return w.Code, w.Body.String()
+	}
+	if err = db.QueryRow(`SELECT b.device_id FROM authorization_family_tokens t JOIN identity_device_families b ON b.family_id=t.family_id WHERE t.token_hash=?`, restricted.Hash).Scan(&m.device); err != nil {
+		t.Fatal(err)
 	}
 	m.call = func(method, path, body, viewer string) (int, string) {
 		if viewer == "topshelf" && tokens["topshelf"] == "" {
@@ -985,6 +1204,25 @@ func buildRestrictionMatrix(t *testing.T) *restrictionEnv {
 	}
 	if status, response := m.call("GET", "/v1/libraries/"+libraries.Movies+"/content?limit=200", "", "open"); status != 200 || !m.marker.MatchString(response) {
 		t.Fatalf("control: the open viewer does not see the hidden titles (%d)", status)
+	}
+	// The inbox really holds the links, and the reports really name the film:
+	// read with the restriction lifted they are there, so their absence below
+	// is the restriction at work and not an empty fixture.
+	var stored int
+	if err = db.QueryRow(`SELECT count(*) FROM notification_records WHERE actions LIKE '%'||?||'%'`, m.hiddenItems["movie"][0]).Scan(&stored); err != nil || stored != 1 {
+		t.Fatalf("control: the hidden link is not in the inbox: %d %v", stored, err)
+	}
+	if err = db.QueryRow(`SELECT count(*) FROM console_reports WHERE item_id=?`, m.itemsByID[m.hiddenItems["movie"][0]].ID).Scan(&stored); err != nil || stored != 2 {
+		t.Fatalf("control: the reports about the hidden film are not stored: %d %v", stored, err)
+	}
+	if status, response := m.call("GET", "/v1/notifications/inbox?limit=100", "", "restricted"); status != 200 || !strings.Contains(response, m.visibleMovie) || !strings.Contains(response, "From the owner") {
+		t.Fatalf("control: the restricted viewer's inbox does not carry its visible link (%d) %s", status, response)
+	}
+	if status, response := m.call("GET", "/v1/feedback/reports?limit=100", "", "restricted"); status != 200 || !strings.Contains(response, m.visibleMovie) {
+		t.Fatalf("control: the restricted viewer does not get its own reports (%d) %s", status, response)
+	}
+	if status, response := m.call("GET", "/v1/downloads/preparations", "", "restricted"); status != 200 || !strings.Contains(response, m.preparations[1]) {
+		t.Fatalf("control: the restricted viewer does not get its own download of a visible film (%d) %s", status, response)
 	}
 	guideProbe := "/v1/guide?kind=live-source&start=2026-09-19T12:00:00Z&end=2026-09-19T14:00:00Z&timezone=UTC&limit=30"
 	if status, response := m.call("GET", guideProbe, "", "open"); status != 200 || !strings.Contains(response, "MatrixAdultProgramme") {

@@ -11354,9 +11354,8 @@ export const schemas = {
               "type": "string"
             },
             "failedAt": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
+              "description": "RFC 3339 UTC instant; empty when absent.",
+              "type": "string"
             },
             "reason": {
               "type": "string"
