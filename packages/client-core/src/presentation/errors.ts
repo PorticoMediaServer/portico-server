@@ -180,9 +180,11 @@ const codeBodies: Record<string, MessageId> = {
   webhook_limit: 'error.webhookLimit',
   // What was typed to confirm is not what the server asked for (removing a library).
   confirmation_mismatch: 'error.confirmationMismatch',
+  // Playback that ended before a control sent to it arrived (the owner's Pause, a remote's Stop).
+  session_ended: 'error.sessionEnded',
 };
 /** Codes whose sentence says what to do instead, so the notice offers no Try again. */
-const noActionCodes = new Set(['local_metadata_only', 'credential_limit', 'access_tokens_off', 'webhook_limit']);
+const noActionCodes = new Set(['local_metadata_only', 'credential_limit', 'access_tokens_off', 'webhook_limit', 'session_ended']);
 
 export function presentError(error: unknown, context: ErrorContext = 'generic', options: PresentOptions = {}): PresentedError {
   const i18n = options.i18n ?? defaultI18n;

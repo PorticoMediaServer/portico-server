@@ -109,7 +109,11 @@ export function sessionViewer(x: AdminSession, t: Translate): string {
 export function sessionFacts(x: AdminSession, t: Translate): string {
   const parts = [sessionViewer(x, t)];
   if (x.device) parts.push(t('web.nowPlaying.onDevice', {device: x.device}));
-  for (const id of [stateId(x.state), deliveryId(x.decision), locationId(x.location)]) if (id) parts.push(t(id as MessageId));
+  const state = stateId(x.state);
+  if (state) parts.push(t(state as MessageId));
+  // Where playback is, for something with a timeline: what Back and Forward are measured from.
+  if ((x.kind === 'vod' || x.kind === 'audio') && x.positionMs > 0) parts.push(t('web.nowPlaying.position', {position: positionClock(x.positionMs)}));
+  for (const id of [deliveryId(x.decision), locationId(x.location)]) if (id) parts.push(t(id as MessageId));
   const rate = rateMbps(x);
   if (rate) parts.push(t('web.nowPlaying.rate', {rate}));
   const started = x.startedAt ? Date.parse(x.startedAt) : NaN;
@@ -164,11 +168,17 @@ export async function sendTransport(service: Readonly<{readAdmin(id: string): Pr
   if (!first.actions.includes(action)) throw ended();
   if (transportDone(command, first.state)) return first;
   let latest = first;
-  const out = await sendWithFreshRecord(first, current => service.controlAdmin(current, action, seekTarget(command, current.positionMs)), {
-    reread: async () => (latest = await service.readAdmin(sessionId)),
-    applies: now => (!now.actions.includes(action) ? false : transportDone(command, now.state) ? 'done' : true),
-  });
-  return out === ALREADY_DONE ? latest : out;
+  try {
+    const out = await sendWithFreshRecord(first, current => service.controlAdmin(current, action, seekTarget(command, current.positionMs)), {
+      reread: async () => (latest = await service.readAdmin(sessionId)),
+      applies: now => (!now.actions.includes(action) ? false : transportDone(command, now.state) ? 'done' : true),
+    });
+    return out === ALREADY_DONE ? latest : out;
+  } catch (error) {
+    // It ended while the command was on its way: say that, not that something changed.
+    if (!latest.actions.includes(action)) throw ended();
+    throw error;
+  }
 }
 
 /** A position as the console shows it: `1:02:03`, or `2:03` under an hour. */
