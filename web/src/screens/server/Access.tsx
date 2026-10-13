@@ -1,14 +1,13 @@
-import {useMemo, useState} from 'react';
+import {useState} from 'react';
 import {contentRatings, parseAccessDevicePage, parseInvitation, type AccessDevice, type AccessTier, type Invitation, type MemberLimits} from '@core/server-administration.ts';
-import {apiScopePresetIds, apiScopePresets, createApiKey, listApiKeys, revokeApiKey, type ApiCredential, type ApiScopePreset, type IssuedApiCredential} from '@core/api-access.ts';
-import {accessListPath, scopeHelp, scopeLabels as scopeLabel, scopesLabel, tierLabels as tierLabel} from '@core/server-admin/panel-logic.ts';
+import {accessListPath, tierLabels as tierLabel} from '@core/server-admin/panel-logic.ts';
 export {accessListPath, accessLists, tierLabels} from '@core/server-admin/panel-logic.ts';
 import {useAction} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
 import {nextCursorOf, useCursorList} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
-import {Badge, Button, ConfirmDialog, Dialog, Input, Notice, Select, SettingsGroup, SettingsRow, Status, Switch, Text, TextArea, relative} from '../../ui';
+import {Button, Dialog, Input, Notice, Select, SettingsGroup, SettingsRow, Status, Switch, Text, TextArea, relative} from '../../ui';
 import {useI18n} from '../../app/i18n';
 
 const since = (iso?: string) => (iso ? relative(Date.now() - Date.parse(iso)) : 'never');
@@ -108,52 +107,6 @@ export function AccountDevices({accountId}: {accountId: string}) {
           control={<div style={{display: 'flex', gap: 8}}>{d.trust !== 'approved' ? <Button size="sm" variant="secondary" label={t('web.devices.approve')} disabled={action.busy} onClick={() => trust(d, 'approved')} /> : null}{d.trust !== 'blocked' ? <Button size="sm" variant="ghost" label={t('web.access.block')} disabled={action.busy} onClick={() => trust(d, 'blocked')} /> : null}</div>} />
       ))}
       {mine && !mine.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.devices.none')}</Text></div> : null}
-      <ListPager pages={read} />
-    </SettingsGroup>
-  );
-}
-
-/** People › API keys: access for scripts and integrations, shown once when made. */
-export function APIKeysPanel() {
-  const {t} = useI18n();
-  const {api} = useSession();
-  const read = useCursorList(async cursor => { const page = await listApiKeys(api, cursor); return {items: [...page.items], nextCursor: page.nextCursor ?? ''}; }, [api]);
-  const action = useAction();
-  // BE-API-10: one ID per logical write; retries reuse it.
-  const [opIds] = useState(createOperationIds);
-  const [open, setOpen] = useState(false);
-  const [name, setName] = useState('');
-  const [scope, setScope] = useState<ApiScopePreset>('read');
-  const [issued, setIssued] = useState<IssuedApiCredential>();
-  const [revoking, setRevoking] = useState<ApiCredential>();
-  const active = useMemo(() => read.data?.filter(k => k.state === 'active' || k.state === 'awaiting_approval') ?? [], [read.data]);
-  return (
-    <SettingsGroup title={t('web.access.apiKeys')} description={t('server.access.keyLede')}>
-      {read.error ? <div style={{padding: 12}}><Notice tone={read.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
-      {active.map(k => (
-        <SettingsRow key={k.id} icon="lock" label={k.name} help={t('web.access.keyMeta', {access: scopesLabel(k.scopes), hint: k.hint, when: since(k.lastUsedAt)})} control={<Button size="sm" variant="ghost" label={t('web.access.revoke')} onClick={() => { action.clear(); setRevoking(k); }} />} />
-      ))}
-      {read.data && !active.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.access.noApiKeys')}</Text></div> : null}
-      <div style={{padding: '8px 16px 16px'}}><Button size="sm" variant="secondary" icon="plus" label={t('web.access.createKey')} onClick={() => { setOpen(true); setIssued(undefined); setName(''); action.clear(); }} /></div>
-      <Dialog open={open} onOpenChange={setOpen} dismissable={!issued} title={issued ? t('web.access.copyKeyTitle') : t('web.access.createKeyTitle')} width={480}
-        actions={issued ? <Button variant="primary" label={t('web.access.copiedIt')} onClick={() => setOpen(false)} /> : <><Button variant="ghost" label={t('action.cancel')} onClick={() => setOpen(false)} /><Button variant="primary" label={t('web.saved.create')} disabled={!name.trim()} loading={action.busy} onClick={() => void action.run(async () => { const payload = {name: name.trim(), scopes: apiScopePresets[scope]}; const key = JSON.stringify(payload); setIssued(await createApiKey(api, {operationId: opIds.forPayload(key), ...payload})); opIds.release(); read.reload(); })} /></>}>
-        {issued ? (
-          <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
-            <Notice tone="warning" compact>{t('web.access.keyShownOnce')}</Notice>
-            <TextArea label={t('web.access.apiKey')} readOnly rows={2} value={issued.secret ?? ''} onFocus={e => e.currentTarget.select()} />
-            <div><Button size="sm" variant="secondary" icon="copy" label={t('web.twoStep.copy')} onClick={() => void navigator.clipboard?.writeText(issued.secret ?? '')} /></div>
-          </div>
-        ) : (
-          <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
-            {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}
-            <Input label={t('profile.name')} help={t('web.access.keyNameHelp')} autoFocus maxLength={80} value={name} onChange={e => setName(e.target.value)} placeholder="Home Assistant" /> {/* lint-strings-allow: an example name, not copy */}
-            <Select label={t('web.access.scopeLabel')} value={scope} onChange={e => setScope(e.target.value as ApiScopePreset)} options={apiScopePresetIds.map(s => ({value: s, label: scopeLabel[s]}))} />
-            <Text variant="caption" tone="tertiary">{scopeHelp[scope]}</Text>
-          </div>
-        )}
-      </Dialog>
-      <ConfirmDialog open={!!revoking} onOpenChange={o => !o && setRevoking(undefined)} title={t('web.access.revokeTitle', {name: revoking?.name ?? ''})} body={t('web.access.revokeBody')} confirmLabel={t('web.access.revoke')} busy={action.busy} error={action.error}
-        onConfirm={() => void action.run(async () => { if (!revoking) return; await revokeApiKey(api, revoking.id); setRevoking(undefined); read.reload(); }, 'Key revoked.')} />
       <ListPager pages={read} />
     </SettingsGroup>
   );
