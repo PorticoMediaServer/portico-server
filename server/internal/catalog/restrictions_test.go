@@ -543,3 +543,55 @@ func TestRecordingsSwitchFoldsIntoTheFenceOnly(t *testing.T) {
 		t.Fatal("an active fence must change with the Recordings switch")
 	}
 }
+
+// A library whose rating spellings were classified by an older rating table is
+// classified again, once, by the first build that knows a newer one: a
+// spelling the old table read as unrated gets the age the new table gives it.
+func TestRatingSpellingsAreReclassifiedOnceWhenTheTableChanges(t *testing.T) {
+	db, s, _ := tl10RestrictionFixture(t)
+	ctx := context.Background()
+	if _, err := s.ClassifyPendingRatings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	// As an older table would have left them: one spelling it did not know,
+	// one it read differently, and the marker of the table that did it.
+	for key, age := range map[string]int{"tv-y7-fv": -1, "pg": 3} {
+		if _, err := db.Exec(`INSERT INTO content_rating_ages(value_key,minimum_age) VALUES(?,?) ON CONFLICT(value_key) DO UPDATE SET minimum_age=excluded.minimum_age`, key, age); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := db.Exec(`INSERT INTO configuration VALUES('rating_table_version','an-older-table') ON CONFLICT(key) DO UPDATE SET value=excluded.value`); err != nil {
+		t.Fatal(err)
+	}
+	age := func(key string) int {
+		t.Helper()
+		var v int
+		if err := db.QueryRow(`SELECT minimum_age FROM content_rating_ages WHERE value_key=?`, key).Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		return v
+	}
+	// The running process already classified once; a restart is a new service.
+	restarted := New(db)
+	if _, err := restarted.ClassifyPendingRatings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if age("tv-y7-fv") != 7 || age("pg") != 8 {
+		t.Fatalf("after a build with a newer table started: tv-y7-fv=%d pg=%d", age("tv-y7-fv"), age("pg"))
+	}
+	var version string
+	if err := db.QueryRow(`SELECT value FROM configuration WHERE key='rating_table_version'`).Scan(&version); err != nil || version != identity.RatingTableVersion {
+		t.Fatalf("the table that classified the library is recorded as %q: %v", version, err)
+	}
+	// With the marker current, a later start leaves the ages as they are.
+	if _, err := db.Exec(`UPDATE content_rating_ages SET minimum_age=3 WHERE value_key='pg'`); err != nil {
+		t.Fatal(err)
+	}
+	again := New(db)
+	if _, err := again.ClassifyPendingRatings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if age("pg") != 3 {
+		t.Fatalf("a start with the same table reclassified the library: pg=%d", age("pg"))
+	}
+}
