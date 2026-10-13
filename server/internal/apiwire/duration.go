@@ -1,6 +1,7 @@
 package apiwire
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -76,7 +77,9 @@ func UnmarshalDurations(raw []byte, value any, fields map[string]string) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(converted, value)
+	decoder := json.NewDecoder(bytes.NewReader(converted))
+	decoder.DisallowUnknownFields()
+	return decoder.Decode(value)
 }
 func DurationSchema(kind reflect.Type, fields map[string]string) map[string]any {
 	schema, err := apikit.Schema(kind)
@@ -91,11 +94,11 @@ func DurationSchema(kind reflect.Type, fields map[string]string) map[string]any 
 		}
 		delete(properties, old)
 		p := property.(map[string]any)
-		if _, nullable := p["anyOf"]; nullable {
-			properties[next] = map[string]any{"anyOf": []any{map[string]any{"type": "integer", "minimum": 0}, map[string]any{"type": "null"}}}
-		} else {
-			properties[next] = map[string]any{"type": "integer", "minimum": 0}
+		nextProperty := map[string]any{"type": "integer", "minimum": 0, "maximum": 9007199254740991}
+		if nullable, ok := p["nullable"].(bool); ok && nullable {
+			nextProperty["nullable"] = true
 		}
+		properties[next] = nextProperty
 	}
 	if required, ok := schema["required"].([]string); ok {
 		for i, key := range required {

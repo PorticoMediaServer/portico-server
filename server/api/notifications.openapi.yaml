@@ -900,9 +900,9 @@ components:
           type: string
           description: The producer's identity for the underlying condition. A re-raise edits this record rather than adding another.
         revision: { type: integer, format: int64 }
-        createdAt: { type: integer, format: int64, description: Milliseconds since the epoch. }
-        updatedAt: { type: integer, format: int64 }
-        expiresAt: { type: integer, format: int64 }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+        expiresAt: { type: string }
         readAt: { type: [integer, "null"], format: int64 }
         archivedAt: { type: [integer, "null"], format: int64 }
         read: { type: boolean }
@@ -932,7 +932,7 @@ components:
           type: array
           items: { $ref: "#/components/schemas/Notification" }
         nextCursor: { type: string }
-        observedAt: { type: integer, format: int64 }
+        observedAt: { type: string }
         retentionDays: { type: integer }
     NotificationSummary:
       type: object
@@ -941,7 +941,7 @@ components:
         revision: { type: integer, format: int64 }
         audience: { type: string }
         counts: { $ref: "#/components/schemas/NotificationCounts" }
-        observedAt: { type: integer, format: int64 }
+        observedAt: { type: string }
     NotificationDelta:
       type: object
       required: [revision, since, resync, items, counts]
@@ -1136,7 +1136,7 @@ components:
       required: [sequence, at, revision, status, reply, actorClass]
       properties:
         sequence: { type: integer, format: int64 }
-        at: { type: integer, format: int64 }
+        at: { type: string }
         revision: { type: integer, format: int64 }
         status: { type: string }
         reply: { type: string }
@@ -1153,9 +1153,9 @@ components:
         category: { type: string }
         message: { type: string }
         itemId: { type: string, description: Omitted when the caller can no longer reach the title. }
-        createdAt: { type: integer, format: int64 }
-        updatedAt: { type: integer, format: int64 }
-        expiresAt: { type: integer, format: int64 }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+        expiresAt: { type: string }
         reporter: { $ref: "#/components/schemas/FeedbackReporter" }
         diagnostics: { $ref: "#/components/schemas/FeedbackDiagnostics" }
         duplicateOf: { type: string }
@@ -1190,7 +1190,7 @@ components:
         filter:
           type: object
           additionalProperties: { type: string }
-        observedAt: { type: integer, format: int64 }
+        observedAt: { type: string }
     FeedbackTransition:
       type: object
       required: [operationId, expectedRevision, status]

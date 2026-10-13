@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"path/filepath"
+	"portico.local/server/internal/apiwire"
 	"strings"
 	"testing"
 	"time"
@@ -266,12 +267,12 @@ func TestConsoleDiagnosticsExpiryAndAuditBoundary(t *testing.T) {
 	if _, e = s.DB.Exec(`UPDATE console_audit SET action='rewritten'`); e == nil {
 		t.Fatal("audit update was not fenced")
 	}
-	out, e := s.CreateExport(ctx, p, a, false, ExportRequest{IdempotencyKey: "export-one", From: s.now() - 1000, To: s.now(), Components: []string{"runtime", "audit"}})
+	out, e := s.CreateExport(ctx, p, a, false, ExportRequest{IdempotencyKey: "export-one", From: apiwire.Instant(s.now() - 1000), To: apiwire.Instant(s.now()), Components: []string{"runtime", "audit"}})
 	if e != nil {
 		t.Fatal(e)
 	}
 	var expiry int64
-	if e = s.DB.QueryRow(`SELECT expires_ms FROM console_receipts WHERE scope=?`, "export:"+p.Hash).Scan(&expiry); e != nil || expiry != out.ExpiresAt {
+	if e = s.DB.QueryRow(`SELECT expires_ms FROM console_receipts WHERE scope=?`, "export:"+p.Hash).Scan(&expiry); e != nil || expiry != int64(out.ExpiresAt) {
 		t.Fatal("export bytes outlive artifact", e)
 	}
 	var last string

@@ -188,7 +188,8 @@ const shortMonths:readonly string[]=['Jan','Feb','Mar','Apr','May','Jun','Jul','
  * pass through untouched, never fatal. */
 export function formatBrowseAnchor(key:string,sortField:string,noValue=''):string{
  if(!key)return noValue;
- if(sortField==='communityRating'||sortField==='personalRating')return `${key}★`;
+ if(sortField==='personalRating'&&/^\d+$/.test(key))return `${Number(key)/2}★`;
+ if(sortField==='communityRating')return `${key}★`;
  if(sortField==='duration'){
   const minutes=Number(key);
   if(!Number.isFinite(minutes)||minutes<0)return key;

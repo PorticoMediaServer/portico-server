@@ -1,3 +1,4 @@
+import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 /** Online personal resources. The server owns membership, query evaluation and permissions.
  * Existing library navigation owns destinations/Back; this module owns no queue or device store. */
@@ -171,10 +172,10 @@ export class PersonalSavedService{
      const page=parseBrowseResult(raw.browse);
      if(page.pivot!==r.definition!.pivot)bad();
      patch.browse=page;patch.entries=page.entries.map(media=>({id:media.id,hidden:false,media}));patch.nextCursor=page.pageInfo.nextCursor;
-    }else{patch.entries=distinct(rows(raw.entries).map(e=>{if(!obj(e)||!id(e.id)||typeof e.hidden!=='boolean'||e.hidden&&Object.keys(e).some(k=>k!=='id'&&k!=='hidden'))bad();return {id:e.id,hidden:e.hidden,...(!e.hidden?{media:validateContentEntry(e.media)}:{})};}));}
+    }else{patch.entries=distinct(rows(raw.entries).map(e=>{e=wireDurations(e,{positionSeconds:'positionMs'});if(!obj(e)||!id(e.id)||typeof e.hidden!=='boolean'||e.hidden&&Object.keys(e).some(k=>k!=='id'&&k!=='hidden'))bad();return {id:e.id,hidden:e.hidden,...(!e.hidden?{media:validateContentEntry(e.media)}:{})};}));}
    }else{
     if(raw.serverId!==this.scope.serverId||!id(raw.viewerFence)||!num(raw.revision))bad();patch.viewerFence=raw.viewerFence;patch.revision=raw.revision;
-    if(route.view==='history')patch.entries=distinct(rows(raw.entries).map(e=>{if(!obj(e)||!id(e.id)||!str(e.updatedAt,128)||typeof e.positionSeconds!=='number'||!Number.isFinite(e.positionSeconds)||e.positionSeconds<0||typeof e.completed!=='boolean')bad();return {id:e.id,hidden:false,media:validateContentEntry(e.media),updatedAt:e.updatedAt,positionSeconds:e.positionSeconds,completed:e.completed};}));
+    if(route.view==='history')patch.entries=distinct(rows(raw.entries).map(e=>{e=wireDurations(e,{positionSeconds:'positionMs'});if(!obj(e)||!id(e.id)||!str(e.updatedAt,128)||typeof e.positionSeconds!=='number'||!Number.isFinite(e.positionSeconds)||e.positionSeconds<0||typeof e.completed!=='boolean')bad();return {id:e.id,hidden:false,media:validateContentEntry(e.media),updatedAt:e.updatedAt,positionSeconds:e.positionSeconds,completed:e.completed};}));
     else patch.resources=distinct(rows(raw.resources).map(v=>{const r=resource(v,this.scope);if(r.viewerFence!==raw.viewerFence||r.kind!==(route.view==='collections'?'collection':'view'))bad();return r;}));
    }
    if(this.state.viewerFence&&this.state.viewerFence!==patch.viewerFence)throw Object.assign(new Error('Your access changed. Reopen Saved to continue.'),{code:'scope_changed'});

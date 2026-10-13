@@ -11,7 +11,7 @@ import (
 )
 
 // PlaybackHistoryEntry is one finished or running Playback v1 session as an
-// owner reads it. EndedAt and DurationSeconds are null while the session runs,
+// owner reads it. EndedAt and DurationMs are null while the session runs,
 // because it has no end time yet and history must not invent one.
 //
 // DeliveryMode is the presentation's mode ("direct" or "stream"); the strategy
@@ -31,7 +31,8 @@ type PlaybackHistoryEntry struct {
 	ItemID          string           `json:"itemId"`
 	StartedAt       apiwire.Instant  `json:"startedAt"`
 	EndedAt         *apiwire.Instant `json:"endedAt"`
-	DurationSeconds *int64           `json:"durationSeconds"`
+	DurationMs      *int64           `json:"durationMs"`
+	DurationSeconds *int64           `json:"-"`
 	DeliveryMode    string           `json:"deliveryMode"`
 	DeliveryReason  string           `json:"deliveryStrategy"`
 	QualityMode     string           `json:"qualityMode"`
@@ -122,9 +123,10 @@ func scanHistory(rows *sql.Rows) (PlaybackHistoryEntry, error) {
 			v.State = "stopped"
 		}
 		if ended >= int64(v.StartedAt) {
-			seconds := (ended - int64(v.StartedAt)) / 1000
+			durationMs := ended - int64(v.StartedAt)
+			seconds := durationMs / 1000
 			instant := apiwire.Instant(ended)
-			v.EndedAt, v.DurationSeconds = &instant, &seconds
+			v.EndedAt, v.DurationSeconds, v.DurationMs = &instant, &seconds, &durationMs
 		}
 	}
 	return v, nil
@@ -184,7 +186,7 @@ const PlaybackHistoryExportLimit = 5000
 // file in a spreadsheet cannot execute a title.
 func (s *Store) PlaybackHistoryCSV(ctx context.Context, auth Authorize, period string) (string, error) {
 	var out strings.Builder
-	out.WriteString("id,viewer,title,mediaKind,library,startedAt,endedAt,durationSeconds,deliveryMode,deliveryStrategy,qualityMode,state\n")
+	out.WriteString("id,viewer,title,mediaKind,library,startedAt,endedAt,durationMs,deliveryMode,deliveryStrategy,qualityMode,state\n")
 	cursor := ""
 	for written := 0; written < PlaybackHistoryExportLimit; {
 		page, e := s.PlaybackHistory(ctx, auth, period, cursor, 200)
@@ -194,7 +196,7 @@ func (s *Store) PlaybackHistoryCSV(ctx context.Context, auth Authorize, period s
 		for _, v := range page.Items {
 			out.WriteString(strings.Join([]string{
 				csvCell(v.ID), csvCell(v.Viewer), csvCell(v.Title), csvCell(v.MediaKind), csvCell(v.LibraryName),
-				csvCell(time.UnixMilli(int64(v.StartedAt)).UTC().Format(time.RFC3339Nano)), csvCell(optionalInstant(v.EndedAt)), csvCell(optionalNumber(v.DurationSeconds)),
+				csvCell(time.UnixMilli(int64(v.StartedAt)).UTC().Format(time.RFC3339Nano)), csvCell(optionalInstant(v.EndedAt)), csvCell(optionalNumber(v.DurationMs)),
 				csvCell(v.DeliveryMode), csvCell(v.DeliveryReason), csvCell(v.QualityMode), csvCell(v.State),
 			}, ","))
 			out.WriteString("\n")

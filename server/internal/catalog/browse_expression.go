@@ -247,6 +247,9 @@ func validateBrowseScalar(field browseField, value any, path string) (any, error
 			}
 		}
 		parsed, err := number.Float64()
+		if field.ID == "durationMs" && (parsed < 0 || parsed > 9007199254740991 || math.Trunc(parsed) != parsed) {
+			return nil, browseIssue(path, "duration must be whole milliseconds")
+		}
 		if err != nil || math.IsNaN(parsed) || math.IsInf(parsed, 0) {
 			return nil, browseIssue(path, "must be a finite number")
 		}
@@ -334,6 +337,22 @@ func (c *browseCompiler) predicate(node BrowseNode) (string, error) {
 	field, ok := browseFieldByID(node.Field)
 	if !ok {
 		return "", browseIssue("query.field", "field is not supported")
+	}
+	if field.ID == "durationMs" {
+		if value, ok := node.Value.(float64); ok {
+			node.Value = value / 1000
+		}
+		if values, ok := node.Value.([]any); ok {
+			converted := make([]any, len(values))
+			for i, v := range values {
+				if number, ok := v.(float64); ok {
+					converted[i] = number / 1000
+				} else {
+					converted[i] = v
+				}
+			}
+			node.Value = converted
+		}
 	}
 	if field.Entity != "" {
 		return c.entityPredicate(field, node)
@@ -642,4 +661,15 @@ func BrowseNodePersonal(node *BrowseNode) bool {
 		return ok && field.Profile > 0
 	}
 	return false
+}
+
+// JSONSchema declares the expression's wire fields explicitly. The parser
+// enforces the union, recursive children and published depth/clause bounds.
+func (BrowseNode) JSONSchema() map[string]any {
+	child := map[string]any{"type": "object", "required": []string{}, "properties": map[string]any{}, "additionalProperties": map[string]any{}}
+	group := map[string]any{"type": "array", "minItems": 1, "maxItems": BrowseMaximumClauses, "items": child}
+	return map[string]any{"type": "object", "required": []string{}, "additionalProperties": false, "properties": map[string]any{
+		"field": map[string]any{"type": "string"}, "operator": map[string]any{"type": "string"}, "value": map[string]any{},
+		"all": group, "any": group, "not": child,
+	}, "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds."}
 }

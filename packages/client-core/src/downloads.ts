@@ -308,6 +308,7 @@ export function parseDeferredProgressReceipt(raw: unknown): DeferredProgressRece
   if (!object(raw) || !count(raw.applied) || !count(raw.conflicts)) invalid();
   const outcomes: readonly string[] = ['applied','stale_observation','superseded_online','item_deleted','invalid_entry','observation_in_future'];
   const entries = array(raw.entries, 100).map(v => {
+ v=wireDurations(v,{positionSeconds:"positionMs"});
     if (!object(v) || !id(v.itemId) && v.itemId !== '' || !outcomes.includes(String(v.outcome)) || typeof v.watched !== 'boolean') invalid();
     if (typeof v.positionSeconds !== 'number' || !Number.isFinite(v.positionSeconds) || v.positionSeconds < 0) invalid();
     if (v.observedAt !== undefined && !instant(v.observedAt, true)) invalid();

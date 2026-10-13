@@ -180,3 +180,18 @@ func TestPersonalReceiptExpiryCASAndBoundedCleanup(t *testing.T) {
 		t.Fatal("per-item receipt history must not exhaust operation quota", e)
 	}
 }
+
+func TestPersonalRatingIntegerScale(t *testing.T) {
+	for _, value := range []string{"0", "1", "9", "10", "null"} {
+		_, _, err := mutationField(&PersonalMutation{Rating: json.RawMessage(value)})
+		if err != nil {
+			t.Errorf("rating %s: %v", value, err)
+		}
+	}
+	for _, value := range []string{"-1", "11", "4.5", "0.5", `"9"`} {
+		_, _, err := mutationField(&PersonalMutation{Rating: json.RawMessage(value)})
+		if err == nil {
+			t.Errorf("accepted rating %s", value)
+		}
+	}
+}

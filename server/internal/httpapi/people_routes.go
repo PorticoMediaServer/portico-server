@@ -15,7 +15,7 @@ import (
 // no client-side fan-out, no per-row round trip.
 func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 	personalRate := &personalLimiter{}
-	mux.HandleFunc("GET /v1/people", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/people", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		for key, values := range q {
 			if len(values) != 1 || (key != "q" && key != "limit") {
@@ -49,7 +49,7 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, out)
 	})
-	mux.HandleFunc("GET /v1/people/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/people/{id}", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		for key, values := range q {
 			if len(values) != 1 || (key != "cursor" && key != "limit" && key != "role") {
@@ -83,7 +83,7 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, out)
 	})
-	mux.HandleFunc("GET /v1/people/{id}/portrait", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/people/{id}/portrait", func(w http.ResponseWriter, r *http.Request) {
 		p, err := d.principal(r)
 		if err != nil {
 			failure(w, err)
@@ -131,7 +131,7 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 		defer f.Close()
 		serveArtwork(w, r, f, mime)
 	})
-	mux.HandleFunc("PUT /v1/items/personal-state:batch", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "PUT /v1/items/personal-state:batch", func(w http.ResponseWriter, r *http.Request) {
 		p, libraries, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
@@ -192,7 +192,7 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 		out.ViewerFence = fence
 		d.savedResponse(w, r, fence, out)
 	})
-	mux.HandleFunc("POST /v1/collections/{id}/items:batch", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "POST /v1/collections/{id}/items:batch", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.owner(r); e != nil {
 			failure(w, e)
 			return

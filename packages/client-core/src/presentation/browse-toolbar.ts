@@ -33,7 +33,7 @@ const PROMOTED: Readonly<Record<string, readonly string[]>> = {
 const QUICK_ON_BAR = ['unwatched', 'in-progress', 'favorites'];
 
 const ACTIVITY = new Set(['playState', 'favorite', 'watchlisted', 'personalRating', 'lastPlayedAt']);
-const FILE = new Set(['resolution', 'dynamicRange', 'audioLanguage', 'durationSeconds', 'dateAdded', 'availability', 'entityKind']);
+const FILE = new Set(['resolution', 'dynamicRange', 'audioLanguage', 'durationMs', 'dateAdded', 'availability', 'entityKind']);
 /** Fields that are a worse version of another field on the bar, or internal. */
 const HIDDEN = new Set(['title', 'entityKind']);
 /** Decade is Year with a coarser step; the Year control offers decades as presets. */
@@ -48,7 +48,7 @@ export function toolbarGroupOf(fieldId: string): ToolbarGroupId {
 /** The order fields take inside a group: how often people reach for them, not registry order. */
 const RANK: readonly string[] = ['genre', 'year', 'decade', 'contentRating', 'studio', 'network', 'collection', 'series', 'author', 'narrator', 'artist', 'album', 'actor', 'director', 'writer', 'tag', 'label', 'communityRating', 'criticRating', 'releaseDate',
   'playState', 'favorite', 'watchlisted', 'personalRating', 'lastPlayedAt',
-  'resolution', 'dynamicRange', 'audioLanguage', 'durationSeconds', 'dateAdded', 'availability'];
+  'resolution', 'dynamicRange', 'audioLanguage', 'durationMs', 'dateAdded', 'availability'];
 const rankOf = (id: string) => { const i = RANK.indexOf(id); return i < 0 ? RANK.length : i; };
 
 export type ToolbarGroup = Readonly<{id: ToolbarGroupId; fields: readonly BrowseFieldCapability[]}>;
@@ -156,8 +156,8 @@ export function rangePresets(field: BrowseFieldCapability, now: Date): readonly 
   const atLeast = (value: number | string): ToolbarPredicate => ({field: id, operator: 'at-least', value});
   const atMost = (value: number | string): ToolbarPredicate => ({field: id, operator: 'at-most', value});
   const between = (low: number, high: number): readonly ToolbarPredicate[] => ((field.operators as readonly string[]).includes('between') ? [{field: id, operator: 'between', value: [low, high]}] : [atLeast(low), atMost(high)]);
-  if (id === 'durationSeconds') {
-    const minutes = (n: number) => n * 60;
+  if (id === 'durationMs') {
+    const minutes = (n: number) => n * 60000;
     return [
       {id: 'under-30', label: {id: 'filter.preset.durationUnder', values: {minutes: 30}}, predicates: [atMost(minutes(30))]},
       {id: '30-60', label: {id: 'filter.preset.durationBetween', values: {from: 30, to: 60}}, predicates: between(minutes(30), minutes(60))},
@@ -166,7 +166,7 @@ export function rangePresets(field: BrowseFieldCapability, now: Date): readonly 
       {id: 'over-120', label: {id: 'filter.preset.durationOver', values: {minutes: 120}}, predicates: [atLeast(minutes(120))]},
     ];
   }
-  if (id === 'personalRating') return [5, 4, 3, 2].map(stars => ({id: `stars-${stars}`, label: {id: 'filter.preset.stars' as MessageId, values: {count: stars}}, predicates: [atLeast(stars)]}));
+  if (id === 'personalRating') return [5, 4, 3, 2].map(stars => ({id: `stars-${stars}`, label: {id: 'filter.preset.stars' as MessageId, values: {count: stars}}, predicates: [atLeast(stars*2)]}));
   if (id === 'criticRating') return [90, 80, 70, 60].map(value => ({id: `critic-${value}`, label: {id: 'filter.preset.percent' as MessageId, values: {value}}, predicates: [atLeast(value)]}));
   if (field.type === 'number') return [9, 8, 7, 6, 5].map(value => ({id: `rating-${value}`, label: {id: 'filter.preset.atLeast' as MessageId, values: {value}}, predicates: [atLeast(value)]}));
   if (field.type === 'date') {

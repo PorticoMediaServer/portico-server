@@ -12,7 +12,7 @@ const searchLiveSQL = `e.retired=0 AND EXISTS(SELECT 1 FROM catalog_kinds k WHER
 // independently of the number of credits or aliases a provider supplies.
 const searchContentSQL = `e.title||' '||e.sort_title||' '||CASE WHEN e.year>0 THEN e.year ELSE '' END||' '||
  COALESCE(d.original_title,'')||' '||COALESCE(sh.original_title,'')||' '||
- COALESCE((SELECT group_concat(credited_name,' ') FROM (SELECT credited_name FROM catalog_credits WHERE entity_id=e.id ORDER BY ord LIMIT 256)),'')||' '||
+ COALESCE((SELECT group_concat(name,' ') FROM (SELECT c.credited_name||' '||COALESCE(p.name,'') AS name FROM catalog_credits c LEFT JOIN catalog_people p ON p.id=c.person_id WHERE c.entity_id=e.id ORDER BY c.ord LIMIT 256)),'')||' '||
  COALESCE((SELECT group_concat(alias,' ') FROM (SELECT CAST(j.value AS TEXT) alias FROM screen_metadata_work w JOIN screen_metadata_publications p ON p.id=w.accepted_publication,json_each(CASE WHEN json_valid(p.payload) THEN p.payload ELSE '{}' END,'$.aliases') j WHERE w.target_id=e.id AND j.type='text' LIMIT 128)),'')||' '||
  COALESCE(b.author,'')||' '||COALESCE(b.narrator,'')||' '||COALESCE(b.series,'')||' '||
  COALESCE((SELECT group_concat(title,' ') FROM (SELECT a.title FROM catalog_song_artists sa JOIN catalog_entities a ON a.id=sa.artist_id AND a.library_id=e.library_id AND a.retired=0 WHERE sa.song_id=e.id LIMIT 64)),'')||' '||
@@ -24,6 +24,8 @@ const searchContentSQL = `e.title||' '||e.sort_title||' '||CASE WHEN e.year>0 TH
 
 func deriveSearch(ctx context.Context, tx *sql.Tx, ids string) error {
 	for _, query := range []string{
+		`DELETE FROM catalog_people_names WHERE rowid IN(SELECT person_id FROM catalog_credits WHERE entity_id IN(SELECT value FROM json_each(?)) AND person_id IS NOT NULL)`,
+		`INSERT INTO catalog_people_names(rowid,name) SELECT p.id,portico_search_text(p.name) FROM catalog_people p WHERE p.id IN(SELECT person_id FROM catalog_credits WHERE entity_id IN(SELECT value FROM json_each(?)) AND person_id IS NOT NULL)`,
 		`INSERT INTO catalog_search_titles(catalog_search_titles,rowid,search,kind)
  SELECT 'delete',d.entity_id,d.search,d.kind FROM catalog_search_documents d WHERE d.entity_id IN(SELECT value FROM json_each(?))`,
 		`DELETE FROM catalog_search_documents WHERE entity_id IN(SELECT value FROM json_each(?))`,

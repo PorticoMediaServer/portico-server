@@ -566,7 +566,7 @@ CREATE TABLE catalog_personal_sort_item_jobs(
  entity_cursor INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(profile_id,item_id)) WITHOUT ROWID, STRICT;
 CREATE TABLE catalog_personal_sort_members(
  profile_id TEXT NOT NULL,entity_id INTEGER NOT NULL,item_id INTEGER NOT NULL,
- rating REAL,last_played_at TEXT NOT NULL,
+ rating INTEGER CHECK(rating IS NULL OR rating BETWEEN 0 AND 10),last_played_at TEXT NOT NULL,
  PRIMARY KEY(profile_id,entity_id,item_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_personal_sort_member_item ON catalog_personal_sort_members(profile_id,item_id,entity_id);
 CREATE INDEX catalog_personal_sort_member_item_id ON catalog_personal_sort_members(item_id,profile_id);

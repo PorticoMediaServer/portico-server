@@ -25,7 +25,8 @@ export function parsePlaybackHistoryEntry(value:unknown):PlaybackHistoryEntry{
  if(!text(value.id,200)||!value.id||!integer(value.startedAt))invalid();
  for(const key of ['viewer','authority','accountId','profileId','title','mediaKind','libraryName','itemId','deliveryMode','deliveryStrategy','qualityMode','state'])
   if(!text(value[key],512))invalid();
- for(const key of ['endedAt','durationSeconds'])if(value[key]!==null&&!integer(value[key]))invalid();
+ if(value.endedAt!==null&&!integer(value.endedAt))invalid();
+ if(value.durationSeconds!==null&&(typeof value.durationSeconds!=='number'||!Number.isFinite(value.durationSeconds)||value.durationSeconds<0))invalid();
  // A recorded end must not precede its start, and a duration must match it.
  if(value.endedAt!==null&&(value.endedAt<value.startedAt||value.durationSeconds===null))invalid();
  if(value.endedAt===null&&value.durationSeconds!==null)invalid();

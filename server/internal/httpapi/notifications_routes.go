@@ -145,7 +145,7 @@ func (d Dependencies) notificationRoutes(mux *http.ServeMux) {
 	slots := make(chan struct{}, 8)
 	type action func(*http.Request, identity.Principal, operations.Authorize) (any, error)
 	register := func(pattern string, owner bool, query []string, fn action) {
-		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		d.projectedHandle(mux, pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			ctx, cancel := context.WithTimeout(r.Context(), 7*time.Second)
 			defer cancel()
@@ -274,10 +274,10 @@ func (d Dependencies) notificationRoutes(mux *http.ServeMux) {
 		return d.Console.TransitionFeedback(r.Context(), p, a, r.PathValue("id"), c)
 	})
 
-	mux.HandleFunc("GET /v1/notifications/wait", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/notifications/wait", func(w http.ResponseWriter, r *http.Request) {
 		d.noticeWait(w, r, limiter)
 	})
-	mux.HandleFunc("GET /v1/notifications/events", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/notifications/events", func(w http.ResponseWriter, r *http.Request) {
 		d.noticeEvents(w, r, limiter)
 	})
 }

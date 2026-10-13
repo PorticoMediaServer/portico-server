@@ -17,7 +17,26 @@ func (Item) JSONSchema() map[string]any {
 type contentEntryWire ContentEntry
 
 func (ContentEntry) JSONSchema() map[string]any {
-	return apiwire.DurationSchema(reflect.TypeFor[contentEntryWire](), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+	kind := reflect.TypeFor[contentEntryWire]()
+	fields := []reflect.StructField{}
+	for i := 0; i < kind.NumField(); i++ {
+		f := kind.Field(i)
+		if f.Name != "Media" && f.Name != "Hidden" {
+			fields = append(fields, f)
+		}
+	}
+	leaf := apiwire.DurationSchema(reflect.StructOf(fields), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+	leafProperties := leaf["properties"].(map[string]any)
+	leafProperties["userRating"] = map[string]any{"type": "integer", "nullable": true, "minimum": 0, "maximum": 10}
+	properties := map[string]any{}
+	for key, value := range leafProperties {
+		properties[key] = value
+	}
+	properties["hidden"] = map[string]any{"type": "boolean", "nullable": true}
+	properties["media"] = leaf
+	// Playlist occurrences carry id/kind/hidden/media instead of a title.
+	// Kind-specific requirements are enforced by the shared content parser.
+	return map[string]any{"type": "object", "additionalProperties": false, "required": []string{"id", "kind"}, "properties": properties}
 }
 
 type contentPlaybackWire ContentPlayback
@@ -35,7 +54,9 @@ func (v PersonalState) MarshalJSON() ([]byte, error) {
 	return apiwire.MarshalDurations(personalStateWire(v), map[string]string{"progressSeconds": "progressMs"})
 }
 func (PersonalState) JSONSchema() map[string]any {
-	return apiwire.DurationSchema(reflect.TypeFor[personalStateWire](), map[string]string{"progressSeconds": "progressMs"})
+	schema := apiwire.DurationSchema(reflect.TypeFor[personalStateWire](), map[string]string{"progressSeconds": "progressMs"})
+	schema["properties"].(map[string]any)["rating"] = map[string]any{"type": "integer", "nullable": true, "minimum": 0, "maximum": 10}
+	return schema
 }
 func (v *PersonalState) UnmarshalJSON(raw []byte) error {
 	return apiwire.UnmarshalDurations(raw, (*personalStateWire)(v), map[string]string{"progressSeconds": "progressMs"})
@@ -47,7 +68,9 @@ func (v PersonalMutation) MarshalJSON() ([]byte, error) {
 	return apiwire.MarshalDurations(personalMutationWire(v), map[string]string{"progressSeconds": "progressMs"})
 }
 func (PersonalMutation) JSONSchema() map[string]any {
-	return apiwire.DurationSchema(reflect.TypeFor[personalMutationWire](), map[string]string{"progressSeconds": "progressMs"})
+	schema := apiwire.DurationSchema(reflect.TypeFor[personalMutationWire](), map[string]string{"progressSeconds": "progressMs"})
+	schema["properties"].(map[string]any)["rating"] = map[string]any{"type": "integer", "nullable": true, "minimum": 0, "maximum": 10}
+	return schema
 }
 func (v *PersonalMutation) UnmarshalJSON(raw []byte) error {
 	return apiwire.UnmarshalDurations(raw, (*personalMutationWire)(v), map[string]string{"progressSeconds": "progressMs"})
@@ -105,4 +128,52 @@ func (v PlaySummary) MarshalJSON() ([]byte, error) {
 }
 func (PlaySummary) JSONSchema() map[string]any {
 	return apiwire.DurationSchema(reflect.TypeFor[playSummaryWire](), map[string]string{"watchedSeconds": "watchedMs"})
+}
+
+func (v *Item) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*itemWire)(v), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+}
+
+func (v *ContentEntry) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*contentEntryWire)(v), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
+}
+
+func (v *ContentPlayback) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*contentPlaybackWire)(v), map[string]string{"startSeconds": "startMs"})
+}
+
+func (v *TitleFile) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*titleFileWire)(v), map[string]string{"duration": "durationMs"})
+}
+
+func (v *BookResume) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*bookResumeWire)(v), map[string]string{"positionSeconds": "positionMs"})
+}
+
+func (v *BookChapter) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*bookChapterWire)(v), map[string]string{"startSeconds": "startMs", "endSeconds": "endMs"})
+}
+
+func (v *PlayHistoryEntry) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*playHistoryEntryWire)(v), map[string]string{"positionSeconds": "positionMs", "durationSeconds": "durationMs"})
+}
+
+func (v *HistoryEntry) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*historyEntryWire)(v), map[string]string{"positionSeconds": "positionMs"})
+}
+
+func (v *PlaySummary) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*playSummaryWire)(v), map[string]string{"watchedSeconds": "watchedMs"})
+}
+
+type titleRowWire TitleRow
+
+func (v TitleRow) MarshalJSON() ([]byte, error) {
+	return apiwire.MarshalDurations(titleRowWire(v), map[string]string{"durationSeconds": "durationMs"})
+}
+func (TitleRow) JSONSchema() map[string]any {
+	return apiwire.DurationSchema(reflect.TypeFor[titleRowWire](), map[string]string{"durationSeconds": "durationMs"})
+}
+func (v *TitleRow) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*titleRowWire)(v), map[string]string{"durationSeconds": "durationMs"})
 }

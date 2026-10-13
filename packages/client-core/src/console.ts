@@ -146,7 +146,7 @@ export class ConsoleClient {
  acknowledge(alert:Alert){return this.mutate('/v1/admin/console/alerts/'+encodeURIComponent(alert.id)+'/acknowledge','POST',{expectedRevision:alert.revision},base);}
  records(lane:'runtime'|'client'|'audit',cursor=''){return this.call('/v1/admin/console/diagnostics/'+lane+'?cursor='+encodeURIComponent(cursor),'GET',undefined,v=>parsePage(v,parseEvidenceRecord));}
  capture(component:string,expiresAt:number){return this.mutate('/v1/admin/console/diagnostics/capture','POST',{component,expiresAt:new Date(expiresAt).toISOString()},base);}
- createExport(from:number,to:number,components:string[]){return this.mutate('/v1/admin/console/exports','POST',{from,to,components},parseExport);}
+ createExport(from:number,to:number,components:string[]){return this.mutate('/v1/admin/console/exports','POST',{from:new Date(from).toISOString(),to:new Date(to).toISOString(),components},parseExport);}
  export(id:string){return this.call('/v1/admin/console/exports/'+encodeURIComponent(id),'GET',undefined,parseExport);}
  /** Transcoding capacity, probes and dependencies as this server reports them. */
  transcodeCapacity(){return this.call('/v1/admin/transcode/capacity','GET',undefined,parseTranscodeCapacity);}

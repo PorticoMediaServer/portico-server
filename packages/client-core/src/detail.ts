@@ -160,6 +160,7 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
   if (item.year !== undefined) { if (!integer(item.year)) invalid(); media.year = item.year; }
   if (item.addedAt !== undefined) { if (item.addedAt !== null && !str(item.addedAt, 128)) invalid(); media.addedAt = item.addedAt as string | null; }
   if (item.sources !== undefined) media.sources = array(item.sources, 64).map(source => {
+ source=wireDurations(source,{duration:"durationMs"});
     if (!obj(source) || !id(source.id) || !str(source.container) || !str(source.videoCodec) || !str(source.audioCodec) || !integer(source.width) || !integer(source.height)) invalid();
     if (source.duration !== undefined && !finite(source.duration)) invalid();
     return Object.freeze({ ...(source.duration === undefined ? {} : { duration: source.duration as number }), id: source.id, container: source.container, videoCodec: source.videoCodec, audioCodec: source.audioCodec, width: source.width, height: source.height });

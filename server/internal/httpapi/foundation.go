@@ -662,6 +662,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerSearchSortRoutes(registry, d); err != nil {
 		return nil, err
 	}
+	if err := registerUnitProjections(registry, d); err != nil {
+		return nil, err
+	}
 	registry.Freeze()
 	return registry, nil
 }

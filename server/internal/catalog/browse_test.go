@@ -109,7 +109,7 @@ func TestBrowseCompilesEveryOperator(t *testing.T) {
 		{"availability", `{"field":"availability","operator":"equals","value":"available"}`, []string{"m1", "m2", "m5"}},
 		{"unavailable", `{"field":"availability","operator":"equals","value":"unavailable"}`, []string{"m3", "m4"}},
 		{"resolution", `{"field":"resolution","operator":"equals","value":"4k"}`, []string{"m2"}},
-		{"duration", `{"field":"durationSeconds","operator":"at-least","value":200}`, []string{"m2", "m3"}},
+		{"duration", `{"field":"durationMs","operator":"at-least","value":200000}`, []string{"m2", "m3"}},
 		{"favorite", `{"field":"favorite","operator":"equals","value":true}`, []string{"m1"}},
 		{"not favorite", `{"field":"favorite","operator":"equals","value":false}`, []string{"m2", "m3", "m4", "m5"}},
 		{"played", `{"field":"playState","operator":"equals","value":"played"}`, []string{"m2"}},

@@ -12,8 +12,8 @@ export type SearchGroupStatus='success'|'error';
 export type SearchGroupErrorCode=''|'search_group_timeout'|'search_group_unavailable';
 export type SearchQuery=Readonly<{q:string;group?:SearchGroup;groups?:readonly SearchGroup[];sort?:SearchSort;direction?:SearchDirection;libraryIds?:readonly string[];record?:boolean}>;
 export type SearchEntry=ContentEntry|Readonly<{id:string;kind:'person'|'channel';title:string;subtitle?:string;posterUrl?:string;count?:number;navigation:Readonly<{view:'person'|'channel';entityId:string}>}>;
-export type SearchGroupResult=Readonly<{id:SearchGroup;title:string;entityKind:string;status:SearchGroupStatus;errorCode:SearchGroupErrorCode;items:readonly SearchEntry[];totalCount:number;hasMore:boolean;nextCursor:string}>;
-export type SearchGroupCapability=Readonly<{id:SearchGroup;title:string;entityKind:string;available:boolean;reason:string;sorts:readonly SearchSort[]}>;
+export type SearchGroupResult=Readonly<{id:SearchGroup;labelKey?:string;title:string;entityKind:string;status:SearchGroupStatus;errorCode:SearchGroupErrorCode;items:readonly SearchEntry[];totalCount:number;hasMore:boolean;nextCursor:string}>;
+export type SearchGroupCapability=Readonly<{id:SearchGroup;labelKey?:string;title:string;entityKind:string;available:boolean;reason:string;sorts:readonly SearchSort[]}>;
 export type SearchCapabilities=Readonly<{groups:readonly SearchGroupCapability[];sorts:readonly SearchSort[];directions:readonly SearchDirection[];maxLimit:number;groupBudgetMs:number}>;
 export type SearchData=Readonly<{scope:Readonly<{serverId:string;libraryId:'';libraryKind:'mixed';view:'search';entityId:'';viewerFence:string}>;revision:Readonly<{catalog:number;viewer:number}>;heading:ContentHeading;query:Readonly<{q:string;sort:SearchSort;direction:SearchDirection;group:SearchGroup|'';groups:readonly SearchGroup[];libraryIds:readonly string[];limit:number;searchMode:'normalized_prefix';recorded:boolean}>;groups:readonly SearchGroupResult[];capabilities:SearchCapabilities;empty?:ContentHeading}>;
 export type SearchSnapshot=Readonly<{generation:number;scope:ContentScope;query:SearchQuery|null;phase:'idle'|'loading'|'ready'|'error'|'refresh-required';data:SearchData|null;groups:readonly SearchGroupResult[];pagination:Readonly<{cursor:string|null;canPrevious:boolean}>;error:Readonly<{code:string;message:string;retryable:boolean}>|null}>;
@@ -38,7 +38,7 @@ function heading(v:unknown):ContentHeading{if(!object(v)||!id(v.key)||!text(v.fa
 function bound(s:ContentScope):ContentScope{if(!object(s)||!id(s.serverId)||!text(s.viewerId,1024)||!s.viewerId)throw new Error('Search requires a bound server and viewer.');return Object.freeze({...s});}
 function names(v:unknown,max:number,allowed?:readonly string[]):readonly string[]{return Object.freeze(array(v,max).map(x=>{if(!id(x)||allowed&&!allowed.includes(x))invalid();return x;}));}
 /** Why a typed query can't be searched (the server's NormalizeSearch rules, CD-30), so a client can
- * say so instead of sending it: `short` (under 2 code points, or no word of 2+ letters or numbers),
+ * say so instead of sending it: `short` (no letters or numbers),
  * `words` (more than 8 words), `long` (over 128 code points). Undefined when it can be searched, or
  * when it is empty (idle). */
 export function searchQueryProblem(q:string):'short'|'words'|'long'|undefined{
@@ -87,7 +87,7 @@ function capabilities(v:unknown):SearchCapabilities{
   if(g.reason!==undefined&&!text(g.reason,1024))invalid();
   // An unavailable group must say why; silence would look like an empty result.
   if(!g.available&&!g.reason)invalid();
-  return Object.freeze({id:g.id as SearchGroup,title:g.title,entityKind:g.entityKind,available:g.available,reason:(g.reason as string)??'',sorts:names(g.sorts,sorts.length,sorts) as readonly SearchSort[]});
+  return Object.freeze({id:g.id as SearchGroup,title:g.title,...(typeof g.labelKey==='string'?{labelKey:g.labelKey}:{}),entityKind:g.entityKind,available:g.available,reason:(g.reason as string)??'',sorts:names(g.sorts,sorts.length,sorts) as readonly SearchSort[]});
  });
  if(new Set(published.map(g=>g.id)).size!==published.length)invalid();
  return Object.freeze({groups:Object.freeze(published),sorts:names(v.sorts,sorts.length,sorts) as readonly SearchSort[],directions:names(v.directions,2,directions) as readonly SearchDirection[],maxLimit:v.maxLimit,groupBudgetMs:v.groupBudgetMs});
@@ -122,7 +122,7 @@ function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
    if(!id(media.libraryId)||media.kind!==kinds[group]||media.navigation?.view!==targets[group]||media.navigation.entityId!==media.id)invalid();
    if(media.playback&&(!['movies','episodes','songs'].includes(group)||media.playback.itemId!==media.id||media.available===false))invalid();
   }
-  return Object.freeze({id:group,title:value.title,entityKind:value.entityKind,status:value.status as SearchGroupStatus,errorCode:((value.errorCode??'') as SearchGroupErrorCode),items:Object.freeze(items),totalCount:value.totalCount,hasMore:value.hasMore,nextCursor:value.nextCursor});
+  return Object.freeze({id:group,title:value.title,...(typeof value.labelKey==='string'?{labelKey:value.labelKey}:{}),entityKind:value.entityKind,status:value.status as SearchGroupStatus,errorCode:((value.errorCode??'') as SearchGroupErrorCode),items:Object.freeze(items),totalCount:value.totalCount,hasMore:value.hasMore,nextCursor:value.nextCursor});
  });
  if(new Set(results.map(g=>g.id)).size!==results.length)invalid();
  if(results.length!==echoedGroups.length)invalid();

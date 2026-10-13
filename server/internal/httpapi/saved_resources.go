@@ -52,7 +52,7 @@ func (d Dependencies) shareTargetTx(tx *sql.Tx, authority, account, profile stri
 }
 func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 	rate := &personalLimiter{}
-	mux.HandleFunc("GET /v1/saved-resources", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/saved-resources", func(w http.ResponseWriter, r *http.Request) {
 		limit, e := savedPageQuery(r, "kind", "pinned")
 		if e != nil {
 			failure(w, e)
@@ -78,7 +78,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, out)
 	})
-	mux.HandleFunc("GET /v1/saved-resources/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/saved-resources/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.RawQuery != "" {
 			failure(w, catalog.ErrCursor)
 			return
@@ -95,7 +95,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, out)
 	})
-	mux.HandleFunc("GET /v1/saved-resources/{id}/content", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/saved-resources/{id}/content", func(w http.ResponseWriter, r *http.Request) {
 		limit, e := savedPageQuery(r)
 		if e != nil {
 			failure(w, e)
@@ -118,7 +118,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, out)
 	})
-	mux.HandleFunc("GET /v1/saved-resources/{id}/share-candidates", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/saved-resources/{id}/share-candidates", func(w http.ResponseWriter, r *http.Request) {
 		limit, e := savedPageQuery(r)
 		if e != nil {
 			failure(w, e)
@@ -137,7 +137,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		d.savedResponse(w, r, fence, out)
 	})
 	for _, route := range []struct{ pattern, action string }{{"POST /v1/saved-resources", "create"}, {"PATCH /v1/saved-resources/{id}", "update"}, {"DELETE /v1/saved-resources/{id}", "delete"}, {"PUT /v1/saved-resources/{id}/entries", "entries"}, {"PUT /v1/saved-resources/{id}/shares", "share"}, {"DELETE /v1/saved-resources/{id}/shares", "unshare"}} {
-		mux.HandleFunc(route.pattern, func(w http.ResponseWriter, r *http.Request) {
+		d.projectedHandle(mux, route.pattern, func(w http.ResponseWriter, r *http.Request) {
 			p, _, fence, e := d.homeScope(r)
 			if e != nil {
 				failure(w, e)
@@ -218,7 +218,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "receipt": out, "current": map[string]any{"resourceId": out.ResourceID, "revision": revision, "deleted": dead}, "receiptLifetimeSeconds": 2592000})
 		})
 	}
-	mux.HandleFunc("PUT /v1/saved-pins/{kind}/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "PUT /v1/saved-pins/{kind}/{id}", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
@@ -236,7 +236,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "operationId": out.OperationID, "resourceId": out.ResourceID, "playlistId": out.PlaylistID, "revision": out.Revision, "pinRevision": out.PinRevision, "pinned": out.Pinned, "deleted": out.Deleted})
 	})
-	mux.HandleFunc("GET /v1/personal-history", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/personal-history", func(w http.ResponseWriter, r *http.Request) {
 		limit, e := savedPageQuery(r, "period", "libraryId")
 		if e != nil {
 			failure(w, e)
@@ -254,7 +254,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, out)
 	})
-	mux.HandleFunc("POST /v1/me/recommendations:reset", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "POST /v1/me/recommendations:reset", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
@@ -272,7 +272,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "operationId": out.OperationID, "clearedNotInterested": out.ClearedNotInterested, "receiptLifetimeSeconds": 2592000})
 	})
-	mux.HandleFunc("POST /v1/personal-history/actions", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "POST /v1/personal-history/actions", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)

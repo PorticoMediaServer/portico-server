@@ -24,6 +24,23 @@ func Fold(value string) string {
 	value = norm.NFD.String(value)
 	var b strings.Builder
 	for _, r := range value {
+		switch r {
+		case 'ø':
+			b.WriteString("o")
+			continue
+		case 'ł':
+			b.WriteString("l")
+			continue
+		case 'đ', 'ð':
+			b.WriteString("d")
+			continue
+		case 'æ':
+			b.WriteString("ae")
+			continue
+		case 'œ':
+			b.WriteString("oe")
+			continue
+		}
 		if !unicode.Is(unicode.Mn, r) {
 			b.WriteRune(r)
 		}

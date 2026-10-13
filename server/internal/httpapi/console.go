@@ -116,7 +116,7 @@ func (d Dependencies) consoleRoutes(mux *http.ServeMux) {
 		if d.registry != nil && (pattern == "GET /v1/admin/console/settings" || pattern == "PATCH /v1/admin/console/settings") {
 			return
 		}
-		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+		d.projectedHandle(mux, pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			ctx, cancel := context.WithTimeout(r.Context(), 7*time.Second)
 			defer cancel()

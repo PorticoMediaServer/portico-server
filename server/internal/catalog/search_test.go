@@ -90,7 +90,7 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Groups) != 9 || out.Query.Q != "Harbor" || out.Groups[0].TotalCount != 43 || len(out.Groups[0].Items) != SearchPreviewLimit {
+	if len(out.Groups) != len(searchGroups) || out.Query.Q != "Harbor" || out.Groups[0].TotalCount != 43 || len(out.Groups[0].Items) != SearchPreviewLimit {
 		t.Fatalf("groups %+v", out)
 	}
 	for _, group := range out.Groups {
@@ -267,7 +267,7 @@ func TestSearchPersistenceLibraryMoveAndScale(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("steady query", time.Since(start))
-	explain, err := db.Query(`EXPLAIN QUERY PLAN SELECT rowid FROM catalog_search_titles WHERE catalog_search_titles MATCH 'kind : k1 AND title : ("beacon"* AND "harbor"*)'`)
+	explain, err := db.Query(`EXPLAIN QUERY PLAN SELECT rowid FROM catalog_search_titles WHERE catalog_search_titles MATCH 'kind : k1 AND search : ("beacon"* AND "harbor"*)'`)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -50,6 +50,7 @@ var searchGroups = []searchGroupDefinition{
 
 type SearchGroupCapability struct {
 	ID         string   `json:"id"`
+	LabelKey   string   `json:"labelKey"`
 	Title      string   `json:"title"`
 	EntityKind string   `json:"entityKind"`
 	Available  bool     `json:"available"`
@@ -65,6 +66,7 @@ type SearchCapabilities struct {
 }
 type SearchGroupResult struct {
 	ID         string         `json:"id"`
+	LabelKey   string         `json:"labelKey"`
 	Title      string         `json:"title"`
 	EntityKind string         `json:"entityKind"`
 	Status     string         `json:"status"`
@@ -157,9 +159,6 @@ func catalogOrder(sortID, kind, q string) searchOrder {
 	case "title":
 		return searchOrder{`e.sort_key`, nil, false}
 	case "releaseYear":
-		if kind == "show" || kind == "book" {
-			return searchOrder{`CAST(0 AS REAL)`, nil, true}
-		}
 		return searchOrder{`CAST(COALESCE(e.year,0) AS REAL)`, nil, true}
 	case "dateAdded":
 		return searchOrder{`COALESCE(detail.added_text,'')`, nil, false}
@@ -302,7 +301,7 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 		// Written before the work, not after it: a group that panics mid-query must
 		// still leave a whole, honest group in the response rather than a zero value
 		// the client cannot read.
-		results[index] = SearchGroupResult{ID: g.id, Title: g.label, EntityKind: g.kind, Status: "error", ErrorCode: "search_group_unavailable", Items: []ContentEntry{}}
+		results[index] = SearchGroupResult{ID: g.id, LabelKey: searchGroupLabelKey(g.id), Title: g.label, EntityKind: g.kind, Status: "error", ErrorCode: "search_group_unavailable", Items: []ContentEntry{}}
 		func() {
 			// In sequence, but each group still contained: one bad row costs its own
 			// group, is counted and attributed, and nobody else's request notices.
@@ -311,12 +310,12 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 			// hundred fail the way a bad row would; the soak tier asserts the process
 			// survives it.
 			supervise.Chaos("catalog.search.group")
-			result := SearchGroupResult{ID: g.id, Title: g.label, EntityKind: g.kind, Status: "success", Items: []ContentEntry{}}
+			result := SearchGroupResult{ID: g.id, LabelKey: searchGroupLabelKey(g.id), Title: g.label, EntityKind: g.kind, Status: "success", Items: []ContentEntry{}}
 			budget, cancel := context.WithTimeout(ctx, SearchGroupBudget)
 			defer cancel()
 			if groupErr := s.searchGroup(budget, r, g, match, scopeHash, fingerprint, rev, pageSize, &result); groupErr != nil {
 				failures[index] = groupErr
-				result = SearchGroupResult{ID: g.id, Title: g.label, EntityKind: g.kind, Status: "error", ErrorCode: "search_group_unavailable", Items: []ContentEntry{}}
+				result = SearchGroupResult{ID: g.id, LabelKey: searchGroupLabelKey(g.id), Title: g.label, EntityKind: g.kind, Status: "error", ErrorCode: "search_group_unavailable", Items: []ContentEntry{}}
 				if errors.Is(groupErr, context.DeadlineExceeded) && ctx.Err() == nil {
 					result.ErrorCode = "search_group_timeout"
 				}
@@ -409,7 +408,7 @@ func (s *Service) searchCapabilities(ctx context.Context, r SearchRequest) Searc
 	live := r.LiveTV && s.tableExists(ctx, "live_channel_versions")
 	people := s.tableExists(ctx, "catalog_people_names")
 	for _, g := range searchGroups {
-		capability := SearchGroupCapability{ID: g.id, Title: g.label, EntityKind: g.kind, Available: true, Sorts: g.sorts}
+		capability := SearchGroupCapability{ID: g.id, LabelKey: searchGroupLabelKey(g.id), Title: g.label, EntityKind: g.kind, Available: true, Sorts: g.sorts}
 		switch g.source {
 		case "live":
 			if !live {
@@ -738,8 +737,10 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 		return e
 	}
 	restriction, bound := ItemRestrictionSQL("i.id", viewer.EffectiveRestrictions())
+	extra, extraArgs := searchCJKPredicate("portico_search_fold(people.name)", r.Q)
 	countArgs := append([]any{match, string(raw)}, bound...)
-	if e := s.read().QueryRowContext(ctx, `SELECT count(*) FROM catalog_people_names JOIN catalog_people people ON people.id=catalog_people_names.rowid WHERE catalog_people_names MATCH ? AND EXISTS(SELECT 1 FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=people.id AND `+restriction+`)`, countArgs...).Scan(&out.TotalCount); e != nil {
+	countArgs = append(countArgs, extraArgs...)
+	if e := s.read().QueryRowContext(ctx, `SELECT count(*) FROM catalog_people_names JOIN catalog_people people ON people.id=catalog_people_names.rowid WHERE catalog_people_names MATCH ? AND EXISTS(SELECT 1 FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=people.id AND `+restriction+`)`+extra, countArgs...).Scan(&out.TotalCount); e != nil {
 		return e
 	}
 	sortID := resolveSearchSort(g, r.Sort)
@@ -882,4 +883,26 @@ func (s *Service) searchLibraryTokens(ctx context.Context, libraries []string) (
 		out = append(out, "l"+strconv.FormatInt(id, 10))
 	}
 	return out, rows.Err()
+}
+
+func searchGroupLabelKey(id string) string {
+	switch id {
+	case "books":
+		return "search.chip.audiobooks"
+	case "live-tv":
+		return "search.chip.liveTV"
+	}
+	return "search.chip." + id
+}
+
+func searchCJKPredicate(column, q string) (string, []any) {
+	clause := ""
+	args := []any{}
+	for _, word := range strings.Fields(facettext.SearchFold(q)) {
+		if strings.ContainsFunc(word, facettext.CJK) {
+			clause += " AND instr(" + column + ",?)>0"
+			args = append(args, word)
+		}
+	}
+	return clause, args
 }

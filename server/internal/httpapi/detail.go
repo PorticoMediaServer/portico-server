@@ -63,7 +63,7 @@ func (d Dependencies) markerAccess(p identity.Principal, library, item, fence st
 }
 func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 	personalRate := &personalLimiter{}
-	mux.HandleFunc("GET /v1/items/{id}/detail", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/items/{id}/detail", func(w http.ResponseWriter, r *http.Request) {
 		p, library, fence, e := d.detailAccess(r)
 		if e != nil {
 			failure(w, e)
@@ -131,7 +131,7 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 	})
 	// A title's cast or crew, complete, by cursor (the detail carries the first
 	// page of the cast and the key crew).
-	mux.HandleFunc("GET /v1/items/{id}/credits", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/items/{id}/credits", func(w http.ResponseWriter, r *http.Request) {
 		p, library, fence, e := d.detailAccess(r)
 		if e != nil {
 			failure(w, e)
@@ -162,7 +162,7 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("PUT /v1/items/{id}/personal-state", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "PUT /v1/items/{id}/personal-state", func(w http.ResponseWriter, r *http.Request) {
 		p, library, originalFence, e := d.detailAccess(r)
 		if e != nil {
 			failure(w, e)

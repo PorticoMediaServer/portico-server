@@ -15,6 +15,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/sorttext"
 )
 
 // ErrBrowsePivot is returned when a caller names a pivot the library kind does
@@ -553,7 +554,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	if request.Seek != nil {
 		start = total
-		wanted := strings.ToUpper(string([]rune(request.Seek.Prefix)[:1]))
+		wanted := sorttext.Letter(request.Seek.Prefix)
 		for _, anchor := range out.PositionIndex {
 			if anchor.Key == wanted {
 				start = anchor.Index

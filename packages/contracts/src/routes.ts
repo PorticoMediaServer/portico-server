@@ -49,6 +49,25 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "browse_library",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/browse",
+    "summary": "Read a window of a library pivot",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "change_connectivity_policy",
     "method": "PATCH",
     "path": "/v1/admin/connectivity/policy",
@@ -428,6 +447,215 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_admin_console_alerts",
+    "method": "GET",
+    "path": "/v1/admin/console/alerts",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_console_diagnostics_lane",
+    "method": "GET",
+    "path": "/v1/admin/console/diagnostics/{lane}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "cursor"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_console_exports_id",
+    "method": "GET",
+    "path": "/v1/admin/console/exports/{id}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_console_jobs",
+    "method": "GET",
+    "path": "/v1/admin/console/jobs",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "cursor"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_console_panels_panel",
+    "method": "GET",
+    "path": "/v1/admin/console/panels/{panel}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_console_schedules",
+    "method": "GET",
+    "path": "/v1/admin/console/schedules",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_feedback",
+    "method": "GET",
+    "path": "/v1/admin/feedback",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_feedback_id",
+    "method": "GET",
+    "path": "/v1/admin/feedback/{id}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_feedback_reports",
+    "method": "GET",
+    "path": "/v1/admin/feedback/reports",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "cursor",
+      "limit",
+      "status",
+      "kind",
+      "category",
+      "itemId",
+      "reporter"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_feedback_reports_id",
+    "method": "GET",
+    "path": "/v1/admin/feedback/reports/{id}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_admin_maintenance_settings",
     "method": "GET",
     "path": "/v1/admin/maintenance/settings",
@@ -440,6 +668,78 @@ export const routes = [
     "errors": [
       "unauthorized",
       "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_play_history",
+    "method": "GET",
+    "path": "/v1/admin/play-history",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "accountId",
+      "libraryId",
+      "period",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_play_history_summary",
+    "method": "GET",
+    "path": "/v1/admin/play-history/summary",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "period"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_admin_playback_history",
+    "method": "GET",
+    "path": "/v1/admin/playback/history",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "period",
+      "limit",
+      "cursor"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
       "internal"
     ],
     "status": 200
@@ -546,6 +846,33 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_collections_id_items",
+    "method": "GET",
+    "path": "/v1/collections/{id}/items",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "sort",
+      "direction",
+      "category",
+      "q",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_connection",
     "method": "GET",
     "path": "/v1/networking/connection",
@@ -629,6 +956,38 @@ export const routes = [
       "idempotency_key_reused",
       "revision_mismatch",
       "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_content",
+    "method": "GET",
+    "path": "/v1/content",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "view",
+      "libraryId",
+      "entityId",
+      "sort",
+      "direction",
+      "category",
+      "q",
+      "cursor",
+      "limit",
+      "start",
+      "section"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
       "internal"
     ],
     "status": 200
@@ -838,6 +1197,227 @@ export const routes = [
     "sse": true
   },
   {
+    "id": "get_feedback",
+    "method": "GET",
+    "path": "/v1/feedback",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_feedback_id",
+    "method": "GET",
+    "path": "/v1/feedback/{id}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_feedback_reports",
+    "method": "GET",
+    "path": "/v1/feedback/reports",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "cursor",
+      "limit",
+      "status",
+      "kind",
+      "category",
+      "itemId",
+      "reporter"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_feedback_reports_id",
+    "method": "GET",
+    "path": "/v1/feedback/reports/{id}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_home",
+    "method": "GET",
+    "path": "/v1/home",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_home_rows_id",
+    "method": "GET",
+    "path": "/v1/home/rows/{id}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "cursor",
+      "limit",
+      "start",
+      "revision",
+      "anchorId"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_items",
+    "method": "GET",
+    "path": "/v1/items",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "libraryId",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_items_id",
+    "method": "GET",
+    "path": "/v1/items/{id}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_items_id_detail",
+    "method": "GET",
+    "path": "/v1/items/{id}/detail",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "related"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_items_id_download_options",
+    "method": "GET",
+    "path": "/v1/items/{id}/download-options",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_items_screen_metadata",
     "method": "GET",
     "path": "/v1/items/{id}/metadata/screen",
@@ -902,6 +1482,134 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_libraries_id_browse",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/browse",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "sort",
+      "direction",
+      "category",
+      "q",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_libraries_id_content",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/content",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "view",
+      "entityId",
+      "sort",
+      "direction",
+      "category",
+      "q",
+      "cursor",
+      "limit",
+      "start",
+      "section"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_libraries_id_discover",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/discover",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_libraries_id_listening_selection",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/listening/selection",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "kind",
+      "entityId",
+      "cursor",
+      "limit",
+      "shuffle",
+      "seed"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_library_facets",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/facets",
+    "summary": "Read counted facet choices",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "field",
+      "q",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_metadata_attention",
     "method": "GET",
     "path": "/v1/libraries/{id}/metadata/attention",
@@ -941,6 +1649,125 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_notifications",
+    "method": "GET",
+    "path": "/v1/notifications",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_notifications_inbox",
+    "method": "GET",
+    "path": "/v1/notifications/inbox",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "audience",
+      "state",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_notifications_unread_count",
+    "method": "GET",
+    "path": "/v1/notifications/unread-count",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "audience"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_people_id",
+    "method": "GET",
+    "path": "/v1/people/{id}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "role",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_personal_history",
+    "method": "GET",
+    "path": "/v1/personal-history",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "cursor",
+      "limit",
+      "period",
+      "libraryId"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
       "internal"
     ],
     "status": 200
@@ -1064,6 +1891,29 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_saved_resources_id_content",
+    "method": "GET",
+    "path": "/v1/saved-resources/{id}/content",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
       "internal"
     ],
     "status": 200
@@ -1363,6 +2213,25 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "patch_admin_feedback_id",
+    "method": "PATCH",
+    "path": "/v1/admin/feedback/{id}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "patch_device",
     "method": "PATCH",
     "path": "/v1/devices/{id}",
@@ -1419,6 +2288,101 @@ export const routes = [
       "restore_not_portico",
       "insufficient_disk",
       "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_admin_console_diagnostics_capture",
+    "method": "POST",
+    "path": "/v1/admin/console/diagnostics/capture",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_admin_console_exports",
+    "method": "POST",
+    "path": "/v1/admin/console/exports",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_admin_console_jobs",
+    "method": "POST",
+    "path": "/v1/admin/console/jobs",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_admin_console_jobs_id_action",
+    "method": "POST",
+    "path": "/v1/admin/console/jobs/{id}/{action}",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_admin_feedback_reports_id_status",
+    "method": "POST",
+    "path": "/v1/admin/feedback/reports/{id}/status",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
       "internal"
     ],
     "status": 200
@@ -1543,6 +2507,63 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "post_downloads_progress",
+    "method": "POST",
+    "path": "/v1/downloads/progress",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_feedback",
+    "method": "POST",
+    "path": "/v1/feedback",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "post_feedback_reports",
+    "method": "POST",
+    "path": "/v1/feedback/reports",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "post_metadata_attention",
     "method": "POST",
     "path": "/v1/libraries/{id}/metadata/attention",
@@ -1626,6 +2647,25 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "put_admin_console_schedules",
+    "method": "PUT",
+    "path": "/v1/admin/console/schedules",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "put_admin_maintenance_settings",
     "method": "PUT",
     "path": "/v1/admin/maintenance/settings",
@@ -1701,6 +2741,44 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "put_items_id_personal_state",
+    "method": "PUT",
+    "path": "/v1/items/{id}/personal-state",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "put_items_personal_state_batch",
+    "method": "PUT",
+    "path": "/v1/items/personal-state:batch",
+    "summary": "Read or update the selected projection",
+    "access": "device",
+    "requires": "playback",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 1048576,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
       "internal"
     ],
     "status": 200
@@ -1991,6 +3069,36 @@ export const routes = [
       "idempotency_key_reused"
     ],
     "status": 201
+  },
+  {
+    "id": "search",
+    "method": "GET",
+    "path": "/v1/search",
+    "summary": "Search titles, people, years and collections",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "q",
+      "group",
+      "groups",
+      "cursor",
+      "limit",
+      "sort",
+      "direction",
+      "libraryIds",
+      "record"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200
   },
   {
     "id": "set_container_personal_state",

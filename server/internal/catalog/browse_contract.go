@@ -148,7 +148,7 @@ var browseFields = []browseField{
 		Join: `JOIN catalog_credits cc ON cc.entity_id=bei.item_id JOIN catalog_credit_labels cr ON cr.id=cc.role_id JOIN catalog_credit_labels cd ON cd.id=cc.department_id AND (cr.label='Director' OR cd.label='Directing')`, Value: "cc.credited_name"},
 	{ID: "writer", LabelKey: "browse.field.writer", Type: valueSet, Operators: stringOperators(true), ControlHint: "text", Complexity: "advanced", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds),
 		Join: `JOIN catalog_credits cc ON cc.entity_id=bei.item_id JOIN catalog_credit_labels cr ON cr.id=cc.role_id JOIN catalog_credit_labels cd ON cd.id=cc.department_id AND (cr.label IN('Writer','Screenplay') OR cd.label='Writing')`, Value: "cc.credited_name"},
-	{ID: "durationSeconds", LabelKey: "browse.field.durationSeconds", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(assetedKinds),
+	{ID: "durationMs", LabelKey: "browse.field.durationSeconds", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(assetedKinds),
 		Join: `JOIN catalog_asset_links ia ON ia.entity_id=bei.item_id JOIN catalog_assets ast ON ast.id=ia.asset_id`, Value: "ast.duration"},
 	{ID: "artist", LabelKey: "browse.field.artist", Type: valueSet, Operators: stringOperators(true), ControlHint: "text", Complexity: "quick", Cost: "indexed-join", ApplicableKinds: kinds(audioKinds),
 		Join: `JOIN catalog_song_artists sar ON sar.song_id=bei.item_id JOIN catalog_entities art ON art.id=sar.artist_id`, Value: "art.title"},

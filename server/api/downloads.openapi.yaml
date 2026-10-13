@@ -577,8 +577,8 @@ paths:
                 value:
                   operationId: op-8d01
                   entries:
-                    - {itemId: item_0001, positionSeconds: 1723.5, observedAt: "2026-09-14T09:12:00Z"}
-                    - {itemId: item_0002, positionSeconds: 0, watched: true, observedAt: "2026-09-14T10:41:00Z"}
+                    - {itemId: item_0001, positionMs: 1723.5, observedAt: "2026-09-14T09:12:00Z"}
+                    - {itemId: item_0002, positionMs: 0, watched: true, observedAt: "2026-09-14T10:41:00Z"}
       responses:
         "200":
           description: One outcome per entry.
@@ -882,13 +882,13 @@ components:
         kind: {type: string}
         source:
           type: object
-          required: [container, durationSeconds, bytes, available]
+          required: [container, durationMs, bytes, available]
           properties:
             container: {type: string}
             videoCodec: {type: string}
             audioCodec: {type: string}
             height: {type: integer}
-            durationSeconds: {type: number}
+            durationMs: {type: integer}
             bytes: {type: integer}
             available: {type: boolean}
         options: {type: array, items: {$ref: "#/components/schemas/QualityOption"}}
@@ -988,19 +988,19 @@ components:
         asOf: {type: string, format: date-time}
     ProgressEntry:
       type: object
-      required: [itemId, positionSeconds, observedAt]
+      required: [itemId, positionMs, observedAt]
       properties:
         itemId: {type: string}
-        positionSeconds: {type: number, minimum: 0, description: "Clamped to the current known item duration before writing progress. Unknown duration preserves the finite nonnegative observation."}
+        positionMs: {type: integer, minimum: 0, description: "Clamped to the current known item duration before writing progress. Unknown duration preserves the finite nonnegative observation."}
         watched: {type: boolean}
         observedAt: {type: string, format: date-time, description: "The client's own clock when the observation was made."}
     ProgressResult:
       type: object
-      required: [itemId, outcome, positionSeconds, watched]
+      required: [itemId, outcome, positionMs, watched]
       properties:
         itemId: {type: string}
         outcome: {type: string, enum: [applied, stale_observation, superseded_online, item_deleted, invalid_entry, observation_in_future]}
-        positionSeconds: {type: number, description: "The server's value after the batch."}
+        positionMs: {type: integer, description: "The server's value after the batch."}
         watched: {type: boolean}
         observedAt: {type: string, format: date-time}
     ProgressReceipt:

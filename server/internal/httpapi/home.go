@@ -99,7 +99,7 @@ func (d Dependencies) homeFenceAfter(r *http.Request, p identity.Principal) (str
 }
 
 func (d Dependencies) contentHomeRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/content", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/content", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query()
 		if q.Get("view") == "watchlist" || q.Get("view") == "favorites" || q.Get("view") == "playlists" {
 			d.savedContent(w, r)

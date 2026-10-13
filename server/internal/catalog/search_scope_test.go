@@ -45,8 +45,8 @@ func TestAggregatePagingBeyondTwoHundred(t *testing.T) {
 	library := c.Library("books", "Books", "audiobook", "/books")
 	for i := 0; i < 205; i++ {
 		book := c.Book(library, fmt.Sprintf("Book %d", i), "Author")
-		c.BookFile(book, 1, fmt.Sprintf("/books/%d.m4b", i))
-		c.Attributes(book.ID, "series", fmt.Sprintf("Series %d", i))
+		part := c.BookFile(book, 1, fmt.Sprintf("/books/%d.m4b", i))
+		c.Attributes(part.ID, "series", fmt.Sprintf("Series %d", i))
 		c.Write(func(ctx context.Context, tx *sql.Tx) error {
 			return compactcatalog.SetFieldsTx(ctx, tx, book.ID, compactcatalog.Automatic, map[string]any{"series": fmt.Sprintf("Series %d", i)})
 		})

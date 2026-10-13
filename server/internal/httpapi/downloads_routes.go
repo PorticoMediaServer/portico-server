@@ -68,7 +68,7 @@ func (d Dependencies) downloadsReady(w http.ResponseWriter) bool {
 }
 
 func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/items/{id}/download-options", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/items/{id}/download-options", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -87,7 +87,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/downloads/preparations", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "POST /v1/downloads/preparations", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -116,7 +116,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, status, out)
 	})
-	mux.HandleFunc("GET /v1/downloads/preparations", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/downloads/preparations", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -134,7 +134,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/downloads/preparations/{id}", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/downloads/preparations/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -150,7 +150,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/downloads/preparations/{id}/actions", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "POST /v1/downloads/preparations/{id}/actions", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -177,7 +177,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("POST /v1/downloads/preparations/{id}/grant", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "POST /v1/downloads/preparations/{id}/grant", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -227,9 +227,9 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		defer body.release()
 		http.ServeContent(body, r, out.Artifact.FileName, out.Modified, out.Reader)
 	}
-	mux.HandleFunc("GET /v1/downloads/artifacts/{grant}", transfer)
-	mux.HandleFunc("HEAD /v1/downloads/artifacts/{grant}", transfer)
-	mux.HandleFunc("POST /v1/downloads/receipts", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/downloads/artifacts/{grant}", transfer)
+	d.projectedHandle(mux, "HEAD /v1/downloads/artifacts/{grant}", transfer)
+	d.projectedHandle(mux, "POST /v1/downloads/receipts", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -253,7 +253,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 201, map[string]any{"results": out})
 	})
-	mux.HandleFunc("POST /v1/downloads/receipts/revalidate", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "POST /v1/downloads/receipts/revalidate", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -277,7 +277,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"results": out})
 	})
-	mux.HandleFunc("POST /v1/downloads/receipts/revoke", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "POST /v1/downloads/receipts/revoke", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -303,7 +303,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"results": out})
 	})
-	mux.HandleFunc("GET /v1/downloads/receipts/revocations", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/downloads/receipts/revocations", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -320,7 +320,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/downloads/receipt-keys", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/downloads/receipt-keys", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -335,7 +335,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, map[string]any{"keys": out})
 	})
-	mux.HandleFunc("POST /v1/downloads/progress", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "POST /v1/downloads/progress", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -359,7 +359,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/downloads/usage", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/downloads/usage", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -375,7 +375,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("GET /v1/downloads/settings", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/downloads/settings", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}
@@ -390,7 +390,7 @@ func (d Dependencies) downloadRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
-	mux.HandleFunc("PUT /v1/downloads/settings", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "PUT /v1/downloads/settings", func(w http.ResponseWriter, r *http.Request) {
 		if !d.downloadsReady(w) {
 			return
 		}

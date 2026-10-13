@@ -310,7 +310,7 @@ components:
           properties:
             field:
               type: string
-              enum: [entityKind, title, year, decade, releaseDate, dateAdded, playState, favorite, watchlisted, personalRating, lastPlayedAt, genre, tag, label, collection, contentRating, communityRating, criticRating, availability, resolution, dynamicRange, audioLanguage, studio, network, actor, director, writer, durationSeconds, artist, album, author, narrator, series]
+              enum: [entityKind, title, year, decade, releaseDate, dateAdded, playState, favorite, watchlisted, personalRating, lastPlayedAt, genre, tag, label, collection, contentRating, communityRating, criticRating, availability, resolution, dynamicRange, audioLanguage, studio, network, actor, director, writer, durationMs, artist, album, author, narrator, series]
             operator:
               type: string
               enum: [equals, not-equals, contains, starts-with, in, not-in, less-than, at-most, greater-than, at-least, between, is-present, is-missing, contains-any, contains-all]
@@ -422,7 +422,7 @@ components:
       description: The existing server-owned semantic projection used by every library surface.
       required: [id, kind, title]
       properties:
-        userRating: {type: number, format: double, minimum: 0.5, maximum: 5, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
+        userRating: {type: integer, minimum: 0, maximum: 10, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
         plays: {type: integer, minimum: 1, description: "How many times the viewer has played a song to the end; song entries only, absent when never played."}
         id: {type: string}
         kind: {type: string}
@@ -435,8 +435,8 @@ components:
         addedAt: {type: [string, "null"]}
         available: {type: boolean}
         watched: {type: boolean}
-        duration: {type: number}
-        progressSeconds: {type: number}
+        durationMs: {type: integer}
+        progressMs: {type: integer}
         count: {type: integer}
         year: {type: integer, description: "Release year; album entities only, absent when unknown."}
         artist:
@@ -458,7 +458,7 @@ components:
           type: object
           properties:
             itemId: {type: string}
-            startSeconds: {type: number}
+            startMs: {type: integer}
     BrowsePageInfo:
       type: object
       required: [start, total, revision, hasMore, nextCursor]
@@ -499,9 +499,10 @@ components:
           items: {$ref: "#/components/schemas/BrowsePositionAnchor"}
     FacetPage:
       type: object
-      required: [field, values]
+      required: [field, total, values]
       properties:
         field: {type: string}
+        total: {type: integer, minimum: 0}
         values:
           type: array
           maxItems: 200

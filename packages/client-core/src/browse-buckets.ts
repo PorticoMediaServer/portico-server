@@ -53,8 +53,9 @@ export function bucketIndexFor(
     if (typeof value !== 'string' || !value) {
       return byKey.has('') ? byKey.get('') : undefined;
     }
-    const first = value.length === 1 ? value.toUpperCase() : value.trim().slice(0, 1).toUpperCase();
-    const key = first >= 'A' && first <= 'Z' ? first : '#';
+    const folded=value.trim().normalize('NFD').replace(/\p{M}/gu,'').normalize('NFC').replace(/^[^\p{L}\p{N}]+/u,'');
+    const first=[...folded][0]?.toUpperCase()??'#';
+    const key = /\p{L}/u.test(first) ? first : '#';
     return byKey.get(key);
   }
 
