@@ -270,6 +270,12 @@ class Document implements FreshDocument {
     if (this.disposed || this.running !== controller) return;
     this.running = undefined; this.answering = 0;
     if (controller.signal.aborted) { if (answered > this.urgency) this.urgency = answered; this.publish(); return; }
+    if (ok && !filled && !this.hasContent()) {
+      // The screen's first load is still on its way: what moved is still owed, and is read once there is something to keep (`check`).
+      if (answered > this.urgency) this.urgency = answered;
+      this.publish();
+      return;
+    }
     if (ok || finalAnswer(failed)) {
       // A refusal the server will repeat (gone, not allowed) is an answer too: the screen's own state says so.
       this.failures = 0;

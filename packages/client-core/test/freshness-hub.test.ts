@@ -270,3 +270,25 @@ test('a first load that failed with nothing to show is tried again by itself', a
   await c.advance(120_000);
   assert.equal(retries, 3);
 });
+
+test('a hint that arrives while the first load is still on its way is answered once there is something to show', async () => {
+  const c = clock(), hub = new FreshnessHub(c.env), pool = new DocumentPool(hub);
+  let quiet = 0, retries = 0;
+  const listeners = new Set<() => void>();
+  let snapshot: {phase: string} = {phase: 'loading'};
+  const service = {
+    getSnapshot: () => snapshot, subscribe: (l: () => void) => { listeners.add(l); return () => { listeners.delete(l); }; },
+    revalidate: async () => { quiet++; }, retry: async () => { retries++; },
+  };
+  const held = pool.acquire('library', () => serviceDocument(service, [dependsOn.content('films')]));
+  held.setOpen(true);
+  hub.accept(library('films', '2'));
+  await c.advance(5000);
+  assert.deepEqual([quiet, retries], [0, 0], 'nothing to keep yet, and a load in flight is not retried');
+  assert.equal(held.document.getState().stale, true, 'the hint is still owed');
+  snapshot = {phase: 'ready'};
+  for (const l of [...listeners]) l();
+  await c.advance(1000);
+  assert.equal(quiet, 1);
+  assert.equal(held.document.getState().stale, false);
+});
