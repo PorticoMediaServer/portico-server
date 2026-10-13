@@ -23,16 +23,19 @@ export type HomeSeeAllDestination =
 
 /**
  * Where See all on a Home row goes. The server says: a row that names its own browse (`seeAll`:
- * the pivot, conditions and sort) opens the library on exactly that. A row that names none opens
- * as its own page, which lists the row and nothing else, when the row can be paged. Nothing is
- * guessed from the row's id or kind. Only a row that offers neither falls back to its library.
+ * the pivot, conditions and sort) opens the library on exactly that. Until every row does, the
+ * one kind of library row this app knows the meaning of, the server's `recent` kind, opens the
+ * library newest first. Any other row opens as its own page, which lists the row and nothing
+ * else. Nothing is read out of a row's id. Only a row that offers none of these falls back to
+ * its library.
  */
-export function homeRowSeeAll(row: Pick<HomeRow, 'id' | 'libraryId' | 'seeAll' | 'cursorCapable'>, libraryKind: string | undefined): HomeSeeAllDestination | undefined {
+export function homeRowSeeAll(row: Pick<HomeRow, 'id' | 'kind' | 'libraryId' | 'seeAll' | 'cursorCapable'>, libraryKind: string | undefined): HomeSeeAllDestination | undefined {
   if (row.seeAll && row.libraryId && libraryKind) {
     const tab = libraryTabForPivot(libraryKind, row.seeAll.pivot);
     const filters = seeAllPredicates(row.seeAll.query);
     if (tab && filters) return {to: 'browse', libraryId: row.libraryId, tab: tab.id, ...(row.seeAll.sort[0] ? {sort: row.seeAll.sort[0]} : {}), filters};
   }
+  if (row.kind === 'recent' && row.libraryId && !row.seeAll) return {to: 'browse', libraryId: row.libraryId, tab: 'browse', sort: {field: 'added', direction: 'desc'}, filters: []};
   if (row.cursorCapable) return {to: 'row', rowId: row.id};
   return row.libraryId ? {to: 'library', libraryId: row.libraryId} : undefined;
 }
