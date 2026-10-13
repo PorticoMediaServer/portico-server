@@ -24,7 +24,7 @@ below `member`, so a future or corrupted value can never out-rank a real one.
 | `member` | Nothing administrative. |
 
 An `admin` may **not**: change server security or connectivity **policy**, take
-backups, create or revoke API keys, export the diagnostics bundle, or create,
+backups, create or revoke API keys or other members' tokens, export the diagnostics bundle, or create,
 promote, demote or edit another `admin` or the owner.
 
 Two places carry the tier into the running server:
@@ -101,20 +101,26 @@ minimal inventory. When the identity workstream's `devices` table arrives, keep
 `access.Store.Devices` and the upsert in `access.Store.Observe` with a join —
 and drop the duplicated columns. No wire shape has to change.
 
-## API keys
+## API keys and personal access tokens
 
-Owner only. A key is a second credential for the whole server, so it sits with
-the other security controls rather than with the people page.
+A key (the owner's) or a token (any member's) is a session family of the member
+who made it that does not rotate, plus an `api_credentials` row holding its
+name, its scopes and the digest of its secret. It authenticates on every route
+with `Authorization: Bearer pk.…` or `pat.…`, as that member, with every live
+check a session gets; `internal/httpapi/api_gate.go` resolves it, holds it to
+the route's declared scope and to its own rate and concurrency limits before
+any handler runs, and `identity.AuthenticateContext` refuses a credential-shaped
+bearer that did not come through that gate.
 
-Scopes, narrowest first: `read-only`, `playback`, `library-management`, `full`.
-`access.ScopeAllows(scope, needed)` is the predicate; operation classes use the
-same names. A key never exceeds its account's tier.
+Scopes are `read`, `playback`, `library` and `admin` (`admin` is all of them).
+Every route declares the one it needs: typed routes in `apikit.Metadata.Requires`,
+hand-registered routes in `internal/httpapi/route_scopes.go`. A route nothing
+has classified, and every route that signs in, changes a password, approves a
+device or manages keys and tokens, is session-only.
 
-A key authenticates like a bearer token — `Authorization: Bearer pk_…` — and is
-resolved in `httpapi.bearerPrincipal` / `Dependencies.principal`. It produces a
-principal with authority `api-key`, which is a **distinct principal type**: every
-helper that requires a live session family rejects it unless it names that
-authority explicitly. Every successful authentication records `lastUsedAt`.
+Routes: `/v1/admin/api-keys` (owner), `/v1/me/access-tokens` (the caller's
+own), `/v1/admin/access-tokens` (the owner's view of every member's). The
+developer guide is `guide/07-keys-tokens-and-scopes.md`.
 
 ## Message logs
 

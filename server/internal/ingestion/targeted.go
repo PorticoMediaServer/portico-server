@@ -370,3 +370,50 @@ func (s *Service) startWaitingReports(ctx context.Context) {
 // folders it was told about. It is true for every object of an ordinary run.
 // The single argument is the path separator.
 const targetScopeSQL = `(NOT EXISTS(SELECT 1 FROM inventory_run_targets t WHERE t.job_id=r.job_id) OR EXISTS(SELECT 1 FROM inventory_run_targets t WHERE t.job_id=r.job_id AND (o.directory_path=t.relative_path OR substr(o.directory_path,1,length(t.relative_path)+1)=t.relative_path||?)))`
+
+// widenTarget replaces a reported folder that could not be listed with the
+// folder above it. A tool that deletes a folder reports the folder it deleted;
+// that folder is no longer there to list, and it is the listing of its parent
+// that shows it is gone. Each call climbs one level, so the climb is bounded by
+// the depth of the path, and it ends at the library folder itself, where the
+// run becomes an ordinary one and an unreachable library is handled as it
+// always is. It reports false for a folder that is not a reported one or has
+// already been partly listed.
+func (s *Service) widenTarget(ctx context.Context, job, relative string) (bool, error) {
+	if relative == "." {
+		return false, nil
+	}
+	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
+	if err != nil {
+		return false, err
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	var untouched int
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_run_targets t JOIN inventory_directories d ON d.job_id=t.job_id AND d.relative_path=t.relative_path WHERE t.job_id=? AND t.relative_path=? AND d.state='pending' AND d.cursor='' AND d.pages=0)`, job, relative).Scan(&untouched); err != nil || untouched == 0 {
+		return false, err
+	}
+	parent := filepath.Dir(relative)
+	if parent == string(filepath.Separator) || parent == "" {
+		parent = "."
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_directories WHERE job_id=? AND relative_path=?`, job, relative); err != nil {
+		return false, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_run_targets WHERE job_id=? AND relative_path=?`, job, relative); err != nil {
+		return false, err
+	}
+	if parent == "." {
+		// The whole library folder: an ordinary run, which skips what has not
+		// changed and judges everything.
+		if _, err = tx.ExecContext(ctx, `DELETE FROM inventory_run_targets WHERE job_id=?`, job); err != nil {
+			return false, err
+		}
+	} else if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_run_targets(job_id,relative_path) VALUES(?,?)`, job, parent); err != nil {
+		return false, err
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_directories(job_id,relative_path) VALUES(?,?)`, job, parent); err != nil {
+		return false, err
+	}
+	return true, gated.Commit()
+}

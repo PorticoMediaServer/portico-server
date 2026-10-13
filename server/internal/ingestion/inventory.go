@@ -107,7 +107,15 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 	if err != nil {
 		return err
 	}
-	return stoppedAt(relative, s.readDirectoryPage(ctx, job, source, relative))
+	err = s.readDirectoryPage(ctx, job, source, relative)
+	if err != nil && ctx.Err() == nil {
+		// A reported folder that cannot be listed has most likely been removed:
+		// look from the folder above it instead, where its absence can be seen.
+		if widened, e := s.widenTarget(ctx, job, relative); e == nil && widened {
+			return nil
+		}
+	}
+	return stoppedAt(relative, err)
 }
 func (s *Service) readDirectoryPage(ctx context.Context, job string, source catalog.LibrarySource, relative string) error {
 	var cursor, revision string

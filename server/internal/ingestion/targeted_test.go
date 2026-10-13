@@ -163,6 +163,37 @@ func TestReportedPathsScanOnlyTheReportedFolders(t *testing.T) {
 		t.Fatalf("the removed file was not noticed: %d %v", alphaObservations, err)
 	}
 
+	// A folder that was deleted outright is reported by the folder itself. It
+	// can no longer be listed, so the run looks from the folder above, sees it
+	// is gone, and does not fail.
+	if err = os.MkdirAll(filepath.Join(media, "Delta (2003)", "Extras"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(media, "Delta (2003)", "Extras", "Delta (2003) - trailer.mp4"), []byte("extra"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	report, err = s.ReportPaths(ctx, []string{filepath.Join(media, "Delta (2003)")}, nil)
+	if err != nil || len(report.Jobs) != 1 {
+		t.Fatalf("new folder report: %v %+v", err, report)
+	}
+	finish(report.Jobs[0])
+	var extras int
+	if err = db.QueryRow(`SELECT count(*) FROM inventory_objects WHERE retired=0 AND directory_path=?`, filepath.Join("Delta (2003)", "Extras")).Scan(&extras); err != nil || extras != 1 {
+		t.Fatalf("a new folder two levels deep was not found: %d %v", extras, err)
+	}
+	if err = os.RemoveAll(filepath.Join(media, "Delta (2003)", "Extras")); err != nil {
+		t.Fatal(err)
+	}
+	report, err = s.ReportPaths(ctx, []string{filepath.Join(media, "Delta (2003)", "Extras")}, nil)
+	if err != nil || len(report.Jobs) != 1 || report.Paths[0].Folder != filepath.Join("Delta (2003)", "Extras") {
+		t.Fatalf("deleted folder report: %v %+v", err, report)
+	}
+	finish(report.Jobs[0])
+	var observed int
+	if err = db.QueryRow(`SELECT missing_observations FROM inventory_objects WHERE relative_path=?`, filepath.Join("Delta (2003)", "Extras", "Delta (2003) - trailer.mp4")).Scan(&observed); err != nil || observed != 1 {
+		t.Fatalf("the files of a deleted folder were not noticed: %d %v", observed, err)
+	}
+
 	// A report that arrives while the folder is being scanned waits, and is
 	// scanned when that run ends.
 	busy, err := s.QueueMode(ctx, lib.ID, "", "incremental", nil)

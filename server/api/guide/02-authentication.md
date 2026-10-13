@@ -1,5 +1,49 @@
 # 2. Authentication
 
+There are two ways to authenticate, for two kinds of caller:
+
+- **An app a person uses** (a player, a remote, a companion app) signs that
+  person in and holds a **session**. This section. No app registration is
+  needed: any app may sign a member in, directly or with a code.
+- **A script, an integration or an assistant** carries an **API key** or a
+  **personal access token** that somebody made for it. See
+  `07-keys-tokens-and-scopes.md`.
+
+## Signing in from your own app
+
+Send these headers on every request, so the person can recognise and manage the
+device in their device list:
+
+| Header | Value |
+|---|---|
+| `X-Portico-Installation-Id` | A random id your app generates once and keeps (32–128 characters of letters, digits, `-` and `_`). It ties refresh to this install. |
+| `X-Portico-Device-Name` | What the person would call the device ("Sam's laptop"). |
+| `X-Portico-Device-Platform` | For example `linux`, `android`, `web`. |
+| `X-Portico-App`, `X-Portico-App-Version` | Your app's name and version. |
+
+Then either:
+
+1. **Server address, user name and password.** `POST /v1/direct/sign-in
+   (openapi.yaml, operationId directSignIn)` with the credentials; pick a
+   profile with `POST /v1/direct/profiles/{id}/select (openapi.yaml,
+   operationId selectDirectProfile)`. For an account with one profile and no
+   second factor, `POST /v1/sessions (openapi.yaml, operationId createSession)`
+   does both in one call. This works on any server, whether or not it uses
+   Portico Accounts, for members who have a password on that server.
+2. **A code the person enters elsewhere** ("TV code", below). Your app shows a
+   short code; the person approves it in any Portico app already signed in to
+   that server, or on the server's own `/device` page. Use this when typing a
+   password is awkward, or for a member who signs in with a Portico Account.
+
+Both give an ordinary member session: an access token that lasts 15 minutes and
+a refresh token (see Refresh). The session is that member's, bounded by their
+role and restrictions, and appears in their device list, where they or the owner
+can end it. If the owner approves new devices by hand, a new device answers
+`device_approval_pending` until it is approved.
+
+Signing in through the Portico Account service ("Sign in with Portico") from a
+third-party app is not offered yet.
+
 Every authenticated call carries `Authorization: Bearer <accessToken>`. There
 are two session kinds: a **viewer session** (what catalogue, playback, and
 personal-state routes take) and a **direct account session** (`accountToken`,
@@ -45,8 +89,9 @@ Portico identity assertion (next section). To browse, select a profile with
 selectDirectProfile)`, which returns the viewer session. `GET /v1/me
 (openapi.yaml, operationId getCurrentViewer)` reads the current viewer.
 
-OAuth 2.1 (PKCE, device grant), scopes, `client_id`, consent screens, personal
-access tokens, and open bearer CORS are **not specified**.
+Personal access tokens, API keys and scopes are described in
+`07-keys-tokens-and-scopes.md`. OAuth 2.1 (PKCE), `client_id`, consent screens
+and open bearer CORS are **not specified**.
 
 ## Portico Account sign-in (challenge to assertion)
 
@@ -162,7 +207,7 @@ startQuickConnect)` and displays the `userCode`:
 }
 ```
 
-A signed-in local owner looks the code up with `POST
+Any member signed in to this server looks the code up with `POST
 /v1/quick-connect/review (openapi.yaml, operationId reviewQuickConnect)`
 (which returns the device's claimed name, platform, and app version) and then
 records the decision with `POST /v1/quick-connect/decision (openapi.yaml,
@@ -181,7 +226,9 @@ The device polls `POST /v1/quick-connect/token (openapi.yaml, operationId
 pollQuickConnectToken)` with its `deviceCode`, receiving
 `authorization_pending` (or `slow_down` with `Retry-After`) until the decision
 lands, then its own session. `POST /v1/quick-connect/cancel (openapi.yaml,
-operationId cancelQuickConnect)` abandons the attempt. Only the local owner
-can approve; member self-approval, RFC 8628 discovery metadata, and expiry
-configuration beyond the issued `expiresAt`/`expiresIn`/`interval` are **not
-specified**.
+operationId cancelQuickConnect)` abandons the attempt. The new device is signed
+in as the member who approved the code, with that member's role, so approve only
+a code you are looking at on your own device. The answer to starting a code
+carries `verificationUri` (the server's own `/device` page) when the server knows
+an address to offer. RFC 8628 discovery metadata and expiry configuration beyond
+the issued `expiresAt`/`expiresIn`/`interval` are **not specified**.
