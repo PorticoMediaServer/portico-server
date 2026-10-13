@@ -65,7 +65,7 @@ func Persist(tx *sql.Tx, asset string, size, modified int64, f *Inventory) error
 				title += " SDH"
 			}
 			renderer := "external_text"
-			if !textFormat(t.Format) {
+			if !textFormat(t.Format) || t.Format == "ass" || t.Format == "ssa" {
 				renderer = "burn_in"
 			}
 			// Discovery is selectable immediately. Empty bytes mean an internal

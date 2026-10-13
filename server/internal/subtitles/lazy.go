@@ -41,7 +41,13 @@ func (s *Service) fillCache(ctx context.Context, p identity.Principal, item, id 
 		return ErrConflict
 	}
 	ctx = context.WithValue(ctx, lazyCacheKey{}, lazyCacheTarget{id, r.DiscoveryID, r.SourceID, revision})
-	_, e = s.Import(ctx, p, item, ImportRequest{OperationID: identity.Digest("cache:" + id + ":" + strconv.FormatInt(revision, 10)), SourceID: r.SourceID, DiscoveryID: r.DiscoveryID, ExpectedRevision: discoveryRevision, Scope: "shared", Render: "text"})
+	render := "text"
+	if r.Format == "ass" || r.Format == "ssa" {
+		// A cache fill preserves the discovered track. The player may render
+		// it locally or burn it; neither choice discards the authored style.
+		render = "styled"
+	}
+	_, e = s.Import(ctx, p, item, ImportRequest{OperationID: identity.Digest("cache:" + id + ":" + strconv.FormatInt(revision, 10)), SourceID: r.SourceID, DiscoveryID: r.DiscoveryID, ExpectedRevision: discoveryRevision, Scope: "shared", Render: render})
 	return e
 }
 
