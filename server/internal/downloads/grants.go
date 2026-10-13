@@ -200,6 +200,14 @@ func (s *Service) IssueGrant(ctx context.Context, p identity.Principal, id strin
 	if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET used_ms=?,updated_ms=? WHERE id=?`, now, now, id); e != nil {
 		return out, e
 	}
+	// Whoever takes or renews the address is who it stands for from now on:
+	// the same viewer, as they are signed in today. What is fetched under the
+	// address (the file, its artwork, its subtitles) is checked against that.
+	if principal, err := json.Marshal(p); err == nil {
+		if _, e = tx.ExecContext(ctx, `UPDATE download_preparation_authority SET principal=? WHERE preparation_id=?`, string(principal), id); e != nil {
+			return out, e
+		}
+	}
 	out = Grant{PreparationID: id, ItemID: current.ItemID, URL: s.grantPath + token, Token: token, IssuedAt: stamp(issued), ExpiresAt: stamp(expires), RenewAfterSeconds: int(GrantIdle / time.Second / 4), Renewed: renewed, Artifact: current.Artifact}
 	if e = operations.SaveReceipt(tx, scope, r.OperationID, digest, out, now); e != nil {
 		return out, e
@@ -305,7 +313,7 @@ func (s *Service) resolveGrant(ctx context.Context, token string, write bool) (G
 	// ceiling is applied here exactly as it was when the claim was made.
 	if stored != "" {
 		var asked identity.Principal
-		if json.Unmarshal([]byte(stored), &asked) == nil && asked.Viewer == out.Viewer {
+		if json.Unmarshal([]byte(stored), &asked) == nil && asked.AccountID == account && asked.ProfileID == profile && asked.Authority == authority {
 			out.Principal = asked
 		}
 	}

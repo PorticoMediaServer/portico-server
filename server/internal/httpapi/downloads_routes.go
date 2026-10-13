@@ -303,8 +303,14 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		}
 		document, e := d.Subtitles.DownloadTrackVTT(q.Context(), scope.Principal, scope.ItemID, q.PathValue("resource"), revision)
 		if e != nil {
-			if errors.Is(e, subtitles.ErrInput) || errors.Is(e, identity.ErrNotVisible) || errors.Is(e, identity.ErrUnauthorized) || errors.Is(e, sql.ErrNoRows) {
+			switch {
+			case errors.Is(e, subtitles.ErrInput), errors.Is(e, identity.ErrNotVisible), errors.Is(e, sql.ErrNoRows):
 				e = &apierror.Error{Code: "not_found", Cause: e}
+			case errors.Is(e, identity.ErrUnauthorized), errors.Is(e, identity.ErrForbidden):
+				// The sign-in the address stands for has ended. That is not "this
+				// title has no such track": the device renews the address under
+				// its current sign-in and asks again.
+				e = &apierror.Error{Code: "invalid_download_grant", Cause: e}
 			}
 			r.Errors().Write(w, "", v1Error(e))
 			return
