@@ -171,6 +171,13 @@ func (s *Store) List(ctx context.Context, a livechannels.Authority, o livechanne
 				return e
 			}
 		}
+		programmeAllowed, err := programmePredicateTx(ctx, tx, o)
+		if err != nil {
+			return err
+		}
+		for i := range out.Recordings {
+			restrictRecording(&out.Recordings[i], programmeAllowed)
+		}
 		for i, r := range out.Recordings {
 			if mutable(r.State) {
 				intervals, e := conflictsTx(ctx, tx, r)

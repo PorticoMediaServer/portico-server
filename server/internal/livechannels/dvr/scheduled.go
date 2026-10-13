@@ -61,6 +61,15 @@ func (s *Store) ReconcileScheduled(ctx context.Context) error {
 		if e != nil {
 			return e
 		}
+		shared, err := s.hasSharedCaptureTx(ctx, tx, r.ID)
+		if err != nil {
+			return err
+		}
+		// This intent already committed to a capture. Finalization and linking
+		// may outlast the airing; guide maintenance must not expire it.
+		if permission == nil && shared {
+			continue
+		}
 		p, lookup := s.committedProgrammeTx(ctx, tx, r, generation)
 		state, reason := "scheduled", ""
 		switch {
@@ -131,7 +140,7 @@ func (s *Store) ReconcileScheduled(ctx context.Context) error {
 // a title/time guess, and the anti-join keeps later expired rows reachable.
 const expiredCandidates = `SELECT id,authority,account_id,profile_id,reason FROM dvr_recordings
  WHERE state IN('scheduled','conflicted','waiting-source','waiting-guide') AND end_ms<=?
- AND NOT EXISTS(SELECT 1 FROM dvr_recording_shares x JOIN dvr_recordings leader ON leader.id=x.capture_recording_id WHERE x.recording_id=dvr_recordings.id AND leader.state IN('preparing','recording','finalizing','completed','incomplete-playable','pending-delete'))
+ AND NOT EXISTS(SELECT 1 FROM dvr_recording_shares x JOIN dvr_recordings leader ON leader.id=x.capture_recording_id WHERE x.recording_id=dvr_recordings.id AND (leader.state IN('preparing','recording','finalizing','completed','incomplete-playable','pending-delete') OR (leader.state='cancelled' AND (leader.lease_until_ms>0 OR COALESCE(json_extract(leader.checkpoint_json,'$.sharedReady'),0)=1))))
  AND NOT EXISTS(SELECT 1 FROM live_sources s JOIN live_programmes p ON p.generation_id=s.active_generation
  WHERE s.id=dvr_recordings.source_id AND p.id=dvr_recordings.programme_id AND p.channel_id=dvr_recordings.channel_id
  AND CAST(round((julianday(p.end_utc)-2440587.5)*86400000) AS INTEGER)+1000*COALESCE(
