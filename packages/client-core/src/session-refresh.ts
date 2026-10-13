@@ -20,6 +20,7 @@
  *   includes a store that cannot be read right now. A stored sign-in the store reports as damaged
  *   for good ends the sign-in too, without touching the store.
  */
+import {parseLocalSession} from "./local-session.ts";
 import type {AuthRecovery, HttpLocalApi, LocalSession} from './index.ts';
 import {REFRESH_MIN_VALID_MS, SessionRefreshError, refreshStoredSession, type ConnectionEnvironment, type RefreshStoredOptions} from './server-connections.ts';
 
@@ -59,6 +60,9 @@ export class LocalSessionRefresher implements AuthRecovery {
   private session: LocalSession;
   private flight?: Promise<LocalSession>;
   private timer?: unknown;
+ private permissionTimer?:unknown;
+ private permissionRead?:Promise<boolean>;
+ private permissionWaitUntil=0;
   private failures = 0;
   /** No renewal before this, from the app's own backoff (a return to the foreground may go sooner). */
   private retryAt = 0;
@@ -79,6 +83,7 @@ export class LocalSessionRefresher implements AuthRecovery {
     this.state = Object.freeze({phase: 'active', expiresAt: this.session.expiresAt, failures: 0});
     options.api.setAuthRecovery(this);
     this.schedule();
+    this.schedulePermissions();
   }
 
   getSnapshot = (): RefresherSnapshot => this.state;
@@ -122,9 +127,36 @@ export class LocalSessionRefresher implements AuthRecovery {
     else this.schedule();
   }
 
+
+  /** Refresh live permissions without rotating the device’s credential. */
+  permissionDenied=():Promise<boolean>=>{
+    if(this.permissionRead)return this.permissionRead;
+    if(this.done||this.waiting()||this.now()<this.permissionWaitUntil)return Promise.resolve(false);
+    const current=this.session;
+    const task=(async()=>{
+      const raw=await this.o.api.request<unknown>('/v1/me');
+      if(this.done||this.session!==current||typeof raw!=='object'||raw===null||!('viewer' in raw))return false;
+      const next=parseLocalSession({...current,viewer:(raw as {viewer:unknown}).viewer},{accountId:current.viewer.accountId,profileId:current.viewer.profileId,serverId:current.viewer.serverId,authority:current.viewer.authority},{stored:true});
+      if(!['owner','admin','member'].includes(next.viewer.role)||next.viewer.role===current.viewer.role)return false;
+      await this.o.env.storage.change(saved=>saved?.session.sessionFamilyId===current.sessionFamilyId&&saved.session.accessToken===current.accessToken?{...saved,session:{...saved.session,viewer:next.viewer}}:saved);
+      if(this.done||this.session!==current)return false;
+      this.session=next;this.o.onRotated?.(next);return true;
+    })().catch((e:unknown)=>{const wait=(e as {retryAfterSeconds?:unknown}|null)?.retryAfterSeconds;if(typeof wait==='number'&&Number.isFinite(wait)&&wait>0)this.permissionWaitUntil=this.now()+Math.min(wait,3600)*1000;return false;});
+    this.permissionRead=task;
+    void task.finally(()=>{if(this.permissionRead===task)this.permissionRead=undefined;});
+    return task;
+  };
+  private schedulePermissions(){
+    if(this.permissionTimer!==undefined)this.clearTimer(this.permissionTimer);
+    this.permissionTimer=undefined;
+    if(this.done||this.failures>0)return;
+    this.permissionTimer=this.setTimer(()=>{this.permissionTimer=undefined;void this.permissionDenied().finally(()=>this.schedulePermissions());},Math.max(30_000,this.permissionWaitUntil-this.now()));
+  }
+
   /** Stop keeping this sign-in alive (sign-out, switching viewer). Does not touch storage. */
   stop(): void {
     if (this.timer !== undefined) this.clearTimer(this.timer);
+    if(this.permissionTimer!==undefined)this.clearTimer(this.permissionTimer);this.permissionTimer=undefined;
     this.timer = undefined;
     if (!this.done) this.publish({phase: 'stopped'});
     this.o.api.setAuthRecovery(undefined);
@@ -159,6 +191,7 @@ export class LocalSessionRefresher implements AuthRecovery {
     const changed = visible.accessToken !== this.session.accessToken;
     this.session = Object.freeze(visible);
     if (changed) { this.o.api.setAccessToken(visible.accessToken); this.o.onRotated?.(this.session); }
+    this.schedulePermissions();
     this.publish({phase: 'active', expiresAt: visible.expiresAt, failures: 0, error: undefined});
     this.schedule();
   }
@@ -170,12 +203,14 @@ export class LocalSessionRefresher implements AuthRecovery {
     if (error.signOut || (error.code === 'refresh_unavailable' && this.expiresIn() <= 0)) {
       if (this.timer !== undefined) this.clearTimer(this.timer);
       this.timer = undefined;
+      if(this.permissionTimer!==undefined)this.clearTimer(this.permissionTimer);this.permissionTimer=undefined;
       this.publish({phase: 'ended', error});
       this.o.api.setAuthRecovery(undefined);
       this.o.onSignedOut?.(error);
       return;
     }
     this.failures++;
+    this.schedulePermissions();
     const asked = (e as {retryAfterSeconds?: unknown} | null)?.retryAfterSeconds;
     // Bounded: a server cannot park renewal for longer than an hour with one header.
     if (typeof asked === 'number' && Number.isFinite(asked) && asked > 0) this.serverWaitUntil = this.now() + Math.min(asked, 3600) * 1000;

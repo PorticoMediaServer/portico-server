@@ -311,6 +311,7 @@ func (c *Caller) admitChannel(ctx context.Context, channel string) error {
 
 // storedRequest is what a session keeps of its request for re-planning.
 type storedRequest struct {
+	State            string           `json:"state,omitempty"`
 	VersionID        string           `json:"versionId,omitempty"`
 	Quality          Quality          `json:"quality"`
 	Audio            *AudioRequest    `json:"audio,omitempty"`
@@ -963,7 +964,7 @@ func (s *Service) markReady(ctx context.Context, r row) (SessionView, bool, erro
 	}
 	now := s.now()
 	err := dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassPlaybackStart, func(ctx context.Context, tx *sql.Tx) error {
-		res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,revision=revision+1,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND state='preparing' AND ended_ms=0`, state, now.UnixMilli(), state, now.UnixMilli(), r.id)
+		res, err := tx.ExecContext(ctx, `UPDATE playback_v1_sessions SET state=?,revision=revision+1,updated_ms=?,`+pausedSinceUpdate+` WHERE id=? AND state='preparing' AND revision=? AND ended_ms=0`, state, now.UnixMilli(), state, now.UnixMilli(), r.id, r.revision)
 		if err != nil {
 			return err
 		}
@@ -978,7 +979,7 @@ func (s *Service) markReady(ctx context.Context, r row) (SessionView, bool, erro
 	}
 	s.hub.wake()
 	current, err := loadRow(ctx, s.DB, r.id)
-	return s.view(current), false, err
+	return s.view(current), current.state == "preparing", err
 }
 
 func (s *Service) startItem(ctx context.Context, c Caller, key, startDigest string, req StartRequest) (SessionView, bool, error) {
@@ -1063,10 +1064,8 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		// later step or re-plan continues from.
 		stored.Quality = *view.Quality
 	}
-	requestJSON, _ := json.Marshal(struct {
-		storedRequest
-		State string `json:"state,omitempty"`
-	}{stored, req.State})
+	stored.State = req.State
+	requestJSON, _ := json.Marshal(stored)
 	presentationJSON, _ := json.Marshal(view)
 	now := s.now()
 	r := base

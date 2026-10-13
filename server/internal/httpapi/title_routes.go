@@ -199,6 +199,8 @@ func versionDeletionError(err error) error {
 		return &apierror.Error{Code: "not_found", Cause: err}
 	case errors.Is(err, administration.ErrDenied):
 		return &apierror.Error{Code: "not_permitted", Cause: err}
+	case errors.Is(err, administration.ErrCursor):
+		return &apierror.Error{Code: "invalid_cursor", Cause: err}
 	case errors.Is(err, administration.ErrInput):
 		return &apierror.Error{Code: "invalid_request", Cause: err}
 	case errors.Is(err, administration.ErrConflict), errors.Is(err, administration.ErrIdempotencyKeyReused):

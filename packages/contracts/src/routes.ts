@@ -2800,6 +2800,7 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
+      "invalid_cursor",
       "revision_mismatch",
       "administration_unavailable",
       "internal"
@@ -2826,6 +2827,7 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
+      "invalid_cursor",
       "revision_mismatch",
       "administration_unavailable",
       "internal"

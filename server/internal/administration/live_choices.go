@@ -1,8 +1,11 @@
 package administration
 
 import (
+	"bytes"
 	"context"
 	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
 )
 
 type LiveSourceChoice struct {
@@ -36,7 +39,7 @@ func (s *Service) SourceChoices(ctx context.Context, auth Authorize, source, kin
 			return e
 		}
 		scope := digestOf([]string{source, out.Generation, kind, query})
-		after, e := decodeCursor(scope, cursor)
+		afterID, e := decodeChoiceCursor(scope, cursor)
 		if e != nil {
 			return e
 		}
@@ -45,12 +48,12 @@ func (s *Service) SourceChoices(ctx context.Context, auth Authorize, source, kin
 			if e = tx.QueryRowContext(ctx, `SELECT count(DISTINCT group_name) FROM live_channel_choices WHERE generation_id=? AND group_name<>'' AND instr(lower(group_name),lower(?))>0`, out.Generation, query).Scan(&out.Total); e != nil {
 				return e
 			}
-			rows, e = tx.QueryContext(ctx, `SELECT group_name,group_name,'',count(*) FROM live_channel_choices WHERE generation_id=? AND group_name>? AND instr(lower(group_name),lower(?))>0 GROUP BY group_name ORDER BY group_name LIMIT ?`, out.Generation, after.ID, query, size+1)
+			rows, e = tx.QueryContext(ctx, `SELECT group_name,group_name,'',count(*) FROM live_channel_choices WHERE generation_id=? AND group_name>? AND instr(lower(group_name),lower(?))>0 GROUP BY group_name ORDER BY group_name LIMIT ?`, out.Generation, afterID, query, size+1)
 		} else {
 			if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM live_channel_choices WHERE generation_id=? AND instr(lower(name||' '||group_name),lower(?))>0`, out.Generation, query).Scan(&out.Total); e != nil {
 				return e
 			}
-			rows, e = tx.QueryContext(ctx, `SELECT channel_key,name,group_name,0 FROM live_channel_choices WHERE generation_id=? AND channel_key>? AND instr(lower(name||' '||group_name),lower(?))>0 ORDER BY channel_key LIMIT ?`, out.Generation, after.ID, query, size+1)
+			rows, e = tx.QueryContext(ctx, `SELECT channel_key,name,group_name,0 FROM live_channel_choices WHERE generation_id=? AND channel_key>? AND instr(lower(name||' '||group_name),lower(?))>0 ORDER BY channel_key LIMIT ?`, out.Generation, afterID, query, size+1)
 		}
 		if e != nil {
 			return e
@@ -62,7 +65,7 @@ func (s *Service) SourceChoices(ctx context.Context, auth Authorize, source, kin
 				return e
 			}
 			if len(out.Items) == size {
-				out.NextCursor = encodeCursor(scope, int64(size), out.Items[size-1].ID)
+				out.NextCursor = encodeChoiceCursor(scope, out.Items[size-1].ID)
 				break
 			}
 			out.Items = append(out.Items, v)
@@ -70,4 +73,23 @@ func (s *Service) SourceChoices(ctx context.Context, auth Authorize, source, kin
 		return rows.Err()
 	})
 	return out, err
+}
+
+func encodeChoiceCursor(scope, last string) string {
+	prefix, _ := hex.DecodeString(scope)
+	return base64.RawURLEncoding.EncodeToString(append(prefix, []byte(last)...))
+}
+func decodeChoiceCursor(scope, token string) (string, error) {
+	if token == "" {
+		return "", nil
+	}
+	if len(token) > 512 {
+		return "", ErrCursor
+	}
+	raw, err := base64.RawURLEncoding.DecodeString(token)
+	prefix, _ := hex.DecodeString(scope)
+	if err != nil || len(raw) < 33 || len(raw) > 288 || !bytes.Equal(raw[:32], prefix) || !safeText(string(raw[32:]), 256) {
+		return "", ErrCursor
+	}
+	return string(raw[32:]), nil
 }

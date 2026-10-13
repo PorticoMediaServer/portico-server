@@ -19,7 +19,7 @@ type reportedMissing struct{ source, incarnation, identity, object, revision str
 // root with a readable parent, supplies evidence of removal. Offline roots
 // and unknown paths remain ordinary queued notices.
 func (s *Service) removedPathEvidence(ctx context.Context, paths []string) ([]reportedMissing, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,configured_root,root,incarnation,root_identity FROM library_sources WHERE enabled=1 AND health NOT IN('offline','root_changed','removing') AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=library_sources.library_id) LIMIT 4096`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,configured_root,root,incarnation,root_identity FROM library_sources WHERE enabled=1 AND health NOT IN('root_changed','removing') AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=library_sources.library_id) LIMIT 4096`)
 	if err != nil {
 		return nil, err
 	}
@@ -107,12 +107,15 @@ func (s *Service) removedPathEvidence(ctx context.Context, paths []string) ([]re
 func applyReportedMissingTx(ctx context.Context, tx *sql.Tx, evidence []reportedMissing) error {
 	for _, v := range evidence {
 		var current bool
-		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.id=? AND o.revision=? AND o.retired=0 AND o.root_incarnation=? AND s.incarnation=? AND s.root_identity=? AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing'))`, v.object, v.revision, v.incarnation, v.incarnation, v.identity).Scan(&current)
+		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.id=? AND o.revision=? AND o.retired=0 AND o.root_incarnation=? AND s.incarnation=? AND s.root_identity=? AND s.enabled=1 AND s.health NOT IN('root_changed','removing'))`, v.object, v.revision, v.incarnation, v.incarnation, v.identity).Scan(&current)
 		if err != nil {
 			return err
 		}
 		if !current {
 			continue
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET health='ready' WHERE id=? AND health='offline'`, v.source); err != nil {
+			return err
 		}
 		if err = catalog.MarkInventoryMissingTx(ctx, tx, v.source, "path-report:"+v.revision, v.object, time.Now()); err != nil {
 			return err

@@ -188,9 +188,16 @@ func (s *Service) store(raw []byte) (string, error) {
 	if _, err = file.Write(raw); err == nil {
 		err = file.Sync()
 	}
-	file.Close()
+	closeErr := file.Close()
+	if err == nil {
+		err = closeErr
+	}
 	if err == nil {
 		err = os.Rename(file.Name(), target)
+	}
+	if err == nil {
+		s.artworkBytes += int64(len(raw))
+		s.lastArtworkIssue = ""
 	}
 	return key, err
 }
