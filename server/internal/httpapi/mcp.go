@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
@@ -526,10 +527,18 @@ func mcpTools() []mcpTool {
 	add(mcpTool{Name: "run_backup", Title: "Back up now", Description: "Start a backup of the server's database and settings now. It runs in the background; use list_backups to see when it finishes.", Role: identity.TierOwner}, r, run)
 
 	// ---- live TV and recordings
-	add(mcpTool{Name: "tv_guide", Title: "TV guide", Description: "Show what is on live TV: channels with their programmes between two times. Leave the times out for the next three hours. Each programme carries what schedule_recording needs.", ReadOnly: true,
+	add(mcpTool{Name: "tv_guide", Title: "TV guide", Description: "Show what is on live TV: channels with their programmes between two times. Leave the times out for the next three hours. When paging, reuse the returned start and end with the cursor. Each programme carries what schedule_recording needs.", ReadOnly: true,
 		Properties: page(map[string]any{"start": text("Start of the window (RFC 3339, whole seconds). Default: now."), "end": text("End of the window, at most 24 hours after the start. Default: three hours after the start."), "search": text("Optional: only channels or programmes matching this text."), "limit": whole("How many channels in a page. Default 25.", 1, 50)})},
 		[]mcpRoute{{"GET", "/v1/guide"}}, func(args map[string]any, call mcpInvoker) (int, []byte, error) {
 			query := argQuery(args, "start", "end", "search", "limit", "cursor")
+			if query.Get("start") == "" {
+				query.Set("start", time.Now().UTC().Truncate(time.Second).Format(time.RFC3339))
+			}
+			if query.Get("end") == "" {
+				if start, err := time.Parse(time.RFC3339, query.Get("start")); err == nil {
+					query.Set("end", start.Add(3*time.Hour).Format(time.RFC3339))
+				}
+			}
 			if query.Get("limit") == "" {
 				query.Set("limit", "25")
 			}
