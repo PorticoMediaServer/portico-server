@@ -476,7 +476,10 @@ export const settingsMessages = {
   'server.library.removeTitle': 'Remove “{name}”?',
   'server.library.removeGoes': 'The library and every title in it leave Portico for everyone, right away. Portico finishes taking it apart in the background.',
   'server.library.removeKept': 'The files on disk are not touched. Everyone’s watch history, progress, ratings, favorites and My List are kept, and return if the same titles are added again.',
-  'settings.server.backgroundSpeedHelp': 'How hard Portico works at matching titles and fetching artwork. Gentle suits a small server. Fast finishes a large import sooner. Playback always comes first.',
+  'settings.server.pauseBackground': 'Pause background work for an hour',
+  'settings.server.resumeBackground': 'Resume background work',
+  'settings.server.backgroundPausedUntil': 'Background work is paused until {time}.',
+  'settings.server.backgroundSpeedHelp': 'How hard Portico works at scanning, matching, analysis, artwork and maintenance. Gentle suits a small server. Fast finishes a large import sooner. Playback always comes first.',
   // Server › Remote access: home networks, outside, the owner's own certificate.
   'settings.server.homeNetworkLede': 'These networks decide what counts as home. A device anywhere else is away from home, and the away-from-home rules and limits apply to it.',
   'settings.server.yourConnection': 'This device',

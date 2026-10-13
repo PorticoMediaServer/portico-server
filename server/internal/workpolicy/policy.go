@@ -1,5 +1,5 @@
 // Package workpolicy retains owner maintenance windows as scheduling hints.
-// Background work is never paused for a window or foreground activity.
+// Windows schedule backups; an explicit owner pause stops new background batches.
 package workpolicy
 
 import (
@@ -29,6 +29,7 @@ type Window struct {
 type Policy struct {
 	Revision           int64
 	BackgroundPriority string
+	PausedUntil        int64
 	Windows            []Window
 }
 
@@ -78,7 +79,7 @@ func SaveTx(ctx context.Context, tx *sql.Tx, p Policy) error {
 }
 func ReadTx(ctx context.Context, tx *sql.Tx) (Policy, error) {
 	p := Policy{Windows: []Window{}}
-	if err := tx.QueryRowContext(ctx, `SELECT revision,background_priority FROM maintenance_policy WHERE singleton=1`).Scan(&p.Revision, &p.BackgroundPriority); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT revision,background_priority,paused_until_ms FROM maintenance_policy WHERE singleton=1`).Scan(&p.Revision, &p.BackgroundPriority, &p.PausedUntil); err != nil {
 		return p, err
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT id,name,enabled,cadence,start_minute,duration_minutes,timezone FROM maintenance_windows ORDER BY id`)
@@ -142,8 +143,8 @@ func zone(z string) string {
 // Allowed treats each window as local wall-clock calendar time. Windows are
 // advisory: the lower-priority process pool and writer gate keep background
 // progress continuous under foreground load, so a window never pauses work.
-func Allowed(_ Policy, _ string, _ time.Time) bool {
-	return true
+func Allowed(p Policy, task string, now time.Time) bool {
+	return !Supported(task) || now.UnixMilli() >= p.PausedUntil
 }
 
 // Open reports whether task may start now under policy p: some enabled window

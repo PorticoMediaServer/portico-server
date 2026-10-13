@@ -297,9 +297,8 @@ type MaintenanceSettingsDocument struct {
 	Retention map[string]int      `json:"retention"`
 	// BackupKeepCount is how many backups the server keeps before the oldest is
 	// offered for removal. Nothing is deleted automatically.
-	BackupKeepCount        int    `json:"backupKeepCount"`
-	BackgroundTaskPriority string `json:"backgroundTaskPriority"`
-	BackgroundSpeed        string `json:"backgroundSpeed"`
+	BackupKeepCount int    `json:"backupKeepCount"`
+	BackgroundSpeed string `json:"backgroundSpeed"`
 }
 
 // DefaultMaintenanceSettings is the answer before any owner write: one nightly
@@ -307,20 +306,16 @@ type MaintenanceSettingsDocument struct {
 func DefaultMaintenanceSettings() MaintenanceSettingsDocument {
 	retention := map[string]int{"trickplay": 365, "prepared": 90, "conversions": 7, "subtitles": 365, "downloads": 30, "logs": 30}
 	return MaintenanceSettingsDocument{
-		Windows:                []MaintenanceWindow{{ID: "nightly", Name: "Overnight", Enabled: true, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 180, DurationMinutes: 240, Timezone: "", Tasks: []string{"library-scan", "analysis", "trickplay", "backup"}}},
-		Retention:              retention,
-		BackupKeepCount:        7,
-		BackgroundTaskPriority: "lower",
-		BackgroundSpeed:        "normal",
+		Windows:         []MaintenanceWindow{{ID: "nightly", Name: "Overnight", Enabled: true, Cadence: "nightly", Days: append([]string{}, Days...), StartMinute: 180, DurationMinutes: 240, Timezone: "", Tasks: []string{"library-scan", "analysis", "trickplay", "backup"}}},
+		Retention:       retention,
+		BackupKeepCount: 7,
+		BackgroundSpeed: "normal",
 	}
 }
 
 func normalizeMaintenance(v *MaintenanceSettingsDocument) {
 	if v.BackgroundSpeed == "" {
 		v.BackgroundSpeed = "normal"
-	}
-	if v.BackgroundTaskPriority == "" {
-		v.BackgroundTaskPriority = "lower"
 	}
 	if v.Windows == nil {
 		v.Windows = []MaintenanceWindow{}
@@ -349,9 +344,6 @@ func validateMaintenance(v *MaintenanceSettingsDocument) error {
 	fields := []string{}
 	if v.BackgroundSpeed != "gentle" && v.BackgroundSpeed != "normal" && v.BackgroundSpeed != "fast" {
 		fields = append(fields, "settings.backgroundSpeed")
-	}
-	if v.BackgroundTaskPriority != "lower" && v.BackgroundTaskPriority != "normal" {
-		fields = append(fields, "settings.backgroundTaskPriority")
 	}
 	if len(v.Windows) > 12 {
 		fields = append(fields, "settings.windows")
@@ -425,18 +417,19 @@ const maintenanceScope = "maintenance"
 
 // MaintenanceDocument is the maintenance page: settings plus the vocabularies.
 type MaintenanceDocument struct {
-	Revision   int64                       `json:"revision"`
-	Digest     string                      `json:"digest"`
-	Settings   MaintenanceSettingsDocument `json:"settings"`
-	Cadences   []MaintenanceCadence        `json:"cadences"`
-	Tasks      []string                    `json:"tasks"`
-	Days       []string                    `json:"days"`
-	Maxima     map[string]int              `json:"retentionMaxima"`
-	Categories []StorageCategory           `json:"storageCategories"`
+	Revision    int64                       `json:"revision"`
+	Digest      string                      `json:"digest"`
+	Settings    MaintenanceSettingsDocument `json:"settings"`
+	Cadences    []MaintenanceCadence        `json:"cadences"`
+	Tasks       []string                    `json:"tasks"`
+	Days        []string                    `json:"days"`
+	Maxima      map[string]int              `json:"retentionMaxima"`
+	Categories  []StorageCategory           `json:"storageCategories"`
+	PausedUntil int64                       `json:"pausedUntilUnixMillis"`
 }
 
 func maintenanceDocument(d Document[MaintenanceSettingsDocument]) MaintenanceDocument {
-	return MaintenanceDocument{d.Revision, d.Digest, d.Settings, MaintenanceCadences(), MaintenanceTasks, Days, RetentionCategories(), StorageCategories()}
+	return MaintenanceDocument{d.Revision, d.Digest, d.Settings, MaintenanceCadences(), MaintenanceTasks, Days, RetentionCategories(), StorageCategories(), 0}
 }
 
 // MaintenanceSettings reads the maintenance page.

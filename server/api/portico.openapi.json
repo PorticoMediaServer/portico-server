@@ -5704,9 +5704,31 @@
         "x-scope": "admin"
       }
     },
-    "/v1/admin/maintenance/settings": {
-      "get": {
-        "operationId": "get_admin_maintenance_settings",
+    "/v1/admin/maintenance/background-pause": {
+      "post": {
+        "operationId": "post_admin_background_pause",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "paused": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "paused",
+                  "operationId"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
         "responses": {
           "200": {
             "content": {
@@ -5751,6 +5773,11 @@
                     "digest": {
                       "type": "string"
                     },
+                    "pausedUntilUnixMillis": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "retentionMaxima": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -5767,9 +5794,6 @@
                     "settings": {
                       "properties": {
                         "backgroundSpeed": {
-                          "type": "string"
-                        },
-                        "backgroundTaskPriority": {
                           "type": "string"
                         },
                         "backupKeepCount": {
@@ -5846,7 +5870,6 @@
                         "windows",
                         "retention",
                         "backupKeepCount",
-                        "backgroundTaskPriority",
                         "backgroundSpeed"
                       ],
                       "type": "object"
@@ -5907,7 +5930,230 @@
                     "tasks",
                     "days",
                     "retentionMaxima",
-                    "storageCategories"
+                    "storageCategories",
+                    "pausedUntilUnixMillis"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Pause background work for an hour or resume it",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/maintenance/settings": {
+      "get": {
+        "operationId": "get_admin_maintenance_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "cadences": {
+                      "items": {
+                        "properties": {
+                          "days": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "days",
+                          "description"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "days": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "digest": {
+                      "type": "string"
+                    },
+                    "pausedUntilUnixMillis": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "retentionMaxima": {
+                      "additionalProperties": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "object"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "settings": {
+                      "properties": {
+                        "backgroundSpeed": {
+                          "type": "string"
+                        },
+                        "backupKeepCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "retention": {
+                          "additionalProperties": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "object"
+                        },
+                        "windows": {
+                          "items": {
+                            "properties": {
+                              "cadence": {
+                                "type": "string"
+                              },
+                              "days": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "durationMinutes": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "enabled": {
+                                "type": "boolean"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "startMinute": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "tasks": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "timezone": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "name",
+                              "enabled",
+                              "cadence",
+                              "days",
+                              "startMinute",
+                              "durationMinutes",
+                              "timezone",
+                              "tasks"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "windows",
+                        "retention",
+                        "backupKeepCount",
+                        "backgroundSpeed"
+                      ],
+                      "type": "object"
+                    },
+                    "storageCategories": {
+                      "items": {
+                        "properties": {
+                          "cleanable": {
+                            "type": "boolean"
+                          },
+                          "description": {
+                            "type": "string"
+                          },
+                          "directories": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "regenerable": {
+                            "type": "boolean"
+                          },
+                          "retentionKey": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name",
+                          "description",
+                          "directories",
+                          "cleanable",
+                          "regenerable",
+                          "retentionKey"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "tasks": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "digest",
+                    "settings",
+                    "cadences",
+                    "tasks",
+                    "days",
+                    "retentionMaxima",
+                    "storageCategories",
+                    "pausedUntilUnixMillis"
                   ],
                   "type": "object"
                 }
@@ -5940,9 +6186,6 @@
                   "settings": {
                     "properties": {
                       "backgroundSpeed": {
-                        "type": "string"
-                      },
-                      "backgroundTaskPriority": {
                         "type": "string"
                       },
                       "backupKeepCount": {
@@ -6019,7 +6262,6 @@
                       "windows",
                       "retention",
                       "backupKeepCount",
-                      "backgroundTaskPriority",
                       "backgroundSpeed"
                     ],
                     "type": "object"
@@ -6080,6 +6322,11 @@
                     "digest": {
                       "type": "string"
                     },
+                    "pausedUntilUnixMillis": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "retentionMaxima": {
                       "additionalProperties": {
                         "maximum": 9007199254740991,
@@ -6096,9 +6343,6 @@
                     "settings": {
                       "properties": {
                         "backgroundSpeed": {
-                          "type": "string"
-                        },
-                        "backgroundTaskPriority": {
                           "type": "string"
                         },
                         "backupKeepCount": {
@@ -6175,7 +6419,6 @@
                         "windows",
                         "retention",
                         "backupKeepCount",
-                        "backgroundTaskPriority",
                         "backgroundSpeed"
                       ],
                       "type": "object"
@@ -6236,7 +6479,8 @@
                     "tasks",
                     "days",
                     "retentionMaxima",
-                    "storageCategories"
+                    "storageCategories",
+                    "pausedUntilUnixMillis"
                   ],
                   "type": "object"
                 }

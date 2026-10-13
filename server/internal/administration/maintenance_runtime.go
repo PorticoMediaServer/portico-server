@@ -20,7 +20,6 @@ func maintenanceRuntime(ctx context.Context, tx *sql.Tx, settings *MaintenanceSe
 	if err = json.Unmarshal(raw, &settings.Windows); err != nil {
 		return err
 	}
-	settings.BackgroundTaskPriority = p.BackgroundPriority
 	return nil
 }
 
@@ -57,6 +56,11 @@ func (s *Service) loadMaintenanceRuntime(ctx context.Context, auth Authorize) (M
 			return err
 		}
 		out = maintenanceDocument(Document[MaintenanceSettingsDocument]{Revision: revision, Digest: digestOf(settings), Settings: settings})
+		p, err := workpolicy.ReadTx(ctx, tx)
+		if err != nil {
+			return err
+		}
+		out.PausedUntil = p.PausedUntil
 		return nil
 	})
 	return out, err
@@ -67,7 +71,6 @@ func (s *Service) saveMaintenanceRuntime(ctx context.Context, auth Authorize, ch
 		return out, ErrInput
 	}
 	value := change.Settings
-	priorityOmitted := value.BackgroundTaskPriority == ""
 	normalizeMaintenance(&value)
 	if err := validateMaintenance(&value); err != nil {
 		return out, err
@@ -89,15 +92,8 @@ func (s *Service) saveMaintenanceRuntime(ctx context.Context, auth Authorize, ch
 		if revision != change.ExpectedRevision {
 			return ErrConflict
 		}
-		if priorityOmitted {
-			current, readErr := workpolicy.ReadTx(ctx, tx)
-			if readErr != nil {
-				return readErr
-			}
-			value.BackgroundTaskPriority = current.BackgroundPriority
-		}
 		raw, _ := json.Marshal(value.Windows)
-		p := workpolicy.Policy{BackgroundPriority: value.BackgroundTaskPriority}
+		p := workpolicy.Policy{BackgroundPriority: dbwork.BackgroundPriorityForSpeed(value.BackgroundSpeed)}
 		if err = json.Unmarshal(raw, &p.Windows); err != nil {
 			return err
 		}
@@ -106,12 +102,19 @@ func (s *Service) saveMaintenanceRuntime(ctx context.Context, auth Authorize, ch
 		}
 		storedValue := value
 		storedValue.Windows = nil
-		storedValue.BackgroundTaskPriority = ""
 		if err = writeDocument(ctx, tx, maintenanceScope, revision+1, storedValue, s.milliseconds()); err != nil {
 			return err
 		}
 		out = maintenanceDocument(Document[MaintenanceSettingsDocument]{Revision: revision + 1, Digest: digestOf(value), Settings: value})
+		policy, readErr := workpolicy.ReadTx(ctx, tx)
+		if readErr != nil {
+			return readErr
+		}
+		out.PausedUntil = policy.PausedUntil
 		return saveReceipt(ctx, tx, maintenanceScope, change.OperationID, digest, out, s.milliseconds())
 	})
+	if err == nil {
+		s.ApplyBackgroundPolicy(ctx)
+	}
 	return out, err
 }

@@ -14,14 +14,8 @@ import type {MessageId} from '../../../i18n/src/index.ts';
 
 // ── Maintenance windows and schedules ───────────────────────────────────────────────────────
 
-/** Owner background priority from the server (`lower` | `normal`). Background work is de-prioritized, never paused. */
-export type BackgroundTaskPriority = 'lower' | 'normal';
-export function backgroundPriorityOrDefault(value: unknown): BackgroundTaskPriority {
-  return value === 'normal' ? 'normal' : 'lower';
-}
-export function maintenanceSaveSettings<T extends {backgroundTaskPriority?: unknown}>(draft: T): T & {backgroundTaskPriority: BackgroundTaskPriority} {
-  return {...draft, backgroundTaskPriority: backgroundPriorityOrDefault(draft.backgroundTaskPriority)};
-}
+/** A single speed choice governs scheduling and process priority. */
+export function maintenanceSaveSettings<T>(draft: T): T { return draft; }
 
 /** The scheduled tasks' names; a task this build does not know falls back to the job's own label. */
 export const TASK_LABELS: Readonly<Record<string, MessageId>> = {'library-scan': 'server.task.libraryScan', 'metadata-refresh': 'server.task.metadataRefresh', analysis: 'server.task.analysis', trickplay: 'server.task.trickplay', cleanup: 'server.task.cleanup', backup: 'server.task.backup', 'database-maintenance': 'server.task.database'};

@@ -6294,6 +6294,11 @@ export const schemas = {
       "digest": {
         "type": "string"
       },
+      "pausedUntilUnixMillis": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "retentionMaxima": {
         "additionalProperties": {
           "maximum": 9007199254740991,
@@ -6310,9 +6315,6 @@ export const schemas = {
       "settings": {
         "properties": {
           "backgroundSpeed": {
-            "type": "string"
-          },
-          "backgroundTaskPriority": {
             "type": "string"
           },
           "backupKeepCount": {
@@ -6389,7 +6391,6 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority",
           "backgroundSpeed"
         ],
         "type": "object"
@@ -6450,7 +6451,8 @@ export const schemas = {
       "tasks",
       "days",
       "retentionMaxima",
-      "storageCategories"
+      "storageCategories",
+      "pausedUntilUnixMillis"
     ],
     "type": "object"
   },
@@ -15880,6 +15882,223 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "PostAdminBackgroundPauseRequest": {
+    "properties": {
+      "operationId": {
+        "type": "string"
+      },
+      "paused": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "paused",
+      "operationId"
+    ],
+    "type": "object"
+  },
+  "PostAdminBackgroundPauseResponse": {
+    "properties": {
+      "cadences": {
+        "items": {
+          "properties": {
+            "days": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "description": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "days",
+            "description"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "days": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "digest": {
+        "type": "string"
+      },
+      "pausedUntilUnixMillis": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "retentionMaxima": {
+        "additionalProperties": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "type": "object"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "settings": {
+        "properties": {
+          "backgroundSpeed": {
+            "type": "string"
+          },
+          "backupKeepCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "retention": {
+            "additionalProperties": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "object"
+          },
+          "windows": {
+            "items": {
+              "properties": {
+                "cadence": {
+                  "type": "string"
+                },
+                "days": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "durationMinutes": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "enabled": {
+                  "type": "boolean"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "startMinute": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "tasks": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "timezone": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "enabled",
+                "cadence",
+                "days",
+                "startMinute",
+                "durationMinutes",
+                "timezone",
+                "tasks"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "windows",
+          "retention",
+          "backupKeepCount",
+          "backgroundSpeed"
+        ],
+        "type": "object"
+      },
+      "storageCategories": {
+        "items": {
+          "properties": {
+            "cleanable": {
+              "type": "boolean"
+            },
+            "description": {
+              "type": "string"
+            },
+            "directories": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "regenerable": {
+              "type": "boolean"
+            },
+            "retentionKey": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "name",
+            "description",
+            "directories",
+            "cleanable",
+            "regenerable",
+            "retentionKey"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "tasks": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "revision",
+      "digest",
+      "settings",
+      "cadences",
+      "tasks",
+      "days",
+      "retentionMaxima",
+      "storageCategories",
+      "pausedUntilUnixMillis"
+    ],
+    "type": "object"
+  },
   "PostAdminBackupsRequest": {
     "properties": {
       "operationId": {
@@ -18137,9 +18356,6 @@ export const schemas = {
           "backgroundSpeed": {
             "type": "string"
           },
-          "backgroundTaskPriority": {
-            "type": "string"
-          },
           "backupKeepCount": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -18214,7 +18430,6 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority",
           "backgroundSpeed"
         ],
         "type": "object"
@@ -18267,6 +18482,11 @@ export const schemas = {
       "digest": {
         "type": "string"
       },
+      "pausedUntilUnixMillis": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "retentionMaxima": {
         "additionalProperties": {
           "maximum": 9007199254740991,
@@ -18283,9 +18503,6 @@ export const schemas = {
       "settings": {
         "properties": {
           "backgroundSpeed": {
-            "type": "string"
-          },
-          "backgroundTaskPriority": {
             "type": "string"
           },
           "backupKeepCount": {
@@ -18362,7 +18579,6 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority",
           "backgroundSpeed"
         ],
         "type": "object"
@@ -18423,7 +18639,8 @@ export const schemas = {
       "tasks",
       "days",
       "retentionMaxima",
-      "storageCategories"
+      "storageCategories",
+      "pausedUntilUnixMillis"
     ],
     "type": "object"
   },

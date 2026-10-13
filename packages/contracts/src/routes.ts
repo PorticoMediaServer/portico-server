@@ -2286,6 +2286,26 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "post_admin_background_pause",
+    "method": "POST",
+    "path": "/v1/admin/maintenance/background-pause",
+    "summary": "Pause background work for an hour or resume it",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "post_admin_backups",
     "method": "POST",
     "path": "/v1/admin/backups",

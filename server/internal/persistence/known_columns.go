@@ -2129,6 +2129,7 @@ lyric_selections.resource_id
 lyric_selections.revision
 lyric_selections.session_id
 maintenance_policy.background_priority
+maintenance_policy.paused_until_ms
 maintenance_policy.revision
 maintenance_policy.singleton
 maintenance_window_days.day

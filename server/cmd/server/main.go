@@ -286,6 +286,15 @@ func run() (runErr error) {
 	reporter.finish("listener", nil)
 	ip = listener.Addr().(*net.TCPAddr).IP
 	defer listener.Close()
+	defer func() {
+		if runErr == nil || errors.Is(runErr, errRestartRequested) || ctx.Err() != nil {
+			return
+		}
+		reporter.fail(runErr)
+		log.Printf("Portico could not start. A recovery page is available on %s; fix the cause and restart the service: %v", listener.Addr(), runErr)
+		serveStartupRecovery(ctx, listener, reporter)
+	}()
+
 	// One process owns one state directory. The lock is taken now — after the
 	// listener is bound, so a second instance's refusal is visible, and before
 	// anything opens the database or the journal, so a second instance never
@@ -325,7 +334,7 @@ func run() (runErr error) {
 				// Files may already have moved: starting now could serve a
 				// half-restored folder or a new empty database. Nothing has been
 				// deleted, and the next start resumes the restore.
-				log.Fatalf("A restore didn't finish (%v). Portico won't start on a half-restored state folder; nothing has been deleted, and the previous data is kept under %s. Fix the cause (for example free disk space or folder permissions), then start Portico again: it resumes the restore.", err, filepath.Join(state, backup.BackupsDir))
+				return fmt.Errorf("A restore didn't finish (%v). Portico won't start on a half-restored state folder; nothing has been deleted, and the previous data is kept under %s. Fix the cause (for example free disk space or folder permissions), then start Portico again: it resumes the restore.", err, filepath.Join(state, backup.BackupsDir))
 			}
 			log.Printf("warn: Staged restore did not apply (%v); continuing on the current state", err)
 		}
@@ -393,6 +402,7 @@ func run() (runErr error) {
 	}
 	workAdmission := workpolicy.Service{DB: db}
 	adminOperations := adminops.NewAt(db, state)
+	adminOperations.ApplyBackgroundPolicy(ctx)
 	adminOperations.LogoFetch = func(ctx context.Context, locator string) ([]byte, error) {
 		return livechannels.ReadSource(ctx, locator, remotemedia.Policy{ReadTimeout: 10 * time.Second}, adminops.LogoUploadBytes)
 	}

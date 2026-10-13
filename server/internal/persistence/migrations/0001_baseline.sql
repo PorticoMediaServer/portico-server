@@ -2683,7 +2683,7 @@ CREATE TABLE admin_channel_numbers(
  source_id TEXT NOT NULL,channel_id TEXT NOT NULL,number TEXT NOT NULL DEFAULT '',
  guide_channel_id TEXT NOT NULL DEFAULT '',hidden INTEGER NOT NULL DEFAULT 0,updated_ms INTEGER NOT NULL,
  PRIMARY KEY(source_id,channel_id)) STRICT;
-CREATE TABLE maintenance_policy(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL CHECK(revision>0),background_priority TEXT NOT NULL DEFAULT 'lower' CHECK(background_priority IN('lower','normal'))) STRICT;
+CREATE TABLE maintenance_policy(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL CHECK(revision>0),background_priority TEXT NOT NULL DEFAULT 'lower' CHECK(background_priority IN('lower','normal')),paused_until_ms INTEGER NOT NULL DEFAULT 0 CHECK(paused_until_ms>=0)) STRICT;
 CREATE TABLE maintenance_windows(id TEXT PRIMARY KEY,name TEXT NOT NULL,enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),cadence TEXT NOT NULL,start_minute INTEGER NOT NULL CHECK(start_minute BETWEEN 0 AND 1439),duration_minutes INTEGER NOT NULL CHECK(duration_minutes BETWEEN 15 AND 1440),timezone TEXT NOT NULL) STRICT;
 CREATE TABLE maintenance_window_days(window_id TEXT NOT NULL REFERENCES maintenance_windows(id) ON DELETE CASCADE,day TEXT NOT NULL,PRIMARY KEY(window_id,day)) STRICT;
 CREATE TABLE dvr_recording_grants(

@@ -490,7 +490,6 @@ const serverPages: readonly AuthoredPage[] = [
     panel('jobs', 'server.jobs', 'settings.server.jobs'),
     panel('windows', 'server.windows', 'settings.server.windows', {description: 'settings.server.windowsLede'}),
     {id: 'priority', rows: [
-      setting('maintenance', 'backgroundTaskPriority', 'web.maintenance.backgroundPriority', {type: 'choice', choices: [{value: 'lower', label: 'web.maintenance.backgroundLower'}, {value: 'normal', label: 'web.maintenance.backgroundNormal'}]}, {help: 'web.maintenance.backgroundPriorityHelp'}),
       // One named choice in place of rates and worker counts: how hard matching and artwork work.
       setting('maintenance', 'backgroundSpeed', 'metadata.settings.backgroundSpeed', {type: 'choice', choices: [{value: 'gentle', label: 'metadata.settings.gentle'}, {value: 'normal', label: 'metadata.settings.normal'}, {value: 'fast', label: 'metadata.settings.fast'}]}, {help: 'settings.server.backgroundSpeedHelp'}),
     ]},

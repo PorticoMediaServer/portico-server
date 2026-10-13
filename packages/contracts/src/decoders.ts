@@ -100,6 +100,7 @@ export function decodeMcpStreamResponse(input: unknown): types.McpStreamResponse
 export function decodeMergeTitlesResponse(input: unknown): types.MergeTitlesResponse { return decode("MergeTitlesResponse", input) as types.MergeTitlesResponse; }
 export function decodeMoveQueueEntryResponse(input: unknown): types.MoveQueueEntryResponse { return decode("MoveQueueEntryResponse", input) as types.MoveQueueEntryResponse; }
 export function decodePatchDeviceResponse(input: unknown): types.PatchDeviceResponse { return decode("PatchDeviceResponse", input) as types.PatchDeviceResponse; }
+export function decodePostAdminBackgroundPauseResponse(input: unknown): types.PostAdminBackgroundPauseResponse { return decode("PostAdminBackgroundPauseResponse", input) as types.PostAdminBackgroundPauseResponse; }
 export function decodePostAdminBackupsResponse(input: unknown): types.PostAdminBackupsResponse { return decode("PostAdminBackupsResponse", input) as types.PostAdminBackupsResponse; }
 export function decodePostAdminBackupsRestoreResponse(input: unknown): types.PostAdminBackupsRestoreResponse { return decode("PostAdminBackupsRestoreResponse", input) as types.PostAdminBackupsRestoreResponse; }
 export function decodePostAdminRestartResponse(input: unknown): types.PostAdminRestartResponse { return decode("PostAdminRestartResponse", input) as types.PostAdminRestartResponse; }
