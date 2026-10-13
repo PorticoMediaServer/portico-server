@@ -1091,9 +1091,14 @@ func run() (runErr error) {
 	server := &http.Server{Addr: bind, Handler: handlerSwitch, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10, HTTP2: serverHTTP2Policy()}
 	connectionLimit := connectionBudget(hostlimits.EffectiveMemoryBytes())
 	if console != nil {
-		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil && document.Effective.ConnectionLimit > 0 {
-			connectionLimit = document.Effective.ConnectionLimit
+		appliedConnectionLimit := 0
+		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil {
+			appliedConnectionLimit = document.Requested.ConnectionLimit
+			if appliedConnectionLimit > 0 {
+				connectionLimit = appliedConnectionLimit
+			}
 		}
+		console.AppliedConnectionLimit = &appliedConnectionLimit
 	}
 	transport := consoleConnections(listener, connectionLimit)
 	listener = transport

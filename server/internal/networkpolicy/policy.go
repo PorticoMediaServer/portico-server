@@ -158,7 +158,10 @@ func forwardedElements(r *http.Request) ([]map[string]string, bool) {
 				if !found || fields[key] != "" {
 					return nil, false
 				}
-				if strings.HasPrefix(value, "\"") && strings.HasSuffix(value, "\"") {
+				if strings.HasPrefix(value, "\"") || strings.HasSuffix(value, "\"") {
+					if len(value) < 2 || !strings.HasPrefix(value, "\"") || !strings.HasSuffix(value, "\"") {
+						return nil, false
+					}
 					value = value[1 : len(value)-1]
 				}
 				if value == "" || strings.ContainsAny(value, "\"\\\r\n\t ") {

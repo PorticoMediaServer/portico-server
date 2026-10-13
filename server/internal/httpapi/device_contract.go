@@ -26,7 +26,7 @@ func registerDeviceRoutes(registry *apikit.Registry, d Dependencies) error {
 	if err := apikit.Register(registry, apikit.Route[identity.DeviceRegistration, identity.Device]{Metadata: apikit.Metadata{
 		ID: "post_device", Method: "POST", Path: "/v1/devices", Summary: "Register or refresh this account's device", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 201, Errors: []string{"unauthorized", "device_approval_pending", "device_denied", "invalid_request", "internal"},
 	}, Handler: func(ctx context.Context, r *http.Request, body identity.DeviceRegistration) (identity.Device, error) {
-		out, err := d.Identity.RegisterDevice(ctx, directBearer(r), body, r.RemoteAddr)
+		out, err := d.Identity.RegisterDevice(ctx, directBearer(r), body, d.signInPeer(r))
 		return out, foundationAuthErrorOrNil(err)
 	}}); err != nil {
 		return err

@@ -237,7 +237,7 @@ func (d Dependencies) applySettings(r *http.Request, p identity.Principal, expec
 	if current.Revision != expected {
 		return current, &operations.ConflictError{CurrentRevision: current.Revision}
 	}
-	values := current.Effective
+	values := current.Requested
 	overlay(&values)
 	document, err := d.Console.ApplySettings(r.Context(), p, d.consoleAuthority(p, true), operations.SettingsChange{ExpectedRevision: expected, IdempotencyKey: operation, Values: values})
 	if err == nil {
