@@ -28,6 +28,8 @@ type securePolicyCache struct {
 type secureSetting struct {
 	required bool
 	locality localityPolicy
+	// apiPerMinute is the owner's rate for one API key or access token.
+	apiPerMinute int
 }
 type secureRoute struct {
 	checked  time.Time
@@ -37,7 +39,7 @@ type secureRoute struct {
 
 func (c *securePolicyCache) set(document operations.SettingsDocument) {
 	c.routeMu.Lock()
-	c.setting.Store(&secureSetting{required: document.Effective.SecureConnectionsPolicy == "required", locality: newLocalityPolicy(document.Effective)})
+	c.setting.Store(&secureSetting{required: document.Effective.SecureConnectionsPolicy == "required", locality: newLocalityPolicy(document.Effective), apiPerMinute: document.Effective.APIRequestsPerMinute})
 	c.route.Store(nil)
 	c.routeMu.Unlock()
 }

@@ -120,6 +120,9 @@ type Dependencies struct {
 	access *accessCache
 	// restrictions is the viewer content-restriction cache, kept on the same terms.
 	restrictions *restrictionCache
+	// credentials holds API keys and personal access tokens to their scopes and
+	// limits (api_gate.go).
+	credentials *credentialGate
 	securePolicy *securePolicyCache
 	// v1 is the Playback Protocol v1 resource service (playback_v1*.go),
 	// installed by New like the caches above.
@@ -690,6 +693,9 @@ func New(d Dependencies) http.Handler {
 	d.principals = newPrincipalCache()
 	d.access = newAccessCache()
 	d.restrictions = newRestrictionCache()
+	if d.credentials == nil {
+		d.credentials = newCredentialGate()
+	}
 	d.securePolicy = &securePolicyCache{}
 	// The typed registry captures d, so everything its handlers read must be
 	// installed first.
@@ -1312,6 +1318,15 @@ func New(d Dependencies) http.Handler {
 				unmatchedRoute(w, r, mux)
 				return
 			}
+		}
+		// An API key or personal access token is resolved, held to the route's
+		// scope and charged to its own limits before anything else sees it.
+		r, release, ok := d.admitCredential(w, r, mux)
+		if !ok {
+			return
+		}
+		if release != nil {
+			defer release()
 		}
 		admitted.ServeHTTP(w, d.withDelivery(r))
 		if d.Hosted != nil && r.Method != "GET" && r.Method != "HEAD" && membershipPath(r.URL.Path) {

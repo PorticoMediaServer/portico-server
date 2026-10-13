@@ -9,6 +9,16 @@ package httpapi
 // /v1/downloads/settings is an ordinary read while /v1/downloads/artifacts/{grant}
 // is a byte stream — and a prefix rule cannot tell them apart.
 var routeLanes = map[string]string{
+	// API keys and personal access tokens (api_credentials_routes.go).
+	"GET /v1/me/api-access":                         laneDefault,
+	"GET /v1/admin/api-keys":                        laneAdmin,
+	"POST /v1/admin/api-keys":                       laneSecurityFence,
+	"DELETE /v1/admin/api-keys/{id}":                laneSecurityFence,
+	"GET /v1/admin/access-tokens":                   laneAdmin,
+	"DELETE /v1/admin/access-tokens/{id}":           laneSecurityFence,
+	"GET /v1/me/access-tokens":                      laneDefault,
+	"POST /v1/me/access-tokens":                     laneSecurityFence,
+	"DELETE /v1/me/access-tokens/{id}":              laneSecurityFence,
 	"PUT /v1/playlists/{id}/order":                  laneDefault,
 	"POST /v1/downloads/requests":                   laneDefault,
 	"GET /v1/downloads/requests/{id}":               laneBrowsing,
@@ -109,7 +119,6 @@ var routeLanes = map[string]string{
 	"GET /health/live":                                                laneDefault,
 	"GET /health/ready":                                               laneDefault,
 	"GET /receiver/cast/":                                             laneMedia,
-	"GET /v1/admin/access/api-keys":                                   laneAdmin,
 	"GET /v1/admin/access/devices":                                    laneAdmin,
 	"GET /v1/admin/access/invitations":                                laneAdmin,
 	"GET /v1/admin/access/members":                                    laneAdmin,
@@ -300,8 +309,6 @@ var routeLanes = map[string]string{
 	"POST ":                                                           laneDefault,
 	"POST /v1/access/invitations/accept":                              laneDefault,
 	"POST /v1/access/invitations/preview":                             laneDefault,
-	"POST /v1/admin/access/api-keys":                                  laneAdmin,
-	"POST /v1/admin/access/api-keys/{id}/revoke":                      laneSecurityFence,
 	"POST /v1/admin/access/invitations":                               laneAdmin,
 	"POST /v1/admin/access/invitations/{id}/revoke":                   laneSecurityFence,
 	"POST /v1/admin/backups":                                          laneAdminHeavy,
