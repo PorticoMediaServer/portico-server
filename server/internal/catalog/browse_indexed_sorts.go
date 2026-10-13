@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 )
 
 // Exact keys travel with the selected rows so a changed or removed anchor does
@@ -54,9 +55,9 @@ func (s *Service) indexedFactPage(p pageShape, definition browseSort, desc bool)
 		return s.seededRandomPage(p, definition, desc)
 	}
 	where, args := p.where, append([]any{}, p.args...)
-	direction, op := "ASC", ">"
+	direction := "ASC"
 	if desc {
-		direction, op = "DESC", "<"
+		direction = "DESC"
 	}
 	if len(p.seekKeys) > 0 {
 		key, err := indexedSortValue(definition.ID, p.seekKeys[0])
@@ -67,8 +68,8 @@ func (s *Service) indexedFactPage(p pageShape, definition browseSort, desc bool)
 		if err != nil {
 			return nil, ErrCursor
 		}
-		where += ` AND (` + definition.Expression + op + `? OR ` + definition.Expression + `=? AND e.entity_id` + op + `?)`
-		args = append(args, key, key, id)
+		query, bound := browseBoundedSQL(browseRowColumns+",page.order_key", "catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id", p.where, p.args, definition.Expression, "e.entity_id", desc, false, key, id, p.limit, 0)
+		return s.queryBrowseKeyRows(query, definition.ID, bound...)
 	}
 	args = append(args, p.limit)
 	return s.queryBrowseKeyRows(`SELECT `+browseRowColumns+`,`+definition.Expression+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+where+` ORDER BY `+definition.Expression+` `+direction+`,e.entity_id `+direction+` LIMIT ?`, definition.ID, args...)
@@ -235,6 +236,23 @@ func (s *Service) indexedPersonalValuedPage(p pageShape, definition browseSort, 
 }
 
 func (s *Service) indexedPersonalPage(p pageShape, definition browseSort, desc bool) ([]browseRow, error) {
+	// An untouched sort is the title stream alone. Use its maintained blocks
+	// for a direct range instead of walking every earlier title.
+	if p.start > 0 && len(p.seekKeys) == 0 && p.positional() {
+		column, zero, _ := personalSortColumn(definition.ID)
+		var valued bool
+		err := s.read().QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_personal_sort_rows personal WHERE personal.profile_id=? AND personal.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND personal.kind=? AND personal.`+column+`>`+zero+`)`, p.request.Profile, p.request.Library, p.kind).Scan(&valued)
+		if err != nil {
+			return nil, err
+		}
+		if !valued {
+			rows, err := s.positionPage(p, 0, false, p.start, p.limit)
+			for i := range rows {
+				rows[i].keys = map[string]string{definition.ID: strings.Trim(zero, "'"), "phase": "rest", "restTitle": rows[i].sortKey}
+			}
+			return rows, err
+		}
+	}
 	if p.start > 0 && len(p.seekKeys) == 0 {
 		return s.walkIndexedRange(p, func(p pageShape) ([]browseRow, error) { return s.indexedPersonalPage(p, definition, desc) })
 	}
@@ -277,8 +295,18 @@ func (s *Service) indexedPersonalPage(p pageShape, definition browseSort, desc b
 		where := p.where + ` AND NOT EXISTS(SELECT 1 FROM catalog_personal_sort_rows personal WHERE personal.profile_id=? AND personal.entity_id=e.entity_id AND personal.` + column + `>` + zero + `)`
 		args := append(append([]any{}, p.args...), p.request.Profile)
 		if len(p.seekKeys) > 0 {
-			where += ` AND (e.sort_key COLLATE NOCASE>? OR e.sort_key COLLATE NOCASE=? AND e.entity_id>?)`
-			args = append(args, p.seekKeys[2], p.seekKeys[2], anchor)
+			query, bound := browseBoundedSQL(browseRowColumns+","+zero, "catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id", where, args, "e.sort_key COLLATE NOCASE", "e.entity_id", false, false, p.seekKeys[2], anchor, p.limit-len(out), 0)
+			rows, err := s.queryBrowseKeyRows(query, definition.ID, bound...)
+			if err != nil {
+				return nil, err
+			}
+			for i := range rows {
+				rows[i].keys["phase"] = "rest"
+				rows[i].keys["restTitle"] = rows[i].sortKey
+			}
+			out = append(out, rows...)
+			p.seekKeys = nil
+			continue
 		}
 		args = append(args, p.limit-len(out))
 		rows, err := s.queryBrowseKeyRows(`SELECT `+browseRowColumns+`,`+zero+` FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id WHERE `+where+` ORDER BY e.sort_key COLLATE NOCASE,e.entity_id LIMIT ?`, definition.ID, args...)

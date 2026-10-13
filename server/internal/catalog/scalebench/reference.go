@@ -14,7 +14,7 @@ import (
 
 // The reference catalogue: 2% films, 39% episodes across shows of 250, 59% songs
 // across 12-track albums, six credits and three genres per item, a content
-// rating on one item in five, and progress on one in a hundred. Every row is
+// rating on one item in five, and progress for three profiles on one in a hundred. Every row is
 // written through the catalogue write API, exactly as a scan and a metadata
 // publication would, and the derived-data worker drains after each batch, so a
 // batch's cost per item is the real per-item cost of cataloguing: it must stay
@@ -35,7 +35,7 @@ func shapeOf(n int) referenceShape {
 
 // seedReference writes items [startItem, stopItem) in batches and reports the
 // first and last batch's milliseconds per item (write plus derivation).
-func seedReference(db *sql.DB, n, startItem, stopItem, batch int) (first, last float64, err error) {
+func seedReference(db *sql.DB, n, startItem, stopItem, batch int, derive bool) (first, last float64, err error) {
 	if startItem < 0 || stopItem > n || startItem > stopItem {
 		return 0, 0, errors.New("invalid scale seed range")
 	}
@@ -61,7 +61,7 @@ func seedReference(db *sql.DB, n, startItem, stopItem, batch int) (first, last f
 		if err != nil {
 			return
 		}
-		for {
+		for derive {
 			var done int
 			if done, err = worker.Step(ctx, 500); err != nil {
 				return
@@ -177,11 +177,19 @@ func seedItem(ctx context.Context, tx *sql.Tx, s referenceShape, i int) error {
 		return err
 	}
 	if i%100 == 0 {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES('viewer',?,120000,0,'fixture')`, item); err != nil {
-			return err
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) VALUES('viewer',?,?,'2026-09-22T12:00:00Z','paused')`, library, item); err != nil {
-			return err
+		for _, profile := range []string{"viewer", "viewer-two", "viewer-pg13"} {
+			completed := 0
+			state := "paused"
+			if profile != "viewer" && i%300 == 0 {
+				completed = 1
+				state = "ended"
+			}
+			if _, err = tx.ExecContext(ctx, `INSERT INTO progress(profile_id,item_id,position,unit,completed,playback_id) VALUES(?,?,120000,0,?,'fixture')`, profile, item, completed); err != nil {
+				return err
+			}
+			if _, err = tx.ExecContext(ctx, `INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) VALUES(?,?,?,'2026-09-22T12:00:00Z',?)`, profile, library, item, state); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

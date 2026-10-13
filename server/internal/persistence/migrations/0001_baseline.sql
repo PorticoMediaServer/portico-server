@@ -128,6 +128,22 @@ CREATE TABLE catalog_missing_titles(
  library_id INTEGER NOT NULL REFERENCES catalog_libraries(id),
  missing_since_ms INTEGER NOT NULL) STRICT;
 CREATE INDEX catalog_missing_titles_library ON catalog_missing_titles(library_id,missing_since_ms,entity_id);
+CREATE INDEX catalog_missing_titles_time ON catalog_missing_titles(missing_since_ms,entity_id);
+CREATE TABLE catalog_missing_title_counts(
+ library_id INTEGER PRIMARY KEY REFERENCES catalog_libraries(id) ON DELETE CASCADE,
+ total INTEGER NOT NULL CHECK(total>=0)) STRICT;
+CREATE TRIGGER catalog_missing_title_count_insert AFTER INSERT ON catalog_missing_titles BEGIN
+ INSERT INTO catalog_missing_title_counts(library_id,total) VALUES(NEW.library_id,1)
+ ON CONFLICT(library_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER catalog_missing_title_count_delete AFTER DELETE ON catalog_missing_titles BEGIN
+ UPDATE catalog_missing_title_counts SET total=total-1 WHERE library_id=OLD.library_id;
+END;
+CREATE TRIGGER catalog_missing_title_count_move AFTER UPDATE OF library_id ON catalog_missing_titles WHEN OLD.library_id<>NEW.library_id BEGIN
+ UPDATE catalog_missing_title_counts SET total=total-1 WHERE library_id=OLD.library_id;
+ INSERT INTO catalog_missing_title_counts(library_id,total) VALUES(NEW.library_id,1)
+ ON CONFLICT(library_id) DO UPDATE SET total=total+1;
+END;
 
 -- What each profile had done with a title that has since been removed, kept so
 -- the same title coming back (to this library or another) gets it all back.
@@ -2265,21 +2281,41 @@ CREATE TABLE screen_metadata_attention(
  target_kind TEXT NOT NULL,library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
  reason TEXT NOT NULL,confidence REAL NOT NULL DEFAULT 0,generation INTEGER NOT NULL,
  dismissed_generation INTEGER NOT NULL DEFAULT -1,
+ retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1)),
  FOREIGN KEY(target_kind,entity_id) REFERENCES screen_metadata_work(target_kind,target_id) ON DELETE CASCADE) STRICT;
 CREATE INDEX screen_metadata_attention_library ON screen_metadata_attention(library_id,entity_id) WHERE dismissed_generation<>generation;
+CREATE INDEX screen_metadata_attention_active ON screen_metadata_attention(entity_id) WHERE retired=0 AND dismissed_generation<>generation;
+CREATE TABLE screen_metadata_attention_counts(
+ library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
+ total INTEGER NOT NULL CHECK(total>=0)) STRICT;
+CREATE TRIGGER screen_metadata_attention_count_insert AFTER INSERT ON screen_metadata_attention WHEN NEW.retired=0 AND NEW.dismissed_generation<>NEW.generation AND NEW.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply') BEGIN
+ INSERT INTO screen_metadata_attention_counts(library_id,total) VALUES(NEW.library_id,1)
+ ON CONFLICT(library_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER screen_metadata_attention_count_delete AFTER DELETE ON screen_metadata_attention WHEN OLD.retired=0 AND OLD.dismissed_generation<>OLD.generation AND OLD.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply') BEGIN
+ UPDATE screen_metadata_attention_counts SET total=total-1 WHERE library_id=OLD.library_id;
+END;
+CREATE TRIGGER screen_metadata_attention_count_update AFTER UPDATE OF library_id,retired,dismissed_generation,generation,reason ON screen_metadata_attention BEGIN
+ UPDATE screen_metadata_attention_counts SET total=total-1 WHERE library_id=OLD.library_id AND OLD.retired=0 AND OLD.dismissed_generation<>OLD.generation AND OLD.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply');
+ INSERT INTO screen_metadata_attention_counts(library_id,total) SELECT NEW.library_id,1 WHERE NEW.retired=0 AND NEW.dismissed_generation<>NEW.generation AND NEW.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')
+ ON CONFLICT(library_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER screen_metadata_attention_retire AFTER UPDATE OF retired ON catalog_entities WHEN OLD.retired<>NEW.retired BEGIN
+ UPDATE screen_metadata_attention SET retired=NEW.retired WHERE entity_id=NEW.id;
+END;
 CREATE TRIGGER screen_attention_insert AFTER INSERT ON screen_metadata_work BEGIN
- INSERT INTO screen_metadata_attention(entity_id,target_kind,library_id,reason,generation)
- VALUES(NEW.target_id,NEW.target_kind,NEW.library_id,NEW.status,NEW.generation);
+ INSERT INTO screen_metadata_attention(entity_id,target_kind,library_id,reason,generation,retired)
+ VALUES(NEW.target_id,NEW.target_kind,NEW.library_id,NEW.status,NEW.generation,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.target_id),1));
 END;
 CREATE TRIGGER screen_attention_update AFTER UPDATE OF status,accepted_publication,generation ON screen_metadata_work BEGIN
- INSERT INTO screen_metadata_attention(entity_id,target_kind,library_id,reason,confidence,generation)
+ INSERT INTO screen_metadata_attention(entity_id,target_kind,library_id,reason,confidence,generation,retired)
  SELECT NEW.target_id,NEW.target_kind,NEW.library_id,
  CASE WHEN NEW.accepted_publication<>'' AND NEW.selection_mode NOT IN('owner','legacy') AND COALESCE(p.confidence,1)<0.9 THEN 'low_confidence' ELSE NEW.status END,
- COALESCE(p.confidence,0),NEW.generation
+ COALESCE(p.confidence,0),NEW.generation,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.target_id),1)
  FROM (SELECT 1) LEFT JOIN screen_metadata_publications p ON p.id=NEW.accepted_publication
  WHERE NEW.accepted_publication='' OR NEW.status NOT IN('matched','matched_work','pending_children','delegated_tvdb')
  OR (NEW.selection_mode NOT IN('owner','legacy') AND COALESCE(p.confidence,1)<0.9)
- ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,confidence=excluded.confidence,generation=excluded.generation;
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,confidence=excluded.confidence,generation=excluded.generation,retired=excluded.retired;
  DELETE FROM screen_metadata_attention WHERE entity_id=NEW.target_id AND NEW.accepted_publication<>''
  AND NEW.status IN('matched','matched_work','pending_children','delegated_tvdb')
  AND (NEW.selection_mode IN('owner','legacy') OR COALESCE((SELECT confidence FROM screen_metadata_publications WHERE id=NEW.accepted_publication),1)>=0.9);

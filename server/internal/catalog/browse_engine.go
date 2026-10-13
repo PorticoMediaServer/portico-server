@@ -169,51 +169,31 @@ func browseKeyedSorts(selection []BrowseSortSelection) bool {
 	return len(selection) > 0
 }
 
-// browseKeysetSQL compiles "strictly after the row whose sort key is keys" for
-// the selected sorts, followed by the entity id as the final tie-break (in the
-// first sort's direction, as browseOrderSQL orders it). It is
-// the lexicographic comparison written out, because SQLite's row-value form
-// cannot carry a per-component collation.
-func browseKeysetSQL(selection []BrowseSortSelection, keys []any, anchor int64) (string, []any) {
-	args := []any{}
-	clause := ""
-	for index, entry := range selection {
-		definition, ok := browseSortByID(entry.Field)
-		if !ok {
-			return "", nil
-		}
-		operator := ">"
-		if entry.Direction == "desc" {
-			operator = "<"
-		}
-		equal := ""
-		equalArgs := []any{}
-		for earlier := 0; earlier < index; earlier++ {
-			previous, _ := browseSortByID(selection[earlier].Field)
-			equal += previous.Expression + "=? AND "
-			equalArgs = append(equalArgs, keys[earlier])
-		}
-		if clause != "" {
-			clause += " OR "
-		}
-		clause += "(" + equal + definition.Expression + operator + "?)"
-		args = append(args, equalArgs...)
-		args = append(args, keys[index])
+// browseBoundedSQL merges two disjoint, bounded index runs. An expanded OR
+// can scan a library prefix; a tuple over an expression can scan every tie.
+// Each arm here seeks either (key, id) or the next key, even with many ties.
+func browseBoundedSQL(columns, from, where string, args []any, expression, identity string, desc, inclusive bool, key any, anchor int64, limit, offset int) (string, []any) {
+	op, direction := ">", "ASC"
+	if desc {
+		op, direction = "<", "DESC"
 	}
-	equal := ""
-	for index, entry := range selection {
-		definition, _ := browseSortByID(entry.Field)
-		equal += definition.Expression + "=? AND "
-		args = append(args, keys[index])
-		_ = entry
+	tie := op
+	if inclusive {
+		tie += "="
 	}
-	tie := ">"
-	if selection[0].Direction == "desc" {
-		tie = "<"
-	}
-	clause += " OR (" + equal + "e.entity_id" + tie + "?)"
-	args = append(args, anchor)
-	return "(" + clause + ")", args
+	order := expression + " " + direction + "," + identity + " " + direction
+	arm := `SELECT ` + identity + ` AS id,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where
+	query := `WITH candidates AS (
+ SELECT * FROM (` + arm + ` AND ` + expression + `=? AND ` + identity + tie + `? ORDER BY ` + order + ` LIMIT ?)
+ UNION ALL SELECT * FROM (` + arm + ` AND ` + expression + op + `? ORDER BY ` + order + ` LIMIT ?))
+ SELECT ` + columns + ` FROM candidates page CROSS JOIN ` + from + ` WHERE ` + identity + `=page.id AND ` + where + `
+ ORDER BY page.order_key ` + direction + `,page.id ` + direction + ` LIMIT ? OFFSET ?`
+	bound := append(append([]any{}, args...), key, anchor, limit+offset)
+	bound = append(bound, args...)
+	bound = append(bound, key, limit+offset)
+	bound = append(bound, args...)
+	bound = append(bound, limit, offset)
+	return query, bound
 }
 
 // browseKeyValues types the cursor's stored key for comparison. A year is an

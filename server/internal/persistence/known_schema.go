@@ -171,6 +171,7 @@ index catalog_identities_public
 index catalog_item_attribute_edges_first
 index catalog_item_attribute_edges_term
 index catalog_missing_titles_library
+index catalog_missing_titles_time
 index catalog_movie_category_member_id
 index catalog_movie_category_member_id_previous
 index catalog_movie_category_poster
@@ -476,6 +477,7 @@ index saved_resource_entries_item_id_fk
 index saved_resource_owner
 index saved_resource_shared
 index saved_resource_visibility
+index screen_metadata_attention_active
 index screen_metadata_attention_library
 index screen_metadata_candidate_target
 index screen_metadata_children
@@ -657,6 +659,7 @@ table catalog_item_availability_previous
 table catalog_item_details
 table catalog_kinds
 table catalog_libraries
+table catalog_missing_title_counts
 table catalog_missing_titles
 table catalog_movie_category_cursors
 table catalog_movie_category_members
@@ -1118,6 +1121,7 @@ table scan_queue
 table schema_migrations
 table screen_anime_seasons
 table screen_metadata_attention
+table screen_metadata_attention_counts
 table screen_metadata_candidates
 table screen_metadata_consent
 table screen_metadata_fields
@@ -1387,6 +1391,9 @@ trigger catalog_library_update
 trigger catalog_metric_rating_delete
 trigger catalog_metric_rating_insert
 trigger catalog_metric_rating_update
+trigger catalog_missing_title_count_delete
+trigger catalog_missing_title_count_insert
+trigger catalog_missing_title_count_move
 trigger catalog_movie_category_members_retain_delete
 trigger catalog_movie_category_members_retain_insert
 trigger catalog_movie_category_members_retain_update
@@ -1863,6 +1870,10 @@ trigger screen_fields_revision_DELETE
 trigger screen_fields_revision_INSERT
 trigger screen_fields_revision_UPDATE
 trigger screen_item_delete
+trigger screen_metadata_attention_count_delete
+trigger screen_metadata_attention_count_insert
+trigger screen_metadata_attention_count_update
+trigger screen_metadata_attention_retire
 trigger screen_movie_create
 trigger screen_policy_create
 trigger screen_scan_policy_change

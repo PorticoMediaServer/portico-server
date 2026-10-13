@@ -294,7 +294,7 @@ const (
 
 func (s *Service) recAbandoned(profile string, now time.Time, values map[string]float64) error {
 	cutoff := now.AddDate(0, 0, -recAbandonAfter).UTC().Format("2006-01-02T15:04:05.000Z")
-	rows, err := s.read().Query(`SELECT a.item_id,a.updated_at,COALESCE((SELECT show_id FROM catalog_episodes WHERE entity_id=a.item_id),(SELECT album_id FROM catalog_songs WHERE entity_id=a.item_id),(SELECT book_id FROM catalog_book_files WHERE entity_id=a.item_id),a.item_id)
+	rows, err := s.read().Query(`SELECT a.item_id,a.updated_at,COALESCE((SELECT show_id FROM catalog_episodes WHERE entity_id=a.item_id),(SELECT album_id FROM catalog_songs WHERE entity_id=a.item_id),(SELECT book_id FROM catalog_book_files WHERE entity_id=a.item_id),a.item_id),COALESCE((SELECT weight FROM rec_profile_signals signal WHERE signal.profile_id=a.profile_id AND signal.work_id=COALESCE((SELECT show_id FROM catalog_episodes WHERE entity_id=a.item_id),(SELECT album_id FROM catalog_songs WHERE entity_id=a.item_id),(SELECT book_id FROM catalog_book_files WHERE entity_id=a.item_id),a.item_id)),0)
 	 FROM progress_activity a INDEXED BY progress_home_profile_recent CROSS JOIN progress p ON p.profile_id=a.profile_id AND p.item_id=a.item_id
 	 WHERE a.profile_id=? AND a.state!='ended' AND a.updated_at<? AND p.completed=0 AND p.position>0
 	 AND p.position<?*1000*(SELECT max(x.duration) FROM catalog_asset_links l CROSS JOIN catalog_assets x ON x.id=l.asset_id WHERE l.entity_id=a.item_id)
@@ -310,11 +310,12 @@ func (s *Service) recAbandoned(profile string, now time.Time, values map[string]
 	for rows.Next() {
 		var item, work int64
 		var updated string
-		if err = rows.Scan(&item, &updated, &work); err != nil {
+		var storedWeight float64
+		if err = rows.Scan(&item, &updated, &work, &storedWeight); err != nil {
 			rows.Close()
 			return err
 		}
-		if t, e := time.Parse(time.RFC3339Nano, updated); e == nil {
+		if t, e := time.Parse(time.RFC3339Nano, updated); e == nil && storedWeight <= 0 {
 			list = append(list, abandoned{work, compactcatalog.UnixDays(t)})
 		}
 	}
@@ -322,25 +323,33 @@ func (s *Service) recAbandoned(profile string, now time.Time, values map[string]
 	if err = rows.Err(); err != nil {
 		return err
 	}
-	day := compactcatalog.UnixDays(now)
-	for _, a := range list {
-		stored, ok, err := compactcatalog.RecStored(s.Context(), s.read(), profile, a.work)
-		if err != nil {
-			return err
-		}
-		if ok && stored.Weight > 0 {
-			continue
-		}
-		facets, err := compactcatalog.RecWorkFacets(s.Context(), s.read(), a.work)
-		if err != nil {
-			return err
-		}
-		weight := recAbandonWeight * math.Exp2(-(day-a.at)/compactcatalog.RecLongHalfLife)
-		for _, f := range facets {
-			values[f] += weight
-		}
+	if len(list) == 0 {
+		return nil
 	}
-	return nil
+	day := compactcatalog.UnixDays(now)
+	contributions := make([][2]any, len(list))
+	for i, a := range list {
+		contributions[i] = [2]any{a.work, recAbandonWeight * math.Exp2(-(day-a.at)/compactcatalog.RecLongHalfLife)}
+	}
+	raw, err := json.Marshal(contributions)
+	if err != nil {
+		return err
+	}
+	facets, err := s.read().Query(`SELECT f.facet,json_extract(j.value,'$[1]') FROM json_each(?) j
+ CROSS JOIN catalog_rec_facets f ON f.entity_id=json_extract(j.value,'$[0]')`, string(raw))
+	if err != nil {
+		return err
+	}
+	defer facets.Close()
+	for facets.Next() {
+		var facet string
+		var weight float64
+		if err = facets.Scan(&facet, &weight); err != nil {
+			return err
+		}
+		values[facet] += weight
+	}
+	return facets.Err()
 }
 
 type recLibraries struct {
