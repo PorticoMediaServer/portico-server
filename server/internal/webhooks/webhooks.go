@@ -1,0 +1,659 @@
+// Package webhooks sends the owner's chosen events to the owner's chosen URLs.
+//
+// It is the local server's own doing: nothing here involves the Portico Account
+// service. An event becomes a row in webhook_deliveries (most are written by
+// triggers in the schema, in the transaction that made the change; a few are
+// emitted from Go). The dispatcher sends each row, signs it, retries with
+// backoff, and leaves the row behind as the delivery log.
+//
+// Secrets: a webhook's signing secret is shown when it is made or rotated and
+// never again; lists carry a hint. Neither the secret nor the URL is ever
+// written to a log line, an event or a payload.
+package webhooks
+
+import (
+	"context"
+	"crypto/rand"
+	"database/sql"
+	"encoding/base64"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"net/url"
+	"sort"
+	"strings"
+	"time"
+	"unicode"
+	"unicode/utf8"
+
+	"portico.local/server/internal/dbwork"
+)
+
+// Event types. The test event is sent only by "send test" and cannot be
+// subscribed to.
+const (
+	TitleAdded        = "title.added"
+	TitleUpdated      = "title.updated"
+	TitleRemoved      = "title.removed"
+	ScanStarted       = "scan.started"
+	ScanFinished      = "scan.finished"
+	PlaybackStarted   = "playback.started"
+	PlaybackPaused    = "playback.paused"
+	PlaybackResumed   = "playback.resumed"
+	PlaybackStopped   = "playback.stopped"
+	RecordingFinished = "recording.finished"
+	RecordingFailed   = "recording.failed"
+	MemberSignedIn    = "member.signed_in"
+	BackupSucceeded   = "backup.succeeded"
+	BackupFailed      = "backup.failed"
+	StorageLow        = "storage.low"
+	UpdateAvailable   = "update.available"
+	ServerStarted     = "server.started"
+	Test              = "webhook.test"
+)
+
+// Events is every type an owner may choose, in the order a console lists them.
+var Events = []string{
+	TitleAdded, TitleUpdated, TitleRemoved,
+	ScanStarted, ScanFinished,
+	PlaybackStarted, PlaybackPaused, PlaybackResumed, PlaybackStopped,
+	RecordingFinished, RecordingFailed,
+	MemberSignedIn,
+	BackupSucceeded, BackupFailed,
+	StorageLow, UpdateAvailable, ServerStarted,
+}
+
+const (
+	// MaxWebhooks bounds how many an owner may configure.
+	MaxWebhooks = 20
+	// MaxQueued is how many deliveries may wait for one webhook; the schema's
+	// fan-out trigger enforces the same number.
+	MaxQueued = 1000
+	// LogKept is how many finished deliveries are kept per webhook.
+	LogKept    = 200
+	maxURL     = 2048
+	maxName    = 80
+	secretSize = 32
+)
+
+var (
+	ErrInvalid  = errors.New("invalid webhook")
+	ErrCapacity = errors.New("too many webhooks")
+)
+
+// ValidationError names the fields a request got wrong.
+type ValidationError struct{ Fields []string }
+
+func (e *ValidationError) Error() string { return ErrInvalid.Error() }
+func (e *ValidationError) Unwrap() error { return ErrInvalid }
+
+// Webhook is one configured destination as it is listed.
+type Webhook struct {
+	ID      string   `json:"id"`
+	Name    string   `json:"name"`
+	URL     string   `json:"url"`
+	Events  []string `json:"events"`
+	Enabled bool     `json:"enabled"`
+	// SecretHint is the last characters of the signing secret.
+	SecretHint string `json:"secretHint"`
+	CreatedAt  string `json:"createdAt"`
+	UpdatedAt  string `json:"updatedAt"`
+	// Waiting is how many deliveries are queued. Failing is how many in a row
+	// could not be delivered; it returns to zero on the next success. Dropped
+	// counts events that arrived while the queue was full and were not kept.
+	Waiting int `json:"waiting"`
+	Failing int `json:"failing"`
+	Dropped int `json:"dropped"`
+}
+
+// Issued is the answer to creating a webhook or rotating its secret: the one
+// time the secret is shown.
+type Issued struct {
+	Webhook Webhook `json:"webhook"`
+	Secret  string  `json:"secret,omitempty"`
+}
+
+type List struct {
+	Items []Webhook `json:"items"`
+	// Events is every event type that can be chosen.
+	Events []string `json:"events"`
+	// Maximum is how many webhooks may exist.
+	Maximum int `json:"maximum"`
+}
+
+// Create is the body for a new webhook. Secret may be supplied (at least 16
+// characters); leave it out and the server makes one.
+type Create struct {
+	Name    string   `json:"name"`
+	URL     string   `json:"url"`
+	Events  []string `json:"events"`
+	Secret  string   `json:"secret,omitempty"`
+	Enabled *bool    `json:"enabled,omitempty"`
+}
+
+// Change is a partial edit: a field left out is left alone.
+type Change struct {
+	Name    *string   `json:"name,omitempty"`
+	URL     *string   `json:"url,omitempty"`
+	Events  *[]string `json:"events,omitempty"`
+	Enabled *bool     `json:"enabled,omitempty"`
+	// RotateSecret replaces the signing secret with a new one, which the answer
+	// shows once. Secret sets a chosen one instead.
+	RotateSecret bool   `json:"rotateSecret,omitempty"`
+	Secret       string `json:"secret,omitempty"`
+}
+
+// Delivery is one attempt history, as the delivery log lists it.
+type Delivery struct {
+	ID    string `json:"id"`
+	Event string `json:"event"`
+	// State is pending, delivered or failed (given up).
+	State       string `json:"state"`
+	Attempts    int    `json:"attempts"`
+	CreatedAt   string `json:"createdAt"`
+	FinishedAt  string `json:"finishedAt,omitempty"`
+	NextAttempt string `json:"nextAttemptAt,omitempty"`
+	// Status is the HTTP status of the last attempt, 0 when there was none.
+	Status     int    `json:"status"`
+	DurationMs int64  `json:"durationMs"`
+	Error      string `json:"error,omitempty"`
+}
+
+type DeliveryPage struct {
+	Items      []Delivery `json:"items"`
+	Limit      int        `json:"limit"`
+	NextCursor string     `json:"nextCursor,omitempty"`
+}
+
+// Authorize runs in the store's transaction: the caller's live authority.
+type Authorize func(context.Context, *sql.Tx) error
+
+type Store struct {
+	DB  *sql.DB
+	Now func() time.Time
+	// Wake, when set, tells the dispatcher there is something to send.
+	Wake func()
+}
+
+func New(db *sql.DB) *Store { return &Store{DB: db, Now: time.Now} }
+
+func (s *Store) now() int64 { return s.Now().UTC().UnixMilli() }
+
+func token(size int) string {
+	raw := make([]byte, size)
+	if _, err := rand.Read(raw); err != nil {
+		panic(err)
+	}
+	return base64.RawURLEncoding.EncodeToString(raw)
+}
+
+func identifier() string {
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		panic(err)
+	}
+	return hex.EncodeToString(raw)
+}
+
+func safeText(v string, max int) bool {
+	if v == "" || !utf8.ValidString(v) || utf8.RuneCountInString(v) > max {
+		return false
+	}
+	for _, r := range v {
+		if r < 0x20 || r == 0x7f || unicode.Is(unicode.Cf, r) {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidURL accepts an absolute http or https URL with a host. Credentials in
+// the URL are refused: they would be listed wherever the URL is. A private or
+// loopback address is the owner's to choose.
+func ValidURL(raw string) bool {
+	if raw == "" || len(raw) > maxURL || !utf8.ValidString(raw) || strings.ContainsAny(raw, " \t\r\n") {
+		return false
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "http" && parsed.Scheme != "https" || parsed.Hostname() == "" || parsed.User != nil || parsed.Fragment != "" || parsed.Opaque != "" {
+		return false
+	}
+	return true
+}
+
+func validSecret(secret string) bool {
+	if len(secret) < 16 || len(secret) > 128 {
+		return false
+	}
+	for _, r := range secret {
+		if r < 0x21 || r > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
+// normalizeEvents validates a chosen event list and returns it in catalogue
+// order without duplicates.
+func normalizeEvents(chosen []string) ([]string, bool) {
+	if len(chosen) == 0 || len(chosen) > len(Events) {
+		return nil, false
+	}
+	seen := map[string]bool{}
+	for _, event := range chosen {
+		known := false
+		for _, candidate := range Events {
+			known = known || candidate == event
+		}
+		if !known || seen[event] {
+			return nil, false
+		}
+		seen[event] = true
+	}
+	out := make([]string, 0, len(seen))
+	for _, event := range Events {
+		if seen[event] {
+			out = append(out, event)
+		}
+	}
+	return out, true
+}
+
+func packEvents(events []string) string { return "," + strings.Join(events, ",") + "," }
+func unpackEvents(packed string) []string {
+	out := []string{}
+	for _, event := range strings.Split(strings.Trim(packed, ","), ",") {
+		if event != "" {
+			out = append(out, event)
+		}
+	}
+	return out
+}
+
+func hint(secret string) string {
+	if len(secret) <= 4 {
+		return ""
+	}
+	return secret[len(secret)-4:]
+}
+
+func stamp(ms int64) string {
+	if ms <= 0 {
+		return ""
+	}
+	return time.UnixMilli(ms).UTC().Format(time.RFC3339)
+}
+
+func (s *Store) write(ctx context.Context, auth Authorize, fn func(*sql.Tx) error) error {
+	if s == nil || s.DB == nil {
+		return ErrInvalid
+	}
+	return dbwork.WithWriteTx(ctx, s.DB, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
+		if auth != nil {
+			if err := auth(ctx, tx); err != nil {
+				return err
+			}
+		}
+		return fn(tx)
+	})
+}
+
+const webhookColumns = `w.id,w.name,w.url,w.events,w.enabled,w.secret,w.created_ms,w.updated_ms,w.failures,w.dropped,(SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending')`
+
+func scanWebhook(row interface{ Scan(...any) error }) (Webhook, error) {
+	var w Webhook
+	var events, secret string
+	var created, updated int64
+	if err := row.Scan(&w.ID, &w.Name, &w.URL, &events, &w.Enabled, &secret, &created, &updated, &w.Failing, &w.Dropped, &w.Waiting); err != nil {
+		return w, err
+	}
+	w.Events, w.SecretHint, w.CreatedAt, w.UpdatedAt = unpackEvents(events), hint(secret), stamp(created), stamp(updated)
+	return w, nil
+}
+
+func (s *Store) List(ctx context.Context, auth Authorize) (List, error) {
+	out := List{Items: []Webhook{}, Events: append([]string{}, Events...), Maximum: MaxWebhooks}
+	if s == nil || s.DB == nil {
+		return out, ErrInvalid
+	}
+	gated, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return out, err
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	if auth != nil {
+		if err = auth(ctx, tx); err != nil {
+			return out, err
+		}
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT `+webhookColumns+` FROM webhooks w ORDER BY w.created_ms,w.id LIMIT ?`, MaxWebhooks)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		w, err := scanWebhook(rows)
+		if err != nil {
+			return List{Items: []Webhook{}, Events: out.Events, Maximum: MaxWebhooks}, err
+		}
+		out.Items = append(out.Items, w)
+	}
+	return out, rows.Err()
+}
+
+func (s *Store) Create(ctx context.Context, auth Authorize, q Create) (Issued, error) {
+	var out Issued
+	fields := []string{}
+	name := strings.TrimSpace(q.Name)
+	if !safeText(name, maxName) {
+		fields = append(fields, "name")
+	}
+	if !ValidURL(q.URL) {
+		fields = append(fields, "url")
+	}
+	events, ok := normalizeEvents(q.Events)
+	if !ok {
+		fields = append(fields, "events")
+	}
+	secret := q.Secret
+	if secret == "" {
+		secret = "whsec_" + token(secretSize)
+	} else if !validSecret(secret) {
+		fields = append(fields, "secret")
+	}
+	if len(fields) > 0 {
+		return out, &ValidationError{fields}
+	}
+	enabled := q.Enabled == nil || *q.Enabled
+	id := identifier()
+	err := s.write(ctx, auth, func(tx *sql.Tx) error {
+		var count int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM webhooks`).Scan(&count); err != nil {
+			return err
+		}
+		if count >= MaxWebhooks {
+			return ErrCapacity
+		}
+		now := s.now()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO webhooks(id,name,url,secret,events,enabled,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?)`, id, name, q.URL, secret, packEvents(events), enabled, now, now); err != nil {
+			return err
+		}
+		var err error
+		out.Webhook, err = scanWebhook(tx.QueryRowContext(ctx, `SELECT `+webhookColumns+` FROM webhooks w WHERE w.id=?`, id))
+		return err
+	})
+	if err != nil {
+		return Issued{}, err
+	}
+	out.Secret = secret
+	return out, nil
+}
+
+func (s *Store) Update(ctx context.Context, auth Authorize, id string, q Change) (Issued, error) {
+	var out Issued
+	fields := []string{}
+	if q.Name != nil {
+		trimmed := strings.TrimSpace(*q.Name)
+		q.Name = &trimmed
+		if !safeText(trimmed, maxName) {
+			fields = append(fields, "name")
+		}
+	}
+	if q.URL != nil && !ValidURL(*q.URL) {
+		fields = append(fields, "url")
+	}
+	var events []string
+	if q.Events != nil {
+		var ok bool
+		if events, ok = normalizeEvents(*q.Events); !ok {
+			fields = append(fields, "events")
+		}
+	}
+	secret := ""
+	switch {
+	case q.Secret != "" && q.RotateSecret:
+		fields = append(fields, "secret")
+	case q.Secret != "":
+		if secret = q.Secret; !validSecret(secret) {
+			fields = append(fields, "secret")
+		}
+	case q.RotateSecret:
+		secret = "whsec_" + token(secretSize)
+	}
+	if len(fields) > 0 {
+		return out, &ValidationError{fields}
+	}
+	err := s.write(ctx, auth, func(tx *sql.Tx) error {
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM webhooks WHERE id=?`, id).Scan(&exists); err != nil {
+			return err
+		}
+		now := s.now()
+		if q.Name != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET name=?,updated_ms=?,revision=revision+1 WHERE id=?`, *q.Name, now, id); err != nil {
+				return err
+			}
+		}
+		if q.URL != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET url=?,failures=0,updated_ms=?,revision=revision+1 WHERE id=?`, *q.URL, now, id); err != nil {
+				return err
+			}
+		}
+		if q.Events != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET events=?,updated_ms=?,revision=revision+1 WHERE id=?`, packEvents(events), now, id); err != nil {
+				return err
+			}
+		}
+		if q.Enabled != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET enabled=?,failures=0,updated_ms=?,revision=revision+1 WHERE id=?`, *q.Enabled, now, id); err != nil {
+				return err
+			}
+			if !*q.Enabled {
+				// What was waiting is not sent later as stale news.
+				if _, err := tx.ExecContext(ctx, `UPDATE webhook_deliveries SET state='failed',finished_ms=?,error='webhook_turned_off' WHERE webhook_id=? AND state='pending'`, now, id); err != nil {
+					return err
+				}
+			}
+		}
+		if secret != "" {
+			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET secret=?,updated_ms=?,revision=revision+1 WHERE id=?`, secret, now, id); err != nil {
+				return err
+			}
+		}
+		var err error
+		out.Webhook, err = scanWebhook(tx.QueryRowContext(ctx, `SELECT `+webhookColumns+` FROM webhooks w WHERE w.id=?`, id))
+		return err
+	})
+	if err != nil {
+		return Issued{}, err
+	}
+	// Only a rotation shows a secret; a secret the caller chose is theirs already.
+	if q.RotateSecret {
+		out.Secret = secret
+	}
+	s.wake()
+	return out, nil
+}
+
+// Delete removes a webhook with its queue and its log. Deleting one that is
+// not there is sql.ErrNoRows.
+func (s *Store) Delete(ctx context.Context, auth Authorize, id string) error {
+	return s.write(ctx, auth, func(tx *sql.Tx) error {
+		result, err := tx.ExecContext(ctx, `DELETE FROM webhooks WHERE id=?`, id)
+		if err != nil {
+			return err
+		}
+		if n, _ := result.RowsAffected(); n == 0 {
+			return sql.ErrNoRows
+		}
+		return nil
+	})
+}
+
+func (s *Store) wake() {
+	if s != nil && s.Wake != nil {
+		s.Wake()
+	}
+}
+
+func scanDelivery(row interface{ Scan(...any) error }) (Delivery, int64, error) {
+	var d Delivery
+	var created, finished, next int64
+	if err := row.Scan(&d.ID, &d.Event, &d.State, &d.Attempts, &created, &finished, &next, &d.Status, &d.DurationMs, &d.Error); err != nil {
+		return d, 0, err
+	}
+	d.CreatedAt, d.FinishedAt = stamp(created), stamp(finished)
+	if d.State == "pending" {
+		d.NextAttempt = stamp(next)
+	}
+	return d, created, nil
+}
+
+const deliveryColumns = `id,type,state,attempts,created_ms,finished_ms,next_attempt_ms,status,duration_ms,error`
+
+// Deliveries is the delivery log of one webhook, newest first.
+func (s *Store) Deliveries(ctx context.Context, auth Authorize, id, cursor string, limit int) (DeliveryPage, error) {
+	out := DeliveryPage{Items: []Delivery{}}
+	if limit == 0 {
+		limit = 50
+	}
+	if limit < 1 || limit > 100 {
+		return out, &ValidationError{[]string{"limit"}}
+	}
+	out.Limit = limit
+	var beforeMs int64
+	beforeID := ""
+	if cursor != "" {
+		raw, err := base64.RawURLEncoding.DecodeString(cursor)
+		var at struct {
+			Created int64  `json:"c"`
+			ID      string `json:"i"`
+		}
+		if err != nil || len(raw) > 256 || json.Unmarshal(raw, &at) != nil || at.Created <= 0 || at.ID == "" {
+			return out, &ValidationError{[]string{"cursor"}}
+		}
+		beforeMs, beforeID = at.Created, at.ID
+	}
+	gated, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return out, err
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	if auth != nil {
+		if err = auth(ctx, tx); err != nil {
+			return out, err
+		}
+	}
+	var exists int
+	if err = tx.QueryRowContext(ctx, `SELECT 1 FROM webhooks WHERE id=?`, id).Scan(&exists); err != nil {
+		return out, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT `+deliveryColumns+` FROM webhook_deliveries WHERE webhook_id=? AND (?=0 OR (created_ms,id)<(?,?)) ORDER BY created_ms DESC,id DESC LIMIT ?`, id, beforeMs, beforeMs, beforeID, limit+1)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	var lastCreated int64
+	for rows.Next() {
+		d, created, err := scanDelivery(rows)
+		if err != nil {
+			return DeliveryPage{Items: []Delivery{}}, err
+		}
+		if len(out.Items) == limit {
+			raw, _ := json.Marshal(map[string]any{"c": lastCreated, "i": out.Items[limit-1].ID})
+			out.NextCursor = base64.RawURLEncoding.EncodeToString(raw)
+			break
+		}
+		out.Items, lastCreated = append(out.Items, d), created
+	}
+	return out, rows.Err()
+}
+
+// SendTest queues a test event for one webhook, whether or not it is enabled
+// or subscribed to anything, and returns the delivery to look for in the log.
+func (s *Store) SendTest(ctx context.Context, auth Authorize, id string) (Delivery, error) {
+	var out Delivery
+	err := s.write(ctx, auth, func(tx *sql.Tx) error {
+		var exists int
+		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM webhooks WHERE id=?`, id).Scan(&exists); err != nil {
+			return err
+		}
+		var waiting int
+		if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM webhook_deliveries WHERE webhook_id=? AND state='pending' AND type=?`, id, Test).Scan(&waiting); err != nil {
+			return err
+		}
+		if waiting >= 5 {
+			return ErrCapacity
+		}
+		delivery, now := identifier(), s.now()
+		if _, err := tx.ExecContext(ctx, `INSERT INTO webhook_deliveries(id,webhook_id,type,data,next_attempt_ms,created_ms) VALUES(?,?,?,?,?,?)`, delivery, id, Test, `{"message":"This is a test from Portico."}`, now, now); err != nil {
+			return err
+		}
+		var err error
+		out, _, err = scanDelivery(tx.QueryRowContext(ctx, `SELECT `+deliveryColumns+` FROM webhook_deliveries WHERE id=?`, delivery))
+		return err
+	})
+	if err != nil {
+		return Delivery{}, err
+	}
+	s.wake()
+	return out, nil
+}
+
+// Emit records an event that did not come from a table change. data must
+// marshal to a JSON object and must never contain a secret. subject, when set,
+// folds repeats of the same thing that have not been sent yet into one.
+func (s *Store) Emit(ctx context.Context, event, subject string, data map[string]any) error {
+	if s == nil || s.DB == nil {
+		return nil
+	}
+	known := false
+	for _, candidate := range Events {
+		known = known || candidate == event
+	}
+	if !known {
+		return ErrInvalid
+	}
+	if data == nil {
+		data = map[string]any{}
+	}
+	raw, err := json.Marshal(data)
+	if err != nil || len(raw) > 16<<10 {
+		return ErrInvalid
+	}
+	_, err = dbwork.ExecWrite(ctx, s.DB, dbwork.ClassMaintenance, `INSERT INTO webhook_events(type,subject,data) VALUES(?,?,?)`, event, subject, string(raw))
+	if err == nil {
+		s.wake()
+	}
+	return err
+}
+
+// subscribed lists the events at least one enabled webhook wants, for callers
+// that would otherwise do work to build an event nobody receives.
+func (s *Store) Subscribed(ctx context.Context) (map[string]bool, error) {
+	out := map[string]bool{}
+	rows, err := dbwork.Query(ctx, s.DB, `SELECT events FROM webhooks WHERE enabled=1`)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var packed string
+		if err = rows.Scan(&packed); err != nil {
+			return out, err
+		}
+		for _, event := range unpackEvents(packed) {
+			out[event] = true
+		}
+	}
+	return out, rows.Err()
+}
+
+// SortedEvents returns the catalogue sorted by name, for documentation tests.
+func SortedEvents() []string {
+	out := append([]string{}, Events...)
+	sort.Strings(out)
+	return out
+}
