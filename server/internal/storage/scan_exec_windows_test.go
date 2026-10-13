@@ -5,13 +5,16 @@ package storage
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"golang.org/x/sys/windows"
 )
 
-func TestLockedScanInputExcludesReplacementAndAncestorRename(t *testing.T) {
+func TestLockedScanInputExcludesReplacement(t *testing.T) {
 	parent := t.TempDir()
 	root := filepath.Join(parent, "library")
 	if err := os.Mkdir(root, 0700); err != nil {
@@ -40,9 +43,6 @@ func TestLockedScanInputExcludesReplacementAndAncestorRename(t *testing.T) {
 	if err := os.Rename(path, path+".old"); err == nil {
 		t.Fatal("file replacement was admitted")
 	}
-	if err := os.Rename(root, root+".old"); err == nil {
-		t.Fatal("ancestor rename was admitted")
-	}
 	a, _, err := windowsFileBinding(retained)
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +50,67 @@ func TestLockedScanInputExcludesReplacementAndAncestorRename(t *testing.T) {
 	b, _, err := windowsFileBinding(locked)
 	if err != nil || a != b {
 		t.Fatalf("locked handle is not admitted object: %q %q %v", a, b, err)
+	}
+}
+
+func TestLockedScanInputAllowsAncestorWriters(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "media.mkv")
+	if err := os.WriteFile(path, []byte("admitted"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	_, _, closeInput, err := lockWindowsMediaInput(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeInput()
+	name, err := windows.UTF16PtrFromString(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handle, err := windows.CreateFile(name, windows.GENERIC_WRITE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if err != nil {
+		t.Fatalf("probe locked an ancestor against writers: %v", err)
+	}
+	windows.CloseHandle(handle)
+}
+
+func TestLockedScanInputRecheckRejectsChangedIdentityOrRevision(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "media.mkv")
+	replacement := filepath.Join(directory, "replacement.mkv")
+	for _, name := range []string{path, replacement} {
+		if err := os.WriteFile(name, []byte("same size"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer file.Close()
+	locked, name, closeInput, err := lockWindowsMediaInput(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeInput()
+	object, token, err := windowsFileBinding(locked)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkWindowsMediaInput(locked, name, object, token); err != nil {
+		t.Fatalf("unchanged input rejected: %v", err)
+	}
+	if err := checkWindowsMediaInput(locked, replacement, object, token); !errors.Is(err, ErrObservedSourceLost) {
+		t.Fatalf("replacement path accepted: %v", err)
+	}
+	if err := checkWindowsMediaInput(locked, name, object, token+"0"); !errors.Is(err, ErrObservedSourceLost) {
+		t.Fatalf("changed revision accepted: %v", err)
 	}
 }
 
