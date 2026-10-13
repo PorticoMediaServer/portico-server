@@ -7,6 +7,8 @@ import {useI18n, type MessageId} from '../../app/i18n';
 import {problem, useConsole} from '../../admin/console';
 import {operationId} from '../server/operation-ids';
 import {Button, IconButton, Input, Notice, Select, SettingsRow, Switch} from '../../ui';
+import {useFreshDocument} from '../../app/freshness';
+import {dependsOn} from '@core/freshness-hub.ts';
 import s from './Settings.module.css';
 
 /**
@@ -15,7 +17,9 @@ import s from './Settings.module.css';
  * at once; everything on the page that edits the same document shares the one draft.
  */
 type AnyForm = DraftForm<any, any>;
-type PageForms = Readonly<{set: FormSet; deps: ServerFormDeps; form: (id: ServerFormId) => AnyForm}>;
+type PageForms = Readonly<{set: FormSet; deps: ServerFormDeps; form: (id: ServerFormId) => AnyForm; /** The forms this page has asked for so far. */ loaded: () => readonly AnyForm[]}>;
+// Settings saved somewhere else (another tab, an API key, the phone) arrive here without a reload.
+const SERVER_SETTINGS = [dependsOn.settings('server')];
 const Ctx = createContext<PageForms | null>(null);
 
 export function ServerFormsProvider({children}: {children: React.ReactNode}) {
@@ -28,6 +32,7 @@ export function ServerFormsProvider({children}: {children: React.ReactNode}) {
     const made = new Map<ServerFormId, AnyForm>();
     return {
       set, deps,
+      loaded: () => [...made.values()],
       form: id => {
         let form = made.get(id);
         if (!form) {
@@ -40,6 +45,8 @@ export function ServerFormsProvider({children}: {children: React.ReactNode}) {
       },
     };
   }, [api, client, serverId]);
+  // A form being edited keeps what was typed; only what the server has moves under it.
+  useFreshDocument(SERVER_SETTINGS, async () => { await Promise.all(value.loaded().map(form => form.load())); });
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 

@@ -30,27 +30,17 @@ test('a library\'s folders are read one by one, and an unreadable one is left ou
   assert.deepEqual(folders.map(f => f.id), ['s1', 's2']);
 });
 
-test('finding a file reads the list a page at a time until the file turns up', async () => {
+test('finding a file asks the library for that one file', async () => {
   const calls: string[] = [];
-  const progress: number[] = [];
-  const found = await findLibraryFile(api(path => {
-    const cursor = new URL(path, 'http://x').searchParams.get('cursor');
-    if (!cursor) return {items: [row(1), row(2)], nextCursor: 'c1'};
-    if (cursor === 'c1') return {items: [row(3), row(4, 'wanted')], nextCursor: 'c2'};
-    throw new Error('read past the file');
-  }, calls), 'films', 'wanted', {folderId: 'folder-1', onProgress: n => progress.push(n)});
+  const found = await findLibraryFile(api(() => ({items: [row(3), row(4, 'wanted')]}), calls), 'films', 'wanted', {folderId: 'folder-1'});
   assert.deepEqual(found, {objectId: 'object-4', revision: 'rev-4'});
-  assert.equal(calls.length, 2);
-  assert.match(calls[0]!, /^GET \/v1\/admin\/libraries\/films\/inventory\?limit=40&state=available&sourceId=folder-1$/);
-  assert.match(calls[1]!, /cursor=c1/);
-  assert.deepEqual(progress, [2]);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!, /^GET \/v1\/admin\/libraries\/films\/inventory\?limit=40&assetId=wanted&state=available&sourceId=folder-1$/);
 });
 
-test('a file that is not in the list is not found, and a list that repeats itself ends', async () => {
-  assert.equal(await findLibraryFile(api(() => ({items: [row(1)], nextCursor: ''})), 'films', 'wanted'), undefined);
-  let reads = 0;
-  assert.equal(await findLibraryFile(api(() => { reads++; return {items: [row(reads)], nextCursor: 'same'}; }), 'films', 'wanted'), undefined);
-  assert.equal(reads, 2);
+test('a file the library does not list is not found', async () => {
+  assert.equal(await findLibraryFile(api(() => ({items: [row(1)]})), 'films', 'wanted'), undefined);
+  assert.equal(await findLibraryFile(api(() => ({items: []})), 'films', 'wanted'), undefined);
 });
 
 test('an answer that is not a file list is refused, and a stop is passed on', async () => {

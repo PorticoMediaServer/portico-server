@@ -136,7 +136,8 @@ export function DetailScreen() {
       case 'editMetadata': { const target = repairTargetFor(entryOf(item)); if (target) editor?.open({targets: [target], titles: [item.title], onSaved: () => void retry()}); break; }
       case 'addToPlaylist': openOrganise('playlist'); break;
       case 'addToCollection': openOrganise('collection'); break;
-      case 'download': if (play?.playback) downloads.ask({target: {mediaId: play.playback.itemId}, title: item.title}); break;
+      // A version chosen beside Play is the one that is downloaded.
+      case 'download': if (play?.playback) downloads.ask({target: {mediaId: play.playback.itemId, ...(choice.choices?.versionId ? {versionId: choice.choices.versionId} : {})}, title: item.title}); break;
       case 'playNext': case 'addToQueue': {
         const next = id === 'playNext';
         if (play?.playback && queue.current) void queue.current.enqueue(queueItemInput(play.playback.itemId), next).then(() => setOrganiseNotice(t(next ? 'entry.playingNext' : 'entry.addedToQueue')), e => setOrganiseNotice(errorText(e, 'generic')));
