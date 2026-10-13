@@ -420,6 +420,9 @@ const serverPages: readonly AuthoredPage[] = [
       on('runtime', 'directStreamRemux', 'settings.server.repackage', 'settings.server.repackageHelp'),
       setting('runtime', 'planningPolicy', 'settings.server.planning', {type: 'choice', choices: choices('settings.server.planning', ['maximum_fidelity', 'maximum_compatibility', 'minimize_server_work'])}, {help: 'settings.server.planningHelp'}),
       setting('runtime', 'temporaryDirectory', 'settings.server.tempFolder', {type: 'text', mono: true}, {help: 'settings.server.tempFolderHelp'}),
+      // Shown in GB; stored in MiB.
+      setting('runtime', 'sessionStorageMiB', 'settings.server.sessionSpace', {type: 'number', min: 1, max: 1024, unit: 'settings.unit.gb', scale: 1024}, {help: 'settings.server.sessionSpaceHelp'}),
+      setting('runtime', 'ffmpegPath', 'settings.server.ffmpegPath', {type: 'text', mono: true, example: '/usr/local/bin/ffmpeg'}, {help: 'settings.server.ffmpegOwnHelp'}),
     ]},
     {id: 'capacity', title: 'web.transcoding.capacity', description: 'web.transcoding.capacityLede', rows: [
       setting('runtime', 'serverCap', 'web.transcoding.serverCap', {type: 'number', min: 1, max: 1000000, empty: unlimited}, {help: 'web.transcoding.serverCapHelp'}),

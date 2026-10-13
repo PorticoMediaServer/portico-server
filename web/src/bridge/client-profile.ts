@@ -1,5 +1,6 @@
 import {browserConfigCheck, probeAudioDecode} from './audio/capabilities';
-import {probeWebProfile, type CapabilityDocument, type DecodingAnswer, type WebProbeEnvironment} from '@core/client-profile.ts';
+import {probeWebProfile, withViewerSettings, type CapabilityDocument, type DecodingAnswer, type WebProbeEnvironment} from '@core/client-profile.ts';
+import {currentPlaybackFixes, onPlaybackFixesChanged} from './playback-fixes';
 import {CapabilityPublisher} from '@core/playback-v1/options.ts';
 import {localV1Http} from '@core/playback-v1/local-http.ts';
 import type {HttpLocalApi} from '@core/index.ts';
@@ -59,6 +60,10 @@ let asked: Promise<CapabilityDocument> | undefined;
  * It carries what the music engine decodes on the device (`audioDecode`, §18.1): pairs that passed
  * the §18.8 fixtures on this engine and that `AudioDecoder` confirms here. */
 export function browserClientProfile(fresh = false): Promise<CapabilityDocument> {
+  // The viewer's own switches for when detection is wrong travel with the document.
+  return probedProfile(fresh).then(profile => withViewerSettings(profile, {overrides: currentPlaybackFixes()}));
+}
+function probedProfile(fresh: boolean): Promise<CapabilityDocument> {
   if (fresh || !asked) asked = Promise.all([probeWebProfile(environment()), probeAudioDecode(browserConfigCheck()).catch(() => [])])
     // What the player draws itself (styled and image subtitles) is declared in one place: `player/subtitles/declaration.ts`.
     .then(([profile, audioDecode]): CapabilityDocument => declareSubtitleRendering({...profile, audioDecode: audioDecode.map(({sampleRates, containers, ...a}) => ({...a, containers: [...containers], ...(sampleRates ? {sampleRates: [...sampleRates]} : {})}))}));
@@ -81,5 +86,7 @@ export function keepBrowserProfilePublished(api: Api, signIn: string): () => voi
   const hdr = (() => { try { return matchMedia('(dynamic-range: high)'); } catch { return undefined; } })();
   hdr?.addEventListener?.('change', changed);
   navigator.mediaDevices?.addEventListener?.('devicechange', changed);
-  return () => { stopped = true; hdr?.removeEventListener?.('change', changed); navigator.mediaDevices?.removeEventListener?.('devicechange', changed); };
+  // A switch changes only what is stamped on the document, so the probe is not asked again.
+  const offFixes = onPlaybackFixesChanged(() => publish(false));
+  return () => { stopped = true; offFixes(); hdr?.removeEventListener?.('change', changed); navigator.mediaDevices?.removeEventListener?.('devicechange', changed); };
 }
