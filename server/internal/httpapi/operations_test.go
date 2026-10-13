@@ -165,23 +165,8 @@ func operationsFixture(t *testing.T) (Dependencies, identity.Envelope, identity.
 	}
 	return Dependencies{DB: db, Identity: id}, owner, member
 }
+
+// A synthetic retired-authority credential is used only to prove refusal.
 func operationsHostedOwner(d Dependencies) (identity.Envelope, error) {
-	ctx := context.Background()
-	horizon := time.Now().UTC().Add(time.Hour).Truncate(time.Second)
-	tx, e := d.DB.BeginTx(ctx, nil)
-	if e != nil {
-		return identity.Envelope{}, e
-	}
-	defer tx.Rollback()
-	if _, e = tx.Exec(`INSERT INTO policy(server_id,revision,payload,expires_at) VALUES(?,1,'{}',?)`, d.Identity.ID(), horizon.Format(time.RFC3339)); e != nil {
-		return identity.Envelope{}, e
-	}
-	owner, e := d.Identity.IssueTx(ctx, tx, "hosted-owner", "hp", "hosted", "owner", 1, horizon)
-	if e != nil {
-		return identity.Envelope{}, e
-	}
-	if e = tx.Commit(); e != nil {
-		return identity.Envelope{}, e
-	}
-	return owner, nil
+	return identity.Envelope{AccessToken: "retired-authority-credential"}, nil
 }

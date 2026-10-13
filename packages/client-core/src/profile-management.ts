@@ -154,3 +154,9 @@ export class ManagedProfilesClient {
  }
  async deletionStatus(id:string,signal?:AbortSignal):Promise<ProfileDeletion>{if(this.scope.authority!=='hosted'||!text(id,128))invalid();const raw=await this.api.request<ProfileDeletion>('/v1/account/profile-deletions/'+encodeURIComponent(id),'GET',undefined,signal);if(raw.id!==id)invalid();return raw;}
 }
+
+/** Retire a temporary account sign-in only after a distinct viewer family was accepted.
+ * A direct sign-in may already be the viewer session, and deleting that bearer signs the viewer out. */
+export function shouldRetireAccountSession(account:Pick<LocalSession,'accessToken'|'sessionFamilyId'>|undefined,viewer:Pick<LocalSession,'accessToken'|'sessionFamilyId'>):boolean {
+ return !!account && !!account.accessToken && !!account.sessionFamilyId && !!viewer.sessionFamilyId && account.accessToken!==viewer.accessToken && account.sessionFamilyId!==viewer.sessionFamilyId;
+}

@@ -35,7 +35,7 @@ func TestDeviceRefreshRotatesAccessAndRefreshTogether(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := Token()
-	second, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request, nil)
+	second, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -48,14 +48,14 @@ func TestDeviceRefreshRotatesAccessAndRefreshTogether(t *testing.T) {
 	if _, err = s.Authenticate(second.AccessToken); err != nil {
 		t.Fatal("successor access refused", err)
 	}
-	replayed, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request, nil)
+	replayed, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request)
 	if err != nil || replayed.AccessToken != second.AccessToken || replayed.RefreshToken != second.RefreshToken {
 		t.Fatal("retry did not return exact committed credentials", err)
 	}
-	if _, err = s.RefreshSession(context.Background(), second.RefreshToken, Token(), Token(), nil); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.RefreshSession(context.Background(), second.RefreshToken, Token(), Token()); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("refresh accepted another installation", err)
 	}
-	if _, err = s.RefreshSession(context.Background(), first.RefreshToken, installation, Token(), nil); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.RefreshSession(context.Background(), first.RefreshToken, installation, Token()); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("predecessor accepted with a different request", err)
 	}
 	if _, err = s.Authenticate(second.AccessToken); !errors.Is(err, ErrUnauthorized) {
@@ -65,7 +65,7 @@ func TestDeviceRefreshRotatesAccessAndRefreshTogether(t *testing.T) {
 	if err = db.QueryRow(`SELECT revoked_reason FROM authorization_session_families WHERE id=?`, first.SessionFamilyID).Scan(&reuseReason); err != nil || reuseReason != string(RevokedRefreshReuse) {
 		t.Fatalf("refresh reuse reason %q: %v", reuseReason, err)
 	}
-	if _, err = s.RefreshSession(context.Background(), second.RefreshToken, installation, Token(), nil); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.RefreshSession(context.Background(), second.RefreshToken, installation, Token()); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("stolen predecessor did not revoke successor refresh", err)
 	}
 	if _, err = db.Exec(`UPDATE identity_devices SET approval_state='denied' WHERE id=?`, first.DeviceID); err != nil {
@@ -74,7 +74,7 @@ func TestDeviceRefreshRotatesAccessAndRefreshTogether(t *testing.T) {
 	if _, err = s.Authenticate(second.AccessToken); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("denied device kept access", err)
 	}
-	if _, err = s.RefreshSession(context.Background(), second.RefreshToken, installation, Token(), nil); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.RefreshSession(context.Background(), second.RefreshToken, installation, Token()); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("denied device refreshed", err)
 	}
 }
@@ -112,7 +112,7 @@ func TestRefreshStolenPredecessorRaceRevokesFamily(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			results[i].out, results[i].err = s.RefreshSession(context.Background(), first.RefreshToken, installation, requests[i], nil)
+			results[i].out, results[i].err = s.RefreshSession(context.Background(), first.RefreshToken, installation, requests[i])
 		}(i)
 	}
 	wg.Wait()
@@ -135,7 +135,7 @@ func TestRefreshStolenPredecessorRaceRevokesFamily(t *testing.T) {
 func TestExpiredRefreshReceiptPrunesWithoutLosingReuseDetection(t *testing.T) {
 	s, db, _ := familyFixture(t)
 	first := issueFamily(t, s)
-	second, err := s.RefreshSession(context.Background(), first.RefreshToken, first.InstallationID, Token(), nil)
+	second, err := s.RefreshSession(context.Background(), first.RefreshToken, first.InstallationID, Token())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,7 +163,7 @@ func TestExpiredRefreshReceiptPrunesWithoutLosingReuseDetection(t *testing.T) {
 	if receipts != 0 || retired != 0 || marker != 1 {
 		t.Fatalf("prune state: receipt=%d token=%d marker=%d", receipts, retired, marker)
 	}
-	if _, err = s.RefreshSession(context.Background(), first.RefreshToken, first.InstallationID, Token(), nil); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.RefreshSession(context.Background(), first.RefreshToken, first.InstallationID, Token()); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("pruned predecessor did not revoke: %v", err)
 	}
 	if _, err = s.Authenticate(second.AccessToken); !errors.Is(err, ErrUnauthorized) {
@@ -180,7 +180,7 @@ func TestExpiredRefreshReceiptPrunesWithoutLosingReuseDetection(t *testing.T) {
 func TestExpiredFamilyPrunesRefreshPredecessorWithoutRevocation(t *testing.T) {
 	s, db, _ := familyFixture(t)
 	first := issueFamily(t, s)
-	if _, err := s.RefreshSession(context.Background(), first.RefreshToken, first.InstallationID, Token(), nil); err != nil {
+	if _, err := s.RefreshSession(context.Background(), first.RefreshToken, first.InstallationID, Token()); err != nil {
 		t.Fatal(err)
 	}
 	var before int
@@ -233,7 +233,7 @@ func TestAccountScopedSessionRefreshesWithoutGrantingMedia(t *testing.T) {
 	if _, err = s.Authenticate(selected.Session.AccessToken); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("account session gained viewer authority", err)
 	}
-	rotated, err := s.RefreshSession(ctx, selected.Session.RefreshToken, selected.InstallationID, Token(), nil)
+	rotated, err := s.RefreshSession(ctx, selected.Session.RefreshToken, selected.InstallationID, Token())
 	if err != nil || rotated.Viewer.Role != "account" || rotated.AccessToken == selected.Session.AccessToken {
 		t.Fatal("account session did not rotate", err)
 	}
@@ -271,7 +271,7 @@ func TestRefreshReceiptOutlivesAnOutageUntilTheSuccessorIsUsed(t *testing.T) {
 		t.Fatal(err)
 	}
 	request := Token()
-	second, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request, nil)
+	second, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -282,15 +282,15 @@ func TestRefreshReceiptOutlivesAnOutageUntilTheSuccessorIsUsed(t *testing.T) {
 	if expiry, e := familyTime(until); e != nil || !expiry.After(time.Now().Add(time.Hour)) {
 		t.Fatal("receipt expires too soon to cover an outage", until, e)
 	}
-	replayed, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request, nil)
+	replayed, err := s.RefreshSession(context.Background(), first.RefreshToken, installation, request)
 	if err != nil || replayed.RefreshToken != second.RefreshToken || replayed.AccessToken != second.AccessToken {
 		t.Fatal("lost answer was not replayed exactly", err)
 	}
-	third, err := s.RefreshSession(context.Background(), second.RefreshToken, installation, Token(), nil)
+	third, err := s.RefreshSession(context.Background(), second.RefreshToken, installation, Token())
 	if err != nil {
 		t.Fatal("successor refresh refused", err)
 	}
-	if _, err = s.RefreshSession(context.Background(), first.RefreshToken, installation, request, nil); !errors.Is(err, ErrUnauthorized) {
+	if _, err = s.RefreshSession(context.Background(), first.RefreshToken, installation, request); !errors.Is(err, ErrUnauthorized) {
 		t.Fatal("predecessor replay accepted after the successor was used", err)
 	}
 	if _, err = s.Authenticate(third.AccessToken); !errors.Is(err, ErrUnauthorized) {

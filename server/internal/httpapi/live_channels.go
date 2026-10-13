@@ -22,7 +22,7 @@ import (
 // Source administration requires a current server owner. Consumers use
 // current identity plus the cached server membership policy.
 func channelOwner(p identity.Principal) bool {
-	return p.Role == "owner" && (p.Authority == "local" || p.Authority == "hosted")
+	return p.Role == "owner" && p.Authority == "local"
 }
 func channelSubject(p identity.Principal) livechannels.Owner {
 	return livechannels.Owner{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}

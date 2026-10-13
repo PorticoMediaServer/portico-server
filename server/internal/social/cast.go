@@ -413,22 +413,10 @@ func (s *Store) castHorizonTx(ctx context.Context, tx *sql.Tx, id castIdentity) 
 	switch id.authority {
 	case "local":
 		return time.Time{}, nil
-	case "hosted":
-		if s.HostedHorizon == nil {
-			return time.Time{}, errCastHostedUnavailable
-		}
-		principal := identity.Principal{Viewer: identity.Viewer{AccountID: id.account, ProfileID: id.profile, ServerID: s.Identity.ID(), Authority: id.authority, Role: id.role}, Epoch: id.epoch}
-		horizon, e := s.HostedHorizon(ctx, tx, principal)
-		if errors.Is(e, identity.ErrUnauthorized) {
-			return time.Time{}, errCastAccessEnded
-		}
-		return horizon, e
 	default:
 		return time.Time{}, errCastAccessEnded
 	}
 }
-
-var errCastHostedUnavailable = &Fault{Code: "cast_unavailable", Status: 503, Message: "Cast isn't available for Portico Accounts on this server right now.", Retryable: true}
 
 // CastReconnect renews a paired receiver after a restart. The device token is
 // rotated on every call, so a captured token is useful for one renewal and the

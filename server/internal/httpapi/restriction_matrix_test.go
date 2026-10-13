@@ -167,7 +167,7 @@ func TestRestrictedProfileRouteMatrix(t *testing.T) {
 // refusedStatus is the answer to a refused request (CD-51): 401 only without
 // a credential, 403 for a valid session that may not do this.
 func refusedStatus(token string) int {
-	if token == "" {
+	if token == "" || token == "retired-authority-credential" {
 		return 401
 	}
 	return 403

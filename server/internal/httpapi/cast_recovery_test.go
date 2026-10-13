@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"database/sql"
 	"regexp"
 	"strings"
 	"testing"
@@ -140,17 +139,12 @@ func TestCastIssuanceFailureKeepsTheCode(t *testing.T) {
 
 	store := f.d.Social()
 	hosted := identity.Principal{Viewer: identity.Viewer{AccountID: "hosted-account", ProfileID: "hosted-profile", ServerID: f.owner.Viewer.ServerID, Authority: "hosted", Role: "member"}, Epoch: 1}
-	store.HostedHorizon = nil
+
 	var fault *social.Fault
-	if _, e := store.CastBootstrapStart(context.Background(), hosted, social.CastBootstrapRequest{ProtocolVersion: social.Protocol}); !asFault(e, &fault) || fault.Code != "cast_unavailable" {
-		t.Fatalf("hosted bootstrap without a verifier: %v", e)
-	}
-	store.HostedHorizon = func(context.Context, *sql.Tx, identity.Principal) (time.Time, error) {
-		return time.Time{}, identity.ErrUnauthorized
-	}
 	if _, e := store.CastBootstrapStart(context.Background(), hosted, social.CastBootstrapRequest{ProtocolVersion: social.Protocol}); !asFault(e, &fault) || fault.Code != "cast_access_ended" {
-		t.Fatalf("hosted bootstrap outside policy: %v", e)
+		t.Fatalf("retired authority could start pairing: %v", e)
 	}
+
 }
 
 // SV-012: the receiver bundle this server ships speaks this server's routes.

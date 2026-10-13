@@ -3,6 +3,7 @@ package dbwork
 import (
 	"context"
 	"fmt"
+	"log"
 	"runtime"
 	"sync"
 	"sync/atomic"
@@ -42,13 +43,14 @@ type Gate struct {
 	holderClass Class
 	heldSince   time.Time
 
-	holder    string
-	acquired  atomic.Uint64
-	waited    atomic.Uint64
-	waitNanos atomic.Uint64
-	cancelled atomic.Uint64
-	heldNanos atomic.Uint64
-	maxHeld   atomic.Uint64
+	stuckLogged bool
+	holder      string
+	acquired    atomic.Uint64
+	waited      atomic.Uint64
+	waitNanos   atomic.Uint64
+	cancelled   atomic.Uint64
+	heldNanos   atomic.Uint64
+	maxHeld     atomic.Uint64
 }
 
 type gateClassCounters struct {
@@ -119,7 +121,14 @@ func (g *Gate) Acquire(ctx context.Context, class Class) (func(), error) {
 			g.active = true
 			if traceHolders() {
 				g.holder = callerStack()
+			} else {
+				if pc, _, _, ok := runtime.Caller(1); ok {
+					if fn := runtime.FuncForPC(pc); fn != nil {
+						g.holder = fn.Name()
+					}
+				}
 			}
+			g.stuckLogged = false
 			held := time.Now()
 			g.holderClass, g.heldSince = class, held
 			metrics := &g.byClass[class]
@@ -395,4 +404,20 @@ func traceHolders() bool { return strict() }
 func callerStack() string {
 	buffer := make([]byte, 4096)
 	return string(buffer[:runtime.Stack(buffer, false)])
+}
+
+// StuckHolder reports a long hold even when no writer is waiting. It logs once
+// per hold, and the watchdog uses the returned error for its health state.
+func (g *Gate) StuckHolder(threshold time.Duration) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.active || time.Since(g.heldSince) < threshold {
+		return nil
+	}
+	err := fmt.Errorf("database writer %s (%s) has held the write gate for %s", g.holderClass, g.holder, time.Since(g.heldSince).Round(time.Millisecond))
+	if !g.stuckLogged {
+		log.Printf("%v", err)
+		g.stuckLogged = true
+	}
+	return err
 }

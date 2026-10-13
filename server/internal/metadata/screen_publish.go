@@ -1105,6 +1105,13 @@ func (s *Service) screenEpisodeStep(ctx context.Context, p *screenClaim) error {
 		return s.finishScreen(ctx, p, "needs_parent_match", "")
 	}
 	if err != nil {
+		var providerError *metadataprovider.Error
+		if b.Numbering == "absolute" && errors.As(err, &providerError) {
+			switch providerError.Code {
+			case "order_unavailable", "order_not_in_series", "invalid_episode_order", "episode_outside_order":
+				return s.finishScreen(ctx, p, "needs_order", providerError.Code)
+			}
+		}
 		return s.failScreen(ctx, p, err)
 	}
 	if err = metadataprovider.ValidateScreenRecord(record); err != nil {

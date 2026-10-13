@@ -419,6 +419,14 @@ func (s *TMDB) ScreenEpisode(ctx context.Context, show string, season, episode i
 	if !ValidScreenID(ScreenID{"tmdb", "show", show}) || season < 0 || episode < 0 || season > 9999 || episode > 1000000 {
 		return ScreenRecord{}, errors.New("invalid TMDB episode coordinates")
 	}
+	localOrder := order
+	if strings.HasPrefix(order, "tmdb-absolute:") {
+		base, _, ok := TMDBAbsoluteOrder(order)
+		if !ok {
+			return ScreenRecord{}, &Error{Provider: "tmdb", Code: "order_unsupported"}
+		}
+		order = base
+	}
 	originalSeason, originalEpisode := season, episode
 	if strings.HasPrefix(order, "tmdb-group:") {
 		group := strings.TrimPrefix(order, "tmdb-group:")
@@ -477,7 +485,7 @@ func (s *TMDB) ScreenEpisode(ctx context.Context, show string, season, episode i
 	if v.Season != originalSeason || v.Episode != originalEpisode {
 		return r, &Error{Provider: "tmdb", Code: "episode_identity_mismatch"}
 	}
-	r.Coordinates = &ScreenCoordinates{ShowID: show, Season: &season, Episode: episode, Order: order, OriginalSeason: &originalSeason, OriginalEpisode: &originalEpisode}
+	r.Coordinates = &ScreenCoordinates{ShowID: show, Season: &season, Episode: episode, Order: localOrder, OriginalSeason: &originalSeason, OriginalEpisode: &originalEpisode}
 	r.Relations = append(r.Relations, ScreenRelation{"show", ScreenID{"tmdb", "show", show}, ""})
 	r = BoundScreenRecord(r)
 	return r, ValidateScreenRecord(r)

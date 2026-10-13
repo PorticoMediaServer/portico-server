@@ -5,8 +5,8 @@ later change follows.
 
 ## The baseline
 
-`migrations/0001_baseline.sql` is the whole schema a new install gets. It replaced
-265 pre-release migrations on 25 Sep 2026. A database whose ledger
+`migrations/0001_baseline.sql` is the whole schema a new install gets. It contains every pre-release schema change; no post-baseline development
+migrations ship. A database whose ledger
 (`schema_migrations`) does not record migration 1 was written by an earlier
 pre-release Portico; `Open` refuses it, and backup restore refuses it, with one
 plain message:
@@ -74,3 +74,6 @@ belongs to one kind (movie categories, book series).
 Progress and history store a position with a unit (`0` milliseconds, `1`
 pages, `2` fraction in millionths) and a generic `completed` flag, so a book
 read by page and a photo album viewed by fraction need no new columns.
+
+For external inspection, use a backup copy. An open transaction in another
+program on the live database can delay writes and prevent WAL cleanup.

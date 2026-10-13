@@ -12,16 +12,7 @@ import (
 // transaction as preparation, grant and receipt authority. A revoked hosted
 // profile also loses offline authorization on the next server contact.
 func ProfileAllowsDownloads(tx *sql.Tx, viewer identity.Viewer) (bool, error) {
-	if viewer.Authority == "hosted" {
-		var revoked int
-		e := tx.QueryRow(`SELECT revoked FROM restrictions WHERE profile_id=?`, viewer.ProfileID).Scan(&revoked)
-		if e != nil && !errors.Is(e, sql.ErrNoRows) {
-			return false, e
-		}
-		if e == nil && revoked != 0 {
-			return false, nil
-		}
-	}
+
 	restrictions, err := identity.RestrictionsForViewerTx(context.Background(), tx, viewer)
 	if err != nil {
 		return false, err
@@ -33,16 +24,13 @@ func ProfileAllowsDownloads(tx *sql.Tx, viewer identity.Viewer) (bool, error) {
 // account keeps no offline authorization: its receipts stop revalidating on the
 // next contact, which is the only moment a server gets to say so.
 func AccountDisabled(tx *sql.Tx, viewer identity.Viewer) (bool, error) {
-	if viewer.Authority != "hosted" {
-		return false, nil
+	if viewer.Authority != "local" {
+		return false, identity.ErrUnauthorized
 	}
-	var revoked int
-	e := tx.QueryRow(`SELECT revoked FROM restrictions WHERE profile_id=?`, viewer.ProfileID).Scan(&revoked)
-	if errors.Is(e, sql.ErrNoRows) {
-		return false, nil
+	var disabled bool
+	err := tx.QueryRow(`SELECT disabled FROM direct_memberships WHERE account_id=?`, viewer.AccountID).Scan(&disabled)
+	if errors.Is(err, sql.ErrNoRows) {
+		return true, nil
 	}
-	if e != nil {
-		return false, e
-	}
-	return revoked != 0, nil
+	return disabled, err
 }

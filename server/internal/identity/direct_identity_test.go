@@ -175,7 +175,7 @@ func TestDirectCredentialProfileAndServerAuthorityAreIndependent(t *testing.T) {
 	if selected.Session.InstallationID == "" || selected.Session.InstallationID != second.InstallationID {
 		t.Fatal("profile selection did not return its refresh binding")
 	}
-	if refreshed, refreshErr := s.RefreshSession(ctx, selected.Session.RefreshToken, selected.Session.InstallationID, Token(), nil); refreshErr != nil || refreshed.InstallationID != second.InstallationID {
+	if refreshed, refreshErr := s.RefreshSession(ctx, selected.Session.RefreshToken, selected.Session.InstallationID, Token()); refreshErr != nil || refreshed.InstallationID != second.InstallationID {
 		t.Fatal("profile selection could not refresh from its response", refreshErr)
 	} else {
 		selected.Session = refreshed

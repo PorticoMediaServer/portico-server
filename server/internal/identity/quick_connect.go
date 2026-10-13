@@ -279,12 +279,8 @@ func (s *Service) DecideQuick(ctx context.Context, p Principal, id, code, decisi
 		// Staging merge (lead quick-connect x be/member M9): the TV's family is
 		// issued later, in PollQuick, so the approver's Portico admission travels
 		// in the sealed approval and is inherited there.
-		var viewerOnly bool
-		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_family_grants WHERE family_id=? AND grant_kind='viewer_only')`, approver).Scan(&viewerOnly); e != nil {
-			return e
-		}
 		admitted, signer := porticoAdmissionTx(ctx, tx, approver)
-		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PorticoAdmitted: admitted, PorticoSigner: signer, ViewerOnly: viewerOnly}, "quick-approval:"+id)
+		cipher, e = s.sealSetup(quickApproval{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: p.Epoch, PorticoAdmitted: admitted, PorticoSigner: signer}, "quick-approval:"+id)
 		if e != nil {
 			return e
 		}
@@ -545,9 +541,6 @@ type quickApproval struct {
 	// PorticoSigner is the Hosted signing key behind that admission; the
 	// device's session ends with the approver's if the key is revoked.
 	PorticoSigner string `json:"porticoSigner,omitempty"`
-	// ViewerOnly: the approving session was itself a viewer-only one. A device
-	// signed in by it can do no more than it could.
-	ViewerOnly bool `json:"viewerOnly,omitempty"`
 }
 
 // issueQuickTx signs the collecting device in as whoever approved the code, in
@@ -592,18 +585,14 @@ func (s *Service) issueQuickTx(ctx context.Context, tx *sql.Tx, id string, ciphe
 	}
 	// The account's role belongs to its primary profile; any other profile is a
 	// member, exactly as when that profile is chosen at sign-in (SelectProfile).
-	if !primary || a.ViewerOnly {
+	if !primary {
 		role = TierMember
 	}
 	out, e := s.IssueTx(ctx, tx, a.AccountID, a.ProfileID, "local", role, a.Epoch, time.Time{})
 	if e != nil {
 		return out, e
 	}
-	if a.ViewerOnly {
-		if _, e = tx.ExecContext(ctx, `INSERT INTO authorization_family_grants(family_id,grant_kind) VALUES(?,'viewer_only')`, out.SessionFamilyID); e != nil {
-			return out, e
-		}
-	}
+
 	if a.PorticoAdmitted {
 		if e = recordPorticoAdmissionTx(ctx, tx, out.SessionFamilyID, a.PorticoSigner); e != nil {
 			return out, e

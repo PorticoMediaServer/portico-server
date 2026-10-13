@@ -103,9 +103,6 @@ func (d Dependencies) Social() *social.Store {
 	if v1 := d.playbackV1(); v1 != nil {
 		store.Playback = socialPlayback{d: d, v1: v1}
 	}
-	if d.Hosted != nil {
-		store.HostedHorizon = d.Hosted.AuthorizationHorizonTx
-	}
 	store.CastApplicationID = func(ctx context.Context, tx *sql.Tx) string {
 		var value string
 		if tx != nil {

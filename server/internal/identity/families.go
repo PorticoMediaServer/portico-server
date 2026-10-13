@@ -107,7 +107,7 @@ func (s *Service) initSetupHashKey(state string) error {
 // IssueTx creates one distinct family within the caller's authority transaction.
 // Hosted callers must supply a verified cached policy horizon; no default hosted
 // entitlement is invented. The caller owns membership/restriction validation.
-func (s *Service) IssueTx(ctx context.Context, tx *sql.Tx, aid, pid, authority, role string, epoch int, verifiedHostedHorizon time.Time) (Envelope, error) {
+func (s *Service) IssueTx(ctx context.Context, tx *sql.Tx, aid, pid, authority, role string, epoch int, unsupportedHorizon time.Time) (Envelope, error) {
 	if tx == nil || !validFamilyID(aid) || !validFamilyID(pid) || epoch < 1 {
 		return Envelope{}, ErrUnauthorized
 	}
@@ -125,18 +125,7 @@ func (s *Service) IssueTx(ctx context.Context, tx *sql.Tx, aid, pid, authority, 
 	if err := admitAccountTx(ctx, tx, aid); err != nil {
 		return Envelope{}, err
 	}
-	switch authority {
-	case "local":
-		if !verifiedHostedHorizon.IsZero() {
-			return Envelope{}, ErrUnauthorized
-		}
-	case "hosted":
-		var err error
-		horizon, err = s.hostedFamilyHorizonTx(ctx, tx, verifiedHostedHorizon, now)
-		if err != nil {
-			return Envelope{}, err
-		}
-	default:
+	if authority != "local" || !unsupportedHorizon.IsZero() {
 		return Envelope{}, ErrUnauthorized
 	}
 	var serverIdentity *NativeServerIdentity
@@ -176,30 +165,6 @@ func (s *Service) IssueTx(ctx context.Context, tx *sql.Tx, aid, pid, authority, 
 // the epoch, and those end a session at once whatever its horizon says.
 const LocalSignInWindow = 90 * 24 * time.Hour
 
-// MaxHostedHorizon matches the longest policy lease Hosted signs. A hosted-account session
-// lives as long as the server's verified policy, so a long Hosted outage locks nobody out.
-const MaxHostedHorizon = 90 * 24 * time.Hour
-
-func (s *Service) hostedFamilyHorizonTx(ctx context.Context, tx *sql.Tx, verified, now time.Time) (time.Time, error) {
-	if verified.IsZero() || !verified.After(now) {
-		return time.Time{}, ErrUnauthorized
-	}
-	var raw string
-	if err := tx.QueryRowContext(ctx, `SELECT expires_at FROM policy WHERE server_id=?`, s.serverID).Scan(&raw); err != nil {
-		return time.Time{}, ErrUnauthorized
-	}
-	cached, err := familyTime(raw)
-	if err == nil {
-	}
-	if err != nil || !cached.After(now) || verified.After(cached) {
-		return time.Time{}, ErrUnauthorized
-	}
-	horizon := verified.UTC().Truncate(time.Second)
-	if horizon.After(now.Add(MaxHostedHorizon)) || !horizon.After(now) {
-		return time.Time{}, ErrUnauthorized
-	}
-	return horizon, nil
-}
 func (s *Service) checkFamilyPrincipalTx(ctx context.Context, tx *sql.Tx, p Principal) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -210,8 +175,6 @@ func (s *Service) checkFamilyPrincipalTx(ctx context.Context, tx *sql.Tx, p Prin
 	switch p.Authority {
 	case "local":
 		return s.checkDirectPrincipalTx(tx, p)
-	case "hosted":
-		// Membership and restriction checks remain the cached-policy callback's job.
 	default:
 		return ErrUnauthorized
 	}
@@ -333,16 +296,7 @@ func (s *Service) RenewAuthorization(ctx context.Context, bearer string, b Renew
 	// refresh credential. Only the device-bound refresh path can extend the
 	// family's authorization horizon.
 	horizon := r.AuthorizationHorizon
-	if r.principal.Authority == "hosted" {
-		verified, e := s.hostedFamilyHorizonTx(ctx, tx, verifiedHorizon, now)
-		err = e
-		if err != nil {
-			return AuthorizationEnvelope{}, err
-		}
-		if verified.Before(horizon) {
-			horizon = verified
-		}
-	} else if !verifiedHorizon.IsZero() {
+	if !verifiedHorizon.IsZero() {
 		return AuthorizationEnvelope{}, ErrUnauthorized
 	}
 	var prior, controller, epoch, expires, fixedHorizon string

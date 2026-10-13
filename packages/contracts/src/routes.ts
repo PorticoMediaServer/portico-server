@@ -160,6 +160,24 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "clear_playback_failure_memory",
+    "method": "DELETE",
+    "path": "/v1/admin/playback/route-failures/{sourceId}",
+    "summary": "Forget remembered failures for a media file",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 204
+  },
+  {
     "id": "commit_queue_next",
     "method": "POST",
     "path": "/v1/queues/{id}:commit-next",
@@ -3850,6 +3868,23 @@ export const routes = [
       "not_permitted",
       "not_found",
       "invalid_request",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "list_playback_failure_memory",
+    "method": "GET",
+    "path": "/v1/admin/playback/route-failures",
+    "summary": "Read active remembered playback failures",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
       "internal"
     ],
     "status": 200

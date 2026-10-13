@@ -174,3 +174,55 @@ func TestScreenAbsoluteOrderSelection(t *testing.T) {
 		}
 	}
 }
+
+func (p *episodeFixtureProvider) ScreenAbsoluteEpisode(ctx context.Context, show string, number int, order, language string) (metadataprovider.ScreenRecord, error) {
+	base, offset, ok := metadataprovider.TMDBAbsoluteOrder(order)
+	mapped := number + offset
+	if !ok || base != "official" || mapped < 1 || mapped > 4 {
+		return metadataprovider.ScreenRecord{}, &metadataprovider.Error{Provider: "tmdb", Code: "episode_outside_order"}
+	}
+	r, err := p.ScreenEpisode(ctx, show, 1, mapped, order, language)
+	originalSeason, originalEpisode := 1, mapped
+	r.Coordinates.Season = nil
+	r.Coordinates.Episode = number
+	r.Coordinates.Absolute = &number
+	r.Coordinates.OriginalSeason = &originalSeason
+	r.Coordinates.OriginalEpisode = &originalEpisode
+	r.StillPath = "/episode.jpg"
+	return r, err
+}
+
+func TestExplicitAnimeOffsetPublishesMappedEpisodesAndPreservesLocalNumbers(t *testing.T) {
+	s, db, _, _, _, settle := episodeFreshnessFixture(t)
+	settle()
+	var show string
+	if err := db.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE kind=2 LIMIT 1`).Scan(&show); err != nil {
+		t.Fatal(err)
+	}
+	publicationExec(t, db, `UPDATE catalog_episodes SET numbering='absolute',season_id=NULL,number=number+12`)
+	publicationExec(t, db, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1 WHERE target_kind='show'`)
+	settle()
+	state, err := s.ScreenState(context.Background(), "show", show)
+	if err != nil || len(state.Candidates) != 1 {
+		t.Fatal(state, err)
+	}
+	if err = s.SelectScreen(context.Background(), "show", show, ScreenSelection{ExpectedRevision: state.Revision, CandidateKey: state.Candidates[0].Key, Order: "tmdb-absolute:official:-12"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	settle()
+	var matched int
+	if err = db.QueryRow(`SELECT count(*) FROM catalog_episodes e JOIN screen_metadata_work w ON w.target_kind='item' AND w.target_id=e.entity_id WHERE e.number BETWEEN 13 AND 16 AND e.season_id IS NULL AND e.numbering='absolute' AND w.status='matched'`).Scan(&matched); err != nil || matched != 4 {
+		t.Fatal("local numbers or mapped publications lost", matched, err)
+	}
+	var title string
+	if err = db.QueryRow(`SELECT title FROM catalog_entities WHERE id=(SELECT entity_id FROM catalog_episodes WHERE number=15)`).Scan(&title); err != nil || title != "Provider episode 3" {
+		t.Fatal(title, err)
+	}
+	publicationExec(t, db, `UPDATE catalog_episodes SET number=1 WHERE number=13`)
+	publicationExec(t, db, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1 WHERE target_kind='item' AND target_id=(SELECT entity_id FROM catalog_episodes WHERE number=1)`)
+	settle()
+	var status string
+	if err = db.QueryRow(`SELECT status FROM screen_metadata_work WHERE target_kind='item' AND target_id=(SELECT entity_id FROM catalog_episodes WHERE number=1)`).Scan(&status); err != nil || status != "needs_order" {
+		t.Fatal("invalid mapping was retried instead of requesting a correction", status, err)
+	}
+}

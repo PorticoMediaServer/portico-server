@@ -162,7 +162,7 @@ func TestLearningASigningKeyWasRevokedEndsTheSessionsItAdmitted(t *testing.T) {
 		t.Fatalf("the playback clean-up ran for %d sessions, want the 2 that ended", len(hooked))
 	}
 	// The renewal credential of an ended session is dead too.
-	if _, err = f.id.RefreshSession(ctx, chosen.Session.RefreshToken, chosen.Session.InstallationID, "renew-after-revocation", nil); !errors.Is(err, identity.ErrUnauthorized) {
+	if _, err = f.id.RefreshSession(ctx, chosen.Session.RefreshToken, chosen.Session.InstallationID, "renew-after-revocation"); !errors.Is(err, identity.ErrUnauthorized) {
 		t.Fatalf("an ended session renewed: %v", err)
 	}
 	// Untouched: the other key's session and the one that never used Hosted.

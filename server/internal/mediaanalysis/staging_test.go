@@ -49,9 +49,13 @@ func TestAnalysisPreviewCapturesCloseWithoutEarlyPublication(t *testing.T) {
 	for _, a := range out.Artifacts {
 		kinds[a.Kind]++
 	}
-	// Frames, one partial sprite sheet and the set descriptor are all produced
-	// inside the same decode, and none may be published before retirement.
-	if !retired || kinds["trickplay"] != 16 || kinds[trickplaySheetKind] != 1 || kinds[trickplayDescriptorKind] != 1 || len(out.Artifacts) != 18 {
+	// One partial sprite sheet and the descriptor cover the sixteen frames;
+	// captures may not be published before decoder retirement.
+	summary, ok := out.Summary.(trickplaySummary)
+	if !ok || summary.FrameCount != 16 {
+		t.Fatal("lost sampled frames", out.Summary)
+	}
+	if !retired || kinds[trickplaySheetKind] != 1 || kinds[trickplayDescriptorKind] != 1 || len(out.Artifacts) != 2 {
 		t.Fatal("incomplete producer", kinds)
 	}
 	for _, a := range out.Artifacts {

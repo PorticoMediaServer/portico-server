@@ -31,3 +31,18 @@ Sections:
 8. `08-for-tools.md` — the bounded title query and the "these paths changed" report.
 9. `09-webhooks.md` — outbound webhooks: events, payloads, checking the signature, retries.
 10. `10-mcp.md` — the built-in MCP server for AI assistants.
+
+Owner playback diagnostics include `GET /v1/admin/playback/route-failures`
+(the latest 100 active remembered failures, with expiry and no credentials).
+`DELETE /v1/admin/playback/route-failures/{sourceId}` clears all remembered
+routes for that file so devices can retry it after a player or driver change.
+Both routes require an owner and the admin key scope.
+
+For anime files numbered across seasons, show identification accepts the
+provider's official order or a show-owned TMDB episode group. An explicit
+`order` such as `tmdb-absolute:official:-12` maps local episode 15 to position 3;
+`tmdb-absolute:tmdb-group:<groupId>:-12` applies the same offset to the selected
+group. The offset is added to the local number. Local numbers remain unchanged,
+and original seasonal coordinates are retained as provenance. Client-core's
+`tmdbAbsoluteOrder` constructs this bounded order value. Seasonal files in the
+same show use the selected base order without the absolute offset.

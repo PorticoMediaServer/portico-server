@@ -123,39 +123,6 @@ func TestViewingProfileCannotReadAnotherProfilesRestrictions(t *testing.T) {
 	}
 }
 
-func TestHostedProfileCannotBorrowCollidingLocalRestrictions(t *testing.T) {
-	ctx := context.Background()
-	s, login, child := restrictionFixture(t)
-	if _, err := s.SetProfileRestrictions(ctx, login.AccountToken, child.ID, ProfileRestrictionEdit{
-		ExpectedRevision: 1, RatingSystem: "mpaa", MaximumAgeRating: "PG-13", AllowUnrated: false,
-		BlockedLabels: []string{"Horror"}, AllowDownloads: false,
-	}); err != nil {
-		t.Fatal(err)
-	}
-	hosted := Viewer{Authority: "hosted", AccountID: "another-account", ProfileID: child.ID}
-	content, err := s.ViewerRestrictions(ctx, Principal{Viewer: hosted})
-	if err != nil || content.Active() {
-		t.Fatalf("hosted viewer inherited local content policy: %+v %v", content, err)
-	}
-	if err := s.WithProfileRestrictions(ctx, Principal{Viewer: hosted}, func(r ProfileRestrictions) error {
-		if r.MaximumAge != -1 || !r.AllowDownloads {
-			t.Fatalf("hosted viewer inherited local feature policy: %+v", r)
-		}
-		return nil
-	}); err != nil {
-		t.Fatal(err)
-	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-	restrictions, err := RestrictionsForViewerTx(ctx, tx, hosted)
-	if err != nil || restrictions.MaximumAge != -1 || !restrictions.AllowDownloads {
-		t.Fatalf("hosted transaction inherited local policy: %+v %v", restrictions, err)
-	}
-}
-
 func TestAPIKeyInheritsItsLocalOwnersProfileRestrictions(t *testing.T) {
 	ctx := context.Background()
 	s, login, child := restrictionFixture(t)

@@ -94,7 +94,7 @@ func (s *Service) produce(ctx context.Context, b binding, stage string, input In
 	if b.DurationUS <= 0 {
 		return out, ErrUnsupported
 	}
-	spec := decoder.AnalysisSpec{MaxDurationUS: b.DurationUS}
+	spec := decoder.AnalysisSpec{MaxDurationUS: b.DurationUS, SourceVideo: decoder.PreviewVideoFacts{DynamicRange: b.Video.DynamicRange, DolbyVisionProfile: b.Video.DolbyVisionProfile, DolbyVisionCompatibility: b.Video.DolbyVisionCompatibility}}
 	switch stage {
 	case "waveform", "fingerprint":
 		if b.AudioCodec == "" {
@@ -189,7 +189,7 @@ func (s *Service) produce(ctx context.Context, b binding, stage string, input In
 				return out, err
 			}
 		}
-		out.Summary = map[string]any{"images": len(chapters), "status": "complete"}
+		out.Summary = map[string]any{"images": len(chapters), "status": "complete", "decoding": "recoverable_errors_tolerated"}
 	case "trickplay":
 		if b.VideoCodec == "" {
 			out.Summary = map[string]any{"status": "not_applicable", "reason": "no_video_stream"}

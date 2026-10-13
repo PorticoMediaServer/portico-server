@@ -41,9 +41,6 @@ func (s *Service) ReauthorizeTx(ctx context.Context, tx *sql.Tx, expected Princi
 		if err = s.checkDirectPrincipalTx(tx, current); err != nil {
 			return Principal{}, err
 		}
-	case "hosted":
-		// Local hosted accounts do not have password-account rows. Membership and
-		// restrictions are checked by the domain's authority callback in this tx.
 	default:
 		return Principal{}, ErrUnauthorized
 	}

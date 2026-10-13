@@ -10,6 +10,12 @@ import (
 	"portico.local/server/internal/storage"
 )
 
+// PreviewVideoFacts selects a closed color conversion for navigation images.
+type PreviewVideoFacts struct {
+	DynamicRange                                 string
+	DolbyVisionProfile, DolbyVisionCompatibility int
+}
+
 // AnalysisSpec is a closed recipe. No user filter, filename, protocol or encoder
 // argument enters the decoder. All output is streamed through supervised stdout.
 type AnalysisSpec struct {
@@ -23,6 +29,7 @@ type AnalysisSpec struct {
 	// 320x180 preview frame. Both must be even, bounded, and chosen by the
 	// caller from validated policy, never from media or a client request.
 	Width, Height int
+	SourceVideo   PreviewVideoFacts
 	// Audio conversion (spec §18.1 converted mode): raw decoded frames
 	// [AudioStart, AudioStart+AudioFrames) of the source, resampled to AudioRate
 	// and AudioChannels, padded or cut to exactly AudioOut frames, encoded as FLAC
@@ -39,7 +46,20 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 		return nil, ErrInvalidConfiguration
 	}
 	seekFrames := int64(0)
-	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-xerror", "-threads", "1", "-filter_threads", "1"}
+	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-threads", "1", "-filter_threads", "1"}
+	preview := s.Kind == "image" || s.Kind == "trickplay" || s.Kind == "scenes"
+	if preview {
+		args = append(args, "-max_error_rate", "0.05")
+	} else {
+		args = append(args, "-xerror")
+	}
+	tone, hardware, err := analysisPreviewTone(s.SourceVideo, preview)
+	if err != nil {
+		return nil, err
+	}
+	if hardware {
+		args = append(args, "-init_hw_device", "vulkan=tone", "-filter_hw_device", "tone")
+	}
 	if s.Kind == "image" {
 		args = append(args, "-ss", fmt.Sprintf("%d.%06d", s.StartUS/1000000, s.StartUS%1000000))
 	}
@@ -84,7 +104,7 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 			args = append(args, "-c:a", "libopus", "-b:a", fmt.Sprint(s.AudioBitrate), "-frame_duration", "20", "-application", "audio", "-f", "ogg", "pipe:1")
 		}
 	case "image":
-		args = append(args, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", "scale=320:180:force_original_aspect_ratio=decrease,pad=320:180:(ow-iw)/2:(oh-ih)/2,setsar=1", "-frames:v", "1", "-c:v", "mjpeg", "-q:v", "3", "-f", "image2pipe", "pipe:1")
+		args = append(args, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", "scale=320:180:force_original_aspect_ratio=decrease:reset_sar=1,pad=320:180:(ow-iw)/2:(oh-ih)/2,setsar=1"+tone, "-frames:v", "1", "-c:v", "mjpeg", "-q:v", "3", "-f", "image2pipe", "pipe:1")
 	case "trickplay", "scenes":
 		if s.IntervalUS < 100000 || s.MaxFrames < 1 || s.MaxFrames > 65536 {
 			return nil, ErrInvalidConfiguration
@@ -103,7 +123,7 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 			}
 			scale, pixel = "32:18", "gray"
 		}
-		filter := fmt.Sprintf("fps=1000000/%d:start_time=0,scale=%s:force_original_aspect_ratio=decrease,pad=%s:(ow-iw)/2:(oh-ih)/2,setsar=1,format=%s", s.IntervalUS, scale, scale, pixel)
+		filter := fmt.Sprintf("fps=1000000/%d:start_time=0,scale=%s:force_original_aspect_ratio=decrease:reset_sar=1,pad=%s:(ow-iw)/2:(oh-ih)/2,setsar=1%s,format=%s", s.IntervalUS, scale, scale, tone, pixel)
 		args = append(args, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", filter, "-pix_fmt", pixel, "-f", "rawvideo", "pipe:1")
 	default:
 		return nil, ErrInvalidConfiguration
@@ -132,7 +152,7 @@ func RunAnalysis(ctx context.Context, sup *storage.Supervisor, key, executable, 
 		res.Close()
 		return err
 	}
-	cmd, err := decoderJob{executable: executable, args: args, endpoint: endpoint, libraries: libraries, background: spec.Kind != "audio_flac" && spec.Kind != "audio_opus"}.command()
+	cmd, err := decoderJob{executable: executable, args: args, endpoint: endpoint, libraries: libraries, background: spec.Kind != "audio_flac" && spec.Kind != "audio_opus", hardware: analysisNeedsHardware(spec)}.command()
 	if err != nil {
 		res.Close()
 		return err
@@ -154,4 +174,32 @@ func analysisRunKey(spec AnalysisSpec, key string) string {
 		return "playback:audio:" + key
 	}
 	return "analysis:" + key
+}
+
+func analysisNeedsHardware(s AnalysisSpec) bool {
+	return (s.Kind == "image" || s.Kind == "trickplay" || s.Kind == "scenes") && s.SourceVideo.DynamicRange == "dolby_vision" && DolbyVisionBaseRange(s.SourceVideo.DolbyVisionProfile, s.SourceVideo.DolbyVisionCompatibility) == ""
+}
+func analysisPreviewTone(video PreviewVideoFacts, preview bool) (string, bool, error) {
+	if !preview {
+		return "", false, nil
+	}
+	dynamic := video.DynamicRange
+	if dynamic == "dolby_vision" {
+		dynamic = DolbyVisionBaseRange(video.DolbyVisionProfile, video.DolbyVisionCompatibility)
+		if dynamic == "" {
+			tools := CurrentToolchain()
+			if tools == nil || !tools.Filters["libplacebo"] || !tools.VulkanAvailable {
+				return "", false, ErrInvalidConfiguration
+			}
+			return ",format=yuv420p10le,hwupload,libplacebo=tonemapping=bt.2390:colorspace=bt709:color_primaries=bt709:color_trc=bt709:format=yuv420p,hwdownload,format=yuv420p", true, nil
+		}
+	}
+	switch dynamic {
+	case "", "sdr":
+		return "", false, nil
+	case "hdr10", "hlg":
+		return "," + SoftwareToneMap(DefaultToneMapAlgorithm), false, nil
+	default:
+		return "", false, ErrInvalidConfiguration
+	}
 }

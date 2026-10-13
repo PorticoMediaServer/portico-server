@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"os"
+	"path/filepath"
+	"portico.local/server/internal/diskspace"
 	"time"
 
 	sqlite "portico.local/server/internal/thirdparty/sqlite"
@@ -22,6 +24,56 @@ func copyDatabase(ctx context.Context, source *sql.DB, dest string, progress fun
 	if source == nil || dest == "" {
 		return errors.New("backup: no database to copy")
 	}
+	// A slow copy must release its WAL boundary even on healthy disks.
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer cancel()
+	sourcePath := dbwork.DatabaseFile(ctx, source)
+	initialWAL := backupWALBytes(sourcePath)
+	lastBudget := time.Time{}
+	guard := func(done, total int64) error {
+		if !lastBudget.IsZero() && time.Since(lastBudget) < 250*time.Millisecond {
+			return nil
+		}
+		lastBudget = time.Now()
+		if sourcePath != "" {
+			if backupWALBytes(sourcePath)-initialWAL > 64<<20 {
+				return ErrSnapshotPressure
+			}
+			free, err := diskspace.Free(filepath.Dir(sourcePath))
+			if err != nil {
+				return err
+			}
+			if free < 128<<20 {
+				return ErrInsufficientDisk
+			}
+		}
+		free, err := diskspace.Free(filepath.Dir(dest))
+		if err != nil {
+			return err
+		}
+		remaining := max(total-done, 0)
+		if remaining > free || free-remaining < 128<<20 {
+			return ErrInsufficientDisk
+		}
+		return nil
+	}
+	return copyDatabaseGuarded(ctx, source, dest, progress, guard)
+}
+
+var ErrSnapshotPressure = errors.New("backup snapshot exceeded its WAL growth budget")
+
+func backupWALBytes(path string) int64 {
+	if path == "" {
+		return 0
+	}
+	info, err := os.Stat(path + "-wal")
+	if err != nil {
+		return 0
+	}
+	return info.Size()
+}
+
+func copyDatabaseGuarded(ctx context.Context, source *sql.DB, dest string, progress func(done, total int64), guard func(done, total int64) error) error {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassMaintenance)
 	conn, err := dbwork.ReadHandle(ctx, source).Conn(ctx)
 	if err != nil {
@@ -71,6 +123,12 @@ func copyDatabase(ctx context.Context, source *sql.DB, dest string, progress fun
 			more, err := backup.Step(16)
 			copied := int64(backup.PageCount()-backup.Remaining()) * pageSize
 			total := int64(backup.PageCount()) * pageSize
+			if guard != nil {
+				if err := guard(copied, total); err != nil {
+					copyErr = err
+					break
+				}
+			}
 			if progress != nil && (time.Since(lastReport) >= 200*time.Millisecond || !more && err == nil) {
 				progress(copied, total)
 				lastReport = time.Now()

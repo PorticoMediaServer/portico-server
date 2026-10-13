@@ -316,7 +316,7 @@ func (s *Service) Devices(ctx context.Context, bearer, _ string) ([]Device, erro
 	}
 	tx := gated3.Tx()
 	defer gated3.Rollback()
-	c, e := s.deviceCallerTx(ctx, tx, bearer, false)
+	c, e := s.deviceCallerTx(ctx, tx, bearer, true)
 	if e != nil {
 		return nil, e
 	}
@@ -366,7 +366,7 @@ func (s *Service) EditDevice(ctx context.Context, bearer, id string, q DeviceEdi
 	}
 	tx := gated4.Tx()
 	defer gated4.Rollback()
-	c, e := s.deviceCallerTx(ctx, tx, bearer, false)
+	c, e := s.deviceCallerTx(ctx, tx, bearer, true)
 	if e != nil {
 		return Device{}, e
 	}
