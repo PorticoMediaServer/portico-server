@@ -218,7 +218,7 @@ func logSetupBlock(port int, loopback bool) {
 		log.Printf("Open http://localhost:%d to set up Portico.", port)
 	}
 }
-func run() error {
+func run() (runErr error) {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	if os.Getenv(supervise.WorkerEnvironment) == "1" {
@@ -248,6 +248,13 @@ func run() error {
 	startupLog := servicelog.New(servicelog.Options{Directory: filepath.Join(state, "logs")})
 	installMessageLogOutput(startupLog)
 	defer startupLog.Close()
+	defer func() {
+		if errors.Is(runErr, errRestartRequested) {
+			log.Print("Portico is restarting")
+		} else if runErr != nil {
+			log.Printf("error: [server] Portico stopped: %v", runErr)
+		}
+	}()
 	cache, e := startupDirectory("PORTICO_CACHE_DIR", state)
 	if e != nil {
 		return e
@@ -985,8 +992,17 @@ func run() error {
 			administration.Logs.Prune()
 			administration.Logs.PruneFiles()
 			free, total, _ := telemetry.VolumeUsage(state)
-			if err := console.NotificationMaintenance(dbwork.WithClass(ctx, dbwork.ClassMaintenance), free, total); err != nil && ctx.Err() == nil {
+			maintenanceCtx := dbwork.WithClass(ctx, dbwork.ClassMaintenance)
+			if err := console.NotificationMaintenance(maintenanceCtx, free, total); err != nil && ctx.Err() == nil {
 				log.Printf("warn: Owner notices: %v", err)
+			}
+			if document, err := console.Settings(maintenanceCtx, operations.AllowServerScope); err == nil {
+				info := buildinfo.Info()
+				current := adminops.UpdateBuild{Version: info["version"], BuildID: info["buildId"], SourceDigest: info["sourceDigest"], BuiltAt: info["builtAt"]}
+				report := adminOperations.CachedUpdates(maintenanceCtx, current, document.Effective.UpdateChannel, document.Effective.UpdateFeedURL)
+				if document.Effective.UpdateFeedURL == "" || report.CheckedAt != "" && report.Status != "unavailable" {
+					_ = console.Alert(maintenanceCtx, "update-available", "info", report.UpdateAvailable)
+				}
 			}
 			select {
 			case <-ctx.Done():

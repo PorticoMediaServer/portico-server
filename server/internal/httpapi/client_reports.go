@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -113,9 +114,9 @@ func registerClientReports(registry *apikit.Registry, d Dependencies) error {
 			registry.Errors().Write(w, "", clientReportError(err))
 			return
 		}
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		w.Header().Set("Content-Disposition", `attachment; filename="portico-client-report.txt"`)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Disposition", `attachment; filename="portico-client-report.json"`)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
-		_, _ = w.Write([]byte(out.Body))
+		_ = json.NewEncoder(w).Encode(out)
 	}})
 }

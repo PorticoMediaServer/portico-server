@@ -926,6 +926,7 @@ export const routes = [
       "unauthorized",
       "invalid_request",
       "request_in_progress",
+      "restore_lock_unavailable",
       "restore_source_invalid",
       "restore_schema_newer",
       "restore_pre_release",

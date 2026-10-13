@@ -62,7 +62,7 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 		return out, ErrSourceInvalid
 	}
 	if s.restoreUnavailable {
-		return out, ErrRestorePending
+		return out, ErrRestoreLockUnavailable
 	}
 	s.stageMu.Lock()
 	defer s.stageMu.Unlock()
@@ -115,8 +115,15 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 	if _, err = copyOneFileContext(ctx, srcDB, filepath.Join(incoming, DatabaseName), DatabaseName, func(done, total int64) { s.restoreProgress("copy", done, total) }); err != nil {
 		return out, ErrSourceInvalid
 	}
-	if _, err = os.Stat(srcDB + "-wal"); err == nil {
-		_, _ = copyOneFile(srcDB+"-wal", filepath.Join(incoming, DatabaseName+"-wal"), DatabaseName+"-wal")
+	if wal, statErr := os.Lstat(srcDB + "-wal"); statErr == nil {
+		if !wal.Mode().IsRegular() {
+			return out, ErrSourceInvalid
+		}
+		if _, err = copyOneFileContext(ctx, srcDB+"-wal", filepath.Join(incoming, DatabaseName+"-wal"), DatabaseName+"-wal", nil); err != nil {
+			return out, ErrSourceInvalid
+		}
+	} else if !os.IsNotExist(statErr) {
+		return out, ErrSourceInvalid
 	}
 	for _, name := range files {
 		if _, err = copyOneFile(filepath.Join(srcDir, filepath.FromSlash(name)), filepath.Join(incoming, filepath.FromSlash(name)), name); err != nil {

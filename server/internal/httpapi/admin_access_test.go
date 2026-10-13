@@ -776,7 +776,7 @@ func TestOwnerCanDownloadAndDeleteClientReport(t *testing.T) {
 		t.Fatal("admin read owner report", response.Code)
 	}
 	downloaded := f.call("GET", path+"/download", f.owner, "")
-	if downloaded.Code != 200 || !strings.Contains(downloaded.Body.String(), "REDACTED") || downloaded.Header().Get("Content-Disposition") == "" {
+	if downloaded.Code != 200 || !strings.Contains(downloaded.Body.String(), "REDACTED") || downloaded.Header().Get("Content-Disposition") == "" || downloaded.Header().Get("Content-Type") != "application/json" {
 		t.Fatal(downloaded.Code, downloaded.Body.String())
 	}
 	if removed := f.call("DELETE", path, f.owner, ""); removed.Code != 200 {
@@ -827,5 +827,22 @@ func TestClientReportsPageKeepsTimestampTiesAndGlobalBound(t *testing.T) {
 	}
 	if len(seen) != 100 {
 		t.Fatal("timestamp ties lost", len(seen))
+	}
+}
+
+func TestClientReportRedactionCannotExpandPastStorageLimit(t *testing.T) {
+	f := administrationFixtureNew(t)
+	body, _ := json.Marshal(servicelog.ClientUploadRequest{Body: strings.Repeat("Bearer x ", servicelog.MaxClientUploadBytes/9), DeviceClass: "phone"})
+	response := f.call("POST", "/v1/diagnostics/client-logs", f.member, string(body))
+	if response.Code != 201 {
+		t.Fatal(response.Code, response.Body.String())
+	}
+	var report servicelog.ClientUpload
+	if err := json.Unmarshal(response.Body.Bytes(), &report); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := f.deps.Access.ClientLogs.Read(context.Background(), report.ID)
+	if err != nil || len(stored.Body) > servicelog.MaxClientUploadBytes || stored.Bytes != int64(len(stored.Body)) || strings.Contains(stored.Body, "Bearer x") {
+		t.Fatal(stored.Bytes, len(stored.Body), err)
 	}
 }

@@ -125,7 +125,10 @@ func (s *ClientLogStore) Store(ctx context.Context, accountID, profileID, sessio
 		return out, err
 	}
 	redacted := redactClientLog(body)
-	if _, err = tx.ExecContext(ctx, `INSERT INTO client_log_uploads(id,account_id,profile_id,device_id,platform,app_version,device_class,received_ms,bytes,body) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, accountID, profileID, deviceID, q.Platform, q.AppVersion, q.DeviceClass, now.UnixMilli(), len(body), redacted); err != nil {
+	if len(redacted) > MaxClientUploadBytes {
+		redacted = strings.ToValidUTF8(redacted[:MaxClientUploadBytes], "")
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO client_log_uploads(id,account_id,profile_id,device_id,platform,app_version,device_class,received_ms,bytes,body) VALUES(?,?,?,?,?,?,?,?,?,?)`, id, accountID, profileID, deviceID, q.Platform, q.AppVersion, q.DeviceClass, now.UnixMilli(), len(redacted), redacted); err != nil {
 		return out, err
 	}
 	if _, err = tx.ExecContext(ctx, `DELETE FROM client_log_uploads WHERE account_id=? AND device_id=? AND id NOT IN(SELECT id FROM client_log_uploads WHERE account_id=? AND device_id=? ORDER BY received_ms DESC,id DESC LIMIT ?)`, accountID, deviceID, accountID, deviceID, ClientUploadsPerDevice); err != nil {
@@ -140,7 +143,7 @@ func (s *ClientLogStore) Store(ctx context.Context, accountID, profileID, sessio
 	if err = write.Commit(); err != nil {
 		return out, err
 	}
-	return ClientUpload{ID: id, AccountID: accountID, ProfileID: profileID, DeviceID: deviceID, Platform: q.Platform, AppVersion: q.AppVersion, DeviceClass: q.DeviceClass, ReceivedAt: now.Format(time.RFC3339), Bytes: int64(len(body))}, nil
+	return ClientUpload{ID: id, AccountID: accountID, ProfileID: profileID, DeviceID: deviceID, Platform: q.Platform, AppVersion: q.AppVersion, DeviceClass: q.DeviceClass, ReceivedAt: now.Format(time.RFC3339), Bytes: int64(len(redacted))}, nil
 }
 
 // List pages uploads newest first.

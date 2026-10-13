@@ -11,6 +11,7 @@ import {Button, ConfirmDialog, Dialog, Freshness, IconButton, Input, ListRow, Lo
 /** Catalogue copy for every restore/backup refusal code (spec §4). Anything else falls back
  * to the shared presenter. Tested in test/backups.test.ts. */
 export const RESTORE_REFUSAL_MESSAGE_IDS: Record<RestoreRefusalCode, MessageId> = {
+  restore_lock_unavailable: 'web.maintenance.restoreLockUnavailable',
   restore_source_invalid: 'web.maintenance.restoreSourceInvalid',
   restore_schema_newer: 'web.maintenance.restoreSchemaNewer',
   restore_pre_release: 'web.maintenance.restorePreRelease',

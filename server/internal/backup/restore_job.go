@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 
 	"portico.local/server/internal/persistence"
 	"portico.local/server/internal/supervise"
@@ -27,14 +28,14 @@ func (s *Service) StartRestore(ctx context.Context, source Source, operation str
 		return "", ErrInvalid
 	}
 	if s.restoreUnavailable {
-		return "", ErrRestorePending
+		return "", ErrRestoreLockUnavailable
 	}
 	last, err := s.LastRestore()
 	if err != nil {
 		return "", err
 	}
 	s.mu.Lock()
-	if last != nil && last.OperationID == operation && last.JobID != "" {
+	if last != nil && last.OperationID == operation && last.JobID != "" && last.Outcome == "restored" {
 		if last.SourceDigest != restoreSourceDigest(source) {
 			s.mu.Unlock()
 			return "", ErrInvalid
@@ -55,9 +56,11 @@ func (s *Service) StartRestore(ctx context.Context, source Source, operation str
 			s.mu.Unlock()
 			return "", ErrInvalid
 		}
-		id := s.restoreJob.JobID
-		s.mu.Unlock()
-		return id, nil
+		if s.restoreJob.Phase != "failed" {
+			id := s.restoreJob.JobID
+			s.mu.Unlock()
+			return id, nil
+		}
 	}
 	if s.restoreJob != nil && s.restoreJob.Phase != "failed" {
 		s.mu.Unlock()
@@ -94,12 +97,18 @@ func (s *Service) RestoreProgress() *RestoreJob {
 
 func (s *Service) restoreProgress(phase string, done, total int64) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.restoreJob == nil {
+		s.mu.Unlock()
 		return
 	}
+	changed := s.restoreJob.Phase != phase
+	id := s.restoreJob.JobID
 	s.restoreJob.Phase = phase
 	s.restoreJob.BytesDone, s.restoreJob.BytesTotal = done, total
+	s.mu.Unlock()
+	if changed {
+		log.Printf("debug: [server] Restore %s entered %s", id, phase)
+	}
 }
 
 func restoreCode(err error) string {

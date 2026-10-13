@@ -130,6 +130,9 @@
                         "jobId": {
                           "type": "string"
                         },
+                        "operationId": {
+                          "type": "string"
+                        },
                         "outcome": {
                           "type": "string"
                         },
@@ -140,6 +143,9 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "sourceDigest": {
+                          "type": "string"
                         }
                       },
                       "required": [

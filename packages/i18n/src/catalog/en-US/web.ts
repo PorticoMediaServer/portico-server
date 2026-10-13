@@ -1591,6 +1591,7 @@ export const webMessages = {
   'web.maintenance.restartingBody': 'The server is starting again with the restored data.',
   'web.maintenance.restored': 'Restored',
   'web.maintenance.restoreRolledBack': 'Couldn’t restore; your previous data was put back',
+  'web.maintenance.restoreLockUnavailable': 'Portico cannot safely restore data in this folder. Use a folder on a local disk and try again.',
   'web.maintenance.restoreSourceInvalid': 'That file isn’t a backup Portico can use. Choose a backup folder or a Portico database file.',
   'web.maintenance.restoreSchemaNewer': 'That backup needs a newer Portico than this server. Update the server, then try again.',
   'web.maintenance.restorePreRelease': 'That backup was made by an earlier pre-release version of Portico, so it can’t be restored. Choose a newer backup, or keep using this server as it is.',

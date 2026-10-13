@@ -229,6 +229,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "restore_lock_unavailable",
+    "status": 409,
+    "message": "Portico cannot safely restore data in this folder. Use a folder on a local disk and try again.",
+    "retry": "never"
+  },
+  {
     "code": "restore_not_portico",
     "status": 422,
     "message": "This file is not a Portico database.",

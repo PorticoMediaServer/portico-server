@@ -53,7 +53,12 @@ func backupBeforeMigrations(ctx context.Context, db *sql.DB) error {
 		if err != nil {
 			return err
 		}
-		defer copy.Finish()
+		finished := false
+		defer func() {
+			if !finished {
+				_ = copy.Finish()
+			}
+		}()
 		for {
 			if err = ctx.Err(); err != nil {
 				return err
@@ -63,7 +68,8 @@ func backupBeforeMigrations(ctx context.Context, db *sql.DB) error {
 				return err
 			}
 			if !more {
-				return nil
+				finished = true
+				return copy.Finish()
 			}
 		}
 	})

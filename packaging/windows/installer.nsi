@@ -20,16 +20,26 @@ UninstPage instfiles
 
 Section "Install"
   SetShellVarContext all
-  IfFileExists "$INSTDIR\portico-server.exe" 0 service_stopped
-  nsExec::ExecToLog '"$INSTDIR\portico-server.exe" --service-stop'
+  ; Use the candidate's control command even when the installed binary predates SCM.
+  InitPluginsDir
+  SetOutPath "$PLUGINSDIR"
+  File /oname=portico-service-control.exe "${STAGE_DIR}\portico-server.exe"
+  nsExec::ExecToLog /TIMEOUT=60000 '"$PLUGINSDIR\portico-service-control.exe" --service-stop'
   Pop $2
   StrCmp $2 "0" service_stopped
   MessageBox MB_ICONSTOP "Portico could not stop. Installation files have been left in place." /SD IDOK
   SetErrorLevel 1
   Abort
 service_stopped:
+  ; Retire the old scheduled launch rather than keeping a second startup path.
+  nsExec::ExecToLog /TIMEOUT=60000 'schtasks.exe /End /TN "Portico Media Server"'
+  Pop $2
+  nsExec::ExecToLog /TIMEOUT=60000 'schtasks.exe /Delete /TN "Portico Media Server" /F'
+  Pop $2
   SetOutPath "$INSTDIR"
   File /r "${STAGE_DIR}\*"
+  Delete "$INSTDIR\start-portico.cmd"
+  Delete "$INSTDIR\startup-task.xml"
   WriteRegStr HKLM "Software\Portico Media Server" "InstallDir" "$INSTDIR"
   WriteUninstaller "$INSTDIR\Uninstall.exe"
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\Portico Media Server" "DisplayName" "${PRODUCT_NAME}"
@@ -42,10 +52,7 @@ service_stopped:
   StrCpy $0 "C:\ProgramData"
   StrCpy $0 "$0\Portico Media Server"
   CreateDirectory "$0"
-  nsExec::ExecToLog '"$INSTDIR\portico-server.exe" --service-install'
-  Pop $2
-  StrCmp $2 "0" 0 install_failed
-  nsExec::ExecToLog 'sc.exe sidtype ${SERVICE_NAME} unrestricted'
+  nsExec::ExecToLog /TIMEOUT=60000 '"$INSTDIR\portico-server.exe" --service-install'
   Pop $2
   StrCmp $2 "0" 0 install_failed
   nsExec::ExecToLog 'icacls.exe "$0" /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)F" "*S-1-5-32-544:(OI)(CI)F" "NT SERVICE\${SERVICE_NAME}:(OI)(CI)F"'
@@ -56,7 +63,7 @@ service_stopped:
   nsExec::ExecToLog 'netsh.exe advfirewall firewall add rule name="Portico Media Server" dir=in action=allow program="$INSTDIR\portico-server.exe" enable=yes profile=any protocol=TCP localport=32500'
   Pop $2
   StrCmp $2 "0" 0 install_failed
-  nsExec::ExecToLog '"$INSTDIR\portico-server.exe" --service-start'
+  nsExec::ExecToLog /TIMEOUT=60000 '"$INSTDIR\portico-server.exe" --service-start'
   Pop $2
   StrCmp $2 "0" service_started
 install_failed:
@@ -70,7 +77,7 @@ SectionEnd
 
 Section "Uninstall"
   SetShellVarContext all
-  nsExec::ExecToLog '"$INSTDIR\portico-server.exe" --service-uninstall'
+  nsExec::ExecToLog /TIMEOUT=60000 '"$INSTDIR\portico-server.exe" --service-uninstall'
   Pop $2
   StrCmp $2 "0" service_removed
   MessageBox MB_ICONSTOP "Portico could not remove its service. Installation files have been kept." /SD IDOK

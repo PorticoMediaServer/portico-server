@@ -4637,6 +4637,9 @@ export const schemas = {
           "jobId": {
             "type": "string"
           },
+          "operationId": {
+            "type": "string"
+          },
           "outcome": {
             "type": "string"
           },
@@ -4647,6 +4650,9 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "sourceDigest": {
+            "type": "string"
           }
         },
         "required": [

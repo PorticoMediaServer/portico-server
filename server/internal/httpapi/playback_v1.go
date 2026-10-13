@@ -75,6 +75,7 @@ func v1ErrorDefinitions() []apierror.Definition {
 		// API registry.
 		{Code: "client_log_budget", Status: 429, Message: "The daily client log limit has been reached.", Retry: apierror.Never},
 		{Code: "device_session_required", Status: 403, Message: "Sign in on this device to upload logs.", Retry: apierror.Never},
+		{Code: "restore_lock_unavailable", Status: 409, Message: "Portico cannot safely restore data in this folder. Use a folder on a local disk and try again.", Retry: apierror.Never},
 		{Code: "restore_source_invalid", Status: 400, Message: "This restore source can't be used. Pick one of the listed backups or a Portico database file on the server.", Retry: apierror.Never},
 		{Code: "restore_schema_newer", Status: 409, Message: "This backup was written by a newer Portico. Update this server before restoring it.", Retry: apierror.Never},
 		{Code: "restore_pre_release", Status: 409, Message: "This backup was created by an earlier pre-release Portico and can't be restored.", Retry: apierror.Never},

@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-const RegistryRevision = "p09.2"
+const RegistryRevision = "p09.3"
 
 type Field struct {
 	ID          string   `json:"id"`
@@ -236,20 +236,19 @@ func readSettings(tx *sql.Tx) (SettingsDocument, error) {
 		return SettingsDocument{}, e
 	}
 	b, _ := json.Marshal(v)
-	return SettingsDocument{revision, Hash(string(b)), v, v, revision, restartFields(v), RegistryRevision}, nil
+	return SettingsDocument{revision, Hash(string(b)), v, v, revision, []string{}, RegistryRevision}, nil
 }
 
-// restartFields names saved values the running process has not adopted. The
-// document is applied atomically, so a value is never half-saved; what a client
-// needs instead is the registry's applicationMode, which says which fields only
-// take effect after a restart. This stays empty rather than guessing at what
-// the process adopted at startup, which no table records.
-func restartFields(Settings) []string { return []string{} }
 func (s *Store) Settings(ctx context.Context, auth Authorize) (out SettingsDocument, e error) {
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error { var err error; out, err = readSettings(tx); return err })
-	s.projectAppliedSettings(&out)
+	if e == nil {
+		s.projectAppliedSettings(&out)
+	}
 	return
 }
+
+// projectAppliedSettings uses the startup value held by the running consumer.
+// The stored requested document remains the single settings authority.
 func (s *Store) projectAppliedSettings(document *SettingsDocument) {
 	if s.AppliedTemporaryDirectory == nil {
 		return
@@ -403,7 +402,9 @@ func (s *Store) ApplySettings(ctx context.Context, p identity.Principal, auth Au
 		}
 		return SaveReceipt(tx, scope, c.IdempotencyKey, digest, out, s.now())
 	})
-	s.projectAppliedSettings(&out)
+	if e == nil {
+		s.projectAppliedSettings(&out)
+	}
 	return
 }
 

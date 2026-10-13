@@ -17,6 +17,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -114,6 +115,7 @@ type RestoreResult struct {
 }
 
 var (
+	ErrRestoreLockUnavailable = errors.New("restore needs a filesystem with server locking")
 	// ErrInsufficientDisk refuses a backup (or a staged restore) when free
 	// space is below the estimate. The API reports insufficient_disk.
 	ErrInsufficientDisk = errors.New("backup needs more free disk space than is available")
@@ -209,11 +211,15 @@ func (j *Job) setTotal(total int64) {
 
 func (j *Job) report(phase string, done, total int64) {
 	j.mu.Lock()
-	defer j.mu.Unlock()
+	changed := j.phase != phase
 	j.phase = phase
 	j.bytesDone = done
 	if total > j.bytesTotal {
 		j.bytesTotal = total
+	}
+	j.mu.Unlock()
+	if changed {
+		log.Printf("debug: [server] Backup %s entered %s", j.id, phase)
 	}
 }
 

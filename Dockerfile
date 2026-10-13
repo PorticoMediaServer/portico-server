@@ -77,8 +77,10 @@ COPY scripts/verify-ffmpeg-manifest.py scripts/verify-ffmpeg-bundle.sh /tmp/
 RUN bash /tmp/verify-ffmpeg-bundle.sh /ffmpeg full
 
 FROM debian:bookworm-slim
+ARG TARGETARCH
 RUN apt-get update \
- && apt-get install --yes --no-install-recommends bubblewrap ca-certificates tini tzdata libva2 libva-drm2 mesa-va-drivers intel-media-va-driver i965-va-driver \
+ && apt-get install --yes --no-install-recommends bubblewrap ca-certificates tini tzdata libva2 libva-drm2 mesa-va-drivers \
+ && if [ "$TARGETARCH" = amd64 ]; then apt-get install --yes --no-install-recommends intel-media-va-driver i965-va-driver; fi \
  && rm -rf /var/lib/apt/lists/*
 
 # An unprivileged user, and a state directory it owns. Everything the server

@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -57,7 +58,7 @@ func TestSeparateBackupDestinationAndRestoreRefusalWithoutLock(t *testing.T) {
 		t.Fatal(listed, err)
 	}
 	svc.SetRestoreAvailable(false)
-	if _, err = svc.StartRestore(context.Background(), Source{BackupID: id}, "restore-refused"); err != ErrRestorePending {
+	if _, err = svc.StartRestore(context.Background(), Source{BackupID: id}, "restore-refused"); err != ErrRestoreLockUnavailable {
 		t.Fatal(err)
 	}
 }
@@ -76,5 +77,41 @@ func TestCompletedRestoreReceiptReplaysAfterRestart(t *testing.T) {
 	}
 	if _, err = restarted.StartRestore(context.Background(), Source{Path: "/different"}, "completed-operation"); err != ErrInvalid {
 		t.Fatal("operation accepted changed source", err)
+	}
+}
+
+func TestFailedRestoreCanRetryTheSameOperation(t *testing.T) {
+	service, _, _ := testService(t)
+	source := Source{Path: filepath.Join(t.TempDir(), "candidate")}
+	first, err := service.StartRestore(context.Background(), source, "retry-operation")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for service.RestoreProgress().Phase != "failed" {
+		if time.Now().After(deadline) {
+			t.Fatal("missing source did not fail")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	backupID, err := service.Create(context.Background(), KindManual)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Rename(filepath.Join(service.backupRoot(), backupID), source.Path); err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.StartRestore(context.Background(), source, "retry-operation")
+	if err != nil || second == first {
+		t.Fatal("failed receipt prevented retry", first, second, err)
+	}
+	for service.RestoreProgress().Phase != "staged" {
+		if p := service.RestoreProgress(); p.ErrorCode != "" {
+			t.Fatal(p)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("retry did not stage")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

@@ -313,6 +313,12 @@ jobs:
         run: rm -rf runtime/release-signing
       - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2
         with: {subject-path: 'dist/artifacts/*'}
+      - name: The release tag still names the tested revision
+        env: {TAG: '${{ needs.identity.outputs.tag }}', SOURCE_SHA: '${{ needs.identity.outputs.sha }}'}
+        run: |
+          set -euo pipefail
+          remote_sha=$(git ls-remote origin "refs/tags/$TAG" "refs/tags/$TAG^{}" | awk 'NR==1 { direct=$1 } $2 ~ /\^\{\}$/ { peeled=$1 } END { print peeled ? peeled : direct }')
+          test "$remote_sha" = "$SOURCE_SHA"
       - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: '${{ needs.identity.outputs.tag }}'
