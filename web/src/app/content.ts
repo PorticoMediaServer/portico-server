@@ -44,16 +44,18 @@ export function useContent(route: ContentRoute | null) {
   const {api} = useSession();
   const scope = useViewerScope();
   const key = route ? JSON.stringify(route) : '';
-  // One kept document per destination (library, view, sort): Back shows it at once, and it is
-  // read again in the background only when its library or this profile's state moved.
+  // One kept document per destination (library, view, entity): Back shows it at once, and it is
+  // read again in the background only when its library or this profile's state moved. A new
+  // sort or filter of the same destination is the same document reading another route, so what
+  // is on screen stays until the new order arrives.
   const {service, snapshot, document, memo} = usePooledService<LibraryContentService, LibraryContentSnapshot>(
-    'content:' + key,
+    route ? `content:${route.libraryId}:${route.view}:${route.entityId ?? ''}` : 'content:',
     () => new LibraryContentService({api: compatContentApi(api) as typeof api, scope}),
     route ? titlesWithPersonalState(route.libraryId) : [],
   );
   useEffect(() => {
-    if (!route || memo.selected) return;
-    memo.selected = true;
+    if (!route || memo.selected === key) return;
+    memo.selected = key;
     document.markCurrent();
     try { void service.select(route).catch(e => { if (import.meta.env.DEV) console.error('[content] select failed', e); }); } catch (e) { if (import.meta.env.DEV) console.error('[content] select rejected', e); }
     // eslint-disable-next-line react-hooks/exhaustive-deps

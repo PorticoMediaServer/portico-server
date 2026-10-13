@@ -1,6 +1,8 @@
 import {errorText} from './errors';
 import {useI18n} from './i18n';
 import React, {createContext, useCallback, useContext, useEffect, useMemo, useRef, useState} from 'react';
+import {useFreshness} from './freshness';
+import {dependsOn} from '@core/freshness-hub.ts';
 import {PreferencesReader} from '@core/preferences-reader.ts';
 import {preferenceValue, type PreferencePatch, type PreferenceScope, type PreferenceSnapshot, type PreferenceValue} from '@core/preferences.ts';
 import {useSession} from './session';
@@ -52,6 +54,9 @@ export function ServerPreferencesProvider({children}: {children: React.ReactNode
     });
   }, [client]);
   useEffect(load, [load]);
+  // Preferences changed on another device, or the server's own settings, arrive on the event feed: read them again in place.
+  const {hub} = useFreshness();
+  useEffect(() => hub.watch([dependsOn.settings('preferences'), dependsOn.settings('server')], load), [hub, load]);
   const value = useCallback(<T extends PreferenceValue>(key: string, fallback: T): T => {
     if (!snapshot) return fallback;
     try {
