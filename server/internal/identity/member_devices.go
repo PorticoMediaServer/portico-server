@@ -106,9 +106,21 @@ func managesDevicesOf(actor Principal, account, role string) bool {
 // memberDeviceAuthorityTx checks both the session and its account in the same
 // snapshot or transaction that reads or changes another person's devices.
 func (s *Service) memberDeviceAuthorityTx(ctx context.Context, tx *sql.Tx, actor Principal) (Principal, error) {
-	if _, err := s.SessionFamilyTx(ctx, tx, actor); err != nil {
+	record, err := s.familyTokenTx(ctx, tx, actor.Hash)
+	if err != nil {
 		return Principal{}, err
 	}
+	if record.principal.AccountID != actor.AccountID || record.principal.ProfileID != actor.ProfileID || record.principal.Authority != actor.Authority || record.principal.Epoch != actor.Epoch {
+		return Principal{}, ErrUnauthorized
+	}
+	family, err := s.sessionFamilyRecordTx(ctx, tx, record.principal, record)
+	if err != nil {
+		return Principal{}, err
+	}
+	// A tier change is a live permission change, not an ended sign-in. Read
+	// the token's current tier so a concurrent demotion answers forbidden.
+	actor = record.principal
+	actor.DeviceID = family.DeviceID
 	if err := actor.PermitsRequest(ctx); err != nil {
 		return Principal{}, err
 	}

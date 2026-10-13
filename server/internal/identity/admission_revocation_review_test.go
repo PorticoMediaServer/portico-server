@@ -126,7 +126,23 @@ func TestMemberDeviceDecisionRechecksLiveAuthority(t *testing.T) {
 		t.Run(change, func(t *testing.T) {
 			ctx := context.Background()
 			s, owner, member, login := memberWithSession(t)
-			actor, err := s.Authenticate(owner.Session.AccessToken)
+			actorSession := *owner.Session
+			adminID := ""
+			if change == "demote" {
+				admin, err := s.CreateDirectMember(ctx, owner.AccountToken, DirectMemberInput{Username: "admin", Password: "Testing3!", Name: "Admin", AllowedLibraries: []string{}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				adminID = admin.ID
+				if _, err = s.db.Exec(`UPDATE direct_memberships SET role='admin' WHERE account_id=?`, adminID); err != nil {
+					t.Fatal(err)
+				}
+				actorSession, err = s.Issue(admin.ID, admin.PrimaryProfileID, "local", TierAdmin, 1)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			actor, err := s.Authenticate(actorSession.AccessToken)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -136,14 +152,14 @@ func TestMemberDeviceDecisionRechecksLiveAuthority(t *testing.T) {
 			case "transfer":
 				err = s.TransferDirectOwnership(ctx, owner.AccountToken, member.ID, "Testing1!", owner.Account.Revision)
 			case "demote":
-				if _, err = s.db.Exec(`UPDATE direct_memberships SET role='member' WHERE account_id=?`, owner.Account.ID); err == nil {
+				if _, err = s.db.Exec(`UPDATE direct_memberships SET role='member' WHERE account_id=?`, adminID); err == nil {
 					err = func() error {
 						tx, e := s.db.Begin()
 						if e != nil {
 							return e
 						}
 						defer tx.Rollback()
-						if e = RetierFamiliesTx(ctx, tx, owner.Account.ID, TierMember); e != nil {
+						if e = RetierFamiliesTx(ctx, tx, adminID, TierMember); e != nil {
 							return e
 						}
 						return tx.Commit()
@@ -155,9 +171,13 @@ func TestMemberDeviceDecisionRechecksLiveAuthority(t *testing.T) {
 			}
 			if _, err = s.MemberDevices(ctx, actor, MemberDeviceQuery{}); err == nil {
 				t.Error("stale administrator listed devices")
+			} else if change != "logout" && !errors.Is(err, ErrForbidden) {
+				t.Fatalf("live demotion ended the sign-in: %v", err)
 			}
 			if _, err = s.SetMemberDeviceTrust(ctx, actor, login.DeviceID, MemberDeviceTrust{ExpectedRevision: 1, Trust: "blocked"}); err == nil {
 				t.Error("stale administrator blocked a device")
+			} else if change != "logout" && !errors.Is(err, ErrForbidden) {
+				t.Fatalf("live demotion ended the sign-in: %v", err)
 			}
 			var state string
 			if err = s.db.QueryRow(`SELECT approval_state FROM identity_devices WHERE id=?`, login.DeviceID).Scan(&state); err != nil || state != "approved" {
