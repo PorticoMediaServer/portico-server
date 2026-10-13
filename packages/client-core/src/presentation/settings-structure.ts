@@ -100,7 +100,8 @@ export type SettingsCustomId =
   | 'server.windows' | 'server.jobs'
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
   | 'server.identity' | 'server.updates' | 'server.restart' | 'server.clientReports'
-  | 'server.setAsideTitles' | 'server.backgroundPause' | 'server.ffmpegStatus' | 'server.resourceUsage' | 'server.storageStatus' | 'server.downloadUsage';
+  | 'server.setAsideTitles' | 'server.backgroundPause' | 'server.ffmpegStatus' | 'server.resourceUsage' | 'server.storageStatus' | 'server.downloadUsage'
+  | 'server.playbackProblems';
 
 type RowCopy = Readonly<{
   label: MessageId;
@@ -450,6 +451,8 @@ const serverPages: readonly AuthoredPage[] = [
       setting('connectivity', 'uploadCapacityKbps', 'web.connectivity.uploadSpeed', {type: 'number', min: 0, max: 10000, unit: 'settings.unit.mbps', scale: 1000, empty: noLimit}, {help: 'settings.server.uploadSpeedHelp'}),
       setting('connectivity', 'pausedSessionTimeoutMinutes', 'web.connectivity.pausedLimit', {type: 'choice', choices: PAUSED_MINUTES.map(value => ({value, label: (value === 0 ? 'web.connectivity.pausedNever' : value === 60 ? 'web.connectivity.pausedHour' : value % 60 === 0 ? 'web.connectivity.pausedHours' : 'web.connectivity.pausedMinutes') as MessageId, labelValues: {count: value % 60 === 0 ? value / 60 : value}}))}, {help: 'web.connectivity.pausedLimitHelp'}),
     ]},
+    // Ways of playing a file that failed on a device and are being avoided for a while; absent while there are none.
+    panel('problems', 'server.playbackProblems', 'server.routes.title', {platforms: ['web']}),
   ]},
   {id: 'remote', title: 'settings.server.remote', icon: 'network', sections: [
     panel('status', 'server.remoteStatus'),

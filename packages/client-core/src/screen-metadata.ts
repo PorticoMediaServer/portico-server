@@ -54,6 +54,13 @@ export function parseScreenMetadata(raw:unknown,s:MetadataReviewScope,t:Metadata
  return Object.freeze({scope:Object.freeze({...s,libraryId:t.libraryId,entityId:t.entityId,viewerFence:raw.viewerFence}),provider:'screen',revision:raw.revision,status,selectedId:chosen?.id??'',order:string(raw.order,160),orders:Object.freeze((chosen?.screen?.orders??accepted?.orders??[]).map(o=>o.id)),actions:Object.freeze(actions),candidates:Object.freeze(candidates),attempts:raw.attempts,nextAttempt:string(raw.nextAttempt,128),providerError:string(raw.error,4096),attribution:string(raw.attribution,4096),screen:context});
 }
 
+/** An episode order as it is stored, taken apart: the provider's order and what is added to each file's own number (0 when files are numbered by season). */
+export function readTmdbOrder(order:string):Readonly<{base:string;offset:number}> {
+ const m=/^tmdb-absolute:(.+):(-?\d{1,7})$/.exec(order);
+ return m?{base:m[1]!,offset:Number(m[2])}:{base:order,offset:0};
+}
+/** Whether an order can carry a numbering offset: the provider's own order, or one of its alternate orders. */
+export const orderTakesOffset=(order:string):boolean=>order==='official'||/^tmdb-group:[A-Za-z0-9_-]{1,128}$/.test(order);
 /** Explicit anime numbering: local episode number plus offset is its position in the provider order. */
 export function tmdbAbsoluteOrder(order:string,offset:number):string {
  if(!Number.isSafeInteger(offset)||Math.abs(offset)>1000000||!(order==='official'||/^tmdb-group:[A-Za-z0-9_-]{1,128}$/.test(order)))invalid();

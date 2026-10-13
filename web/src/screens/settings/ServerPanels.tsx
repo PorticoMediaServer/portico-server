@@ -29,6 +29,7 @@ import {RecordsPanel, SupportExportPanel} from '../server/Logs';
 import {FeedbackPanel} from '../server/Feedback';
 import {PlayHistoryPanel} from '../server/PlayHistory';
 import {StatePermissionsCard} from '../server/StatePermissions';
+import {PlaybackProblemsPanel} from '../server/PlaybackProblems';
 
 /** Panels that are rows inside their section's group; every other panel brings its own surface and heading. */
 const ROW_PANELS: ReadonlySet<SettingsCustomId> = new Set(['server.certificateStatus', 'server.addresses', 'server.connection', 'server.ownCertificateStatus', 'server.backgroundPause', 'server.ffmpegStatus', 'server.retention', 'server.detailWindow', 'server.identity']);
@@ -88,6 +89,7 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.resourceUsage': return <ResourceUsagePanel />;
     case 'server.storageStatus': return <StorageStatusPanel />;
     case 'server.downloadUsage': return <DownloadUsagePanel />;
+    case 'server.playbackProblems': return <PlaybackProblemsPanel />;
     default: return null;
   }
 }

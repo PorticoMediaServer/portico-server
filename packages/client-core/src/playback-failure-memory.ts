@@ -18,3 +18,12 @@ export function parsePlaybackFailureMemory(raw:unknown):PlaybackFailureMemory {
 }
 export async function readPlaybackFailureMemory(api:Api,signal?:AbortSignal):Promise<PlaybackFailureMemory>{return parsePlaybackFailureMemory(await api.request<RouteResponse<'list_playback_failure_memory'>>(routePath('list_playback_failure_memory'),'GET',undefined,signal));}
 export async function clearPlaybackFailureMemory(api:Api,sourceId:string,signal?:AbortSignal):Promise<void>{if(!/^[A-Za-z0-9_-]{1,128}$/.test(sourceId))throw new Error(unreadableServerResponse);await api.request(routePath('clear_playback_failure_memory',{sourceId}),'DELETE',undefined,signal);}
+
+/** One file's remembered failures: every way of playing it that is being avoided, newest first, and when the last of them is forgotten. */
+export type PlaybackFailureGroup = Readonly<{sourceId:string;failures:readonly PlaybackFailure[];reportedAtMs:number;expiresAtMs:number}>;
+/** The failures file by file (one Forget covers a file), the most recently reported file first. */
+export function groupPlaybackFailures(items:readonly PlaybackFailure[]):readonly PlaybackFailureGroup[] {
+ const by=new Map<string,PlaybackFailure[]>();
+ for(const f of items){const list=by.get(f.sourceId);if(list)list.push(f);else by.set(f.sourceId,[f]);}
+ return [...by.entries()].map(([sourceId,list])=>{const failures=[...list].sort((a,b)=>b.reportedAtMs-a.reportedAtMs);return Object.freeze({sourceId,failures:Object.freeze(failures),reportedAtMs:failures[0]!.reportedAtMs,expiresAtMs:Math.max(...failures.map(f=>f.expiresAtMs))});}).sort((a,b)=>b.reportedAtMs-a.reportedAtMs);
+}

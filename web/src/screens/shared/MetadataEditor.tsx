@@ -1,6 +1,7 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {MetadataRepairService, type RepairData, type RepairRelationship, type RepairTarget, type RepairView} from '@core/metadata-repair.ts';
 import {bulkTargetLimit, type BulkFieldEdit} from '@core/metadata-bulk.ts';
+import {orderTakesOffset, readTmdbOrder, tmdbAbsoluteOrder} from '@core/screen-metadata.ts';
 import {groupMetadataTargets, runBulkRequests} from './bulk-job';
 import {useService} from '../../app/content';
 import {useMetadataEditor} from '../../app/metadata-editor';
@@ -474,12 +475,18 @@ function MatchingTab({data, busy, run}: {data: Data; busy: boolean; run: (c: Par
   const identityLocked = data.snapshot.relationshipLocks.identity ?? identity?.locked ?? false;
   const isScreen = identity?.engine === 'screen';
   const providerName = (p: string) => ({tmdb: 'TMDB', tvdb: 'TheTVDB', musicbrainz: 'MusicBrainz', anilist: 'AniList'} as Record<string, string>)[p] ?? p;
+  // Which episode order a match uses, and what is added to each file's own number when the files are numbered straight through.
+  const [orders, setOrders] = useState<Record<string, {order: string; offset: number}>>({});
+  const stored = readTmdbOrder(identity?.order ?? '');
+  const orderName = (id: string) => data.candidates.flatMap(c => c.orders ?? []).find(o => o.id === id)?.name ?? '';
+  const storedName = orderName(stored.base);
+  const orderLine = storedName ? (stored.offset ? t('web.metadata.orderWithOffset', {order: storedName, offset: stored.offset}) : storedName) : '';
   return (
     <>
       <div style={{display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap'}}>
         <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>
           <Text variant="heading">{t('web.metadata.currentMatch')}</Text>
-          {identity ? <Text variant="body" tone="secondary">{providerName(identity.provider)} {identity.type ? `${identity.type} ` : ''}{identity.id || t('web.metadata.notMatched')}{identity.order ? ` · ${identity.order}` : ''} · {t(matchingStatusKey(identity.status))}</Text> : <Text variant="body" tone="secondary">{t('web.metadata.noIdentityFor', {kind: data.target.kind})}</Text>}
+          {identity ? <Text variant="body" tone="secondary">{providerName(identity.provider)} {identity.type ? `${identity.type} ` : ''}{identity.id || t('web.metadata.notMatched')}{orderLine ? ` · ${orderLine}` : ''} · {t(matchingStatusKey(identity.status))}</Text> : <Text variant="body" tone="secondary">{t('web.metadata.noIdentityFor', {kind: data.target.kind})}</Text>}
         </div>
         {identity ? <Button size="sm" variant="ghost" icon={identityLocked ? 'lock' : 'unlock'} label={t(identityLocked ? 'web.metadata.identityLocked' : 'web.metadata.identityUnlocked')} disabled={busy} onClick={() => void run({action: 'relationship_lock', role: 'identity', locked: !identityLocked, confirm: true})} /> : null}
       </div>
@@ -491,14 +498,29 @@ function MatchingTab({data, busy, run}: {data: Data; busy: boolean; run: (c: Par
       <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
         {data.candidates.map(c => {
           const current = identity?.id === c.id && identity.provider === c.provider;
+          const key = `${c.provider}:${c.id}`;
+          const offered = c.orders ?? [];
+          // The order a match starts with: the one it already has when it is the current match, otherwise the provider's first.
+          const chosen = orders[key] ?? (current && offered.some(o => o.id === stored.base) ? {order: stored.base, offset: stored.offset} : {order: offered[0]?.id ?? '', offset: 0});
+          const takesOffset = c.provider === 'tmdb' && orderTakesOffset(chosen.order);
+          const order = chosen.order ? (takesOffset ? tmdbAbsoluteOrder(chosen.order, chosen.offset) : chosen.order) : '';
+          const set = (next: Partial<{order: string; offset: number}>) => setOrders(prev => ({...prev, [key]: {...chosen, ...next}}));
+          const identify = () => void run({action: 'identify', provider: c.provider, candidateId: c.id, ...(order ? {order} : {}), confirm: true});
           return (
-            <div key={`${c.provider}:${c.id}`} className={cx(s.candidate, current && s.current)}>
+            <div key={key} className={cx(s.candidate, current && s.current)}>
               <div className={s.candidateCopy}>
                 <Text variant="bodyStrong">{c.title || c.id}</Text>
                 <Text variant="caption" tone="tertiary">{[providerName(c.provider), c.subtitle].filter(Boolean).join(' · ')}</Text>
-                {c.orders?.length ? <Text variant="caption" tone="tertiary">{t('web.metadata.orders', {names: c.orders.map(o => o.name).join(', ')})}</Text> : null}
+                {offered.length ? (
+                  <div style={{display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-start', marginTop: 8}}>
+                    {offered.length > 1 ? <Select label={t('web.metadata.episodeOrder')} value={chosen.order} disabled={busy} onChange={e => set({order: e.target.value})} options={offered.map(o => ({value: o.id, label: o.name}))} /> : <Text variant="caption" tone="tertiary">{t('web.metadata.orders', {names: offered[0]!.name})}</Text>}
+                    {takesOffset ? <Input label={t('web.metadata.numberOffset')} help={t('web.metadata.numberOffsetHelp')} type="number" inputMode="numeric" min={-1000000} max={1000000} step={1} value={String(chosen.offset)} disabled={busy} onChange={e => { const n = Math.trunc(Number(e.target.value)); if (Number.isSafeInteger(n) && Math.abs(n) <= 1000000) set({offset: n}); }} style={{width: 140}} /> : null}
+                  </div>
+                ) : null}
               </div>
-              {current ? <Text variant="caption" tone="accent">{t('profile.current')}</Text> : <Button size="sm" variant="secondary" label={t('web.metadata.useMatch')} disabled={busy} onClick={() => void run({action: 'identify', provider: c.provider, candidateId: c.id, ...(c.orders?.[0] ? {order: c.orders[0].id} : {}), confirm: true})} />}
+              {current
+                ? (order && order !== identity?.order && offered.length ? <Button size="sm" variant="secondary" label={t('web.metadata.useOrder')} disabled={busy} onClick={identify} /> : <Text variant="caption" tone="accent">{t('profile.current')}</Text>)
+                : <Button size="sm" variant="secondary" label={t('web.metadata.useMatch')} disabled={busy} onClick={identify} />}
             </div>
           );
         })}
