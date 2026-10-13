@@ -40,3 +40,13 @@ test('the focused card is named with its state, and the tick is not a second, mo
   // The name still starts with the visible title, so voice control and "find by name" keep working.
   assert.ok(String(focusTarget(watched).props['aria-label']).startsWith('Dune'));
 });
+
+test('a card that cannot play says so in its name and on its art', async () => {
+  const {cardName, Card} = await card();
+  assert.equal(cardName('Ran', {unavailable: true}), 'Ran, Unavailable');
+  assert.equal(cardName('Ran', {unavailable: true, watched: true}), 'Ran, Unavailable, Watched');
+  const render = Card as unknown as (props: Record<string, unknown>) => unknown;
+  const mark = (tree: unknown) => find(tree, n => n.props?.className === 'unavailableMark');
+  assert.equal(String(mark(render({title: 'Ran', unavailable: true}))?.props.children), 'Unavailable');
+  assert.equal(mark(render({title: 'Ran'})), undefined);
+});
