@@ -7,6 +7,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
@@ -57,33 +58,37 @@ func TestPublishedProfileDecidesDeliveryAndIsExplained(t *testing.T) {
 	}
 
 	// An Apple TV publishes its document and the same file plays as it is.
-	raw, _ := json.Marshal(appleTVProfile())
-	profile, err := s.PublishClientProfile(ctx, p, raw)
-	if err != nil || profile.Revision == "" {
+	raw, _ := json.Marshal(documentOf(appleTVProfile()))
+	document, err := s.PublishCapabilities(ctx, p, raw)
+	if err != nil || document.Revision == "" {
 		t.Fatal(err)
 	}
-	if again, _ := s.PublishClientProfile(ctx, p, raw); again.Revision != profile.Revision {
+	if again, _ := s.PublishCapabilities(ctx, p, raw); again.Revision != document.Revision {
 		t.Fatal("republishing the same document changed its revision")
 	}
-	if held := s.ClientProfileFor(ctx, p); held.Revision != profile.Revision || held.Client.Family != "apple" {
-		t.Fatal("the stored document was not read back", held.Summary())
+	var writes int
+	if err = db.QueryRow(`SELECT revision FROM playback_device_capabilities`).Scan(&writes); err != nil || writes != 1 {
+		t.Fatal("republishing an equal document wrote again", writes, err)
+	}
+	if held := s.CapabilityDocumentFor(ctx, p); held.Revision != document.Revision || held.Client.Family != "apple" {
+		t.Fatal("the stored document was not read back", held.Profile(EngineNative).Summary())
 	}
 	session, err = s.Create(p, item, "auto", "apple")
 	if err != nil || session.Mode != "direct" {
 		t.Fatal(session, err)
 	}
 	plan, err = loadDeliveryPlan(db, session.ID)
-	if err != nil || plan.Strategy != DeliveryOriginal || plan.AudioStream != 1 || plan.Trace.Client.Revision != profile.Revision || plan.Trace.Video.DynamicRange != assets.RangeHDR10 {
+	if err != nil || plan.Strategy != DeliveryOriginal || plan.Engine != EngineNative || plan.AudioStream != 1 || plan.Trace.Client.Revision != document.Revision || plan.Trace.Client.Engine != EngineNative || plan.Trace.Video.DynamicRange != assets.RangeHDR10 {
 		t.Fatal(plan, err)
 	}
 
 	// Another sign-in has published nothing and is unaffected.
 	other := p
 	other.Hash = "someone-else"
-	if held := s.ClientProfileFor(ctx, other); held.Evidence != EvidenceBuiltin {
-		t.Fatal("a profile leaked across sign-ins", held.Summary())
+	if held := s.CapabilityDocumentFor(ctx, other); held.Engines.Native.Evidence != EvidenceBuiltin {
+		t.Fatal("a document leaked across sign-ins", held.Client)
 	}
-	if _, err = s.PublishClientProfile(ctx, p, []byte(`{"version":9}`)); !errors.Is(err, ErrClientProfileVersion) {
+	if _, err = s.PublishCapabilities(ctx, p, []byte(`{"version":9}`)); !errors.Is(err, ErrCapabilityDocumentVersion) {
 		t.Fatal(err)
 	}
 }
@@ -98,8 +103,8 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	if err != nil || first.Mode != "direct" {
 		t.Fatal(first, err)
 	}
-	out, err := s.ReportRouteFailure(ctx, p, RouteFailureReport{SessionID: first.ID, Code: "decode_error", Detail: "MEDIA_ERR_DECODE at 12.4s"})
-	if err != nil || out.Route != string(DeliveryOriginal) || !out.Escalates {
+	out, err := s.RecordRouteFailure(ctx, p, first.ID, "decode_error", "MEDIA_ERR_DECODE at 12.4s")
+	if err != nil || out.Route != string(DeliveryOriginal) || out.Engine != EngineNative || !out.Escalates {
 		t.Fatal(out, err)
 	}
 	second, err := s.Create(p, item, "auto", "second")
@@ -112,7 +117,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	}
 	// Reports climb: repackaging fails too, then converting the audio.
 	for _, id := range []string{second.ID} {
-		if _, err = s.ReportRouteFailure(ctx, p, RouteFailureReport{SessionID: id, Code: "source_not_supported"}); err != nil {
+		if _, err = s.RecordRouteFailure(ctx, p, id, "source_not_supported", ""); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -123,7 +128,7 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 	if plan, _ = loadDeliveryPlan(db, third.ID); plan.Strategy != DeliveryAudioConversion {
 		t.Fatal(plan.Strategy)
 	}
-	if _, err = s.ReportRouteFailure(ctx, p, RouteFailureReport{SessionID: third.ID, Code: "decode_error"}); err != nil {
+	if _, err = s.RecordRouteFailure(ctx, p, third.ID, "decode_error", ""); err != nil {
 		t.Fatal(err)
 	}
 	fourth, err := s.Create(p, item, "auto", "fourth")
@@ -134,15 +139,15 @@ func TestReportedRouteFailureEscalatesTheNextPlan(t *testing.T) {
 		t.Fatal(plan.Strategy)
 	}
 	// The last resort has nothing above it.
-	if out, err = s.ReportRouteFailure(ctx, p, RouteFailureReport{SessionID: fourth.ID, Code: "decode_error"}); err != nil || out.Escalates {
+	if out, err = s.RecordRouteFailure(ctx, p, fourth.ID, "decode_error", ""); err != nil || out.Escalates {
 		t.Fatal(out, err)
 	}
 	// Somebody else's session cannot be reported on, and junk is refused.
 	stranger := identity.Principal{Hash: "stranger", Viewer: identity.Viewer{AccountID: "other", ProfileID: "other", Authority: "local", Role: "member"}}
-	if _, err = s.ReportRouteFailure(ctx, stranger, RouteFailureReport{SessionID: first.ID, Code: "decode_error"}); !errors.Is(err, identity.ErrUnauthorized) {
+	if _, err = s.RecordRouteFailure(ctx, stranger, first.ID, "decode_error", ""); !errors.Is(err, identity.ErrUnauthorized) {
 		t.Fatal("a stranger reported on this session", err)
 	}
-	if _, err = s.ReportRouteFailure(ctx, p, RouteFailureReport{SessionID: first.ID, Code: "Not A Code!"}); !errors.Is(err, ErrRouteFailure) {
+	if _, err = s.RecordRouteFailure(ctx, p, first.ID, "Not A Code!", ""); !errors.Is(err, ErrRouteFailure) {
 		t.Fatal(err)
 	}
 }
@@ -211,5 +216,75 @@ func TestWithVideoBitrateCeiling(t *testing.T) {
 	}
 	if equal := WithVideoBitrateCeiling(in, 0); !reflect.DeepEqual(equal, in) {
 		t.Fatalf("ceiling 0 changed the profile: %+v", equal)
+	}
+}
+
+// Turning conversion off does not turn repackaging off: a file whose streams
+// are only copied into another container converts nothing and still plays.
+// Anything that would be converted is refused.
+func TestConversionOffStillRepackages(t *testing.T) {
+	db, s, p, _, item, _ := activityFixture(t)
+	s.ConfigureHLS(&HLS{})
+	if _, err := db.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=0 WHERE singleton=1`); err != nil {
+		t.Fatal(err)
+	}
+	asset := firstCatalogAssetToken(t, db)
+	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.Container = "mkv" })
+	session, err := s.Create(p, item, "original", "repackage")
+	if err != nil || session.Mode != "hls" {
+		t.Fatal("a copy-only stream was refused with conversion off", session, err)
+	}
+	if plan, _ := loadDeliveryPlan(db, session.ID); plan.Strategy != DeliveryCopyRemux || plan.VideoAction != "copy" || plan.AudioAction != "copy" {
+		t.Fatal(plan.Strategy, plan.VideoAction, plan.AudioAction)
+	}
+	updateCatalogAsset(t, db, asset, func(a *compactcatalog.Asset) { a.VideoCodec = "vp9" })
+	if _, err = s.Create(p, item, "original", "convert"); err == nil {
+		t.Fatal("a conversion was started with conversion off")
+	}
+}
+
+// A report that names a fault of the stream closes its route for a week; one
+// that only says something went wrong closes it for an evening.
+func TestUncertainRouteFailuresLapseSooner(t *testing.T) {
+	db, s, p, _, item, _ := activityFixture(t)
+	ctx := context.Background()
+	s.ConfigureHLS(&HLS{})
+	first, err := s.Create(p, item, "auto", "first")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = s.RecordRouteFailure(ctx, p, first.ID, "engine_error", ""); err != nil {
+		t.Fatal(err)
+	}
+	modeOfNext := func(request string) string {
+		t.Helper()
+		next, err := s.Create(p, item, "auto", request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return next.Mode
+	}
+	if modeOfNext("second") != "hls" {
+		t.Fatal("a fresh failure did not close the route")
+	}
+	age := func(d time.Duration) {
+		t.Helper()
+		if _, err := db.Exec(`UPDATE playback_route_failures SET reported_at_ms=?`, time.Now().Add(-d).UnixMilli()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	age(7 * time.Hour)
+	if modeOfNext("third") != "direct" {
+		t.Fatal("an uncertain failure still closes the route after an evening")
+	}
+	if _, err = db.Exec(`UPDATE playback_route_failures SET code='decode_error'`); err != nil {
+		t.Fatal(err)
+	}
+	if modeOfNext("fourth") != "hls" {
+		t.Fatal("a decode failure lapsed with the uncertain ones")
+	}
+	age(8 * 24 * time.Hour)
+	if modeOfNext("fifth") != "direct" {
+		t.Fatal("a failure outlived its week")
 	}
 }

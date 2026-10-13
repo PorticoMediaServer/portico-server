@@ -42,7 +42,7 @@ import type {QueueEntry as LegacyEntry, QueueIntent, QueueItemInput, QueueScope,
 import {PlaybackApiError, call, idempotencyKey, type V1Http} from './http.ts';
 import {toPlaybackSession} from './session-shape.ts';
 import {audioTrackId, type PlaybackChoices} from './choices.ts';
-import type {QualityRequest} from './quality.ts';
+import {requestInForce, type QualityRequest} from './quality.ts';
 import type {SessionChange, StartOptions, StartTarget} from './sessions.ts';
 import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, type CreateResult, type QueueAnchor, type QueuePlaylistSave, type SegmentInput} from './queue.ts';
 import {audioTransitionsEnabled} from '../audio-effects.ts';
@@ -73,6 +73,8 @@ export interface QueueSessionTransport {
   reportedSeq(id: string): number;
   /** Re-plans a live session (quality, version, audio track): same session, next generation. */
   change?(id: string, change: SessionChange, durationSeconds: number): Promise<{session: Session; playback: PlaybackSession}>;
+  /** Tells the queue player that a session it holds was re-planned behind it (a recovered player failure). */
+  onSessionChanged?(listener: (session: Session) => void): () => void;
 }
 
 export type V1QueuePlayerOptions = Readonly<{
@@ -122,6 +124,7 @@ const message = (e: unknown, fallback: string): string => {
       case 'stream_limit_reached': return 'This account is already playing as many streams as it is allowed.';
       case 'transcode_not_allowed': return 'This title needs converting, and converting is turned off for this account.';
       case 'unsupported_media': return 'This title can’t be played on this device.';
+      case 'connection_too_slow': return 'Your connection to this server is too slow for this quality. Choose a lower quality or Automatic.';
     }
   }
   return fallback;
@@ -164,6 +167,7 @@ export class V1QueuePlayer implements QueueController {
   private readonly events?: V1QueuePlayerOptions['events'];
   private unlisten?: () => void;
   private unlistenSessions?: () => void;
+  private unlistenChanged?: () => void;
   private wakePending?: () => void;
   private refreshTimer?: ReturnType<typeof setTimeout>;
   private readonly buildingRetryMs: number;
@@ -191,6 +195,9 @@ export class V1QueuePlayer implements QueueController {
     this.nativeFor = options.nativeFor ?? (() => false);
     this.http = options.http;
     this.api = options.api;
+    // A session re-planned behind the queue (a player failure the service recovered from) is the
+    // same session with a new presentation: keep the copy the queue commands read in step.
+    this.unlistenChanged = this.api.onSessionChanged?.(session => { if (this.session?.id === session.id) this.session = session; });
     this.defaultQuality = options.quality;
     this.playback = options.playback;
     this.key = options.key ?? (() => idempotencyKey());
@@ -325,6 +332,20 @@ export class V1QueuePlayer implements QueueController {
     return this.play(segments([itemId], false), itemId, {startSeconds}, chosen);
   }
 
+  // ── Changing what is playing ────────────────────────────────────────
+
+  /** The session being played and the quality, engine and tracks in force on it. */
+  currentSession(): Session | undefined { return this.session; }
+  /** Choose a quality for this session and the rest of this viewing. */
+  setQuality(quality: QualityRequest, throughputKbps?: number) { return this.changePlayback({quality, ...(throughputKbps !== undefined ? {throughputKbps: Math.max(0, Math.round(throughputKbps))} : {})}); }
+  /** Automatic quality: one step down or up from where the session is, chosen by the server. */
+  stepQuality(direction: 'down' | 'up') { return this.changePlayback({quality: {mode: 'automatic', step: direction}}); }
+  setVersion(versionId: string) { return this.changePlayback({versionId}); }
+  setAudioTrack(trackId: string) { return this.changePlayback({audioTrackId: trackId}); }
+  /** `null` turns subtitles off. A text track comes back as a sidecar file; a styled or image
+   * track is drawn by the engine (`presentation.subtitle.delivery === 'device'`) or burned in. */
+  setSubtitleTrack(trackId: string | null) { return this.changePlayback({subtitleTrackId: trackId}); }
+
   playEntries(entries: readonly QueueItemInput[], options: {shuffle?: boolean; startSeconds?: number} = {}): Promise<void> {
     if (!entries.length) return Promise.reject(new Error('No available items were selected.'));
     return this.playIds(entries.map(e => e.itemId), options);
@@ -378,8 +399,9 @@ export class V1QueuePlayer implements QueueController {
   async changePlayback(choices: PlaybackChoices): Promise<void> {
     const session = this.session;
     if (this.disposed || !session || this.nativeOwns()) return;
-    if (choices.quality) this.qualityOverride = choices.quality;
-    const change: SessionChange = {...(choices.quality ? {quality: choices.quality} : {}), ...(choices.versionId ? {versionId: choices.versionId} : {}), ...(choices.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {})};
+    if (choices.quality && !('step' in choices.quality && choices.quality.step)) this.qualityOverride = choices.quality;
+    const change: SessionChange = {...(choices.quality ? {quality: choices.quality} : {}), ...(choices.versionId ? {versionId: choices.versionId} : {}), ...(choices.audioTrackId ? {audio: {trackId: choices.audioTrackId}} : {}),
+      ...(choices.subtitleTrackId !== undefined ? {subtitles: {trackId: choices.subtitleTrackId}} : {}), ...(choices.throughputKbps !== undefined ? {throughputKbps: choices.throughputKbps} : {})};
     if (!Object.keys(change).length) return;
     const generation = this.generation;
     const live = () => !this.disposed && generation === this.generation && this.session?.id === session.id;
@@ -390,6 +412,8 @@ export class V1QueuePlayer implements QueueController {
       const r = await this.api.change(session.id, change, this.playback.getSnapshot().duration);
       if (!live()) return;
       this.session = r.session;
+      // The quality the server put in force (the step Automatic is on) is what the next entry starts with.
+      if (choices.quality && r.session.presentation.quality) this.qualityOverride = requestInForce(r.session.presentation.quality);
       if (this.header) this.accept(this.header);
       this.playback.installPresentation(r.playback);
     } catch (e) {
@@ -782,6 +806,7 @@ export class V1QueuePlayer implements QueueController {
     if (this.disposed) return;
     this.leave();
     this.disposed = true;
+    this.unlistenChanged?.();
     ++this.nativeEpoch;
     this.unsubscribe?.();
     this.unlisten?.();

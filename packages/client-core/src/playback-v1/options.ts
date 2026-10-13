@@ -6,8 +6,9 @@
  * choices ("Plays as original", "Converts audio") before starting. Capabilities are published with
  * `PUT /v1/me/devices/current/capabilities` only when they change.
  */
-import type {AudioDecodeCapability} from './audio-render.ts';
-import {call, enc, type V1Http} from './http.ts';
+import type {CapabilityDocument, StoredCapabilities} from '../client-profile.ts';
+import {capabilityDocumentProblem} from '../client-profile.ts';
+import {PlaybackApiError, call, enc, type V1Http} from './http.ts';
 import {parseOptions, type AudioStream, type MediaVersion, type PlaybackOptions, type PlaybackPlan, type SubtitleStream} from './types.ts';
 import type {QualityRequest} from './quality.ts';
 
@@ -21,6 +22,7 @@ function query(p: OptionsPreview): string {
   if (p.subtitleId !== undefined) q.set('subtitleId', p.subtitleId ?? 'none');
   if (p.quality) {
     q.set('quality', p.quality.mode);
+    if ((p.quality.mode === 'fixed' || p.quality.mode === 'automatic') && p.quality.id) q.set('qualityId', p.quality.id);
     if (p.quality.mode === 'limit') {
       if (p.quality.maxVideoBitrateKbps) q.set('maxVideoBitrateKbps', String(p.quality.maxVideoBitrateKbps));
       if (p.quality.maxHeight) q.set('maxHeight', String(p.quality.maxHeight));
@@ -78,33 +80,44 @@ export function markerAt(o: PlaybackOptions, positionMs: number) {
   return o.markers.find(m => positionMs >= m.startMs && positionMs < m.endMs);
 }
 
-/** The device capability profile (spec §3). Platforms fill it from their probes. */
-export type CapabilityProfile = Readonly<{
-  form: 'tv' | 'phone' | 'tablet' | 'desktop' | 'browser' | 'cast' | 'speaker';
-  network: Readonly<{class: 'local' | 'remote' | 'cellular'; maxBitrateKbps?: number}>;
-  containers: readonly Readonly<{container: string; direct: boolean}>[];
-  streaming: Readonly<{hls: Readonly<{fmp4: boolean; ts: boolean; maxSegmentMs?: number}>; progressive: boolean}>;
-  video: readonly Readonly<Record<string, unknown>>[];
-  display?: Readonly<{hdr: readonly string[]; maxWidth?: number; maxHeight?: number}>;
-  audio: readonly Readonly<Record<string, unknown>>[];
-  /** What this client's own audio engine decodes (spec §3, §18.1): only pairs that pass the §18.8
-   * fixtures here. Absent or empty: every music presentation is converted (or unavailable). */
-  audioDecode?: readonly AudioDecodeCapability[];
-  subtitles: readonly Readonly<{format: string; render: 'native' | 'client' | 'none'}>[];
-  features: Readonly<Record<string, boolean>>;
-}>;
-
-/** Publishes the profile when it differs from the last one the server accepted. */
+/**
+ * Publishes this device's capability document (`client-profile.ts`) when it differs from the last
+ * one the server accepted: `PUT /v1/me/devices/current/capabilities`, answered 204 with the new
+ * revision in `ETag`. The document belongs to the device, not the sign-in, so one publish serves
+ * every later sign-in of the device. A document the server would refuse is never sent. A failure
+ * is swallowed by design: a device that could not publish is planned against the server's
+ * baseline, which always plays, and publishing is tried again the next time anything calls this.
+ */
 export class CapabilityPublisher {
   private http: V1Http;
   private last?: string;
-  constructor(http: V1Http) { this.http = http; }
-  async publish(profile: CapabilityProfile, signal?: AbortSignal): Promise<boolean> {
-    const body = JSON.stringify(profile);
-    if (body === this.last) return false;
-    await call(this.http, {method: 'PUT', path: '/v1/me/devices/current/capabilities', body: profile, signal});
-    this.last = body;
-    return true;
+  private inflight?: Promise<boolean>;
+  private readonly scope: () => string;
+  /** `scope` names the server and device (a different scope publishes again). */
+  constructor(http: V1Http, scope: () => string = () => '') { this.http = http; this.scope = scope; }
+  publish(document: CapabilityDocument, signal?: AbortSignal): Promise<boolean> {
+    if (capabilityDocumentProblem(document)) return Promise.resolve(false);
+    const key = this.scope() + '\n' + JSON.stringify(document);
+    if (key === this.last) return Promise.resolve(false);
+    if (this.inflight) return this.inflight;
+    const work = call(this.http, {method: 'PUT', path: '/v1/me/devices/current/capabilities', body: document, signal})
+      .then(() => { this.last = key; return true; })
+      .catch(() => false)
+      .finally(() => { if (this.inflight === work) this.inflight = undefined; });
+    this.inflight = work;
+    return work;
+  }
+  /** What the server holds for this device, or undefined when it has published nothing. */
+  async read(signal?: AbortSignal): Promise<StoredCapabilities | undefined> {
+    try {
+      const r = await call(this.http, {method: 'GET', path: '/v1/me/devices/current/capabilities', signal});
+      const b = r.body as {revision?: unknown; capabilities?: unknown} | undefined;
+      if (!b || typeof b.revision !== 'number' || !b.capabilities || typeof b.capabilities !== 'object') return undefined;
+      return Object.freeze({revision: b.revision, capabilities: b.capabilities as CapabilityDocument});
+    } catch (e) {
+      if (e instanceof PlaybackApiError && e.status === 404) return undefined;
+      throw e;
+    }
   }
   /** Forget what was sent (sign-in, server switch). */
   reset() { this.last = undefined; }

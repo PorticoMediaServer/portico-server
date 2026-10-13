@@ -86,8 +86,8 @@ func renditionFixtureAudio(t *testing.T, mixed bool) (context.Context, *Service,
 	s.ConfigureDelivery(fixedSettings{cfg}, nil, nil, "")
 	p := identity.Principal{Hash: "login", Viewer: identity.Viewer{AccountID: "owner", ProfileID: "profile", Authority: "local", Role: "owner"}, Epoch: 1}
 	if mixed {
-		raw, _ := json.Marshal(appleTVProfile())
-		if _, err := s.PublishClientProfile(ctx, p, raw); err != nil {
+		raw, _ := json.Marshal(documentOf(appleTVProfile()))
+		if _, err := s.PublishCapabilities(ctx, p, raw); err != nil {
 			t.Fatal(err)
 		}
 	}

@@ -47,22 +47,20 @@ const SEARCH_ROOTS = [
   'server/internal',
 ];
 
-const QUALITY_LANES = ['local', 'wifi', 'cellular', 'unknown'];
-const QUALITY_FIELDS = ['mode', 'maxVideoBitrateMbps', 'maxAudioBitrateKbps', 'maxVideoHeight', 'allowHDR'];
 
 /** Keys with no reader that another lane must resolve (key: reason). None today. */
 export const EXCEPTIONS = {};
 
-/** `quality.<lane>.*` keys are read through a dynamic lane prefix, never as
- * literals. These files contain the prefix read and cover the whole group. */
+/** The two saved default qualities (`quality.home`, `quality.remote`) are read
+ * through a prefix and the name of the network class, never as literals. These
+ * files contain the prefix read and cover both. */
 const PREFIX_READERS = [
-  {prefix: 'quality.', files: ['packages/client-core/src/playback-v1/quality.ts', 'server/internal/playback/delivery_policy.go']},
+  {prefix: 'quality.', files: ['server/internal/playback/delivery_policy.go', 'server/internal/httpapi/playback_v1_routes.go']},
 ];
 
 export function extractRegistryKeys(goSource) {
   const keys = new Set();
   for (const m of goSource.matchAll(/pref\w+\("([^"]+)"/g)) keys.add(m[1]);
-  for (const lane of QUALITY_LANES) for (const f of QUALITY_FIELDS) keys.add(`quality.${lane}.${f}`);
   return [...keys].sort();
 }
 

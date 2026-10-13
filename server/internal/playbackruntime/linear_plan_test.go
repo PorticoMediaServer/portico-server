@@ -82,6 +82,9 @@ func TestLinearAudioConversionKeepsCopiedHDR(t *testing.T) {
 			p.Transports[i].Video = append(p.Transports[i].Video, "hevc")
 		}
 	}
+	// The device decodes HDR10 and its screen shows it: a decoder alone would
+	// leave an SDR screen with a picture it cannot present.
+	p.Display.DynamicRanges = append(p.Display.DynamicRanges, "hdr10")
 	w := playback.LinearWork{ClientProfile: p, TranscodingEnabled: true}
 	w.Selection.Quality.AllowLossy = true
 	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"hevc","pix_fmt":"yuv420p10le","color_transfer":"smpte2084","width":1920,"height":1080,"avg_frame_rate":"30/1","field_order":"progressive"},{"codec_type":"audio","codec_name":"ac3","channels":6,"sample_rate":"48000"}]}`)

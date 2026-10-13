@@ -368,6 +368,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "audioTrackId": {
+                "type": "string"
+              },
               "bitrateKbps": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -459,6 +462,9 @@ export const schemas = {
                 },
                 "required": [],
                 "type": "object"
+              },
+              "engine": {
+                "type": "string"
               },
               "generation": {
                 "maximum": 9007199254740991,
@@ -606,10 +612,61 @@ export const schemas = {
               "mode": {
                 "type": "string"
               },
+              "quality": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "maxAudioBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxVideoBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "step": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              },
               "startPositionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "subtitle": {
+                "properties": {
+                  "delivery": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "trackId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "trackId",
+                  "kind",
+                  "delivery"
+                ],
+                "type": "object"
               },
               "subtitles": {
                 "items": {
@@ -647,6 +704,7 @@ export const schemas = {
               "generation",
               "mode",
               "url",
+              "engine",
               "startPositionMs",
               "subtitles",
               "decision"
@@ -1078,6 +1136,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "audioTrackId": {
+                "type": "string"
+              },
               "bitrateKbps": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -1169,6 +1230,9 @@ export const schemas = {
                 },
                 "required": [],
                 "type": "object"
+              },
+              "engine": {
+                "type": "string"
               },
               "generation": {
                 "maximum": 9007199254740991,
@@ -1316,10 +1380,61 @@ export const schemas = {
               "mode": {
                 "type": "string"
               },
+              "quality": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "maxAudioBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxVideoBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "step": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              },
               "startPositionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "subtitle": {
+                "properties": {
+                  "delivery": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "trackId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "trackId",
+                  "kind",
+                  "delivery"
+                ],
+                "type": "object"
               },
               "subtitles": {
                 "items": {
@@ -1357,6 +1472,7 @@ export const schemas = {
               "generation",
               "mode",
               "url",
+              "engine",
               "startPositionMs",
               "subtitles",
               "decision"
@@ -2520,13 +2636,35 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "failure": {
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "code"
+        ],
+        "type": "object"
+      },
       "partIndex": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "positionMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       },
       "quality": {
         "properties": {
+          "id": {
+            "type": "string"
+          },
           "maxAudioBitrateKbps": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -2543,6 +2681,9 @@ export const schemas = {
             "type": "integer"
           },
           "mode": {
+            "type": "string"
+          },
+          "step": {
             "type": "string"
           }
         },
@@ -2592,6 +2733,11 @@ export const schemas = {
           "trackId"
         ],
         "type": "object"
+      },
+      "throughputKbps": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
       "versionId": {
         "type": "string"
@@ -2762,6 +2908,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "audioTrackId": {
+            "type": "string"
+          },
           "bitrateKbps": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -2853,6 +3002,9 @@ export const schemas = {
             },
             "required": [],
             "type": "object"
+          },
+          "engine": {
+            "type": "string"
           },
           "generation": {
             "maximum": 9007199254740991,
@@ -3000,10 +3152,61 @@ export const schemas = {
           "mode": {
             "type": "string"
           },
+          "quality": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "maxAudioBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHeight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxVideoBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "step": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "type": "object"
+          },
           "startPositionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "subtitle": {
+            "properties": {
+              "delivery": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "trackId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "trackId",
+              "kind",
+              "delivery"
+            ],
+            "type": "object"
           },
           "subtitles": {
             "items": {
@@ -3041,6 +3244,7 @@ export const schemas = {
           "generation",
           "mode",
           "url",
+          "engine",
           "startPositionMs",
           "subtitles",
           "decision"
@@ -3409,6 +3613,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "audioTrackId": {
+                "type": "string"
+              },
               "bitrateKbps": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -3500,6 +3707,9 @@ export const schemas = {
                 },
                 "required": [],
                 "type": "object"
+              },
+              "engine": {
+                "type": "string"
               },
               "generation": {
                 "maximum": 9007199254740991,
@@ -3647,10 +3857,61 @@ export const schemas = {
               "mode": {
                 "type": "string"
               },
+              "quality": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "maxAudioBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxVideoBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "step": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              },
               "startPositionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "subtitle": {
+                "properties": {
+                  "delivery": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "trackId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "trackId",
+                  "kind",
+                  "delivery"
+                ],
+                "type": "object"
               },
               "subtitles": {
                 "items": {
@@ -3688,6 +3949,7 @@ export const schemas = {
               "generation",
               "mode",
               "url",
+              "engine",
               "startPositionMs",
               "subtitles",
               "decision"
@@ -5040,6 +5302,9 @@ export const schemas = {
         "properties": {
           "quality": {
             "properties": {
+              "id": {
+                "type": "string"
+              },
               "maxAudioBitrateKbps": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -5056,6 +5321,9 @@ export const schemas = {
                 "type": "integer"
               },
               "mode": {
+                "type": "string"
+              },
+              "step": {
                 "type": "string"
               }
             },
@@ -5382,6 +5650,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "audioTrackId": {
+                "type": "string"
+              },
               "bitrateKbps": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -5473,6 +5744,9 @@ export const schemas = {
                 },
                 "required": [],
                 "type": "object"
+              },
+              "engine": {
+                "type": "string"
               },
               "generation": {
                 "maximum": 9007199254740991,
@@ -5620,10 +5894,61 @@ export const schemas = {
               "mode": {
                 "type": "string"
               },
+              "quality": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "maxAudioBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxVideoBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "step": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              },
               "startPositionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "subtitle": {
+                "properties": {
+                  "delivery": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "trackId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "trackId",
+                  "kind",
+                  "delivery"
+                ],
+                "type": "object"
               },
               "subtitles": {
                 "items": {
@@ -5661,6 +5986,7 @@ export const schemas = {
               "generation",
               "mode",
               "url",
+              "engine",
               "startPositionMs",
               "subtitles",
               "decision"
@@ -8451,41 +8777,6 @@ export const schemas = {
     "properties": {
       "capabilities": {
         "properties": {
-          "audio": {
-            "items": {
-              "properties": {
-                "atmos": {
-                  "type": "boolean"
-                },
-                "codec": {
-                  "type": "string"
-                },
-                "maxBitDepth": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "maxChannels": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "maxSampleRate": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "passthrough": {
-                  "type": "boolean"
-                }
-              },
-              "required": [
-                "codec"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
           "audioDecode": {
             "items": {
               "properties": {
@@ -8533,190 +8824,591 @@ export const schemas = {
             },
             "type": "array"
           },
-          "containers": {
-            "items": {
-              "properties": {
-                "container": {
-                  "type": "string"
-                },
-                "direct": {
-                  "type": "boolean"
-                }
+          "audioOutput": {
+            "properties": {
+              "maxChannels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
-              "required": [
-                "container",
-                "direct"
-              ],
-              "type": "object"
+              "route": {
+                "type": "string"
+              },
+              "spatial": {
+                "type": "boolean"
+              }
             },
-            "type": "array"
+            "required": [
+              "route",
+              "maxChannels",
+              "spatial"
+            ],
+            "type": "object"
+          },
+          "client": {
+            "properties": {
+              "app": {
+                "type": "string"
+              },
+              "appVersion": {
+                "type": "string"
+              },
+              "family": {
+                "type": "string"
+              },
+              "form": {
+                "type": "string"
+              },
+              "model": {
+                "type": "string"
+              },
+              "os": {
+                "type": "string"
+              },
+              "osVersion": {
+                "type": "string"
+              },
+              "platform": {
+                "type": "string"
+              },
+              "platformVersion": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "family"
+            ],
+            "type": "object"
           },
           "display": {
             "properties": {
-              "hdr": {
+              "dynamicRanges": {
                 "items": {
                   "type": "string"
                 },
                 "type": "array"
               },
-              "maxHeight": {
+              "height": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "maxWidth": {
+              "maxFrameRate": {
+                "type": "number"
+              },
+              "width": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               }
             },
             "required": [
-              "hdr"
+              "width",
+              "height",
+              "dynamicRanges",
+              "maxFrameRate"
             ],
             "type": "object"
           },
-          "features": {
-            "additionalProperties": {
-              "type": "boolean"
-            },
-            "type": "object"
-          },
-          "form": {
+          "engineSetting": {
             "type": "string"
           },
-          "network": {
+          "engines": {
             "properties": {
-              "class": {
-                "type": "string"
-              },
-              "maxBitrateKbps": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
-              }
-            },
-            "required": [
-              "class"
-            ],
-            "type": "object"
-          },
-          "streaming": {
-            "properties": {
-              "hls": {
+              "mpv": {
                 "properties": {
-                  "fmp4": {
+                  "audio": {
+                    "items": {
+                      "properties": {
+                        "codec": {
+                          "type": "string"
+                        },
+                        "evidence": {
+                          "type": "string"
+                        },
+                        "maxChannels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxSampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "objectAudio": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "codec",
+                        "maxChannels",
+                        "maxSampleRate",
+                        "objectAudio"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "audioPassthrough": {
+                    "items": {
+                      "properties": {
+                        "codec": {
+                          "type": "string"
+                        },
+                        "evidence": {
+                          "type": "string"
+                        },
+                        "maxChannels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "objectAudio": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "codec",
+                        "maxChannels",
+                        "objectAudio"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "embeddedAudioSwitching": {
                     "type": "boolean"
                   },
-                  "maxSegmentMs": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
+                  "evidence": {
+                    "type": "string"
                   },
-                  "ts": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "subtitleRendering": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "toneMapsHdr": {
                     "type": "boolean"
+                  },
+                  "transports": {
+                    "items": {
+                      "properties": {
+                        "audio": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "containers": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "transport": {
+                          "type": "string"
+                        },
+                        "video": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "transport",
+                        "containers",
+                        "video",
+                        "audio"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "video": {
+                    "items": {
+                      "properties": {
+                        "bitDepths": {
+                          "items": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "array"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "codecTags": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "dolbyVisionProfiles": {
+                          "items": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "array"
+                        },
+                        "dynamicRanges": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "evidence": {
+                          "type": "string"
+                        },
+                        "interlaced": {
+                          "type": "boolean"
+                        },
+                        "maxBitrateBps": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxFrameRate": {
+                          "type": "number"
+                        },
+                        "maxHeight": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxLevel": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxWidth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "profiles": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "codec",
+                        "profiles",
+                        "maxLevel",
+                        "bitDepths",
+                        "maxWidth",
+                        "maxHeight",
+                        "maxFrameRate",
+                        "maxBitrateBps",
+                        "dynamicRanges",
+                        "dolbyVisionProfiles",
+                        "interlaced"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
                   }
                 },
                 "required": [
-                  "fmp4",
-                  "ts"
+                  "evidence",
+                  "video",
+                  "audio",
+                  "audioPassthrough",
+                  "transports",
+                  "subtitleRendering",
+                  "toneMapsHdr",
+                  "embeddedAudioSwitching"
                 ],
                 "type": "object"
               },
-              "progressive": {
+              "native": {
+                "nullable": true,
+                "properties": {
+                  "audio": {
+                    "items": {
+                      "properties": {
+                        "codec": {
+                          "type": "string"
+                        },
+                        "evidence": {
+                          "type": "string"
+                        },
+                        "maxChannels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxSampleRate": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "objectAudio": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "codec",
+                        "maxChannels",
+                        "maxSampleRate",
+                        "objectAudio"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "audioPassthrough": {
+                    "items": {
+                      "properties": {
+                        "codec": {
+                          "type": "string"
+                        },
+                        "evidence": {
+                          "type": "string"
+                        },
+                        "maxChannels": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "objectAudio": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "codec",
+                        "maxChannels",
+                        "objectAudio"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "embeddedAudioSwitching": {
+                    "type": "boolean"
+                  },
+                  "evidence": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "subtitleRendering": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "toneMapsHdr": {
+                    "type": "boolean"
+                  },
+                  "transports": {
+                    "items": {
+                      "properties": {
+                        "audio": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "containers": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "transport": {
+                          "type": "string"
+                        },
+                        "video": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "transport",
+                        "containers",
+                        "video",
+                        "audio"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "version": {
+                    "type": "string"
+                  },
+                  "video": {
+                    "items": {
+                      "properties": {
+                        "bitDepths": {
+                          "items": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "array"
+                        },
+                        "codec": {
+                          "type": "string"
+                        },
+                        "codecTags": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "dolbyVisionProfiles": {
+                          "items": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "array"
+                        },
+                        "dynamicRanges": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "evidence": {
+                          "type": "string"
+                        },
+                        "interlaced": {
+                          "type": "boolean"
+                        },
+                        "maxBitrateBps": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxFrameRate": {
+                          "type": "number"
+                        },
+                        "maxHeight": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxLevel": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maxWidth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "profiles": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "codec",
+                        "profiles",
+                        "maxLevel",
+                        "bitDepths",
+                        "maxWidth",
+                        "maxHeight",
+                        "maxFrameRate",
+                        "maxBitrateBps",
+                        "dynamicRanges",
+                        "dolbyVisionProfiles",
+                        "interlaced"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "evidence",
+                  "video",
+                  "audio",
+                  "audioPassthrough",
+                  "transports",
+                  "subtitleRendering",
+                  "toneMapsHdr",
+                  "embeddedAudioSwitching"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "native"
+            ],
+            "type": "object"
+          },
+          "maxBitrateBps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "overrides": {
+            "properties": {
+              "disableHdr": {
+                "type": "boolean"
+              },
+              "disablePassthrough": {
+                "type": "boolean"
+              },
+              "forceStereo": {
                 "type": "boolean"
               }
             },
             "required": [
-              "hls",
-              "progressive"
+              "forceStereo",
+              "disablePassthrough",
+              "disableHdr"
             ],
             "type": "object"
           },
-          "subtitles": {
-            "items": {
-              "properties": {
-                "format": {
-                  "type": "string"
-                },
-                "render": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "format",
-                "render"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "video": {
-            "items": {
-              "properties": {
-                "codec": {
-                  "type": "string"
-                },
-                "hdr": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "maxBitDepth": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "maxBitrateKbps": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "maxFps": {
-                  "type": "number"
-                },
-                "maxHeight": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "maxLevel": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "maxWidth": {
-                  "maximum": 9007199254740991,
-                  "minimum": -9007199254740991,
-                  "type": "integer"
-                },
-                "profiles": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "toneMapsToSdr": {
-                  "type": "boolean"
-                }
-              },
-              "required": [
-                "codec"
-              ],
-              "type": "object"
-            },
-            "type": "array"
+          "version": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
         },
         "required": [
-          "form",
-          "network",
-          "containers",
-          "streaming",
-          "video",
-          "audio",
-          "subtitles",
-          "features"
+          "version",
+          "client",
+          "engineSetting",
+          "overrides",
+          "display",
+          "audioOutput",
+          "maxBitrateBps",
+          "engines"
         ],
         "type": "object"
       },
@@ -11071,6 +11763,9 @@ export const schemas = {
       },
       "plan": {
         "properties": {
+          "engine": {
+            "type": "string"
+          },
           "estimatedBitrateKbps": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -11081,6 +11776,9 @@ export const schemas = {
           },
           "quality": {
             "properties": {
+              "id": {
+                "type": "string"
+              },
               "maxAudioBitrateKbps": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -11097,6 +11795,9 @@ export const schemas = {
                 "type": "integer"
               },
               "mode": {
+                "type": "string"
+              },
+              "step": {
                 "type": "string"
               }
             },
@@ -11140,6 +11841,7 @@ export const schemas = {
         "required": [
           "versionId",
           "mode",
+          "engine",
           "streams",
           "quality"
         ],
@@ -11150,11 +11852,46 @@ export const schemas = {
           "audioId": {
             "type": "string"
           },
+          "quality": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "maxAudioBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHeight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxVideoBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "step": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "type": "object"
+          },
           "reason": {
             "type": "string"
           },
           "subtitleId": {
             "type": "string"
+          },
+          "subtitlesOff": {
+            "type": "boolean"
           },
           "versionId": {
             "type": "string"
@@ -11162,9 +11899,42 @@ export const schemas = {
         },
         "required": [
           "versionId",
-          "reason"
+          "reason",
+          "quality"
         ],
         "type": "object"
+      },
+      "qualities": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "maxAudioBitrateKbps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxHeight": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "maxVideoBitrateKbps": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "mode": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "mode"
+          ],
+          "type": "object"
+        },
+        "type": "array"
       },
       "resume": {
         "properties": {
@@ -11435,7 +12205,8 @@ export const schemas = {
       "kind",
       "versions",
       "chapters",
-      "markers"
+      "markers",
+      "qualities"
     ],
     "type": "object"
   },
@@ -11606,6 +12377,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "audioTrackId": {
+            "type": "string"
+          },
           "bitrateKbps": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -11697,6 +12471,9 @@ export const schemas = {
             },
             "required": [],
             "type": "object"
+          },
+          "engine": {
+            "type": "string"
           },
           "generation": {
             "maximum": 9007199254740991,
@@ -11844,10 +12621,61 @@ export const schemas = {
           "mode": {
             "type": "string"
           },
+          "quality": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "maxAudioBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHeight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxVideoBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "step": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "type": "object"
+          },
           "startPositionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "subtitle": {
+            "properties": {
+              "delivery": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "trackId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "trackId",
+              "kind",
+              "delivery"
+            ],
+            "type": "object"
           },
           "subtitles": {
             "items": {
@@ -11885,6 +12713,7 @@ export const schemas = {
           "generation",
           "mode",
           "url",
+          "engine",
           "startPositionMs",
           "subtitles",
           "decision"
@@ -14196,6 +15025,9 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "engine": {
+              "type": "string"
+            },
             "id": {
               "type": "string"
             },
@@ -14242,6 +15074,38 @@ export const schemas = {
             },
             "protocol": {
               "type": "string"
+            },
+            "quality": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "maxAudioBitrateKbps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "maxHeight": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "maxVideoBitrateKbps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "step": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
             },
             "startedAt": {
               "type": "string"
@@ -15401,6 +16265,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "audioTrackId": {
+                "type": "string"
+              },
               "bitrateKbps": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -15492,6 +16359,9 @@ export const schemas = {
                 },
                 "required": [],
                 "type": "object"
+              },
+              "engine": {
+                "type": "string"
               },
               "generation": {
                 "maximum": 9007199254740991,
@@ -15639,10 +16509,61 @@ export const schemas = {
               "mode": {
                 "type": "string"
               },
+              "quality": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "maxAudioBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxVideoBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "step": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              },
               "startPositionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "subtitle": {
+                "properties": {
+                  "delivery": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "trackId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "trackId",
+                  "kind",
+                  "delivery"
+                ],
+                "type": "object"
               },
               "subtitles": {
                 "items": {
@@ -15680,6 +16601,7 @@ export const schemas = {
               "generation",
               "mode",
               "url",
+              "engine",
               "startPositionMs",
               "subtitles",
               "decision"
@@ -17213,6 +18135,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "audioTrackId": {
+            "type": "string"
+          },
           "bitrateKbps": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -17304,6 +18229,9 @@ export const schemas = {
             },
             "required": [],
             "type": "object"
+          },
+          "engine": {
+            "type": "string"
           },
           "generation": {
             "maximum": 9007199254740991,
@@ -17451,10 +18379,61 @@ export const schemas = {
           "mode": {
             "type": "string"
           },
+          "quality": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "maxAudioBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHeight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxVideoBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "step": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "type": "object"
+          },
           "startPositionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "subtitle": {
+            "properties": {
+              "delivery": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "trackId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "trackId",
+              "kind",
+              "delivery"
+            ],
+            "type": "object"
           },
           "subtitles": {
             "items": {
@@ -17492,6 +18471,7 @@ export const schemas = {
           "generation",
           "mode",
           "url",
+          "engine",
           "startPositionMs",
           "subtitles",
           "decision"
@@ -18429,41 +19409,6 @@ export const schemas = {
   },
   "PutDeviceCapabilitiesRequest": {
     "properties": {
-      "audio": {
-        "items": {
-          "properties": {
-            "atmos": {
-              "type": "boolean"
-            },
-            "codec": {
-              "type": "string"
-            },
-            "maxBitDepth": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "maxChannels": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "maxSampleRate": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "passthrough": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "codec"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
       "audioDecode": {
         "items": {
           "properties": {
@@ -18511,190 +19456,591 @@ export const schemas = {
         },
         "type": "array"
       },
-      "containers": {
-        "items": {
-          "properties": {
-            "container": {
-              "type": "string"
-            },
-            "direct": {
-              "type": "boolean"
-            }
+      "audioOutput": {
+        "properties": {
+          "maxChannels": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
-          "required": [
-            "container",
-            "direct"
-          ],
-          "type": "object"
+          "route": {
+            "type": "string"
+          },
+          "spatial": {
+            "type": "boolean"
+          }
         },
-        "type": "array"
+        "required": [
+          "route",
+          "maxChannels",
+          "spatial"
+        ],
+        "type": "object"
+      },
+      "client": {
+        "properties": {
+          "app": {
+            "type": "string"
+          },
+          "appVersion": {
+            "type": "string"
+          },
+          "family": {
+            "type": "string"
+          },
+          "form": {
+            "type": "string"
+          },
+          "model": {
+            "type": "string"
+          },
+          "os": {
+            "type": "string"
+          },
+          "osVersion": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "platformVersion": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "family"
+        ],
+        "type": "object"
       },
       "display": {
         "properties": {
-          "hdr": {
+          "dynamicRanges": {
             "items": {
               "type": "string"
             },
             "type": "array"
           },
-          "maxHeight": {
+          "height": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "maxWidth": {
+          "maxFrameRate": {
+            "type": "number"
+          },
+          "width": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           }
         },
         "required": [
-          "hdr"
+          "width",
+          "height",
+          "dynamicRanges",
+          "maxFrameRate"
         ],
         "type": "object"
       },
-      "features": {
-        "additionalProperties": {
-          "type": "boolean"
-        },
-        "type": "object"
-      },
-      "form": {
+      "engineSetting": {
         "type": "string"
       },
-      "network": {
+      "engines": {
         "properties": {
-          "class": {
-            "type": "string"
-          },
-          "maxBitrateKbps": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          }
-        },
-        "required": [
-          "class"
-        ],
-        "type": "object"
-      },
-      "streaming": {
-        "properties": {
-          "hls": {
+          "mpv": {
             "properties": {
-              "fmp4": {
+              "audio": {
+                "items": {
+                  "properties": {
+                    "codec": {
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "type": "string"
+                    },
+                    "maxChannels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxSampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "objectAudio": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "codec",
+                    "maxChannels",
+                    "maxSampleRate",
+                    "objectAudio"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "audioPassthrough": {
+                "items": {
+                  "properties": {
+                    "codec": {
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "type": "string"
+                    },
+                    "maxChannels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "objectAudio": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "codec",
+                    "maxChannels",
+                    "objectAudio"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "embeddedAudioSwitching": {
                 "type": "boolean"
               },
-              "maxSegmentMs": {
-                "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
-                "type": "integer"
+              "evidence": {
+                "type": "string"
               },
-              "ts": {
+              "name": {
+                "type": "string"
+              },
+              "subtitleRendering": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "toneMapsHdr": {
                 "type": "boolean"
+              },
+              "transports": {
+                "items": {
+                  "properties": {
+                    "audio": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "containers": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "transport": {
+                      "type": "string"
+                    },
+                    "video": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "transport",
+                    "containers",
+                    "video",
+                    "audio"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "version": {
+                "type": "string"
+              },
+              "video": {
+                "items": {
+                  "properties": {
+                    "bitDepths": {
+                      "items": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "codecTags": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "dolbyVisionProfiles": {
+                      "items": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "dynamicRanges": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "evidence": {
+                      "type": "string"
+                    },
+                    "interlaced": {
+                      "type": "boolean"
+                    },
+                    "maxBitrateBps": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxFrameRate": {
+                      "type": "number"
+                    },
+                    "maxHeight": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxLevel": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxWidth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "profiles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "codec",
+                    "profiles",
+                    "maxLevel",
+                    "bitDepths",
+                    "maxWidth",
+                    "maxHeight",
+                    "maxFrameRate",
+                    "maxBitrateBps",
+                    "dynamicRanges",
+                    "dolbyVisionProfiles",
+                    "interlaced"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
               }
             },
             "required": [
-              "fmp4",
-              "ts"
+              "evidence",
+              "video",
+              "audio",
+              "audioPassthrough",
+              "transports",
+              "subtitleRendering",
+              "toneMapsHdr",
+              "embeddedAudioSwitching"
             ],
             "type": "object"
           },
-          "progressive": {
+          "native": {
+            "nullable": true,
+            "properties": {
+              "audio": {
+                "items": {
+                  "properties": {
+                    "codec": {
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "type": "string"
+                    },
+                    "maxChannels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxSampleRate": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "objectAudio": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "codec",
+                    "maxChannels",
+                    "maxSampleRate",
+                    "objectAudio"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "audioPassthrough": {
+                "items": {
+                  "properties": {
+                    "codec": {
+                      "type": "string"
+                    },
+                    "evidence": {
+                      "type": "string"
+                    },
+                    "maxChannels": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "objectAudio": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "codec",
+                    "maxChannels",
+                    "objectAudio"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "embeddedAudioSwitching": {
+                "type": "boolean"
+              },
+              "evidence": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "subtitleRendering": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "toneMapsHdr": {
+                "type": "boolean"
+              },
+              "transports": {
+                "items": {
+                  "properties": {
+                    "audio": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "containers": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "transport": {
+                      "type": "string"
+                    },
+                    "video": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "transport",
+                    "containers",
+                    "video",
+                    "audio"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "version": {
+                "type": "string"
+              },
+              "video": {
+                "items": {
+                  "properties": {
+                    "bitDepths": {
+                      "items": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "codec": {
+                      "type": "string"
+                    },
+                    "codecTags": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "dolbyVisionProfiles": {
+                      "items": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "dynamicRanges": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "evidence": {
+                      "type": "string"
+                    },
+                    "interlaced": {
+                      "type": "boolean"
+                    },
+                    "maxBitrateBps": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxFrameRate": {
+                      "type": "number"
+                    },
+                    "maxHeight": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxLevel": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "maxWidth": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "profiles": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "codec",
+                    "profiles",
+                    "maxLevel",
+                    "bitDepths",
+                    "maxWidth",
+                    "maxHeight",
+                    "maxFrameRate",
+                    "maxBitrateBps",
+                    "dynamicRanges",
+                    "dolbyVisionProfiles",
+                    "interlaced"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "evidence",
+              "video",
+              "audio",
+              "audioPassthrough",
+              "transports",
+              "subtitleRendering",
+              "toneMapsHdr",
+              "embeddedAudioSwitching"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "native"
+        ],
+        "type": "object"
+      },
+      "maxBitrateBps": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "overrides": {
+        "properties": {
+          "disableHdr": {
+            "type": "boolean"
+          },
+          "disablePassthrough": {
+            "type": "boolean"
+          },
+          "forceStereo": {
             "type": "boolean"
           }
         },
         "required": [
-          "hls",
-          "progressive"
+          "forceStereo",
+          "disablePassthrough",
+          "disableHdr"
         ],
         "type": "object"
       },
-      "subtitles": {
-        "items": {
-          "properties": {
-            "format": {
-              "type": "string"
-            },
-            "render": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "format",
-            "render"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "video": {
-        "items": {
-          "properties": {
-            "codec": {
-              "type": "string"
-            },
-            "hdr": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "maxBitDepth": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "maxBitrateKbps": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "maxFps": {
-              "type": "number"
-            },
-            "maxHeight": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "maxLevel": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "maxWidth": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "profiles": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "toneMapsToSdr": {
-              "type": "boolean"
-            }
-          },
-          "required": [
-            "codec"
-          ],
-          "type": "object"
-        },
-        "type": "array"
+      "version": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       }
     },
     "required": [
-      "form",
-      "network",
-      "containers",
-      "streaming",
-      "video",
-      "audio",
-      "subtitles",
-      "features"
+      "version",
+      "client",
+      "engineSetting",
+      "overrides",
+      "display",
+      "audioOutput",
+      "maxBitrateBps",
+      "engines"
     ],
     "type": "object"
   },
@@ -19900,6 +21246,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "audioTrackId": {
+                "type": "string"
+              },
               "bitrateKbps": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -19991,6 +21340,9 @@ export const schemas = {
                 },
                 "required": [],
                 "type": "object"
+              },
+              "engine": {
+                "type": "string"
               },
               "generation": {
                 "maximum": 9007199254740991,
@@ -20138,10 +21490,61 @@ export const schemas = {
               "mode": {
                 "type": "string"
               },
+              "quality": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "maxAudioBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxVideoBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "step": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              },
               "startPositionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "subtitle": {
+                "properties": {
+                  "delivery": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "trackId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "trackId",
+                  "kind",
+                  "delivery"
+                ],
+                "type": "object"
               },
               "subtitles": {
                 "items": {
@@ -20179,6 +21582,7 @@ export const schemas = {
               "generation",
               "mode",
               "url",
+              "engine",
               "startPositionMs",
               "subtitles",
               "decision"
@@ -29176,6 +30580,9 @@ export const schemas = {
       },
       "quality": {
         "properties": {
+          "id": {
+            "type": "string"
+          },
           "maxAudioBitrateKbps": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -29192,6 +30599,9 @@ export const schemas = {
             "type": "integer"
           },
           "mode": {
+            "type": "string"
+          },
+          "step": {
             "type": "string"
           }
         },
@@ -29242,6 +30652,11 @@ export const schemas = {
           "trackId"
         ],
         "type": "object"
+      },
+      "throughputKbps": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
       "transferId": {
         "type": "string"
@@ -29415,6 +30830,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "audioTrackId": {
+            "type": "string"
+          },
           "bitrateKbps": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -29506,6 +30924,9 @@ export const schemas = {
             },
             "required": [],
             "type": "object"
+          },
+          "engine": {
+            "type": "string"
           },
           "generation": {
             "maximum": 9007199254740991,
@@ -29653,10 +31074,61 @@ export const schemas = {
           "mode": {
             "type": "string"
           },
+          "quality": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "maxAudioBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxHeight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maxVideoBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "step": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode"
+            ],
+            "type": "object"
+          },
           "startPositionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "subtitle": {
+            "properties": {
+              "delivery": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "trackId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "trackId",
+              "kind",
+              "delivery"
+            ],
+            "type": "object"
           },
           "subtitles": {
             "items": {
@@ -29694,6 +31166,7 @@ export const schemas = {
           "generation",
           "mode",
           "url",
+          "engine",
           "startPositionMs",
           "subtitles",
           "decision"
@@ -30159,6 +31632,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "audioTrackId": {
+                "type": "string"
+              },
               "bitrateKbps": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -30250,6 +31726,9 @@ export const schemas = {
                 },
                 "required": [],
                 "type": "object"
+              },
+              "engine": {
+                "type": "string"
               },
               "generation": {
                 "maximum": 9007199254740991,
@@ -30397,10 +31876,61 @@ export const schemas = {
               "mode": {
                 "type": "string"
               },
+              "quality": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "maxAudioBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxHeight": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "maxVideoBitrateKbps": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "mode": {
+                    "type": "string"
+                  },
+                  "step": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode"
+                ],
+                "type": "object"
+              },
               "startPositionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "subtitle": {
+                "properties": {
+                  "delivery": {
+                    "type": "string"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "trackId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "trackId",
+                  "kind",
+                  "delivery"
+                ],
+                "type": "object"
               },
               "subtitles": {
                 "items": {
@@ -30438,6 +31968,7 @@ export const schemas = {
               "generation",
               "mode",
               "url",
+              "engine",
               "startPositionMs",
               "subtitles",
               "decision"
