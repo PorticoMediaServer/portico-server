@@ -1,0 +1,116 @@
+package catalog
+
+import (
+	"context"
+	"database/sql"
+	"errors"
+
+	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/entityid"
+)
+
+// MaxDeleteMembers bounds how many playable titles one deleted container may
+// hold (a show's episodes, an artist's tracks). A larger one is deleted a
+// season or an album at a time.
+const MaxDeleteMembers = 5000
+
+// ErrTooManyMembers: the container holds more titles than one delete takes.
+var ErrTooManyMembers = errors.New("too many titles for one delete")
+
+// titleMembersSQL lists the playable titles a delete of ?1 covers: the title
+// itself when it plays, else everything that plays beneath it.
+const titleMembersSQL = `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 WHERE e.id=?1
+ UNION SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_show WHERE show_id=?1
+ UNION SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_season WHERE season_id=?1
+ UNION SELECT entity_id FROM catalog_songs INDEXED BY catalog_songs_album_order WHERE album_id=?1
+ UNION SELECT s.entity_id FROM catalog_albums a CROSS JOIN catalog_songs s INDEXED BY catalog_songs_album_order ON s.album_id=a.entity_id WHERE a.artist_id=?1
+ UNION SELECT entity_id FROM catalog_book_files INDEXED BY catalog_book_files_order WHERE book_id=?1`
+
+// TitleMembersTx returns the playable titles a delete of an entity covers.
+func TitleMembersTx(ctx context.Context, tx *sql.Tx, entity int64) ([]int64, error) {
+	members, err := scanInt64s(tx.QueryContext(ctx, titleMembersSQL+` ORDER BY 1 LIMIT ?2`, entity, MaxDeleteMembers+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(members) > MaxDeleteMembers {
+		return nil, ErrTooManyMembers
+	}
+	return members, nil
+}
+
+// DeleteTitleMembersTx removes up to limit of the playable titles under an
+// entity and reports how many remain. A long delete is several short
+// transactions, so nothing else waits on it for long.
+func DeleteTitleMembersTx(ctx context.Context, tx *sql.Tx, item string, limit int) (remaining int, err error) {
+	entity, err := entityid.Resolve(ctx, tx, item)
+	if errors.Is(err, entityid.ErrNotFound) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	members, err := scanInt64s(tx.QueryContext(ctx, titleMembersSQL+` ORDER BY 1 LIMIT ?2`, entity, limit+1))
+	if err != nil {
+		return 0, err
+	}
+	more := len(members) > limit
+	if more {
+		members = members[:limit]
+	}
+	for _, member := range members {
+		if err = RemoveTitleTx(ctx, tx, member); err != nil {
+			return 0, err
+		}
+	}
+	if more {
+		return 1, nil
+	}
+	// The container itself, when removing its members did not already take it.
+	var kind compactcatalog.Kind
+	err = tx.QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE id=?`, entity).Scan(&kind)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	if err != nil {
+		return 0, err
+	}
+	switch kind {
+	case compactcatalog.Show:
+		seasons, e := scanInt64s(tx.QueryContext(ctx, `SELECT entity_id FROM catalog_seasons WHERE show_id=?`, entity))
+		if e != nil {
+			return 0, e
+		}
+		for _, season := range seasons {
+			if e = removeContainerTx(ctx, tx, season); e != nil {
+				return 0, e
+			}
+		}
+		return 0, removeContainerTx(ctx, tx, entity)
+	case compactcatalog.Season:
+		return 0, removeContainerTx(ctx, tx, entity)
+	case compactcatalog.Collection:
+		return 0, compactcatalog.DeleteEntityTx(ctx, tx, entity)
+	}
+	// An album, artist or book left with state of its own has already been
+	// settled by its last member leaving (kept out of sight, or removed).
+	return 0, nil
+}
+
+// RemoveTitle removes a title (and everything that plays beneath it) from the
+// catalogue in short transactions. Each profile's state is kept under the
+// title's identities. Files on disk are not touched: the owner's delete route
+// removes those first.
+func (s *Service) RemoveTitle(ctx context.Context, item string) error {
+	for {
+		remaining := 0
+		err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
+			var e error
+			remaining, e = DeleteTitleMembersTx(ctx, tx, item, 40)
+			return e
+		})
+		if err != nil || remaining == 0 {
+			return err
+		}
+	}
+}

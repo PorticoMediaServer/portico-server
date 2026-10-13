@@ -49,7 +49,7 @@ function Identity() {
 function Profiles() {
   const session = useSession();
   const {t} = useI18n();
-  const [limits, setLimits] = useState<{id: string; name: string}>();
+  const [limits, setLimits] = useState<{id: string; name: string; readOnly?: boolean}>();
   if (session.session?.viewer.authority === 'local') return <><LocalProfiles onLimits={setLimits} />{limits ? <ProfileRestrictionsDialog profile={limits} onClose={() => setLimits(undefined)} /> : null}</>;
   if (!session.hosted?.profiles.length) return null;
   return (

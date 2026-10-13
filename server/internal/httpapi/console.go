@@ -179,13 +179,6 @@ func (d Dependencies) consoleRoutes(mux *http.ServeMux) {
 		required := []string{}
 		var values map[string]json.RawMessage
 		switch v.(type) {
-		case *operations.SettingsChange:
-			required = []string{"name", "transcodingEnabled", "perAccountCap", "serverCap",
-				"hardwareBackend", "hardwareDevice", "hdrToneMapping", "hdrToneMappingAlgorithm", "x264Preset",
-				"directStreamRemux", "planningPolicy", "throttleBufferSeconds", "playedRetentionSeconds",
-				"temporaryDirectory", "maxConcurrentSessions", "maxHardwareSessions", "maxSoftwareSessions",
-				"maxBackgroundSessions", "diagnosticDays", "notificationDays", "jobDays"}
-			_ = json.Unmarshal(top["values"], &values)
 		case *operations.ScheduleChange:
 			required = []string{"id", "kind", "resource", "enabled", "timezone", "startMinute", "windowMinutes", "catchUp"}
 			_ = json.Unmarshal(top["value"], &values)

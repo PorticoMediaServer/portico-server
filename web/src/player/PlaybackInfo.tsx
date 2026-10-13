@@ -13,7 +13,7 @@ type Source = NonNullable<PlaybackInfoFacts['source']>;
  * size, the bitrate, and what this player measures (dropped frames, buffer). The session's own
  * account is read once when the panel opens; the measured rows refresh each second while it is up.
  */
-export function PlaybackInfoPanel({api, sessionId, v1, delivery, chosenQuality, source, video, audioOnly, onClose}: {api: HttpLocalApi; sessionId?: string; /** A Playback v1 session can say what it does to each stream. */ v1: boolean; delivery?: 'direct' | 'hls'; chosenQuality?: string; source?: Source; video: HTMLVideoElement | null; audioOnly: boolean; onClose: () => void}) {
+export function PlaybackInfoPanel({api, sessionId, generation, v1, delivery, chosenQuality, source, video, audioOnly, onClose}: {api: HttpLocalApi; sessionId?: string; /** The presentation shown: a change of quality, version or audio is a new one, read again. */ generation?: number; /** A Playback v1 session can say what it does to each stream. */ v1: boolean; delivery?: 'direct' | 'hls'; chosenQuality?: string; source?: Source; video: HTMLVideoElement | null; audioOnly: boolean; onClose: () => void}) {
   const i18n = useI18n();
   const [session, setSession] = useState<Pick<PlaybackInfoFacts, 'decision' | 'bitrateKbps' | 'hdr'>>({});
   useEffect(() => {
@@ -27,7 +27,10 @@ export function PlaybackInfoPanel({api, sessionId, v1, delivery, chosenQuality, 
       } catch { setSession({}); }
     }, () => {});
     return () => { live = false; };
-  }, [api, sessionId, v1]);
+  }, [api, sessionId, generation, v1]);
+  /* Copy details: what a bug report needs, as the panel shows it. */
+  const [copied, setCopied] = useState(false);
+  useEffect(() => { if (!copied) return; const timer = setTimeout(() => setCopied(false), 2000); return () => clearTimeout(timer); }, [copied]);
   const [measured, setMeasured] = useState<Pick<PlaybackInfoFacts, 'shown' | 'droppedFrames' | 'totalFrames' | 'bufferSeconds'>>({});
   useEffect(() => {
     const read = () => {
@@ -46,6 +49,7 @@ export function PlaybackInfoPanel({api, sessionId, v1, delivery, chosenQuality, 
     <section className={s.info} aria-label={i18n.t('player.opt.info')}>
       <header className={s.infoHead}>
         <span className={s.infoTitle}>{i18n.t('player.opt.info')}</span>
+        {typeof navigator !== 'undefined' && navigator.clipboard ? <button type="button" className={s.infoCopy} onClick={() => { void navigator.clipboard.writeText(rows.map(row => `${row.label}: ${row.value}`).join('\n')).then(() => setCopied(true), () => {}); }}>{i18n.t(copied ? 'web.player.info.copied' : 'web.player.info.copy')}</button> : null}
         <IconButton name="close" label={i18n.t('action.close')} variant="ghost" size="sm" onClick={onClose} />
       </header>
       <dl className={s.infoRows}>

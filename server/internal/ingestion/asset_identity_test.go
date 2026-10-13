@@ -42,10 +42,6 @@ func TestSamePathReplacementKeepsIdentityAndReturnRestoresAvailability(t *testin
 	if _, err = db.Exec(`UPDATE library_scan_policies SET tier='file_list_only',operations_json='[]' WHERE library_id=?`, lib.ID); err != nil {
 		t.Fatal(err)
 	}
-	// A vanished file counts as missing on its second absent scan.
-	if _, err = db.Exec(`UPDATE library_sources SET missing_grace_seconds=0 WHERE library_id=?`, lib.ID); err != nil {
-		t.Fatal(err)
-	}
 	s := New(db, c, assets.Probe{})
 	ctx := context.Background()
 	run := func(mode string) {

@@ -39,3 +39,12 @@ func TestW2I02DiscoveryAncillaryHopLimitRemainsMandatory(t *testing.T) {
 		t.Fatal("truncation checks changed")
 	}
 }
+
+func TestDiscoveryInterfaceNamesDoNotConflict(t *testing.T) {
+	if discoveryInterfaceSuffix("eth0") == discoveryInterfaceSuffix("eth1") {
+		t.Fatal("interfaces share unique DNS names")
+	}
+	if discoveryInterfaceSuffix("eth0") != discoveryInterfaceSuffix("eth0") {
+		t.Fatal("unstable discovery name")
+	}
+}

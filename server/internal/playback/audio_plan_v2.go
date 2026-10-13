@@ -18,6 +18,7 @@ import (
 // client's own audio engine decodes.
 type AudioDecodeCap struct {
 	Codec         string
+	Via           string
 	Containers    []string
 	MaxSampleRate int
 	SampleRates   []int
@@ -97,6 +98,11 @@ func codecMatches(declared, codec string) bool {
 }
 
 func (c AudioDecodeCap) decodes(f audiofacts.Facts) bool {
+	// The web reader has only qualified AAC-LC. Native audio engines read
+	// the profile themselves; complex AAC must use a conversion on the web.
+	if f.Codec == "aac" && strings.EqualFold(c.Via, "webcodecs") && f.Profile != "" && !strings.EqualFold(f.Profile, "LC") {
+		return false
+	}
 	return codecMatches(c.Codec, f.Codec) && slices.Contains(c.Containers, f.Container) && capAllowsRate(c, f.SampleRate) &&
 		(c.MaxChannels <= 0 || f.Channels <= c.MaxChannels) && (c.MaxBitDepth <= 0 || f.BitDepth <= c.MaxBitDepth)
 }
@@ -159,6 +165,9 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 	sourceBPS := 0
 	if seconds > 0 {
 		sourceBPS = int(float64(size) * 8 / seconds)
+	}
+	if f.BitRate > 0 {
+		sourceBPS = int(f.BitRate)
 	}
 	limited := v1.Limit && v1.MaxAudioBitrateBPS > 0 && sourceBPS > v1.MaxAudioBitrateBPS
 	direct := false
@@ -224,7 +233,7 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 	}
 	if conv == nil {
 		p.Container, p.Codec = "", ""
-		p.Reason = "This device can't decode this track's format or the converted formats (FLAC, Opus). It plays without gapless or crossfade."
+		p.Reason = "The available audio formats cannot meet this device's capabilities and bitrate choice. This track plays without gapless or crossfade."
 		return p, s.storeAudioPlan(tx, session.ID, p)
 	}
 	frames := int64(math.Round(float64(f.DurationFrames) * float64(conv.Rate) / float64(f.SampleRate)))

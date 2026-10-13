@@ -172,3 +172,15 @@ test('an ordinary list refresh does not stop following a whole-container request
  assert.equal(service.getSnapshot().requests[0].request.state,'complete','the request kept being followed to completion');
  service.dispose();
 });
+
+test('a list from a newer server shows every download this app can read, and acts on them exactly',async()=>{
+ const s=server([preparation({id:'kept',shelf:'new',quality:'4320p',origin:'schedule',actions:['remove','archive']}),preparation({id:'newer',state:'verifying'}),preparation({id:'unhashed',artifact:{kind:'prepared',ref:'version',sha256:'',bytes:4096,estimated:false,container:'mp4',contentType:'video/mp4',fileName:'prep.mp4'}}),running()]),service=new DownloadsService(s.api,()=>'op-9',10000);
+ await service.refresh();
+ const state=service.getSnapshot();
+ assert.equal(state.phase,'ready');assert.equal(state.error,undefined);
+ assert.deepEqual(state.items.map(p=>p.id),['kept','busy']);
+ assert.deepEqual([...state.items[0].actions],['remove']);
+ await service.act(state.items[1],'pause');
+ assert.deepEqual(s.calls.find(c=>c.path.endsWith('/actions'))!.body,{operationId:'op-9',action:'pause',expectedRevision:3});
+ service.dispose();
+});

@@ -52,14 +52,18 @@ CREATE INDEX catalog_entities_added ON catalog_entities(library_id,added_ms DESC
 CREATE INDEX catalog_entities_parent ON catalog_entities(parent_id,id) WHERE parent_id IS NOT NULL;
 CREATE INDEX catalog_entities_library ON catalog_entities(library_id,kind,id);
 
--- The entity-identity ledger (Direct Design §4): the same folder and source
--- key get the same public id after a rescan or a re-added library. Never deleted.
+-- The entity-identity ledger: every name a title is known by inside its
+-- library's identity root. A title can have several (the name its first file
+-- was read as, the name a later file was read as, a provider identity), so a
+-- rescan, a replacement file or a re-added library finds the same title. A
+-- title's rows leave with it when it is finally removed.
 CREATE TABLE catalog_identities(
- public_id BLOB PRIMARY KEY CHECK(length(public_id)=16),
  root TEXT NOT NULL,
  source_key TEXT NOT NULL,
+ public_id BLOB NOT NULL CHECK(length(public_id)=16),
  kind INTEGER NOT NULL,
- UNIQUE(root,source_key)) WITHOUT ROWID, STRICT;
+ PRIMARY KEY(root,source_key)) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_identities_public ON catalog_identities(public_id);
 
 -- One asset table: physical evidence and probed facts. token is the asset's
 -- public id (assets are not entities; the format is unchanged).
@@ -76,6 +80,9 @@ CREATE TABLE catalog_assets(
  height INTEGER NOT NULL,
  duration REAL NOT NULL,
  available INTEGER NOT NULL DEFAULT 1 CHECK(available IN(0,1))) STRICT;
+-- A title's files. Each file of part_index 0 is a version of the title (a
+-- title with parts has one row per part and version). edition is the version's
+-- edition label where the name or local metadata gave one ('Director''s Cut').
 CREATE TABLE catalog_asset_links(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id INTEGER NOT NULL REFERENCES catalog_assets(id) ON DELETE CASCADE,
@@ -83,6 +90,7 @@ CREATE TABLE catalog_asset_links(
  available INTEGER NOT NULL DEFAULT 1 CHECK(available IN(0,1)),
  start_seconds REAL NOT NULL DEFAULT 0,
  end_seconds REAL,
+ edition TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(entity_id,asset_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_asset_links_order ON catalog_asset_links(entity_id,part_index,asset_id);
 CREATE INDEX catalog_asset_links_asset ON catalog_asset_links(asset_id,entity_id);
@@ -108,6 +116,47 @@ CREATE TABLE catalog_item_availability(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  available INTEGER NOT NULL CHECK(available IN(0,1)),
  retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))) STRICT;
+
+-- Titles whose every file has gone from disk. The title, its metadata and
+-- everyone's state stay; a file that resolves to the title removes the row.
+-- The owner's missing-titles rule decides when a row here becomes a removal.
+-- A fact, not derived data: missing_since_ms is when the last file went.
+CREATE TABLE catalog_missing_titles(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ library_id INTEGER NOT NULL REFERENCES catalog_libraries(id),
+ missing_since_ms INTEGER NOT NULL) STRICT;
+CREATE INDEX catalog_missing_titles_library ON catalog_missing_titles(library_id,missing_since_ms,entity_id);
+
+-- What each profile had done with a title that has since been removed, kept so
+-- the same title coming back (to this library or another) gets it all back.
+-- A removed title is remembered under every identity it had: a provider's
+-- ('provider:tmdb:movie:348', with '#seasonal/2/5' for an episode of a series)
+-- and the names it was read as in its library ('local:<root>|<key>'). Bounded
+-- per profile; the oldest rows go first.
+CREATE TABLE retained_title_state(
+ id INTEGER PRIMARY KEY,
+ profile_id TEXT NOT NULL,
+ kind INTEGER NOT NULL,
+ title TEXT NOT NULL DEFAULT '',
+ watched INTEGER NOT NULL DEFAULT 0 CHECK(watched IN(0,1)),
+ watchlisted INTEGER NOT NULL DEFAULT 0 CHECK(watchlisted IN(0,1)),
+ favorite INTEGER NOT NULL DEFAULT 0 CHECK(favorite IN(0,1)),
+ not_interested INTEGER NOT NULL DEFAULT 0 CHECK(not_interested IN(0,1)),
+ rating REAL,
+ last_played_at TEXT NOT NULL DEFAULT '',
+ plays INTEGER NOT NULL DEFAULT 0,
+ position INTEGER NOT NULL DEFAULT 0,
+ unit INTEGER NOT NULL DEFAULT 0,
+ completed INTEGER NOT NULL DEFAULT 0 CHECK(completed IN(0,1)),
+ progress_at TEXT NOT NULL DEFAULT '',
+ retained_ms INTEGER NOT NULL) STRICT;
+CREATE INDEX retained_title_state_profile ON retained_title_state(profile_id,retained_ms,id);
+CREATE TABLE retained_title_identities(
+ identity TEXT NOT NULL,
+ profile_id TEXT NOT NULL,
+ state_id INTEGER NOT NULL REFERENCES retained_title_state(id) ON DELETE CASCADE,
+ PRIMARY KEY(identity,profile_id)) WITHOUT ROWID, STRICT;
+CREATE INDEX retained_title_identities_state ON retained_title_identities(state_id);
 
 -- Kind side tables.
 CREATE TABLE catalog_shows(
@@ -179,7 +228,7 @@ CREATE TABLE catalog_songs(
  provider_title TEXT NOT NULL DEFAULT '',
  provider_artist TEXT NOT NULL DEFAULT '') STRICT;
 CREATE INDEX catalog_songs_album_order ON catalog_songs(album_id,disc_number,track_number,entity_id);
-CREATE INDEX catalog_songs_listening_order ON catalog_songs(album_id,COALESCE(disc_number,0),COALESCE(track_number,0),entity_id);
+CREATE INDEX catalog_songs_listening_order ON catalog_songs(album_id,COALESCE(disc_number,1),COALESCE(track_number,0),entity_id);
 CREATE TABLE catalog_song_artists(
  song_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  artist_id INTEGER NOT NULL REFERENCES catalog_entities(id),
@@ -206,7 +255,7 @@ CREATE TABLE catalog_book_files(
  disc_number INTEGER,
  part_number INTEGER) STRICT;
 CREATE INDEX catalog_book_files_order ON catalog_book_files(book_id,disc_number,part_number,entity_id);
-CREATE INDEX catalog_book_files_listening_order ON catalog_book_files(book_id,COALESCE(disc_number,0),COALESCE(part_number,0),entity_id);
+CREATE INDEX catalog_book_files_listening_order ON catalog_book_files(book_id,COALESCE(disc_number,1),COALESCE(part_number,0),entity_id);
 CREATE TABLE catalog_book_chapters(
  id INTEGER PRIMARY KEY,
  file_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
@@ -1522,6 +1571,7 @@ CREATE TABLE artwork_candidates(
  provider TEXT NOT NULL,image_id TEXT NOT NULL,origin TEXT NOT NULL,locale TEXT NOT NULL DEFAULT '',rank REAL NOT NULL DEFAULT 0,
  attribution TEXT NOT NULL,source_fence TEXT NOT NULL,observed_at TEXT NOT NULL, votes INTEGER CHECK(votes IS NULL OR votes>=0),
  UNIQUE(kind,entity_id,role,subject,provider,image_id)) STRICT;
+CREATE INDEX artwork_candidates_source ON artwork_candidates(provider,origin,id);
 CREATE TABLE artwork_selections(
  kind TEXT NOT NULL,entity_id INTEGER NOT NULL,role TEXT NOT NULL,subject TEXT NOT NULL DEFAULT '',
  candidate_id TEXT NOT NULL REFERENCES artwork_candidates(id),digest TEXT NOT NULL REFERENCES artwork_objects(digest),
@@ -1852,7 +1902,6 @@ CREATE TABLE library_sources (
  generation INTEGER NOT NULL DEFAULT 1, incarnation TEXT NOT NULL DEFAULT(lower(hex(randomblob(16)))),
  root_identity TEXT NOT NULL DEFAULT '', identity_confirmed INTEGER NOT NULL DEFAULT 0, health TEXT NOT NULL DEFAULT 'ready',
  enabled INTEGER NOT NULL DEFAULT 1, follow_symlinks INTEGER NOT NULL DEFAULT 0,
- missing_grace_seconds INTEGER NOT NULL DEFAULT 86400 CHECK(missing_grace_seconds>=0),
  interval_seconds INTEGER NOT NULL DEFAULT 0 CHECK(interval_seconds=0 OR interval_seconds>=900),
  next_scan_at TEXT NOT NULL DEFAULT '', last_complete_job TEXT NOT NULL DEFAULT '',
  last_complete_at TEXT NOT NULL DEFAULT '', last_progress_at TEXT NOT NULL DEFAULT '',
@@ -1893,7 +1942,7 @@ CREATE TABLE inventory_objects (
  evidence_json TEXT NOT NULL, size INTEGER NOT NULL, modified_ns INTEGER NOT NULL,
  seen_job TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'available',
  retired INTEGER NOT NULL DEFAULT 0, missing_since TEXT NOT NULL DEFAULT '', missing_observations INTEGER NOT NULL DEFAULT 0,
- last_missing_job TEXT NOT NULL DEFAULT '', trashed_at TEXT NOT NULL DEFAULT '', unsupported_reason TEXT NOT NULL DEFAULT '',
+ last_missing_job TEXT NOT NULL DEFAULT '', unsupported_reason TEXT NOT NULL DEFAULT '',
  analysis_revision TEXT NOT NULL DEFAULT '', analysis_policy INTEGER NOT NULL DEFAULT 0, analysis_operations_json TEXT NOT NULL DEFAULT '[]',
  analysis_state TEXT NOT NULL DEFAULT 'pending', analysis_error TEXT NOT NULL DEFAULT ''
 , directory_path TEXT NOT NULL DEFAULT '.') STRICT;
@@ -2030,6 +2079,7 @@ CREATE TABLE playback_personal_profile_fences(
 CREATE TABLE lyric_resources (
  id TEXT PRIMARY KEY, item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  asset_id TEXT NOT NULL REFERENCES catalog_assets(token), source_version TEXT NOT NULL,
+ source_duration REAL NOT NULL DEFAULT 0,source_start REAL NOT NULL DEFAULT 0,source_end REAL NOT NULL DEFAULT 0,
  scope TEXT NOT NULL CHECK(scope IN ('library','private')),
  authority TEXT NOT NULL, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
  revision INTEGER NOT NULL CHECK(revision>0), deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1))
@@ -2065,13 +2115,19 @@ CREATE TABLE lyric_fetch_runs (
  missing INTEGER NOT NULL DEFAULT 0, cancel_requested INTEGER NOT NULL DEFAULT 0,
  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL
 ) STRICT;
+CREATE TABLE metadata_runtime_settings(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
+ local_artwork_limit_bytes INTEGER NOT NULL DEFAULT 2147483648 CHECK(local_artwork_limit_bytes>0),
+ include_adult INTEGER NOT NULL DEFAULT 0 CHECK(include_adult IN(0,1)),
+ tmdb_read_token TEXT NOT NULL DEFAULT '',tvdb_project_key TEXT NOT NULL DEFAULT '') STRICT;
+INSERT INTO metadata_runtime_settings(singleton) VALUES(1);
 CREATE TABLE screen_metadata_consent(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
  confirmed INTEGER NOT NULL DEFAULT 0 CHECK(confirmed IN(0,1)),confirmed_at TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE screen_metadata_policies(
  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL DEFAULT 1,enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),
- providers TEXT NOT NULL,language TEXT NOT NULL DEFAULT 'en-US',region TEXT NOT NULL DEFAULT '',
+ providers TEXT NOT NULL,language TEXT NOT NULL DEFAULT 'en-US',region TEXT NOT NULL DEFAULT 'US',
  refresh_mode TEXT NOT NULL DEFAULT 'replace_unlocked' CHECK(refresh_mode IN('replace_unlocked','fill_missing'))) STRICT;
 CREATE TABLE screen_metadata_work(
  target_kind TEXT NOT NULL CHECK(target_kind IN('item','show')),target_id INTEGER NOT NULL,
@@ -2085,6 +2141,7 @@ CREATE TABLE screen_metadata_work(
  requested_provider TEXT NOT NULL DEFAULT '',query_override TEXT NOT NULL DEFAULT '',
  accepted_publication TEXT NOT NULL DEFAULT '',child_cursor TEXT NOT NULL DEFAULT '',
  parent_id INTEGER NOT NULL DEFAULT 0,parent_publication TEXT NOT NULL DEFAULT '', year_override INTEGER NOT NULL DEFAULT 0,
+ force_refresh INTEGER NOT NULL DEFAULT 0 CHECK(force_refresh IN(0,1)),
  PRIMARY KEY(target_kind,target_id)) STRICT;
 CREATE TABLE screen_metadata_candidates(
  candidate_key TEXT PRIMARY KEY,target_kind TEXT NOT NULL,target_id INTEGER NOT NULL,
@@ -2104,6 +2161,31 @@ CREATE TABLE screen_metadata_publications(
  selection_revision INTEGER NOT NULL,generation INTEGER NOT NULL,previous_id TEXT NOT NULL DEFAULT '',
  decision TEXT NOT NULL CHECK(decision IN('accepted','superseded')),
  FOREIGN KEY(target_kind,target_id) REFERENCES screen_metadata_work(target_kind,target_id) ON DELETE CASCADE) STRICT;
+-- A bounded owner repair projection. Dismissal lasts until input changes.
+CREATE TABLE screen_metadata_attention(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ target_kind TEXT NOT NULL,library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+ reason TEXT NOT NULL,confidence REAL NOT NULL DEFAULT 0,generation INTEGER NOT NULL,
+ dismissed_generation INTEGER NOT NULL DEFAULT -1,
+ FOREIGN KEY(target_kind,entity_id) REFERENCES screen_metadata_work(target_kind,target_id) ON DELETE CASCADE) STRICT;
+CREATE INDEX screen_metadata_attention_library ON screen_metadata_attention(library_id,entity_id) WHERE dismissed_generation<>generation;
+CREATE TRIGGER screen_attention_insert AFTER INSERT ON screen_metadata_work BEGIN
+ INSERT INTO screen_metadata_attention(entity_id,target_kind,library_id,reason,generation)
+ VALUES(NEW.target_id,NEW.target_kind,NEW.library_id,NEW.status,NEW.generation);
+END;
+CREATE TRIGGER screen_attention_update AFTER UPDATE OF status,accepted_publication,generation ON screen_metadata_work BEGIN
+ INSERT INTO screen_metadata_attention(entity_id,target_kind,library_id,reason,confidence,generation)
+ SELECT NEW.target_id,NEW.target_kind,NEW.library_id,
+ CASE WHEN NEW.accepted_publication<>'' AND NEW.selection_mode NOT IN('owner','legacy') AND COALESCE(p.confidence,1)<0.9 THEN 'low_confidence' ELSE NEW.status END,
+ COALESCE(p.confidence,0),NEW.generation
+ FROM (SELECT 1) LEFT JOIN screen_metadata_publications p ON p.id=NEW.accepted_publication
+ WHERE NEW.accepted_publication='' OR NEW.status NOT IN('matched','matched_work','pending_children','delegated_tvdb')
+ OR (NEW.selection_mode NOT IN('owner','legacy') AND COALESCE(p.confidence,1)<0.9)
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,confidence=excluded.confidence,generation=excluded.generation;
+ DELETE FROM screen_metadata_attention WHERE entity_id=NEW.target_id AND NEW.accepted_publication<>''
+ AND NEW.status IN('matched','matched_work','pending_children','delegated_tvdb')
+ AND (NEW.selection_mode IN('owner','legacy') OR COALESCE((SELECT confidence FROM screen_metadata_publications WHERE id=NEW.accepted_publication),1)>=0.9);
+END;
 CREATE TABLE screen_metadata_fields(
  target_kind TEXT NOT NULL,target_id INTEGER NOT NULL,field TEXT NOT NULL,value TEXT NOT NULL,
  provider TEXT NOT NULL,source_kind TEXT NOT NULL,source_url TEXT NOT NULL,confidence REAL NOT NULL,
@@ -2560,11 +2642,6 @@ CREATE TABLE download_progress_marks(
  PRIMARY KEY(profile_key,item_id)) STRICT;
 CREATE TABLE admin_documents(scope TEXT PRIMARY KEY,revision INTEGER NOT NULL CHECK(revision>0),body TEXT NOT NULL,updated_ms INTEGER NOT NULL) STRICT;
 CREATE TABLE admin_receipts(scope TEXT NOT NULL,operation_id TEXT NOT NULL,digest TEXT NOT NULL,result TEXT NOT NULL,created_ms INTEGER NOT NULL,PRIMARY KEY(scope,operation_id)) STRICT;
-CREATE TABLE admin_trash(
- id TEXT PRIMARY KEY,library_id TEXT NOT NULL,item_id INTEGER NOT NULL,title TEXT NOT NULL,kind TEXT NOT NULL,
- files_json TEXT NOT NULL,file_count INTEGER NOT NULL,bytes INTEGER NOT NULL,
- trashed_ms INTEGER NOT NULL,expires_ms INTEGER NOT NULL,
- state TEXT NOT NULL CHECK(state IN('held','restored','purged')),actor TEXT NOT NULL,operation_id TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE admin_dvr_groups(
  id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN('series','keyword')),name TEXT NOT NULL,
  match_text TEXT NOT NULL,source_id TEXT NOT NULL DEFAULT '',enabled INTEGER NOT NULL DEFAULT 1,
@@ -2611,20 +2688,13 @@ CREATE TABLE access_devices(
  trust TEXT NOT NULL DEFAULT 'pending' CHECK(trust IN('pending','approved','blocked')),
  first_seen_ms INTEGER NOT NULL, last_seen_ms INTEGER NOT NULL,
  revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
-CREATE TABLE access_api_keys(
- id TEXT PRIMARY KEY, account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
- profile_id TEXT NOT NULL, name TEXT NOT NULL,
- scope TEXT NOT NULL CHECK(scope IN('read-only','playback','library-management','full')),
- secret_hash TEXT NOT NULL UNIQUE, hint TEXT NOT NULL,
- created_ms INTEGER NOT NULL, last_used_ms INTEGER, created_by TEXT NOT NULL,
- revoked INTEGER NOT NULL DEFAULT 0 CHECK(revoked IN(0,1)),
- revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
 CREATE TABLE access_receipts(
  scope TEXT NOT NULL, operation_id TEXT NOT NULL, digest TEXT NOT NULL,
  body TEXT NOT NULL, created_ms INTEGER NOT NULL, PRIMARY KEY(scope,operation_id)) STRICT;
 CREATE TABLE client_log_uploads(
  id TEXT PRIMARY KEY, account_id TEXT NOT NULL, profile_id TEXT NOT NULL,
  device_id TEXT NOT NULL, platform TEXT NOT NULL, app_version TEXT NOT NULL DEFAULT '',
+ device_class TEXT NOT NULL DEFAULT '',
  received_ms INTEGER NOT NULL, bytes INTEGER NOT NULL, body TEXT NOT NULL) STRICT;
 CREATE TABLE diagnostics_debug_window(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1), expires_ms INTEGER NOT NULL, opened_by TEXT NOT NULL DEFAULT '') STRICT;
@@ -3146,6 +3216,8 @@ CREATE TABLE audio_render_facts(
  end_frames INTEGER NOT NULL CHECK(end_frames>=0),
  trim_source TEXT NOT NULL,
  decoder_config TEXT NOT NULL DEFAULT '',
+ codec_profile TEXT NOT NULL DEFAULT '',
+ bit_rate INTEGER NOT NULL DEFAULT 0 CHECK(bit_rate>=0),
  measured_ms INTEGER NOT NULL,
  CHECK(start_frames+duration_frames+end_frames=raw_frames)
 ) WITHOUT ROWID, STRICT;
@@ -3807,15 +3879,12 @@ CREATE INDEX download_receipts_viewer ON download_receipts(profile_key,item_id,i
 CREATE INDEX download_receipts_preparation ON download_receipts(preparation_id);
 CREATE INDEX download_receipts_revocations ON download_receipts(revoked_ms,sequence);
 CREATE INDEX admin_receipts_age ON admin_receipts(created_ms);
-CREATE INDEX admin_trash_page ON admin_trash(state,trashed_ms DESC,id DESC);
-CREATE INDEX admin_trash_expiry ON admin_trash(state,expires_ms);
 CREATE INDEX admin_dvr_groups_page ON admin_dvr_groups(created_ms DESC,id DESC);
 CREATE INDEX admin_channel_presets_page ON admin_channel_presets(name_key,id);
 CREATE UNIQUE INDEX direct_one_owner ON direct_memberships(role) WHERE role='owner';
 CREATE INDEX access_invitation_page ON access_invitations(created_ms DESC,id DESC);
 CREATE INDEX access_devices_page ON access_devices(last_seen_ms DESC,id DESC);
 CREATE INDEX access_devices_account ON access_devices(account_id,id);
-CREATE INDEX access_api_keys_page ON access_api_keys(created_ms DESC,id DESC);
 CREATE INDEX client_log_uploads_page ON client_log_uploads(received_ms DESC,id DESC);
 CREATE INDEX audio_tag_evidence_asset ON audio_tag_evidence(asset_id,field,value);
 CREATE INDEX inventory_objects_directory ON inventory_objects(source_id,root_incarnation,directory_path,retired,id);
@@ -4122,7 +4191,7 @@ CREATE TRIGGER inventory_library_create AFTER INSERT ON libraries BEGIN
  INSERT INTO library_sources(id,library_id,name,configured_root,root) VALUES(NEW.id,NEW.id,NEW.name,NEW.root,NEW.root);
  INSERT INTO library_scan_policies(library_id) VALUES(NEW.id);
 END;
-CREATE TRIGGER inventory_source_configuration AFTER UPDATE OF name,root,configured_root,classification,follow_symlinks,missing_grace_seconds,interval_seconds,enabled,root_identity,identity_confirmed ON library_sources BEGIN
+CREATE TRIGGER inventory_source_configuration AFTER UPDATE OF name,root,configured_root,classification,follow_symlinks,interval_seconds,enabled,root_identity,identity_confirmed ON library_sources BEGIN
  UPDATE library_configuration SET revision=revision+1 WHERE library_id=NEW.library_id;
  UPDATE admin_revision SET revision=revision+1 WHERE id=1;
 END;
@@ -4189,7 +4258,7 @@ CREATE TRIGGER personal_history_revision_DELETE AFTER DELETE ON personal_history
 CREATE TRIGGER lyric_revision_immutable BEFORE UPDATE ON lyric_revisions
  BEGIN SELECT RAISE(ABORT,'lyric revisions are immutable'); END;
 CREATE TRIGGER lyric_head_monotonic BEFORE UPDATE ON lyric_resources
- WHEN NEW.revision<=OLD.revision OR NEW.item_id<>OLD.item_id OR NEW.asset_id<>OLD.asset_id OR NEW.source_version<>OLD.source_version OR NEW.scope<>OLD.scope OR NEW.authority<>OLD.authority OR NEW.account_id<>OLD.account_id OR NEW.profile_id<>OLD.profile_id
+ WHEN NEW.revision<=OLD.revision OR NEW.item_id<>OLD.item_id OR NEW.asset_id<>OLD.asset_id OR NEW.source_version<>OLD.source_version OR NEW.source_duration<>OLD.source_duration OR NEW.source_start<>OLD.source_start OR NEW.source_end<>OLD.source_end OR NEW.scope<>OLD.scope OR NEW.authority<>OLD.authority OR NEW.account_id<>OLD.account_id OR NEW.profile_id<>OLD.profile_id
  BEGIN SELECT RAISE(ABORT,'invalid lyric resource transition'); END;
 CREATE TRIGGER screen_policy_create AFTER INSERT ON libraries WHEN NEW.kind IN('movie','tv','anime') BEGIN
  INSERT INTO screen_metadata_policies(library_id,providers) VALUES(NEW.id,CASE WHEN NEW.kind='anime' THEN '["anilist"]' ELSE '["tmdb","tvdb"]' END);
@@ -4439,8 +4508,7 @@ INSERT INTO catalog_content_eligible_state(id,after_entity_id,backfill_done,turn
 -- ===== views
 CREATE VIEW inventory_item_availability AS
  SELECT l.entity_id AS item_id,a.token AS asset_id,
- CASE WHEN EXISTS(SELECT 1 FROM admin_trash held WHERE held.item_id=l.entity_id AND held.state='held') THEN 0
- WHEN EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=l.entity_id) THEN 0
+ CASE WHEN EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=l.entity_id) THEN 0
  WHEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id)
  THEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing') AND o.root_incarnation=s.incarnation)
  ELSE a.available=1 AND NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.id=cl.library_id AND (s.enabled=0 OR s.health IN('offline','root_changed','removing'))) END AS available
@@ -4619,7 +4687,7 @@ CREATE TRIGGER catalog_library_update AFTER UPDATE OF name,kind ON libraries BEG
  UPDATE catalog_libraries SET name=NEW.name,kind=CASE NEW.kind WHEN 'movie' THEN 1 WHEN 'tv' THEN 2 WHEN 'anime' THEN 3 WHEN 'music' THEN 4 WHEN 'audiobook' THEN 5 ELSE 99 END WHERE library_id=NEW.id;
 END;
 
--- Availability follows inventory evidence, source health, DVR retirement and trash.
+-- Availability follows inventory evidence, source health and DVR retirement.
 CREATE TRIGGER catalog_availability_object_insert AFTER INSERT ON inventory_objects BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,l.entity_id,1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token=NEW.asset_id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
@@ -4643,18 +4711,6 @@ CREATE TRIGGER catalog_availability_retired_insert AFTER INSERT ON dvr_catalog_r
 END;
 CREATE TRIGGER catalog_availability_retired_delete AFTER DELETE ON dvr_catalog_retirements BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT d.column1,OLD.item_id,1 FROM (VALUES(20),(18),(27)) d WHERE EXISTS(SELECT 1 FROM catalog_entities WHERE id=OLD.item_id)
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
-END;
-CREATE TRIGGER catalog_availability_trash_insert AFTER INSERT ON admin_trash BEGIN
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,id,1 FROM catalog_entities WHERE id=NEW.item_id
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
-END;
-CREATE TRIGGER catalog_availability_trash_update AFTER UPDATE OF state ON admin_trash BEGIN
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,id,1 FROM catalog_entities WHERE id=NEW.item_id
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
-END;
-CREATE TRIGGER catalog_availability_trash_delete AFTER DELETE ON admin_trash BEGIN
- INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,id,1 FROM catalog_entities WHERE id=OLD.item_id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 
@@ -4836,10 +4892,6 @@ CREATE TRIGGER compact_visibility_dirty_link_delete AFTER DELETE ON catalog_asse
   JOIN compact_visibility_classes c ON c.library_id=r.library_id AND c.retired=0 WHERE m.item_id=OLD.entity_id AND r.kind IN(2,3) ON CONFLICT DO NOTHING;
 END;
 
--- inventory_item_availability asks, for every file link it evaluates, whether
--- the item is held in the trash; without this the question scans every held
--- trash entry.
-CREATE INDEX admin_trash_item ON admin_trash(item_id,state);
 
 -- Triggers reach these by id alone (an entity's artwork heads of any kind; an
 -- item's or show's screen work; a song's or album's MusicBrainz job), and their
@@ -5670,3 +5722,207 @@ CREATE TABLE playback_conversion_failures (
  video TEXT NOT NULL,
  audio TEXT NOT NULL
 ) STRICT;
+
+CREATE TABLE queue_v1_play_spans(
+ queue_id TEXT NOT NULL REFERENCES queues_v1(id) ON DELETE CASCADE,
+ rank INTEGER NOT NULL,source INTEGER NOT NULL CHECK(source IN(0,1)),
+ start INTEGER NOT NULL CHECK(start>=0),count INTEGER NOT NULL CHECK(count>=0),
+ PRIMARY KEY(queue_id,rank)) STRICT;
+
+CREATE TABLE audio_render_fact_requests(
+ asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ item_id TEXT NOT NULL,requested_ms INTEGER NOT NULL) STRICT;
+CREATE INDEX audio_render_fact_requests_order ON audio_render_fact_requests(requested_ms);
+
+-- ===== API keys and personal access tokens
+-- A key or token is a session family that does not rotate (see
+-- internal/identity/api_credentials.go). This row is what the family cannot
+-- say about itself: its name, its scopes, and who may list and end it.
+-- secret_hash is the digest of the secret, the same value the family's token
+-- row is keyed on; the secret itself is never stored.
+CREATE TABLE api_credentials(
+ id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN('key','token')),
+ account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, profile_id TEXT NOT NULL,
+ name TEXT NOT NULL, scopes TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, hint TEXT NOT NULL,
+ family_id TEXT NOT NULL UNIQUE, device_id TEXT NOT NULL,
+ created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL DEFAULT 0, revoked_ms INTEGER NOT NULL DEFAULT 0,
+ ended_reason TEXT NOT NULL DEFAULT '') STRICT;
+CREATE INDEX api_credentials_page ON api_credentials(kind,created_ms DESC,id DESC);
+CREATE INDEX api_credentials_account ON api_credentials(account_id,kind,created_ms DESC,id DESC);
+-- A key or token has a lifetime of its own. It ends when it is revoked, when
+-- it expires, or when its member is disabled or deleted, and at no other time:
+-- not when the member changes their password, not when they sign out
+-- everywhere, not when the owner edits their access. The session machinery
+-- ends every session of a member in several places and will grow more; these
+-- rules are kept here, in the schema, so none of those places can end a key by
+-- accident and none has to know keys exist.
+--
+-- 1. While its credential is live, a credential's family does not stay revoked.
+--    Whatever revokes it (a sweep of every family of the account, or anything
+--    written later) is undone for that row in the same statement, so the
+--    revocation is never visible outside the transaction and the other rows
+--    of the sweep are revoked exactly as before. Revoking a key marks the
+--    credential first, after which its family is revoked like any other.
+CREATE TRIGGER api_credential_family_guard AFTER UPDATE OF revoked ON authorization_session_families
+ WHEN NEW.revoked=1 AND OLD.revoked=0 AND EXISTS(SELECT 1 FROM api_credentials c WHERE c.family_id=NEW.id AND c.revoked_ms=0) BEGIN
+ UPDATE authorization_session_families SET revoked=0,revoked_reason='',revoked_at='' WHERE id=NEW.id;
+END;
+-- 2. Ending a member's sessions moves the account's epoch, and a session whose
+--    epoch is behind is refused. A live credential's family moves with it.
+CREATE TRIGGER api_credential_epoch AFTER UPDATE OF epoch ON accounts WHEN NEW.epoch<>OLD.epoch BEGIN
+ UPDATE authorization_session_families SET epoch=NEW.epoch
+  WHERE id IN(SELECT family_id FROM api_credentials WHERE account_id=NEW.id AND revoked_ms=0);
+END;
+-- 3. A credential acts as its member, so it holds the role its member holds
+--    now: lowered when they are demoted, raised when they are promoted, always
+--    within the scopes it was given. A credential made under a profile that is
+--    not the account's main one is a member's, as that profile's sessions are.
+CREATE TRIGGER api_credential_role AFTER UPDATE OF role ON direct_memberships WHEN NEW.role<>OLD.role BEGIN
+ UPDATE authorization_session_families SET role=NEW.role
+  WHERE id IN(SELECT family_id FROM api_credentials WHERE account_id=NEW.account_id AND revoked_ms=0)
+   AND profile_id=(SELECT profile_id FROM accounts WHERE id=NEW.account_id);
+END;
+-- 4. Disabling a member ends their keys and tokens for good: enabling the
+--    member again does not bring them back.
+CREATE TRIGGER api_credential_member_disabled AFTER UPDATE OF disabled ON direct_memberships WHEN NEW.disabled=1 AND OLD.disabled=0 BEGIN
+ UPDATE api_credentials SET revoked_ms=CAST((julianday('now')-2440587.5)*86400000 AS INTEGER),ended_reason='member_disabled' WHERE account_id=NEW.account_id AND revoked_ms=0;
+ UPDATE authorization_session_families SET revoked=1,revoked_reason='membership_removed'
+  WHERE revoked=0 AND id IN(SELECT family_id FROM api_credentials WHERE account_id=NEW.account_id);
+END;
+-- Kept apart from api_credentials so that recording a use never looks like a
+-- change of authority.
+CREATE TABLE api_credential_use(
+ credential_id TEXT PRIMARY KEY REFERENCES api_credentials(id) ON DELETE CASCADE,
+ last_used_ms INTEGER NOT NULL, requests INTEGER NOT NULL DEFAULT 0) STRICT;
+
+-- ===== scans limited to paths an outside tool reported
+CREATE TABLE inventory_path_notices(
+ source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
+ relative_path TEXT NOT NULL, created_ms INTEGER NOT NULL,
+ PRIMARY KEY(source_id,relative_path)) WITHOUT ROWID, STRICT;
+CREATE TABLE inventory_run_targets(
+ job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE, relative_path TEXT NOT NULL,
+ PRIMARY KEY(job_id,relative_path)) WITHOUT ROWID, STRICT;
+
+-- ===== outbound webhooks
+-- events is a comma-delimited list with a leading and trailing comma, so one
+-- instr() answers "is this webhook subscribed".
+CREATE TABLE webhooks(
+ id TEXT PRIMARY KEY, name TEXT NOT NULL, url TEXT NOT NULL, secret TEXT NOT NULL, events TEXT NOT NULL,
+ enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),
+ failures INTEGER NOT NULL DEFAULT 0, dropped INTEGER NOT NULL DEFAULT 0,
+ created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL,
+ revision INTEGER NOT NULL DEFAULT 1 CHECK(revision>0)) STRICT;
+-- The delivery queue and the delivery log are one table: a row is pending until
+-- it is delivered or given up on, and stays as the log entry afterwards.
+CREATE TABLE webhook_deliveries(
+ id TEXT PRIMARY KEY, webhook_id TEXT NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+ type TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}',
+ state TEXT NOT NULL DEFAULT 'pending' CHECK(state IN('pending','delivered','failed')),
+ attempts INTEGER NOT NULL DEFAULT 0, next_attempt_ms INTEGER NOT NULL, created_ms INTEGER NOT NULL,
+ finished_ms INTEGER NOT NULL DEFAULT 0, status INTEGER NOT NULL DEFAULT 0,
+ duration_ms INTEGER NOT NULL DEFAULT 0, error TEXT NOT NULL DEFAULT '') STRICT;
+CREATE INDEX webhook_deliveries_due ON webhook_deliveries(state,next_attempt_ms,created_ms);
+CREATE INDEX webhook_deliveries_log ON webhook_deliveries(webhook_id,created_ms DESC,id DESC);
+CREATE INDEX webhook_deliveries_queue ON webhook_deliveries(webhook_id,state);
+-- Several changes to one thing before the first attempt are one delivery.
+CREATE UNIQUE INDEX webhook_deliveries_coalesce ON webhook_deliveries(webhook_id,type,subject) WHERE state='pending' AND attempts=0 AND subject<>'';
+CREATE TABLE webhook_state(key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID, STRICT;
+-- Every event, from a trigger below or from the server, is one insert here. The
+-- row never rests: the trigger gives each subscribed webhook a delivery and
+-- removes it. A webhook with a thousand deliveries waiting takes no more; the
+-- count of what it missed is kept for the owner.
+CREATE TABLE webhook_events(type TEXT NOT NULL, subject TEXT NOT NULL DEFAULT '', data TEXT NOT NULL DEFAULT '{}') STRICT;
+CREATE TRIGGER webhook_events_fan_out AFTER INSERT ON webhook_events BEGIN
+ UPDATE webhooks SET dropped=dropped+1 WHERE enabled=1 AND instr(events,','||NEW.type||',')>0
+  AND (SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=webhooks.id AND d.state='pending')>=1000;
+ INSERT OR IGNORE INTO webhook_deliveries(id,webhook_id,type,subject,data,next_attempt_ms,created_ms)
+  SELECT lower(hex(randomblob(16))),w.id,NEW.type,NEW.subject,NEW.data,
+   CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)+CASE WHEN NEW.type IN('title.added','title.updated') THEN 45000 ELSE 0 END,CAST((julianday('now')-2440587.5)*86400000 AS INTEGER)
+  FROM webhooks w WHERE w.enabled=1 AND instr(w.events,','||NEW.type||',')>0
+   AND (SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending')<1000
+   AND NOT(NEW.type='title.updated' AND EXISTS(SELECT 1 FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.type='title.added' AND d.subject=NEW.subject AND d.state='pending' AND d.attempts=0));
+ DELETE FROM webhook_events WHERE rowid=NEW.rowid;
+END;
+-- Titles are films, shows, episodes, albums and books. A member's private
+-- recordings library is never reported.
+CREATE TRIGGER webhook_title_added AFTER INSERT ON catalog_entities
+ WHEN NEW.kind IN(1,2,4,6,8) AND NEW.retired=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.added,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=NEW.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('title.added',lower(hex(NEW.public_id)),json_object('entity',lower(hex(NEW.public_id)),'kind',NEW.kind,'title',NEW.title,'year',NEW.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=NEW.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.parent_id)));
+END;
+CREATE TRIGGER webhook_title_updated AFTER UPDATE OF title,year ON catalog_entities
+ WHEN NEW.kind IN(1,2,4,6,8) AND NEW.retired=0 AND (NEW.title<>OLD.title OR NEW.year<>OLD.year) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=NEW.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('title.updated',lower(hex(NEW.public_id)),json_object('entity',lower(hex(NEW.public_id)),'kind',NEW.kind,'title',NEW.title,'year',NEW.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=NEW.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.parent_id)));
+END;
+CREATE TRIGGER webhook_title_metadata_updated AFTER UPDATE OF metadata_revision ON metadata_publication_heads
+ WHEN NEW.metadata_revision<>OLD.metadata_revision AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.item_id AND e.kind IN(1,2,4,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_title_removed BEFORE DELETE ON catalog_entities
+ WHEN OLD.kind IN(1,2,4,6,8) AND OLD.retired=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.removed,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=OLD.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('title.removed',lower(hex(OLD.public_id)),json_object('entity',lower(hex(OLD.public_id)),'kind',OLD.kind,'title',OLD.title,'year',OLD.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=OLD.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=OLD.parent_id)));
+END;
+CREATE TRIGGER webhook_title_retired AFTER UPDATE OF retired ON catalog_entities
+ WHEN NEW.kind IN(1,2,4,6,8) AND NEW.retired=1 AND OLD.retired=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.removed,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=NEW.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('title.removed',lower(hex(NEW.public_id)),json_object('entity',lower(hex(NEW.public_id)),'kind',NEW.kind,'title',NEW.title,'year',NEW.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=NEW.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.parent_id)));
+END;
+-- A scan is a job that walks folders; a job that only analyses one file is not.
+CREATE TRIGGER webhook_scan_started AFTER UPDATE OF status ON jobs
+ WHEN NEW.status='running' AND OLD.status='queued' AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',scan.started,')>0)
+  AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=NEW.id)
+  AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p WHERE p.library_id=NEW.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('scan.started',NEW.id,json_object('jobId',NEW.id,'libraryId',NEW.library_id,'library',(SELECT name FROM libraries WHERE id=NEW.library_id)));
+END;
+CREATE TRIGGER webhook_scan_finished AFTER UPDATE OF status ON jobs
+ WHEN NEW.status IN('complete','complete_with_warnings','failed','cancelled') AND OLD.status NOT IN('complete','complete_with_warnings','failed','cancelled') AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',scan.finished,')>0)
+  AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=NEW.id)
+  AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p WHERE p.library_id=NEW.library_id) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('scan.finished',NEW.id,json_object('jobId',NEW.id,'libraryId',NEW.library_id,'library',(SELECT name FROM libraries WHERE id=NEW.library_id),'outcome',NEW.status,'processed',NEW.processed));
+END;
+-- A session that replaces one already playing the same thing on the same device
+-- (a change of quality or version) is neither a start nor a stop.
+CREATE TRIGGER webhook_playback_started AFTER INSERT ON playback_v1_sessions
+ WHEN NEW.state IN('playing','paused') AND NEW.ended_ms=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',playback.started,')>0) AND NOT EXISTS(SELECT 1 FROM playback_v1_sessions o WHERE o.id<>NEW.id AND o.device_id=NEW.device_id AND o.item_id=NEW.item_id AND o.channel_id=NEW.channel_id AND o.ended_ms=0 AND o.state<>'preparing') BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('playback.started',NEW.id,json_object('sessionId',NEW.id,'kind',NEW.kind,'state',NEW.state,'positionMs',NEW.position_ms,'reason',NEW.end_reason,'accountId',NEW.account_id,'user',(SELECT username FROM accounts WHERE id=NEW.account_id),'profileId',NEW.profile_id,'profile',(SELECT name FROM direct_profiles WHERE id=NEW.profile_id),'deviceId',NEW.device_id,'device',(SELECT name FROM identity_devices WHERE id=NEW.device_id),'platform',(SELECT platform FROM identity_devices WHERE id=NEW.device_id),'entity',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.item_id),'title',(SELECT title FROM catalog_entities WHERE id=NEW.item_id),'channelId',NEW.channel_id));
+END;
+CREATE TRIGGER webhook_playback_state AFTER UPDATE OF state ON playback_v1_sessions
+ WHEN NEW.state<>OLD.state AND NEW.state IN('playing','paused') AND NEW.ended_ms=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1)
+  AND NOT(OLD.state='preparing' AND EXISTS(SELECT 1 FROM playback_v1_sessions o WHERE o.id<>NEW.id AND o.device_id=NEW.device_id AND o.item_id=NEW.item_id AND o.channel_id=NEW.channel_id AND o.ended_ms=0 AND o.state<>'preparing')) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES(CASE WHEN OLD.state='preparing' THEN 'playback.started' WHEN NEW.state='paused' THEN 'playback.paused' ELSE 'playback.resumed' END,NEW.id,json_object('sessionId',NEW.id,'kind',NEW.kind,'state',NEW.state,'positionMs',NEW.position_ms,'reason',NEW.end_reason,'accountId',NEW.account_id,'user',(SELECT username FROM accounts WHERE id=NEW.account_id),'profileId',NEW.profile_id,'profile',(SELECT name FROM direct_profiles WHERE id=NEW.profile_id),'deviceId',NEW.device_id,'device',(SELECT name FROM identity_devices WHERE id=NEW.device_id),'platform',(SELECT platform FROM identity_devices WHERE id=NEW.device_id),'entity',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.item_id),'title',(SELECT title FROM catalog_entities WHERE id=NEW.item_id),'channelId',NEW.channel_id));
+END;
+CREATE TRIGGER webhook_playback_stopped AFTER UPDATE OF ended_ms ON playback_v1_sessions
+ WHEN NEW.ended_ms>0 AND OLD.ended_ms=0 AND OLD.state<>'preparing' AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',playback.stopped,')>0)
+  AND NOT(NEW.end_reason='replaced' AND EXISTS(SELECT 1 FROM playback_v1_sessions o WHERE o.id<>NEW.id AND o.device_id=NEW.device_id AND o.item_id=NEW.item_id AND o.channel_id=NEW.channel_id AND o.ended_ms=0 AND o.state<>'preparing')) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('playback.stopped',NEW.id,json_object('sessionId',NEW.id,'kind',NEW.kind,'state',NEW.state,'positionMs',NEW.position_ms,'reason',NEW.end_reason,'accountId',NEW.account_id,'user',(SELECT username FROM accounts WHERE id=NEW.account_id),'profileId',NEW.profile_id,'profile',(SELECT name FROM direct_profiles WHERE id=NEW.profile_id),'deviceId',NEW.device_id,'device',(SELECT name FROM identity_devices WHERE id=NEW.device_id),'platform',(SELECT platform FROM identity_devices WHERE id=NEW.device_id),'entity',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=NEW.item_id),'title',(SELECT title FROM catalog_entities WHERE id=NEW.item_id),'channelId',NEW.channel_id));
+END;
+CREATE TRIGGER webhook_recording_done AFTER UPDATE OF state ON dvr_recordings
+ WHEN NEW.state<>OLD.state AND NEW.state IN('completed','incomplete-playable','failed') AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES(CASE WHEN NEW.state='failed' THEN 'recording.failed' ELSE 'recording.finished' END,NEW.id,
+  json_object('recordingId',NEW.id,'state',NEW.state,'reason',NEW.reason,
+   'title',CASE WHEN json_valid(NEW.programme_json) THEN json_extract(NEW.programme_json,'$.title') END,
+   'channelId',NEW.channel_id,'accountId',NEW.account_id,'user',(SELECT username FROM accounts WHERE id=NEW.account_id),
+   'profileId',NEW.profile_id,'profile',(SELECT name FROM direct_profiles WHERE id=NEW.profile_id)));
+END;
+-- A session starting for a profile on a device. A key or token is not a sign-in.
+CREATE TRIGGER webhook_member_signed_in AFTER INSERT ON identity_device_families
+ WHEN EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',member.signed_in,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'member.signed_in',f.account_id||':'||f.profile_id||':'||d.id,
+  json_object('accountId',f.account_id,'user',(SELECT username FROM accounts WHERE id=f.account_id),
+   'profileId',f.profile_id,'profile',(SELECT name FROM direct_profiles WHERE id=f.profile_id),'role',f.role,
+   'deviceId',d.id,'device',d.name,'platform',d.platform,'app',d.app,'address',d.ip)
+  FROM authorization_session_families f JOIN identity_devices d ON d.id=NEW.device_id
+  WHERE f.id=NEW.family_id AND f.role<>'account' AND d.platform<>'api';
+END;
+CREATE TRIGGER webhook_storage_low AFTER INSERT ON notification_records
+ WHEN NEW.category='storage.low' AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',storage.low,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('storage.low','storage',json_object('severity',NEW.severity,
+  'freePercent',CASE WHEN json_valid(NEW.arguments) THEN json_extract(NEW.arguments,'$.freePercent') END,
+  'freeBytes',CASE WHEN json_valid(NEW.arguments) THEN json_extract(NEW.arguments,'$.freeBytes') END));
+END;
+CREATE TRIGGER webhook_storage_lower AFTER UPDATE OF severity ON notification_records
+ WHEN NEW.category='storage.low' AND NEW.severity<>OLD.severity AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',storage.low,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) VALUES('storage.low','storage',json_object('severity',NEW.severity,
+  'freePercent',CASE WHEN json_valid(NEW.arguments) THEN json_extract(NEW.arguments,'$.freePercent') END,
+  'freeBytes',CASE WHEN json_valid(NEW.arguments) THEN json_extract(NEW.arguments,'$.freeBytes') END));
+END;

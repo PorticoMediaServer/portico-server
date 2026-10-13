@@ -107,24 +107,25 @@ func (h *Hub) Subscribe() (<-chan struct{}, func()) {
 	}
 }
 
-// AdmitStream permits one live stream per installation. A duplicate retires
-// the old stream and receives a retryable conflict, so its next attempt starts
-// from the same durable cursor instead of silently keeping two subscriptions.
+// AdmitStream permits one live stream per installation. A newcomer takes the
+// place of the stream that was there: the old one is retired and the new one is
+// admitted. A device that changed network reconnects before the server has
+// noticed its old connection is dead, and refusing it then would turn every
+// such reconnect into a failure; there is still only ever one subscription,
+// and the newcomer resumes from the cursor it sends.
 func (h *Hub) AdmitStream(key string, cancel context.CancelFunc) (func(), bool) {
 	if key == "" || cancel == nil {
 		return func() {}, false
 	}
 	h.mu.Lock()
-	if prior, exists := h.streams[key]; exists {
-		delete(h.streams, key)
-		h.mu.Unlock()
-		prior.cancel()
-		return func() {}, false
-	}
+	prior, replaced := h.streams[key]
 	h.next++
 	id := h.next
 	h.streams[key] = stream{id: id, cancel: cancel}
 	h.mu.Unlock()
+	if replaced {
+		prior.cancel()
+	}
 	return func() {
 		h.mu.Lock()
 		if current, exists := h.streams[key]; exists && current.id == id {

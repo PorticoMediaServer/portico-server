@@ -2,15 +2,13 @@ import {useEffect} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import type {InboxView, Notification, NotificationAction, NotificationAudience} from '../../../../packages/client-core/src/index';
 import {useInbox} from '../../app/inbox';
-import {defaultI18n} from '@i18n';
+import {useI18n, type I18n} from '../../app/i18n';
 import {ErrorNotice, ErrorState} from '../../app/errors';
 import {Badge, Button, IconButton, Icon, Loading, Segmented, StateView, Surface, Text, type IconName} from '../../ui';
 import {useDownloads} from '../../app/downloads';
 
-const t = defaultI18n.t;
-
-const views = (): {id: InboxView; label: string}[] => [{id: 'unread', label: t('notifications.view.unread')}, {id: 'all', label: t('notifications.view.all')}, {id: 'archived', label: t('notifications.view.archived')}];
-const audienceLabel = (a: NotificationAudience) => a === 'profile' ? t('notifications.audience.profile') : t('notifications.audience.admin');
+const views = (t: I18n['t']): {id: InboxView; label: string}[] => [{id: 'unread', label: t('notifications.view.unread')}, {id: 'all', label: t('notifications.view.all')}, {id: 'archived', label: t('notifications.view.archived')}];
+const audienceLabel = (t: I18n['t'], a: NotificationAudience) => a === 'profile' ? t('notifications.audience.profile') : t('notifications.audience.admin');
 const severityIcon: Record<Notification['severity'], IconName> = {info: 'bell', warning: 'warning', critical: 'warning'};
 
 /** Where a notification's "navigate" action goes. An action this build does not know is not
@@ -30,6 +28,8 @@ function destination(action: NotificationAction): {to: string; params?: Record<s
 
 /** The server-owned inbox for this viewer: messages, not settings. */
 export function NotificationsSection() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const downloadsOff = useDownloads().state.unavailable === true;
   const {service, state} = useInbox();
   const navigate = useNavigate();
@@ -40,8 +40,8 @@ export function NotificationsSection() {
     <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
       <div style={{display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between'}}>
         <div style={{display: 'flex', flexWrap: 'wrap', gap: 8}}>
-          {state.audiences.length > 1 ? <Segmented label={t('web.notifications.audience')} value={state.audience} onChange={v => void service.load(v as NotificationAudience, state.view)} options={state.audiences.map(a => ({id: a, label: audienceLabel(a)}))} /> : null}
-          <Segmented label={t('web.notifications.show')} value={state.view} onChange={v => void service.load(state.audience, v as InboxView)} options={views()} />
+          {state.audiences.length > 1 ? <Segmented label={t('web.notifications.audience')} value={state.audience} onChange={v => void service.load(v as NotificationAudience, state.view)} options={state.audiences.map(a => ({id: a, label: audienceLabel(t, a)}))} /> : null}
+          <Segmented label={t('web.notifications.show')} value={state.view} onChange={v => void service.load(state.audience, v as InboxView)} options={views(t)} />
         </div>
         {state.counts.unread > 0 && state.view !== 'archived' ? <Button size="sm" variant="ghost" icon="check" label={t('notifications.markAllRead')} onClick={() => void service.readAll()} /> : null}
       </div>
@@ -58,7 +58,7 @@ export function NotificationsSection() {
                 <div style={{display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap'}}>
                   <Text variant="bodyStrong">{n.title}</Text>
                   {!n.read ? <Badge tone="accent" dot>{t('notifications.new')}</Badge> : null}
-                  <Text variant="caption" tone="tertiary">{defaultI18n.relativeTime(n.createdAt)}</Text>
+                  <Text variant="caption" tone="tertiary">{i18n.relativeTime(n.createdAt)}</Text>
                 </div>
                 {n.body ? <Text as="p" variant="body" tone="secondary" style={{whiteSpace: 'pre-wrap'}}>{n.body}</Text> : null}
                 {n.actions.some(a => destination(a)) ? (

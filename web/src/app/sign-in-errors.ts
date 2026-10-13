@@ -62,6 +62,7 @@ export const serverCodes: Readonly<Record<string, Answer>> = {
   device_denied: E('web.signIn.error.deviceDenied'),
   access_refused: E('web.portico.noAccess'),
   clock_skew: E('web.portico.clockSkew'),
+  clocks_disagree: E('web.signIn.error.clock'),
   challenge_not_proven: E('web.portico.notProven'),
   server_mismatch: E('web.signIn.error.identity'), identity_mismatch: E('web.signIn.error.identity'), session_identity_mismatch: E('web.signIn.error.identity'),
   wrong_server: E('web.signIn.error.identity'), invalid_signature: E('web.signIn.error.identity'), missing_identity: E('web.signIn.error.identity'),

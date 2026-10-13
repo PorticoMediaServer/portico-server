@@ -160,12 +160,13 @@ func (s *TVDB) SearchScreen(ctx context.Context, kind, title string, year int, l
 	out := []ScreenRecord{}
 	for _, v := range page.Data {
 		if v.Type != typ {
-			return nil, &Error{Provider: "tvdb", Code: "entity_type_mismatch"}
+			continue
 		}
 		y, _ := strconv.Atoi(v.Year)
 		r := ScreenRecord{Identity: ScreenID{"tvdb", kind, v.ID}, Title: v.Name, Year: y, Overview: v.Overview, Aliases: v.Aliases}
+		r = BoundScreenRecord(r)
 		if e := ValidateScreenRecord(r); e != nil {
-			return nil, e
+			continue
 		}
 		out = append(out, r)
 	}
@@ -198,6 +199,11 @@ func (s *TVDB) ScreenDetails(ctx context.Context, kind, id, locale, region strin
 	if r.AdvisoryRuntimeMinutes == nil {
 		r.AdvisoryRuntimeMinutes = v.AverageRuntime
 	}
+	originalLocale := language.Make(v.OriginalLanguage).String()
+	if originalLocale == "und" {
+		originalLocale = ""
+	}
+	r.FieldLanguages = map[string]string{"originalTitle": originalLocale, "title": originalLocale, "overview": originalLocale}
 	r.Aliases = append(r.Aliases, v.Translations.Aliases...)
 	if r.Year == 0 {
 		r.Year = screenYear(r.Date)
@@ -211,11 +217,13 @@ func (s *TVDB) ScreenDetails(ctx context.Context, kind, id, locale, region strin
 		r.Aliases = append(r.Aliases, t.Name)
 		if t.Language == iso && t.Name != "" {
 			r.Title = t.Name
+			r.FieldLanguages["title"] = language.Make(t.Language).String()
 		}
 	}
 	for _, t := range v.Translations.Overview {
 		if t.Language == iso && t.Overview != "" {
 			r.Overview = t.Overview
+			r.FieldLanguages["overview"] = language.Make(t.Language).String()
 		}
 	}
 	for _, g := range v.Genres {
@@ -259,6 +267,7 @@ func (s *TVDB) ScreenDetails(ctx context.Context, kind, id, locale, region strin
 			r.Orders = append(r.Orders, ScreenOrder{o, o})
 		}
 	}
+	r = BoundScreenRecord(r)
 	return r, ValidateScreenRecord(r)
 }
 
@@ -272,5 +281,12 @@ func screenCrosswalkHas(ids []ScreenID, provider string) bool {
 }
 
 func (s *TVDB) screenGet(ctx context.Context, route string, out any) error {
+	if isFreshRequest(ctx) {
+		return s.get(ctx, route, out)
+	}
 	return s.screenCache.get(ctx, route, out, func() (any, error) { var raw json.RawMessage; err := s.get(ctx, route, &raw); return raw, err })
+}
+
+func (s *TVDB) ScreenDetailsFresh(ctx context.Context, kind, id, language, region string) (ScreenRecord, error) {
+	return s.ScreenDetails(freshRequest(ctx), kind, id, language, region)
 }

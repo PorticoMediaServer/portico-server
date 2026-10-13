@@ -8,10 +8,10 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-// QueueRefresh asks the screen worker to look at one movie again. The screen
+// QueueRefresh asks the screen worker to look at one film, show or episode again. The screen
 // worker owns film matching and details; the retired legacy queues are not
 // written.
-var ErrRefreshKind = errors.New("direct movie metadata refresh is not available for this item kind")
+var ErrRefreshKind = errors.New("metadata refresh is not available for this item kind")
 
 func (s *Service) QueueRefresh(item string) error {
 	gated, e := dbwork.Begin(context.Background(), s.db, dbwork.ClassBackgroundMedia)
@@ -33,22 +33,21 @@ func (s *Service) QueueRefreshTx(ctx context.Context, tx *sql.Tx, item string) e
 	if e != nil {
 		return e
 	}
-	var kind int
-	if e = tx.QueryRow(`SELECT kind FROM catalog_entities WHERE id=?`, entity).Scan(&kind); e != nil {
+	var targetKind string
+	if e = tx.QueryRowContext(ctx, `SELECT target_kind FROM screen_metadata_work WHERE target_id=?`, entity).Scan(&targetKind); errors.Is(e, sql.ErrNoRows) {
+		return ErrRefreshKind
+	} else if e != nil {
 		return e
 	}
-	if kind != 1 {
-		return ErrRefreshKind
-	}
-	if _, e = tx.Exec(`UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,requested_provider='',query_override='',lease='',lease_until='',attempts=0,next_attempt='',error='' WHERE target_kind='item' AND target_id=?`, entity); e != nil {
+	if _, e = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',force_refresh=1,generation=generation+1,revision=revision+1,requested_provider='',query_override='',lease='',lease_until='',attempts=0,next_attempt='',error='' WHERE target_kind=? AND target_id=?`, targetKind, entity); e != nil {
 		return e
 	}
 	// A person asking for a refresh is the one thing the freshness rule must never stand in
 	// the way of: the rule exists to stop this server asking on its own. Forgetting what this
 	// item's accepted providers were last told makes the next pass go and look.
-	if _, e = tx.Exec(`DELETE FROM metadata_document_freshness WHERE (provider,kind,resource) IN
-  (SELECT provider,provider_type,provider_id FROM screen_metadata_publications WHERE target_kind='item' AND target_id=? AND decision='accepted')`, entity); e != nil {
+	if _, e = tx.ExecContext(ctx, `DELETE FROM metadata_document_freshness WHERE EXISTS(SELECT 1 FROM screen_metadata_publications p WHERE p.target_id=? AND p.decision='accepted' AND p.provider=metadata_document_freshness.provider AND p.provider_type=metadata_document_freshness.kind AND (metadata_document_freshness.resource=p.provider_id OR metadata_document_freshness.resource LIKE p.provider_id||'@%'))`, entity); e != nil {
 		return e
 	}
+
 	return nil
 }

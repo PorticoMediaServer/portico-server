@@ -209,6 +209,7 @@ func (g segment) live() int64 { return g.count - g.removed }
 // read once per request (a queue has few segments) and answers position ↔
 // entry in O(segments + removals), independent of queue length.
 type layout struct {
+	spans    []orderSpan
 	q        queueRow
 	segments []segment
 	removals map[string][]int64 // snapshot → sorted ordinals
@@ -252,10 +253,40 @@ func (s *Service) readLayout(ctx context.Context, tx *sql.Tx, q queueRow) (*layo
 		}
 		l.removals[snap] = append(l.removals[snap], ordinal)
 	}
-	return l, removals.Err()
+	if err = removals.Err(); err != nil {
+		return nil, err
+	}
+	removals.Close()
+	if q.shuffle {
+		rows, e := tx.QueryContext(ctx, `SELECT source,start,count FROM queue_v1_play_spans WHERE queue_id=? ORDER BY rank`, q.id)
+		if e != nil {
+			return nil, e
+		}
+		for rows.Next() {
+			var span orderSpan
+			if e = rows.Scan(&span.source, &span.start, &span.count); e != nil {
+				rows.Close()
+				return nil, e
+			}
+			l.spans = append(l.spans, span)
+		}
+		e = rows.Err()
+		rows.Close()
+		if e != nil {
+			return nil, e
+		}
+	}
+	return l, nil
 }
 
 func (l *layout) total() int64 {
+	if l.q.shuffle && len(l.spans) > 0 {
+		var n int64
+		for _, span := range l.spans {
+			n += span.count
+		}
+		return n
+	}
 	var n int64
 	for _, g := range l.segments {
 		n += g.live()
@@ -269,9 +300,16 @@ func (l *layout) sourceAt(p int64) (int, int64, bool) {
 		return 0, 0, false
 	}
 	for i, g := range l.segments {
-		if p < g.live() {
+		live := g.live()
+		if l.q.shuffle {
+			live = g.count
+		}
+		if p < live {
 			ordinal := g.first + p
 			for _, r := range l.removals[g.snapshot] {
+				if l.q.shuffle {
+					break
+				}
 				if r < g.first || r >= g.first+g.count {
 					continue
 				}
@@ -281,7 +319,7 @@ func (l *layout) sourceAt(p int64) (int, int64, bool) {
 			}
 			return i, ordinal, true
 		}
-		p -= g.live()
+		p -= live
 	}
 	return 0, 0, false
 }
@@ -301,13 +339,17 @@ func (l *layout) sourceIndexOf(entry string) (int64, int, bool) {
 				if r == ordinal {
 					return 0, 0, false
 				}
-				if r >= g.first && r < ordinal {
+				if !l.q.shuffle && r >= g.first && r < ordinal {
 					before++
 				}
 			}
 			return base + ordinal - g.first - before, i, true
 		}
-		base += g.live()
+		if l.q.shuffle {
+			base += g.count
+		} else {
+			base += g.live()
+		}
 	}
 	return 0, 0, false
 }
@@ -327,36 +369,37 @@ func (l *layout) shuffle() *Shuffle {
 // entry at the time is position 0, the rest follow the permutation, and
 // entries added later form an unshuffled tail (spec §17.10).
 func (l *layout) orderToSource(p int64) int64 {
-	sh := l.shuffle()
-	if sh == nil || p >= l.q.domain {
-		return p
+	if l.q.shuffle && len(l.spans) > 0 {
+		for _, s := range l.spans {
+			if p < s.count {
+				if s.source {
+					return s.start + p
+				}
+				return l.baseOrderToSource(s.start + p)
+			}
+			p -= s.count
+		}
+		return -1
 	}
-	if p == 0 {
-		return l.q.first
-	}
-	c, _ := sh.IndexOf(uint64(l.q.first))
-	k := uint64(p)
-	if uint64(p-1) < c {
-		k = uint64(p - 1)
-	}
-	at, _ := sh.At(k)
-	return int64(at)
+	return l.baseOrderToSource(p)
 }
-
 func (l *layout) sourceToOrder(src int64) int64 {
-	sh := l.shuffle()
-	if sh == nil || src >= l.q.domain {
-		return src
+	if l.q.shuffle && len(l.spans) > 0 {
+		base := l.baseSourceToOrder(src)
+		var pos int64
+		for _, s := range l.spans {
+			at := base
+			if s.source {
+				at = src
+			}
+			if at >= s.start && at < s.start+s.count {
+				return pos + at - s.start
+			}
+			pos += s.count
+		}
+		return -1
 	}
-	if src == l.q.first {
-		return 0
-	}
-	c, _ := sh.IndexOf(uint64(l.q.first))
-	k, _ := sh.IndexOf(uint64(src))
-	if k < c {
-		return int64(k) + 1
-	}
-	return int64(k)
+	return l.baseSourceToOrder(src)
 }
 
 // key reads an entry's item key from its snapshot chunk (cached per request).
@@ -484,7 +527,8 @@ func (l *layout) positionOf(entry string) (int64, bool) {
 	if !ok {
 		return 0, false
 	}
-	return l.sourceToOrder(src), true
+	p := l.sourceToOrder(src)
+	return p, p >= 0
 }
 
 func (s *Service) header(l *layout) QueueView {

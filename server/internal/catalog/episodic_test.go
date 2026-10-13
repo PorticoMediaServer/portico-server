@@ -42,7 +42,7 @@ func TestEpisodeNamingAcceptance(t *testing.T) {
 		{"Show/Season 1/Show S01E01-E03.mkv", "tv", "Show", "seasonal", 1, []int{1, 2, 3}, false},
 		{"Show/Specials/Show S00E01.mkv", "tv", "Show", "seasonal", 0, []int{1}, false},
 		{"Anime/[Group] Anime - 001 [1080p][ABCDEF12].mkv", "anime", "Anime", "absolute", -1, []int{1}, false},
-		{"Show/Season 2/Show S01E01.mkv", "tv", "", "", 0, nil, true},
+		{"Show/Season 2/Show S01E01.mkv", "tv", "Show", "seasonal", 1, []int{1}, false},
 		{"Show S01E01 S02E02.mkv", "tv", "", "", 0, nil, true},
 		{"S01E01.mkv", "tv", "", "", 0, nil, true},
 		{"Show (2024) 1080p.mkv", "tv", "", "", 0, nil, true},
@@ -186,7 +186,7 @@ func TestEpisodeHierarchySharedAssetsAndManualCorrections(t *testing.T) {
 	if err != nil || len(first.Sources) != 2 {
 		t.Fatal("alternate source not linked", first, err)
 	}
-	if err = s.Delete(second.ID); err != nil {
+	if err = s.RemoveTitle(context.Background(), second.ID); err != nil {
 		t.Fatal(err)
 	}
 	episodicDrain(t, db)
@@ -197,17 +197,17 @@ func TestEpisodeHierarchySharedAssetsAndManualCorrections(t *testing.T) {
 	if err != nil || len(first.Sources) != 2 || first.Episode.SourceBoundary != "unknown_multi_episode" {
 		t.Fatal(first, err)
 	}
-	commit("Show/Season 2/Show S01E03.mp4")
+	commit("Show/Season 2/Show S01E03 S02E04.mp4")
 	episodicDrain(t, db)
 	issues, _, err := s.EpisodeIssues(lib.ID, "", 10)
-	if err != nil || len(issues) != 1 || issues[0].Code != "folder_and_filename_season_conflict" {
+	if err != nil || len(issues) != 1 || issues[0].Code != "conflicting_episode_markers" {
 		t.Fatal(issues, err)
 	}
 	season := 1
 	if err = s.AssignEpisodes(context.Background(), lib.ID, EpisodeAssignment{AssetID: issues[0].AssetID, ShowTitle: "Show", Numbering: "seasonal", SeasonNumber: &season, EpisodeNumbers: []int{3}}); err != nil {
 		t.Fatal(err)
 	}
-	commit("Show/Season 2/Show S01E03.mp4")
+	commit("Show/Season 2/Show S01E03 S02E04.mp4")
 	episodicDrain(t, db)
 	issues, _, err = s.EpisodeIssues(lib.ID, "", 10)
 	if err != nil || len(issues) != 0 {

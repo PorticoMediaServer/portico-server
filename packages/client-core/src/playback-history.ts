@@ -4,6 +4,7 @@
  * exists, and a client must show that as "still playing" rather than as a
  * zero-length watch.
  */
+import {firstOfEach,keepReadable} from './tolerant.ts';
 export type PlaybackHistoryPeriod='24h'|'7d'|'30d';
 export const PLAYBACK_HISTORY_PERIODS:PlaybackHistoryPeriod[]=['24h','7d','30d'];
 export type PlaybackHistoryEntry={
@@ -33,5 +34,6 @@ export function parsePlaybackHistoryEntry(value:unknown):PlaybackHistoryEntry{
 export function parsePlaybackHistory(value:unknown):PlaybackHistoryPage{
  if(!obj(value)||!Array.isArray(value.items)||value.items.length>200||typeof value.nextCursor!=='string'||
   value.nextCursor.length>200)invalid();
- return {items:value.items.map(parsePlaybackHistoryEntry),nextCursor:value.nextCursor};
+ // A session this app cannot read is left out alone, and a repeated one keeps its first row.
+ return {items:firstOfEach('playback-history','items',keepReadable('playback-history','items',value.items,parsePlaybackHistoryEntry),entry=>entry.id),nextCursor:value.nextCursor};
 }

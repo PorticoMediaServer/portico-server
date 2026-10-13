@@ -39,8 +39,8 @@ func TestRejectMalformedAndUnbounded(t *testing.T) {
 		{"empty", "  ", "text"}, {"control", "a\x00b", "text"}, {"invalid utf8", string([]byte{0xff}), "text"},
 		{"unpaired surrogate", string([]byte{0xff, 0xfe, 0, 0xd8}), "text"}, {"truncated utf16", string([]byte{0xff, 0xfe, 0}), "text"},
 		{"seconds", "[00:60]word", "lrc"}, {"negative stamp", "[-01:03]word", "lrc"}, {"fraction", "[00:01.1234]word", "lrc"},
-		{"duplicate offset", "[offset:1]\n[offset:2]\n[00:01]word", "lrc"}, {"offset bound", "[offset:600001]\n[00:01]word", "lrc"},
-		{"mixed prose", "[00:01]word\nuntimed", "lrc"}, {"too many lines", strings.Repeat("x\n", MaxLines+1), "text"},
+
+		{"too many lines", strings.Repeat("x\n", MaxLines+1), "text"},
 		{"large text", strings.Repeat("x", MaxTextBytes+1), "text"}, {"large line", strings.Repeat("x", 8193), "text"},
 		{"expanded timestamps", repeated, "lrc"}, {"html format", "<p>example</p>", "html"},
 	}
@@ -66,7 +66,16 @@ func TestLanguage(t *testing.T) {
 	}
 }
 
-func TestEnhancedLRCAndNegativeOffset(t *testing.T){
- d,e:=Parse([]byte("[offset:-100]\n[00:12.00][01:15.00]<00:12.01>Hello <00:12.40>world"),"lrc")
- if e!=nil||d.EmbeddedOffsetMS!=100||len(d.Lines)!=2||*d.Lines[0].AtMS!=12000||*d.Lines[1].AtMS!=75000||d.Lines[0].Text!="Hello world"{t.Fatalf("%+v %v",d,e)}
+func TestEnhancedLRCAndNegativeOffset(t *testing.T) {
+	d, e := Parse([]byte("[offset:-100]\n[00:12.00][01:15.00]<00:12.01>Hello <00:12.40>world"), "lrc")
+	if e != nil || d.EmbeddedOffsetMS != 100 || len(d.Lines) != 2 || *d.Lines[0].AtMS != 12000 || *d.Lines[1].AtMS != 75000 || d.Lines[0].Text != "Hello world" {
+		t.Fatalf("%+v %v", d, e)
+	}
+}
+
+func TestLRCSkipsOddLines(t *testing.T) {
+	d, e := Parse([]byte("[id:abc]\n[00:01:50]Good\nuntimed\n[00:70]Bad\n[00:02]Also good"), "lrc")
+	if e != nil || len(d.Lines) != 2 || d.SkippedLines != 3 || *d.Lines[0].AtMS != 1500 {
+		t.Fatalf("%+v %v", d, e)
+	}
 }

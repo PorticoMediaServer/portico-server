@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"time"
+	"unicode"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -104,7 +106,7 @@ func (b *Bulk) batch() int {
 // private lyric is never a reason to withhold a library acquisition, and a
 // tombstoned resource counts as missing.
 const missingLyricsQuery = `SELECT pid(e.public_id) FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE cl.library_id=? AND e.kind=7 AND (?='' OR e.public_id>pid_blob(?))
- AND NOT EXISTS(SELECT 1 FROM lyric_resources r WHERE r.item_id=e.id AND r.scope='library' AND r.deleted=0)
+ AND NOT EXISTS(SELECT 1 FROM lyric_resources r WHERE r.item_id=e.id AND r.scope='library' AND r.deleted=0 AND EXISTS(SELECT 1 FROM catalog_assets asset JOIN catalog_asset_links link ON link.asset_id=asset.id WHERE link.entity_id=e.id AND asset.token=r.asset_id AND asset.duration=r.source_duration AND link.start_seconds=r.source_start AND COALESCE(link.end_seconds,asset.duration)=r.source_end))
  ORDER BY e.public_id LIMIT ?`
 
 // QueueTx admits one run inside the console operation's own transaction. The
@@ -135,7 +137,7 @@ func (b *Bulk) QueueTx(ctx context.Context, tx *sql.Tx, operation, library strin
 		return "", localonly.Err
 	}
 	var candidates int64
-	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE cl.library_id=? AND e.kind=7 AND NOT EXISTS(SELECT 1 FROM lyric_resources r WHERE r.item_id=e.id AND r.scope='library' AND r.deleted=0)`, library).Scan(&candidates); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE cl.library_id=? AND e.kind=7 AND NOT EXISTS(SELECT 1 FROM lyric_resources r WHERE r.item_id=e.id AND r.scope='library' AND r.deleted=0 AND EXISTS(SELECT 1 FROM catalog_assets asset JOIN catalog_asset_links link ON link.asset_id=asset.id WHERE link.entity_id=e.id AND asset.token=r.asset_id AND asset.duration=r.source_duration AND link.start_seconds=r.source_start AND COALESCE(link.end_seconds,asset.duration)=r.source_end))`, library).Scan(&candidates); e != nil {
 		return "", e
 	}
 	var actor string
@@ -314,6 +316,17 @@ func (b *Bulk) pending(ctx context.Context, library, cursor string, limit int) (
 // fetchOne acquires one song through the provider client and publishes the
 // first candidate whose timing fits the selected source. It returns the run
 // counter to advance: published, missing or skipped.
+func matchText(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+			return unicode.ToLower(r)
+		}
+		return -1
+	}, s)
+}
+func sameRecording(v acquired, title, artist string, duration float64) bool {
+	return title != "" && artist != "" && matchText(v.title) == matchText(title) && matchText(v.artist) == matchText(artist) && v.duration > 0 && !math.IsNaN(v.duration) && !math.IsInf(v.duration, 0) && math.Abs(v.duration-duration) <= 2
+}
 func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision int64) (string, error) {
 	gated, e := dbwork.BeginSnapshot(ctx, b.Service.DB)
 	if e != nil {
@@ -347,10 +360,11 @@ func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision 
 		return "skipped", nil
 	}
 	src := all[0]
-	var query string
-	if e = tx.QueryRowContext(ctx, `SELECT i.title||' '||COALESCE((SELECT ar.title FROM catalog_song_artists sa JOIN catalog_entities ar ON ar.id=sa.artist_id WHERE sa.song_id=i.id ORDER BY ar.id LIMIT 1),'') FROM catalog_entities i WHERE i.public_id=pid_blob(?)`, item).Scan(&query); e != nil {
+	var title, artist string
+	if e = tx.QueryRowContext(ctx, `SELECT i.title,COALESCE((SELECT ar.title FROM catalog_song_artists sa JOIN catalog_entities ar ON ar.id=sa.artist_id WHERE sa.song_id=i.id ORDER BY ar.id LIMIT 1),'') FROM catalog_entities i WHERE i.public_id=pid_blob(?)`, item).Scan(&title, &artist); e != nil {
 		return "", e
 	}
+	query := title + " " + artist
 	gated.Rollback()
 	query = strings.TrimSpace(query)
 	if query == "" {
@@ -368,6 +382,9 @@ func (b *Bulk) fetchOne(ctx context.Context, run, item string, providerRevision 
 	}
 	var chosen *acquired
 	for i := range found {
+		if !sameRecording(found[i], title, artist, src.SourceDuration) {
+			continue
+		}
 		if validateTiming(found[i].doc, found[i].doc.EmbeddedOffsetMS, src.SourceDuration) != nil {
 			continue
 		}
@@ -411,7 +428,7 @@ func (b *Bulk) publish(ctx context.Context, run, item string, src Source, v acqu
 		return "skipped", nil
 	}
 	var present bool
-	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM lyric_resources WHERE item_id=? AND scope='library' AND deleted=0)`, entity).Scan(&present); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM lyric_resources WHERE item_id=? AND asset_id=? AND source_version=? AND scope='library' AND deleted=0)`, entity, src.ID, src.Version).Scan(&present); e != nil {
 		return "", e
 	}
 	if present {
@@ -433,9 +450,10 @@ func (b *Bulk) publish(ctx context.Context, run, item string, src Source, v acqu
 		return "skipped", nil
 	}
 	id := identity.Token()
-	if _, e = tx.ExecContext(ctx, `INSERT INTO lyric_resources(id,item_id,asset_id,source_version,scope,authority,account_id,profile_id,revision) VALUES(?,?,?,?,'library','local','','',1)`, id, entity, src.ID, src.Version); e != nil {
+	if _, e = tx.ExecContext(ctx, `INSERT INTO lyric_resources(id,item_id,asset_id,source_version,scope,authority,account_id,profile_id,revision,source_duration,source_start,source_end) VALUES(?,?,?,?,'library','local','','',1,?,?,?)`, id, entity, src.ID, src.Version, src.SourceDuration, src.StartSeconds, src.StartSeconds+src.Duration); e != nil {
 		return "", e
 	}
+
 	raw, _ := json.Marshal(v.doc)
 	prov, _ := json.Marshal(v.provenance)
 	if _, e = tx.ExecContext(ctx, `INSERT INTO lyric_revisions(resource_id,revision,document,digest,language,offset_ms,provenance,actor,created_at,deleted) VALUES(?,1,?,?,?,?,?,?,?,0)`, id, string(raw), digest(v.doc), v.language, offset, string(prov), actor, time.Now().UTC().Format(time.RFC3339Nano)); e != nil {

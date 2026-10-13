@@ -73,3 +73,27 @@ func TestRejectedFFmpegOverrideStaysRequested(t *testing.T) {
 		t.Fatal(effective, pending)
 	}
 }
+
+func TestAppliedDirectoryPreservesFFmpegRestartState(t *testing.T) {
+	before := startupMediaSettings.Load()
+	defer startupMediaSettings.Store(before)
+	started := DefaultSettings()
+	startupMediaSettings.Store(&started)
+	requested := started
+	requested.FFmpegPath = filepath.Join(t.TempDir(), "ffmpeg")
+	requested.TemporaryDirectory = t.TempDir()
+	effective, pending := effectiveMediaSettings(requested)
+	document := SettingsDocument{Requested: requested, Effective: effective, RestartFields: pending}
+	applied := started.TemporaryDirectory
+	store := Store{AppliedTemporaryDirectory: &applied}
+	store.projectAppliedSettings(&document)
+	if len(document.RestartFields) != 2 || document.Effective.FFmpegPath != "" || document.Effective.TemporaryDirectory != applied {
+		t.Fatal(document)
+	}
+	requested.TemporaryDirectory = applied
+	document.Requested = requested
+	store.projectAppliedSettings(&document)
+	if len(document.RestartFields) != 1 || document.RestartFields[0] != "ffmpegPath" {
+		t.Fatal(document.RestartFields)
+	}
+}

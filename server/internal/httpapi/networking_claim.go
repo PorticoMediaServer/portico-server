@@ -13,13 +13,17 @@ import (
 // NetworkingClaimAuthorizer captures the actual current local owner token.
 // Browser origins use the same explicit list as the outer API middleware;
 // native bearer requests may omit Origin. No cookies grant local ownership.
-func NetworkingClaimAuthorizer(id *identity.Service, origins []string) networking.ClaimRequestAuthorizer {
+func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies ...Dependencies) networking.ClaimRequestAuthorizer {
+	d := Dependencies{}
+	if len(policies) > 0 {
+		d = policies[0]
+	}
 	return func(r *http.Request) (networking.ClaimRequestOwner, error) {
 		if id == nil || len(r.Header.Values("Authorization")) != 1 {
 			return networking.ClaimRequestOwner{}, identity.ErrUnauthorized
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {
-			allowed := false
+			allowed := d.sameRequestOrigin(r, origin)
 			for _, want := range origins {
 				if origin == want {
 					allowed = true
@@ -36,7 +40,7 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string) networkin
 		}
 		p, e := id.Authenticate(strings.TrimPrefix(header, "Bearer "))
 		if e == nil {
-			e = id.CheckRecoveryRoute(r.Context(), p, privateSetupPeer(r))
+			e = id.CheckRecoveryRoute(r.Context(), p, d.privateSetupPeer(r))
 		}
 		if e != nil || p.Authority != "local" || p.Role != "owner" {
 			return networking.ClaimRequestOwner{}, identity.ErrUnauthorized

@@ -3,28 +3,26 @@ import type {DeletionPreview, IdentityProvider, SecurityIntent, SecurityPurpose,
 import {useSession} from '../../app/session';
 import {accountSecurityClient} from '../../bridge/account-security-client';
 import {accountApi, type AccountScope} from '../../bridge/account-api';
-import {defaultI18n} from '@i18n';
+import {currentI18n, useI18n, type I18n} from '../../app/i18n';
 import {ErrorNotice, errorText} from '../../app/errors';
 import {Button, ConfirmDialog, Dialog, Input, Loading, Notice, SettingsGroup, SettingsPage, SettingsRow, Text, PasswordStrength} from '../../ui';
 import {passwordStrength} from '@core/password-strength.ts';
 
-const t = defaultI18n.t;
-
-type Task = {purpose: SecurityPurpose; title: () => string; target?: 'email' | 'password'; confirm?: 'mfa' | 'email'};
+type Task = {purpose: SecurityPurpose; title: (t: I18n['t']) => string; target?: 'email' | 'password'; confirm?: 'mfa' | 'email'};
 const tasks = {
-  password: {purpose: 'password_set_or_change', title: () => t('account.changePasswordTitle'), target: 'password'},
-  email: {purpose: 'email_change', title: () => t('web.hostedSecurity.changeEmailTitle'), target: 'email', confirm: 'email'},
-  enrol: {purpose: 'mfa_enroll', title: () => t('web.twoStep.turnOnTitle'), confirm: 'mfa'},
-  disable: {purpose: 'mfa_disable', title: () => t('web.twoStep.turnOffTitle')},
-  codes: {purpose: 'recovery_codes', title: () => t('web.hostedSecurity.newCodesTitle')},
+  password: {purpose: 'password_set_or_change', title: t => t('account.changePasswordTitle'), target: 'password'},
+  email: {purpose: 'email_change', title: t => t('web.hostedSecurity.changeEmailTitle'), target: 'email', confirm: 'email'},
+  enrol: {purpose: 'mfa_enroll', title: t => t('web.twoStep.turnOnTitle'), confirm: 'mfa'},
+  disable: {purpose: 'mfa_disable', title: t => t('web.twoStep.turnOffTitle')},
+  codes: {purpose: 'recovery_codes', title: t => t('web.hostedSecurity.newCodesTitle')},
 } satisfies Record<string, Task>;
 const statusOf = (e: unknown) => (e && typeof e === 'object' && typeof (e as {status?: unknown}).status === 'number' ? (e as {status: number}).status : undefined);
 /** A proof that failed means the password or code was wrong; anything else goes through the presenter. */
 const say = (e: unknown, wrong: string) => (statusOf(e) === 401 || statusOf(e) === 403 ? wrong : errorText(e, 'portico-account', 'save'));
 const codeOf = (e: unknown) => (e && typeof e === 'object' && typeof (e as {code?: unknown}).code === 'string' ? (e as {code: string}).code : '');
 const providerName = (p: IdentityProvider | string) => (p === 'google' ? 'Google' : 'Apple');
-/** Connect and Disconnect: the refusals people can act on get their own words. */
-const providerError = (e: unknown) => (codeOf(e) === 'last_method' ? t('web.hostedSecurity.lastMethod') : codeOf(e) === 'provider_unavailable' ? t('web.hostedSecurity.providerInUse') : errorText(e, 'portico-account', 'save'));
+/** Connect and Disconnect: the refusals people can act on get their own words. Called when a request fails, not while drawing. */
+const providerError = (e: unknown) => (codeOf(e) === 'last_method' ? currentI18n().t('web.hostedSecurity.lastMethod') : codeOf(e) === 'provider_unavailable' ? currentI18n().t('web.hostedSecurity.providerInUse') : errorText(e, 'portico-account', 'save'));
 
 /**
  * Account security. Credential changes (password, email, two-step verification, recovery codes)
@@ -34,6 +32,8 @@ const providerError = (e: unknown) => (codeOf(e) === 'last_method' ? t('web.host
  * session (A80).
  */
 export function AccountSecurity({scope, returning, onReturned}: {scope: AccountScope; returning?: string; onReturned?: () => void}) {
+  const i18n = useI18n();
+  const {t} = i18n;
   const client = useMemo(() => accountSecurityClient(), []);
   const api = useMemo(() => accountApi(scope), [scope.accountId, scope.familyId]);
   const [state, setState] = useState<SecurityState>();
@@ -105,7 +105,7 @@ export function AccountSecurity({scope, returning, onReturned}: {scope: AccountS
     } finally { setProviderBusy(''); }
   };
   if (!state) return error ? <ErrorNotice error={error} context="portico-account" retry={() => void load()} /> : <Loading label={t('status.loadingThing', {thing: t('web.hostedSecurity.thing')})} />;
-  const providers = new Intl.ListFormat(undefined, {type: 'disjunction'}).format(state.providers.map(p => providerName(p.provider)));
+  const providers = i18n.list(state.providers.map(p => providerName(p.provider)), 'or');
   // The server refuses removing the last way in; say so up front instead of offering it.
   const onlyWayIn = !state.hasPassword && state.providers.length === 1;
   const connectable = offered.filter(p => !state.providers.some(linked => linked.provider === p));
@@ -135,6 +135,7 @@ export function AccountSecurity({scope, returning, onReturned}: {scope: AccountS
 }
 
 function SecurityTask({task, state, scope, onClose}: {task: Task; state: SecurityState; scope: AccountScope; onClose: (message?: string, signedOut?: boolean) => void}) {
+  const {t} = useI18n();
   const client = useMemo(() => accountSecurityClient(), []);
   const api = useMemo(() => accountApi(scope), [scope.accountId, scope.familyId]);
   const operationId = useMemo(() => crypto.randomUUID(), []);
@@ -188,7 +189,7 @@ function SecurityTask({task, state, scope, onClose}: {task: Task; state: Securit
   }
   const ready = password.length > 0 && (!state.mfaEnabled || factor.trim().length >= 6) && (!task.target || (task.target === 'password' ? passwordStrength(value).acceptable : /^\S+@\S+\.\S+$/.test(value.trim())));
   return (
-    <Dialog open onOpenChange={o => !o && onClose()} title={task.title()} width={460} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => onClose()} /><Button variant="primary" label={t('action.continue')} loading={busy} disabled={!ready} onClick={() => void start()} /></>}>
+    <Dialog open onOpenChange={o => !o && onClose()} title={task.title(t)} width={460} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => onClose()} /><Button variant="primary" label={t('action.continue')} loading={busy} disabled={!ready} onClick={() => void start()} /></>}>
       <form onSubmit={e => { e.preventDefault(); if (ready) void start(); }} style={{display: 'flex', flexDirection: 'column', gap: 12}}>
         {error ? <Notice tone="error" compact>{error}</Notice> : null}
         {task.purpose === 'mfa_disable' ? <Text variant="body" tone="secondary">{t('web.hostedSecurity.passwordAlone')}</Text> : null}
@@ -207,7 +208,7 @@ export function deletionConfirmationTarget(contactAddress: string | undefined, u
   return (contactAddress || username || '').trim();
 }
 /** What deleting removes, one sentence per kind of thing. */
-function consequences(preview: DeletionPreview): string[] {
+function consequences(preview: DeletionPreview, t: I18n['t']): string[] {
   const lines = [t('web.deleteAccount.profiles', {count: preview.profileCount})];
   const owned = preview.ownedServers.length, member = preview.affectedServers.length - owned;
   if (owned) lines.push(t('web.deleteAccount.owned', {count: owned, servers: preview.ownedServers.map(x => x.name).join(', ')}));
@@ -222,6 +223,7 @@ export const confirmationMatches = (typed: string, target: string) => !!target &
  * username) to confirm. A mismatch is 400 `deletion_confirmation_mismatch`.
  */
 function DeleteAccount({state, scope, onClose}: {state: SecurityState; scope: AccountScope; onClose: () => void}) {
+  const {t} = useI18n();
   const client = useMemo(() => accountSecurityClient(), []);
   const api = useMemo(() => accountApi(scope), [scope.accountId, scope.familyId]);
   const session = useSession();
@@ -262,7 +264,7 @@ function DeleteAccount({state, scope, onClose}: {state: SecurityState; scope: Ac
         {!preview && !error ? <Loading label={t('web.deleteAccount.checking')} /> : null}
         {preview ? (
           <>
-            {consequences(preview).map(line => <Text key={line} variant="body">{line}</Text>)}
+            {consequences(preview, t).map(line => <Text key={line} variant="body">{line}</Text>)}
             {!preview.canDelete ? <Notice tone="warning" compact>{t('web.deleteAccount.cannot')}</Notice> : null}
             <Input label={t('web.deleteAccount.typeLabel', {value: target})} value={typed} onChange={e => { setTyped(e.target.value); setError(''); }} autoComplete="off" autoCapitalize="off" spellCheck={false} />
           </>

@@ -1,7 +1,7 @@
 import React, {Suspense, lazy, useEffect, useMemo, useRef, useState} from 'react';
 import {Link, Outlet, useLocation, useNavigate} from '@tanstack/react-router';
 import {InboxProvider, useUnreadCount} from '../app/inbox';
-import {useI18n} from '../app/i18n';
+import {I18nProvider, useI18n} from '../app/i18n';
 import {currentAccessToken, sessionIdentity, useSession} from '../app/session';
 import {LibrariesContext, useLibraries, libraryKindLabel} from '../app/libraries';
 import {useViewerScope} from '../app/viewer-scope';
@@ -160,6 +160,7 @@ export function Shell() {
     <InboxProvider>
       <ArtworkContext.Provider value={artwork}>
       <ServerPreferencesProvider>
+      <I18nProvider>
       <AppearanceBridge />
       <PlayerProvider>
       <SelectionProvider>
@@ -199,6 +200,7 @@ export function Shell() {
       </MetadataEditorProvider>
       </SelectionProvider>
       </PlayerProvider>
+      </I18nProvider>
       </ServerPreferencesProvider>
       </ArtworkContext.Provider>
     </InboxProvider>
@@ -373,7 +375,7 @@ const FeedbackDialog = lazy(() => import('../screens/shared/FeedbackDialog').the
  * Switch profile opens the chooser here instead of sending you to Settings. Settings is
  * already in the rail directly above, so it isn't repeated.
  */
-function ProfileMenu({collapsed}: {collapsed: boolean}) {
+function ProfileMenu({collapsed, compact = false}: {collapsed: boolean; /** Phone width: opened from the top bar's avatar, where there is no rail. */ compact?: boolean}) {
   const {t} = useI18n();
   const session = useSession();
   const navigate = useNavigate();
@@ -388,13 +390,16 @@ function ProfileMenu({collapsed}: {collapsed: boolean}) {
   const where = [server, hostedAuthority ? account : t('web.shell.localAccount')].filter(Boolean).join(' · ');
   const downloads = useDownloads();
   const items = [
-    {id: 'switch', label: t('web.shell.switchProfile'), icon: 'switch' as IconName},
+    // The rail has Settings directly above this menu; at phone width there is no rail, so it is here.
+    ...(compact ? [{id: 'settings', label: t('web.shell.settings'), icon: 'settings' as IconName}] : []),
+    {id: 'switch', label: t('web.shell.switchProfile'), icon: 'switch' as IconName, separatorBefore: compact},
     // The Portico Account's servers and this browser's direct sign-ins (the account stays signed in).
     {id: 'switchServer', label: t('web.shell.switchServer'), icon: 'server' as IconName},
     {id: 'account', label: t('web.shell.account'), icon: 'account' as IconName},
     // Files the server prepared for this browser: a list you visit now and then, not a place in the rail.
-    ...(downloads.state.unavailable ? [] : [{id: 'downloads', label: t('web.shell.downloads'), icon: 'download' as IconName, separatorBefore: true}]),
-    {id: 'feedback', label: t('web.shell.feedback'), icon: 'flag' as IconName, separatorBefore: downloads.state.unavailable},
+    // At phone width Downloads is a tab of the bottom bar.
+    ...(downloads.state.unavailable || compact ? [] : [{id: 'downloads', label: t('web.shell.downloads'), icon: 'download' as IconName, separatorBefore: true}]),
+    {id: 'feedback', label: t('web.shell.feedback'), icon: 'flag' as IconName, separatorBefore: downloads.state.unavailable || compact},
     {id: 'help', label: t('web.shell.help'), icon: 'external' as IconName},
     {id: 'signOut', label: t('action.signOut'), icon: 'signOut' as IconName, separatorBefore: true},
   ];
@@ -402,16 +407,19 @@ function ProfileMenu({collapsed}: {collapsed: boolean}) {
     <>
       <Menu
         label={t('web.shell.profile')}
-        align="start"
+        align={compact ? 'end' : 'start'}
         header={<><Avatar name={name} art={art} size={40} /><span style={{display: 'flex', flexDirection: 'column', minWidth: 0}}><Text as="span" variant="bodyStrong">{name}</Text>{where ? <Text as="span" variant="caption" tone="tertiary">{where}</Text> : null}</span></>}
-        trigger={
+        trigger={compact ? (
+          <button type="button" className={s.topAvatar} aria-label={t('web.shell.profileMenu', {name})}><Avatar name={name} art={art} size={24} /></button>
+        ) : (
           <button type="button" className={cx(s.railItem, s.avatarItem)} aria-label={collapsed ? name : undefined}>
             <Avatar name={name} art={art} size={24} />
             <span className={s.railLabel}>{name}</span>
           </button>
-        }
+        )}
         items={items}
         onSelect={id => {
+          if (id === 'settings') { void navigate({to: '/settings'}); return; }
           // Settings › Account has its own chooser dialogs; there, reuse them rather than stacking a second.
           if (id === 'switch') { if (hostedAuthority) setSwitching(true); else { session.direct.openProfileChooser(); setSwitching(true); } }
           else if (id === 'switchServer') setSwitchingServer(true);
@@ -458,19 +466,20 @@ function TopBell() {
   );
 }
 
-/** Phones: the top bar carries Search on every page (the standard top rail), the bell and the profile. */
+/**
+ * Phones: the top bar carries Search on every page (the standard top rail), the bell and the
+ * profile. The avatar opens the same profile menu as the rail's (Switch profile, Switch server,
+ * Send feedback, Help, Sign out), with Settings first.
+ */
 function TopBar() {
   const {t} = useI18n();
-  const name = useProfileName();
-  const art = useProfileArt();
-  const navigate = useNavigate();
   return (
     <header className={s.topBar}>
       <Link to="/" aria-label={t('web.shell.homeLabel')}><Wordmark height={18} /></Link>
       <div className={s.topActions}>
         <Button icon="search" aria-label={t('web.shell.search')} variant="ghost" to="/search" />
         <TopBell />
-        <button type="button" onClick={() => void navigate({to: '/settings'})} aria-label={t('web.shell.profileSettings', {name})} style={{padding: 4}}><Avatar name={name} art={art} size={24} /></button>
+        <ProfileMenu collapsed compact />
       </div>
     </header>
   );

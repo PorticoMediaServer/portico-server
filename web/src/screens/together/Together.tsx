@@ -5,12 +5,11 @@ import {useSession} from '../../app/session';
 import {takePendingTogether, useTogether} from '../../app/together';
 import {takePendingTogetherCode} from '../../app/link-fragment';
 import {usePlayerOptional} from '../../player/engine';
-import {defaultI18n} from '@i18n';
 import {Artwork, Badge, Button, ConfirmDialog, IconButton, Input, Inset, ListRow, Loading, Notice, Page, PageHeader, Segmented, StateView, Surface, Text} from '../../ui';
+import {useI18n, type I18n} from '../../app/i18n';
 
-const t = defaultI18n.t;
-const authorityOptions = () => [{id: 'host-only' as const, label: t('web.together.onlyMe')}, {id: 'anyone' as const, label: t('web.together.everyone')}];
-function stateLabel(state: Group['state']): string {
+const authorityOptions = (t: I18n['t']) => [{id: 'host-only' as const, label: t('web.together.onlyMe')}, {id: 'anyone' as const, label: t('web.together.everyone')}];
+function stateLabel(t: I18n['t'], state: Group['state']): string {
   switch (state) {
     case 'lobby': return t('web.together.state.lobby');
     case 'preparing': return t('web.together.state.preparing');
@@ -22,7 +21,7 @@ function stateLabel(state: Group['state']): string {
     default: return t('web.together.state.ended');
   }
 }
-function endedReason(reason: string): string {
+function endedReason(t: I18n['t'], reason: string): string {
   return reason === 'host-ended' ? t('web.together.ended.host') : reason === 'host-unavailable' ? t('web.together.ended.away') : reason === 'empty' ? t('web.together.ended.empty') : t('web.together.ended.other');
 }
 const clock = (seconds: number) => { const s = Math.max(0, Math.floor(seconds)); const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return `${h ? h + ':' + String(m).padStart(2, '0') : m}:${String(s % 60).padStart(2, '0')}`; };
@@ -46,6 +45,7 @@ function useTitles(ids: readonly string[]) {
 }
 
 export function TogetherScreen() {
+  const {t} = useI18n();
   const {service, state} = useTogether();
   useEffect(() => { void service?.refreshDirectory(); }, [service]);
   const inRoom = state.group && state.phase !== 'idle' && state.phase !== 'left' && state.phase !== 'joining';
@@ -73,6 +73,7 @@ export function TogetherScreen() {
 }
 
 function Lobby() {
+  const {t} = useI18n();
   const {service, state} = useTogether();
   const {session, hosted, local} = useSession();
   const profileId = session?.viewer?.profileId;
@@ -109,7 +110,7 @@ function Lobby() {
             <Input label={t('profile.name')} value={name} maxLength={80} onChange={e => setName(e.target.value)} />
             <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
               <Text variant="captionStrong" tone="secondary">{t('web.together.whoControls')}</Text>
-              <Segmented label={t('web.together.whoControlsShort')} options={authorityOptions()} value={authority} onChange={setAuthority} />
+              <Segmented label={t('web.together.whoControlsShort')} options={authorityOptions(t)} value={authority} onChange={setAuthority} />
             </div>
             <div><Button type="submit" variant="primary" label={t('web.together.start')} loading={joining} disabled={joining} /></div>
           </form>
@@ -121,7 +122,7 @@ function Lobby() {
         <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
           <Text variant="label" tone="secondary">{t('web.together.yourGroups')}</Text>
           <Surface padless>
-            {state.directory.map(g => <ListRow key={g.id} icon="people" title={g.name} subtitle={t('web.together.groupLine', {count: g.members.filter(m => m.state === 'joined').length, state: stateLabel(g.state)})} meta={g.permissions.isHost ? t('web.together.youHost') : undefined} trailingIcon="forward" onClick={() => void service.open(g.id)} />)}
+            {state.directory.map(g => <ListRow key={g.id} icon="people" title={g.name} subtitle={t('web.together.groupLine', {count: g.members.filter(m => m.state === 'joined').length, state: stateLabel(t, g.state)})} meta={g.permissions.isHost ? t('web.together.youHost') : undefined} trailingIcon="forward" onClick={() => void service.open(g.id)} />)}
           </Surface>
         </div>
       ) : null}
@@ -130,6 +131,8 @@ function Lobby() {
 }
 
 function Room() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const {service, state} = useTogether();
   const engine = usePlayerOptional();
   const group = state.group!;
@@ -152,7 +155,7 @@ function Room() {
   const me = members.find(m => m.id === group.viewerMemberId);
   const blocked = queue?.eligibility?.members.filter(m => m.blockedEntryIds.length) ?? [];
   if (ended) {
-    return <StateView icon="people" title={t('web.together.endedTitle')} body={endedReason(group.endedReason)} action={{label: t('web.together.backToLobby'), onClick: () => service.dismiss()}} />;
+    return <StateView icon="people" title={t('web.together.endedTitle')} body={endedReason(t, group.endedReason)} action={{label: t('web.together.backToLobby'), onClick: () => service.dismiss()}} />;
   }
   return (
     <>
@@ -165,11 +168,11 @@ function Room() {
           {group.timeline.itemId ? <div style={{width: 64, flexShrink: 0}}><Artwork path={now?.posterUrl} shape="poster" icon="film" /></div> : null}
           <div style={{flex: '1 1 260px', minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8}}>
             <div style={{display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
-              <Badge tone={playing ? 'healthy' : 'neutral'}>{stateLabel(group.state)}</Badge>
+              <Badge tone={playing ? 'healthy' : 'neutral'}>{stateLabel(t, group.state)}</Badge>
               {group.timeline.itemId ? <Text variant="caption" tone="tertiary" style={{fontVariantNumeric: 'tabular-nums'}}>{now?.duration ? t('web.together.positionOf', {position: clock(position), duration: clock(now.duration)}) : clock(position)}</Text> : null}
             </div>
             <Text variant="title" clamp={2}>{group.timeline.itemId ? (now === null ? t('web.together.hiddenTitle') : now?.title ?? t('web.together.loadingTitle')) : t('web.together.nothingChosen')}</Text>
-            <Text variant="caption" tone="tertiary">{group.timeline.itemId ? readinessLine(group) : can.canManageQueue ? t('web.together.pickHelp') : t('web.together.hostPicks')}</Text>
+            <Text variant="caption" tone="tertiary">{group.timeline.itemId ? readinessLine(t, group) : can.canManageQueue ? t('web.together.pickHelp') : t('web.together.hostPicks')}</Text>
           </div>
           <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
             {can.canControl && group.timeline.itemId ? <Button variant="primary" icon={playing ? 'pause' : 'play'} label={playing ? t('web.together.pauseAll') : group.readiness.aggregate === 'ready' ? t('web.together.playAll') : t('web.together.playAnyway')} disabled={state.busy} onClick={() => void service.transport(playing ? 'pause' : 'play')} /> : null}
@@ -188,7 +191,7 @@ function Room() {
         </div>
         <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
           <Text variant="label" tone="secondary">{t('web.together.queue')}</Text>
-          {blocked.length ? <Notice tone="warning" compact>{t(blocked.length === 1 && blocked[0]!.blockedEntryIds.length === 1 ? 'web.together.blockedOne' : 'web.together.blockedSome', {names: new Intl.ListFormat(undefined, {type: 'conjunction'}).format(blocked.map(b => b.displayName))})}</Notice> : null}
+          {blocked.length ? <Notice tone="warning" compact>{t(blocked.length === 1 && blocked[0]!.blockedEntryIds.length === 1 ? 'web.together.blockedOne' : 'web.together.blockedSome', {names: i18n.list(blocked.map(b => b.displayName))})}</Notice> : null}
           {queue?.entries.length ? (
             <Surface padless>
               {queue.entries.map(e => <QueueRow key={e.entryId} entry={e} item={e.itemId ? titles[e.itemId] : null} current={e.entryId === group.timeline.currentEntryId} can={can.canManageQueue && !state.busy} onLoad={() => void service.transport('load', {entryId: e.entryId})} onRemove={() => void service.queueRemove(e.entryId)} />)}
@@ -207,13 +210,14 @@ function Room() {
   );
 }
 
-function readinessLine(group: Group): string {
+function readinessLine(t: I18n['t'], group: Group): string {
   const r = group.readiness;
   if (r.aggregate === 'ready') return r.memberCount > 1 ? t('web.together.allReady') : t('web.together.state.ready');
   return t('web.together.waiting', {ready: r.ready, total: r.memberCount, count: r.buffering + r.lagging + r.stale});
 }
 
 function MemberRow({member, mine, canPromote, onPromote}: {member: GroupMember; mine: boolean; canPromote: boolean; onPromote: () => void}) {
+  const {t} = useI18n();
   const status = member.presence !== 'connected' ? t('web.together.away') : member.readiness === 'ready' ? t('web.together.inStep') : member.readiness === 'buffering' ? t('web.together.loading') : t('web.together.catchingUp');
   return (
     <div style={{display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: '1px solid var(--line-soft)'}}>
@@ -229,6 +233,7 @@ function MemberRow({member, mine, canPromote, onPromote}: {member: GroupMember; 
 }
 
 function QueueRow({entry, item, current, can, onLoad, onRemove}: {entry: GroupQueueEntry; item: MediaItem | null | undefined; current: boolean; can: boolean; onLoad: () => void; onRemove: () => void}) {
+  const {t} = useI18n();
   const title = entry.unavailable || item === null ? t('web.together.notAvailable') : item?.title ?? t('web.together.loadingTitle');
   return (
     <div style={{display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: '1px solid var(--line-soft)', opacity: entry.unavailable ? 0.6 : 1}}>
@@ -244,6 +249,8 @@ function QueueRow({entry, item, current, can, onLoad, onRemove}: {entry: GroupQu
 }
 
 function Invite() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const {service, state} = useTogether();
   const [copied, setCopied] = useState(false);
   const invite = state.invite;
@@ -256,7 +263,7 @@ function Invite() {
         {live ? (
           <>
             <Text variant="display" style={{letterSpacing: '0.2em', fontVariantNumeric: 'tabular-nums'}}>{invite.code.slice(0, 4)} {invite.code.slice(4)}</Text>
-            <Text variant="caption" tone="tertiary">{t('web.together.inviteHelp', {count: invite.maxUses, time: new Date(invite.expiresAt).toLocaleTimeString([], {hour: 'numeric', minute: '2-digit'})})}</Text>
+            <Text variant="caption" tone="tertiary">{t('web.together.inviteHelp', {count: invite.maxUses, time: i18n.time(invite.expiresAt)})}</Text>
             <div style={{display: 'flex', gap: 8}}>
               <Button size="sm" variant="secondary" icon="copy" label={copied ? t('web.together.copied') : t('web.together.copyCode')} onClick={() => void navigator.clipboard?.writeText(invite.code).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); })} />
               <Button size="sm" variant="ghost" label={t('web.together.newCode')} disabled={state.busy} onClick={() => void service.invite()} />

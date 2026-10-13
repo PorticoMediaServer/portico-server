@@ -149,7 +149,7 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		// The same limiter the sign-in routes use: a code is a secret, and an
 		// unauthenticated route that creates accounts must not be brute-forced.
-		if e := d.Identity.SetupLimit(r.Context(), setupPeerSubject(r), "invitation", 10); e != nil {
+		if e := d.Identity.SetupLimit(r.Context(), d.setupPeerSubject(r), "invitation", 10); e != nil {
 			setupFailure(w, e)
 			return
 		}
@@ -220,45 +220,6 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 			return
 		}
 		out, e := store.SetDeviceTrust(r.Context(), d.accessAuthority(p, identity.TierAdmin), r.PathValue("id"), body)
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		write(w, 200, out)
-	})
-	mux.HandleFunc("GET /v1/admin/access/api-keys", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		query := r.URL.Query()
-		out, e := store.APIKeys(r.Context(), d.accessAuthority(p, identity.TierOwner), access.APIKeyQuery{Cursor: query.Get("cursor"), Limit: query.Get("limit")})
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		write(w, 200, out)
-	})
-	mux.HandleFunc("POST /v1/admin/access/api-keys", func(w http.ResponseWriter, r *http.Request) {
-		if _, e := d.owner(r); e != nil {
-			accessFailure(w, e)
-			return
-		}
-		write(w, http.StatusForbidden, map[string]any{"error": map[string]any{"code": "api_keys_disabled", "message": "API key creation is disabled.", "retryable": false}})
-	})
-	mux.HandleFunc("POST /v1/admin/access/api-keys/{id}/revoke", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
-		if e != nil {
-			accessFailure(w, e)
-			return
-		}
-		var body access.APIKeyRevoke
-		if e = decodeLegacyRevision(w, r, &body); e != nil {
-			failure(w, e)
-			return
-		}
-		out, e := store.RevokeAPIKey(r.Context(), d.accessAuthority(p, identity.TierOwner), r.PathValue("id"), body)
 		if e != nil {
 			accessFailure(w, e)
 			return

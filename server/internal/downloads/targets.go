@@ -43,7 +43,8 @@ const audioRecipeBitrateBPS = 192_000
 // delivered bytes agree.
 const canonicalAudioRung = "1080p"
 
-// resolveSource reads the single source file for an item. A multi-part item has
+// resolveSource reads the source file for an item: its best version that is
+// there (a title with several versions is one download, not a refusal). A multi-part item has
 // no single artifact to hand a client, so it is refused here with a reason code
 // rather than silently downloading one part.
 func resolveSource(ctx context.Context, tx *sql.Tx, item string) (source, error) {
@@ -51,9 +52,9 @@ func resolveSource(ctx context.Context, tx *sql.Tx, item string) (source, error)
 	var available int
 	var kindInt int
 	e := tx.QueryRowContext(ctx, `SELECT cl.library_id,e.kind,a.token,a.path,a.size,a.modified_ns,a.container,a.video_codec,a.audio_codec,a.height,a.duration,link.available,
- (SELECT count(*) FROM catalog_asset_links p WHERE p.entity_id=e.id)
+ (SELECT count(DISTINCT p.part_index) FROM catalog_asset_links p WHERE p.entity_id=e.id)
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_asset_links link ON link.entity_id=e.id JOIN catalog_assets a ON a.id=link.asset_id
- WHERE e.public_id=pid_blob(?) ORDER BY link.part_index,a.token LIMIT 1`, item).Scan(&s.Library, &kindInt, &s.Asset, &s.Path, &s.Size, &s.ModifiedNS, &s.Container, &s.VideoCodec, &s.AudioCodec, &s.Height, &s.Duration, &available, &s.Parts)
+ WHERE e.public_id=pid_blob(?) ORDER BY `+compactcatalog.BestVersionOrder("link", "a")+` LIMIT 1`, item).Scan(&s.Library, &kindInt, &s.Asset, &s.Path, &s.Size, &s.ModifiedNS, &s.Container, &s.VideoCodec, &s.AudioCodec, &s.Height, &s.Duration, &available, &s.Parts)
 	if e != nil {
 		return s, e
 	}

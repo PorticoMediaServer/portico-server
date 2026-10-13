@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"path/filepath"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
@@ -127,10 +128,16 @@ func historyQuery(r *http.Request) (string, int, error) {
 // caller holds its own, so one surface's reporter cache never stalls another's.
 func (d Dependencies) capacityComposer() *telemetry.Capacity {
 	ffmpeg, ffprobe := decoder.ResolveTools()
+	cache := telemetryEnv("PORTICO_CACHE_DIR", d.stateDirectory())
+	if cache != "" {
+		if absolute, err := filepath.Abs(cache); err == nil {
+			cache = absolute
+		}
+	}
 	return &telemetry.Capacity{
 		FFmpeg:  ffmpeg,
 		FFprobe: ffprobe,
-		State:   d.stateDirectory(),
+		State:   cache,
 		Probes:  playbackProbes{d.Playback},
 	}
 }

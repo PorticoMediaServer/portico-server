@@ -12,8 +12,8 @@ test('repair projections require exact target, authority fence and canonical rol
  for(const patch of [{serverId:'other'},{libraryId:'other'},{viewerFence:'invalid'},{target:{kind:'album',id:'movie'}}])assert.throws(()=>validateRepair({...raw,...patch},scope,target));
  const art={role:'still',subject:'',candidateId:'c'.repeat(64),digest:'d'.repeat(64),thumbnailDigest:'e'.repeat(64),locked:true,revision:1,attribution:'Local artwork',url:'/v1/metadata/item/movie/art/still?v='+ 'd'.repeat(64)};
  assert.equal(validateRepair({...raw,snapshot:{...raw.snapshot,artwork:[art]}},scope,target).snapshot.artwork.length,1);
- assert.throws(()=>validateRepair({...raw,snapshot:{...raw.snapshot,artwork:[{...art,role:'clearart'}]}},scope,target));
- assert.throws(()=>validateRepair({...raw,snapshot:{...raw.snapshot,artwork:[{...art,url:'https://provider.invalid/private'}]}},scope,target));
+ assert.deepEqual(validateRepair({...raw,snapshot:{...raw.snapshot,artwork:[{...art,role:'clearart'}]}},scope,target).snapshot.artwork,[]);
+ assert.deepEqual(validateRepair({...raw,snapshot:{...raw.snapshot,artwork:[{...art,url:'https://provider.invalid/private'}]}},scope,target).snapshot.artwork,[]);
 });
 test('repair validates relationship provenance, empty locked classes and bounded history',()=>{
  const raw=response();const relationship={kind:'credit',recordId:'provider-credit',provider:'tmdb',targetKind:'person',targetId:'100',label:'Performer',role:'Character',department:'Acting',source:'tmdb',ordinal:0,locked:true};
@@ -48,12 +48,12 @@ test('screen candidates retain real provider ordering choices without acquisitio
  const raw=response();const candidate={id:'c'.repeat(64),provider:'tvdb',title:'Series',subtitle:'show · 42',observedAt:'2026-09-07',orders:[{id:'official',name:'Aired order',private:'PRIVATE'},{id:'dvd',name:'DVD order'}],inputDigest:'PRIVATE'};
  const data=validateRepair({...raw,snapshot:{...raw.snapshot,identity:{...raw.snapshot.identity,engine:'screen',type:'show'}},candidates:[candidate]},scope,target);
  assert.equal(data.snapshot.identity?.engine,'screen');assert.deepEqual(data.candidates[0].orders,[{id:'official',name:'Aired order'},{id:'dvd',name:'DVD order'}]);assert.doesNotMatch(JSON.stringify(data),/PRIVATE/);
- assert.throws(()=>validateRepair({...raw,candidates:[{...candidate,orders:[{id:'x'.repeat(161),name:'Order'}]}]},scope,target));
+ assert.deepEqual(validateRepair({...raw,candidates:[{...candidate,orders:[{id:'x'.repeat(161),name:'Order'}]}]},scope,target).candidates,[]);
 });
 test('cascade admission, terminal and skipped counts remain separately projected',()=>{
  const raw=response();const c={id:'operation',intent:'refresh_unlocked',status:'queued',processed:8,failed:1,completed:3,skipped:2,pending:2};
  assert.deepEqual(validateRepair({...raw,cascades:[c]},scope,target).cascades,[c]);
- assert.throws(()=>validateRepair({...raw,cascades:[{...c,completed:-1}]},scope,target));
+ assert.deepEqual(validateRepair({...raw,cascades:[{...c,completed:-1}]},scope,target).cascades,[]);
 });
 test('effect cleanup can cancel and reload the same service without stale publication',async()=>{
  const first=deferred();let calls=0;const service=new MetadataRepairService({scope,api:{request(){calls++;return calls===1?first.promise:Promise.resolve(response()) as any;}}});
@@ -70,7 +70,7 @@ test('the registry drives the editable fields, and an unlisted field is refused'
  // A value with no registry entry, and a registry entry with no value, are both broken projections.
  assert.throws(()=>validateRepair({...raw,snapshot:{...raw.snapshot,fields:{...raw.snapshot.fields,mystery:{value:'x',automaticValue:'',source:'manual',locked:false}}}},scope,target));
  assert.throws(()=>validateRepair({...raw,schema:[...raw.schema,{field:'studio',label:'Studio',group:'general',type:'text',bulk:true}]},scope,target));
- assert.throws(()=>validateRepair({...raw,artworkRoles:['clearart']},scope,target));
+ assert.deepEqual(validateRepair({...raw,artworkRoles:['clearart']},scope,target).artworkRoles,[]);
  assert.throws(()=>validateRepair({...raw,schema:[{field:'title',label:'Title',group:'nowhere',type:'text',bulk:false}],snapshot:{...raw.snapshot,fields:{title:raw.snapshot.fields.title}}},scope,target));
  // A parsed list only belongs to a list field.
  assert.throws(()=>validateRepair({...raw,snapshot:{...raw.snapshot,fields:{...raw.snapshot.fields,contentRating:{...raw.snapshot.fields.contentRating,values:['PG']}}}},scope,target));
@@ -80,8 +80,8 @@ test('identity candidates publish a year and only a proxied preview path',()=>{
  const candidate={id:'c'.repeat(64),provider:'tmdb',title:'Movie',subtitle:'1999',year:1999,observedAt:'2026-09-06T00:00:00Z',previewUrl:'/v1/metadata/item/movie/art/poster?v='+'d'.repeat(64)+'&candidate='+'c'.repeat(64)};
  const data=validateRepair({...raw,candidates:[candidate]},scope,target);
  assert.equal(data.candidates[0].year,1999);assert.ok(data.candidates[0].previewUrl!.startsWith('/v1/metadata/item/movie/art/'));
- assert.throws(()=>validateRepair({...raw,candidates:[{...candidate,previewUrl:'https://image.tmdb.org/t/p/w500/x.jpg'}]},scope,target));
- assert.throws(()=>validateRepair({...raw,candidates:[{...candidate,year:99999}]},scope,target));
+ assert.deepEqual(validateRepair({...raw,candidates:[{...candidate,previewUrl:'https://image.tmdb.org/t/p/w500/x.jpg'}]},scope,target).candidates,[]);
+ assert.deepEqual(validateRepair({...raw,candidates:[{...candidate,year:99999}]},scope,target).candidates,[]);
 });
 
 test('CD-47: role 500, code-point list tags, 64 order choices and 2048 order names',()=>{
@@ -89,7 +89,7 @@ test('CD-47: role 500, code-point list tags, 64 order choices and 2048 order nam
  // 301–500 role accepted, 501 refused.
  const rel={kind:'credit',targetKind:'person',targetId:'100',label:'Performer',role:'r'.repeat(500),department:'Acting',source:'tmdb',ordinal:0,locked:true};
  assert.equal(validateRepair({...raw,snapshot:{...raw.snapshot,relationships:[rel]}},scope,target).snapshot.relationships.length,1);
- assert.throws(()=>validateRepair({...raw,snapshot:{...raw.snapshot,relationships:[{...rel,role:'r'.repeat(501)}]}},scope,target));
+ assert.deepEqual(validateRepair({...raw,snapshot:{...raw.snapshot,relationships:[{...rel,role:'r'.repeat(501)}]}},scope,target).snapshot.relationships,[]);
  // 128 astral-character tag accepted, 129 refused; control still rejected.
  const tags={value:'',automaticValue:'',source:'manual',locked:true,values:['𠮷'.repeat(128)]};
  assert.deepEqual(validateRepair({...raw,snapshot:{...raw.snapshot,fields:{...raw.snapshot.fields,tags}}},scope,target).snapshot.fields.tags.values,['𠮷'.repeat(128)]);
@@ -100,8 +100,8 @@ test('CD-47: role 500, code-point list tags, 64 order choices and 2048 order nam
  const cand=(orders:any)=>({id:'c'.repeat(64),provider:'tvdb',title:'Series',subtitle:'show',observedAt:'2026-09-07',orders});
  assert.equal(validateRepair({...raw,candidates:[cand(orders(64,2048))]},scope,target).candidates[0].orders!.length,64);
  assert.equal(validateRepair({...raw,candidates:[cand(orders(33,513))]},scope,target).candidates[0].orders!.length,33);
- assert.throws(()=>validateRepair({...raw,candidates:[cand(orders(65,10))]},scope,target));
- assert.throws(()=>validateRepair({...raw,candidates:[cand(orders(1,2049))]},scope,target));
+ assert.deepEqual(validateRepair({...raw,candidates:[cand(orders(65,10))]},scope,target).candidates,[]);
+ assert.deepEqual(validateRepair({...raw,candidates:[cand(orders(1,2049))]},scope,target).candidates,[]);
 });
 
 test('Part 2.1: artwork candidate votes decode when present and stay absent when null',()=>{
@@ -110,5 +110,5 @@ test('Part 2.1: artwork candidate votes decode when present and stay absent when
  assert.equal(validateRepair({...raw,artwork:{candidates:[{...base,votes:37}],jobs:[]}},scope,target).artwork.candidates[0].votes,37);
  assert.equal(validateRepair({...raw,artwork:{candidates:[{...base,votes:null}],jobs:[]}},scope,target).artwork.candidates[0].votes,null);
  assert.equal('votes' in validateRepair({...raw,artwork:{candidates:[base],jobs:[]}},scope,target).artwork.candidates[0],false);
- assert.throws(()=>validateRepair({...raw,artwork:{candidates:[{...base,votes:-1}],jobs:[]}},scope,target));
+ assert.deepEqual(validateRepair({...raw,artwork:{candidates:[{...base,votes:-1}],jobs:[]}},scope,target).artwork.candidates,[]);
 });

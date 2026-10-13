@@ -9,8 +9,8 @@ import (
 // private peers and public traffic still requires TLS, so reachability does
 // not widen trust (see privateSetupPeer and the DirectListener gate in run).
 func TestDefaultBindIsLANReachable(t *testing.T) {
-	if defaultBind != "0.0.0.0:32500" {
-		t.Fatalf("default bind is %q, want LAN-reachable 0.0.0.0:32500", defaultBind)
+	if defaultBind != ":32500" {
+		t.Fatalf("default bind is %q, want LAN-reachable :32500", defaultBind)
 	}
 	if v := env("PORTICO_BIND", defaultBind); v != defaultBind && env("PORTICO_BIND", "") == "" {
 		t.Fatalf("env fallback did not apply: %q", v)

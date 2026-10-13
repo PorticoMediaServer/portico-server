@@ -16,8 +16,8 @@ import (
 // (the G2 merge on 16 Sep dropped Downloads this way, and every server answered
 // "Offline downloads are not configured" until 23 Sep).
 var dependenciesLeftToDefaults = map[string]string{
-	"PlaybackV1": "nil builds the Playback Protocol v1 service from the handler's own dependencies",
-	"HTTPSRoute": "nil uses the built-in HTTPS route attestation",
+	"TrustedProxies": "the owner settings document is the runtime authority; nil is an empty embedding fallback",
+	"PlaybackV1":     "nil builds the Playback Protocol v1 service from the handler's own dependencies",
 }
 
 func TestMainWiresEveryHTTPDependency(t *testing.T) {

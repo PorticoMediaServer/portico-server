@@ -48,23 +48,25 @@ type Service struct {
 	// The artist chain's sources (Spec — Page Content §8): MusicBrainz artist
 	// details plus Wikidata, Wikipedia and Commons. One transport each, so
 	// each keeps the standard pacing. Tests substitute bounded fakes.
-	wikidata       wikidataArtistSource
-	wikipedia      wikipediaSource
-	commons        commonsSource
-	LocalArtwork   func(string) (*os.File, string, error)
-	db             *sql.DB
-	token          string
-	client         *http.Client
-	base           string
-	cacheRoot      string
-	artDirMu       sync.Mutex
-	missingMu      sync.Mutex
-	missingArtwork map[missingArtwork]struct{}
-	missingWake    worker.Broadcast
-	acoustid       AcousticProvider
-	acoustidConfig string
-	artClient      *http.Client
-	artDirectory   *os.File
+	wikidata         wikidataArtistSource
+	wikipedia        wikipediaSource
+	commons          commonsSource
+	LocalArtwork     func(string) (*os.File, string, error)
+	db               *sql.DB
+	token            string
+	client           *http.Client
+	base             string
+	cacheRoot        string
+	settingsMu       sync.Mutex
+	settingsRevision int64
+	artDirMu         sync.Mutex
+	missingMu        sync.Mutex
+	missingArtwork   map[missingArtwork]struct{}
+	missingWake      worker.Broadcast
+	acoustid         AcousticProvider
+	acoustidConfig   string
+	artClient        *http.Client
+	artDirectory     *os.File
 }
 
 func New(db *sql.DB, token string) *Service {
@@ -108,13 +110,14 @@ func imageURL(path, size string) string {
 }
 func (s *Service) Run(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	_ = s.loadProviderSettings(ctx)
 	s.logProviderState(ctx)
 	// Woken by any committed write rather than asking once a second whether
 	// anything changed. On a server with nothing queued this runs at the safety
 	// tick and no more; on a busy one it hears about work as it is enqueued,
 	// which is sooner than the timer it replaces.
 	wake := worker.NewSignal()
-	unregister := dbwork.WakeOnTables(wake, "metadata_*", "screen_metadata_*", "mb_*", "tvdb_*", "audio_metadata_*", "audio_genre_*", "maintenance_*", "console_documents")
+	unregister := dbwork.WakeOnTables(wake, "metadata_*", "screen_metadata_*", "mb_*", "tvdb_*", "audio_metadata_*", "audio_genre_*", "maintenance_*", "console_documents", "admin_documents")
 	defer unregister()
 	progress := worker.NewProgress(dbwork.ChangingCommits)
 	worker.Run(ctx, "metadata.providers", wake, func(ctx context.Context) time.Duration {
@@ -126,10 +129,26 @@ func (s *Service) Run(ctx context.Context) {
 		}
 		// Provider refresh remains a bounded background batch under load.
 		progress.Reset()
+		_ = s.loadProviderSettings(ctx)
 		if !dbwork.Yield(ctx) {
 			return 0
 		}
-		_ = s.ScreenStep(ctx)
+		ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, s.db))
+		for _, provider := range s.screenProviders {
+			if paced, ok := provider.(interface{ SetBackgroundSpeed(string) }); ok {
+				paced.SetBackgroundSpeed(dbwork.BackgroundSpeed(ctx))
+			}
+		}
+		batchStarted := time.Now()
+		var batch sync.WaitGroup
+		for i := 0; i < dbwork.BackgroundConcurrency(ctx); i++ {
+			batch.Add(1)
+			supervise.Go("metadata.screen", func() { defer batch.Done(); _ = s.ScreenStep(ctx) })
+		}
+		batch.Wait()
+		if !dbwork.PaceBackground(ctx, batchStarted) {
+			return 0
+		}
 		if !dbwork.Yield(ctx) {
 			return 0
 		}
@@ -154,7 +173,7 @@ func (s *Service) Run(ctx context.Context) {
 		_ = s.DiscoveryStep(ctx)
 		if progress.Moved() {
 			// Something moved, so there is probably more behind it.
-			return time.Second
+			return 10 * time.Millisecond
 		}
 		return 0
 	})
@@ -173,7 +192,7 @@ func (s *Service) RunArtwork(ctx context.Context) {
 			urgent, unsubscribe := s.missingWake.Subscribe()
 			defer unsubscribe()
 			wake := worker.NewSignal()
-			unregister := dbwork.WakeOnTables(wake, "artwork_*", "metadata_owner_fields", "metadata_relationship_decisions", "screen_metadata_publications", "metadata_publication_heads", "maintenance_*", "console_documents")
+			unregister := dbwork.WakeOnTables(wake, "artwork_*", "metadata_owner_fields", "metadata_relationship_decisions", "screen_metadata_publications", "metadata_publication_heads", "maintenance_*", "console_documents", "admin_documents")
 			defer unregister()
 			progress := worker.NewProgress(dbwork.ChangingCommits)
 			worker.RunWith(ctx, "metadata.artwork-lane", urgent, wake, func(ctx context.Context) time.Duration {
@@ -184,12 +203,17 @@ func (s *Service) RunArtwork(ctx context.Context) {
 					}
 				}
 				progress.Reset()
+				ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, s.db))
+				started := time.Now()
 				if !dbwork.Yield(ctx) {
 					return 0
 				}
 				_ = run(ctx)
+				if !dbwork.PaceBackground(ctx, started) {
+					return 0
+				}
 				if progress.Moved() {
-					return time.Second
+					return 10 * time.Millisecond
 				}
 				return 0
 			})

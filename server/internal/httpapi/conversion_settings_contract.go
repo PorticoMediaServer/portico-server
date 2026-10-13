@@ -112,25 +112,9 @@ func consoleTypedReply[T any](d Dependencies, p identity.Principal, data T) Cons
 	return ConsoleReply[T]{ConsoleReplyScope{d.Identity.ID(), fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", p.Hash, p.Epoch))))}, data}
 }
 func registerConversionSettings(registry *apikit.Registry, d Dependencies) error {
-	slots := make(chan struct{}, 8)
-	begin := func(ctx context.Context, r *http.Request, owner bool) (context.Context, identity.Principal, operations.Authorize, func(), error) {
-		if d.Console == nil || d.Identity == nil {
-			return nil, identity.Principal{}, nil, nil, &apierror.Error{Code: "internal"}
-		}
-		p, err := d.foundationCaller(r)
-		if err != nil {
-			return nil, p, nil, nil, foundationAuthError(err)
-		}
-		select {
-		case slots <- struct{}{}:
-		default:
-			return nil, p, nil, nil, &apierror.Error{Code: "rate_limited", RetryAfterSeconds: 2}
-		}
-		bounded, cancel := context.WithTimeout(ctx, 7*time.Second)
-		return bounded, p, d.consoleAuthority(p, owner), func() { cancel(); <-slots }, nil
-	}
-	failures := []string{"unauthorized", "not_permitted", "invalid_request", "revision_mismatch", "idempotency_key_reused", "rate_limited", "internal"}
-	if err := apikit.Register(registry, apikit.Route[struct{}, ConsoleReply[ConsoleRegistryDocument]]{Metadata: apikit.Metadata{ID: "get_console_registry", Method: "GET", Path: "/v1/console/registry", Summary: "Read the owner setting definitions", Access: apikit.Device, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConsoleReply[ConsoleRegistryDocument], error) {
+	begin := conversionSettingsAdmission(d)
+	failures := conversionSettingsFailures()
+	if err := apikit.Register(registry, apikit.Route[struct{}, ConsoleReply[ConsoleRegistryDocument]]{Metadata: apikit.Metadata{ID: "get_console_registry", Method: "GET", Path: "/v1/console/registry", Summary: "Read the owner setting definitions", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConsoleReply[ConsoleRegistryDocument], error) {
 		ctx, p, auth, done, err := begin(ctx, r, false)
 		if err != nil {
 			return ConsoleReply[ConsoleRegistryDocument]{}, err
@@ -152,7 +136,14 @@ func registerConversionSettings(registry *apikit.Registry, d Dependencies) error
 	}}); err != nil {
 		return err
 	}
-	if err := apikit.Register(registry, apikit.Route[struct{}, ConsoleReply[operations.SettingsDocument]]{Metadata: apikit.Metadata{ID: "get_console_settings", Method: "GET", Path: "/v1/admin/console/settings", Summary: "Read requested and effective owner settings", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConsoleReply[operations.SettingsDocument], error) {
+	return nil
+}
+
+func registerConversionOwnerSettings(registry *apikit.Registry, d Dependencies) error {
+	begin := conversionSettingsAdmission(d)
+	failures := conversionSettingsFailures()
+
+	if err := apikit.Register(registry, apikit.Route[struct{}, ConsoleReply[operations.SettingsDocument]]{Metadata: apikit.Metadata{ID: "get_console_settings", Method: "GET", Path: "/v1/admin/console/settings", Summary: "Read requested and effective owner settings", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (ConsoleReply[operations.SettingsDocument], error) {
 		ctx, p, auth, done, err := begin(ctx, r, true)
 		if err != nil {
 			return ConsoleReply[operations.SettingsDocument]{}, err
@@ -169,7 +160,7 @@ func registerConversionSettings(registry *apikit.Registry, d Dependencies) error
 	}}); err != nil {
 		return err
 	}
-	return apikit.Register(registry, apikit.Route[ConsoleSettingsChange, ConsoleReply[operations.SettingsDocument]]{Metadata: apikit.Metadata{ID: "patch_console_settings", Method: "PATCH", Path: "/v1/admin/console/settings", Summary: "Save a complete owner settings document", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, in ConsoleSettingsChange) (ConsoleReply[operations.SettingsDocument], error) {
+	return apikit.Register(registry, apikit.Route[ConsoleSettingsChange, ConsoleReply[operations.SettingsDocument]]{Metadata: apikit.Metadata{ID: "change_console_settings", Method: "PATCH", Path: "/v1/admin/console/settings", Summary: "Save a complete owner settings document", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: failures}, Handler: func(ctx context.Context, r *http.Request, in ConsoleSettingsChange) (ConsoleReply[operations.SettingsDocument], error) {
 		ctx, p, auth, done, err := begin(ctx, r, true)
 		if err != nil {
 			return ConsoleReply[operations.SettingsDocument]{}, err
@@ -179,9 +170,8 @@ func registerConversionSettings(registry *apikit.Registry, d Dependencies) error
 		if err != nil {
 			return ConsoleReply[operations.SettingsDocument]{}, conversionSettingsError(err)
 		}
-		if d.securePolicy != nil {
-			d.securePolicy.set(doc)
-			_, _, _ = d.requiredHTTPS(ctx)
+		if d.connectionPolicy != nil {
+			d.connectionPolicy.set(doc)
 		}
 		if d.SettingsApplied != nil {
 			d.SettingsApplied(ctx)
@@ -191,4 +181,29 @@ func registerConversionSettings(registry *apikit.Registry, d Dependencies) error
 		}
 		return consoleTypedReply(d, p, doc), nil
 	}})
+}
+
+type conversionSettingsBegin func(context.Context, *http.Request, bool) (context.Context, identity.Principal, operations.Authorize, func(), error)
+
+func conversionSettingsAdmission(d Dependencies) conversionSettingsBegin {
+	slots := make(chan struct{}, 8)
+	return func(ctx context.Context, r *http.Request, owner bool) (context.Context, identity.Principal, operations.Authorize, func(), error) {
+		if d.Console == nil || d.Identity == nil {
+			return nil, identity.Principal{}, nil, nil, &apierror.Error{Code: "internal"}
+		}
+		p, err := d.foundationCaller(r)
+		if err != nil {
+			return nil, p, nil, nil, foundationAuthError(err)
+		}
+		select {
+		case slots <- struct{}{}:
+		default:
+			return nil, p, nil, nil, &apierror.Error{Code: "rate_limited", RetryAfterSeconds: 2}
+		}
+		bounded, cancel := context.WithTimeout(ctx, 7*time.Second)
+		return bounded, p, d.consoleAuthority(p, owner), func() { cancel(); <-slots }, nil
+	}
+}
+func conversionSettingsFailures() []string {
+	return []string{"unauthorized", "not_permitted", "invalid_request", "revision_mismatch", "idempotency_key_reused", "rate_limited", "internal"}
 }

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"portico.local/apikit"
 	"portico.local/server/internal/operations"
 	"strings"
 	"testing"
@@ -13,6 +14,10 @@ func TestConversionSettingsTypedContractAndOwnerAccess(t *testing.T) {
 	d, session, _ := hostedAdministrationFixture(t, "owner")
 	mux := http.NewServeMux()
 	d.foundationRoutes(mux)
+	registryRead := supportRequest(mux, session.AccessToken, "/v1/console/registry")
+	if registryRead.Code != 200 || !strings.Contains(registryRead.Body.String(), `"ffmpegPath"`) || !strings.Contains(registryRead.Body.String(), `"library.missingTitles"`) {
+		t.Fatal(registryRead.Code, registryRead.Body.String())
+	}
 	read := supportRequest(mux, session.AccessToken, "/v1/admin/console/settings")
 	if read.Code != 200 {
 		t.Fatal(read.Code, read.Body.String())
@@ -38,7 +43,13 @@ func TestConversionSettingsTypedContractAndOwnerAccess(t *testing.T) {
 	}
 	routes := map[string]bool{}
 	for _, definition := range registry.Definitions() {
-		routes[definition.Method+" "+definition.Path] = true
+		key := definition.Method + " " + definition.Path
+		routes[key] = true
+		if strings.Contains(key, "/console/settings") || key == "GET /v1/console/registry" {
+			if definition.Requires != apikit.ScopeAdmin {
+				t.Fatal(key, definition.Requires)
+			}
+		}
 	}
 	for _, route := range []string{"GET /v1/console/registry", "GET /v1/admin/console/settings", "PATCH /v1/admin/console/settings"} {
 		if !routes[route] {

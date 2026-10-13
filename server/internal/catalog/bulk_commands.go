@@ -27,7 +27,6 @@ func (e *JobItemError) Error() string { return e.Code }
 // administration (both already depend on catalogue). SQL effects share the job
 // transaction; they do not create per-item idempotency receipts.
 type BulkCommandHooks struct {
-	Trash     func(context.Context, identity.Principal, string, string, func(context.Context, *sql.Tx) error, func(*sql.Tx) error) error
 	Validate  func(string, JobPersonalArgs) error
 	Authorize func(context.Context, *sql.Tx, identity.Principal, string) error
 	Capture   func(context.Context, *sql.Tx, identity.Principal, string, string, JobPersonalArgs) (string, error)
@@ -38,7 +37,7 @@ func jobActor(p identity.Principal) ResourceActor {
 	return ResourceActor{p.Authority, p.AccountID, p.ProfileID}
 }
 func jobOwnerCommand(command string) bool {
-	return command == "trash" || command == "refresh" || command == "metadata-edit"
+	return command == "refresh" || command == "metadata-edit"
 }
 func (s *Service) validateBulkCommand(command string, a JobPersonalArgs) error {
 	raw, _ := json.Marshal(a)
@@ -62,7 +61,7 @@ func (s *Service) validateBulkCommand(command string, a JobPersonalArgs) error {
 		for _, k := range []string{"fields", "lists", "genres", "lockEdited"} {
 			allowed[k] = true
 		}
-	case "trash", "refresh":
+	case "refresh":
 	default:
 		return jobInvalid("unsupported command")
 	}

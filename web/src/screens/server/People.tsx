@@ -9,11 +9,11 @@ import {AccountDevices, LimitsFields, accessListPath, tierLabels} from './Access
 import {useInlineForm} from '../settings/ServerForms';
 import {useLibrariesContext} from '../../app/libraries';
 import {useSession} from '../../app/session';
-import {currentI18n} from '../../app/i18n';
 import {useNavigate, useSearch} from '@tanstack/react-router';
 import {Badge, Button, Checkbox, Dialog, Input, Notice, PasswordInput, Select, SettingsGroup, SettingsRow, Text, PasswordStrength} from '../../ui';
 import {passwordStrength} from '@core/password-strength.ts';
 import {SectionHeader} from './Server';
+import {useI18n} from '../../app/i18n';
 
 /**
  * People › Accounts: one list of everyone who can use this server (Portico Account members and
@@ -22,8 +22,8 @@ import {SectionHeader} from './Server';
  * Settings › Profile & account, not here.
  */
 export function AccountsPanel() {
+  const {t} = useI18n();
   const {api} = useSession();
-  const t = currentI18n().t;
   const navigate = useNavigate();
   const search = useSearch({from: '/app/settings/$section'});
   const libraries = useLibrariesContext();
@@ -55,8 +55,8 @@ export function AccountsPanel() {
 
 /** One account: who it is, what it may do, and the devices signed in with it. Limits save with the page. */
 function AccountDetail({member, access, libraries, onBack, onChanged}: {member: DirectMember; access?: AccessMember; libraries: readonly {id: string; name: string}[]; onBack: () => void; onChanged: () => void}) {
+  const {t} = useI18n();
   const {api} = useSession();
-  const t = currentI18n().t;
   const action = useAction();
   const [opIds] = useState(createOperationIds);
   const [editing, setEditing] = useState(false);
@@ -74,6 +74,8 @@ function AccountDetail({member, access, libraries, onBack, onChanged}: {member: 
       opIds.release(); doc.reload(); onChanged();
     },
   });
+  // A role decides what someone may do on the server, so choosing one asks first instead of taking effect as the menu closes.
+  const [askRole, setAskRole] = useState<AccessTier>();
   const setRole = (role: AccessTier) => access && void action.run(async () => { const key = JSON.stringify({id: member.id, revision: access.revision, role}); await api.request(`/v1/admin/access/members/${encodeURIComponent(member.id)}/role`, 'PUT', {expectedRevision: access.revision, operationId: opIds.forPayload(key), role}); opIds.release(); onChanged(); });
   const libName = (id: string) => libraries.find(l => l.id === id)?.name ?? t('server.people.libraryGone');
   return (
@@ -82,20 +84,22 @@ function AccountDetail({member, access, libraries, onBack, onChanged}: {member: 
       {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}
       {inline.error ? <Notice tone="error" compact>{problem(inline.error, 'action')}</Notice> : null}
       <SettingsGroup>
-        <SettingsRow label={t('web.access.roleLabel')} control={owner || !access ? <Badge tone="accent">{tierLabels[member.role]}</Badge> : <Select hideLabel label={t('web.access.roleFor', {name: member.username})} value={access.role} disabled={action.busy} onChange={e => setRole(e.target.value as AccessTier)} options={[{value: 'member', label: t('web.access.roleMember')}, {value: 'admin', label: t('web.access.roleAdmin')}]} />} />
+        <SettingsRow label={t('web.access.roleLabel')} control={owner || !access ? <Badge tone="accent">{tierLabels[member.role]}</Badge> : <Select hideLabel label={t('web.access.roleFor', {name: member.username})} value={access.role} disabled={action.busy} onChange={e => { const next = e.target.value as AccessTier; if (next !== access.role) setAskRole(next); }} options={[{value: 'member', label: t('web.access.roleMember')}, {value: 'admin', label: t('web.access.roleAdmin')}]} />} />
         <SettingsRow label={t('web.people.visibleLibraries')} meta={owner || !member.allowedLibraries.length ? t('server.people.allLibraries') : member.allowedLibraries.map(libName).join(', ')} control={!owner ? <Button size="sm" variant="ghost" label={t('web.selection.edit')} onClick={() => { action.clear(); setEditing(true); }} /> : undefined} />
         {!owner ? <SettingsRow label={t('server.people.signIn')} help={member.hostedAccountId ? t('web.people.hostedNote') : t('server.people.signInHelp')} meta={member.disabled ? <Badge tone="danger">{t('web.people.disabledBadge')}</Badge> : undefined} control={<Button size="sm" variant="ghost" label={t('web.selection.edit')} onClick={() => { action.clear(); setEditing(true); }} />} /> : null}
       </SettingsGroup>
       {doc.error ? <Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: doc.reload}}>{doc.error}</Notice> : null}
       {limits && !owner ? <LimitsFields limits={limits} onChange={setLimits} /> : null}
       <AccountDevices accountId={member.id} />
+      <Dialog open={!!askRole} onOpenChange={o => !o && setAskRole(undefined)} title={t('web.access.roleConfirmTitle', {name: member.username})} description={t(askRole === 'admin' ? 'web.access.roleConfirmAdmin' : 'web.access.roleConfirmMember', {name: member.username})} width={480}
+        actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setAskRole(undefined)} /><Button variant="primary" label={t('web.access.roleConfirm')} onClick={() => { const role = askRole; setAskRole(undefined); if (role) setRole(role); }} /></>} />
       <LocalMemberDialog open={editing} member={member} libraries={libraries} onClose={() => setEditing(false)} busy={action.busy} error={action.error} onSave={input => void action.run(() => api.request(`/v1/direct/members/${encodeURIComponent(member.id)}`, 'PATCH', {...input, expectedRevision: member.revision})).then(ok => { if (ok) { setEditing(false); onChanged(); } })} />
     </>
   );
 }
 
 function LibraryPicker({all, chosen, libraries, onChange}: {all: boolean; chosen: string[]; libraries: readonly {id: string; name: string}[]; onChange: (all: boolean, chosen: string[]) => void}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   return (
     <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
       <Checkbox checked={all} onCheckedChange={v => onChange(v, v ? [] : chosen)} label={t('web.people.allLibrariesLater')} />
@@ -105,7 +109,7 @@ function LibraryPicker({all, chosen, libraries, onChange}: {all: boolean; chosen
 }
 
 function LocalMemberDialog({open, member, libraries, onClose, onSave, busy, error}: {open: boolean; member: DirectMember | null; libraries: readonly {id: string; name: string}[]; onClose: () => void; onSave: (input: {username: string; password: string; name: string; allowedLibraries: string[]; disabled: boolean}) => void; busy: boolean; error: string}) {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -123,7 +127,7 @@ function LocalMemberDialog({open, member, libraries, onClose, onSave, busy, erro
     }
   }, [open, member]);
   return (
-    <Dialog open={open} onOpenChange={o => !o && onClose()} title={member ? `Edit ${member.username}` : t('web.people.addAccountTitle')} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={onClose} /><Button variant="primary" label={member ? t('action.save') : t('web.people.addAccount')} loading={busy} disabled={!username.trim() || (!member && (!passwordStrength(password).acceptable || !name.trim())) || (!!member && !!password && !passwordStrength(password).acceptable) || (!all && !chosen.length)} onClick={() => onSave({username: username.trim(), password, name: name.trim() || username.trim(), allowedLibraries: all ? [] : chosen, disabled})} /></>}>
+    <Dialog open={open} onOpenChange={o => !o && onClose()} title={member ? t('web.people.editAccountTitle', {name: member.username}) : t('web.people.addAccountTitle')} actions={<><Button variant="ghost" label={t('action.cancel')} onClick={onClose} /><Button variant="primary" label={member ? t('action.save') : t('web.people.addAccount')} loading={busy} disabled={!username.trim() || (!member && (!passwordStrength(password).acceptable || !name.trim())) || (!!member && !!password && !passwordStrength(password).acceptable) || (!all && !chosen.length)} onClick={() => onSave({username: username.trim(), password, name: name.trim() || username.trim(), allowedLibraries: all ? [] : chosen, disabled})} /></>}>
       <Input label={t('web.direct.username')} value={username} onChange={e => setUsername(e.target.value)} autoCapitalize="off" spellCheck={false} disabled={!!member} minLength={3} maxLength={64} autoFocus />
       {!member ? <Input label={t('web.people.profileName')} value={name} onChange={e => setName(e.target.value)} maxLength={120} help={t('web.people.profileNameHelp')} /> : null}
       {member?.hostedAccountId ? <Text variant="caption" tone="secondary">{t('web.people.hostedNote')}</Text> : (

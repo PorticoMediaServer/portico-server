@@ -3,7 +3,9 @@ package httpapi
 import (
 	"compress/gzip"
 	"io"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -62,6 +64,9 @@ func (c *compressingWriter) WriteHeader(status int) {
 	// handler may not have set a Content-Type and the body length is unknown.
 	if status == http.StatusNotModified || status == http.StatusNoContent {
 		c.decided, c.failed = true, true
+		if status == http.StatusNotModified {
+			weakenETag(c.Header())
+		}
 		c.ResponseWriter.WriteHeader(status)
 		return
 	}
@@ -108,6 +113,7 @@ func (c *compressingWriter) decide() {
 		c.flushHeader()
 		return
 	}
+	weakenETag(header)
 	header.Set("Content-Encoding", "gzip")
 	header.Add("Vary", "Accept-Encoding")
 	// The length of the uncompressed body is not the length of what is sent.
@@ -195,12 +201,46 @@ func compressibleType(value string) bool {
 	return false
 }
 
+func weakenETag(header http.Header) {
+	tag := header.Get("ETag")
+	if tag != "" && !strings.HasPrefix(tag, "W/") {
+		header.Set("ETag", "W/"+tag)
+	}
+}
 func acceptsGzip(r *http.Request) bool {
-	for _, value := range strings.Split(r.Header.Get("Accept-Encoding"), ",") {
-		name, _, _ := strings.Cut(strings.TrimSpace(value), ";")
-		if strings.EqualFold(name, "gzip") {
-			return true
+	explicit, wildcard := false, false
+	accepted := false
+	for _, value := range strings.Split(strings.Join(r.Header.Values("Accept-Encoding"), ","), ",") {
+		parts := strings.Split(value, ";")
+		name := strings.ToLower(strings.TrimSpace(parts[0]))
+		if name != "gzip" && name != "*" {
+			continue
+		}
+		quality := 1.0
+		seenQ := false
+		for _, param := range parts[1:] {
+			key, v, ok := strings.Cut(strings.TrimSpace(param), "=")
+			if !ok || !strings.EqualFold(key, "q") || seenQ {
+				quality = 0
+				break
+			}
+			seenQ = true
+			q, err := strconv.ParseFloat(v, 64)
+			if err != nil || math.IsNaN(q) || q < 0 || q > 1 {
+				quality = 0
+				break
+			}
+			quality = q
+		}
+		if name == "gzip" {
+			explicit = true
+			accepted = quality > 0
+		} else {
+			wildcard = quality > 0
 		}
 	}
-	return false
+	if explicit {
+		return accepted
+	}
+	return wildcard
 }

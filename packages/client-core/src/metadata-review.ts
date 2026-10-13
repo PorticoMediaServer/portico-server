@@ -1,4 +1,5 @@
 import {unreadableServerResponse} from './server-messages.ts';
+import {firstOfEach,keepReadable,noteSkipped,oneOf,oneOfOr} from './tolerant.ts';
 import {parseScreenMetadata,screenTarget,type ScreenMetadataContext,type ScreenPolicyInput,type ScreenIdentity,type ScreenOrder,type ScreenProvider} from './screen-metadata.ts';
 import {parseMusicPolicy,parseMusicObservation,parseMusicDetails,type MusicPolicy,type MusicPolicyInput,type MusicMatchObservation,type MusicEvidenceDetails} from "./music-metadata.ts";
 /** Owner-only provider evidence review. The server owns candidates, ordering and matching. */
@@ -24,6 +25,8 @@ const mbId=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 class Failure extends Error { code:string; retryable:boolean; constructor(code:string,message:string,retryable=false){super(message);this.code=code;this.retryable=retryable;} }
 function invalid():never {throw new Failure('invalid_metadata_review',unreadableServerResponse);}
 function list(v:unknown,max:number):unknown[]{if(!Array.isArray(v)||v.length>max)invalid();return v;}
+/** An action or an order this app does not know is not offered, and a repeated one is offered once. The list stays short. */
+function offered<T extends string>(part:string,v:unknown,known:readonly string[]):T[]{const values=list(v,16),kept=[...new Set(values.filter(a=>known.includes(a as string)))] as T[];if(kept.length!==values.length)noteSkipped('metadata-review',part,values.length-kept.length);return kept;}
 function scope(v:MetadataReviewScope):MetadataReviewScope {if(!object(v)||!id(v.serverId)||!text(v.viewerId,1024)||!v.viewerId)throw new Error('A bound server and viewer scope is required.');return Object.freeze({...v});}
 function target(v:MetadataReviewTarget):MetadataReviewTarget {if(!object(v)||!['show','album','song','movie'].includes(v.kind)||!id(v.libraryId)||!id(v.entityId))throw new Error('Invalid provider review target.');return Object.freeze({...v});}
 function info(e:unknown):MetadataReviewError {const v=e as {code?:unknown;retryable?:unknown};return Object.freeze({code:id(v?.code)?v.code:'request_failed',message:e instanceof Error?e.message:'Provider review request failed.',retryable:v?.retryable===true});}
@@ -32,32 +35,42 @@ function parse(raw:unknown,s:MetadataReviewScope,t:MetadataReviewTarget):Metadat
  if(!object(raw)||raw.serverId!==s.serverId||raw.libraryId!==t.libraryId||!id(raw.viewerFence)||!integer(raw.revision)||raw.revision<1||!integer(raw.attempts)||!text(raw.nextAttempt,128)||!text(raw.error)||!text(raw.attribution))invalid();
  const tv=t.kind==='show';
  if(tv?raw.showId!==t.entityId:raw.entityId!==t.entityId||raw.kind!==t.kind)invalid();
- if(!(tv?tvStatuses:mbStatuses).includes(raw.status as string))invalid();
- const actions=list(raw.actions,4).map(a=>{if(!(tv?['select','retry']:['select','retry','search','policy']).includes(a as string))invalid();return a as MetadataReviewAction;});
- const choices=tv?list(raw.orders,6).map(o=>{if(!orders.includes(o as string))invalid();return o as TVDBOrder;}):[];
- if(new Set(actions).size!==actions.length||new Set(choices).size!==choices.length)invalid();
+ if(typeof raw.status!=='string')invalid();
+ // A status this app does not know reads as unresolved; the candidates and the offered actions still come from the server.
+ const status=oneOfOr('metadata-review','status',raw.status,(tv?tvStatuses:mbStatuses) as readonly MetadataReviewStatus[],'unresolved');
+ let actions=offered<MetadataReviewAction>('actions',raw.actions,tv?['select','retry']:['select','retry','search','policy']);
+ const choices=tv?offered<TVDBOrder>('orders',raw.orders,orders):[];
  let selectedId:string,order:TVDBOrder|''='';
  if(tv){if(!integer(raw.providerId)||!integer(raw.page)||typeof raw.order!=='string'||raw.order!==''&&!orders.includes(raw.order))invalid();selectedId=raw.providerId?String(raw.providerId):'';order=raw.order as TVDBOrder|'';}
  else {if(typeof raw.manual!=='boolean'||typeof raw.selectedId!=='string'||raw.selectedId!==''&&!mbId.test(raw.selectedId))invalid();selectedId=raw.selectedId;}
- const candidates=list(raw.candidates,25).map(c=>{
+ // A candidate that cannot be read is left out alone and a repeated id keeps its first row; an over-long list of reasons still refuses the answer.
+ const listed=list(raw.candidates,25);if(!tv&&listed.some(c=>object(c)&&Array.isArray(c.reasons)&&c.reasons.length>16))invalid();
+ const candidates=firstOfEach('metadata-review','candidates',keepReadable('metadata-review','candidates',listed,(c):MetadataReviewCandidate=>{
   if(!object(c)||!text(c.observedAt,128))invalid();
   if(tv){if(!integer(c.id)||c.id<1||!integer(c.year)||!text(c.name,2048)||!text(c.overview,65536))invalid();return Object.freeze({id:String(c.id),title:c.name,subtitle:c.year?String(c.year):undefined,overview:c.overview,observedAt:c.observedAt,provenance:Object.freeze({year:c.year})});}
   if(typeof c.id!=='string'||!mbId.test(c.id)||!text(c.title,4096)||!text(c.artist,4096)||!text(c.edition,8192))invalid();
-  if(typeof c.confidence!=='number'||!Number.isFinite(c.confidence)||c.confidence<0||c.confidence>1||!['candidate','accepted','rejected','superseded'].includes(c.decision as string))invalid();
-  const reasons=list(c.reasons,16).map(v=>{if(!id(v))invalid();return v;});if(!reasons.length||new Set(reasons).size!==reasons.length)invalid();
-  return Object.freeze({id:c.id,title:c.title,subtitle:c.artist,confidence:c.confidence,reasons:Object.freeze(reasons),decision:c.decision as 'candidate'|'accepted'|'rejected'|'superseded',observedAt:c.observedAt,provenance:Object.freeze({artist:c.artist,edition:c.edition})});
- });
- if(new Set(candidates.map(c=>c.id)).size!==candidates.length||actions.includes('select')&&!candidates.length)invalid();
+  if(typeof c.confidence!=='number'||!Number.isFinite(c.confidence)||c.confidence<0||c.confidence>1)invalid();
+  // A reason that cannot be read is left out and a repeated one is listed once; a decision this app does not know is left off the candidate.
+  const given=list(c.reasons,16),reasons=[...new Set(given.filter(id))];if(!reasons.length)invalid();if(reasons.length!==given.length)noteSkipped('metadata-review','candidate.reasons',given.length-reasons.length);
+  const decision=oneOf(c.decision,['candidate','accepted','rejected','superseded'] as const);if(decision===undefined&&c.decision!==undefined)noteSkipped('metadata-review','candidate.decision');
+  return Object.freeze({id:c.id,title:c.title,subtitle:c.artist,confidence:c.confidence,reasons:Object.freeze(reasons),...(decision?{decision}:{}),observedAt:c.observedAt,provenance:Object.freeze({artist:c.artist,edition:c.edition})});
+ }),c=>c.id);
+ // With no readable candidate there is nothing to select, so Select is not offered.
+ if(!candidates.length)actions=actions.filter(a=>a!=='select');
  let published:MetadataPublication|undefined;
  if(!tv&&raw.published!==undefined){
-  const p=raw.published;if(!object(p)||typeof p.reconciliationPending!=='boolean')invalid();
+  // Published evidence that cannot be read is left out, and so are its details alone; the candidates and the review state are kept.
+  published=keepReadable('metadata-review','published',[raw.published],(p):MetadataPublication=>{if(!object(p)||typeof p.reconciliationPending!=='boolean')invalid();
   for(const key of ['releaseId','releaseGroupId','recordingId','trackId'])if(typeof p[key]!=='string'||p[key]!==''&&!mbId.test(p[key] as string))invalid();
   for(const key of ['title','artist','date','country','observedAt','trackTitle','trackStatus'])if(!text(p[key],key==='title'||key==='trackTitle'?4096:2048))invalid();
   for(const key of ['totalTracks','matchedTracks','pendingTracks','reviewTracks'])if(!integer(p[key]))invalid();
   if((p.matchedTracks as number)+(p.pendingTracks as number)+(p.reviewTracks as number)!==p.totalTracks||t.kind==='album'&&(!p.releaseId||!p.releaseGroupId))invalid();
-  published=Object.freeze({...p,...(p.details!==undefined?{details:parseMusicDetails(p.details)}:{})}) as MetadataPublication;
+  const rest:Record<string,unknown>={...p};delete rest.details;const details=p.details===undefined?[]:keepReadable('metadata-review','published.details',[p.details],parseMusicDetails);
+  return Object.freeze({...rest,...(details.length?{details:details[0]}:{})}) as MetadataPublication;})[0];
  }
- return Object.freeze({scope:Object.freeze({...s,libraryId:t.libraryId,entityId:t.entityId,viewerFence:raw.viewerFence}),provider:tv?'tvdb':'musicbrainz',revision:raw.revision,status:raw.status as MetadataReviewStatus,selectedId,order,orders:Object.freeze(choices),actions:Object.freeze(actions),candidates:Object.freeze(candidates),attempts:raw.attempts,nextAttempt:raw.nextAttempt,providerError:raw.error,attribution:raw.attribution,...(tv?{page:raw.page as number}:{manual:raw.manual as boolean,...(published?{published}:{}),...(raw.policy!==undefined?{policy:parseMusicPolicy(raw.policy)}:{}),...(raw.observation!==undefined?{observation:parseMusicObservation(raw.observation)}:{})})});
+ // Fingerprint evidence that cannot be read is left out. The music policy stays exact: its revision is sent back with a change.
+ const observation=tv||raw.observation===undefined?[]:keepReadable('metadata-review','observation',[raw.observation],parseMusicObservation);
+ return Object.freeze({scope:Object.freeze({...s,libraryId:t.libraryId,entityId:t.entityId,viewerFence:raw.viewerFence}),provider:tv?'tvdb':'musicbrainz',revision:raw.revision,status,selectedId,order,orders:Object.freeze(choices),actions:Object.freeze(actions),candidates:Object.freeze(candidates),attempts:raw.attempts,nextAttempt:raw.nextAttempt,providerError:raw.error,attribution:raw.attribution,...(tv?{page:raw.page as number}:{manual:raw.manual as boolean,...(published?{published}:{}),...(raw.policy!==undefined?{policy:parseMusicPolicy(raw.policy)}:{}),...(observation.length?{observation:observation[0]}:{})})});
 }
 function path(t:MetadataReviewTarget):string {return '/v1/'+(t.kind==='show'?'shows':t.kind==='album'?'albums':'items')+'/'+encodeURIComponent(t.entityId)+'/metadata/'+(screenTarget(t)?'screen':t.kind==='show'?'tvdb':'musicbrainz');}
 export class MetadataReviewService {
@@ -108,7 +121,9 @@ export class MetadataReviewService {
   void (async()=>{try{
    const raw=await this.request(api,endpoint,method,body,c);
    if(gen!==this.generation||this.stopped)return;
-   if(!object(raw)||(screen?(action==='policy'?raw.libraryId!==t.libraryId:raw.entityId!==t.entityId):(t.kind==='show'?raw.showId!==t.entityId:raw.entityId!==t.entityId))||raw.status!==(screen?'pending':t.kind==='show'?(action==='select'?'pending_episodes':'queued'):'pending'))invalid();
+   if(!object(raw)||(screen?(action==='policy'?raw.libraryId!==t.libraryId:raw.entityId!==t.entityId):(t.kind==='show'?raw.showId!==t.entityId:raw.entityId!==t.entityId)))invalid();
+   // The acknowledgement must name the same entity; its status is not relied on, because the read that follows is the authority.
+   if(raw.status!==(screen?'pending':t.kind==='show'?(action==='select'?'pending_episodes':'queued'):'pending'))noteSkipped('metadata-review','command.status');
    await this.load();
   }catch(e){if(gen!==this.generation||this.stopped)return;const error=info(e);this.publish({mutationError:error,data:null});if(['unauthorized','forbidden','not_found'].includes(error.code)){this.publish({phase:'error',error});}else await this.load(data);}
   finally{if(gen===this.generation&&!this.stopped){this.command=undefined;this.publish({pending:null});}resolve();}})();return promise;

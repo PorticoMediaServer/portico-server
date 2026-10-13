@@ -34,7 +34,7 @@ the locally managed owner and the server's installed membership policy.
 
 Storage: one table of documents keyed by scope (`library:<id>`,
 `live-source:<id>`, `live`, `dvr`, `maintenance`), one table of operation
-receipts, and one small table per listable thing (trash entries, recording
+receipts, and one small table per listable thing (recording
 groups, block presets, channel logos, channel number overrides, backups). No
 domain state is duplicated: each page reads the domain's own tables and writes
 only its configuration document.
@@ -48,8 +48,10 @@ A delete is three steps, because it is the one page action that destroys data.
    lists every file with its size and whether it is still present, marks files
    another item also uses (those bytes stay), counts everything that refers to
    the item (collections, playlists, saved positions, library channel slots,
-   published recordings), reports the library's `allowMediaDeletion` and
-   `trashRetentionDays`, and returns the `confirmation` text and the `revision`.
+   published recordings), reports the library's `allowMediaDeletion`, and
+   returns the `confirmation` text and the `revision`. A show, season, album,
+   artist or book lists the files of everything that plays beneath it, and
+   `titles` says how many titles that is.
 2. **Confirm** — `confirmation` is the item's title for a single delete and the
    target count as a decimal string for a bulk one. `confirmationKind` says
    which. A mismatch is `409 confirmation_mismatch`.
@@ -65,27 +67,65 @@ changed since the preview.
 delete against that library is `403 administration_denied`, and a bulk delete
 that touches even one such library is refused whole rather than half-applied.
 
-`deleteFiles: false` removes the catalog entry and leaves the bytes where they
-are; `filesRetained` says so, and the next scan readopts them. `deleteFiles:
-true` moves each file into `<state>/trash/<entryId>/` when the library's
-retention is above zero, and removes it outright when the retention is zero. A
-move that crosses a filesystem falls back to a copy-then-remove, which is the
-normal case for a library on its own volume. Files shared with another item are
-counted in `filesKept` and left alone.
+`deleteFiles: true` deletes each file from disk. Nothing is moved aside and
+nothing is kept: there is no trash and no restore. Storage is touched with no
+database writer held, then the titles are removed in short transactions.
 
-The trash is `GET /v1/admin/trash`, and `POST /v1/admin/trash/{id}/restore` puts
-an entry's files back at their original paths. A path that is occupied again is
-reported in `conflicts` rather than overwritten, and the entry stays held so the
-owner can act on it. `reindexRequired` is always true: restoring returns bytes,
-not catalog rows, and the next scan of the library readopts them.
-`POST /v1/admin/trash/empty` purges permanently and takes the number of entries
-it will purge as its confirmation; `expiredOnly` keeps entries whose retention
-has not run out.
+- A file another title also uses stays (`filesKept`).
+- A file that is no longer the one the library knew (another file has taken its
+  path since the last scan) is left alone, and its title stays in the library
+  with `code: file_changed`. A file storage refuses to remove gives
+  `code: file_not_removed`. `failed` counts those titles.
+- A file already gone from disk is simply done.
 
-The default retention is the `library.trashRetentionDays` owner setting, which a
-fresh library inherits and any library overrides on its own page. That setting is
-nullable: a client that does not send it leaves the shipped 30 days alone rather
-than switching the trash off.
+`deleteFiles: false` removes the titles and leaves the files where they are;
+`filesRetained` says so, and the next scan finds them again.
+
+Either way each profile's state for a removed title (watched, progress, rating,
+favourite, My List, play count) is kept under the title's identity and given
+back if the same title is added again, to this library or another.
+
+There is no bulk delete job: a selection is deleted through the same preview
+and confirmation, 200 titles at a time.
+
+## Missing titles
+
+A file that is no longer on disk is marked missing the first time a complete
+scan of its folder does not find it. It is no longer offered or played. A title
+left with no file stays in the library, shown as unavailable, with
+`missingSince` on its detail; a file that is the same title (the same provider
+identity, or read as the same title) brings it back with its id, metadata and
+everyone's state.
+
+A folder that cannot be read, or that is suddenly empty where it held media, is
+an unmounted disk and not a list of deleted files: its scan stops and nothing
+is marked.
+
+- `GET /v1/admin/missing-titles?libraryId=&cursor=&limit=` lists missing titles,
+  oldest first, with `missingSince`, `removedAt` (when the owner's rule will
+  remove it) and the rule itself (`rule`, `days`).
+- `POST /v1/admin/missing-titles/empty` (`{libraryId?}`) removes missing titles
+  and missing files now. It works in short passes and answers
+  `{titles, files, more}`; call again while `more` is true.
+- The rule is two owner settings: `library.missingTitles`
+  (`immediately | after_days | never`, default `after_days`) and
+  `library.missingTitlesDays` (1 to 3650, default 30).
+
+## Titles and their files
+
+- `POST /v1/admin/titles/merge` (`{fromId, intoId}`) says two titles of one
+  library are the same title. The first becomes part of the second: its files
+  are versions, everyone's state for both is combined, and a show takes the
+  other's seasons and episodes. Titles a provider matches to the same identity
+  are merged the same way without being asked.
+- `POST /v1/admin/libraries/{id}/inventory/{object}/separate` undoes a wrong
+  grouping for one file.
+- `DELETE /v1/admin/libraries/{id}` (`{confirmation, expectedRevision}`, the
+  confirmation being the library's name) removes a library. It disappears at
+  once and is taken apart in the background (`library-removal` in the console's
+  jobs). Files on disk are not touched and personal state is kept as above.
+- Removing a folder from a library marks the files under it missing; their
+  titles then follow the rule for missing titles.
 
 ## Libraries
 
@@ -245,14 +285,13 @@ records it. A bare `.db` replaces only the database.
 
 **Storage care.** `GET /v1/admin/storage-usage` measures the state directory by
 category: artwork, trickplay, prepared media, conversion working files,
-subtitles, live buffer, downloads, logs, trash, backups and recordings. Each
+subtitles, live buffer, downloads, logs, backups and recordings. Each
 category names its directories, whether the page may clean it, whether the bytes
 are regenerable, and which retention setting governs it. Recordings and backups
 are content and are never cleanable. `POST
 /v1/admin/storage-usage/{category}/cleanup` removes files older than the
 category's retention (or an explicit `olderThanDays`), takes the category
-identifier as its confirmation, and refuses the trash, which has its own
-endpoint because emptying it is a different decision.
+identifier as its confirmation.
 
 **Updates.** `GET /v1/admin/updates` reports the running build and, when the
 `updates.feedUrl` owner setting names a feed, the newest build that feed lists on
@@ -267,7 +306,7 @@ timezone and the tasks the window admits — with cadence presets (`nightly`,
 `weekdays`, `weekends`, `weekly`, `custom`) published alongside the day set each
 means, so a client never asks an owner to tick seven boxes. Retention is per
 category with deliberately long maxima (ten years for artwork, trickplay,
-prepared media, subtitles and trash), because an owner with a large disk
+prepared media and subtitles), because an owner with a large disk
 should be able to keep them effectively forever. Backups are kept by count
 (`backupKeepCount`), not by age.
 
@@ -280,13 +319,13 @@ media elsewhere.
 
 ## Settings registry
 
-Three server-wide values live in the owner settings registry rather than in these
+Four server-wide values live in the owner settings registry rather than in these
 documents, because they are server policy that other surfaces read:
-`updates.releaseChannel`, `updates.feedUrl` and `library.trashRetentionDays`.
-They are read and written through the console settings endpoints like every other
-registry field. `updates.releaseChannel` falls back to `stable` when a client
-omits it and `library.trashRetentionDays` is nullable, so a client written against
-an earlier registry revision can still save the settings document.
+`updates.releaseChannel`, `updates.feedUrl`, `library.missingTitles` and
+`library.missingTitlesDays`. They are read and written through the console
+settings endpoints like every other registry field. `updates.releaseChannel`
+falls back to `stable`, and the missing-titles rule to thirty days, when a
+client omits them.
 
 `GET /v1/admin/dvr/recording-owners?limit=100&cursor=…` supplies current account/profile choices for the owner-only recording-permission editor. The result has `items` (`owner`, `accountName`, `profileName`) and `nextCursor`; limit is 1–200. Continue through empty filtered pages until the cursor is empty. All candidates pass current membership/claim checks; this endpoint neither grants permission nor contacts Hosted. Stale, revoked or deleted identities are not returned.
 

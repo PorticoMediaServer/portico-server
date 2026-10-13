@@ -674,6 +674,9 @@ func (s *Service) growSegmentTx(ctx context.Context, w *sql.Tx, queue, snap stri
 		return err
 	}
 	current, hasCurrent := before.currentEntry()
+	if err = before.extendShuffleOrder(ctx, w, snap, built); err != nil {
+		return err
+	}
 	if err = setGrowingCountTx(ctx, w, snap, built); err != nil {
 		return err
 	}
@@ -712,6 +715,9 @@ func (s *Service) finishBuildTx(ctx context.Context, w *sql.Tx, queue, snap stri
 		return err
 	}
 	current, hasCurrent := before.currentEntry()
+	if err = before.extendShuffleOrder(ctx, w, snap, built); err != nil {
+		return err
+	}
 	if err = setGrowingCountTx(ctx, w, snap, built); err != nil {
 		return err
 	}

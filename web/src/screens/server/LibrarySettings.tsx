@@ -7,7 +7,7 @@ import {problem, useRead} from '../../admin/console';
 import {useInlineForm} from '../settings/ServerForms';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
-import {currentI18n, type MessageId} from '../../app/i18n';
+import {type MessageId, useI18n} from '../../app/i18n';
 import {useScreenLookup} from './MetadataLookup';
 import {MetadataSourceGroup, useMetadataAgent} from './MetadataSource';
 import {Button, Dialog, Input, ListRow, Loading, Notice, Select, SettingsGroup, SettingsRow, Surface, Switch, Text} from '../../ui';
@@ -23,8 +23,8 @@ export function areFilesystemRootsPartial(page: FilesystemPage | undefined): boo
 /** Browse folders on the server's own disks, so an owner picks a folder instead of typing a
  * path the server may not be able to read. */
 export function FolderPicker({open, onOpenChange, onPick, start = ''}: {open: boolean; onOpenChange: (open: boolean) => void; onPick: (path: string) => void; start?: string}) {
+  const {t} = useI18n();
   const {api} = useSession();
-  const t = currentI18n().t;
   const serverId = useServerId();
   const [path, setPath] = useState(start);
   const [page, setPage] = useState<FilesystemPage>();
@@ -66,20 +66,20 @@ export function FolderPicker({open, onOpenChange, onPick, start = ''}: {open: bo
           {page?.parent && page.parent !== page.path ? <Button size="sm" variant="secondary" icon="back" label={t('web.folderPicker.up')} onClick={() => setPath(page.parent)} /> : null}
           {page?.roots.map(r => <Button key={r.path} size="sm" variant="ghost" label={r.name || r.path} onClick={() => setPath(r.path)} />)}
         </div>
-        {areFilesystemRootsPartial(page) ? <Text variant="caption" tone="tertiary">{currentI18n().t('web.folderPicker.rootsTruncated', {count: page?.roots.length ?? 0})}</Text> : null}
+        {areFilesystemRootsPartial(page) ? <Text variant="caption" tone="tertiary">{t('web.folderPicker.rootsTruncated', {count: page?.roots.length ?? 0})}</Text> : null}
         <Surface padless style={{maxHeight: 340, overflow: 'auto'}}>
           {loading && !page ? <div style={{padding: 16}}><Loading label={t('web.folderPicker.reading')} /></div> : null}
           {folders.map(f => <ListRow key={f.path} icon="folder" title={f.name} meta={!f.readable ? t('web.folderPicker.noAccess') : f.symlink ? t('web.folderPicker.symlink') : undefined} onClick={f.readable ? () => setPath(f.path) : undefined} />)}
           {page && !folders.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.folderPicker.noFolders')}</Text></div> : null}
         </Surface>
-        {page?.nextCursor ? <div><Button size="sm" variant="ghost" label={currentI18n().t('web.folderPicker.more')} loading={more} onClick={loadMore} /></div> : null}
+        {page?.nextCursor ? <div><Button size="sm" variant="ghost" label={t('web.folderPicker.more')} loading={more} onClick={loadMore} /></div> : null}
         {page?.truncated && !page.nextCursor ? <Text variant="caption" tone="tertiary">{t('web.folderPicker.moreEntries')}</Text> : null}
       </div>
     </Dialog>
   );
 }
 
-const kindLabel: Record<string, string> = {movie: 'Movies', show: 'Shows', episode: 'Episodes', music: 'Music', book: 'Audiobooks', audiobook: 'Audiobooks', anime: 'Anime', photo: 'Photos'};
+const MEDIA_KINDS = new Set(['movie', 'show', 'episode', 'music', 'book', 'audiobook', 'anime', 'photo']);
 
 export type LibraryTab = 'general' | 'metadata' | 'scanning' | 'advanced';
 
@@ -89,8 +89,9 @@ export type LibraryTab = 'general' | 'metadata' | 'scanning' | 'advanced';
  * while the tabs change, and its draft is saved by the page's one Save.
  */
 export function LibrarySettingsSections({library, tab}: {library: {id: string; name: string}; tab: LibraryTab}) {
+  const i18n = useI18n();
+  const {t} = i18n;
   const {api} = useSession();
-  const t = currentI18n().t;
   const serverId = useServerId();
   const read = useRead(async () => parseEnvelope(await api.request<unknown>(`/v1/admin/libraries/${encodeURIComponent(library.id)}/settings`), serverId, parseLibraryDocument).result, [api, library.id, serverId]);
   const [draft, setDraft] = useState<LibrarySettings>();
@@ -110,8 +111,8 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
   const languageName = (code: string): string => {
     const id = `language.${code}`;
     try {
-      if (currentI18n().has(id)) {
-        const v = currentI18n().t(id as MessageId);
+      if (i18n.has(id)) {
+        const v = t(id as MessageId);
         if (v) return v;
       }
     } catch { /* fall back to the code, never Intl.DisplayNames */ }
@@ -123,7 +124,7 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
       const base = stored.split('-')[0]?.toLowerCase() ?? '';
       const baseId = `language.${base}`;
       let baseName = '';
-      try { if (base && currentI18n().has(baseId)) baseName = currentI18n().t(baseId as MessageId); } catch { baseName = ''; }
+      try { if (base && i18n.has(baseId)) baseName = t(baseId as MessageId); } catch { baseName = ''; }
       return [{value: stored, label: baseName ? `${baseName} (${stored})` : stored}, ...listed];
     }
     return listed;
@@ -165,7 +166,7 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
               const chosen = choices.find(c => c.id === p.provider);
               const change = (next: Partial<typeof p>) => setDraft({...draft, providers: draft.providers.map((x, n) => (n === i ? {...x, ...next} : x))});
               return (
-                <SettingsRow key={`${i}:${p.mediaKind}`} label={kindLabel[p.mediaKind] ?? p.mediaKind} help={chosen?.attributionNote} stack control={
+                <SettingsRow key={`${i}:${p.mediaKind}`} label={MEDIA_KINDS.has(p.mediaKind) ? t('web.librarySettings.mediaKind', {kind: p.mediaKind}) : p.mediaKind} help={chosen?.attributionNote} stack control={
                   <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 8, width: '100%'}}>
                     <Select label={t('web.librarySettings.source')} value={p.provider} onChange={e => change({provider: e.target.value as typeof p.provider})} options={choices.map(c => ({value: c.id, label: c.name}))} />
                     {chosen?.supportsLocale ? (agentLanguages.length ? <Select label={t('web.librarySettings.language')} value={p.language || agentLanguages[0]} options={languageOptions(p.language)} onChange={e => change({language: e.target.value})} /> : <Input label={t('web.librarySettings.language')} placeholder={t('web.librarySettings.languageExample')} value={p.language} onChange={e => change({language: e.target.value})} />) : null}
@@ -183,11 +184,10 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
           {tab === 'scanning' ? <SettingsGroup title={t('web.librarySettings.trickplay')} description={t('web.librarySettings.trickplayLede')}>
             <SettingsRow label={t('web.librarySettings.pictureEvery')} help={t('web.librarySettings.pictureEveryHelp')} control={<Input hideLabel label={t('web.librarySettings.pictureEveryLabel')} type="number" min={1} max={60} value={draft.navigation.trickplayIntervalSeconds} onChange={e => setDraft({...draft, navigation: {...draft.navigation, trickplayIntervalSeconds: Math.max(1, Number(e.target.value) || 1)}})} style={{width: 90}} />} />
             <SettingsRow label={t('web.librarySettings.pictureWidth')} help={t('web.librarySettings.pictureWidthHelp')} control={<Input hideLabel label={t('web.librarySettings.pictureWidth')} type="number" min={80} max={640} step={20} value={draft.navigation.trickplayTileWidth} onChange={e => setDraft({...draft, navigation: {...draft.navigation, trickplayTileWidth: Math.max(80, Number(e.target.value) || 80)}})} style={{width: 90}} />} />
-            <SettingsRow label={t('web.librarySettings.chapters')} control={<Select hideLabel label={t('web.librarySettings.chapters')} value={draft.navigation.chapterThumbnailMode} onChange={e => toggle('chapter_images', e.target.value === 'generated')} options={(doc.enumerations.chapterThumbnailMode ?? ['embedded', 'generated']).map(m => ({value: m, label: m === 'none' ? 'Off' : m === 'embedded' ? 'From the file' : 'Made by the server'}))} />} />
+            <SettingsRow label={t('web.librarySettings.chapters')} control={<Select hideLabel label={t('web.librarySettings.chapters')} value={draft.navigation.chapterThumbnailMode} onChange={e => toggle('chapter_images', e.target.value === 'generated')} options={(doc.enumerations.chapterThumbnailMode ?? ['embedded', 'generated']).map(m => ({value: m, label: t('web.librarySettings.chapterMode', {mode: m})}))} />} />
           </SettingsGroup> : null}
           {tab === 'advanced' ? <SettingsGroup title={t('web.librarySettings.deleting')} description={t('web.librarySettings.deletingLede')}>
             <SettingsRow label={t('web.librarySettings.allowDelete')} control={<Switch checked={draft.allowMediaDeletion} onCheckedChange={v => setDraft({...draft, allowMediaDeletion: v})} label={t('web.librarySettings.allowDelete')} />} />
-            <SettingsRow label={t('web.librarySettings.keepDeleted')} help={t('web.librarySettings.keepDeletedHelp')} control={<Input hideLabel label={t('web.librarySettings.keepDeletedLabel')} type="number" min={0} max={3650} value={draft.trashRetentionDays} disabled={!draft.allowMediaDeletion} onChange={e => setDraft({...draft, trashRetentionDays: Math.max(0, Number(e.target.value) || 0)})} style={{width: 90}} />} />
           </SettingsGroup> : null}
         </div>
       ) : null}
