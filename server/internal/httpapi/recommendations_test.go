@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"net/http/httptest"
@@ -67,7 +65,6 @@ func TestRelatedMoviesDetailPermissionAndRevocation(t *testing.T) {
 	if target.Kind != "movie" || target.LibraryID != "a" || !target.Available {
 		t.Fatalf("related item hydration: %+v", target)
 	}
-	_, priv, _ := ed25519.GenerateKey(rand.Reader)
 	control, e := hosted.New(db, ident, "http://127.0.0.1:19436", tl6HostedRootPin(), tl6HostedRootID())
 	if e != nil {
 		t.Fatal(e)
@@ -79,7 +76,7 @@ func TestRelatedMoviesDetailPermissionAndRevocation(t *testing.T) {
 		}
 		p := hosted.Policy{ServerID: ident.ID(), Revision: revision, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "member", ProfileID: "p", Role: "member", AllowedLibraries: libraries}}}
 		raw, _ := json.Marshal(p)
-		if e = control.Apply(tl6CertifiedHostedPolicy(t, priv, "key", raw)); e != nil {
+		if e = storeHTTPFixturePolicy(db, raw); e != nil {
 			t.Fatal(e)
 		}
 	}

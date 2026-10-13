@@ -3,8 +3,6 @@ package httpapi
 import (
 	"bytes"
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"net/http/httptest"
@@ -46,17 +44,13 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 	itemA := makeMovie(a, "/a", "A", "/a/movie.mkv", "2026-01-01T00:00:00.000Z")
 	itemB := makeMovie(b, "/b", "B", "/b/movie.mkv", "2026-01-02T00:00:00.000Z")
 	c.Drain()
-	_, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	control, err := hosted.New(db, ident, "http://127.0.0.1:19410", tl6HostedRootPin(), tl6HostedRootID())
 	if err != nil {
 		t.Fatal(err)
 	}
 	policy := hosted.Policy{ServerID: ident.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "member", ProfileID: "reader", Role: "member", AllowedLibraries: []string{"a"}}}}
 	raw, _ := json.Marshal(policy)
-	if err = control.Apply(tl6CertifiedHostedPolicy(t, private, "fixture", raw)); err != nil {
+	if err = storeHTTPFixturePolicy(db, raw); err != nil {
 		t.Fatal(err)
 	}
 	reader, err := tl6IssueHostedFixture(t, db, ident, "member", "reader", "member")

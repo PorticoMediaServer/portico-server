@@ -48,7 +48,7 @@ func TestPlaylistOccurrencesPermissionsCASAndRestart(t *testing.T) {
 	secretItem := c.Movie(bLibrary, "/b/secret.mkv", "Secret", 2020)
 	c.Drain()
 	owner := ResourceActor{"local", "owner", "p"}
-	editor := ResourceActor{"hosted", "editor", "p"}
+	editor := ResourceActor{"local", "editor", "p"}
 	name := "Mixed playlist"
 	summary := "Shared safely"
 	create := PlaylistMutation{OperationID: "create", Name: &name, Summary: &summary}
@@ -97,7 +97,7 @@ func TestPlaylistOccurrencesPermissionsCASAndRestart(t *testing.T) {
 	if _, e = s.MutatePlaylist(editor, id, "update", "", PlaylistMutation{OperationID: "rename", ExpectedRevision: 5, Name: &name}, nil); !errors.Is(e, identity.ErrUnauthorized) {
 		t.Fatal("editor renamed", e)
 	}
-	if _, e = s.Playlist("server", "f", id, ResourceActor{"local", "editor", "p"}); !errors.Is(e, sql.ErrNoRows) {
+	if _, e = s.Playlist("server", "f", id, ResourceActor{"hosted", "editor", "p"}); !errors.Is(e, sql.ErrNoRows) {
 		t.Fatal("authority collision", e)
 	}
 	reordered, e := s.MutatePlaylist(editor, id, "reorder", "", PlaylistMutation{OperationID: "reorder", ExpectedRevision: 5, EntryIDs: []string{secret.EntryID, two.EntryID, one.EntryID}}, nil)
@@ -376,7 +376,7 @@ func TestPlaylistAdmissionLimitsAndExpiredCAS(t *testing.T) {
 	if _, e = s.MutatePlaylist(a, r.PlaylistID, "add", "", PlaylistMutation{OperationID: "overflow", ExpectedRevision: 2, ItemID: item.Public}, nil); e != nil {
 		t.Fatal("entry cap not enforced", e)
 	}
-	_, e = db.Exec(`WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100) INSERT INTO playlist_shares SELECT ?,'hosted','a'||x,'p'||x,'viewer' FROM n`, r.PlaylistID)
+	_, e = db.Exec(`WITH RECURSIVE n(x) AS(VALUES(1) UNION ALL SELECT x+1 FROM n WHERE x<100) INSERT INTO playlist_shares SELECT ?,'local','a'||x,'p'||x,'viewer' FROM n`, r.PlaylistID)
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -34,10 +32,6 @@ func playbackAuthorityFixture(t *testing.T) (Dependencies, identity.Principal, s
 	}
 	itemA, _ := seedHTTPAPICatalogEntity(t, db, "a", compactcatalog.Movie, "item-a", "A", 0, nil)
 	itemB, _ := seedHTTPAPICatalogEntity(t, db, "b", compactcatalog.Movie, "item-b", "B", 0, nil)
-	_, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	control, err := hosted.New(db, ident, "http://127.0.0.1:1", testHostedRootPin(), testHostedRootID())
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +41,7 @@ func playbackAuthorityFixture(t *testing.T) (Dependencies, identity.Principal, s
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = control.Apply(certifiedHostedPolicy(t, private, "transaction-fixture", raw)); err != nil {
+	if err = storeHTTPFixturePolicy(db, raw); err != nil {
 		t.Fatal(err)
 	}
 	envelope, err := issuePorticoFixture(t, db, ident, "account", "profile", "member")

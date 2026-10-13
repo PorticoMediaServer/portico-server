@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"crypto/ed25519"
-	"crypto/rand"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -32,17 +30,13 @@ func hostedAdministrationFixture(t *testing.T, role string) (Dependencies, ident
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, private, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil {
-		t.Fatal(err)
-	}
 	h, err := hosted.New(db, id, "http://127.0.0.1:1", testHostedRootPin(), testHostedRootID())
 	if err != nil {
 		t.Fatal(err)
 	}
 	policy := hosted.Policy{ServerID: id.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "account", ProfileID: "profile", Role: role, AllLibraries: true}}}
 	raw, _ := json.Marshal(policy)
-	if err = h.Apply(certifiedHostedPolicy(t, private, "owner-test", raw)); err != nil {
+	if err = storeHTTPFixturePolicy(db, raw); err != nil {
 		t.Fatal(err)
 	}
 	envelope, err := issuePorticoFixture(t, db, id, "account", "profile", role)

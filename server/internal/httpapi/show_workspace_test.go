@@ -1,8 +1,6 @@
 package httpapi
 
 import (
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
@@ -34,10 +32,6 @@ func TestShowWorkspaceHTTPPermissionAndParentResolution(t *testing.T) {
 	seasonA := c.Season(showA, 1)
 	seasonB := c.Season(showB, 1)
 	c.Drain()
-	_, priv, e := ed25519.GenerateKey(rand.Reader)
-	if e != nil {
-		t.Fatal(e)
-	}
 	control, e := hosted.New(db, ident, "http://127.0.0.1:19410", tl6HostedRootPin(), tl6HostedRootID())
 	if e != nil {
 		t.Fatal(e)
@@ -55,7 +49,7 @@ func TestShowWorkspaceHTTPPermissionAndParentResolution(t *testing.T) {
 			}
 		}
 		raw, _ := json.Marshal(policy)
-		if e = control.Apply(tl6CertifiedHostedPolicy(t, priv, "fixture", raw)); e != nil {
+		if e = storeHTTPFixturePolicy(db, raw); e != nil {
 			t.Fatal(e)
 		}
 	}

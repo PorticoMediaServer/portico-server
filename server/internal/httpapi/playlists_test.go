@@ -2,8 +2,6 @@ package httpapi
 
 import (
 	"bytes"
-	"crypto/ed25519"
-	"crypto/rand"
 	"encoding/json"
 	"net/http/httptest"
 	"path/filepath"
@@ -34,17 +32,13 @@ func TestPlaylistHTTPShareNeverGrantsMedia(t *testing.T) {
 	}
 	aItem, _ := seedHTTPAPICatalogEntity(t, db, "a", compactcatalog.Movie, "a-item", "Allowed", 0, nil)
 	bItem, _ := seedHTTPAPICatalogEntity(t, db, "b", compactcatalog.Movie, "b-item", "Forbidden Title", 0, nil)
-	_, private, e := ed25519.GenerateKey(rand.Reader)
-	if e != nil {
-		t.Fatal(e)
-	}
 	control, e := hosted.New(db, ident, "http://127.0.0.1:19410", testHostedRootPin(), testHostedRootID())
 	if e != nil {
 		t.Fatal(e)
 	}
 	policy := hosted.Policy{ServerID: ident.ID(), Revision: 1, IssuedAt: time.Now().UTC().Format(time.RFC3339), ExpiresAt: time.Now().Add(time.Hour).UTC().Format(time.RFC3339), Members: []hosted.Member{{AccountID: "member", ProfileID: "member-p", Role: "member", AllowedLibraries: []string{"a"}}}}
 	raw, _ := json.Marshal(policy)
-	if e = control.Apply(certifiedHostedPolicy(t, private, "key", raw)); e != nil {
+	if e = storeHTTPFixturePolicy(db, raw); e != nil {
 		t.Fatal(e)
 	}
 	owner, e := ident.Issue("owner", "owner-p", "local", "owner", 1)

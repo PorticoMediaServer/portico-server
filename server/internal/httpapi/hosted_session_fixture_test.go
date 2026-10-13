@@ -11,7 +11,7 @@ import (
 	"portico.local/server/internal/identity"
 )
 
-// Existing fixtures describe their members in a signed policy. Install those
+// Existing fixtures describe their members in policy-shaped data. Install those
 // descriptions as server-local membership before admitting a Portico Account;
 // Hosted policy bytes themselves no longer authorize media or administration.
 func issuePorticoFixture(t *testing.T, db *sql.DB, ident *identity.Service, account, profile, role string) (identity.Envelope, error) {
@@ -77,4 +77,16 @@ func issuePorticoFixture(t *testing.T, db *sql.DB, ident *identity.Service, acco
 		t.Fatalf("Portico Account fixture issued an unusable local session: %v", err)
 	}
 	return out, nil
+}
+
+// These media and owner tests exercise local membership authority, not Hosted
+// signature verification. Their policy row describes fixture members only.
+// The hosted package tests actual signed identity admission and key revocation.
+func storeHTTPFixturePolicy(db *sql.DB, raw []byte) error {
+	var policy hosted.Policy
+	if err := json.Unmarshal(raw, &policy); err != nil {
+		return err
+	}
+	_, err := db.Exec(`INSERT INTO policy(server_id,revision,payload,expires_at) VALUES(?,?,?,?) ON CONFLICT(server_id) DO UPDATE SET revision=excluded.revision,payload=excluded.payload,expires_at=excluded.expires_at`, policy.ServerID, policy.Revision, string(raw), policy.ExpiresAt)
+	return err
 }
