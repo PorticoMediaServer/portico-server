@@ -36,24 +36,31 @@ test('a layout view round-trips and freezes', () => {
   assert.throws(() => ((parsed.rows[0] as unknown as Record<string, unknown>).title = 'x'), TypeError);
 });
 
-test('layout view rejections', () => {
+test('the revision and bounds of a layout view still refuse the whole document', () => {
   const cases: unknown[] = [
     layoutView({rows: 'nope'}),
     layoutView({rows: Array.from({length: 65}, (_, i) => layoutRow({id: `r${i}`}))}),
-    layoutView({rows: [layoutRow({id: ''})]}),
-    layoutView({rows: [layoutRow({title: '' .padEnd(1025, 'x')})]}),
-    layoutView({rows: [layoutRow({kind: ''})]}),
-    layoutView({rows: [layoutRow({artworkShape: 'circle'})]}),
-    layoutView({rows: [layoutRow({libraryId: ''})]}),
-    layoutView({rows: [layoutRow({required: 'yes'})]}),
-    layoutView({rows: [layoutRow(), layoutRow()]}),
-    layoutView({rows: [layoutRow({id: 'a', required: true, hideable: true, hidden: false})]}),
-    layoutView({rows: [layoutRow({id: 'a', required: true, hideable: false, hidden: true})]}),
-    layoutView({rows: [layoutRow({id: 'a', required: false, hideable: false, hidden: true})]}),
     layoutView({revision: -1}),
-    layoutView({rowOrder: ['a', 'a']}),
+    layoutView({rowOrder: 'nope'}),
+    layoutView({hiddenRowIds: Array.from({length: 65}, (_, i) => `r${i}`)}),
   ];
   for (const payload of cases) assert.throws(() => validateHomeLayoutView(payload), {code: 'invalid_home'});
+});
+
+test('one layout row that cannot be read is left out; what a row is only drawn with reads neutrally', () => {
+  const kept = (rows: unknown[]) => validateHomeLayoutView(layoutView({rows})).rows;
+  for (const bad of ['nope', layoutRow({id: ''}), layoutRow({title: ''.padEnd(1025, 'x')}), layoutRow({kind: 'bad\nkind'})]) {
+    assert.deepEqual(kept([bad, layoutRow({id: 'kept'})]).map(r => r.id), ['kept']);
+  }
+  // A repeated row keeps its first appearance.
+  assert.deepEqual(kept([layoutRow({title: 'First'}), layoutRow({title: 'Second'})]).map(r => r.title), ['First']);
+  // A shape this app does not know is a poster; a library id that cannot be read is left out; an unknown field is ignored.
+  const loose = kept([layoutRow({id: 'a', artworkShape: 'circle', libraryId: '', required: 'yes', reorderable: undefined, futureField: 1})])[0];
+  assert.deepEqual(loose, {id: 'a', title: 'Continue Watching', kind: 'continue', artworkShape: 'poster', required: false, hideable: false, reorderable: false, hidden: false});
+  // Contradictory flags take the reading that keeps the row on Home: required wins over hideable, and only a hideable row is hidden.
+  assert.deepEqual(kept([layoutRow({id: 'a', required: true, hideable: true, hidden: true})]).map(r => [r.required, r.hideable, r.hidden]), [[true, false, false]]);
+  assert.deepEqual(kept([layoutRow({id: 'a', required: false, hideable: false, hidden: true})]).map(r => [r.hideable, r.hidden]), [[false, false]]);
+  assert.deepEqual([...validateHomeLayoutView(layoutView({rowOrder: ['a', 'a', 'b']})).rowOrder], ['a', 'b']);
 });
 
 test('fetchHomeLayout hits GET /v1/home/layout with no query', async () => {
@@ -79,18 +86,16 @@ test('new entry fields are accepted', () => {
   assert.equal(absent.watchlisted, undefined);
 });
 
-test('new entry fields are rejected', () => {
-  const bad: unknown[] = [
-    {id: 'm1', kind: 'movie', title: 'T', year: 0},
-    {id: 'm1', kind: 'movie', title: 'T', year: -5},
-    {id: 'm1', kind: 'movie', title: 'T', year: 2024.5},
-    {id: 'm1', kind: 'movie', title: 'T', year: '2024'},
-    {id: 'm1', kind: 'movie', title: 'T', contentRating: 13},
-    {id: 'm1', kind: 'movie', title: 'T', contentRating: 'x'.repeat(65)},
-    {id: 'm1', kind: 'movie', title: 'T', watchlisted: 'yes'},
-    {id: 'm1', kind: 'movie', title: 'T', watchlisted: 1},
-  ];
-  for (const payload of bad) assert.throws(() => validateContentEntry(payload), {code: 'invalid_projection'});
+test('a new entry field that cannot be read is left out and the entry is kept', () => {
+  const bad: Record<string, unknown>[] = [{year: 0}, {year: -5}, {year: 2024.5}, {year: '2024'}, {contentRating: 13}, {contentRating: 'x'.repeat(65)}, {watchlisted: 'yes'}, {watchlisted: 1}];
+  for (const field of bad) {
+    const parsed = validateContentEntry({id: 'm1', kind: 'movie', title: 'T', ...field});
+    assert.deepEqual(parsed, {id: 'm1', kind: 'movie', title: 'T'});
+  }
+  // What the entry is stays exact.
+  for (const payload of [{id: '', kind: 'movie', title: 'T'}, {id: 'm1', kind: 'hologram', title: 'T'}, {id: 'm1', kind: 'movie', title: 'x'.repeat(2049)}, {id: 'm1', kind: 'movie', title: 'T', libraryId: ''}]) {
+    assert.throws(() => validateContentEntry(payload), {code: 'invalid_projection'});
+  }
 });
 
 // §4a and be/pages (artists carry three genres, albums more): genres degrade, never fail the entry.
@@ -101,9 +106,10 @@ test('genres keep the readable names and drop the rest', () => {
   assert.equal(validateContentEntry({id: 'm1', kind: 'movie', title: 'T', genres: [123]}).genres, undefined);
 });
 
-test('an episode entry carries its own still; a malformed still fails like any art path', () => {
+test('an episode entry carries its own still; a malformed still is left out like any art path', () => {
   const base = {id: 'e1', kind: 'episode', title: 'Pilot', backdropUrl: '/v1/metadata/show/s1/art/backdrop?v=1'};
   assert.equal(validateContentEntry({...base, stillUrl: '/v1/metadata/item/e1/art/still?v=2&w=640'}).stillUrl, '/v1/metadata/item/e1/art/still?v=2&w=640');
   assert.equal(validateContentEntry(base).stillUrl, undefined);
-  assert.throws(() => validateContentEntry({...base, stillUrl: 42}));
+  assert.equal(validateContentEntry({...base, stillUrl: 42}).stillUrl, undefined);
+  assert.equal(validateContentEntry({...base, stillUrl: 42}).backdropUrl, base.backdropUrl);
 });

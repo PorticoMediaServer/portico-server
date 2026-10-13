@@ -51,7 +51,7 @@ export function DeleteMediaDialog({request, onClose}: {request: DeleteRequest; o
       const key = deletePayloadKey({itemIds: request.itemIds, revision: preview.revision, deleteFiles, confirmation: typed.trim()});
       const result = parseEnvelope(await api.request<unknown>('/v1/admin/media/delete', 'POST', {itemIds: request.itemIds, deleteFiles, confirmation: typed.trim(), expectedRevision: preview.revision, operationId: opIds.forPayload(key)}), serverId, parseDeleteResult).result;
       opIds.release();
-      setDone(result.failed ? i18n.t('deleteMedia.partial', {removed: result.removed, failed: result.failed}) : deleteFiles && preview.trashRetentionDays > 0 ? i18n.t('deleteMedia.removedKept', {days: preview.trashRetentionDays}) : i18n.t('deleteMedia.removed'));
+      setDone(result.failed ? i18n.t('deleteMedia.partial', {removed: result.removed, failed: result.failed}) : i18n.t('deleteMedia.removed'));
       request.onDeleted?.();
     } catch (e) { setError(say(e, 'action')); } finally { setBusy(false); }
   };
@@ -72,7 +72,7 @@ export function DeleteMediaDialog({request, onClose}: {request: DeleteRequest; o
           {allowed ? (
             <>
               <Switch checked={deleteFiles} onCheckedChange={setDeleteFiles} label={i18n.t('deleteMedia.removeFiles')} />
-              <Text variant="caption" tone="tertiary">{deleteFiles ? (preview.trashRetentionDays > 0 ? i18n.t('deleteMedia.trashKept', {days: preview.trashRetentionDays}) : i18n.t('deleteMedia.removedNow')) : i18n.t('deleteMedia.recordOnly')}</Text>
+              <Text variant="caption" tone="tertiary">{deleteFiles ? i18n.t('deleteMedia.removedNow') : i18n.t('deleteMedia.recordOnly')}</Text>
               <Input label={preview.confirmationKind === 'count' ? i18n.t('deleteMedia.typeCount', {count: preview.confirmation}) : i18n.t('deleteMedia.typeTitle')} help={preview.confirmationKind === 'title' ? preview.confirmation : undefined} value={typed} onChange={e => setTyped(e.target.value)} autoFocus autoComplete="off" />
             </>
           ) : <Notice tone="info" compact>{i18n.t('deleteMedia.disabled')}</Notice>}

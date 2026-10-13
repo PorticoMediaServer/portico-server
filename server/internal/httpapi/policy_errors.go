@@ -23,7 +23,21 @@ func policyErrorDefinitions() []apierror.Definition {
 }
 
 func policyCatalogue() *apierror.Registry {
-	registry, err := apierror.New(append(v1ErrorDefinitions(), policyErrorDefinitions()...)...)
+	definitions := append(v1ErrorDefinitions(), policyErrorDefinitions()...)
+	definitions = append(definitions, connectionErrorDefinitions()...)
+	definitions = append(definitions, credentialErrorDefinitions()...)
+	definitions = append(definitions, webhookErrorDefinitions()...)
+	known := map[string]bool{}
+	for _, d := range append(apierror.Defaults(), definitions...) {
+		known[d.Code] = true
+	}
+	for _, d := range socialErrorDefinitions() {
+		if !known[d.Code] {
+			definitions = append(definitions, d)
+			known[d.Code] = true
+		}
+	}
+	registry, err := apierror.New(definitions...)
 	if err != nil {
 		panic(err)
 	}

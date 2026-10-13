@@ -1,6 +1,7 @@
 import {unreadableServerResponse} from './server-messages.ts';
 /** Server-composed home rows. Clients render membership, order and policy as published; they never rank, hide or page a row themselves. */
-import {unknownContentEntryKind, validateContentEntry, type ContentEntry} from './library-content.ts';
+import {parseContentSeeAll, validateContentEntry, type ContentEntry, type ContentSeeAll} from './library-content.ts';
+import {firstOfEach, keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';
 
 export type HomeArtworkShape = 'poster' | 'square' | 'landscape';
 export type HomeRevision = Readonly<{catalog: number; viewer: number}>;
@@ -13,10 +14,14 @@ export type HomeRow = Readonly<{
   family?: string;
   libraryId?: string; privacySensitivity: string; policyState: string;
   relation?: string; provider?: string; evidenceId?: string;
-  priority: number; cacheTtlSeconds: number;
+  priority: number;
+  /** How long the server would let the row be reused. No client reads it; absent when the server does not send it. */
+  cacheTtlSeconds?: number;
   required: boolean; hideable: boolean; reorderable: boolean; critical: boolean; cursorCapable: boolean;
   entries: readonly ContentEntry[]; total: number; start: number; limit: number; hasMore: boolean;
   nextCursor: string; anchorId?: string; revision: HomeRevision;
+  /** Where the row's See all leads, when the server names a browse destination for it. */
+  seeAll?: ContentSeeAll;
 }>;
 export type HomeLayout = Readonly<{revision: number; rowOrder: readonly string[]; hiddenRowIds: readonly string[]}>;
 export type HomeLayoutRowView = Readonly<{id: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; libraryId?: string; required: boolean; hideable: boolean; reorderable: boolean; hidden: boolean}>;
@@ -30,7 +35,7 @@ export type HomeRowPage = Readonly<{limit?: number; cursor?: string; start?: num
 export type HomeLayoutIntent = Readonly<{expectedRevision: number; rowOrder: readonly string[]; hiddenRowIds: readonly string[]; idempotencyKey?: string}>;
 export interface HomeApi {request<T>(path: string, method?: string, body?: unknown, signal?: AbortSignal): Promise<T>}
 
-const shapes = ['poster', 'square', 'landscape'];
+const shapes = ['poster', 'square', 'landscape'] as const;
 const object = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const text = (v: unknown, max = 512): v is string => typeof v === 'string' && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);
 const id = (v: unknown): v is string => text(v, 256) && (v as string).length > 0;
@@ -40,18 +45,32 @@ function invalid(): never {
   throw Object.assign(new Error(unreadableServerResponse), {code: 'invalid_home', retryable: false});
 }
 
-/** A ServerText, or undefined when absent. Malformed text is refused like any other field. */
+/**
+ * A ServerText, or undefined when absent. Text whose code or fallback cannot be read is refused;
+ * parameters that cannot be read are left out, and the fallback then names the row.
+ */
 export function parseServerText(value: unknown): ServerText | undefined {
-  if (value === undefined) return undefined;
+  if (value === undefined || value === null) return undefined;
   if (!object(value) || !text(value.code, 128) || !text(value.fallback, 1024)) invalid();
-  if (value.params === undefined) return Object.freeze({code: value.code, fallback: value.fallback});
-  if (!object(value.params) || Object.keys(value.params).length > 16) invalid();
+  if (value.params === undefined || value.params === null) return Object.freeze({code: value.code, fallback: value.fallback});
+  if (!object(value.params) || Object.keys(value.params).length > 16) { noteSkipped('home', 'titleText.params'); return Object.freeze({code: value.code, fallback: value.fallback}); }
   const params: Record<string, string> = {};
   for (const [name, param] of Object.entries(value.params)) {
-    if (!id(name) || !text(param, 1024)) invalid();
+    if (!id(name) || !text(param, 1024)) { noteSkipped('home', 'titleText.params'); continue; }
     params[name] = param;
   }
   return Object.freeze({code: value.code, params: Object.freeze(params), fallback: value.fallback});
+}
+
+/** A row's title text, left out (the plain title then names the row) when it cannot be read. */
+function titleTextOf(value: unknown): ServerText | undefined {
+  try { return parseServerText(value); } catch { noteSkipped('home', 'titleText'); return undefined; }
+}
+/** Text a row is drawn with: absent reads as empty, and text over its bound refuses the row. */
+function words(value: unknown, max: number): string {
+  if (value === undefined || value === null) return '';
+  if (!text(value, max)) invalid();
+  return value;
 }
 
 function revision(value: unknown): HomeRevision {
@@ -59,34 +78,38 @@ function revision(value: unknown): HomeRevision {
   return Object.freeze({catalog: value.catalog, viewer: value.viewer});
 }
 
+/**
+ * One Home row. Its id, cursor, revision and the bound on its entries are exact. Everything it is
+ * only drawn with has a neutral reading: an artwork shape this app does not know is a poster, a
+ * missing flag is off, a missing count is 0, and an entry that cannot be read is left out alone.
+ */
 export function validateHomeRow(value: unknown): HomeRow {
-  if (!object(value) || !id(value.id) || !text(value.title, 1024) || !id(value.kind) || !shapes.includes(value.artworkShape as string)) invalid();
-  if (!id(value.endpoint) || !id(value.privacySensitivity) || !id(value.policyState)) invalid();
-  if (!whole(value.priority) || !whole(value.cacheTtlSeconds) || !whole(value.total) || !whole(value.start) || !whole(value.limit)) invalid();
-  for (const flag of ['required', 'hideable', 'reorderable', 'critical', 'cursorCapable', 'hasMore'] as const) {
-    if (typeof value[flag] !== 'boolean') invalid();
-  }
-  if (value.required && value.hideable) invalid();
-  if (!Array.isArray(value.entries) || value.entries.length > 200 || !text(value.nextCursor, 4096)) invalid();
-  const entries = value.entries.filter(entry => !unknownContentEntryKind(entry)).map(entry => validateContentEntry(entry));
-  if (new Set(entries.map(entry => entry.id)).size !== entries.length) invalid();
-  if (entries.length > value.total) invalid();
+  if (!object(value) || !id(value.id)) invalid();
+  if (!Array.isArray(value.entries) || value.entries.length > 200 || !text(value.nextCursor ?? '', 4096)) invalid();
+  const entries = firstOfEach('home', 'entries', keepReadable('home', 'entries', value.entries, entry => validateContentEntry(entry)), entry => entry.id);
+  const flag = (name: string) => value[name] === true;
+  const amount = (name: string) => (whole(value[name]) ? value[name] as number : 0);
+  const required = flag('required');
   const row: Record<string, unknown> = {
-    id: value.id, title: value.title, kind: value.kind, artworkShape: value.artworkShape, endpoint: value.endpoint,
-    privacySensitivity: value.privacySensitivity, policyState: value.policyState, priority: value.priority,
-    cacheTtlSeconds: value.cacheTtlSeconds, required: value.required, hideable: value.hideable,
-    reorderable: value.reorderable, critical: value.critical, cursorCapable: value.cursorCapable,
-    entries: Object.freeze(entries), total: value.total, start: value.start, limit: value.limit,
-    hasMore: value.hasMore, nextCursor: value.nextCursor, revision: revision(value.revision),
+    id: value.id, title: words(value.title, 1024), kind: words(value.kind, 256),
+    artworkShape: oneOfOr('home', 'row.artworkShape', value.artworkShape, shapes, 'poster'), endpoint: words(value.endpoint, 256),
+    privacySensitivity: words(value.privacySensitivity, 256), policyState: words(value.policyState, 256), priority: amount('priority'),
+    // A required row is never hideable, whatever the two flags say together.
+    required, hideable: flag('hideable') && !required,
+    reorderable: flag('reorderable'), critical: flag('critical'), cursorCapable: flag('cursorCapable'),
+    // The total is at least the entries kept.
+    entries: Object.freeze(entries), total: Math.max(amount('total'), entries.length), start: amount('start'), limit: amount('limit'),
+    hasMore: flag('hasMore'), nextCursor: value.nextCursor ?? '', revision: revision(value.revision),
   };
-  const titleText = parseServerText(value.titleText);
+  if (whole(value.cacheTtlSeconds)) row.cacheTtlSeconds = value.cacheTtlSeconds;
+  const titleText = titleTextOf(value.titleText);
   if (titleText) row.titleText = titleText;
   for (const field of ['explanation', 'libraryId', 'relation', 'provider', 'evidenceId', 'anchorId', 'family'] as const) {
-    if (value[field] !== undefined) {
-      if (!text(value[field], 1024)) invalid();
-      row[field] = value[field];
-    }
+    if (text(value[field], 1024)) row[field] = value[field];
+    else if (value[field] !== undefined && value[field] !== null) noteSkipped('home', 'row.' + field);
   }
+  const seeAll = parseContentSeeAll(value.seeAll);
+  if (seeAll) row.seeAll = seeAll;
   return Object.freeze(row) as HomeRow;
 }
 
@@ -117,55 +140,54 @@ export const homeViewRowId = (resourceId: string) => HOME_VIEW_PREFIX + resource
 /** The saved view a Home row shows, or undefined for any other row. */
 export const homeViewResourceId = (rowId: string): string | undefined => (rowId.startsWith(HOME_VIEW_PREFIX) && rowId.length > HOME_VIEW_PREFIX.length ? rowId.slice(HOME_VIEW_PREFIX.length) : undefined);
 
+/** The saved layout. Its revision and list bounds are exact; an entry that is not an id, or a repeated id, is left out. */
 export function validateHomeLayout(value: unknown): HomeLayout {
   if (!object(value) || !whole(value.revision) || !Array.isArray(value.rowOrder) || !Array.isArray(value.hiddenRowIds)) invalid();
   if (value.rowOrder.length > 64 || value.hiddenRowIds.length > 64) invalid();
-  const order = value.rowOrder.map(entry => {if (!id(entry)) invalid(); return entry;});
-  const hidden = value.hiddenRowIds.map(entry => {if (!id(entry)) invalid(); return entry;});
-  if (new Set(order).size !== order.length || new Set(hidden).size !== hidden.length) invalid();
-  return Object.freeze({revision: value.revision, rowOrder: Object.freeze(order), hiddenRowIds: Object.freeze(hidden)});
+  const ids = (part: string, list: unknown[]) => firstOfEach('home', part, keepReadable('home', part, list, entry => (id(entry) ? entry : undefined)), entry => entry);
+  return Object.freeze({revision: value.revision, rowOrder: Object.freeze(ids('layout.rowOrder', value.rowOrder)), hiddenRowIds: Object.freeze(ids('layout.hiddenRowIds', value.hiddenRowIds))});
 }
 
 export function validateHomeLayoutView(value: unknown): HomeLayoutView {
   const layout = validateHomeLayout(value);
   if (!object(value) || !Array.isArray(value.rows) || value.rows.length > 64) invalid();
-  const rows = (value.rows as unknown[]).map(entry => {
-    if (!object(entry) || !id(entry.id) || !text(entry.title, 1024) || !id(entry.kind) || !shapes.includes(entry.artworkShape as string)) invalid();
-    for (const flag of ['required', 'hideable', 'reorderable', 'hidden'] as const) {
-      if (typeof (entry as Record<string, unknown>)[flag] !== 'boolean') invalid();
-    }
+  // A row that cannot be read is left out of Customize Home alone; contradictory flags take the reading that keeps a row visible.
+  const rows = firstOfEach('home', 'layout.rows', keepReadable('home', 'layout.rows', value.rows as unknown[], entry => {
+    if (!object(entry) || !id(entry.id)) invalid();
     const row = entry as Record<string, unknown>;
-    if (row.required && row.hideable) invalid();
-    if (row.hidden && (row.required || !row.hideable)) invalid();
-    if (row.libraryId !== undefined && !id(row.libraryId)) invalid();
-    const titleText = parseServerText(row.titleText);
+    const required = row.required === true, hideable = row.hideable === true && !required;
+    const titleText = titleTextOf(row.titleText);
     return Object.freeze({
-      id: row.id as string, title: row.title as string, ...(titleText ? {titleText} : {}), kind: row.kind as string, artworkShape: row.artworkShape as HomeArtworkShape,
-      ...(row.libraryId === undefined ? {} : {libraryId: row.libraryId as string}),
-      required: row.required as boolean, hideable: row.hideable as boolean, reorderable: row.reorderable as boolean, hidden: row.hidden as boolean,
+      id: row.id as string, title: words(row.title, 1024), ...(titleText ? {titleText} : {}), kind: words(row.kind, 256), artworkShape: oneOfOr('home', 'layout.artworkShape', row.artworkShape, shapes, 'poster'),
+      ...(id(row.libraryId) ? {libraryId: row.libraryId} : {}),
+      required, hideable, reorderable: row.reorderable === true, hidden: row.hidden === true && hideable,
     });
-  });
-  if (new Set(rows.map(r => r.id)).size !== rows.length) invalid();
+  }), row => row.id);
   return Object.freeze({...layout, rows: Object.freeze(rows)});
 }
 
+/**
+ * Home. The server, the viewer fence, the layout, the revision and the bound on rows are exact.
+ * A row that cannot be read is left out alone, a repeated row keeps its first appearance, and a
+ * row the viewer hid or an empty row that is not critical is not shown.
+ */
 export function validateHomeDocument(value: unknown): HomeDocument {
   if (!object(value) || !id(value.serverId) || !id(value.viewerFence) || !Array.isArray(value.rows) || value.rows.length > 64) invalid();
-  if (!text(value.generatedAt, 128) || !value.generatedAt) invalid();
-  const rows = value.rows.map(row => validateHomeRow(row));
-  if (new Set(rows.map(row => row.id)).size !== rows.length) invalid();
   const layout = validateHomeLayout(value.layout);
-  // The server never publishes a row the viewer hid, nor an empty row that is not critical.
-  for (const [index, row] of rows.entries()) {
-    if (layout.hiddenRowIds.includes(row.id) || (row.entries.length === 0 && !(value.rows[index] as {entries: unknown[]}).entries.length && !row.critical)) invalid();
-  }
+  const readable = keepReadable('home', 'rows', value.rows, raw => {
+    const row = validateHomeRow(raw);
+    // An entry of a kind this app does not know leaves its row in place; a row the server sent empty is kept only when critical.
+    return {row, shown: !layout.hiddenRowIds.includes(row.id) && ((raw as {entries: unknown[]}).entries.length > 0 || row.critical)};
+  });
+  // A Home none of whose rows could be read is refused rather than shown as empty.
+  if (!readable.length && value.rows.length) invalid();
+  const rows = firstOfEach('home', 'rows', readable.filter(read => read.shown).map(read => read.row), row => row.id);
   let hero: HomeHeroRef | undefined;
-  if (value.hero !== undefined) {
-    if (!object(value.hero) || !id(value.hero.rowId) || !id(value.hero.entryId)) invalid();
-    // A hero whose entry this client cannot draw (a kind it does not know) is simply absent.
+  // A hero that cannot be read, or whose entry this client cannot draw (a kind it does not know), is simply absent.
+  if (object(value.hero) && id(value.hero.rowId) && id(value.hero.entryId)) {
     if (rows.find(row => row.id === (value.hero as HomeHeroRef).rowId)?.entries.some(entry => entry.id === (value.hero as HomeHeroRef).entryId)) hero = Object.freeze({rowId: value.hero.rowId, entryId: value.hero.entryId});
-  }
-  return Object.freeze({serverId: value.serverId, viewerFence: value.viewerFence, rows: Object.freeze(rows), ...(hero ? {hero} : {}), layout, revision: revision(value.revision), generatedAt: value.generatedAt});
+  } else if (value.hero !== undefined && value.hero !== null) noteSkipped('home', 'hero');
+  return Object.freeze({serverId: value.serverId, viewerFence: value.viewerFence, rows: Object.freeze(rows), ...(hero ? {hero} : {}), layout, revision: revision(value.revision), generatedAt: words(value.generatedAt, 128)});
 }
 
 function pageQuery(page: HomeRowPage): string {

@@ -13,8 +13,8 @@ function transport(respond:(path:string,method:string,body:unknown)=>unknown,cal
 test('the typed clients hit the spec routes with the operation id',async()=>{
  const calls:{path:string;method:string;body:unknown}[]=[];
  const api=transport((path,method)=>{
-  if(path==='/v1/admin/backups'&&method==='GET')return envelope({backups:[backup]});
-  if(path==='/v1/admin/backups/restore')return envelope({staged:true,restartRequired:true,validation:{schemaVersion:41,integrity:'ok'}});
+  if(path==='/v1/admin/backups'&&method==='GET')return envelope({backups:[backup],restore:{jobId:'job-1',phase:'staged',bytesDone:10,bytesTotal:10,result:{staged:true,restartRequired:true,validation:{schemaVersion:41,integrity:'ok'}}}});
+  if(path==='/v1/admin/backups/restore')return envelope({jobId:'job-1'});
   return envelope({});
  },calls);
  const doc=await getBackups(api,SERVER);
@@ -27,10 +27,10 @@ test('the typed clients hit the spec routes with the operation id',async()=>{
  assert.equal(staged.restartRequired,true);
  assert.deepEqual(calls[3].body,{operationId:'op-2',source:{backupId:'2026-09-24T013000Z'}});
  const byPath=await restoreBackup(api,SERVER,'op-3',{path:'/media/portico.db'});
- assert.deepEqual(calls[4].body,{operationId:'op-3',source:{path:'/media/portico.db'}});
+ assert.deepEqual(calls[5].body,{operationId:'op-3',source:{path:'/media/portico.db'}});
  assert.equal(byPath.validation.integrity,'ok');
  await fixStatePermissions(api,SERVER,'op-4');
- assert.deepEqual(calls[5],{path:STATE_PERMISSIONS_FIX_PATH,method:'POST',body:{operationId:'op-4'}});
+ assert.deepEqual(calls[7],{path:STATE_PERMISSIONS_FIX_PATH,method:'POST',body:{operationId:'op-4'}});
 });
 
 test('a response from another server is refused',async()=>{
@@ -80,4 +80,11 @@ test('the restart wait surfaces an ended sign-in instead of waiting it out',asyn
 
 test('the restart wait times out when the server never answers',async()=>{
  await assert.rejects(()=>waitForServerAnswer(()=>Promise.reject(Object.assign(new Error('down'),{code:'request_failed'})),{intervalMs:1,timeoutMs:5}),(e:unknown)=>(e as {code?:string}).code==='server_restart_timeout');
+});
+
+
+test('restore receipt survives missing the staged response during restart',async()=>{
+ const api=transport((path,method)=>method==='POST'?envelope({jobId:'job-1'}):envelope({backups:[],lastRestore:{jobId:'job-1',schemaVersion:41,at:'2026-10-13T12:00:00Z',outcome:'restored',reason:''}}));
+ const result=await restoreBackup(api,SERVER,'operation-1',{backupId:backup.id});
+ assert.equal(result.validation.integrity,'ok');
 });

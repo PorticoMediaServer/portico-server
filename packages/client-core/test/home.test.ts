@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {fetchHome, fetchHomeRow, resetHomeLayout, saveHomeLayout, validateHomeDocument, validateHomeLayout, validateHomeRow, type HomeApi} from '../src/home.ts';
 import {fetchItemRecommendations, fetchSuggestions, moreLikeThisRow, validateItemRecommendations, validateSuggestions} from '../src/recommendations.ts';
+import {resetSkippedParts, skippedParts} from '../src/tolerant.ts';
 
 function entry(id = 'm1', kind = 'movie') {
   return {id, kind, title: `Title ${id}`, libraryId: 'movies', available: true, navigation: {view: 'item', entityId: id}, playback: {itemId: id}};
@@ -42,22 +43,81 @@ test('an unknown card kind drops only that Home entry and retains the published 
   assert.equal(parsed.rows[0].nextCursor, 'opaque.signature');
 });
 
-test('malformed home payloads are refused rather than half-rendered', () => {
-  const cases: Record<string, unknown>[] = [
-    document({rows: [row({artworkShape: 'circle'})]}),
-    document({rows: [row({required: true, hideable: true})]}),
-    document({rows: [row({entries: [entry('m1'), entry('m1')]})]}),
-    document({rows: [row({total: 1})]}),
-    document({rows: [row(), row()]}),
-    document({rows: [row({revision: {catalog: -1, viewer: 0}})]}),
-    document({generatedAt: ''}),
-    document({layout: {revision: 2, rowOrder: ['a', 'a'], hiddenRowIds: []}}),
-    // The server never publishes a row the viewer hid, nor an empty non-critical row.
-    document({layout: {revision: 2, rowOrder: [], hiddenRowIds: ['recent_movies']}}),
-    document({rows: [row({entries: [], total: 0, critical: false, hasMore: false})]}),
+test('the identity, revisions and bounds of Home still refuse the whole document', () => {
+  const cases: unknown[] = [
+    'nope',
+    document({serverId: ''}),
+    document({viewerFence: 7}),
+    document({rows: 'nope'}),
+    document({rows: Array.from({length: 65}, (_, i) => row({id: `r${i}`}))}),
+    document({revision: {catalog: -1, viewer: 0}}),
+    document({layout: {revision: -1, rowOrder: [], hiddenRowIds: []}}),
+    document({layout: {revision: 2, rowOrder: Array.from({length: 65}, (_, i) => `r${i}`), hiddenRowIds: []}}),
+    document({generatedAt: 'x'.repeat(129)}),
   ];
   for (const payload of cases) assert.throws(() => validateHomeDocument(payload), {code:'invalid_home'});
-  assert.doesNotThrow(() => validateHomeDocument(document({rows: [row({entries: [], total: 0, critical: true, hasMore: false, id: 'continue', required: true, hideable: false})]})));
+  // One row read on its own is the whole document: its id, cursor, revision and entry bound stay exact.
+  for (const broken of [row({id: ''}), row({nextCursor: 'bad\ncursor'}), row({revision: {catalog: -1, viewer: 0}}), row({entries: Array.from({length: 201}, (_, i) => entry(`m${i}`))}), row({entries: 'nope'}), row({title: 'x'.repeat(1025)})]) {
+    assert.throws(() => validateHomeRow(broken), {code:'invalid_home'});
+  }
+});
+
+test('one Home row that cannot be read is left out and the others are kept', () => {
+  const good = row({id: 'favorites'});
+  resetSkippedParts();
+  for (const bad of ['nope', row({id: ''}), row({revision: {catalog: -1, viewer: 0}}), row({nextCursor: 7}), row({entries: Array.from({length: 201}, (_, i) => entry(`m${i}`))})]) {
+    assert.deepEqual(validateHomeDocument(document({rows: [bad, good]})).rows.map(r => r.id), ['favorites']);
+  }
+  assert.deepEqual(skippedParts(), [{document: 'home', part: 'rows', count: 5}]);
+  // A Home none of whose rows can be read is refused rather than shown as empty; an empty Home is not.
+  assert.throws(() => validateHomeDocument(document({rows: ['nope', row({id: ''})]})), {code: 'invalid_home'});
+  assert.equal(validateHomeDocument(document({rows: []})).rows.length, 0);
+  // A repeated row keeps its first appearance.
+  assert.deepEqual(validateHomeDocument(document({rows: [row({title: 'First'}), row({title: 'Second'})]})).rows.map(r => r.title), ['First']);
+  // A row the viewer hid, or one the server sent empty that is not critical, is not shown.
+  assert.deepEqual(validateHomeDocument(document({rows: [row(), good], layout: {revision: 2, rowOrder: [], hiddenRowIds: ['recent_movies']}})).rows.map(r => r.id), ['favorites']);
+  assert.deepEqual(validateHomeDocument(document({rows: [row({entries: [], total: 0, critical: false, hasMore: false}), good]})).rows.map(r => r.id), ['favorites']);
+  assert.deepEqual(validateHomeDocument(document({rows: [row({entries: [], total: 0, critical: true, hasMore: false, id: 'continue', required: true, hideable: false})]})).rows.map(r => r.id), ['continue']);
+  // The layout keeps the ids it can read, each once.
+  assert.deepEqual([...validateHomeLayout({revision: 2, rowOrder: ['a', 'a', 7, '', 'b'], hiddenRowIds: ['c', 'c']}).rowOrder], ['a', 'b']);
+  // A hero that cannot be read is absent; Home is still shown.
+  assert.equal(validateHomeDocument(document({hero: {rowId: 7}})).hero, undefined);
+  assert.deepEqual(validateHomeDocument(document({hero: {rowId: 'recent_movies', entryId: 'm2'}})).hero, {rowId: 'recent_movies', entryId: 'm2'});
+});
+
+test('a Home row reads neutrally where it is only drawn, and ignores fields this app does not know', () => {
+  const parsed = validateHomeRow(row({
+    artworkShape: 'circle', required: true, hideable: true, critical: 'yes', priority: 'high', cacheTtlSeconds: undefined, limit: -1,
+    entries: [entry('m1'), entry('m1'), {id: 'broken'}, entry('m2')], total: 1, titleText: {code: 1}, relation: 7, futureField: {anything: true},
+  }));
+  assert.equal(parsed.artworkShape, 'poster');
+  assert.equal(parsed.required, true);
+  assert.equal(parsed.hideable, false, 'a required row is never hideable');
+  assert.equal(parsed.critical, false);
+  assert.equal(parsed.priority, 0);
+  assert.equal(parsed.limit, 0);
+  assert.equal(parsed.cacheTtlSeconds, undefined);
+  assert.deepEqual(parsed.entries.map(e => e.id), ['m1', 'm2']);
+  assert.equal(parsed.total, 2, 'the total is at least the entries kept');
+  assert.equal(parsed.titleText, undefined);
+  assert.equal(parsed.relation, undefined);
+  assert.equal('futureField' in parsed, false);
+  assert.equal(validateHomeRow(row()).cacheTtlSeconds, 120);
+  // A server that stops sending the presentation fields still has its row shown.
+  const bare = validateHomeRow({id: 'bare', entries: [entry('m1')], revision: {catalog: 1, viewer: 1}});
+  assert.deepEqual([bare.title, bare.kind, bare.artworkShape, bare.nextCursor, bare.total, bare.hasMore], ['', '', 'poster', '', 1, false]);
+});
+
+test('a Home row may name where its See all leads; a destination that cannot be read is left out alone', () => {
+  const seeAll = {pivot: 'movies', query: {field: 'genre', operator: 'equals', value: 'Drama'}, sort: [{field: 'added', direction: 'desc'}]};
+  assert.deepEqual(validateHomeRow(row({seeAll})).seeAll, seeAll);
+  assert.deepEqual(validateHomeRow(row({seeAll: {pivot: 'movies', sort: [{field: 'title', direction: 'asc'}]}})).seeAll, {pivot: 'movies', sort: [{field: 'title', direction: 'asc'}]});
+  assert.equal(validateHomeRow(row()).seeAll, undefined);
+  for (const broken of [{pivot: '', sort: seeAll.sort}, {pivot: 'movies', sort: []}, {pivot: 'movies', sort: [{field: 'title', direction: 'sideways'}]}, {...seeAll, query: {field: 'genre', operator: 'resembles', value: 'Drama'}}, 'movies']) {
+    const parsed = validateHomeRow(row({seeAll: broken}));
+    assert.equal(parsed.seeAll, undefined);
+    assert.equal(parsed.entries.length, 2);
+  }
 });
 
 test('row paging asks for a cursor or an anchored range, never both', async () => {
@@ -92,7 +152,13 @@ test('suggestions carry a reason, a source and a bounded score', () => {
   const payload = {items: [{entry: entry('m4'), reason: 'Because you watched Movie m1', source: 'because_you_watched', score: 0.75}], total: 1, revision: {catalog: 3, viewer: 1}, generatedAt: '2026-09-16T12:00:00.000Z'};
   const parsed = validateSuggestions(payload);
   assert.equal(parsed.items[0].source, 'because_you_watched');
-  for (const broken of [{...payload, items: [{...payload.items[0], reason: ''}]}, {...payload, items: [{...payload.items[0], score: 0}]}, {...payload, items: [{...payload.items[0], score: 2}]}, {...payload, total: 2}]) {
+  // What a suggestion is only drawn with reads neutrally; one that cannot be read is left out alone.
+  const loose = validateSuggestions({...payload, total: 0, generatedAt: undefined, items: [{entry: entry('m4'), score: 2}, {entry: entry('m4'), reason: 'Again', source: 's', score: 0.5}, {entry: {id: 'broken'}, reason: 'r', source: 's', score: 0.5}, {entry: entry('m5'), reason: 'r', source: 's', score: 0.5, future: 1}]});
+  assert.deepEqual(loose.items.map(item => [item.entry.id, item.reason, item.source, item.score]), [['m4', '', '', 0], ['m5', 'r', 's', 0.5]]);
+  assert.equal(loose.total, 2);
+  assert.equal(loose.generatedAt, '');
+  // The bound and the revision stay exact.
+  for (const broken of [{...payload, items: Array.from({length: 101}, (_, i) => ({...payload.items[0], entry: entry(`m${i}`)}))}, {...payload, items: 'nope'}, {...payload, revision: {catalog: -1, viewer: 1}}]) {
     assert.throws(() => validateSuggestions(broken), {code:'invalid_recommendations'});
   }
 });
@@ -101,9 +167,15 @@ test('per-item recommendation rows must be explained and must exclude their own 
   const related = row({id: 'genre:tmdb:16', title: 'More Animation', kind: 'related', relation: 'genre', provider: 'tmdb', evidenceId: '16', entries: [entry('m2')], total: 1, limit: 1, hasMore: false, nextCursor: '', cursorCapable: false, reorderable: false, priority: 0, cacheTtlSeconds: 300, endpoint: '/v1/items/m1/recommendations'});
   const parsed = validateItemRecommendations({itemId: 'm1', rows: [related], revision: {catalog: 3, viewer: 1}}, 'm1');
   assert.equal(parsed.rows[0].relation, 'genre');
-  assert.throws(() => validateItemRecommendations({itemId: 'm1', rows: [{...related, relation: undefined}], revision: {catalog: 3, viewer: 1}}, 'm1'), {code:'invalid_recommendations'});
-  assert.throws(() => validateItemRecommendations({itemId: 'm1', rows: [{...related, entries: [entry('m1')], total: 1}], revision: {catalog: 3, viewer: 1}}, 'm1'), {code:'invalid_recommendations'});
+  // The title itself is never one of its own recommendations: that entry is left out, and a row with nothing left is not shown.
+  const others = validateItemRecommendations({itemId: 'm1', rows: [{...related, id: 'only-self', entries: [entry('m1')], total: 1}, {...related, id: 'mixed', entries: [entry('m1'), entry('m3')]}, {...related, id: ''}, related, related], revision: {catalog: 3, viewer: 1}}, 'm1');
+  assert.deepEqual(others.rows.map(r => [r.id, r.entries.map(e => e.id)]), [['mixed', ['m3']], ['genre:tmdb:16', ['m2']]]);
+  // A row without a relation is still shown under its own title.
+  assert.equal(validateItemRecommendations({itemId: 'm1', rows: [{...related, relation: undefined}], revision: {catalog: 3, viewer: 1}}, 'm1').rows.length, 1);
+  // The title asked for, the revision and the bound of 12 rows stay exact.
   assert.throws(() => validateItemRecommendations({itemId: 'm1', rows: [related], revision: {catalog: 3, viewer: 1}}, 'other'), {code:'invalid_recommendations'});
+  assert.throws(() => validateItemRecommendations({itemId: 'm1', rows: [related], revision: {catalog: 3}}, 'm1'), {code:'invalid_recommendations'});
+  assert.throws(() => validateItemRecommendations({itemId: 'm1', rows: Array.from({length: 13}, (_, i) => ({...related, id: `r${i}`})), revision: {catalog: 3, viewer: 1}}, 'm1'), {code:'invalid_recommendations'});
   const paths: string[] = [];
   const client = api(path => {
     paths.push(path);
@@ -140,7 +212,7 @@ test('PERF-S14: a row paged sideways keeps at most HOME_ROW_MAX_ENTRIES and then
 
 test('CD-31/CD-32: Home stays bounded at 64 rows and 64 layout IDs including DVR rows', () => {
   const makeRows = (n: number) => Array.from({length: n}, (_, i) => row({id: `recent_lib${i}`}));
-  // 64 populated rows validate; the 65th fails closed rather than half-rendering.
+  // 64 populated rows validate; a 65th refuses the whole document rather than half-rendering.
   assert.doesNotThrow(() => validateHomeDocument(document({rows: makeRows(64), layout: {revision: 2, rowOrder: makeRows(64).map(r => r.id), hiddenRowIds: []}})));
   assert.throws(() => validateHomeDocument(document({rows: makeRows(65)})), {code: 'invalid_home'});
   // Saving 41–64 row layouts succeeds, including a DVR row (recent_<64hex>).
@@ -152,8 +224,8 @@ test('CD-31/CD-32: Home stays bounded at 64 rows and 64 layout IDs including DVR
   assert.equal(order64.length, 64);
   assert.doesNotThrow(() => validateHomeLayout({revision: 3, rowOrder: order64, hiddenRowIds: []}));
   assert.throws(() => validateHomeLayout({revision: 3, rowOrder: [...order64, 'extra'], hiddenRowIds: []}), {code: 'invalid_home'});
-  // Required rows stay protected: a required row cannot be hideable.
-  assert.throws(() => validateHomeDocument(document({rows: [row({id: 'continue', required: true, hideable: true})]})), {code: 'invalid_home'});
+  // Required rows stay protected: a required row is never hideable.
+  assert.equal(validateHomeDocument(document({rows: [row({id: 'continue', required: true, hideable: true})]})).rows[0].hideable, false);
 });
 
 test('a movie\'s More like this row is the similar-titles row under the catalogue heading, else the first row', () => {

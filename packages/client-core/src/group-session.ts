@@ -104,7 +104,9 @@ export class GroupSessionService{
  }
  /** `timing`: when the request that brought this snapshot was sent and answered (absent for pushed frames). */
  private adopt(snapshot:{serverTime:string;group:Group},timing?:{sent:number;received:number}){
-  const at=Date.parse(snapshot.serverTime);
+  const current=this.state.group,incoming=snapshot.group;
+ if(current?.id===incoming.id&&(BigInt(incoming.revision)<BigInt(current.revision)||BigInt(incoming.playbackRevision)<BigInt(current.playbackRevision)||BigInt(incoming.eventOrdinal)<BigInt(current.eventOrdinal)))return;
+ const at=Date.parse(snapshot.serverTime);
   const ended=snapshot.group.state==='ended'||snapshot.group.state==='failed';
   // Made host by someone else: the group follows no device until this one's heartbeat binds it.
   const promoted=!!this.state.group&&this.state.group.id===snapshot.group.id&&!this.state.group.permissions.isHost&&snapshot.group.permissions.isHost;
@@ -166,7 +168,7 @@ export class GroupSessionService{
    alive();
    await readEventStream(response,event=>{
     if(this.room!==room)return;alive();attempt=0;
-    if(event.id)room.lastEventId=event.id;
+    if(event.id&&/^(0|[1-9][0-9]{0,18})$/.test(event.id)&&(!room.lastEventId||BigInt(event.id)>BigInt(room.lastEventId)))room.lastEventId=event.id;
     if(this.state.phase==='reconnecting'||this.state.phase==='joining')this.publish({phase:'live',error:undefined});
     this.receive(room,event.event,event.data);
    },turn.signal);
@@ -188,7 +190,13 @@ export class GroupSessionService{
    if(kind==='group.ended'){void this.reread(room).finally(()=>{if(this.room===room){this.publish({phase:'ended'});this.close('ended');}});return;}
    // The clock is applied the moment it arrives; everything else in the room is re-read, because
    // members and the queue are projected per viewer and cannot ride in a shared event.
-   if(kind==='group.transport'&&this.state.group){const timeline=timelineOf(body,this.state.group.timeline);if(timeline){const was=this.state.group.state,state=(was==='playing'||was==='paused'||was==='ready')&&(timeline.state==='playing'||timeline.state==='paused')?timeline.state:was;this.publish({group:Object.freeze({...this.state.group,timeline,state})});}}
+   if(kind==='group.readiness'&&this.state.group){
+ const v=body as {memberId?:string;readiness?:GroupReadiness;positionUs?:string;reportedAt?:string|null;private?:boolean;displayName?:string;aggregate?:Group['readiness']};
+ if(v.memberId&&v.readiness&&v.positionUs&&v.aggregate)this.publish({group:Object.freeze({...this.state.group,readiness:v.aggregate,members:this.state.group.members.map(m=>m.id===v.memberId?Object.freeze({...m,readiness:v.readiness!,private:v.private??m.private,displayName:v.displayName??m.displayName,positionUs:(v.private??m.private)?'0':v.positionUs!,reportedAt:(v.private??m.private)?null:v.reportedAt??m.reportedAt,presence:'connected' as const}):m)})});
+ return;
+ }
+ if(kind==='group.transport'&&this.state.group){const timeline=timelineOf(body,this.state.group.timeline);if(timeline){const v=body as {groupState?:Group['state'];revision?:string;playbackRevision?:string};
+ if(v.playbackRevision&&BigInt(v.playbackRevision)>=BigInt(this.state.group.playbackRevision)){const state=v.groupState??(timeline.waitUntil?'waiting':timeline.state==='playing'?'playing':'paused');this.publish({group:Object.freeze({...this.state.group,timeline,state,revision:v.revision??this.state.group.revision,playbackRevision:v.playbackRevision})});}}}
    if(kind==='group.queue')void this.readQueue(room);
    void this.reread(room);
   }catch{/* a frame this client cannot read is skipped; the next re-read corrects the room */}
@@ -225,14 +233,14 @@ export class GroupSessionService{
   }finally{this.publish({busy:false});}
  }
  async transport(command:GroupTransportCommand,input:{positionUs?:string;entryId?:string;queuePosition?:number;allowUnavailable?:boolean}={}):Promise<boolean>{
-  const receipt=await this.act(async group=>parseGroupTransportReceipt(await this.api.request<unknown>(path(group.id,'/transport'),'POST',{protocolVersion:SOCIAL_PROTOCOL,idempotencyKey:this.key(),expectedRevision:group.revision,command,...(input.positionUs!==undefined?{positionUs:input.positionUs}:{}),...(input.entryId?{entryId:input.entryId}:{}),...(input.queuePosition!==undefined?{queuePosition:input.queuePosition}:{}),...(input.allowUnavailable?{allowUnavailable:true}:{})})),'together.error.notReached');
-  if(receipt&&this.state.group)this.publish({group:Object.freeze({...this.state.group,timeline:receipt.timeline,revision:receipt.revision})});
+  const receipt=await this.act(async group=>parseGroupTransportReceipt(await this.api.request<unknown>(path(group.id,'/transport'),'POST',{protocolVersion:SOCIAL_PROTOCOL,idempotencyKey:this.key(),expectedRevision:group.playbackRevision,command,...(input.positionUs!==undefined?{positionUs:input.positionUs}:{}),...(input.entryId?{entryId:input.entryId}:{}),...(input.queuePosition!==undefined?{queuePosition:input.queuePosition}:{}),...(input.allowUnavailable?{allowUnavailable:true}:{})})),'together.error.notReached');
+  if(receipt&&this.state.group)this.publish({group:Object.freeze({...this.state.group,timeline:receipt.timeline,state:receipt.groupState,revision:receipt.revision,playbackRevision:receipt.playbackRevision})});
   else if(!receipt&&this.lastCode==='media_no_longer_accessible'&&!input.allowUnavailable)this.publish({...this.problem('together.error.memberCantSee'),refused:Object.freeze({command,input:Object.freeze({positionUs:input.positionUs,entryId:input.entryId,queuePosition:input.queuePosition})})});
   if(receipt&&this.room)void this.reread(this.room);
   return !!receipt;
  }
  async settings(input:{shuffleEnabled?:boolean;repeatMode?:GroupRepeatMode}):Promise<boolean>{
-  const done=await this.act(async group=>{await this.api.request<unknown>(path(group.id,'/settings'),'POST',{protocolVersion:SOCIAL_PROTOCOL,idempotencyKey:this.key(),expectedRevision:group.revision,...input});return true;},'together.error.setting');
+  const done=await this.act(async group=>{await this.api.request<unknown>(path(group.id,'/settings'),'POST',{protocolVersion:SOCIAL_PROTOCOL,idempotencyKey:this.key(),expectedRevision:group.settingsRevision,...input});return true;},'together.error.setting');
   if(done&&this.room)void this.reread(this.room);return !!done;
  }
  async queueAdd(itemIds:readonly string[],replace=false):Promise<boolean>{return this.queueChange({operation:replace?'replace':'append',itemIds},'together.error.queueAdd');}
@@ -258,9 +266,9 @@ export class GroupSessionService{
   return entry?this.transport('load',{entryId:entry.entryId}):false;
  }
  /** This member's own state: evidence for the group, never a command. Failures are silent. */
- async readiness(readiness:GroupReadiness,positionUs:string):Promise<void>{
+ async readiness(readiness:GroupReadiness,positionUs:string,ended=false):Promise<void>{
   const room=this.room;if(!room)return;
-  try{await this.api.request<unknown>(path(room.id,'/readiness'),'POST',{protocolVersion:SOCIAL_PROTOCOL,readiness,positionUs},room.abort.signal);}catch{}
+  try{await this.api.request<unknown>(path(room.id,'/readiness'),'POST',{protocolVersion:SOCIAL_PROTOCOL,readiness,positionUs,playbackRevision:this.state.group?.playbackRevision,ended},room.abort.signal);}catch{}
  }
  async invite(input:{expiresInSeconds?:number;maxUses?:number}={}):Promise<boolean>{
   const invite=await this.act(async group=>parseGroupInvite(await this.api.request<unknown>(path(group.id,'/invites'),'POST',{protocolVersion:SOCIAL_PROTOCOL,expiresInSeconds:input.expiresInSeconds??900,maxUses:input.maxUses??8})),'together.error.invite');
@@ -270,7 +278,7 @@ export class GroupSessionService{
  async makeHost(memberId:string):Promise<boolean>{
   const mine=this.state.group?.viewerMemberId===memberId;
   const done=await this.act(async group=>{
-   const body={protocolVersion:SOCIAL_PROTOCOL,memberId,expectedRevision:group.revision};
+   const body={protocolVersion:SOCIAL_PROTOCOL,memberId,expectedRevision:group.governanceRevision};
    // Claiming binds this device at once; handing over leaves the incoming host's heartbeat to bind its own.
    const sent=this.now();
    this.adopt(parseGroupSnapshot(await this.api.request<unknown>(path(group.id,'/host-transfer'),'POST',body)),{sent,received:this.now()});
@@ -285,7 +293,7 @@ export class GroupSessionService{
   void this.refreshDirectory();
  }
  async end():Promise<boolean>{
-  const done=await this.act(async group=>{await this.api.request<unknown>(path(group.id,'/end'),'POST',{protocolVersion:SOCIAL_PROTOCOL,expectedRevision:group.revision});return true;},'together.error.end');
+  const done=await this.act(async group=>{await this.api.request<unknown>(path(group.id,'/end'),'POST',{protocolVersion:SOCIAL_PROTOCOL,expectedRevision:group.governanceRevision});return true;},'together.error.end');
   if(done){this.publish({phase:'ended'});this.close('ended');void this.refreshDirectory();}
   return !!done;
  }
@@ -301,7 +309,7 @@ function timelineOf(body:unknown,previous:GroupTimeline):GroupTimeline|undefined
  if(typeof v.anchorPositionUs!=='string'||!/^(0|[1-9][0-9]{0,18})$/.test(v.anchorPositionUs)||typeof v.anchorAt!=='string'||!['idle','playing','paused','stopped'].includes(v.state as string))return undefined;
  const valid=(x:unknown)=>typeof x==='string'&&/^[1-9][0-9]{0,18}$/.test(x);
  return Object.freeze({itemId:typeof v.itemId==='string'?v.itemId:previous.itemId,currentEntryId:typeof v.currentEntryId==='string'?v.currentEntryId:previous.currentEntryId,state:v.state as GroupTimeline['state'],anchorPositionUs:v.anchorPositionUs,anchorAt:v.anchorAt,
-  rate:rate&&valid(rate.numerator)&&valid(rate.denominator)?Object.freeze({numerator:rate.numerator as string,denominator:rate.denominator as string}):previous.rate,queuePosition:Number.isSafeInteger(v.queuePosition)?v.queuePosition as number:previous.queuePosition});
+  rate:rate&&valid(rate.numerator)&&valid(rate.denominator)?Object.freeze({numerator:rate.numerator as string,denominator:rate.denominator as string}):previous.rate,waitUntil:typeof v.waitUntil==='string'?v.waitUntil:null,queuePosition:Number.isSafeInteger(v.queuePosition)?v.queuePosition as number:previous.queuePosition});
 }
 
 /** What a follower needs from whichever player the app has. Positions are seconds. */
@@ -344,6 +352,7 @@ export class GroupFollower{
  private own?:{at:number;clock:string;aim:number};
  /** Seconds this player's seeks have been landing behind a moving group. */
  private lead=0;
+ private epoch='';private endReported='';
  private service:GroupSessionService;private player:GroupPlayer;private now:()=>number;
  constructor(service:GroupSessionService,player:GroupPlayer,now:()=>number=()=>Date.now()){this.service=service;this.player=player;this.now=now;}
  start(){if(this.timer)return;this.timer=setInterval(()=>this.tick(),1000);this.unsubscribe=this.service.subscribe(()=>this.tick());this.tick();}
@@ -351,12 +360,16 @@ export class GroupFollower{
  /** Where the group is now, in seconds, or undefined when nothing is loaded. */
  target():number|undefined{
   const group=this.service.getSnapshot().group;if(!group||!group.timeline.itemId)return undefined;
-  return Number(groupTargetPositionUs(group.timeline,Date.parse(group.timeline.anchorAt),this.service.serverNow())/1000n)/1000;
+  const target=Number(groupTargetPositionUs(group.timeline,Date.parse(group.timeline.anchorAt),this.service.serverNow())/1000n)/1000;
+ const local=this.player.state(),length=local.itemId===group.timeline.itemId?local.durationSeconds:undefined;
+ return length!==undefined&&Number.isFinite(length)&&length>0?Math.min(target,length):target;
  }
  private tick(){
   const snapshot=this.service.getSnapshot(),group=snapshot.group;
   if(!group||(snapshot.phase!=='live'&&snapshot.phase!=='reconnecting'))return;
   const timeline=group.timeline,target=this.target();
+ if(this.epoch!==group.playbackRevision){if(this.correctingUntil){this.correctingUntil=0;this.player.setRate(1);}this.epoch=group.playbackRevision;this.lastReadiness='';}
+ if(!timeline.itemId&&timeline.currentEntryId){this.player.pause();this.report('buffering',0);return;}
   if(target===undefined||timeline.state==='idle'||timeline.state==='stopped'){if(timeline.state==='stopped'&&this.player.state().playing)this.player.pause();return;}
   const local=this.player.state(),wantPlaying=timeline.state==='playing';
   if(local.itemId!==timeline.itemId){
@@ -366,7 +379,13 @@ export class GroupFollower{
    this.report('buffering',local.positionSeconds);return;
   }
   this.loadedFor=timeline.itemId+'/'+timeline.currentEntryId;
-  if(!local.ready){this.report('buffering',local.positionSeconds);return;}
+  const length=local.durationSeconds;
+ if(length!==undefined&&Number.isFinite(length)&&length>0&&local.positionSeconds>=length-0.25&&!local.playing&&target>=length-0.25){
+ this.player.setRate(1);this.report('ready',length);
+ if(group.permissions.isHost&&timeline.state==='playing'&&this.endReported!==group.playbackRevision){this.endReported=group.playbackRevision;void this.service.readiness('ready',String(Math.round(length*1e6)),true);}
+ return;
+ }
+ if(!local.ready){this.report('buffering',local.positionSeconds);return;}
   if(wantPlaying&&!local.playing&&!local.buffering)this.player.play();
   if(!wantPlaying&&local.playing)this.player.pause();
   const driftUs=BigInt(Math.round((target-local.positionSeconds)*1e6)),targetUs=BigInt(Math.round(target*1e6));

@@ -22,9 +22,10 @@ func PurgeItemTx(ctx context.Context, tx *sql.Tx, item string) error {
 	return purgeEntityTx(ctx, tx, id)
 }
 
-// purgeEntityTx releases item-owned rows first, then asset-only evidence only
-// when no surviving item owns the asset. Restrictive references are explicit; a
-// future schema edge fails the transaction while bytes are still recoverable.
+// purgeEntityTx releases item-owned rows first, then the catalogue rows of
+// files no surviving title uses (forgetAssetTx). It never touches a file on
+// disk, and it does not keep anyone's state: callers that remove a title for
+// good go through RemoveTitleTx, which keeps the state first.
 func purgeEntityTx(ctx context.Context, tx *sql.Tx, item int64) error {
 	type file struct {
 		id    int64
@@ -60,25 +61,15 @@ func purgeEntityTx(ctx context.Context, tx *sql.Tx, item int64) error {
 		return err
 	}
 	for _, f := range files {
-		var shared bool
-		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?1) OR EXISTS(SELECT 1 FROM item_extras WHERE asset_id=?2) OR EXISTS(SELECT 1 FROM playback_sessions WHERE asset_id=?2) OR EXISTS(SELECT 1 FROM lyric_resources WHERE asset_id=?2) OR EXISTS(SELECT 1 FROM lyric_candidates WHERE asset_id=?2) OR EXISTS(SELECT 1 FROM subtitle_resources WHERE source_id=?2) OR EXISTS(SELECT 1 FROM dvr_catalog_provenance WHERE asset_id=?2)`, f.id, f.token).Scan(&shared); err != nil {
+		// A file another title still uses stays that title's file.
+		var linked bool
+		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_asset_links INDEXED BY catalog_asset_links_asset WHERE asset_id=?)`, f.id).Scan(&linked); err != nil {
 			return err
 		}
-		if shared {
+		if linked {
 			continue
 		}
-		for _, query := range []string{
-			`DELETE FROM inventory_analysis_queue WHERE object_id IN(SELECT id FROM inventory_objects WHERE asset_id=?)`,
-			`DELETE FROM inventory_objects WHERE asset_id=?`,
-			`DELETE FROM audio_tag_evidence WHERE asset_id=?`,
-			`DELETE FROM audio_source_metadata WHERE asset_id=?`,
-			`DELETE FROM episodic_sources WHERE asset_id=?`,
-		} {
-			if _, err = tx.ExecContext(ctx, query, f.token); err != nil {
-				return err
-			}
-		}
-		if err = compactcatalog.DeleteAssetTx(ctx, tx, f.id); err != nil {
+		if err = forgetAssetTx(ctx, tx, f.id, f.token); err != nil {
 			return err
 		}
 	}

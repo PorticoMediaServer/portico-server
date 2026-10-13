@@ -3,6 +3,7 @@ package lyrics
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
@@ -71,7 +72,7 @@ func TestBulkLyricFetchEnqueuesOnlyWithAnEnabledProvider(t *testing.T) {
 		t.Fatal("re-admission changed the run", again, e)
 	}
 	// A library whose songs already have library lyrics admits zero candidates.
-	if _, e = db.Exec(`INSERT INTO lyric_resources(id,item_id,asset_id,source_version,scope,authority,account_id,profile_id,revision) VALUES('r',?,?,'v','library','local','','',1),('r2',?,?,'v','library','local','','',1)`, names["song-a"].ID, names["song-a"].Token, names["song-b"].ID, names["song-b"].Token); e != nil {
+	if _, e = db.Exec(`INSERT INTO lyric_resources(id,item_id,asset_id,source_version,scope,authority,account_id,profile_id,revision,source_duration,source_end) VALUES('r',?,?,'v','library','local','','',1,5400,5400),('r2',?,?,'v','library','local','','',1,5400,5400)`, names["song-a"].ID, names["song-a"].Token, names["song-b"].ID, names["song-b"].Token); e != nil {
 		t.Fatal(e)
 	}
 	if _, e = queue("job-2", "library"); e != nil {
@@ -88,7 +89,7 @@ func TestBulkLyricFetchPublishesMissingAndSkipsPresent(t *testing.T) {
 	db := c.DB
 	ctx := context.Background()
 	// song-b already has a library lyric and must never reach the provider.
-	if _, e := db.Exec(`INSERT INTO lyric_resources(id,item_id,asset_id,source_version,scope,authority,account_id,profile_id,revision) VALUES('present',?,?,'v','library','local','','',1)`, names["song-b"].ID, names["song-b"].Token); e != nil {
+	if _, e := db.Exec(`INSERT INTO lyric_resources(id,item_id,asset_id,source_version,scope,authority,account_id,profile_id,revision,source_duration,source_end) VALUES('present',?,?,'v','library','local','','',1,5400,5400)`, names["song-b"].ID, names["song-b"].Token); e != nil {
 		t.Fatal(e)
 	}
 	if _, e := db.Exec(`INSERT INTO lyric_revisions(resource_id,revision,document,digest,language,offset_ms,provenance,actor,created_at,deleted) VALUES('present',1,'{}','d','en',0,'{}','actor','now',0)`); e != nil {
@@ -101,7 +102,7 @@ func TestBulkLyricFetchPublishesMissingAndSkipsPresent(t *testing.T) {
 	}
 	bulk.provider = func(_ context.Context, query string) ([]acquired, error) {
 		asked = append(asked, query)
-		return []acquired{{doc: document, language: "en", provenance: Provenance{Origin: "lrclib", ProviderID: "7", Label: "Alpha", Rights: "LRCLIB record."}}}, nil
+		return []acquired{{doc: document, language: "en", title: strings.Fields(query)[0], artist: "Fixture Artist", duration: 5400, provenance: Provenance{Origin: "lrclib", ProviderID: "7", Label: "Alpha", Rights: "LRCLIB record."}}}, nil
 	}
 	tx, e := db.Begin()
 	if e != nil {

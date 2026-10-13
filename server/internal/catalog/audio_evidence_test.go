@@ -29,3 +29,10 @@ func TestLocalBookArtistFallbackAndIndependentEditionMetadata(t *testing.T) {
 		t.Fatal(v)
 	}
 }
+
+func TestStructuredGenreNamesKeepPunctuation(t *testing.T) {
+	got := normalizeAudioGenres(`["Singer/Songwriter","Rock","Rock"]`)
+	if len(got) != 2 || got[0] != "Singer/Songwriter" {
+		t.Fatal(got)
+	}
+}

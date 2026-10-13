@@ -1,12 +1,12 @@
 import {useSession} from '../../app/session';
-import {currentI18n} from '../../app/i18n';
 import {StatusScreen} from '../../ui';
 import {AuthFrame} from './AuthFrame';
+import {useI18n} from '../../app/i18n';
 
 /** Opening and reconnecting share one calm status; the wordmark stays above it. */
 export function RestoreScreen() {
+  const {t} = useI18n();
   const session = useSession();
-  const t = currentI18n().t;
   const reconnecting = !!session.restoreMessage;
   return (
     <AuthFrame legal={false}>

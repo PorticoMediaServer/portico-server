@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import {ChannelGuideService,parseChannelGuide,topChannelGroups,stripDays,dayPrimeTime,type ChannelApi,type GuideRoute} from '../src/channel-guide.ts';
 const route:GuideRoute={kind:'live-source',start:'2026-09-05T12:00:00Z',end:'2026-09-05T15:00:00Z',timezone:'UTC',search:'',sourceId:''};
 const fixture=()=>({protocolVersion:'1.0',serverId:'server',guide:{state:'ready',viewerFence:'viewer',start:route.start,end:route.end,timezone:route.timezone,nextCursor:'',observedAt:'2026-09-05T12:00:00Z',sources:[{id:'source',name:'Live source',generation:'generation',publishedAt:'2026-09-05T11:00:00Z',refreshState:'manual',availableStart:'2026-09-05T12:00:00Z',availableEnd:'2026-09-05T13:00:00Z',provenance:'live-source'}],channels:[{id:'channel',sourceId:'source',provenance:'live-source',name:'Channel one',number:'1',group:'Local',generation:'generation',tuneAvailable:false,recordAvailable:false,tuneUnavailableReason:'delivery-unavailable',recordUnavailableReason:'recording-unavailable',favorite:false,hidden:false,preferenceRevision:0,programmes:[{id:'occurrence',channelId:'channel',title:'Programme',start:'2026-09-05T12:00:00Z',end:'2026-09-05T13:00:00Z',lineage:'provider-id'}]}]}});
-test('guide validates source/generation/interval and strips unknown fields',()=>{const value=fixture();Object.assign(value.guide,{providerURL:'secret'});const guide=parseChannelGuide(value,'server',route);assert.equal(guide.channels[0].programmes[0].title,'Programme');assert.ok(!JSON.stringify(guide).includes('secret'));assert.throws(()=>parseChannelGuide(value,'other-server',route));value.guide.channels[0].generation='old';assert.throws(()=>parseChannelGuide(value,'server',route));value.guide.channels[0].generation='generation';value.guide.channels[0].programmes[0].end=route.start;assert.throws(()=>parseChannelGuide(value,'server',route));});
+test('guide validates source/generation/interval and strips unknown fields',()=>{const value=fixture();Object.assign(value.guide,{providerURL:'secret'});const guide=parseChannelGuide(value,'server',route);assert.equal(guide.channels[0].programmes[0].title,'Programme');assert.ok(!JSON.stringify(guide).includes('secret'));assert.throws(()=>parseChannelGuide(value,'other-server',route));
+ // A channel from another generation of its source is left out alone; so is a programme that is not a real interval.
+ value.guide.channels[0].generation='old';assert.deepEqual(parseChannelGuide(value,'server',route).channels,[]);value.guide.channels[0].generation='generation';value.guide.channels[0].programmes[0].end=route.start;assert.deepEqual(parseChannelGuide(value,'server',route).channels[0].programmes,[]);});
 test('guide programme facts: full programme parses, minimal programme has no facts, malformed facts are dropped',()=>{
  const full=fixture();
  Object.assign(full.guide,{days:8});
@@ -85,20 +87,36 @@ test('Library Channel millisecond intervals decode without advertising DVR',()=>
  v.guide.channels[0].programmes[0].end='2026-09-05T13:00:00.875Z';
  const got=parseChannelGuide(v,'server',libraryRoute);assert.equal(got.channels[0].programmes[0].start,'2026-09-05T12:00:00.125Z');
  assert.equal(got.channels[0].recordAvailable,false);
+ // A library channel is never recordable, whatever the document says.
  v.guide.channels[0].recordAvailable=true;v.guide.channels[0].recordUnavailableReason='';
- assert.throws(()=>parseChannelGuide(v,'server',libraryRoute));
+ const again=parseChannelGuide(v,'server',libraryRoute).channels[0];assert.equal(again.recordAvailable,false);assert.equal(again.recordUnavailableReason,'delivery-unavailable');
 });
-test('capability booleans and reasons cannot contradict each other',()=>{
- for(const override of [{tuneAvailable:'true'},{tuneAvailable:true},{recordAvailable:true},{tuneUnavailableReason:'unknown-policy'},{recordUnavailableReason:''}]){
-  const v=fixture();Object.assign(v.guide.channels[0],override);assert.throws(()=>parseChannelGuide(v,'server',route));
+test('a channel is available only when the server says so outright and gives no reason against',()=>{
+ for(const override of [{tuneAvailable:'true'},{tuneAvailable:true},{recordAvailable:true},{tuneUnavailableReason:'unknown-policy'},{recordUnavailableReason:''},{recordUnavailableReason:'a-reason-from-a-newer-server'}]){
+  const v=fixture();Object.assign(v.guide.channels[0],override);const channel=parseChannelGuide(v,'server',route).channels[0];
+  assert.equal(channel.tuneAvailable,false,JSON.stringify(override));assert.equal(channel.recordAvailable,false,JSON.stringify(override));
+  assert.notEqual(channel.tuneUnavailableReason,'');assert.notEqual(channel.recordUnavailableReason,'');
  }
+ const unknown=fixture();unknown.guide.channels[0].tuneUnavailableReason='unknown-policy';assert.equal(parseChannelGuide(unknown,'server',route).channels[0].tuneUnavailableReason,'delivery-unavailable','a reason this app does not know reads as plainly unavailable');
  const v=fixture();v.guide.channels[0].tuneAvailable=true;v.guide.channels[0].tuneUnavailableReason='';
  assert.equal(parseChannelGuide(v,'server',route).channels[0].tuneAvailable,true);
 });
 test('invalid calendar dates, protocol versions and foreign source membership fail closed',()=>{
  const v=fixture();v.protocolVersion='2.0';assert.throws(()=>parseChannelGuide(v,'server',route));
- v.protocolVersion='1.0';v.guide.channels[0].sourceId='not-returned';assert.throws(()=>parseChannelGuide(v,'server',route));
- v.guide.channels[0].sourceId='source';v.guide.channels[0].programmes[0].start='2026-02-30T12:00:00Z';assert.throws(()=>parseChannelGuide(v,'server',route));
+ // A channel of a source the answer does not carry is left out; a programme on a day that does not exist is left out.
+ v.protocolVersion='1.0';v.guide.channels[0].sourceId='not-returned';assert.deepEqual(parseChannelGuide(v,'server',route).channels,[]);
+ v.guide.channels[0].sourceId='source';v.guide.channels[0].programmes[0].start='2026-02-30T12:00:00Z';assert.deepEqual(parseChannelGuide(v,'server',route).channels[0].programmes,[]);
+});
+test('one channel, programme or source that cannot be read is left out and the rest of the guide is kept',()=>{
+ const v:any=fixture();const good=v.guide.channels[0];
+ v.guide.sources.push({id:'broken'});
+ v.guide.channels=[{...good,id:'second',name:'Channel two',programmes:[{...good.programmes[0],id:'p2',channelId:'second',lineage:'guessed',newEvidence:'maybe'},{id:'nope'},{...good.programmes[0],id:'p3',channelId:'second'}]},'nope',{...good,id:'third',sourceId:'broken'},good];
+ v.guide.state='partly-cloudy';v.guide.future=true;
+ const guide=parseChannelGuide(v,'server',route);
+ assert.deepEqual(guide.channels.map(c=>c.id),['second','channel']);
+ assert.deepEqual(guide.channels[0].programmes.map(p=>[p.id,p.lineage,p.newEvidence]),[['p2','interval-only','unknown']],'an overlapping repeat of the slot is left out');
+ assert.equal(guide.sources.length,1);assert.equal(guide.state,'ready');
+ const over:any=fixture();over.guide.channels=Array(51).fill(over.guide.channels[0]);assert.throws(()=>parseChannelGuide(over,'server',route),'the bound on channels is exact');
 });
 test('favorite mutation binds exact profile-scoped revision and verifies server response',async()=>{
  const {saveChannelPreference}=await import('../src/channel-guide.ts');const channel=parseChannelGuide(fixture(),'server',route).channels[0];

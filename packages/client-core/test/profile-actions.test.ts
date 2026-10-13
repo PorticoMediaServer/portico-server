@@ -31,3 +31,15 @@ test('CON-12: labels are catalogue IDs and glyphs are registry IDs', () => {
   assert.ok(enUS['profile.addPicture'].endsWith('…'));
   assert.ok(!enUS['profile.removePicture'].endsWith('…'));
 });
+
+test('a profile that cannot manage profiles sees its own limits and is offered neither another profile’s limits nor Delete', async () => {
+  const {profileActions} = await import('../src/presentation/index.ts');
+  const ids = (viewer: {canManage?: boolean; isCurrent?: boolean}, primary = false) => profileActions({hasPicture: false, pinRequired: false, primary}, viewer).map(a => a.id);
+  assert.ok(ids({canManage: false, isCurrent: true}).includes('limits'), 'its own limits can be looked at');
+  assert.equal(ids({canManage: false, isCurrent: true}).includes('delete'), false);
+  assert.equal(ids({canManage: false, isCurrent: false}).includes('limits'), false);
+  assert.equal(ids({canManage: false, isCurrent: false}).includes('delete'), false);
+  assert.ok(ids({canManage: true, isCurrent: false}).includes('limits'));
+  assert.ok(ids({canManage: true, isCurrent: false}).includes('delete'));
+  assert.equal(ids({canManage: true, isCurrent: false}, true).includes('delete'), false, 'the main profile is never deleted');
+});

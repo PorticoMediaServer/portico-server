@@ -37,8 +37,8 @@ func TestBookResumeSurvivesThePlayedThreshold(t *testing.T) {
 	// Thirty minutes from the end is past the default 95% threshold.
 	accept(t, s, c.DB, v, part.Public, 2, 41400, duration, "playing")
 	personal, err := s.Personal(key, part.Public)
-	if err != nil || !personal.Watched {
-		t.Fatalf("the played threshold no longer marks the file played: %+v %v", personal, err)
+	if err != nil || personal.Watched {
+		t.Fatalf("a twelve-hour book completed thirty minutes early: %+v %v", personal, err)
 	}
 	// The file's own position is what its next session starts from.
 	if personal.ProgressSeconds != 41400 {
@@ -52,10 +52,10 @@ func TestBookResumeSurvivesThePlayedThreshold(t *testing.T) {
 		t.Fatalf("a later report in the last stretch left the resume point at %d ms", got)
 	}
 	accept(t, s, c.DB, v, part.Public, 4, duration, duration, "ended")
-	if got := resume(); got != 0 {
+	if got := resume(); got != 43_200_000 {
 		t.Fatalf("the file's real end left the resume point at %d ms", got)
 	}
-	if personal, err = s.Personal(key, part.Public); err != nil || !personal.Watched || personal.ProgressSeconds != 0 {
+	if personal, err = s.Personal(key, part.Public); err != nil || !personal.Watched || personal.ProgressSeconds != duration {
 		t.Fatalf("after its real end the file is %+v %v", personal, err)
 	}
 }

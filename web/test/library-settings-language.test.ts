@@ -56,7 +56,7 @@ const i18n = {t: (id: string) => names[id] ?? id, has: (id: string) => id in nam
 const docWithLanguage = (language: string) => ({
   revision: 1,
   settings: {
-    allowMediaDeletion: false, trashRetentionDays: 30,
+    allowMediaDeletion: false,
     providers: [{mediaKind: 'movie', provider: 'tmdb', apiKeySet: false, language, region: 'US'}],
     analysis: [], navigation: {trickplayIntervalSeconds: 5, trickplayTileWidth: 160, chapterThumbnailMode: 'embedded', videoPreviewEnabled: false, videoPreviewSeconds: 0},
   },
@@ -87,7 +87,7 @@ async function mountSettings(doc: unknown, agent: unknown) {
     '../settings/ServerForms': {useInlineForm: () => ({saving: false, error: undefined})},
     './operation-ids': {createOperationIds: () => ({forPayload: () => 'op', release: () => {}})},
     '../../app/session': {useSession: () => ({system: {id: 'srv'}, session: undefined, api: {request: async () => ({})}})},
-    '../../app/i18n': {currentI18n: () => i18n},
+    '../../app/i18n': {useI18n: () => i18n},
     './MetadataLookup': {useScreenLookup: () => ({}), LookupStatusRow: 'LookupStatusRow'},
     './MetadataSource': {MetadataSourceGroup: 'MetadataSourceGroup', useMetadataAgent: () => agent},
     '../../ui': {Button: 'Button', Dialog: 'Dialog', Input: 'Input', ListRow: 'ListRow', Loading: 'Loading', Notice: 'Notice', Select: 'Select', SettingsGroup: 'SettingsGroup', SettingsRow: 'SettingsRow', Surface: 'Surface', Switch: 'Switch', Text: 'Text'},

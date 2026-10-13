@@ -2,8 +2,8 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
  parseAccessMember,parseAccessMemberPage,parseLimitsDocument,parseMemberLimits,parseInvitation,parseInvitationPage,
- parseAccessDevicePage,parseAccessAPIKey,parseLogPage,parseLogSettings,parseLogEvent,parseClientLogUploadPage,
- parseConnectivityPolicy,parseConnectivityStatus,grantsTier,managesTier,isAPIKeySecret,apiKeyPrefix,
+ parseAccessDevicePage,parseLogPage,parseLogSettings,parseLogEvent,parseClientLogUploadPage,
+ parseConnectivityPolicy,parseConnectivityStatus,grantsTier,managesTier,
 } from '../src/server-administration.ts';
 
 const limits={maxStreams:1,remoteBitrateKbps:4000,maxContentRating:'PG-13',allowUnrated:true,
@@ -50,6 +50,22 @@ test('a member carries its tier and both revisions', () => {
   // itself, which the client refuses rather than renders.
   assert.throws(() => parseAccessMemberPage({limit: 0, items: []}));
 });
+test('a member page is refused whole when one member cannot be read, so nobody with access is ever missing from it', () => {
+  const member = {accountId: 'a', username: 'ada', profileId: 'p', role: 'member', disabled: false, revision: 1, allowedLibraries: [], limitsRevision: 1, limits};
+  const page = parseAccessMemberPage({limit: 25, nextCursor: '', futureField: 1, items: [member,
+    {...member, username: 'again'}, {...member, accountId: 'f', username: 'fay', futureField: {a: 1}}]});
+  assert.deepEqual(page.items.map(row => [row.accountId, row.username]), [['a', 'ada'], ['f', 'fay']]);
+  assert.equal('futureField' in page.items[1], false);
+  // A role, a limit or a revision this app cannot read is never guessed and never hidden.
+  for (const unreadable of [{...member, accountId: 'b', role: 'root'}, {...member, accountId: 'c', limits: {...limits, maxContentRating: 'XX'}},
+    {...member, accountId: 'd', limits: {...limits, channelPolicy: {mode: 'sometimes', channels: []}}}, {...member, accountId: 'e', revision: 0}, null])
+    assert.throws(() => parseAccessMemberPage({limit: 25, items: [member, unreadable]}));
+  // The page size, its cursor and its outer shape still refuse the whole page.
+  assert.throws(() => parseAccessMemberPage({limit: 1, items: [member, {...member, accountId: 'b'}]}));
+  assert.throws(() => parseAccessMemberPage({limit: 1001, items: [member]}));
+  assert.throws(() => parseAccessMemberPage({limit: 25, nextCursor: 7, items: [member]}));
+  assert.throws(() => parseAccessMemberPage({limit: 25, items: {}}));
+});
 
 test('an invitation code is accepted only where the server issues one', () => {
   const created = parseInvitation({id: 'i1', email: 'guest@example.com', role: 'member', allowedLibraries: [],
@@ -72,31 +88,24 @@ test('a device page carries the approval policy that governs it', () => {
     profileId: 'p', name: 'Living Room', platform: 'tvos', trust: 'pending', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:30:00Z', revision: 1}]});
   assert.equal(page.approvalRequired, true);
   assert.equal(page.items[0].trust, 'pending');
-  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: true, items: [{id: 'x', accountId: 'a', trust: 'trusted', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:00:00Z', revision: 1}]}));
+  // A device whose trust this app cannot read is neither hidden nor listed as approved, pending or blocked: the page is refused.
+  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: true, items: [{id: 'x', accountId: 'a', trust: 'trusted', firstSeenAt: '2026-09-16T12:00:00Z', lastSeenAt: '2026-09-16T12:00:00Z', revision: 1}, page.items[0]]}));
+  assert.throws(() => parseAccessDevicePage({limit: 25, approvalRequired: 'yes', items: []}));
 });
 
-test('an API key secret must carry the key prefix, and a listing must not carry one', () => {
-  const created = parseAccessAPIKey({id: 'k', name: 'Automation', scope: 'playback', accountId: 'a', hint: 'abc123',
-    createdAt: '2026-09-16T12:00:00Z', revoked: false, revision: 1, secret: apiKeyPrefix + 'xyz'});
-  assert.equal(created.secret, apiKeyPrefix + 'xyz');
-  assert.ok(isAPIKeySecret(created.secret!));
-  assert.ok(!isAPIKeySecret('session-token'));
-  // A "secret" that is not a key is a response this client will not trust.
-  assert.throws(() => parseAccessAPIKey({id: 'k', name: 'n', scope: 'full', accountId: 'a', hint: 'h', createdAt: '2026-09-16T12:00:00Z', revoked: false, revision: 1, secret: 'plain'}));
-  assert.throws(() => parseAccessAPIKey({id: 'k', name: 'n', scope: 'god-mode', accountId: 'a', hint: 'h', createdAt: '2026-09-16T12:00:00Z', revoked: false, revision: 1}));
-  const listed = parseAccessAPIKey({id: 'k', name: 'n', scope: 'read-only', accountId: 'a', hint: 'h',
-    createdAt: '2026-09-16T12:00:00Z', lastUsedAt: '2026-09-16T13:00:00Z', revoked: true, revision: 2});
-  assert.equal(listed.secret, undefined);
-  assert.equal(listed.lastUsedAt, '2026-09-16T13:00:00Z');
-});
 
 test('log records keep their sequence as a string so a long-running server does not lose precision', () => {
   const page = parseLogPage({level: 'warn', effectiveLevel: 'debug', limit: 100, nextCursor: '9007199254740993',
     items: [{sequence: '9007199254740993', at: '2026-09-16T12:00:00Z', level: 'error', category: 'playback', message: 'stalled'}]});
   assert.equal(page.items[0].sequence, '9007199254740993');
   assert.equal(page.effectiveLevel, 'debug');
-  assert.throws(() => parseLogPage({level: 'warn', effectiveLevel: 'warn', limit: 10, items: [{sequence: 'abc', at: '2026-09-16T12:00:00Z', level: 'error', category: 'server', message: 'x'}]}));
-  assert.throws(() => parseLogPage({level: 'chatty', effectiveLevel: 'warn', limit: 10, items: []}));
+  // A line this app cannot read is left out alone; a level or a category it does not know reads as an informational server line.
+  const mixed = parseLogPage({level: 'chatty', effectiveLevel: 'warn', limit: 10, items: [{sequence: 'abc', at: '2026-09-16T12:00:00Z', level: 'error', category: 'server', message: 'x'},
+    {sequence: '5', at: '2026-09-16T12:00:00Z', level: 'trace', category: 'transcode', message: 'frame'}, {sequence: '5', at: '2026-09-16T12:00:00Z', level: 'error', category: 'server', message: 'again'}]});
+  assert.deepEqual(mixed.items, [{sequence: '5', at: '2026-09-16T12:00:00Z', level: 'info', category: 'server', message: 'frame'}]);
+  assert.equal(mixed.level, 'info');
+  assert.equal(mixed.effectiveLevel, 'warn');
+  assert.throws(() => parseLogPage({level: 'warn', effectiveLevel: 'warn', limit: 1, items: [page.items[0], page.items[0]]}));
   const record = parseLogEvent('{"sequence":"4","at":"2026-09-16T12:00:00Z","level":"info","category":"scan","message":"walking"}');
   assert.equal(record.category, 'scan');
   assert.throws(() => parseLogEvent('not json'));
@@ -124,13 +133,13 @@ test('a client log listing carries metadata without bodies', () => {
 
 test('connectivity policy and status parse the whole report', () => {
   const policy = {revision: 7, remoteSignInPolicy: 'owner-only', remoteBitrateLimitKbps: 8000,
-    secureConnectionsPolicy: 'required', lanNetworks: ['192.168.1.0/24'], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: false};
+    connectionLimit:0,advertiseUrl:'', lanNetworks: ['192.168.1.0/24'], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: false};
   const parsed = parseConnectivityPolicy(policy);
   assert.equal(parsed.remoteSignInPolicy, 'owner-only');
   assert.equal(parsed.lanDiscoveryEnabled, false);
-  assert.throws(() => parseConnectivityPolicy({...policy, secureConnectionsPolicy: 'whatever'}));
+  assert.throws(() => parseConnectivityPolicy({...policy, connectionLimit: -1}));
   assert.throws(() => parseConnectivityPolicy({...policy, remoteBitrateLimitKbps: -1}));
-  const status = parseConnectivityStatus({observedAt: '2026-09-16T12:00:00Z', policy,
+  const status = parseConnectivityStatus({connection:{secure:false,remote:false,plainHttpOutsideHome:false,clientAddress:'127.0.0.1',accessUrls:[]},observedAt: '2026-09-16T12:00:00Z', policy,
     tls: {configured: true, state: 'active', tlsReady: true, publiclyTrusted: false, listenerBound: true, listenPort: 8443, notAfter: '2026-12-01T00:00:00Z'},
     discovery: {enabled: false, supported: true, state: 'stopped', serviceType: '_portico._tcp.local.'},
     addresses: [{address: '192.168.1.20', family: 'ipv4', class: 'lan', source: 'interface'}],
@@ -140,15 +149,26 @@ test('connectivity policy and status parse the whole report', () => {
   assert.equal(status.discovery.state, 'stopped');
   assert.equal(status.addresses[0].class, 'lan');
   assert.equal(status.warnings.length, 1);
-  assert.throws(() => parseConnectivityStatus({observedAt: '2026-09-16T12:00:00Z', policy,
+  // A discovery state this app does not know reads as unavailable, and a custom certificate it cannot read is left off.
+  const newer = parseConnectivityStatus({connection: {secure: false, remote: true, plainHttpOutsideHome: true, clientAddress: '203.0.113.9', accessUrls: ['https://media.example', 7], later: true}, observedAt: '2026-09-16T12:00:00Z', policy, futureField: 1,
+    tls: {configured: true, tlsReady: true, publiclyTrusted: false, listenerBound: true, listenPort: 8443, customCertificate: {state: 'renewing'}},
+    discovery: {enabled: true, supported: true, state: 'humming'}, addresses: [], interfaces: [], warnings: []});
+  assert.equal(newer.discovery.state, 'unavailable');
+  assert.equal(newer.tls.customCertificate, undefined);
+  assert.equal(newer.tls.listenPort, 8443);
+  // What the server says about this connection is read with the rest, and an advertised address that cannot be read is left out alone.
+  assert.deepEqual(newer.connection, {secure: false, remote: true, plainHttpOutsideHome: true, clientAddress: '203.0.113.9', accessUrls: ['https://media.example']});
+  // A status that says nothing readable about the connection claims nothing about it.
+  const silent = parseConnectivityStatus({connection: 'unknown', observedAt: '2026-09-16T12:00:00Z', policy,
     tls: {configured: true, tlsReady: true, publiclyTrusted: false, listenerBound: true, listenPort: 8443},
-    discovery: {enabled: true, supported: true, state: 'humming'}, addresses: [], interfaces: [], warnings: []}));
+    discovery: {enabled: true, supported: true, state: 'stopped'}, addresses: [], interfaces: [], warnings: []});
+  assert.deepEqual(silent.connection, {secure: false, remote: false, plainHttpOutsideHome: false, clientAddress: '', accessUrls: []});
 });
 
 test('CD-39: a host-sized report renders bounded slices with exact omitted counts', () => {
   const policy = {revision: 7, remoteSignInPolicy: 'allow', remoteBitrateLimitKbps: 0,
-    secureConnectionsPolicy: 'preferred', lanNetworks: [], accessUrls: [], lanDiscoveryEnabled: false};
-  const base = {observedAt: '2026-09-16T12:00:00Z', policy,
+    connectionLimit:0,advertiseUrl:'', lanNetworks: [], accessUrls: [], lanDiscoveryEnabled: false};
+  const base = {connection:{secure:false,remote:false,plainHttpOutsideHome:false,clientAddress:'127.0.0.1',accessUrls:[]},observedAt: '2026-09-16T12:00:00Z', policy,
     tls: {configured: false, tlsReady: false, publiclyTrusted: false, listenerBound: false, listenPort: 0},
     discovery: {enabled: false, supported: false, state: 'unavailable'}, warnings: []};
   const address = (n: number) => ({address: `10.0.0.${n % 256}`, family: 'ipv4', class: 'lan', source: 'interface'});
@@ -160,8 +180,13 @@ test('CD-39: a host-sized report renders bounded slices with exact omitted count
   assert.equal(status.interfaces.length, 128);
   assert.equal(status.omittedAddresses, 1);
   assert.equal(status.omittedInterfaces, 1);
-  // Retained entries are still validated.
-  assert.throws(() => parseConnectivityStatus({...base, addresses: [{...address(0), family: 'carrier-pigeon'}], interfaces: []}));
+  // Retained entries are still validated: one that cannot be read is left out and counted with the omitted ones.
+  const partial = parseConnectivityStatus({...base, addresses: [{...address(0), family: 'carrier-pigeon'}, address(1)], interfaces: [iface(0), {name: ''}]});
+  assert.deepEqual(partial.addresses.map(entry => entry.address), ['10.0.0.1']);
+  assert.equal(partial.omittedAddresses, 1);
+  assert.equal(partial.interfaces.length, 1);
+  assert.equal(partial.omittedInterfaces, 1);
+  assert.throws(() => parseConnectivityStatus({...base, addresses: [], interfaces: [{...iface(0), addresses: new Array(65).fill('10.0.0.1/24')}]}));
   // The policy enums stay strict.
   assert.throws(() => parseConnectivityStatus({...base, policy: {...policy, remoteSignInPolicy: 'sometimes'}, addresses: [], interfaces: []}));
 });
@@ -180,12 +205,12 @@ test('the tier helpers mirror the server predicate', () => {
 });
 
 test('connectivity policy: network parity rows parse, with shipped defaults for an older server', () => {
-  const base = {revision: 4, remoteSignInPolicy: 'allow', remoteBitrateLimitKbps: 0, secureConnectionsPolicy: 'preferred', lanNetworks: [], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: true};
+  const base = {revision: 4, remoteSignInPolicy: 'allow', remoteBitrateLimitKbps: 0, connectionLimit:0,advertiseUrl:'', lanNetworks: [], accessUrls: ['https://media.example.com'], lanDiscoveryEnabled: true};
   const older = parseConnectivityPolicy(base);
-  assert.deepEqual([older.trustedProxies, older.treatWanAsLan, older.uploadCapacityKbps, older.pausedSessionTimeoutMinutes, older.advertisedInterface, older.customCertificateDomain], [[], true, 0, 0, '', '']);
-  const newer = parseConnectivityPolicy({...base, trustedProxies: ['127.0.0.1/32'], treatWanAsLan: false, uploadCapacityKbps: 20000, pausedSessionTimeoutMinutes: 60, advertisedInterface: 'br0',
+  assert.deepEqual([older.trustedProxies, older.uploadCapacityKbps, older.pausedSessionTimeoutMinutes, older.advertisedInterface, older.customCertificateDomain], [[], 0, 0, '', '']);
+  const newer = parseConnectivityPolicy({...base, trustedProxies: ['127.0.0.1/32'], uploadCapacityKbps: 20000, pausedSessionTimeoutMinutes: 60, advertisedInterface: 'br0',
     customCertificatePath: '/certs/full.pem', customCertificateKeyPath: '/certs/key.pem', customCertificateDomain: 'media.example.com'});
-  assert.equal(newer.treatWanAsLan, false);
+
   assert.equal(newer.uploadCapacityKbps, 20000);
   assert.equal(newer.advertisedInterface, 'br0');
   assert.equal(newer.customCertificateKeyPath, '/certs/key.pem');

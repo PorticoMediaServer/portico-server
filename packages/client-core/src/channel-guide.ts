@@ -1,6 +1,7 @@
 import {unreadableServerResponse} from './server-messages.ts';
 import {GUIDE_RATE_LIMIT_ATTEMPTS, isRateLimited, rateLimitDelay} from './guide/rate-limit.ts';
 import {HOUR_MS, MINUTE_MS, localDayStart, zoneOffset} from './guide/time.ts';
+import {keepReadable, noteSkipped, oneOfOr} from './tolerant.ts';
 /** Server-authored linear guide. Clients choose a viewport, never a schedule. */
 export const GUIDE_PROTOCOL = '1.0' as const;
 export type ChannelKind = 'live-source' | 'library-channel';
@@ -101,54 +102,71 @@ function parseDays(v: unknown): number | undefined {
  return Number.isSafeInteger(v) && Number(v) >= 0 && Number(v) <= 31 ? Number(v) : undefined;
 }
 function parseProgramme(raw: unknown, channelId: string): GuideProgramme {
- if (!object(raw) || !id(raw.id) || raw.channelId !== channelId || !text(raw.title, 512) || !instant(raw.start) || !instant(raw.end) || Date.parse(raw.end) <= Date.parse(raw.start) || !['provider-id', 'interval-only', 'generated'].includes(String(raw.lineage))) invalid();
- const seriesId = raw.seriesId ?? '', episodeId = raw.episodeId ?? '', newEvidence = raw.newEvidence || 'unknown', description = raw.description ?? '';
- if (!text(seriesId, 256) || !text(episodeId, 256) || !['new', 'repeat', 'unknown'].includes(String(newEvidence)) || !bodyText(description)) invalid();
+ if (!object(raw) || !id(raw.id) || raw.channelId !== channelId || !text(raw.title, 512) || !instant(raw.start) || !instant(raw.end) || Date.parse(raw.end) <= Date.parse(raw.start)) invalid();
+ // How a programme was identified, and whether it is new, are evidence: a kind this app does not
+ // know reads as the weakest (known only by its time slot; not known to be new or a repeat).
+ const lineage = oneOfOr('guide', 'programme.lineage', raw.lineage, ['provider-id', 'interval-only', 'generated'] as const, 'interval-only');
+ const seriesId = raw.seriesId ?? '', episodeId = raw.episodeId ?? '', newEvidence = oneOfOr('guide', 'programme.newEvidence', raw.newEvidence || undefined, ['new', 'repeat', 'unknown'] as const, 'unknown'), description = bodyText(raw.description ?? '') ? raw.description ?? '' : '';
+ if (!text(seriesId, 256) || !text(episodeId, 256)) invalid();
  const recordingId=raw.recordingId??'',recordingState=raw.recordingState??'';if(typeof recordingId!=='string'||recordingId!==''&&!/^[a-f0-9]{64}$/.test(recordingId)||!text(recordingState,64))invalid();
  const subtitle = parseSubtitle(raw.subtitle), episode = parseEpisode(raw.episode), categories = parseCategories(raw.categories), rating = parseRating(raw.rating), year = parseYear(raw.year), starRating = parseStarRating(raw.starRating), flags = parseFlags(raw.flags), image = parseImage(raw.image);
- return {recordingId,recordingState,id: raw.id, channelId, title: raw.title, start: raw.start, end: raw.end, lineage: raw.lineage as GuideProgramme['lineage'], seriesId, episodeId, newEvidence: newEvidence as GuideProgramme['newEvidence'], description, ...(subtitle !== undefined ? {subtitle} : {}), ...(episode !== undefined ? {episode} : {}), ...(categories !== undefined ? {categories} : {}), ...(rating !== undefined ? {rating} : {}), ...(year !== undefined ? {year} : {}), ...(starRating !== undefined ? {starRating} : {}), ...(flags !== undefined ? {flags} : {}), ...(image !== undefined ? {image} : {})};
+ return {recordingId,recordingState,id: raw.id, channelId, title: raw.title, start: raw.start, end: raw.end, lineage, seriesId, episodeId, newEvidence, description: description as string, ...(subtitle !== undefined ? {subtitle} : {}), ...(episode !== undefined ? {episode} : {}), ...(categories !== undefined ? {categories} : {}), ...(rating !== undefined ? {rating} : {}), ...(year !== undefined ? {year} : {}), ...(starRating !== undefined ? {starRating} : {}), ...(flags !== undefined ? {flags} : {}), ...(image !== undefined ? {image} : {})};
 }
-/** Shared native row validation for time windows and the rows-only directory. */
+/** Shared native row validation for time windows and the rows-only directory. A source that
+ * cannot be read is left out alone (and its channels with it); the bound on the list is exact. */
 export function parseGuideSources(value: unknown, expectedKind?: ChannelKind): GuideSource[] {
  if (!Array.isArray(value)||value.length>2000) invalid();
  const values: unknown[]=value;
  const sourceIDs = new Set<string>();
- const sources: GuideSource[] = values.map((v: unknown) => {
+ const sources: GuideSource[] = keepReadable('guide', 'sources', values, (v: unknown) => {
   if (!object(v) || !id(v.id) || sourceIDs.has(String(v.provenance)+'\0'+v.id) || !text(v.name, 120) || !id(v.generation) || !instant(v.publishedAt) || !kind(v.provenance) || expectedKind !== undefined && v.provenance !== expectedKind || !text(v.refreshState, 64) || !(v.availableStart === '' && v.availableEnd === '' || instant(v.availableStart) && instant(v.availableEnd) && Date.parse(v.availableEnd) > Date.parse(v.availableStart))) invalid();
   sourceIDs.add(String(v.provenance)+'\0'+v.id);
   return {id: v.id, name: v.name, generation: v.generation, publishedAt: v.publishedAt, availableStart: v.availableStart, availableEnd: v.availableEnd, provenance: v.provenance, refreshState: v.refreshState} as GuideSource;
  });
  return sources;
 }
+/**
+ * The channels of a guide page. The bounds (50 channels, 10,000 programmes) are exact. A channel
+ * that cannot be read, or whose source could not be, is left out alone; so is a programme that
+ * cannot be read, repeats an id, overlaps the one before it or lies outside the window asked for.
+ * A reason for being unavailable that this app does not know reads as plainly unavailable.
+ */
 export function parseGuideChannels(value: unknown, sources: readonly GuideSource[], route?: GuideRoute): GuideChannel[] {
  if (!Array.isArray(value)||value.length>50) invalid();
+ if (value.reduce((n: number, v: unknown) => n + (object(v) && Array.isArray(v.programmes) ? v.programmes.length : 0), 0) > 10000) invalid();
+ const unavailable = (part: string, available: boolean, reason: unknown): LinearUnavailableReason => (available ? '' : (reason === '' ? 'delivery-unavailable' : oneOfOr('guide', part, reason, reasons as readonly LinearUnavailableReason[], 'delivery-unavailable')));
  const values: unknown[]=value;
  const sourceIDs=new Set(sources.map(s=>s.provenance+'\0'+s.id));
  const ids = new Set<string>(), programmeIDs = new Set<string>();
  let total = 0;
- const channels: GuideChannel[] = values.map((v: unknown) => {
-  if (!object(v) || !id(v.id) || ids.has(v.id) || !id(v.sourceId) || !sourceIDs.has(String(v.provenance)+'\0'+v.sourceId) || !kind(v.provenance) || route !== undefined && v.provenance !== route.kind || !text(v.name, 256) || !text(v.number, 32) || !text(v.group, 120) || !id(v.generation) || typeof v.tuneAvailable !== 'boolean' || typeof v.recordAvailable !== 'boolean' || !reasons.includes(String(v.tuneUnavailableReason)) || !reasons.includes(String(v.recordUnavailableReason)) || typeof v.favorite !== 'boolean' || typeof v.hidden !== 'boolean' || !Number.isSafeInteger(v.preferenceRevision) || Number(v.preferenceRevision) < 0 || !Array.isArray(v.programmes) || v.programmes.length > 10000) invalid();
-  if (v.tuneAvailable !== (v.tuneUnavailableReason === '') || v.recordAvailable !== (v.recordUnavailableReason === '') || v.provenance === 'library-channel' && v.recordAvailable) invalid();
-  const logoPath=v.logoPath??'';if(typeof logoPath!=='string'||logoPath!==''&&!/^\/v1\/items\/[A-Za-z0-9_-]{1,128}\/art\/poster$/.test(logoPath))invalid();
+ const channels: GuideChannel[] = keepReadable('guide', 'channels', values, (v: unknown) => {
+  if (!object(v) || !id(v.id) || ids.has(v.id) || !id(v.sourceId) || !sourceIDs.has(String(v.provenance)+'\0'+v.sourceId) || !kind(v.provenance) || route !== undefined && v.provenance !== route.kind || !text(v.name, 256) || !text(v.number ?? '', 32) || !text(v.group ?? '', 120) || !id(v.generation) || !Number.isSafeInteger(v.preferenceRevision) || Number(v.preferenceRevision) < 0 || !Array.isArray(v.programmes) || v.programmes.length > 10000) invalid();
+  // A channel can be watched or recorded only when the server says so outright and gives no reason against; a library channel is never recorded.
+  const tuneAvailable = v.tuneAvailable === true && (v.tuneUnavailableReason ?? '') === '', recordAvailable = v.recordAvailable === true && (v.recordUnavailableReason ?? '') === '' && v.provenance !== 'library-channel';
+  const tuneUnavailableReason = unavailable('channel.tuneUnavailableReason', tuneAvailable, v.tuneUnavailableReason ?? ''), recordUnavailableReason = unavailable('channel.recordUnavailableReason', recordAvailable, v.recordUnavailableReason ?? '');
+  // A logo that is not one of this server's own pictures is not shown.
+  let logoPath=v.logoPath??'';if(typeof logoPath!=='string'||logoPath!==''&&!/^\/v1\/items\/[A-Za-z0-9_-]{1,128}\/art\/poster$/.test(logoPath)){noteSkipped('guide','channel.logoPath');logoPath='';}
   ids.add(v.id);
   const source=sources.find(s=>s.id===v.sourceId&&s.provenance===v.provenance)!;
   if (source.generation!==v.generation||source.provenance!==v.provenance||!route&&v.programmes.length!==0) invalid();
   let previousEnd = 0;
-  const programmes = v.programmes.map((raw: unknown) => {
+  const programmes = keepReadable('guide', 'programmes', v.programmes, (raw: unknown) => {
    const p = parseProgramme(raw, v.id as string);
    if (programmeIDs.has(p.id) || Date.parse(p.start) < previousEnd || route !== undefined && (Date.parse(p.end) <= Date.parse(route.start) || Date.parse(p.start) >= Date.parse(route.end)) || ++total > 10000) invalid();
    previousEnd = Date.parse(p.end); programmeIDs.add(p.id); return p;
   });
-  return {id: v.id, sourceId: v.sourceId, provenance: v.provenance, name: v.name, number: v.number, group: v.group, generation: v.generation, logoPath, programmes, tuneAvailable: v.tuneAvailable, recordAvailable: v.recordAvailable, tuneUnavailableReason: v.tuneUnavailableReason, recordUnavailableReason: v.recordUnavailableReason, favorite: v.favorite, hidden: v.hidden, preferenceRevision: v.preferenceRevision} as GuideChannel;
+  return {id: v.id, sourceId: v.sourceId, provenance: v.provenance, name: v.name, number: (v.number ?? '') as string, group: (v.group ?? '') as string, generation: v.generation, logoPath: logoPath as string, programmes, tuneAvailable, recordAvailable, tuneUnavailableReason, recordUnavailableReason, favorite: v.favorite === true, hidden: v.hidden === true, preferenceRevision: v.preferenceRevision as number} as GuideChannel;
  }); return channels;
 }
 export function parseChannelGuide(raw: unknown, serverId: string, route: GuideRoute): ChannelGuide {
  if (!object(raw) || raw.protocolVersion !== GUIDE_PROTOCOL || raw.serverId !== serverId || !object(raw.guide)) invalid();
  const g = raw.guide;
- if (!['ready', 'no-sources', 'no-channels', 'no-guide-data', 'filter-empty', 'guide-stale', 'continuation-required'].includes(String(g.state)) || !id(g.viewerFence) || g.start !== route.start || g.end !== route.end || g.timezone !== route.timezone || !instant(g.observedAt) || !text(g.nextCursor, 2048) || !Array.isArray(g.channels) || g.channels.length > 50 || !Array.isArray(g.sources) || g.sources.length > 2000) invalid();
+ if (!id(g.viewerFence) || g.start !== route.start || g.end !== route.end || g.timezone !== route.timezone || !instant(g.observedAt) || !text(g.nextCursor, 2048) || !Array.isArray(g.channels) || g.channels.length > 50 || !Array.isArray(g.sources) || g.sources.length > 2000) invalid();
  const sources=parseGuideSources(g.sources,route.kind);
  const channels=parseGuideChannels(g.channels,sources,route);
- return {state: g.state, viewerFence: g.viewerFence, start: g.start, end: g.end, timezone: g.timezone, sources, channels, nextCursor: g.nextCursor, observedAt: g.observedAt, ...(parseDays(g.days) !== undefined ? {days: parseDays(g.days)} : {})} as ChannelGuide;
+ // A state this app does not know reads from what arrived: a guide when there are channels to show, otherwise no guide data.
+ const state = oneOfOr('guide', 'state', g.state, ['ready', 'no-sources', 'no-channels', 'no-guide-data', 'filter-empty', 'guide-stale', 'continuation-required'] as const, channels.length ? 'ready' : 'no-guide-data');
+ return {state, viewerFence: g.viewerFence, start: g.start, end: g.end, timezone: g.timezone, sources, channels, nextCursor: g.nextCursor, observedAt: g.observedAt, ...(parseDays(g.days) !== undefined ? {days: parseDays(g.days)} : {})} as ChannelGuide;
 }
 function path(route: GuideRoute, cursor: string): string {
  const q = new URLSearchParams({kind: route.kind, start: route.start, end: route.end, timezone: route.timezone, search: route.search, sourceId: route.sourceId, limit: '30', cursor});

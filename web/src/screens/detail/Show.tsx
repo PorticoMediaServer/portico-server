@@ -1,4 +1,5 @@
 import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useBack} from '../../app/back';
 import {personHref} from '../../app/open';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
@@ -12,17 +13,17 @@ import {useEpisodes, type EpisodeScope} from '../../app/episodes';
 import {ErrorNotice, ErrorState, changedError, errorText} from '../../app/errors';
 import {useSession} from '../../app/session';
 import {usePlayerActions} from '../../player/PlayerContext';
-import {Button, Card, Dialog, Inset, KeyValue, Menu, Notice, Page, Section, Segmented, Select, SettingsGroup, SettingsRow, Shelf, StateView, Switch, TitleHero, WindowedGrid, anchorOf, type MenuItem} from '../../ui';
+import {Button, Card, Dialog, Inset, KeyValue, ListRow, Menu, Notice, Page, Section, Segmented, Select, SettingsGroup, SettingsRow, Shelf, StateView, Switch, TitleHero, WindowedGrid, anchorOf, type MenuItem} from '../../ui';
 import {SHOW_SETTING_ROWS, dedupeNames, networkName, nextUpPin, originalTitleLine, relatedRowsForPage, seasonProgress, showCreditLines, showPeople} from '@core/presentation/index.ts';
 import {placeholderTint} from '../../app/title-layout';
 import {EpisodeCard, EpisodePlaceholder, EpisodeRow, episodeCode, episodeListKeys} from './EpisodeCard';
 import {GenreLinks} from './GenreLinks';
 import {EpisodePanel} from './EpisodePanel';
 import s from './Show.module.css';
-import {currentI18n} from '../../app/i18n';
 import {useViewerScope} from '../../app/viewer-scope';
 import {useContainerWatched} from '../shared/container-watched';
 import {getContainerState} from '@core/container-state.ts';
+import {useI18n, type I18n} from '../../app/i18n';
 
 type ShowSearch = {library?: string; season?: string; episode?: string; title?: string};
 /** Up to this many seasons show as tabs; beyond it, a menu (Spec — Title Pages §2). */
@@ -48,7 +49,7 @@ function writeLayout(v: EpisodeLayout) { try { localStorage.setItem(LAYOUT_KEY, 
  * show, From its creator…), each named by its titleText; then Details.
  */
 export function ShowScreen() {
-  const t = currentI18n().t;
+  const {t} = useI18n();
   const params = useParams({strict: false}) as {showId: string; episodeId?: string};
   const search = useSearch({strict: false}) as ShowSearch;
   const navigate = useNavigate();
@@ -81,7 +82,18 @@ export function ShowScreen() {
   const show = data?.show;
   const seasons = useMemo(() => orderSeasons(data?.seasons ?? []), [data?.seasons]);
   // People from the show's own credits (the server sends them with the workspace): cast in billing order, key crew by role.
+  // A season card's address names the season and stands "season" in for the show. Once the page
+  // knows which show it is, the address is corrected to the show's own, so choosing another
+  // season, reloading or sharing the address keeps working.
+  const knownShowId = show?.id;
+  useEffect(() => {
+    if (showId !== 'season' || !knownShowId || knownShowId === 'season') return;
+    void navigate({to: params.episodeId ? '/show/$showId/episode/$episodeId' : '/show/$showId', params: {showId: knownShowId, ...(params.episodeId ? {episodeId: params.episodeId} : {})}, search, replace: true});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showId, knownShowId]);
   const people = useMemo(() => showPeople(show?.credits), [show?.credits]);
+  // The row shows the first twelve; See all lists everyone the show's page carries.
+  const [allCast, setAllCast] = useState(false);
   // The hero's ⋯ is the menu a card of this show opens (playlist, download all, metadata), anchored to the button.
   const showEntry = useMemo<ContentEntry | undefined>(() => (show ? {id: show.id, libraryId: show.libraryId, kind: 'show', title: show.title, posterUrl: show.posterUrl, backdropUrl: show.backdropUrl, navigation: {view: 'show', entityId: show.id}} : undefined), [show]);
   const selected = data?.selected;
@@ -130,7 +142,8 @@ export function ShowScreen() {
     void navigate({to: '/show/$showId/episode/$episodeId', params: {showId, episodeId: episode.id}, search: showSearch(), replace: !!params.episodeId, resetScroll: false});
   }, [navigate, showId, showSearch, params.episodeId]);
   const closeEpisode = useCallback(() => {
-    if (openedHere.current && history.length > 1) { openedHere.current = false; history.back(); return; }
+    // Opened from this page, so the entry before it is this show: going back closes the panel and never leaves Portico.
+    if (openedHere.current) { openedHere.current = false; window.history.back(); return; }
     void navigate({to: '/show/$showId', params: {showId}, search: showSearch({episode: undefined}), replace: true});
   }, [navigate, showId, showSearch]);
   const chooseSeason = (season: WorkspaceSeason) => {
@@ -148,7 +161,7 @@ export function ShowScreen() {
     const loaded = firstPage.entries;
     pinnedNextUp.current = {showId: show.id, entry: loaded.find(e => e.playback && (e.progressSeconds ?? 0) > 0 && !e.watched) ?? loaded.find(e => e.playback && !e.watched) ?? loaded.find(e => e.playback)};
   }
-  const back = () => (history.length > 1 ? history.back() : void navigate({to: '/'}));
+  const back = useBack(() => void navigate({to: '/'}));
   // Show and season watched go through the container personal-state
   // route (O(1)) — never one write per episode. Every hook stays above the
   // error return below; the hook idles until the show has loaded.
@@ -193,7 +206,7 @@ export function ShowScreen() {
     show.genres?.length ? [t('title.genres'), <GenreLinks key="genres" libraryId={show.libraryId} genres={dedupeNames(show.genres, 20)} />] : null,
   ] as ([string, string] | null)[]).filter((r): r is [string, string] => !!r) : [];
   const seasonMenu: MenuItem[] = [
-    ...(firstEpisode?.playback ? [{id: 'play-season', label: selectedSeason ? t('title.playSeasonNamed', {season: seasonName(selectedSeason)}) : t('title.playSeason'), icon: 'play' as const}] : []),
+    ...(firstEpisode?.playback ? [{id: 'play-season', label: selectedSeason ? t('title.playSeasonNamed', {season: seasonName(t, selectedSeason)}) : t('title.playSeason'), icon: 'play' as const}] : []),
     ...(selected?.seasonId ? [{id: 'season-watched', label: t(seasonWatched.state?.watched ? 'entry.markSeasonUnwatched' : 'entry.markSeasonWatched'), icon: (seasonWatched.state?.watched ? 'watched' : 'check') as 'watched' | 'check'}] : []),
   ];
   if (owner && show) seasonMenu.push({id: 'show-settings', label: t('title.showSettings'), icon: 'settings', separatorBefore: seasonMenu.length > 0});
@@ -218,7 +231,7 @@ export function ShowScreen() {
           badge={show?.contentRating}
           synopsis={show?.overview}
           credits={creditLines}
-          primary={nextUp?.playback ? {label: episodeCode(nextUp) ? t(resuming ? 'title.resumeEpisode' : 'title.playEpisode', {code: episodeCode(nextUp)}) : t(resuming ? 'entry.resume' : 'action.play'), onClick: () => playNextUp(nextUp), progress: resuming && nextUp.duration ? (nextUp.progressSeconds ?? 0) / nextUp.duration : undefined} : undefined}
+          primary={nextUp?.playback ? {label: episodeCode(t, nextUp) ? t(resuming ? 'title.resumeEpisode' : 'title.playEpisode', {code: episodeCode(t, nextUp)}) : t(resuming ? 'entry.resume' : 'action.play'), onClick: () => playNextUp(nextUp), progress: resuming && nextUp.duration ? (nextUp.progressSeconds ?? 0) / nextUp.duration : undefined} : undefined}
           secondary={show ? (
             <div className={s.heroActions}>
               {/* The same row as a movie (Justin, 2 Oct 2026): Watchlist · Favorite · Watched · ⋯. The flags are the show's own, on the container route. */}
@@ -268,9 +281,9 @@ export function ShowScreen() {
                 columnMin={layout === 'grid' ? 'clamp(240px, 24vw, 320px)' : undefined}
                 estimateRowHeight={layout === 'grid' ? 240 : 112}
                 className={layout === 'list' ? s.episodeList : undefined}
-                label={selectedSeason ? `${seasonName(selectedSeason)} · ${t('title.episodes')}` : t('title.episodes')}
+                label={selectedSeason ? `${seasonName(t, selectedSeason)} · ${t('title.episodes')}` : t('title.episodes')}
                 renderItem={episode => layout === 'grid'
-                  ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} selected={episode.id === episodeId} />
+                  ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />
                   : <EpisodeRow episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />}
                 renderPlaceholder={() => layout === 'grid' ? <EpisodePlaceholder /> : <div className={s.episodeRowPlaceholderRow} aria-hidden />}
               />
@@ -281,7 +294,7 @@ export function ShowScreen() {
               <div className={s.loadingGrid} aria-busy>{Array.from({length: 4}, (_, i) => <EpisodePlaceholder key={i} />)}</div>
             )}
           </Section>
-          {people.cast.length ? <Shelf title={t('title.cast')} density="person">{people.cast.slice(0, 12).map(c => <Card key={c.id ?? c.name} title={c.name} caption={c.role} path={c.portraitUrl} shape="circle" icon="person" href={c.id ? personHref(c.id) : undefined} onOpen={c.id ? () => void navigate({to: '/person/$personId', params: {personId: c.id!}}) : undefined} />)}</Shelf> : null}
+          {people.cast.length ? <Shelf title={t('title.cast')} density="person" count={people.cast.length > 12 ? people.cast.length : undefined} action={people.cast.length > 12 ? {label: t('title.seeAll'), onClick: () => setAllCast(true)} : undefined}>{people.cast.slice(0, 12).map(c => <Card key={c.id ?? c.name} title={c.name} caption={c.role} path={c.portraitUrl} shape="circle" icon="person" href={c.id ? personHref(c.id) : undefined} onOpen={c.id ? () => void navigate({to: '/person/$personId', params: {personId: c.id!}}) : undefined} />)}</Shelf> : null}
           {people.crew.length ? <Shelf title={t('title.crew')} density="person">{people.crew.map(c => <Card key={c.id ?? c.name} title={c.name} caption={c.role || c.department} path={c.portraitUrl} shape="circle" icon="person" href={c.id ? personHref(c.id) : undefined} onOpen={c.id ? () => void navigate({to: '/person/$personId', params: {personId: c.id!}}) : undefined} />)}</Shelf> : null}
           {recommendations.phase === 'loading' ? <LoadingGrid /> : null}
           {recommendations.phase === 'error' ? <Inset><ErrorNotice error={recommendations.error} context="show" retry={recommendations.retry} refresh={recommendations.retry} /></Inset> : null}
@@ -289,6 +302,13 @@ export function ShowScreen() {
           {detailRows.length ? <Section title={t('title.details')}><div className={s.showFacts}><KeyValue rows={detailRows} /></div></Section> : null}
         </div>
       </Page>
+      {allCast ? (
+        <Dialog open onOpenChange={o => !o && setAllCast(false)} title={t('title.allCast')} description={show?.title} width={560}>
+          <div style={{display: 'flex', flexDirection: 'column', gap: 4}}>
+            {people.cast.map(c => <ListRow key={c.id ?? c.name} title={c.name} subtitle={c.role} art={{path: c.portraitUrl, icon: 'person'}} artShape="circle" onClick={c.id ? () => { setAllCast(false); void navigate({to: '/person/$personId', params: {personId: c.id!}}); } : undefined} />)}
+          </div>
+        </Dialog>
+      ) : null}
       {episodeId && show ? (
         <EpisodePanel
           key={episodeId}
@@ -312,26 +332,27 @@ function SeasonSwitcher({seasons, selectedId, groups, selectedGroup, morePreviou
   seasons: readonly WorkspaceSeason[]; selectedId: string | null; groups: readonly {id: string; title: string; count: number}[]; selectedGroup?: string;
   morePrevious: boolean; moreNext: boolean; onSeason: (season: WorkspaceSeason) => void; onGroup: (id: string) => void; onPrevious: () => void; onNext: () => void;
 }) {
+  const {t} = useI18n();
   if (!seasons.length && !groups.length) return <span />;
   const tabs = seasons.length + groups.length <= MAX_SEASON_TABS && !morePrevious && !moreNext;
   if (tabs) {
     return (
-      <div className={s.seasonTabs} role="tablist" aria-label={currentI18n().t('title.seasons')}>
-        {seasons.map(season => <button key={season.id} type="button" role="tab" className={s.seasonTab} aria-selected={!selectedGroup && season.id === selectedId} onClick={() => onSeason(season)}>{seasonName(season)}</button>)}
+      <div className={s.seasonTabs} role="tablist" aria-label={t('title.seasons')}>
+        {seasons.map(season => <button key={season.id} type="button" role="tab" className={s.seasonTab} aria-selected={!selectedGroup && season.id === selectedId} onClick={() => onSeason(season)}>{seasonName(t, season)}</button>)}
         {groups.map(group => <button key={group.id} type="button" role="tab" className={s.seasonTab} aria-selected={selectedGroup === group.id} onClick={() => onGroup(group.id)}>{group.id === 'unassigned_absolute' ? `${group.title} (${group.count})` : group.title}</button>)}
       </div>
     );
   }
   const value = selectedGroup ? `group:${selectedGroup}` : selectedId ?? '';
   const options = [
-    ...(morePrevious ? [{value: 'seasons:previous', label: currentI18n().t('title.earlierSeasons')}] : []),
-    ...seasons.map(season => ({value: season.id, label: seasonName(season)})),
+    ...(morePrevious ? [{value: 'seasons:previous', label: t('title.earlierSeasons')}] : []),
+    ...seasons.map(season => ({value: season.id, label: seasonName(t, season)})),
     ...groups.map(group => ({value: `group:${group.id}`, label: group.id === 'unassigned_absolute' ? `${group.title} (${group.count})` : group.title})),
-    ...(moreNext ? [{value: 'seasons:next', label: currentI18n().t('title.laterSeasons')}] : []),
+    ...(moreNext ? [{value: 'seasons:next', label: t('title.laterSeasons')}] : []),
   ];
   return (
     <div style={{minWidth: 220}}>
-      <Select hideLabel label={currentI18n().t('title.seasonMenu')} value={value} options={options} onChange={e => {
+      <Select hideLabel label={t('title.seasonMenu')} value={value} options={options} onChange={e => {
         const v = e.target.value;
         if (v === 'seasons:previous') onPrevious();
         else if (v === 'seasons:next') onNext();
@@ -342,9 +363,9 @@ function SeasonSwitcher({seasons, selectedId, groups, selectedGroup, morePreviou
   );
 }
 
-function seasonName(season: WorkspaceSeason): string {
-  if (season.number === 0) return season.title || currentI18n().t('title.specials');
-  return season.title || currentI18n().t('title.season', {number: season.number});
+function seasonName(t: I18n['t'], season: WorkspaceSeason): string {
+  if (season.number === 0) return season.title || t('title.specials');
+  return season.title || t('title.season', {number: season.number});
 }
 /** Specials (season 0) go last. */
 function orderSeasons(list: readonly WorkspaceSeason[]): WorkspaceSeason[] {
@@ -363,8 +384,8 @@ function findResident(collection: ReturnType<typeof useEpisodes>, id: string): {
 
 /** The owner's four settings for one show. They change the list for everyone, so they are saved explicitly. */
 function ShowSettingsDialog({libraryId, showId, settings, onClose, onSaved}: {libraryId: string; showId: string; settings: ShowSettings; onClose: () => void; onSaved: () => void}) {
+  const {t} = useI18n();
   const {api} = useSession();
-  const t = currentI18n().t;
   const [draft, setDraft] = useState(settings);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

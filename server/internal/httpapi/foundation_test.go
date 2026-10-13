@@ -175,10 +175,9 @@ func TestFoundationContractAndReplay(t *testing.T) {
 	if updates.Code != 200 {
 		t.Fatalf("owner updates: %d %s", updates.Code, updates.Body.String())
 	}
-	var updateDocument struct {
-		State string `json:"state"`
-	}
-	if err := json.Unmarshal(updates.Body.Bytes(), &updateDocument); err != nil || updateDocument.State != "unconfigured" {
+	var updateDocument administration.UpdateReport
+	// The default release feed is configured; this fixture has no fetcher.
+	if err := json.Unmarshal(updates.Body.Bytes(), &updateDocument); err != nil || updateDocument.State != "unavailable" || !updateDocument.FeedConfigured || updateDocument.AutoInstall {
 		t.Fatalf("owner updates document: %+v %v", updateDocument, err)
 	}
 	conditionalUpdates := httptest.NewRequest("GET", "/v1/admin/updates", nil)

@@ -74,8 +74,12 @@ type LiveSourceSettings = livechannels.LiveSourceSettings
 func DefaultLiveSourceSettings() LiveSourceSettings {
 	return LiveSourceSettings{
 		EnabledGroups: []string{}, EnabledChannels: []string{},
-		Kind:      "playlist",
-		Filters:   SourceFilters{FilterRule{"include", []string{}}, FilterRule{"include", []string{}}, FilterRule{"exclude", []string{}}},
+		Kind: "playlist",
+		Filters: SourceFilters{
+			Categories: FilterRule{Mode: "include", Values: []string{}},
+			Countries:  FilterRule{Mode: "include", Values: []string{}},
+			Keywords:   FilterRule{Mode: "exclude", Values: []string{}},
+		},
 		Logos:     LogoImport{Enabled: true},
 		Numbering: ChannelNumbering{Mode: "source", StartAt: 100, Step: 1},
 	}

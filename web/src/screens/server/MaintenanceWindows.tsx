@@ -56,7 +56,8 @@ export function WindowsPanel() {
  * windows it runs in, when it last ran and when the next window opens.
  */
 export function ScheduledJobsPanel() {
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const task = useTaskLabel();
   const client = useConsole();
   const {state} = useServerForm<MaintenanceSettings, MaintenanceDocument>('maintenance');
@@ -74,7 +75,7 @@ export function ScheduledJobsPanel() {
         return (
           <SettingsRow key={job.task} icon="jobs" label={task(job.task)}
             help={job.windows.length ? t('settings.server.jobs.in', {windows: job.windows.join(', ')}) : t('settings.server.jobs.never')}
-            control={<div className={page.statusFacts}>{ran ? <span>{t('settings.server.jobs.last', {when: when(ran.createdAt)})}</span> : null}{job.nextAt ? <Status tone="neutral">{t('settings.server.jobs.next', {when: when(job.nextAt.getTime())})}</Status> : null}</div>} />
+            control={<div className={page.statusFacts}>{ran ? <span>{t('settings.server.jobs.last', {when: when(i18n, ran.createdAt)})}</span> : null}{job.nextAt ? <Status tone="neutral">{t('settings.server.jobs.next', {when: when(i18n, job.nextAt.getTime())})}</Status> : null}</div>} />
         );
       })}
       {/* Schedules an owner or an integration added by hand, each with its own window. */}

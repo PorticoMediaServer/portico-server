@@ -54,7 +54,7 @@ func jobArgumentsSchema() map[string]any {
 func (JobRequest) JSONSchema() map[string]any {
 	return map[string]any{"type": "object", "required": []string{"operationId", "command", "selector", "args"}, "additionalProperties": false, "properties": map[string]any{
 		"operationId": map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{1,128}$"},
-		"command":     map[string]any{"type": "string", "enum": []string{"personal-state", "playlist-add", "collection-add", "metadata-edit", "refresh", "trash"}},
+		"command":     map[string]any{"type": "string", "enum": []string{"personal-state", "playlist-add", "collection-add", "metadata-edit", "refresh"}},
 		"selector":    (JobSelector{}).JSONSchema(), "args": jobArgumentsSchema(),
 		"expected": map[string]any{"type": "object", "required": []string{}, "additionalProperties": false, "properties": map[string]any{"catalogRevision": map[string]any{"type": "string"}}},
 	}}

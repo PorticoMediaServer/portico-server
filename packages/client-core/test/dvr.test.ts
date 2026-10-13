@@ -14,7 +14,12 @@ test('DVR public DTOs project known fields and reject foreign identity or invali
  raw.occurrence.programmeId=hex(64,'f');assert.throws(()=>parseRecording(raw));
  raw.occurrence.programmeId=raw.programme.id;raw.end=raw.start;assert.throws(()=>parseRecording(raw));
  raw.end=end;raw.programme.start='2026-02-30T12:00:00Z';assert.throws(()=>parseRecording(raw));
- const p=page();p.recordings.push(p.recordings[0]);assert.throws(()=>parseDVRPage(p));
+ // On a page, a repeated recording keeps its first row, and one that cannot be read or is in a state this app does not know is left out alone.
+ const p:any=page();const first=p.recordings[0];p.recordings.push(first,{...first,id:hex(64,'9'),state:'archived-to-tape'},'nope');p.future=true;delete p.usage;p.captureAvailable='yes';
+ const parsed=parseDVRPage(p);assert.deepEqual(parsed.recordings.map(r=>r.id),[first.id]);
+ assert.equal(parsed.captureAvailable,false,'recording is offered only when the server says so outright');assert.deepEqual(parsed.usage,{bytes:0,pendingDeleteBytes:0,recordings:0});
+ const over:any=page();over.recordings=Array(51).fill(first);assert.throws(()=>parseDVRPage(over));
+ const noRevision:any=page();delete noRevision.revision;assert.throws(()=>parseDVRPage(noRevision));
 });
 test('DVR projections preserve observed incomplete coverage without inventing play authority',()=>{
  const r=recording();r.state='incomplete-playable';r.itemId=hex(64,'1');r.libraryId=hex(64,'2');r.coverageStart=time;r.coverageEnd='2026-09-06T12:30:00Z';r.bytes=188*100;

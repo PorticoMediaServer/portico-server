@@ -218,9 +218,9 @@ func TestListDeletePrune(t *testing.T) {
 		}
 		kept++
 	}
-	// Two manual and two scheduled existed; one manual was deleted, so three
-	// remain and prune keeps the newest two. Pre-restore keeps three of four.
-	if kept != 2 || keptPre != 3 {
+	// Manual backups remain until the owner deletes them; keep bounds only
+	// the two scheduled copies. Pre-restore keeps three of four.
+	if kept != 4 || keptPre != 3 {
 		t.Fatalf("prune kept %d + %d pre-restore", kept, keptPre)
 	}
 }

@@ -1,4 +1,5 @@
 import {unreadableServerResponse} from './server-messages.ts';
+import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 /** Online personal resources. The server owns membership, query evaluation and permissions.
  * Existing library navigation owns destinations/Back; this module owns no queue or device store. */
 import {validateContentEntry,type ContentEntry} from './library-content.ts';
@@ -28,7 +29,8 @@ const num=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 function bad():never{throw Object.assign(new Error(unreadableServerResponse),{code:'invalid_saved'});}
 function rows(v:unknown,max=100):unknown[]{if(!Array.isArray(v)||v.length>max)bad();return v;}
-function distinct<T extends {id:string}>(a:T[]):T[]{if(new Set(a.map(v=>v.id)).size!==a.length)bad();return a;}
+/** A repeated id keeps its first row. */
+function distinct<T extends {id:string}>(a:T[],part='rows'):T[]{return firstOfEach('personal-saved',part,a,v=>v.id);}
 function actor(v:unknown):SavedActor{if(!obj(v)||!['local','hosted'].includes(v.authority as string)||!id(v.accountId)||!id(v.profileId))bad();return {authority:v.authority as SavedActor['authority'],accountId:v.accountId,profileId:v.profileId};}
 function definition(v:unknown):SavedDefinition{
  if(!obj(v)||!id(v.libraryId)||!id(v.pivot)||!['grid','list'].includes(v.presentation as string))bad();
@@ -40,10 +42,12 @@ function definition(v:unknown):SavedDefinition{
 }
 function resource(v:unknown,scope:SavedScope):PersonalResource{
  if(!obj(v)||v.serverId!==scope.serverId||!id(v.viewerFence)||!id(v.id)||!['collection','view'].includes(v.kind as string)||!str(v.name,400)||!v.name.trim()||!str(v.summary,8000)||!['private','server'].includes(v.visibility as string)||!num(v.revision)||!num(v.entryCount)||!['owner','editor','viewer'].includes(v.role as string)||!['ready','needs-review'].includes(v.status as string)||typeof v.pinned!=='boolean'||!num(v.pinRevision))bad();
- const actions=rows(v.actions,8).map(a=>{if(typeof a!=='string'||!['pin','update','delete','entries','share'].includes(a))bad();return a;});
+ // An action this app does not know is not offered. The role and what a role may hold stay exact.
+ const offered=rows(v.actions,8),actions=[...new Set(offered.filter((a):a is string=>typeof a==='string'&&['pin','update','delete','entries','share'].includes(a)))];
+ if(actions.length!==offered.length)noteSkipped('personal-saved','resource.actions',offered.length-actions.length);
  if(v.role==='viewer'&&actions.some(a=>a!=='pin')||v.role==='editor'&&actions.some(a=>a!=='pin'&&a!=='entries'))bad();
- const shares=rows(v.shares??[],100).map(s=>{if(!obj(s)||!['viewer','editor'].includes(s.role as string)||!str(s.displayName,512))bad();return {...actor(s),role:s.role as 'viewer'|'editor',displayName:s.displayName};});
- const invalidComponents=rows(v.invalidComponents,32).map(x=>{if(!str(x,256))bad();return x;});
+ const shares=keepReadable('personal-saved','resource.shares',rows(v.shares??[],100),s=>{if(!obj(s)||typeof s.role!=='string'||!str(s.displayName,512))bad();/* Someone a collection or view is shared with is never hidden for holding a role this app does not know: they are listed, as a viewer, and can still be removed. */return {...actor(s),role:oneOfOr('personal-saved','share.role',s.role,['viewer','editor'] as const,'viewer'),displayName:s.displayName};});
+ const invalidComponents=keepReadable('personal-saved','resource.invalidComponents',rows(v.invalidComponents,32),x=>{if(!str(x,256))bad();return x;});
  // Needs-review definitions are deliberately not executed or silently normalized.
  const d=v.kind==='view'&&v.status==='ready'?definition(v.definition):undefined;
  return {serverId:scope.serverId,viewerFence:v.viewerFence,id:v.id,kind:v.kind as PersonalResourceKind,name:v.name,summary:v.summary,visibility:v.visibility as PersonalVisibility,revision:v.revision,role:v.role as PersonalResource['role'],entryCount:v.entryCount,actions,...(d?{definition:d}:{}),status:v.status as PersonalResource['status'],invalidComponents,pinned:v.pinned,pinRevision:v.pinRevision,shares};
@@ -171,20 +175,21 @@ export class PersonalSavedService{
      const page=parseBrowseResult(raw.browse);
      if(page.pivot!==r.definition!.pivot)bad();
      patch.browse=page;patch.entries=page.entries.map(media=>({id:media.id,hidden:false,media}));patch.nextCursor=page.pageInfo.nextCursor;
-    }else{patch.entries=distinct(rows(raw.entries).map(e=>{if(!obj(e)||!id(e.id)||typeof e.hidden!=='boolean'||e.hidden&&Object.keys(e).some(k=>k!=='id'&&k!=='hidden'))bad();return {id:e.id,hidden:e.hidden,...(!e.hidden?{media:validateContentEntry(e.media)}:{})};}));}
+    }else{patch.entries=distinct(keepReadable('personal-saved','entries',rows(raw.entries),e=>{if(!obj(e)||!id(e.id)||typeof e.hidden!=='boolean')bad();return {id:e.id,hidden:e.hidden,...(!e.hidden?{media:validateContentEntry(e.media)}:{})};}),'entries');}
    }else{
     if(raw.serverId!==this.scope.serverId||!id(raw.viewerFence)||!num(raw.revision))bad();patch.viewerFence=raw.viewerFence;patch.revision=raw.revision;
-    if(route.view==='history')patch.entries=distinct(rows(raw.entries).map(e=>{if(!obj(e)||!id(e.id)||!str(e.updatedAt,128)||typeof e.positionSeconds!=='number'||!Number.isFinite(e.positionSeconds)||e.positionSeconds<0||typeof e.completed!=='boolean')bad();return {id:e.id,hidden:false,media:validateContentEntry(e.media),updatedAt:e.updatedAt,positionSeconds:e.positionSeconds,completed:e.completed};}));
-    else patch.resources=distinct(rows(raw.resources).map(v=>{const r=resource(v,this.scope);if(r.viewerFence!==raw.viewerFence||r.kind!==(route.view==='collections'?'collection':'view'))bad();return r;}));
+    if(route.view==='history')patch.entries=distinct(keepReadable('personal-saved','history',rows(raw.entries),e=>{if(!obj(e)||!id(e.id)||!str(e.updatedAt,128)||typeof e.positionSeconds!=='number'||!Number.isFinite(e.positionSeconds)||e.positionSeconds<0||typeof e.completed!=='boolean')bad();return {id:e.id,hidden:false,media:validateContentEntry(e.media),updatedAt:e.updatedAt,positionSeconds:e.positionSeconds,completed:e.completed};}),'history');
+    // A row from another server or another viewer fence refuses the whole directory; any other row this app cannot read is left out alone.
+    else{const listed=rows(raw.resources);for(const v of listed)if(obj(v)&&(v.serverId!==this.scope.serverId||v.viewerFence!==raw.viewerFence))bad();patch.resources=distinct(keepReadable('personal-saved','resources',listed,v=>{const r=resource(v,this.scope);if(r.kind!==(route.view==='collections'?'collection':'view'))bad();return r;}),'resources');}
    }
    if(this.state.viewerFence&&this.state.viewerFence!==patch.viewerFence)throw Object.assign(new Error('Your access changed. Reopen Saved to continue.'),{code:'scope_changed'});
    this.publish({...patch,loading:false});
   }catch(e){if(!this.alive(g)||ticket!==this.readTicket)return;const error=info(e);this.publish({loading:false,error,...(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(error.code)?{resources:[],resource:null,entries:[],browse:null,viewerFence:''}:{})});}
  }
- async loadLibraries():Promise<void>{const g=this.generation;try{const raw=await this.request<unknown>('/v1/libraries');if(!this.alive(g))return;if(!obj(raw))bad();const libraries=distinct(rows(raw.items,2048).map(v=>{if(!obj(v)||!id(v.id)||!str(v.name,512)||!id(v.kind))bad();return{id:v.id,name:v.name,kind:v.kind};}));this.publish({libraries});}catch(e){if(this.alive(g))this.publish({error:info(e)});}}
+ async loadLibraries():Promise<void>{const g=this.generation;try{const raw=await this.request<unknown>('/v1/libraries');if(!this.alive(g))return;if(!obj(raw))bad();const libraries=distinct(keepReadable('personal-saved','libraries',rows(raw.items,2048),v=>{if(!obj(v)||!id(v.id)||!str(v.name,512)||!id(v.kind))bad();return{id:v.id,name:v.name,kind:v.kind};}),'libraries');this.publish({libraries});}catch(e){if(this.alive(g))this.publish({error:info(e)});}}
  async loadCandidates(cursor=''):Promise<void>{const r=this.state.resource,g=this.generation,ticket=++this.candidateTicket;if(!r?.actions.includes('share'))return;
   try{const raw=await this.request<unknown>('/v1/saved-resources/'+encodeURIComponent(r.id)+'/share-candidates?'+new URLSearchParams({limit:'40',...(cursor?{cursor}:{})}));if(!this.alive(g)||ticket!==this.candidateTicket)return;
-   if(!obj(raw)||raw.serverId!==this.scope.serverId||raw.viewerFence!==r.viewerFence||raw.resourceId!==r.id||raw.revision!==r.revision||!str(raw.nextCursor,4096))bad();const candidates=distinct(rows(raw.candidates).map(c=>{if(!obj(c)||!id(c.id)||!str(c.displayName,512))bad();return {...actor(c),id:c.id,displayName:c.displayName};}));this.publish({candidates,candidateCursor:raw.nextCursor});
+   if(!obj(raw)||raw.serverId!==this.scope.serverId||raw.viewerFence!==r.viewerFence||raw.resourceId!==r.id||raw.revision!==r.revision||!str(raw.nextCursor,4096))bad();const candidates=distinct(keepReadable('personal-saved','candidates',rows(raw.candidates),c=>{if(!obj(c)||!id(c.id)||!str(c.displayName,512))bad();return {...actor(c),id:c.id,displayName:c.displayName};}),'candidates');this.publish({candidates,candidateCursor:raw.nextCursor});
   }catch(e){if(this.alive(g)&&ticket===this.candidateTicket)this.publish({error:info(e)});}}
  async mutate(intent:PersonalSavedIntent):Promise<boolean>{
   if(this.disposed||this.state.loading||this.state.pending||this.command)throw new Error('Finish or dismiss the outstanding change before starting another.');

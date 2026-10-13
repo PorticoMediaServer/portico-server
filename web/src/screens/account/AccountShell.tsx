@@ -1,9 +1,7 @@
 import React from 'react';
 import {Link} from '@tanstack/react-router';
-import {defaultI18n} from '@i18n';
+import {useI18n} from '../../app/i18n';
 import {BrandMark, Inset, ListRow, Page, PageHeader, Segmented, Wordmark, useNarrow} from '../../ui';
-
-const t = defaultI18n.t;
 
 export type AccountSection = {id: string; label: string; badge?: string};
 
@@ -19,6 +17,7 @@ export function AccountShell({username, sections, section, onSection, children}:
   onSection: (id: string) => void;
   children: React.ReactNode;
 }) {
+  const {t} = useI18n();
   const narrow = useNarrow();
   const current = sections.find(s => s.id === section) ?? sections[0]!;
   return (

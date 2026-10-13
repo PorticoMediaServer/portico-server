@@ -19,8 +19,8 @@ type Querier interface {
 // asset row describes now (size and mtime). Stale or missing: ok is false.
 func Read(ctx context.Context, q Querier, asset string) (Facts, bool, error) {
 	var f Facts
-	err := q.QueryRowContext(ctx, `SELECT f.container,f.codec,f.sample_rate,f.channels,f.bit_depth,f.raw_frames,f.duration_frames,f.start_frames,f.end_frames,f.trim_source,f.decoder_config
- FROM audio_render_facts f JOIN catalog_assets a ON a.token=f.asset_id AND a.size=f.size AND a.modified_ns=f.modified_ns WHERE f.asset_id=?`, asset).Scan(&f.Container, &f.Codec, &f.SampleRate, &f.Channels, &f.BitDepth, &f.RawFrames, &f.DurationFrames, &f.StartFrames, &f.EndFrames, &f.TrimSource, &f.DecoderConfig)
+	err := q.QueryRowContext(ctx, `SELECT f.container,f.codec,f.sample_rate,f.channels,f.bit_depth,f.raw_frames,f.duration_frames,f.start_frames,f.end_frames,f.trim_source,f.decoder_config,f.codec_profile,f.bit_rate
+ FROM audio_render_facts f JOIN catalog_assets a ON a.token=f.asset_id AND a.size=f.size AND a.modified_ns=f.modified_ns WHERE f.asset_id=?`, asset).Scan(&f.Container, &f.Codec, &f.SampleRate, &f.Channels, &f.BitDepth, &f.RawFrames, &f.DurationFrames, &f.StartFrames, &f.EndFrames, &f.TrimSource, &f.DecoderConfig, &f.Profile, &f.BitRate)
 	if errors.Is(err, sql.ErrNoRows) {
 		return f, false, nil
 	}
@@ -43,10 +43,10 @@ func Save(ctx context.Context, db *sql.DB, asset string, f Facts) error {
 	}
 	defer gated.Rollback()
 	tx := gated.Tx()
-	res, err := tx.ExecContext(ctx, `INSERT INTO audio_render_facts(asset_id,size,modified_ns,container,codec,sample_rate,channels,bit_depth,raw_frames,duration_frames,start_frames,end_frames,trim_source,decoder_config,measured_ms)
- SELECT token,size,modified_ns,?,?,?,?,?,?,?,?,?,?,?,? FROM catalog_assets WHERE token=?
- ON CONFLICT(asset_id) DO UPDATE SET size=excluded.size,modified_ns=excluded.modified_ns,container=excluded.container,codec=excluded.codec,sample_rate=excluded.sample_rate,channels=excluded.channels,bit_depth=excluded.bit_depth,raw_frames=excluded.raw_frames,duration_frames=excluded.duration_frames,start_frames=excluded.start_frames,end_frames=excluded.end_frames,trim_source=excluded.trim_source,decoder_config=excluded.decoder_config,measured_ms=excluded.measured_ms`,
-		f.Container, f.Codec, f.SampleRate, f.Channels, f.BitDepth, f.RawFrames, f.DurationFrames, f.StartFrames, f.EndFrames, f.TrimSource, f.DecoderConfig, time.Now().UnixMilli(), asset)
+	res, err := tx.ExecContext(ctx, `INSERT INTO audio_render_facts(asset_id,size,modified_ns,container,codec,sample_rate,channels,bit_depth,raw_frames,duration_frames,start_frames,end_frames,trim_source,decoder_config,codec_profile,bit_rate,measured_ms)
+ SELECT token,size,modified_ns,?,?,?,?,?,?,?,?,?,?,?,?,?,? FROM catalog_assets WHERE token=?
+ ON CONFLICT(asset_id) DO UPDATE SET size=excluded.size,modified_ns=excluded.modified_ns,container=excluded.container,codec=excluded.codec,sample_rate=excluded.sample_rate,channels=excluded.channels,bit_depth=excluded.bit_depth,raw_frames=excluded.raw_frames,duration_frames=excluded.duration_frames,start_frames=excluded.start_frames,end_frames=excluded.end_frames,trim_source=excluded.trim_source,decoder_config=excluded.decoder_config,codec_profile=excluded.codec_profile,bit_rate=excluded.bit_rate,measured_ms=excluded.measured_ms`,
+		f.Container, f.Codec, f.SampleRate, f.Channels, f.BitDepth, f.RawFrames, f.DurationFrames, f.StartFrames, f.EndFrames, f.TrimSource, f.DecoderConfig, f.Profile, f.BitRate, time.Now().UnixMilli(), asset)
 	if err != nil {
 		return err
 	}
@@ -69,9 +69,9 @@ func Fail(ctx context.Context, db *sql.DB, asset, code string) error {
 // Measure runs one confined measurement of an item's asset.
 type Measure func(ctx context.Context, item, asset string) (Facts, error)
 
-// Ensure returns fresh facts, measuring once within budget when they are missing
-// (a play of a track the backfill hasn't reached yet). A recorded failure for
-// the same file is not retried here.
+// Ensure returns fresh facts or queues a missing measurement for the background
+// worker. A playback request never waits for a full decode. Recorded failures
+// for unchanged files are not retried here.
 func Ensure(ctx context.Context, db *sql.DB, measure Measure, item, asset string, budget time.Duration) (Facts, bool, error) {
 	if f, ok, err := Read(ctx, db, asset); err != nil || ok {
 		return f, ok, err
@@ -79,20 +79,10 @@ func Ensure(ctx context.Context, db *sql.DB, measure Measure, item, asset string
 	if failed, err := Failed(ctx, db, asset); err != nil || failed || measure == nil {
 		return Facts{}, false, err
 	}
-	bounded, cancel := context.WithTimeout(ctx, budget)
-	defer cancel()
-	f, err := measure(bounded, item, asset)
-	if err != nil {
-		if bounded.Err() == nil && ctx.Err() == nil {
-			log.Printf("Audio facts: %s couldn't be measured (%s): %v", asset, code(err), err)
-			_ = Fail(ctx, db, asset, code(err))
-		}
-		return Facts{}, false, nil
-	}
-	if err = Save(ctx, db, asset, f); err != nil {
-		return Facts{}, false, err
-	}
-	return f, true, nil
+	// A foreground start queues facts instead of repeatedly throwing away a
+	// full decode when its short request deadline expires.
+	_, err := dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `INSERT INTO audio_render_fact_requests(asset_id,item_id,requested_ms)VALUES(?,?,?) ON CONFLICT(asset_id)DO UPDATE SET item_id=excluded.item_id`, asset, item, time.Now().UnixMilli())
+	return Facts{}, false, err
 }
 
 func code(err error) string {
@@ -184,6 +174,32 @@ func (b *Backfill) Step(ctx context.Context) time.Duration {
 			return time.Minute
 		}
 		b.retried = true
+	}
+	// Recently requested listening files run ahead of the library backfill.
+	var requestedAsset, requestedItem string
+	if e := b.DB.QueryRowContext(ctx, `SELECT r.asset_id,r.item_id FROM audio_render_fact_requests r JOIN catalog_assets a ON a.token=r.asset_id WHERE a.available=1 ORDER BY r.requested_ms LIMIT 1`).Scan(&requestedAsset, &requestedItem); e == nil {
+		if _, ok, readErr := Read(ctx, b.DB, requestedAsset); readErr != nil {
+			return time.Second
+		} else if !ok && b.Measure != nil {
+			bounded, cancel := context.WithTimeout(ctx, 10*time.Minute)
+			f, err := b.Measure(bounded, requestedItem, requestedAsset)
+			cancel()
+			if ctx.Err() != nil {
+				return 0
+			}
+			if err == nil {
+				if err = Save(ctx, b.DB, requestedAsset, f); err != nil {
+					return time.Second
+				}
+			} else if !errors.Is(err, context.DeadlineExceeded) {
+				_ = Fail(ctx, b.DB, requestedAsset, code(err))
+			}
+			if err != nil && errors.Is(err, context.Canceled) {
+				return time.Second
+			}
+		}
+		_, _ = dbwork.ExecWrite(ctx, b.DB, dbwork.ClassBackgroundMedia, `DELETE FROM audio_render_fact_requests WHERE asset_id=?`, requestedAsset)
+		return time.Millisecond
 	}
 	if !b.passing {
 		if !b.finished.IsZero() && time.Since(b.finished) < rest {

@@ -348,6 +348,7 @@ func (s *Service) Run(ctx context.Context) {
 		{
 			s.recoverPolicyChanges(ctx)
 			s.schedule(ctx)
+			s.startWaitingReports(ctx)
 			rows, err := s.db.QueryContext(ctx, `SELECT j.id,j.library_id,r.source_id,r.phase FROM jobs j JOIN inventory_runs r ON r.job_id=j.id WHERE j.status IN('queued','running') ORDER BY r.last_turn,j.created_at,j.id LIMIT 16`)
 			if err != nil {
 				return time.Second
@@ -584,5 +585,22 @@ func (s *Service) recoverPolicyChanges(ctx context.Context) {
 			return
 		}
 		_ = s.PolicyChanged(ctx, id)
+	}
+}
+
+// InterruptLibrary stops every scan of a library that is running in this
+// process (the library was removed).
+func (s *Service) InterruptLibrary(ctx context.Context, library string) {
+	s.mu.Lock()
+	ids := make([]string, 0, len(s.active))
+	for id := range s.active {
+		ids = append(ids, id)
+	}
+	s.mu.Unlock()
+	for _, id := range ids {
+		var owner string
+		if s.db.QueryRowContext(ctx, `SELECT library_id FROM jobs WHERE id=?`, id).Scan(&owner) == nil && owner == library {
+			s.stopActive(id)
+		}
 	}
 }

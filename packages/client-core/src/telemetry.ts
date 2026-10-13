@@ -3,7 +3,12 @@
  * them. Every metric carries its own status, so a client renders "not
  * available on this platform" instead of drawing a zero the server never
  * measured. Nothing here is inferred on the client.
+ *
+ * A server may be newer than this app: a metric, point, probe, preset, tool or warning that cannot be
+ * read is left out (a metric then reads as unavailable) and the rest is kept. Sizes, session counts
+ * and limits stay exact.
  */
+import {keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
 export type MetricStatus='available'|'limited'|'unavailable';
 export type Metric={status:MetricStatus;value:number;detail?:string};
 export type MetricName='cpu'|'memory'|'diskRead'|'diskWrite'|'netIn'|'netOut'|'gpuUsage'|'gpuMemory'|'gpuEncoder';
@@ -37,20 +42,25 @@ function base(v:unknown):Record<string,any>{if(!obj(v))invalid();return v;}
 
 export function parseMetric(value:unknown):Metric{
  const m=base(value);
- if(!['available','limited','unavailable'].includes(m.status)||!finite(m.value)||m.detail!==undefined&&!text(m.detail,512))invalid();
+ if(!finite(m.value)||m.detail!==undefined&&!text(m.detail,512))invalid();
+ // A status this app does not know reads as unavailable, so a value it cannot vouch for is never drawn.
+ if(!['available','limited','unavailable'].includes(m.status)){noteSkipped('telemetry','metric.status');return {status:'unavailable',value:0,...(m.detail===undefined?{}:{detail:m.detail})};}
  if(m.status==='unavailable'&&m.value!==0)invalid();
  return m as Metric;
 }
 function metricMap(value:unknown):Record<MetricName,Metric>{
  const source=base(value);const out={} as Record<MetricName,Metric>;
- for(const name of METRIC_NAMES)out[name]=parseMetric(source[name]);
+ // A metric that is missing or cannot be read is shown as unavailable; the others are kept.
+ for(const name of METRIC_NAMES){try{out[name]=parseMetric(source[name]);}catch{noteSkipped('telemetry','metric');out[name]={status:'unavailable',value:0};}}
  return out;
 }
 export function parseTelemetrySample(value:unknown):TelemetrySample{
  const s=base(value);
  if(!integer(s.at)||!integer(s.memoryUsedBytes)||!integer(s.memoryTotalBytes)||s.memoryUsedBytes>s.memoryTotalBytes&&s.memoryTotalBytes!==0)invalid();
- for(const key of ['gpuDevice','gpuProvider'])if(s[key]!==undefined&&!text(s[key],200))invalid();
- return {...s,metrics:metricMap(s.metrics)} as TelemetrySample;
+ // A device or provider name that cannot be read is left out.
+ const named:Record<string,any>={...s};
+ for(const key of ['gpuDevice','gpuProvider'] as const)if(named[key]!==undefined&&!text(named[key],200)){noteSkipped('telemetry',key);delete named[key];}
+ return {...named,metrics:metricMap(s.metrics)} as TelemetrySample;
 }
 /** A window holds at most one point every two seconds for ten minutes. */
 const MAX_POINTS=1600;
@@ -62,7 +72,8 @@ export function parseTelemetryReading(value:unknown):TelemetryReading{
   const points=series[name];
   if(!Array.isArray(points)||points.length>MAX_POINTS)invalid();
   let previous=-1;
-  out[name]=points.map(point=>{
+  // A point that is out of order, from the future or not a number is left out; the rest of the line is kept.
+  out[name]=keepReadable('telemetry','series.points',points,point=>{
    const p=base(point);
    if(!integer(p.t)||!finite(p.v)||p.t<previous||p.t>r.observedAt)invalid();
    previous=p.t;
@@ -78,20 +89,24 @@ export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
   !integer(c.throttleBufferSeconds)||!integer(c.playedRetentionSeconds)||!integer(c.observedAt))invalid();
  const hardware=base(c.hardware);
  if(!text(hardware.configured,40)||!text(hardware.effective,40)||!text(hardware.device,200)||!Array.isArray(hardware.probes)||hardware.probes.length>20)invalid();
- for(const probe of hardware.probes){const p=base(probe);if(!text(p.backend,40)||typeof p.supported!=='boolean'||!text(p.detail,512))invalid();}
+ const probes=keepReadable('transcode-capacity','hardware.probes',hardware.probes,probe=>{const p=base(probe);if(!text(p.backend,40)||typeof p.supported!=='boolean'||!text(p.detail,512))invalid();return p as HardwareProbe;});
  const sessions=base(c.sessions);
  for(const key of ['active','hardware','software','background'])if(sessions[key]!==null&&!integer(sessions[key]))invalid();
  const limits=base(sessions.limits);
  for(const key of ['concurrent','hardware','software','background'])if(!integer(limits[key]))invalid();
  const tone=base(c.hdrToneMapping);
- if(!['disabled','available','limited','unavailable'].includes(tone.status)||!text(tone.detail,512))invalid();
+ if(!text(tone.detail,512))invalid();
+ // A tone-mapping status this app does not know reads as unavailable; the server's own detail is still shown.
+ const toneStatus=oneOfOr('transcode-capacity','hdrToneMapping.status',tone.status,['disabled','available','limited','unavailable'] as const,'unavailable');
  const directory=base(c.temporaryDirectory);
  if(!text(directory.path,1024)||typeof directory.ready!=='boolean'||directory.freeBytes!==null&&!integer(directory.freeBytes))invalid();
  if(!Array.isArray(c.presets)||c.presets.length>20)invalid();
- for(const preset of c.presets){const p=base(preset);if(!text(p.id,40)||!text(p.label,80)||!integer(p.height)||!integer(p.videoKbps)||!integer(p.audioKbps))invalid();}
- const dependencies=base(c.dependencies);
- if(Object.keys(dependencies).length>8)invalid();
- for(const dependency of Object.values(dependencies)){const d=base(dependency);if(!text(d.path,1024)||!text(d.version,512)||typeof d.ok!=='boolean')invalid();}
- if(!Array.isArray(c.warnings)||c.warnings.length>20||c.warnings.some((w:unknown)=>!text(w,512)))invalid();
- return c as TranscodeCapacity;
+ const presets=keepReadable('transcode-capacity','presets',c.presets,preset=>{const p=base(preset);if(!text(p.id,40)||!text(p.label,80)||!integer(p.height)||!integer(p.videoKbps)||!integer(p.audioKbps))invalid();return p as TranscodePreset;});
+ const published=base(c.dependencies);
+ if(Object.keys(published).length>8)invalid();
+ const dependencies:Record<string,RuntimeDependency>={};
+ for(const [name,dependency] of Object.entries(published)){if(obj(dependency)&&text(dependency.path,1024)&&text(dependency.version,512)&&typeof dependency.ok==='boolean')dependencies[name]=dependency as RuntimeDependency;else noteSkipped('transcode-capacity','dependencies');}
+ if(!Array.isArray(c.warnings)||c.warnings.length>20)invalid();
+ const warnings=keepReadable('transcode-capacity','warnings',c.warnings,(w:unknown)=>text(w,512)?w:undefined);
+ return {...c,hardware:{...hardware,probes},hdrToneMapping:{...tone,status:toneStatus},presets,dependencies,warnings} as TranscodeCapacity;
 }

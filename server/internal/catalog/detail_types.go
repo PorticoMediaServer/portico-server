@@ -113,16 +113,21 @@ type TitleFacts struct {
 }
 type Detail struct {
 	Facts *TitleFacts `json:"facts,omitempty"`
-	// Files is every file of the title with its tracks, for the page's Files list.
-	Files    []TitleFile     `json:"files,omitempty"`
-	Related  *RelatedMovies  `json:"related,omitempty"`
-	Extras   []DetailExtra   `json:"extras,omitempty"`
-	Scope    DetailScope     `json:"scope"`
-	Revision ContentRevision `json:"revision"`
-	Item     Item            `json:"item"`
-	Personal PersonalState   `json:"personal"`
-	Actions  []DetailAction  `json:"actions"`
-	Metadata DetailMetadata  `json:"metadata"`
+	// Files is every file of the title with its tracks, for the page's Files
+	// list and the version picker: best version first.
+	Files []TitleFile `json:"files,omitempty"`
+	// MissingSince is when the title's last file went from disk (RFC 3339).
+	// Absent while the title has a file. A missing title is shown, cannot be
+	// played, and comes back when a file that is the same title appears.
+	MissingSince string          `json:"missingSince,omitempty"`
+	Related      *RelatedMovies  `json:"related,omitempty"`
+	Extras       []DetailExtra   `json:"extras,omitempty"`
+	Scope        DetailScope     `json:"scope"`
+	Revision     ContentRevision `json:"revision"`
+	Item         Item            `json:"item"`
+	Personal     PersonalState   `json:"personal"`
+	Actions      []DetailAction  `json:"actions"`
+	Metadata     DetailMetadata  `json:"metadata"`
 	// Markers are projected by the request scope that authorized this detail
 	// read; analysis owns detection and the skip decision, catalog only carries
 	// the result. An empty list means "no markers for this viewer", never

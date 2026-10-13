@@ -5,6 +5,7 @@ import type { MediaItem } from './index.ts';
 import {validateRelatedMovies,type RelatedMovieProjection} from './related-movies.ts';
 import {parseSegmentMarkers,type SegmentMarker} from './segment-markers.ts';
 import {validateContentEntry,type ContentEntry} from './library-content.ts';
+import {firstOfEach,keepReadable,noteSkipped} from './tolerant.ts';
 export type DetailExtraType = 'trailer' | 'featurette' | 'deleted_scene' | 'behind_the_scenes' | 'interview' | 'scene' | 'short' | 'other';
 export type DetailExtra = Readonly<{ type: DetailExtraType; label: string; items: readonly ContentEntry[] }>;
 export const detailExtraTypes: readonly DetailExtraType[] = ['trailer','featurette','deleted_scene','behind_the_scenes','interview','scene','short','other'];
@@ -40,12 +41,18 @@ export type TitleFileTrack = Readonly<{ language?: string; codec: string; title?
 /** One file of a title with every track in it (the page's Files list). `path` is sent to owners only. */
 export type TitleFile = Readonly<{
   id: string; path?: string; size: number; container: string; duration: number; bitRate?: number; available: boolean;
+  /** 0 for a whole title. Files with the same part are versions of one another; the first listed is played when none is chosen. */
+  partIndex?: number;
+  /** The version's edition label, where its name or local metadata gave one. */
+  edition?: string;
   video?: Readonly<{ codec: string; width: number; height: number; dynamicRange?: string; hdr10Plus?: boolean; frameRate?: number; bitDepth?: number; bitRate?: number }>;
   audio: readonly TitleFileTrack[]; subtitles: readonly TitleFileTrack[];
 }>;
 export type DetailProjection = Readonly<{
   facts?: TitleFacts;
   files?: readonly TitleFile[];
+  /** When the title's last file went from disk (RFC 3339). Present only while the title has no file: it is shown, cannot be played, and comes back when a file that is the same title appears. */
+  missingSince?: string;
   scope: Readonly<{ serverId: string; libraryId: string; itemId: string; viewerFence: string }>;
   revision: Readonly<{ catalog: number; viewer: number }>;
   item: Readonly<DetailItem>;
@@ -75,33 +82,47 @@ const rating = (v: unknown): v is number | null => v === null || typeof v === 'n
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 class Failure extends Error { code: string; retryable: boolean; constructor(code: string, message: string, retryable = false) { super(message); this.code = code; this.retryable = retryable; } }
 function invalid(): never { throw new Failure('invalid_detail', unreadableServerResponse); }
-/** One credit row as the detail and the credits pages carry it. */
-function creditRow(row: unknown, itemId: string): DetailCredit { if (!obj(row) || !id(row.id) || !str(row.name) || !str(row.role) || !str(row.department) || !id(row.provider)||row.personId!==undefined&&!id(row.personId)||row.portraitUrl!==undefined&&(!str(row.portraitUrl)||!row.portraitUrl.startsWith('/v1/metadata/item/'+encodeURIComponent(itemId)+'/art/portrait?')||/[\\\r\n]/.test(row.portraitUrl))) invalid(); return Object.freeze({ id: row.id, name: row.name, role: row.role, department: row.department, provider: row.provider,...(row.portraitUrl?{portraitUrl:row.portraitUrl as string}:{}),...(row.personId?{personId:row.personId as string}:{}) }); }
+/** An optional part of a title that could not be read was left out; an absent or null value is not counted. */
+function left(part: string, value: unknown): void { if (value !== undefined && value !== null) noteSkipped('detail', part); }
+/** An optional part of a title: when it cannot be read it is left out and the page is kept. */
+function part<T>(name: string, value: unknown, read: (value: unknown) => T): T | undefined {
+  if (value === undefined || value === null) return undefined;
+  try { return read(value); } catch { noteSkipped('detail', name); return undefined; }
+}
+/** One credit row as the detail and the credits pages carry it. A row needs its id; a portrait or person link that cannot be read is left out, and missing words are empty. */
+function creditRow(row: unknown, itemId: string): DetailCredit {
+  if (!obj(row) || !id(row.id) || !str(row.name ?? '') || !str(row.role ?? '') || !str(row.department ?? '') || !str(row.provider ?? '', 256)) invalid();
+  const portrait = str(row.portraitUrl) && row.portraitUrl.startsWith('/v1/metadata/item/'+encodeURIComponent(itemId)+'/art/portrait?') && !/[\\\r\n]/.test(row.portraitUrl) ? row.portraitUrl : undefined;
+  if (!portrait && row.portraitUrl) left('credit.portraitUrl', row.portraitUrl);
+  return Object.freeze({ id: row.id, name: (row.name ?? '') as string, role: (row.role ?? '') as string, department: (row.department ?? '') as string, provider: (row.provider ?? '') as string,...(portrait?{portraitUrl:portrait}:{}),...(id(row.personId)?{personId:row.personId}:{}) });
+}
 function array(value: unknown, max: number): unknown[] { if (!Array.isArray(value) || value.length > max) invalid(); return value; }
+/**
+ * The viewer's own state for a title. Its revision is exact: a change is sent against it. A flag
+ * that is not sent reads as off, a rating that cannot be read as none, a status this app does not
+ * know as current, and a conflict or choice that cannot be read is left out alone.
+ */
 function personal(value: unknown): PersonalState {
-  if (!obj(value) || typeof value.watchlisted !== 'boolean' || typeof value.favorite !== 'boolean' || !rating(value.rating) || !integer(value.revision)) invalid();
-  const watched=value.watched??false,progressSeconds=value.progressSeconds??0,lastPlayedAt=value.lastPlayedAt??'',status=value.status??'current';
-  if(typeof watched!=='boolean'||!finite(progressSeconds)||!str(lastPlayedAt,128)||!['current','needs-resolution'].includes(status as string))invalid();
-  const conflicts=array(value.conflicts??[],8).map(c=>{if(!obj(c)||!id(c.id)||!id(c.field)||!integer(c.baseRevision))invalid();const choices=array(c.choices,100).map(v=>{if(!obj(v)||!id(v.operationId)||!id(v.deviceId)||!str(v.authoredAt,128))invalid();return Object.freeze({operationId:v.operationId,deviceId:v.deviceId,authoredAt:v.authoredAt,value:v.value});});return Object.freeze({id:c.id,field:c.field,baseRevision:c.baseRevision,baseValue:c.baseValue,choices:Object.freeze(choices)});});
-  return Object.freeze({watchlisted:value.watchlisted,favorite:value.favorite,rating:value.rating,revision:value.revision,watched,progressSeconds,lastPlayedAt,status:status as PersonalState['status'],conflicts:Object.freeze(conflicts)});
+  if (!obj(value) || !integer(value.revision)) invalid();
+  const conflicts=keepReadable('detail','personal.conflicts',array(value.conflicts??[],8),c=>{if(!obj(c)||!id(c.id)||!id(c.field)||!integer(c.baseRevision))invalid();const choices=keepReadable('detail','personal.choices',array(c.choices,100),v=>{if(!obj(v)||!id(v.operationId)||!id(v.deviceId)||!str(v.authoredAt,128))invalid();return Object.freeze({operationId:v.operationId,deviceId:v.deviceId,authoredAt:v.authoredAt,value:v.value});});return Object.freeze({id:c.id,field:c.field,baseRevision:c.baseRevision,baseValue:c.baseValue,choices:Object.freeze(choices)});});
+  return Object.freeze({watchlisted:value.watchlisted===true,favorite:value.favorite===true,rating:rating(value.rating)?value.rating:null,revision:value.revision,watched:value.watched===true,progressSeconds:finite(value.progressSeconds)?value.progressSeconds:0,lastPlayedAt:str(value.lastPlayedAt,128)?value.lastPlayedAt:'',status:value.status==='needs-resolution'?'needs-resolution':'current',conflicts:Object.freeze(conflicts)});
 }
 function fileTrack(value: unknown): TitleFileTrack {
-  if (!obj(value) || !str(value.codec, 64)) invalid();
+  if (!obj(value) || !str(value.codec ?? '', 64)) invalid();
   const text = (v: unknown, max = 256) => (str(v, max) && v ? v : undefined);
   const count = (v: unknown) => (integer(v) && v > 0 ? v : undefined);
   const language = text(value.language, 64), title = text(value.title), channelLayout = text(value.channelLayout, 64), objectAudio = text(value.objectAudio, 32), channels = count(value.channels), bitRate = count(value.bitRate);
-  return Object.freeze({ codec: value.codec, ...(language ? { language } : {}), ...(title ? { title } : {}), ...(channels ? { channels } : {}), ...(channelLayout ? { channelLayout } : {}), ...(objectAudio ? { objectAudio } : {}), ...(bitRate ? { bitRate } : {}), ...(value.default === true ? { default: true } : {}), ...(value.forced === true ? { forced: true } : {}), ...(value.external === true ? { external: true } : {}) });
+  return Object.freeze({ codec: (value.codec ?? '') as string, ...(language ? { language } : {}), ...(title ? { title } : {}), ...(channels ? { channels } : {}), ...(channelLayout ? { channelLayout } : {}), ...(objectAudio ? { objectAudio } : {}), ...(bitRate ? { bitRate } : {}), ...(value.default === true ? { default: true } : {}), ...(value.forced === true ? { forced: true } : {}), ...(value.external === true ? { external: true } : {}) });
 }
+/** One file of a title. It needs its id; a picture or track that cannot be read is left out, and a missing size, length or container is 0 or empty. */
 function titleFile(value: unknown): TitleFile {
-  if (!obj(value) || !id(value.id) || !integer(value.size) || !str(value.container, 64) || !finite(value.duration) || typeof value.available !== 'boolean') invalid();
-  if (value.path !== undefined && !str(value.path, 4096)) invalid();
-  let video: TitleFile['video'];
-  if (value.video !== undefined) {
-    const v = value.video;
+  if (!obj(value) || !id(value.id) || !str(value.container ?? '', 64)) invalid();
+  const path = str(value.path, 4096) && value.path ? value.path : undefined;
+  const video = part('file.video', value.video, (v): TitleFile['video'] => {
     if (!obj(v) || !str(v.codec, 64) || !integer(v.width) || !integer(v.height)) invalid();
-    video = Object.freeze({ codec: v.codec, width: v.width, height: v.height, ...(str(v.dynamicRange, 32) && v.dynamicRange ? { dynamicRange: v.dynamicRange } : {}), ...(v.hdr10Plus === true ? { hdr10Plus: true } : {}), ...(finite(v.frameRate) && v.frameRate > 0 ? { frameRate: v.frameRate } : {}), ...(integer(v.bitDepth) && v.bitDepth > 0 ? { bitDepth: v.bitDepth } : {}), ...(integer(v.bitRate) && v.bitRate > 0 ? { bitRate: v.bitRate } : {}) });
-  }
-  return Object.freeze({ id: value.id, ...(value.path ? { path: value.path as string } : {}), size: value.size, container: value.container, duration: value.duration, ...(integer(value.bitRate) && value.bitRate > 0 ? { bitRate: value.bitRate } : {}), available: value.available, ...(video ? { video } : {}), audio: Object.freeze(array(value.audio ?? [], 128).map(fileTrack)), subtitles: Object.freeze(array(value.subtitles ?? [], 256).map(fileTrack)) });
+    return Object.freeze({ codec: v.codec, width: v.width, height: v.height, ...(str(v.dynamicRange, 32) && v.dynamicRange ? { dynamicRange: v.dynamicRange } : {}), ...(v.hdr10Plus === true ? { hdr10Plus: true } : {}), ...(finite(v.frameRate) && v.frameRate > 0 ? { frameRate: v.frameRate } : {}), ...(integer(v.bitDepth) && v.bitDepth > 0 ? { bitDepth: v.bitDepth } : {}), ...(integer(v.bitRate) && v.bitRate > 0 ? { bitRate: v.bitRate } : {}) });
+  });
+  return Object.freeze({ id: value.id, ...(path ? { path } : {}), size: integer(value.size) ? value.size : 0, container: (value.container ?? '') as string, duration: finite(value.duration) ? value.duration : 0, ...(integer(value.bitRate) && value.bitRate > 0 ? { bitRate: value.bitRate } : {}), available: value.available === true, ...(integer(value.partIndex) ? { partIndex: value.partIndex } : {}), ...(str(value.edition, 512) && value.edition ? { edition: value.edition } : {}), ...(video ? { video } : {}), audio: Object.freeze(keepReadable('detail', 'file.audio', array(value.audio ?? [], 128), fileTrack)), subtitles: Object.freeze(keepReadable('detail', 'file.subtitles', array(value.subtitles ?? [], 256), fileTrack)) });
 }
 function checkScope(value: DetailScope): DetailScope {
   if (!obj(value) || !id(value.serverId) || !str(value.viewerId, 1024) || !value.viewerId) throw new Error('A bound detail viewer/server scope is required.');
@@ -117,84 +138,102 @@ function checkIntent(value:PersonalIntent):PersonalIntent {
  if(!((['watchlist','favorite','watched'].includes(value.action)&&typeof value.value==='boolean')||(value.action==='rating'&&rating(value.value))))throw new Error('Invalid personal-state intent.');
  return Object.freeze({...value});
 }
+/** The facts placing an episode, song or book part in its parent. A fact the page only shows is empty when missing and left out when it cannot be read. */
 function hierarchy(value: unknown, required: string[], optional: string[], numbers: string[]): Readonly<Record<string, string | number | null>> {
   if (!obj(value)) invalid();
   const result: Record<string, string | number | null> = {};
-  for (const key of required) { if (!str(value[key], 2048)) invalid(); result[key] = value[key] as string; }
-  for (const key of optional) if (value[key] !== undefined) { if (!str(value[key], 2048)) invalid(); result[key] = value[key] as string; }
-  for (const key of numbers) if (value[key] !== undefined) { if (value[key] !== null && !integer(value[key])) invalid(); result[key] = value[key] as number | null; }
+  for (const key of required) { const v = value[key] ?? ''; if (!str(v, 2048)) invalid(); result[key] = v; }
+  for (const key of optional) if (str(value[key], 2048)) result[key] = value[key] as string;
+  for (const key of numbers) if (value[key] === null || integer(value[key])) result[key] = value[key] as number | null;
   return Object.freeze(result);
 }
-// Extras are ordinary playable items grouped by a server-published type.
+// Extras are ordinary playable items grouped by a server-published type. A group of a type this app
+// does not know, or one left with no extra it can play, is not shown; the bound on groups is exact.
 function extras(value: unknown, target: DetailTarget): readonly DetailExtra[] {
-  const groups = array(value, detailExtraTypes.length).map(group => {
+  const groups = keepReadable('detail', 'extras', array(value, detailExtraTypes.length), group => {
     if (!obj(group) || !detailExtraTypes.includes(group.type as DetailExtraType) || !str(group.label, 256) || !group.label) invalid();
-    const items = array(group.items, 100).map(entry => {
+    const items = firstOfEach('detail', 'extras.items', keepReadable('detail', 'extras.items', array(group.items, 100), entry => {
       const parsed = validateContentEntry(entry);
       if (parsed.kind !== 'extra' || parsed.id === target.itemId || parsed.playback?.itemId !== parsed.id) invalid();
       return parsed;
-    });
-    if (items.length === 0 || new Set(items.map(item => item.id)).size !== items.length) invalid();
+    }), item => item.id);
+    if (items.length === 0) return undefined;
     return Object.freeze({ type: group.type as DetailExtraType, label: group.label, items: Object.freeze(items) });
   });
-  if (new Set(groups.map(group => group.type)).size !== groups.length) invalid();
-  return Object.freeze(groups);
+  return Object.freeze(firstOfEach('detail', 'extras', groups, group => group.type));
 }
+/**
+ * A title's page. Its server, library, item, viewer fence, revisions and list bounds are exact,
+ * and so is the viewer's own revision. Everything else is read part by part: an action, credit,
+ * rating, genre, source, file or extra that cannot be read is left out alone, an optional part
+ * (the episode, song or book facts, related rows, extras, markers) is left out whole, and what
+ * the page is only drawn with falls to a neutral reading (no runtime, not playable, no metadata).
+ */
 function projection(raw: unknown, scope: DetailScope, target: DetailTarget): DetailProjection {
-  if (!obj(raw) || !obj(raw.scope) || !obj(raw.revision) || !obj(raw.item) || !obj(raw.metadata)) invalid();
-  const s = raw.scope, r = raw.revision, item = raw.item, m = raw.metadata;
+  if (!obj(raw) || !obj(raw.scope) || !obj(raw.revision) || !obj(raw.item)) invalid();
+  const s = raw.scope, r = raw.revision, item = raw.item, m = obj(raw.metadata) ? raw.metadata : {};
   if (s.serverId !== scope.serverId || s.libraryId !== target.libraryId || s.itemId !== target.itemId || !id(s.viewerFence) || !integer(r.catalog) || !integer(r.viewer)) invalid();
-  if (item.id !== target.itemId || item.libraryId !== target.libraryId || !str(item.title, 2048) || !id(item.kind) || !finite(item.duration) || !finite(item.progressSeconds) || typeof item.available !== 'boolean') invalid();
-  const media: DetailItem = { id: target.itemId, libraryId: target.libraryId, title: item.title, kind: item.kind, duration: item.duration, progressSeconds: item.progressSeconds, available: item.available };
-  for (const key of ['overview','posterUrl','backdropUrl','stillUrl'] as const) if (item[key] !== undefined) { if (key === 'overview' ? typeof item[key] !== 'string' || item[key].length > 65536 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(item[key]) : !str(item[key], 4096)) invalid(); media[key] = item[key] as string; }
-  if (item.year !== undefined) { if (!integer(item.year)) invalid(); media.year = item.year; }
-  if (item.addedAt !== undefined) { if (item.addedAt !== null && !str(item.addedAt, 128)) invalid(); media.addedAt = item.addedAt as string | null; }
-  if (item.sources !== undefined) media.sources = array(item.sources, 64).map(source => {
-    if (!obj(source) || !id(source.id) || !str(source.container) || !str(source.videoCodec) || !str(source.audioCodec) || !integer(source.width) || !integer(source.height)) invalid();
-    if (source.duration !== undefined && !finite(source.duration)) invalid();
-    return Object.freeze({ ...(source.duration === undefined ? {} : { duration: source.duration as number }), id: source.id, container: source.container, videoCodec: source.videoCodec, audioCodec: source.audioCodec, width: source.width, height: source.height });
+  if (item.id !== target.itemId || item.libraryId !== target.libraryId || !str(item.title ?? '', 2048) || !id(item.kind)) invalid();
+  const media: DetailItem = { id: target.itemId, libraryId: target.libraryId, title: (item.title ?? '') as string, kind: item.kind, duration: finite(item.duration) ? item.duration : 0, progressSeconds: finite(item.progressSeconds) ? item.progressSeconds : 0, available: item.available === true };
+  for (const key of ['overview','posterUrl','backdropUrl','stillUrl'] as const) { const v = item[key]; if (key === 'overview' ? typeof v === 'string' && v.length <= 65536 && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v) : str(v, 4096)) media[key] = v as string; else left('item.' + key, v); }
+  if (integer(item.year)) media.year = item.year; else left('item.year', item.year);
+  if (item.addedAt === null || str(item.addedAt, 128)) media.addedAt = item.addedAt as string | null; else left('item.addedAt', item.addedAt);
+  if (item.sources !== undefined && item.sources !== null) media.sources = keepReadable('detail', 'item.sources', array(item.sources, 64), source => {
+    if (!obj(source) || !id(source.id) || !str(source.container ?? '') || !str(source.videoCodec ?? '') || !str(source.audioCodec ?? '')) invalid();
+    return Object.freeze({ ...(finite(source.duration) ? { duration: source.duration } : {}), id: source.id, container: (source.container ?? '') as string, videoCodec: (source.videoCodec ?? '') as string, audioCodec: (source.audioCodec ?? '') as string, width: integer(source.width) ? source.width : 0, height: integer(source.height) ? source.height : 0 });
   });
   if (media.sources) Object.freeze(media.sources);
-  if (item.episode !== undefined) {
-    const fields = hierarchy(item.episode, ['showId','showTitle','numbering','localIdentityStatus','providerMatchStatus','orderingBasis','sourceBoundary'], ['seasonId'], ['seasonNumber','number']);
+  const episode = part('item.episode', item.episode, value => {
+    const fields = hierarchy(value, ['showId','showTitle','numbering','localIdentityStatus','providerMatchStatus','orderingBasis','sourceBoundary'], ['seasonId'], ['seasonNumber','number']);
     if (!integer(fields.number) || !id(fields.showId) || fields.seasonId !== undefined && !id(fields.seasonId)) invalid();
-    media.episode = fields as DetailEpisodeInfo;
-  }
-  if (item.song !== undefined) {
-    const fields = hierarchy(item.song, ['albumId','albumTitle','albumArtist','artist','providerMatchStatus'], ['localMetadataIssue','providerTitle','providerArtist','providerRecordingId','providerReleaseId','providerReleaseGroupId','providerTrackId','providerReleaseStatus','providerObservedAt'], ['discNumber','trackNumber']);
-    if (!id(fields.albumId)) invalid(); media.song = fields as DetailSongInfo;
-  }
-  if (item.bookFile !== undefined) {
-    const fields = hierarchy(item.bookFile, ['bookId','bookTitle','sourceBoundary'], ['localMetadataIssue'], ['discNumber','partNumber']);
-    if (!id(fields.bookId)) invalid(); media.bookFile = Object.freeze({...fields,...(obj(item.bookFile)&&item.bookFile.localPolicy!==undefined?{localPolicy:parseLocalAudioPolicy(item.bookFile.localPolicy)}:{}),...(obj(item.bookFile)&&item.bookFile.localMetadata!==undefined?{localMetadata:parseLocalBook(item.bookFile.localMetadata)}:{})}) as DetailBookFileInfo;
-  }
-  const actions = array(raw.actions, 32).map(action => {
-    if (!obj(action) || !id(action.id) || !id(action.labelKey) || typeof action.enabled !== 'boolean') invalid();
-    const result: { -readonly [K in keyof DetailAction]: DetailAction[K] } = { id: action.id, labelKey: action.labelKey, enabled: action.enabled };
-    for (const field of ['min','max','step'] as const) if (action[field] !== undefined) { if (!finite(action[field])) invalid(); result[field] = action[field] as number; }
-    if (action.playback !== undefined) {
+    return fields as DetailEpisodeInfo;
+  });
+  if (episode) media.episode = episode;
+  const song = part('item.song', item.song, value => {
+    const fields = hierarchy(value, ['albumId','albumTitle','albumArtist','artist','providerMatchStatus'], ['localMetadataIssue','providerTitle','providerArtist','providerRecordingId','providerReleaseId','providerReleaseGroupId','providerTrackId','providerReleaseStatus','providerObservedAt'], ['discNumber','trackNumber']);
+    if (!id(fields.albumId)) invalid();
+    return fields as DetailSongInfo;
+  });
+  if (song) media.song = song;
+  const bookFile = part('item.bookFile', item.bookFile, value => {
+    const fields = hierarchy(value, ['bookId','bookTitle','sourceBoundary'], ['localMetadataIssue'], ['discNumber','partNumber']);
+    if (!id(fields.bookId)) invalid();
+    const localPolicy = part('item.bookFile.localPolicy', (value as Record<string, unknown>).localPolicy, parseLocalAudioPolicy), localMetadata = part('item.bookFile.localMetadata', (value as Record<string, unknown>).localMetadata, parseLocalBook);
+    return Object.freeze({...fields,...(localPolicy?{localPolicy}:{}),...(localMetadata?{localMetadata}:{})}) as DetailBookFileInfo;
+  });
+  if (bookFile) media.bookFile = bookFile;
+  const actions = firstOfEach('detail', 'actions', keepReadable('detail', 'actions', array(raw.actions ?? [], 32), action => {
+    if (!obj(action) || !id(action.id) || !id(action.labelKey)) invalid();
+    const result: { -readonly [K in keyof DetailAction]: DetailAction[K] } = { id: action.id, labelKey: action.labelKey, enabled: action.enabled === true };
+    for (const field of ['min','max','step'] as const) if (finite(action[field])) result[field] = action[field] as number;
+    // An action that plays says where it starts within this title; one that cannot is not offered.
+    if (action.playback !== undefined && action.playback !== null) {
       const p = action.playback;
       if (!obj(p) || p.itemId !== target.itemId || !finite(p.startSeconds) || p.startSeconds > media.duration) invalid();
       result.playback = Object.freeze({ itemId: target.itemId, startSeconds: p.startSeconds });
     }
     return Object.freeze(result);
+  }), a => a.id);
+  const sources = keepReadable('detail', 'metadata.sources', array(m.sources??[],16), row=>{if(!obj(row)||!id(row.provider)||!str(row.sourceUrl??'',4096)||!str(row.observedAt??'',128))invalid();if(row.sourceUrl){try{const url=new URL(row.sourceUrl as string);if(url.protocol!=='https:'||url.username||url.password)invalid();}catch{invalid();}}return Object.freeze({provider:row.provider,sourceUrl:(row.sourceUrl??'') as string,observedAt:(row.observedAt??'') as string});});
+  const ratings = keepReadable('detail', 'metadata.ratings', array(m.ratings ?? [], 16), row => {
+    if (!obj(row) || !id(row.provider) || !finite(row.value) || !finite(row.max) || row.max <= 0 || row.value > row.max || !str(row.sourceUrl ?? '', 4096) || !str(row.observedAt ?? '', 128)) invalid();
+    return Object.freeze({ provider: row.provider, value: row.value, max: row.max, sourceUrl: (row.sourceUrl ?? '') as string, observedAt: (row.observedAt ?? '') as string, ...(integer(row.votes) ? { votes: row.votes } : {}) });
   });
-  if (new Set(actions.map(a => a.id)).size !== actions.length || !['available','unavailable'].includes(m.status as string)) invalid();
-  const sources = array(m.sources??[],16).map(row=>{if(!obj(row)||!id(row.provider)||!str(row.sourceUrl,4096)||!str(row.observedAt,128))invalid();if(row.sourceUrl){try{const url=new URL(row.sourceUrl);if(url.protocol!=='https:'||url.username||url.password)invalid();}catch{invalid();}}return Object.freeze({provider:row.provider,sourceUrl:row.sourceUrl,observedAt:row.observedAt});});
-  const ratings = array(m.ratings, 16).map(row => {
-    if (!obj(row) || !id(row.provider) || !finite(row.value) || !finite(row.max) || row.max <= 0 || row.value > row.max || !str(row.sourceUrl, 4096) || !str(row.observedAt, 128) || row.votes !== undefined && !integer(row.votes)) invalid();
-    return Object.freeze({ provider: row.provider, value: row.value, max: row.max, sourceUrl: row.sourceUrl, observedAt: row.observedAt, ...(row.votes === undefined ? {} : { votes: row.votes as number }) });
-  });
-  const genres = array(m.genres, 10000).map(row => { if (!obj(row) || !id(row.id) || !str(row.name) || !id(row.provider)) invalid(); return Object.freeze({ id: row.id, name: row.name, provider: row.provider }); });
-  const attributions=m.attributions===undefined?[]:array(m.attributions,12).map(v=>{if(!str(v)||v.length>2048)invalid();return v;});
-  const credits = array(m.credits, 10000).map(row => creditRow(row, target.itemId));
-  const creditTotals=m.creditTotals===undefined?undefined:obj(m.creditTotals)&&integer(m.creditTotals.cast)&&integer(m.creditTotals.crew)?Object.freeze({cast:m.creditTotals.cast,crew:m.creditTotals.crew}):invalid();
+  const genres = keepReadable('detail', 'metadata.genres', array(m.genres ?? [], 10000), row => { if (!obj(row) || !id(row.id) || !str(row.name ?? '') || !str(row.provider ?? '', 256)) invalid(); return Object.freeze({ id: row.id, name: (row.name ?? '') as string, provider: (row.provider ?? '') as string }); });
+  const attributions=keepReadable('detail','metadata.attributions',array(m.attributions??[],12),v=>(str(v)?v:undefined));
+  const credits = keepReadable('detail', 'metadata.credits', array(m.credits ?? [], 10000), row => creditRow(row, target.itemId));
+  const creditTotals=obj(m.creditTotals)&&integer(m.creditTotals.cast)&&integer(m.creditTotals.crew)?Object.freeze({cast:m.creditTotals.cast,crew:m.creditTotals.crew}):undefined;
+  // A metadata status this app does not know reads from what arrived: available when there is any, unavailable otherwise.
+  const status: DetailMetadata['status'] = m.status === 'available' || m.status === 'unavailable' ? m.status : ratings.length || genres.length || credits.length ? 'available' : 'unavailable';
   let markers: readonly SegmentMarker[] = [];
-  try { markers = parseSegmentMarkers(raw.markers ?? [], media.duration); } catch { invalid(); }
+  try { markers = parseSegmentMarkers(raw.markers ?? [], media.duration); } catch { noteSkipped('detail', 'markers'); }
   let facts: TitleFacts | undefined;
   if (obj(raw.facts)) { const f: {-readonly [K in keyof TitleFacts]: TitleFacts[K]} = {}; for (const key of ['contentRating','studio','network','tagline','releaseDate','originalTitle','country','edition'] as const) { const v = raw.facts[key]; if (str(v, 2048) && v) f[key] = v; } if (Object.keys(f).length) facts = Object.freeze(f); }
-  const files = raw.files === undefined ? undefined : Object.freeze(array(raw.files, 64).map(titleFile));
-  return Object.freeze({ ...(facts ? { facts } : {}), ...(files?.length ? { files } : {}), markers, scope: Object.freeze({ serverId: scope.serverId, libraryId: target.libraryId, itemId: target.itemId, viewerFence: s.viewerFence }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), item: Object.freeze(media), personal: personal(raw.personal), actions: Object.freeze(actions), ...(raw.related===undefined?{}:{related:validateRelatedMovies(raw.related,{...target,kind:media.kind})}), ...(raw.extras===undefined?{}:{extras:extras(raw.extras,target)}), metadata: Object.freeze({ ...(m.sources===undefined?{}:{sources:Object.freeze(sources)}), ...(m.attributions===undefined?{}:{attributions:Object.freeze(attributions)}),status: m.status as DetailMetadata['status'], ratings: Object.freeze(ratings), genres: Object.freeze(genres), credits: Object.freeze(credits), ...(creditTotals?{creditTotals}:{}) }) });
+  const files = raw.files === undefined || raw.files === null ? undefined : Object.freeze(keepReadable('detail', 'files', array(raw.files, 64), titleFile));
+  const missingSince = str(raw.missingSince, 64) && raw.missingSince ? raw.missingSince : undefined;
+  const related = part('related', raw.related, value => validateRelatedMovies(value, {...target,kind:media.kind}));
+  const extra = part('extras', raw.extras, value => extras(value, target));
+  return Object.freeze({ ...(facts ? { facts } : {}), ...(files?.length ? { files } : {}), ...(missingSince ? { missingSince } : {}), markers, scope: Object.freeze({ serverId: scope.serverId, libraryId: target.libraryId, itemId: target.itemId, viewerFence: s.viewerFence }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), item: Object.freeze(media), personal: personal(raw.personal), actions: Object.freeze(actions), ...(related?{related}:{}), ...(extra?{extras:extra}:{}), metadata: Object.freeze({ ...(m.sources===undefined?{}:{sources:Object.freeze(sources)}), ...(m.attributions===undefined?{}:{attributions:Object.freeze(attributions)}),status, ratings: Object.freeze(ratings), genres: Object.freeze(genres), credits: Object.freeze(credits), ...(creditTotals?{creditTotals}:{}) }) });
 }
 function receipt(raw: unknown, operationId: string, data: DetailProjection): Receipt {
   if (!obj(raw) || raw.operationId !== operationId || raw.serverId !== data.scope.serverId || raw.libraryId !== data.scope.libraryId || raw.itemId !== data.scope.itemId || raw.viewerFence !== data.scope.viewerFence) invalid();
@@ -318,9 +357,9 @@ export class DetailService {
   }
 }
 
-/** Validates one page of GET /v1/items/{itemId}/credits. */
+/** Validates one page of GET /v1/items/{itemId}/credits. The group asked for, the cursor and the bound are exact; a credit that cannot be read is left out alone and the total is at least the credits kept. */
 export function parseCreditPage(raw: unknown, itemId: string, group: 'cast' | 'crew'): CreditPage {
-  if (!obj(raw) || raw.group !== group || !integer(raw.total) || raw.nextCursor !== undefined && (!str(raw.nextCursor, 4096) || !raw.nextCursor)) invalid();
-  const credits = array(raw.credits, 10000).map(row => creditRow(row, itemId));
-  return Object.freeze({ group, credits: Object.freeze(credits), total: raw.total as number, ...(raw.nextCursor ? { nextCursor: raw.nextCursor as string } : {}) });
+  if (!obj(raw) || raw.group !== group || raw.nextCursor !== undefined && (!str(raw.nextCursor, 4096) || !raw.nextCursor)) invalid();
+  const credits = keepReadable('credits', 'credits', array(raw.credits, 10000), row => creditRow(row, itemId));
+  return Object.freeze({ group, credits: Object.freeze(credits), total: Math.max(integer(raw.total) ? raw.total : 0, credits.length), ...(raw.nextCursor ? { nextCursor: raw.nextCursor as string } : {}) });
 }

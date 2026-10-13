@@ -27,7 +27,7 @@ func TestAuthorityWritesAreRecognisedByTheTableTheyName(t *testing.T) {
 		`UPDATE authorization_family_tokens SET retired=1 WHERE token_hash=?`,
 		`INSERT INTO dvr_private_libraries(library_id) VALUES(?)`,
 		`REPLACE INTO onboarding_state_v1(singleton,auth_mode) VALUES(1,?)`,
-		`DELETE FROM api_keys WHERE id=?`,
+		`DELETE FROM api_credentials WHERE id=?`,
 		`DELETE FROM libraries WHERE id=?`,
 		`DELETE FROM library_sources WHERE id=?`,
 		`UPDATE library_sources SET enabled=0 WHERE id=?`,

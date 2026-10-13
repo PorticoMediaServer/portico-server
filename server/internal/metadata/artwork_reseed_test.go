@@ -151,3 +151,28 @@ func TestQueuedProviderArtworkGivesWayToALocalOrLockedSelection(t *testing.T) {
 		})
 	}
 }
+
+func TestRetainedSourceArtworkIsAcquiredOnlyOnce(t *testing.T) {
+	s, db, target, _ := integrationScreen(t)
+	ctx := context.Background()
+	requests := 0
+	s.artClient = &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		requests++
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(bytes.NewReader(p08cPNG(t, 20, 20))), Header: http.Header{}}, nil
+	})}
+	if e := s.ScreenStep(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.ArtworkStep(ctx); e != nil {
+		t.Fatal(e)
+	}
+	entity := resolveArtworkTestEntity(t, db, target)
+	var origin string
+	if e := db.QueryRow(`SELECT c.origin FROM artwork_candidates c JOIN artwork_selections a ON a.candidate_id=c.id WHERE a.entity_id=? AND a.role='poster'`, entity).Scan(&origin); e != nil {
+		t.Fatal(e)
+	}
+	a, b, e := s.acquireArtworkObjects(ctx, artworkWork{provider: "tmdb", origin: origin})
+	if e != nil || len(a.raw) == 0 || len(b.raw) == 0 || requests != 1 {
+		t.Fatal("source was downloaded again", requests, e)
+	}
+}

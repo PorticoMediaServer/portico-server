@@ -8,6 +8,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/localonly"
+	"portico.local/server/internal/metadataprovider"
 )
 
 // A library's metadata agent decides where its titles, artwork and details
@@ -97,21 +98,24 @@ func LibraryAgentOptions(kind string) []LibraryAgentOption {
 	switch kind {
 	case "movie":
 		online.Description = "Matches films with TMDB for titles, artwork, cast and ratings. Your own files and NFO details are used first."
-		online.Providers = []string{"tmdb"}
+		online.Providers = metadataprovider.ProvidersFor(kind)
 		online.Languages = append([]string{}, ScreenMetadataLanguages...)
 		online.DefaultLanguage = "en"
 	case "tv":
 		online.Description = "Matches shows with one online provider for titles, episodes, artwork and ratings: TMDB unless you choose TheTVDB. Your own files and NFO details are used first."
-		online.Providers = []string{"tmdb", "tvdb"}
+		online.Providers = metadataprovider.ProvidersFor(kind)
 		online.Languages = append([]string{}, ScreenMetadataLanguages...)
 		online.DefaultLanguage = "en"
 	case "anime":
 		online.Description = "Matches anime with one online provider for titles, episodes and artwork: TMDB unless you choose TheTVDB or AniList. Your own files and NFO details are used first."
-		online.Providers = []string{"tmdb", "tvdb", "anilist"}
+		online.Providers = metadataprovider.ProvidersFor(kind)
 		online.Languages = append([]string{}, ScreenMetadataLanguages...)
 		online.DefaultLanguage = "en"
+	case "audiobook":
+		online.Description = "Uses embedded book tags, sidecar details and local covers. Online audiobook sources are not available."
+		online.Providers = []string{}
 	default:
-		online.Description = "Matches albums and books with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first."
+		online.Description = "Matches albums with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first."
 		online.Providers = []string{"musicbrainz", "coverartarchive"}
 	}
 	return []LibraryAgentOption{online, {ID: AgentLocal, Name: "Local metadata only", Description: "Uses only file and folder names, embedded tags, NFO and other sidecar files, and artwork stored next to your media. Portico never looks anything up online for this library.", Providers: []string{}, Languages: []string{}}}

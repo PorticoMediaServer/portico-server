@@ -13,6 +13,7 @@ import (
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/listeningrules"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/segmentmarkers"
 	"portico.local/server/internal/subtitles"
@@ -467,6 +468,11 @@ func (s *Service) create(ctx context.Context, p identity.Principal, item, qualit
 		// New playable kinds follow the generic playback path until they gain
 		// kind-specific behavior.
 		itemKind = ""
+	}
+	if itemKind == "audiobook_file" {
+		var lastPlayed string
+		_ = tx.QueryRow(`SELECT last_played_at FROM personal_items WHERE profile_id=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, identity.PersonalKey(p.Viewer), item).Scan(&lastPlayed)
+		resume = listeningrules.Resume(resume, lastPlayed, time.Now())
 	}
 	if itemKind != "audiobook_file" && resume >= duration-3 {
 		resume = 0

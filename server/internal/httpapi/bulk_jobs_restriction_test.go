@@ -15,7 +15,7 @@ import (
 // part of its required security gate, including newly visible and new members.
 func (m *restrictionEnv) containerWatermarkSecurity(t *testing.T) {
 	ctx := context.Background()
-	for _, command := range []string{"trash", "refresh", "metadata-edit"} {
+	for _, command := range []string{"refresh", "metadata-edit"} {
 		body := fmt.Sprintf(`{"operationId":"deny-%s","command":"%s","selector":{"items":{"ids":[%q]}},"args":{}}`, command, command, m.visibleMovie)
 		if code, raw := m.call("POST", "/v1/jobs", body, "restricted"); code != 401 && code != 403 {
 			t.Fatalf("restricted owner command %s: %d %s", command, code, raw)

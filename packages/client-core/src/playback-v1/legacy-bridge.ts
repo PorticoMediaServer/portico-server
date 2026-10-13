@@ -1,7 +1,8 @@
 /**
- * Plays Playback Protocol v1 sessions through today's `PlaybackService` and its engines (web
- * `<video>` + hls.js, Apple AVPlayer), so the player screens don't change while the apps move to
- * v1 (Plan — Client Playback Migration, core step). `V1PlaybackApi` is the `PlaybackApi` the
+ * Plays Playback Protocol v1 sessions through `PlaybackService` and the native engines (Apple
+ * AVPlayer, Android). The web no longer uses this file: it runs on `PlaybackSessionController`
+ * (see the web app's `playback-v1/web-playback.ts`), and this bridge goes when the native apps
+ * make the same move. `V1PlaybackApi` is the `PlaybackApi` the
  * service calls for a session's progress and stop, spoken as v1: the timeline (with its own
  * monotonic `seq`, generation and a lease keepalive while paused) and `DELETE` with the last
  * position. `toPlaybackSession` turns a v1 session into the service's session shape.
@@ -9,24 +10,12 @@
 import type {PlaybackApi, PlaybackSession} from '../index.ts';
 import {idempotencyKey, PlaybackApiError, type V1Http} from './http.ts';
 import {PlaybackOptionsClient} from './options.ts';
-import {SessionsClient, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
+import {SessionsClient, type SessionChange, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
 import type {TimelineReport, TimelineState} from './timeline.ts';
 import {parseSessionEnd, type Session, type SessionEnd} from './types.ts';
+import {toPlaybackSession} from './session-shape.ts';
 
-/** The service's session for a v1 session: stream mode is HLS, direct stays direct. */
-export function toPlaybackSession(session: Session, durationSeconds: number, resumeSeconds?: number): PlaybackSession {
-  return {
-    id: session.id,
-    generation: session.presentation.generation,
-    streamUrl: session.presentation.url,
-    mode: session.presentation.mode === 'stream' ? 'hls' : 'direct',
-    duration: Math.max(0, durationSeconds),
-    resumeSeconds: resumeSeconds ?? session.presentation.startPositionMs / 1000,
-    protocol: 'v1',
-    // §18.1 version 2: the device decodes the file itself.
-    ...(session.presentation.audio ? {audio: session.presentation.audio} : {}),
-  };
-}
+export {toPlaybackSession};
 
 type PendingReport = {seq?: number; body: Omit<TimelineReport, 'seq'>; at: number; promise: Promise<void>; resolve: () => void; reject: (error: unknown) => void};
 const MAX_PENDING_REPORT_FACTS = 64;
@@ -93,6 +82,24 @@ export class V1PlaybackApi implements PlaybackApi {
     tracked.everyMs = session.lease.reportEveryMs;
     this.tracked.set(session.id, tracked);
     return toPlaybackSession(session, durationSeconds);
+  }
+
+  /** Re-plans a live session (quality, version, audio track, spec §5.7): the same session with a
+   * new presentation at its position. A revision that moved meanwhile is read again once. */
+  async change(id: string, change: SessionChange, durationSeconds: number): Promise<{session: Session; playback: PlaybackSession}> {
+    const t = this.tracked.get(id);
+    // The new stream starts where the server last heard this device was: say where that is first.
+    if (t && !t.stopping && t.state !== 'ended') await this.report(id, t).catch(() => {});
+    let current = await this.sessions.get(id);
+    let updated: Session;
+    try {
+      updated = await this.sessions.patch(id, current.revision, change);
+    } catch (e) {
+      if (!(e instanceof PlaybackApiError) || e.status !== 412) throw e;
+      current = (e.current as Session | undefined) ?? await this.sessions.get(id);
+      updated = await this.sessions.patch(id, current.revision, change);
+    }
+    return {session: updated, playback: this.adopt(updated, durationSeconds)};
   }
 
   createPlayback(itemId: string, requestId: string, signal?: AbortSignal): Promise<PlaybackSession> {

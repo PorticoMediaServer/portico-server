@@ -152,7 +152,7 @@ func TestRealLocalAudioScanChaptersArtAndBookResume(t *testing.T) {
 		t.Fatal(err)
 	}
 	art, mime, err := meta.Open(strings.TrimPrefix(key, "local:"))
-	if err != nil || mime != "image/jpeg" {
+	if err != nil || (mime != "image/jpeg" && mime != "image/png") {
 		t.Fatal("embedded art missing", mime, err)
 	}
 	art.Close()

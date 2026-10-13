@@ -16,7 +16,7 @@ import (
 	"portico.local/server/internal/metadataprovider"
 )
 
-const screenAlgorithm = "screen-title-year-margin-v1"
+const screenAlgorithm = "screen-evidence-confidence-v2"
 
 var ErrScreenConflict = errors.New("screen metadata state changed; refresh before selecting")
 var errScreenStale = errors.New("screen publication authority changed")
@@ -34,6 +34,7 @@ type screenEdition struct {
 	Source  string `json:"source"`
 }
 type screenBase struct {
+	ForceRefresh                                                               bool
 	IdentityLocked                                                             bool
 	OwnerDigest                                                                string
 	TargetKind, TargetID, Library, LibraryKind, ItemKind, Title, Query, Status string
@@ -42,6 +43,8 @@ type screenBase struct {
 	Entity int64
 	// ParentEntity is the integer row of an episode's show.
 	ParentEntity                                                                                    int64
+	RuntimeMinutes                                                                                  float64
+	Evidence                                                                                        []MatchEvidence
 	Year                                                                                            int
 	Revision, Selection, Generation                                                                 int64
 	Provider, ProviderType, ProviderID, Mode, Order, Requested, Accepted, Parent, ParentPublication string
@@ -130,8 +133,8 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 	b.Entity = entity
 	var providers, operations, tier string
 	var parentRaw any
-	err = tx.QueryRowContext(ctx, `SELECT w.library_id,l.kind,w.title_seed,CASE WHEN w.year_override>0 THEN w.year_override ELSE w.year_seed END,w.query_override,w.revision,w.selection_revision,w.generation,w.status,w.provider,w.provider_type,w.provider_id,w.selection_mode,w.episode_order,w.requested_provider,w.accepted_publication,w.parent_id,p.revision,p.enabled,p.providers,p.language,p.region,p.refresh_mode,c.revision,c.confirmed,COALESCE(lc.revision,0),sp.revision,sp.tier,sp.operations_json
-  FROM screen_metadata_work w JOIN libraries l ON l.id=w.library_id JOIN screen_metadata_policies p ON p.library_id=w.library_id CROSS JOIN screen_metadata_consent c LEFT JOIN library_configuration lc ON lc.library_id=l.id JOIN library_scan_policies sp ON sp.library_id=l.id WHERE w.target_kind=? AND w.target_id=? AND c.singleton=1 AND l.kind IN('movie','tv','anime')`, kind, entity).Scan(&b.Library, &b.LibraryKind, &b.Title, &b.Year, &b.Query, &b.Revision, &b.Selection, &b.Generation, &b.Status, &b.Provider, &b.ProviderType, &b.ProviderID, &b.Mode, &b.Order, &b.Requested, &b.Accepted, &parentRaw, &b.PolicyRevision, &b.Enabled, &providers, &b.Language, &b.Region, &b.RefreshMode, &b.ConsentRevision, &b.Confirmed, &b.Configuration, &b.ScanRevision, &tier, &operations)
+	err = tx.QueryRowContext(ctx, `SELECT w.library_id,l.kind,w.title_seed,CASE WHEN w.year_override>0 THEN w.year_override ELSE w.year_seed END,w.query_override,w.revision,w.selection_revision,w.generation,w.status,w.provider,w.provider_type,w.provider_id,w.selection_mode,w.episode_order,w.requested_provider,w.accepted_publication,w.parent_id,p.revision,p.enabled,p.providers,p.language,p.region,p.refresh_mode,c.revision,c.confirmed,COALESCE(lc.revision,0),sp.revision,sp.tier,sp.operations_json,w.force_refresh
+  FROM screen_metadata_work w JOIN libraries l ON l.id=w.library_id JOIN screen_metadata_policies p ON p.library_id=w.library_id CROSS JOIN screen_metadata_consent c LEFT JOIN library_configuration lc ON lc.library_id=l.id JOIN library_scan_policies sp ON sp.library_id=l.id WHERE w.target_kind=? AND w.target_id=? AND c.singleton=1 AND l.kind IN('movie','tv','anime')`, kind, entity).Scan(&b.Library, &b.LibraryKind, &b.Title, &b.Year, &b.Query, &b.Revision, &b.Selection, &b.Generation, &b.Status, &b.Provider, &b.ProviderType, &b.ProviderID, &b.Mode, &b.Order, &b.Requested, &b.Accepted, &parentRaw, &b.PolicyRevision, &b.Enabled, &providers, &b.Language, &b.Region, &b.RefreshMode, &b.ConsentRevision, &b.Confirmed, &b.Configuration, &b.ScanRevision, &tier, &operations, &b.ForceRefresh)
 	if err != nil {
 		return b, err
 	}
@@ -218,11 +221,16 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 		if good {
 			b.Available = true
 		}
-		if kind == "item" && b.ItemKind == "movie" && len(b.Names) < 4 {
+		if kind == "item" && b.ItemKind == "movie" && len(b.Names) < 8 {
 			n := filepath.Base(path)
 			if !names[n] {
 				b.Names = append(b.Names, n)
 				names[n] = true
+			}
+			folder := filepath.Base(filepath.Dir(path))
+			if !names[folder] && len(b.Names) < 8 {
+				b.Names = append(b.Names, folder)
+				names[folder] = true
 			}
 		}
 	}
@@ -270,6 +278,26 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 		rows.Close()
 		if err != nil {
 			return b, err
+		}
+	}
+	if b.TargetKind == "show" {
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(max(a.duration),0)/60 FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes e ON e.entity_id=l.entity_id WHERE e.show_id=? AND a.available=1`, entity).Scan(&b.RuntimeMinutes); err != nil {
+			return b, err
+		}
+	}
+	if b.ItemKind == "movie" {
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(max(a.duration),0)/60 FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE l.entity_id=? AND a.available=1`, entity).Scan(&b.RuntimeMinutes); err != nil {
+			return b, err
+		}
+	}
+	if b.Accepted != "" {
+		var payload string
+		if err = tx.QueryRowContext(ctx, `SELECT payload FROM screen_metadata_publications WHERE id=?`, b.Accepted).Scan(&payload); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return b, err
+		}
+		var r metadataprovider.ScreenRecord
+		if json.Unmarshal([]byte(payload), &r) == nil {
+			b.Existing = append(b.Existing, r.Crosswalk...)
 		}
 	}
 	b.SourceDigest = hex.EncodeToString(h.Sum(nil))

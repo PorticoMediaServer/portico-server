@@ -59,12 +59,12 @@ func TestBulkLyricFetchWaitsOutAProviderPause(t *testing.T) {
 	}
 	paused := true
 	asked := 0
-	bulk.provider = func(context.Context, string) ([]acquired, error) {
+	bulk.provider = func(_ context.Context, query string) ([]acquired, error) {
 		asked++
 		if paused {
 			return nil, errProviderPaused
 		}
-		return []acquired{{doc: document, language: "en", provenance: Provenance{Origin: "lrclib", ProviderID: "7", Label: "Song", Rights: "LRCLIB record."}}}, nil
+		return []acquired{{doc: document, language: "en", title: strings.Fields(query)[0], artist: "Fixture Artist", duration: 5400, provenance: Provenance{Origin: "lrclib", ProviderID: "7", Label: "Song", Rights: "LRCLIB record."}}}, nil
 	}
 	tx, e := db.Begin()
 	if e != nil {

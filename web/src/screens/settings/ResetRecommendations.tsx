@@ -3,8 +3,8 @@ import {resetRecommendations} from '@core/recommendation-feedback.ts';
 import {useSession} from '../../app/session';
 import {useViewerScope} from '../../app/viewer-scope';
 import {clearNotInterested, recommendationViewer} from '../../app/not-interested';
-import {currentI18n} from '../../app/i18n';
 import {Button, ConfirmDialog, SettingsRow} from '../../ui';
+import {useI18n} from '../../app/i18n';
 
 /**
  * Settings › Privacy: "Reset recommendations" (Recommendations P5). Behind a confirmation that
@@ -12,9 +12,9 @@ import {Button, ConfirmDialog, SettingsRow} from '../../ui';
  * One operation ID per confirmation, so a retry after a lost answer can't reset twice.
  */
 export function ResetRecommendationsRow() {
+  const {t} = useI18n();
   const {api, session} = useSession();
   const viewer = recommendationViewer(useViewerScope());
-  const t = currentI18n().t;
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();

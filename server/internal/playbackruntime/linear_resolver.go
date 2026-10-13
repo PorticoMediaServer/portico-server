@@ -63,7 +63,7 @@ func (r *channelResolver) scope(ctx context.Context, tx *sql.Tx, p identity.Prin
 	if e := r.policy.AllowedTxContext(ctx, p, "", tx); e != nil {
 		return library.Scope{}, e
 	}
-	rows, e := tx.QueryContext(ctx, `SELECT id FROM libraries ORDER BY id`)
+	rows, e := tx.QueryContext(ctx, `SELECT id FROM libraries WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=libraries.id AND gone.retired=1) ORDER BY id`)
 	if e != nil {
 		return library.Scope{}, e
 	}

@@ -19,22 +19,54 @@ var screenReleasePattern = regexp.MustCompile(`(?i)(?:^|[ ._\[(])(?:480p|576p|72
 var screenEpisodePattern = regexp.MustCompile(`(?i)(?:^|[ ._-])(?:s\d{1,2}e\d{1,4}|\d{1,2}x\d{1,4}|-\s*\d{1,4}(?:v\d)?)(?:\b|_)`)
 var screenGroupPattern = regexp.MustCompile(`^\[[^\]]{1,128}\]\s*`)
 var screenEditionPattern = regexp.MustCompile(`(?i)\{edition-([^}]{1,128})\}|\b(director'?s[ ._]cut|extended[ ._](?:cut|edition)|theatrical[ ._](?:cut|edition)|unrated|remastered|special[ ._]edition)\b`)
+var screenIMDbPattern = regexp.MustCompile(`(?i)[\[{]imdb(?:id)?[-=: ](tt[0-9]{7,10})[\]}]`)
 var screenIDPattern = regexp.MustCompile(`(?i)[\[{](tmdb|tvdb|anilist)(?:id)?[-=: ]([1-9][0-9]{0,14})[\]}]`)
 
 func intString(v int64) string { return strconv.FormatInt(v, 10) }
+
+// Normalisation is for comparison only; search queries retain the owner's text.
 func normalizedScreenName(s string) string {
+	s = strings.ReplaceAll(strings.ToLower(s), "&", " and ")
 	var out strings.Builder
-	for _, r := range norm.NFKD.String(strings.ToLower(s)) {
+	for _, r := range norm.NFKD.String(s) {
 		if unicode.Is(unicode.Mn, r) {
 			continue
 		}
-		if unicode.IsLetter(r) || unicode.IsNumber(r) {
+		if translit, ok := screenTransliteration[r]; ok {
+			out.WriteString(translit)
+		} else if unicode.IsLetter(r) || unicode.IsNumber(r) {
 			out.WriteRune(r)
 		} else {
 			out.WriteByte(' ')
 		}
 	}
-	return strings.Join(strings.Fields(out.String()), " ")
+	words := strings.Fields(out.String())
+	if len(words) > 1 && screenArticles[words[0]] {
+		words = words[1:]
+	}
+	if len(words) > 1 && screenArticles[words[len(words)-1]] {
+		words = words[:len(words)-1]
+	}
+	for i, word := range words {
+		if word == "i" && i == len(words)-1 && len(words) > 1 {
+			words[i] = "1"
+			continue
+		}
+		if n, ok := screenRomanNumbers[word]; ok {
+			words[i] = n
+		}
+	}
+	return strings.Join(words, " ")
+}
+
+var screenArticles = map[string]bool{"the": true, "a": true, "an": true, "le": true, "la": true, "les": true, "el": true, "los": true, "las": true, "der": true, "die": true, "das": true}
+var screenRomanNumbers = map[string]string{"ii": "2", "iii": "3", "iv": "4", "v": "5", "vi": "6", "vii": "7", "viii": "8", "ix": "9", "x": "10", "xi": "11", "xii": "12"}
+
+// Provider romaji/translated aliases handle scripts without a deterministic
+// letter transliteration. These common Cyrillic/Greek spellings add evidence.
+var screenTransliteration = map[rune]string{
+	'а': "a", 'б': "b", 'в': "v", 'г': "g", 'д': "d", 'е': "e", 'ж': "zh", 'з': "z", 'и': "i", 'й': "i", 'к': "k", 'л': "l", 'м': "m", 'н': "n", 'о': "o", 'п': "p", 'р': "r", 'с': "s", 'т': "t", 'у': "u", 'ф': "f", 'х': "kh", 'ц': "ts", 'ч': "ch", 'ш': "sh", 'щ': "shch", 'ъ': "", 'ы': "y", 'ь': "", 'э': "e", 'ю': "yu", 'я': "ya", 'і': "i", 'ї': "i", 'є': "ye", 'ґ': "g",
+	'α': "a", 'β': "v", 'γ': "g", 'δ': "d", 'ε': "e", 'ζ': "z", 'η': "i", 'θ': "th", 'ι': "i", 'κ': "k", 'λ': "l", 'μ': "m", 'ν': "n", 'ξ': "x", 'ο': "o", 'π': "p", 'ρ': "r", 'σ': "s", 'ς': "s", 'τ': "t", 'υ': "y", 'φ': "f", 'χ': "ch", 'ψ': "ps", 'ω': "o",
 }
 
 // screenReleaseYear finds the release year in a name and where the title before
@@ -54,6 +86,8 @@ func screenReleaseYear(s string) (cut, year int) {
 	if start == 0 {
 		if later := screenYearPattern.FindStringSubmatchIndex(s[end:]); len(later) > 0 {
 			cut, start, end = end+later[0], end+later[2], end+later[3]
+		} else {
+			return -1, 0
 		}
 	}
 	for !(start > 0 && strings.ContainsRune("([", rune(s[start-1])) && end < len(s) && strings.ContainsRune(")]", rune(s[end]))) {
@@ -90,6 +124,7 @@ func screenName(s string, released int) (title string, year int, edition string)
 		s = screenEditionPattern.ReplaceAllString(s, " ")
 	}
 	s = screenIDPattern.ReplaceAllString(s, " ")
+	s = screenIMDbPattern.ReplaceAllString(s, " ")
 	s = screenGroupPattern.ReplaceAllString(s, "")
 	if cut, y := screenReleaseYear(s); cut >= 0 && (released == 0 || y == released) {
 		year = y
@@ -110,6 +145,11 @@ func screenQueries(b screenBase) ([]string, int, []metadataprovider.ScreenID) {
 	ids := []metadataprovider.ScreenID{}
 	idseen := map[metadataprovider.ScreenID]bool{}
 	year := b.Year
+	for _, evidence := range b.Evidence[:min(len(b.Evidence), 16)] {
+		if year == 0 && evidence.Year > 0 {
+			year = evidence.Year
+		}
+	}
 	add := func(s string) {
 		s = strings.TrimSpace(s)
 		key := normalizedScreenName(s)
@@ -119,14 +159,27 @@ func screenQueries(b screenBase) ([]string, int, []metadataprovider.ScreenID) {
 		}
 	}
 	addID := func(id metadataprovider.ScreenID) {
-		if metadataprovider.ValidScreenID(id) && !idseen[id] {
+		if metadataprovider.ValidScreenID(id) && !idseen[id] && len(ids) < 16 {
 			ids = append(ids, id)
 			idseen[id] = true
 		}
 	}
 	if b.Query != "" {
-		add(b.Query)
+		if hint, ok := metadataprovider.ParseScreenHint(b.Query, b.ItemKind); ok {
+			addID(hint)
+		} else {
+			add(b.Query)
+		}
 		return out, year, ids
+	}
+	for _, evidence := range b.Evidence[:min(len(b.Evidence), 16)] {
+		add(evidence.Title)
+		for _, id := range evidence.IDs {
+			addID(id)
+		}
+	}
+	for _, id := range b.Existing {
+		addID(id)
 	}
 	for _, n := range b.NFO {
 		add(n.Title)
@@ -150,6 +203,9 @@ func screenQueries(b screenBase) ([]string, int, []metadataprovider.ScreenID) {
 			year = y
 		}
 		add(title)
+		for _, m := range screenIMDbPattern.FindAllStringSubmatch(name, 8) {
+			addID(metadataprovider.ScreenID{Provider: "imdb", Type: "title", ID: strings.ToLower(m[1])})
+		}
 		for _, m := range screenIDPattern.FindAllStringSubmatch(name, 8) {
 			kind := b.ItemKind
 			if kind == "episode" {
@@ -223,11 +279,11 @@ func scoreScreen(r metadataprovider.ScreenRecord, names []string, year int, exac
 		}
 	}
 	if best == 1 {
-		c.Confidence = .64
+		c.Confidence = .88
 		c.StrongSignals++
 		c.Reasons = append(c.Reasons, "exact_title_or_alias")
-	} else if best >= .92 {
-		c.Confidence = .58
+	} else if best >= .8 {
+		c.Confidence = .78 + .5*(best-.8)
 		c.StrongSignals++
 		c.Reasons = append(c.Reasons, "close_title_or_alias")
 	} else {
@@ -236,17 +292,21 @@ func scoreScreen(r metadataprovider.ScreenRecord, names []string, year int, exac
 	}
 	if year > 0 && r.Year > 0 {
 		if year == r.Year {
-			c.Confidence += .28
+			c.Confidence += .10
 			c.StrongSignals++
 			c.Reasons = append(c.Reasons, "release_year_agrees")
+		} else if abs(year-r.Year) == 1 {
+			c.Confidence += .05
+			c.Reasons = append(c.Reasons, "release_year_near")
 		} else {
+			c.Confidence -= .25
 			c.Contradiction = true
 			c.Reasons = append(c.Reasons, "release_year_conflicts")
 		}
 	} else {
 		c.Reasons = append(c.Reasons, "release_year_unknown")
 	}
-	c.Confidence = math.Round(c.Confidence*1000) / 1000
+	c.Confidence = math.Round(min(.99, max(0, c.Confidence))*1000) / 1000
 	return c
 }
 func sameScreenIdentity(a, b metadataprovider.ScreenRecord) bool {
@@ -276,11 +336,11 @@ func screenWinner(cs []screenCandidate) (int, string) {
 		return cs[i].Confidence > cs[j].Confidence
 	})
 	top := cs[0]
-	if !top.DetailsVerified || top.Contradiction || top.StrongSignals < 2 || top.Confidence < .85 {
+	if !top.DetailsVerified || top.Contradiction || top.StrongSignals < 1 || top.Confidence < .78 {
 		return -1, "needs_selection"
 	}
 	for _, r := range cs[1:] {
-		if !sameScreenIdentity(top.Record, r.Record) && top.Confidence-r.Confidence < .12 {
+		if !sameScreenIdentity(top.Record, r.Record) && top.Confidence-r.Confidence < .07 {
 			return -1, "needs_selection"
 		}
 	}
@@ -321,4 +381,56 @@ func screenLocalYearConflict(b screenBase) bool {
 		}
 	}
 	return len(years) > 1
+}
+
+func abs(n int) int {
+	if n < 0 {
+		return -n
+	}
+	return n
+}
+
+// MatchEvidence is the bounded input naming can supply: prefer file/embedded
+// titles, then folder titles. Provider IDs are exact, editions are descriptive.
+type MatchEvidence struct {
+	Title   string                      `json:"title"`
+	Source  string                      `json:"source"`
+	Year    int                         `json:"year,omitempty"`
+	IDs     []metadataprovider.ScreenID `json:"ids,omitempty"`
+	Edition string                      `json:"edition,omitempty"`
+}
+
+func scoreScreenEvidence(r metadataprovider.ScreenRecord, names []string, year int, exact bool, b screenBase) screenCandidate {
+	c := scoreScreen(r, names, year, exact)
+	if exact {
+		return c
+	}
+	expected := b.ItemKind
+	if r.Identity.Type == expected || b.LibraryKind == "anime" && r.Identity.Type == "anime" {
+		c.Reasons = append(c.Reasons, "media_kind_agrees")
+	} else {
+		c.Contradiction = true
+		c.Reasons = append(c.Reasons, "media_kind_conflicts")
+	}
+	if b.RuntimeMinutes > 0 && r.AdvisoryRuntimeMinutes != nil && *r.AdvisoryRuntimeMinutes > 0 {
+		difference := math.Abs(b.RuntimeMinutes - float64(*r.AdvisoryRuntimeMinutes))
+		if difference <= max(5, b.RuntimeMinutes*.08) {
+			c.Confidence = min(.99, c.Confidence+.06)
+			c.Reasons = append(c.Reasons, "runtime_agrees")
+		} else if difference > max(20, b.RuntimeMinutes*.3) {
+			if b.ItemKind == "movie" {
+				c.Confidence = max(0, c.Confidence-.12)
+			}
+			c.Reasons = append(c.Reasons, "runtime_differs")
+		}
+	}
+	c.Confidence = math.Round(c.Confidence*1000) / 1000
+	return c
+}
+
+func screenSearchSafe(query string) bool {
+	if _, ok := metadataprovider.ParseScreenHint(query, "movie"); ok {
+		return true
+	}
+	return screenQuerySafe(query)
 }

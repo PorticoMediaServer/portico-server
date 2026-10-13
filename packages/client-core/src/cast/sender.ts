@@ -51,6 +51,8 @@ export type CastControllerOptions = Readonly<{
   origin: string;
   /** How this sender introduces itself on the TV ("Chrome on Mac", "Sam’s iPhone"). No account details. */
   displayName: string;
+  /** Native apps provide installation-owned secure storage; browsers use local storage. */
+  controllerStorage?:Readonly<{get(key:string):string|undefined;set(key:string,value:string):void}>;
   setTimer?: (fn: () => void, ms: number) => unknown;
   clearTimer?: (timer: unknown) => void;
 }>;
@@ -78,9 +80,14 @@ export class CastController {
   private setTimer: (fn: () => void, ms: number) => unknown;
   private clearTimer: (timer: unknown) => void;
   private disposed = false;
+  private controllerStorage?:CastControllerOptions['controllerStorage'];
+  private controllerKey(){return 'portico.cast.controller:'+this.origin+':'+(this.transport?.deviceName??'');}
+  private controllerToken(){try{return this.controllerStorage?.get(this.controllerKey());}catch{return undefined;}}
 
   constructor(options: CastControllerOptions) {
     if (!/^https:\/\//.test(options.origin)) throw new Error('Cast needs an HTTPS server origin.');
+    this.controllerStorage=options.controllerStorage;
+    if(!this.controllerStorage){try{const storage=globalThis.localStorage;if(storage)this.controllerStorage={get:k=>storage.getItem(k)??undefined,set:(k,v)=>storage.setItem(k,v)};}catch{}}
     this.api = options.api;
     this.origin = new URL(options.origin).origin;
     this.displayName = options.displayName.slice(0, 64);
@@ -119,7 +126,7 @@ export class CastController {
       this.publish({phase: 'casting', itemId, positionSeconds: Math.max(0, startSeconds), paused: false});
       return true;
     } catch (e) {
-      this.release(true);
+      this.release(false);
       const id: MessageId = e instanceof CastFailure ? e.messageId : 'cast.error.unreachable';
       this.publish({phase: 'error', takeover: undefined, errorId: id, error: e instanceof CastFailure ? serviceText(id) : serviceProblem(e, 'playback', id)});
       return false;
@@ -151,7 +158,8 @@ export class CastController {
       }));
       this.detach.push(transport.onSessionEnd(() => { if (this.adopting) { this.release(false, false); give(false); } else this.sessionEnded(); }));
       this.adoptTimer = this.setTimer(() => { if (this.transport === transport && this.state.phase !== 'casting') this.release(false, false); give(false); }, waitMs);
-      this.send({type: 'status'});
+      const controlToken=this.controllerToken();
+      this.send({type:'status',...(controlToken?{controlToken}:{})});
     });
   }
 
@@ -165,7 +173,7 @@ export class CastController {
 
   private receive(e: CastEvent) {
     switch (e.type) {
-      case 'paired': this.waiting?.resolve(); this.waiting = undefined; return;
+      case 'paired': if(e.controlToken){try{this.controllerStorage?.set(this.controllerKey(),e.controlToken);}catch{}} this.waiting?.resolve(); this.waiting = undefined; return;
       // The TV is asking the person watching; keep waiting (the pairing timeout allows for it).
       case 'pair-pending': if (this.state.phase === 'pairing') this.publish({phase: 'waiting'}); return;
       case 'pair-failed': this.waiting?.reject(new CastFailure(e.code === 'tv_busy' ? 'cast.error.tvBusy' : 'cast.error.refused')); this.waiting = undefined; return;

@@ -119,3 +119,11 @@ test('sample labels prefer the episode show name', () => {
   assert.equal(librarySampleLabel({title: 'Movie'}), 'Movie');
   assert.equal(librarySampleLabel({title: 'Ep', showTitle: ''}), 'Ep');
 });
+
+test('a channel with a setting this app does not know is left out of the list alone', async () => {
+  const good = channel();
+  const newer = channel({config: config({id: 'newer', rules: [rule({mode: 'ai-curated'})]})});
+  const list = await readLibraryChannels(api(async () => ({serverId: 's', protocolVersion: '1.0', channels: [newer, good, 'nope']})) as never, 's');
+  assert.equal(list.length, 1);
+  assert.equal(list[0]!.config.id, (good.config as {id: string}).id);
+});

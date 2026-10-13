@@ -120,16 +120,11 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 	if assetID == 0 {
 		return sql.ErrNoRows
 	}
-	key := strings.ToLower(strings.Join(strings.Fields(plan.ShowTitle), " ")) + ":" + strconv.Itoa(plan.Year)
-	show, created, err := compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Show, Key: compactcatalog.ShowKey(key), Title: plan.ShowTitle, Year: plan.Year})
+	show, key, err := resolveShowTx(ctx, tx, library, handle, assetID, plan, manual)
 	if err != nil {
 		return err
 	}
-	if created {
-		if err = compactcatalog.SetFactsTx(ctx, tx, show, map[string]any{"local_key": key}); err != nil {
-			return err
-		}
-	}
+	var created bool
 	var season int64
 	parent := show
 	if plan.Numbering == "seasonal" || plan.Numbering == "date" {
@@ -165,6 +160,7 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 	}
 	for _, number := range plan.Numbers {
 		var item int64
+		restore := false
 		err = tx.QueryRow(`SELECT entity_id FROM catalog_episodes INDEXED BY catalog_episodes_position WHERE show_id=? AND COALESCE(season_id,0)=? AND numbering=? AND number=?`, show, season, plan.Numbering, number).Scan(&item)
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -174,10 +170,12 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 			} else if plan.Numbering == "date" {
 				title = plan.AirDate
 			}
-			item, _, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Episode, Parent: parent, Key: compactcatalog.EpisodeKey(key, plan.Numbering, plan.Season, number), Title: title, Added: catalogedNow()})
+			var fresh bool
+			item, fresh, err = compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: compactcatalog.Episode, Parent: parent, Key: compactcatalog.EpisodeKey(key, plan.Numbering, plan.Season, number), Title: title, Added: catalogedNow()})
 			if err != nil {
 				return err
 			}
+			restore = restore || fresh
 			var airDate any
 			basis := "unspecified"
 			if plan.Numbering == "date" {
@@ -203,6 +201,12 @@ func (s *Service) commitEpisodes(tx *sql.Tx, library, asset, name string, plan E
 		}
 		if err = compactcatalog.LinkAssetTx(ctx, tx, item, assetID, compactcatalog.Link{}); err != nil {
 			return err
+		}
+		if restore {
+			// An episode that was removed and is back gets everyone's state back.
+			if err = restoreRetainedTx(ctx, tx, item); err != nil {
+				return err
+			}
 		}
 		boundary := "whole_source"
 		if len(plan.Numbers) > 1 {

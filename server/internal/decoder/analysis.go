@@ -29,6 +29,8 @@ type AnalysisSpec struct {
 	// (AudioBitDepth 16 or 24) or Opus (AudioBitrate bits per second).
 	AudioStart, AudioFrames, AudioOut int64
 	AudioRate, AudioChannels          int
+	AudioSourceRate                   int
+	AudioPriming                      int64
 	AudioBitDepth, AudioBitrate       int
 }
 
@@ -36,15 +38,21 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 	if s.StartUS < 0 || s.MaxDurationUS <= 0 || s.StartUS >= s.MaxDurationUS || s.MaxDurationUS > (1<<53)-1 {
 		return nil, ErrInvalidConfiguration
 	}
+	seekFrames := int64(0)
 	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-xerror", "-threads", "1", "-filter_threads", "1"}
 	if s.Kind == "image" {
 		args = append(args, "-ss", fmt.Sprintf("%d.%06d", s.StartUS/1000000, s.StartUS%1000000))
 	}
 	if s.Kind == "audio_flac" || s.Kind == "audio_opus" {
+		if s.AudioSourceRate > 0 && s.AudioSourceRate <= 768000 && s.AudioStart >= s.AudioPriming && s.AudioStart-s.AudioPriming > int64(s.AudioSourceRate)*3 {
+			seconds := (s.AudioStart-s.AudioPriming)/int64(s.AudioSourceRate) - 2
+			args = append(args, "-ss", fmt.Sprint(seconds))
+			seekFrames = seconds*int64(s.AudioSourceRate) + s.AudioPriming
+		}
 		// Every decoded frame, priming included: the facts' trim is relative to it.
 		args = append(args, "-flags2", "+skip_manual")
 	}
-	args = append(args, "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi,aiff,asf,ape,wv,tta,amr,mpeg,mpegvideo", "-probesize", "8388608", "-analyzeduration", "10000000", "-i", input, "-map_metadata", "-1", "-map_chapters", "-1", "-threads", "1")
+	args = append(args, "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8,mpeg,mpegvideo", "-probesize", "8388608", "-analyzeduration", "10000000", "-i", input, "-map_metadata", "-1", "-map_chapters", "-1", "-threads", "1")
 	switch s.Kind {
 	case "pcm":
 		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-ac", "1", "-af", "aresample=11025:async=1:first_pts=0", "-ar", "11025", "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1")
@@ -59,7 +67,7 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 		// frames whatever timestamps the container gave the priming; again after
 		// resampling, whose first output timestamp needn't be 0, so the final cut is
 		// exact.
-		filter := fmt.Sprintf("asetpts=N/SR/TB,atrim=start_sample=%d:end_sample=%d,asetpts=N/SR/TB,aresample=%d,asetpts=N/SR/TB,apad=whole_len=%d,atrim=end_sample=%d", s.AudioStart, s.AudioStart+s.AudioFrames, s.AudioRate, s.AudioOut, s.AudioOut)
+		filter := fmt.Sprintf("asetpts=N/SR/TB,atrim=start_sample=%d:end_sample=%d,asetpts=N/SR/TB,aresample=%d,asetpts=N/SR/TB,apad=whole_len=%d,atrim=end_sample=%d", s.AudioStart-seekFrames, s.AudioStart-seekFrames+s.AudioFrames, s.AudioRate, s.AudioOut, s.AudioOut)
 		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", filter, "-ac", fmt.Sprint(s.AudioChannels), "-ar", fmt.Sprint(s.AudioRate))
 		if s.Kind == "audio_flac" {
 			format, depth := "s16", "16"
@@ -124,7 +132,7 @@ func RunAnalysis(ctx context.Context, sup *storage.Supervisor, key, executable, 
 		res.Close()
 		return err
 	}
-	cmd, err := decoderJob{executable: executable, args: args, endpoint: endpoint, libraries: libraries, background: true}.command()
+	cmd, err := decoderJob{executable: executable, args: args, endpoint: endpoint, libraries: libraries, background: spec.Kind != "audio_flac" && spec.Kind != "audio_opus"}.command()
 	if err != nil {
 		res.Close()
 		return err
@@ -136,7 +144,14 @@ func RunAnalysis(ctx context.Context, sup *storage.Supervisor, key, executable, 
 		return ErrReservationInUse
 	}
 	retired := make(chan struct{})
-	err = sup.RunOwnedCompletion(ctx, "analysis:"+key, cmd, consume, nil, func() { res.retire(); close(retired) })
+	err = sup.RunOwnedCompletion(ctx, analysisRunKey(spec, key), cmd, consume, nil, func() { res.retire(); close(retired) })
 	<-retired
 	return err
+}
+
+func analysisRunKey(spec AnalysisSpec, key string) string {
+	if spec.Kind == "audio_flac" || spec.Kind == "audio_opus" {
+		return "playback:audio:" + key
+	}
+	return "analysis:" + key
 }

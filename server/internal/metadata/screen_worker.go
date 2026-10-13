@@ -125,7 +125,7 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 		}
 		return nil, gated.Commit()
 	}
-	p := &screenClaim{Base: b, Token: identity.Token(), Until: tvdbStamp(s.publicationTime().Add(120 * time.Second))}
+	p := &screenClaim{Base: b, Token: identity.Token(), Until: tvdbStamp(s.publicationTime().Add(240 * time.Second))}
 	if err = tx.QueryRowContext(ctx, `SELECT attempts FROM screen_metadata_work WHERE target_kind=? AND target_id=?`, kind, target).Scan(&p.Attempts); err != nil {
 		return nil, err
 	}
@@ -205,9 +205,12 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 		}
 		return gated3.Commit()
 	}
-	delay := time.Duration(1<<min(p.Attempts, 10)) * 30 * time.Second
+	delay := min(6*time.Hour, time.Duration(1<<min(p.Attempts, 10))*30*time.Second)
 	status, reason := "pending", "provider_unavailable"
 	var pe *metadataprovider.Error
+	if errors.Is(problem, context.DeadlineExceeded) {
+		problem = &metadataprovider.Error{Code: "unavailable"}
+	}
 	if !errors.As(problem, &pe) {
 		// Not the provider's fault: a local publication error. Say so.
 		reason = "publication_failed"
@@ -241,6 +244,7 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 	counted := 1
 	if pe != nil && pe.Code == "provider_backoff" {
 		status, counted = "pending", 0
+		delay = pe.RetryAfter
 	}
 	next := tvdbStamp(s.publicationTime().Add(delay))
 	if status == "unavailable" {
@@ -258,7 +262,7 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 			if !screenRecoverable[reason] {
 				reason = "provider_unavailable"
 			}
-			next = tvdbStamp(s.publicationTime().Add(max(delay, screenRecoveryCoolOff)))
+			next = tvdbStamp(s.publicationTime().Add(max(delay, screenRecoveryCoolOff) + time.Duration(p.Base.Entity%31)*time.Second))
 		}
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=?,error=?,attempts=attempts+?,next_attempt=?,revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=? AND lease=?`, status, reason, counted, next, p.Base.TargetKind, p.Base.Entity, p.Token)
@@ -271,7 +275,7 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 // screenRecoveryCoolOff is the least a parked title waits before it is tried
 // again: long enough that a provider which is down is asked about each title
 // about once an hour at first, and far less often after that.
-const screenRecoveryCoolOff = time.Hour
+const screenRecoveryCoolOff = 15 * time.Minute
 
 // screenRecoverable are the recorded reasons that can only mean the provider
 // could not be reached or would not serve for now: a network failure, a rate
@@ -316,11 +320,11 @@ func (s *Service) screenBeforeRequest(ctx context.Context, p *screenClaim, provi
 	return nil
 }
 func (s *Service) screenRequestContext(parent context.Context, p *screenClaim) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(parent, 75*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 180*time.Second)
 	// Revocation/configuration and superseding owner selections cancel in-flight
 	// I/O, not merely publication. All source observations are rechecked at commit.
 	supervise.Go("metadata.screen-worker.watch", func() {
-		tick := time.NewTicker(250 * time.Millisecond)
+		tick := time.NewTicker(time.Second)
 		defer tick.Stop()
 		for {
 			select {
@@ -435,9 +439,19 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 				return nil, -1, "", &metadataprovider.Error{Provider: id.Provider, Code: "order_unavailable"}
 			}
 		}
-		c := scoreScreen(r, names, year, true)
+		c := scoreScreenEvidence(r, names, year, true, b)
 		c.SourceKind = "accepted_identity"
 		c.Reasons = []string{"accepted_identity_preserved"}
+		// Reusing an automatic identity does not turn a tentative guess into certainty.
+		if b.Mode != "owner" && b.Mode != "legacy" && b.Accepted != "" {
+			var reasons string
+			if e := dbwork.QueryRow(ctx, s.db, `SELECT confidence,reasons FROM screen_metadata_publications WHERE id=?`, b.Accepted).Scan(&c.Confidence, &reasons); e != nil {
+				return nil, -1, "", e
+			}
+			if e := json.Unmarshal([]byte(reasons), &c.Reasons); e != nil {
+				return nil, -1, "", e
+			}
+		}
 		return []screenCandidate{c}, 0, "matched", nil
 	}
 	candidates := []screenCandidate{}
@@ -461,14 +475,33 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 			typ = "anime"
 		}
 		exacts := []metadataprovider.ScreenID{}
+		exactSeen := map[metadataprovider.ScreenID]bool{}
 		for _, id := range ids {
-			if id.Provider == name && id.Type == typ {
+			if id.Provider == "imdb" {
+				if resolver, ok := provider.(interface {
+					ResolveScreenID(context.Context, metadataprovider.ScreenID, string, string, string) (metadataprovider.ScreenID, error)
+				}); ok {
+					if e := s.screenBeforeRequest(ctx, p, name); e != nil {
+						return nil, -1, "", e
+					}
+					resolved, e := resolver.ResolveScreenID(ctx, id, typ, b.Language, b.Region)
+					if e != nil {
+						return nil, -1, "", e
+					}
+					id = resolved
+				}
+			}
+			if id.Provider == name && id.Type == typ && !exactSeen[id] {
 				exacts = append(exacts, id)
+				exactSeen[id] = true
 			}
 		}
 		// Two different typed IDs for the same provider are a local conflict, not an
 		// excuse to choose whichever remote response happened to arrive first.
-		for _, id := range exacts {
+		for index, id := range exacts {
+			if index >= 4 {
+				break
+			}
 			if err := s.screenBeforeRequest(ctx, p, name); err != nil {
 				return nil, -1, "", err
 			}
@@ -484,7 +517,7 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 			if r.Identity != id {
 				return nil, -1, "", &metadataprovider.Error{Provider: name, Code: "identity_mismatch"}
 			}
-			c := scoreScreen(r, names, year, true)
+			c := scoreScreenEvidence(r, names, year, true, b)
 			if len(exacts) > 1 {
 				c.Contradiction = true
 				c.Reasons = append(c.Reasons, "local_identifiers_conflict")
@@ -500,7 +533,7 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 				if err := s.screenBeforeRequest(ctx, p, name); err != nil {
 					return nil, -1, "", err
 				}
-				rows, err := provider.SearchScreen(ctx, typ, q, year, b.Language, b.Region)
+				rows, err := provider.SearchScreen(ctx, typ, q, 0, b.Language, b.Region)
 				if err != nil {
 					lastError = err
 					if e := s.screenRememberCooldown(ctx, name, err); e != nil {
@@ -514,13 +547,14 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 				}
 				for _, r := range rows {
 					if r.Identity.Provider != name || r.Identity.Type != typ {
-						return nil, -1, "", &metadataprovider.Error{Provider: name, Code: "entity_type_mismatch"}
+						continue
 					}
+					r = metadataprovider.BoundScreenRecord(r)
 					if err = metadataprovider.ValidateScreenRecord(r); err != nil {
-						return nil, -1, "", err
+						continue
 					}
 					if !seen[r.Identity] {
-						c := scoreScreen(r, names, year, false)
+						c := scoreScreenEvidence(r, names, year, false, b)
 						candidates = append(candidates, c)
 						seen[r.Identity] = true
 					}
@@ -558,12 +592,14 @@ func (s *Service) acquireScreen(ctx context.Context, p *screenClaim) ([]screenCa
 			if r.Identity != id {
 				return nil, -1, "", &metadataprovider.Error{Provider: name, Code: "identity_mismatch"}
 			}
-			*c = scoreScreen(r, names, year, false)
+			*c = scoreScreenEvidence(r, names, year, false, b)
 			c.DetailsVerified = true
 		}
 		if screenLocalYearConflict(b) {
 			for i := range candidates {
-				candidates[i].Contradiction = true
+				if candidates[i].SourceKind != "typed_identifier" {
+					candidates[i].Confidence = max(0, candidates[i].Confidence-.03)
+				}
 				candidates[i].Reasons = append(candidates[i].Reasons, "local_release_years_conflict")
 			}
 		}
@@ -640,7 +676,13 @@ func (s *Service) dispatchScreenChildren(ctx context.Context, p *screenClaim) er
 		return err
 	}
 	for _, id := range ids {
-		_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='item' AND target_id=? AND selection_mode<>'owner'`, id)
+		_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='item' AND target_id=? AND selection_mode<>'owner'
+ AND NOT (status='matched' AND force_refresh=0 AND EXISTS(
+ SELECT 1 FROM screen_metadata_publications parent JOIN screen_metadata_publications episode ON episode.id=screen_metadata_work.accepted_publication
+ JOIN metadata_document_freshness f ON f.provider=episode.provider AND f.kind='episode' AND f.resource=episode.provider_id||'@'||episode.language||':'||episode.region
+ WHERE parent.id=screen_metadata_work.parent_publication AND parent.provider=? AND parent.provider_id=? AND parent.language=? AND parent.region=?
+ AND episode.language=? AND episode.region=? AND f.checked_at>CASE WHEN EXISTS(
+ SELECT 1 FROM catalog_item_details d WHERE d.entity_id=screen_metadata_work.target_id AND d.added_text>?) THEN ? ELSE ? END))`, id, p.Base.Provider, p.Base.ProviderID, p.Base.Language, p.Base.Region, p.Base.Language, p.Base.Region, tvdbStamp(s.publicationTime().Add(-recentlyAdded)), s.publicationTime().Add(-freshnessRecent).Unix(), s.publicationTime().Add(-freshnessEpisode).Unix())
 		if err != nil {
 			return err
 		}

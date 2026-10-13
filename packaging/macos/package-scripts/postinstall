@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+if ! dscl . -read /Groups/_portico >/dev/null 2>&1; then
+ gid=400
+ while dscl . -search /Groups PrimaryGroupID "$gid" | grep -q .; do gid=$((gid+1)); done
+ dscl . -create /Groups/_portico
+ dscl . -create /Groups/_portico PrimaryGroupID "$gid"
+fi
+gid=$(dscl . -read /Groups/_portico PrimaryGroupID | awk '{print $2}')
+if ! dscl . -read /Users/_portico >/dev/null 2>&1; then
+ uid=400
+ while dscl . -search /Users UniqueID "$uid" | grep -q .; do uid=$((uid+1)); done
+ dscl . -create /Users/_portico
+ dscl . -create /Users/_portico UniqueID "$uid"
+ dscl . -create /Users/_portico PrimaryGroupID "$gid"
+ dscl . -create /Users/_portico UserShell /usr/bin/false
+ dscl . -create /Users/_portico NFSHomeDirectory '/Library/Application Support/Portico Media Server'
+ dscl . -create /Users/_portico IsHidden 1
+fi
+state='/Library/Application Support/Portico Media Server'
+mkdir -p "$state"
+chown _portico:_portico "$state"
+chmod 700 "$state"
+plist='/Library/LaunchDaemons/tv.getportico.server.service.plist'
+if [ ! -f "$plist" ]; then
+ install -o root -g wheel -m 644 '/Applications/Portico Media Server.app/Contents/Resources/launchd/tv.getportico.server.service.plist' "$plist"
+fi
+plutil -lint "$plist"
+launchctl enable system/tv.getportico.server.service
+launchctl bootstrap system "$plist"

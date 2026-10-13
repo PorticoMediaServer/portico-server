@@ -3,6 +3,7 @@ package compactcatalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strconv"
@@ -134,7 +135,7 @@ func ProjectAudioLocalGenresBatch(ctx context.Context, db *sql.DB, libraryID str
 // traversal order decide.
 func audioSelectedGenre(ctx context.Context, tx *sql.Tx, library string, item int64) (string, bool, error) {
 	rows, err := tx.QueryContext(ctx, `SELECT DISTINCT t.value FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id
- JOIN audio_tag_evidence t ON t.library_id=? AND t.asset_id=a.token AND t.field='genre' WHERE l.entity_id=?
+ JOIN audio_tag_evidence t ON t.library_id=? AND t.asset_id=a.token AND t.field=CASE WHEN EXISTS(SELECT 1 FROM audio_tag_evidence g WHERE g.library_id=t.library_id AND g.asset_id=t.asset_id AND g.field='genres') THEN 'genres' ELSE 'genre' END WHERE l.entity_id=?
  ORDER BY t.value LIMIT 8`, library, item)
 	if err != nil {
 		return "", false, err
@@ -271,7 +272,14 @@ func projectAudioLocalGenreValue(ctx context.Context, tx *sql.Tx, library string
 func normalizeAudioGenres(raw string) []string {
 	out := []string{}
 	seen := map[string]bool{}
-	for _, part := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ';' || r == '/' }) {
+	var parts []string
+	if json.Unmarshal([]byte(raw), &parts) != nil {
+		parts = strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ';' || r == '/' })
+	}
+	if len(parts) > 128 {
+		parts = parts[:128]
+	}
+	for _, part := range parts {
 		name := strings.TrimSpace(part)
 		if name == "" || len(name) > 64 {
 			continue
