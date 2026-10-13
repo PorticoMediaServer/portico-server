@@ -283,7 +283,10 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
    if(status===404||status===405)throw new SessionRefreshError('refresh_unsupported','This server doesn’t renew sign-ins.',false,status as number);
    // Transport failures keep their own shape so restore policies still see "offline, retry".
    if(typeof status!=='number')throw e;
-   throw new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false,status);
+   // The server's own wait (a 429 or 503 with Retry-After) travels with the failure, so the next try respects it.
+   const busy=new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false,status);
+   const wait=(e as {retryAfterSeconds?:unknown}|null)?.retryAfterSeconds;if(typeof wait==='number'&&Number.isFinite(wait)&&wait>0)busy.retryAfterSeconds=wait;
+   throw busy;
   }finally{clearTimeout(timer);o.signal?.removeEventListener('abort',abort);}
   let next:LocalSession;
   try{next=parseLocalSession(raw,{authority:session.viewer.authority,accountId:session.viewer.accountId,profileId:session.viewer.profileId,serverId:session.viewer.serverId,role:session.viewer.role});}

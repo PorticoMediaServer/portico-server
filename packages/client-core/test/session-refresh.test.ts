@@ -126,7 +126,7 @@ function setup(t: import('node:test').TestContext, options: {session?: LocalSess
   const tab = () => {
     const api = new HttpLocalApi(ORIGIN, session.accessToken, server.fetch);
     const {refreshToken: _r, ...visible} = session;
-    const refresher = new LocalSessionRefresher({env, api, session: visible, onRotated: s => events.rotated.push(s), onSignedOut: e => events.signedOut.push(e.code), setTimer: timers.setTimer, clearTimer: timers.clearTimer});
+    const refresher = new LocalSessionRefresher({env, api, session: visible, onRotated: s => events.rotated.push(s), onSignedOut: e => events.signedOut.push(e.code), setTimer: timers.setTimer, clearTimer: timers.clearTimer, random: () => 0});
     return {api, refresher};
   };
   t.after(() => setInstallationIdentity(undefined));
