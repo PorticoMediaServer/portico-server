@@ -86,7 +86,7 @@ func (s *Service) publishScreen(ctx context.Context, p *screenClaim, cs []screen
 			return err
 		}
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=?,error='',attempts=0,next_attempt='',revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=? AND lease=?`, status, b.TargetKind, b.Entity, p.Token)
+	_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=?,force_refresh=0,error='',attempts=0,next_attempt='',revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=? AND lease=?`, status, b.TargetKind, b.Entity, p.Token)
 	if err != nil {
 		return err
 	}
@@ -1035,7 +1035,7 @@ func (s *Service) screenEpisodeStep(ctx context.Context, p *screenClaim) error {
 	var err error
 	source, status := "parent_coordinates", "matched"
 	if b.ParentProvider == "tmdb" {
-		if b.Numbering != "seasonal" {
+		if b.Numbering != "seasonal" && b.Numbering != "absolute" {
 			return s.finishScreen(ctx, p, "needs_order", "tmdb_seasonal_coordinates_required")
 		}
 		provider, ok := s.screenProviders["tmdb"].(screenEpisodeProvider)
@@ -1152,7 +1152,7 @@ func screenExplain(status string) string {
 // carries it. The editor, the browse projection and the provider publication
 // then agree on one value per fact instead of three private copies.
 func screenCatalogColumn(targetKind, field string) (string, bool) {
-	shared := map[string]string{"originalTitle": "original_title", "sortTitle": "sort_title", "tagline": "tagline", "certification": "content_rating", "studios": "studio", "network": "network"}
+	shared := map[string]string{"originalTitle": "original_title", "sortTitle": "sort_title", "tagline": "tagline", "certification": "content_rating", "studios": "studio", "network": "network", "countries": "country"}
 	if column, ok := shared[field]; ok {
 		return column, true
 	}

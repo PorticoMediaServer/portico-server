@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -159,7 +161,7 @@ func (s *Service) seedArtwork(ctx context.Context) error {
 			err = tx.QueryRowContext(ctx, `SELECT l.release_id FROM mb_album_links l JOIN mb_jobs j ON j.kind='album' AND j.entity_id=l.album_id AND j.selected_id=l.requested_id WHERE l.album_id=? AND j.selected_id<>''`, entity).Scan(&id)
 		} else if hasScreen {
 			err = sql.ErrNoRows
-			if screen != nil && (screen.Identity.Provider == "tvdb" && t.Kind == "show" || screen.Identity.Provider == "tmdb" && screen.Identity.Type == "movie") {
+			if screen != nil && ((screen.Identity.Provider == "tvdb" || screen.Identity.Provider == "tmdb") && (screen.Identity.Type == "movie" || screen.Identity.Type == "show")) {
 				provider, id, err = screen.Identity.Provider, screen.Identity.ID, nil
 			}
 		} else if t.Kind == "show" {
@@ -313,7 +315,9 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 	}
 	work, cancel := s.artworkRequestContext(ctx, t, provider, fence)
 	defer cancel()
-	images, problem := s.discoverArtwork(work, provider, id)
+	locale := "en"
+	_ = dbwork.QueryRow(ctx, s.db, `SELECT p.language FROM screen_metadata_policies p JOIN catalog_entities e ON e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=p.library_id) WHERE e.id=?`, entity).Scan(&locale)
+	images, problem := s.discoverArtworkFor(work, provider, id, t.Kind, locale)
 	var gated3 *dbwork.Write
 	gated3, err = dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
@@ -411,11 +415,14 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 	return gated3.Commit()
 }
 func (s *Service) discoverArtwork(ctx context.Context, provider, id string) ([]discoveredArtwork, error) {
+	return s.discoverArtworkFor(ctx, provider, id, "item", "en")
+}
+func (s *Service) discoverArtworkFor(ctx context.Context, provider, id, kind, locale string) ([]discoveredArtwork, error) {
 	if provider == "coverartarchive" {
 		return s.discoverCAA(ctx, id)
 	}
 	if provider == "tvdb" {
-		return s.discoverTVDBArtwork(ctx, id)
+		return s.discoverTVDBArtworkFor(ctx, id, kind, locale)
 	}
 	if provider != "tmdb" {
 		return nil, ErrRepairInput
@@ -444,8 +451,20 @@ func (s *Service) discoverArtwork(ctx context.Context, provider, id string) ([]d
 				Profile string `json:"profile_path"`
 			}
 		} `json:"credits"`
+		Aggregate json.RawMessage `json:"aggregate_credits"`
+		Seasons   []struct {
+			Number int    `json:"season_number"`
+			Poster string `json:"poster_path"`
+		} `json:"seasons"`
 	}
-	raw, err := s.tmdbGet(ctx, "/movie/"+id+"?append_to_response=images,credits")
+	route := "/movie/" + id
+	parts := "images,credits"
+	if kind == "show" {
+		route = "/tv/" + id
+		parts = "images,aggregate_credits"
+	}
+	q := url.Values{"append_to_response": {parts}, "language": {locale}, "include_image_language": {strings.Split(locale, "-")[0] + ",null,en"}}
+	raw, err := s.tmdbGet(ctx, route+"?"+q.Encode())
 	if err != nil {
 		var refused *metadataprovider.Error
 		if errors.As(err, &refused) && refused.Status == 429 {
@@ -459,9 +478,36 @@ func (s *Service) discoverArtwork(ctx context.Context, provider, id string) ([]d
 	if json.Unmarshal(raw, &data) != nil || data.ID != n {
 		return nil, ErrRepairInput
 	}
+	if kind == "show" && len(data.Aggregate) > 0 {
+		_ = json.Unmarshal(data.Aggregate, &data.Credits)
+	}
+	for _, images := range [][]struct {
+		FilePath string  `json:"file_path"`
+		Language string  `json:"iso_639_1"`
+		Vote     float64 `json:"vote_average"`
+		Votes    int     `json:"vote_count"`
+	}{data.Images.Posters, data.Images.Backdrops, data.Images.Logos} {
+		sort.SliceStable(images, func(i, j int) bool {
+			a, b := artworkLanguageRank(images[i].Language, locale), artworkLanguageRank(images[j].Language, locale)
+			if a != b {
+				return a < b
+			}
+			return images[i].Vote > images[j].Vote
+		})
+	}
 	out := []discoveredArtwork{}
 	add := func(role, subject, path, locale string, rank float64, votes int) {
-		origin := imageURL(path, "original")
+		size := "original"
+		if role == "portrait" {
+			size = "h632"
+		}
+		if role == "poster" {
+			size = "w780"
+		}
+		if role == "backdrop" {
+			size = "w1280"
+		}
+		origin := imageURL(path, size)
 		if origin != "" && len(out) < 160 {
 			out = append(out, discoveredArtwork{role: role, subject: subject, provider: provider, imageID: path, origin: origin, locale: locale, attribution: Attribution, rank: rank, votes: votes})
 		}
@@ -483,6 +529,16 @@ func (s *Service) discoverArtwork(ctx context.Context, provider, id string) ([]d
 			break
 		}
 		add("logo", "", im.FilePath, im.Language, im.Vote, max(im.Votes, 0))
+	}
+	if kind == "show" {
+		for _, season := range data.Seasons {
+			if season.Number >= 0 && season.Number <= 9999 && len(out) < 160 {
+				origin := imageURL(season.Poster, "w780")
+				if origin != "" {
+					out = append(out, discoveredArtwork{role: "poster", provider: "tmdb", imageID: season.Poster, origin: origin, attribution: Attribution, votes: -1, season: &seasonImageTarget{season.Number, "official"}})
+				}
+			}
+		}
 	}
 	seen := map[int]bool{}
 	for i, p := range data.Credits.Cast {
@@ -552,4 +608,19 @@ func (s *Service) discoverCAA(ctx context.Context, id string) ([]discoveredArtwo
 		}
 	}
 	return out, nil
+}
+
+func artworkLanguageRank(language, preferred string) int {
+	language = strings.ToLower(language)
+	preferred = strings.ToLower(strings.Split(preferred, "-")[0])
+	if language == preferred {
+		return 0
+	}
+	if language == "" {
+		return 1
+	}
+	if language == "en" || language == "eng" {
+		return 2
+	}
+	return 3
 }

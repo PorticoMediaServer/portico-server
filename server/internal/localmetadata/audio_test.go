@@ -2,6 +2,7 @@ package localmetadata
 
 import (
 	"bytes"
+	"context"
 	"image"
 	"image/png"
 	"testing"
@@ -38,4 +39,29 @@ func TestLocalArtworkRejectsUnboundedOrNonImageContent(t *testing.T) {
 		t.Fatal(mime, err)
 	}
 	file.Close()
+}
+
+func TestArtworkCapacityCanBeRaisedWithoutDroppingExistingCovers(t *testing.T) {
+	service, e := New(t.TempDir(), "", nil)
+	if e != nil {
+		t.Fatal(e)
+	}
+	limit := int64(1)
+	service.ArtworkLimit = func(context.Context) int64 { return limit }
+	var raw bytes.Buffer
+	if e = png.Encode(&raw, image.NewRGBA(image.Rect(0, 0, 8, 8))); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = service.store(raw.Bytes()); e == nil {
+		t.Fatal("capacity was ignored")
+	}
+	limit = 1024
+	key, e := service.store(raw.Bytes())
+	if e != nil || key == "" {
+		t.Fatal(key, e)
+	}
+	limit = 1
+	if repeated, e := service.store(raw.Bytes()); e != nil || repeated != key {
+		t.Fatal("retained cover rejected", e)
+	}
 }

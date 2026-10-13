@@ -452,6 +452,9 @@
                     },
                     "settings": {
                       "properties": {
+                        "backgroundSpeed": {
+                          "type": "string"
+                        },
                         "backgroundTaskPriority": {
                           "type": "string"
                         },
@@ -529,7 +532,8 @@
                         "windows",
                         "retention",
                         "backupKeepCount",
-                        "backgroundTaskPriority"
+                        "backgroundTaskPriority",
+                        "backgroundSpeed"
                       ],
                       "type": "object"
                     },
@@ -620,6 +624,9 @@
                   },
                   "settings": {
                     "properties": {
+                      "backgroundSpeed": {
+                        "type": "string"
+                      },
                       "backgroundTaskPriority": {
                         "type": "string"
                       },
@@ -697,7 +704,8 @@
                       "windows",
                       "retention",
                       "backupKeepCount",
-                      "backgroundTaskPriority"
+                      "backgroundTaskPriority",
+                      "backgroundSpeed"
                     ],
                     "type": "object"
                   }
@@ -772,6 +780,9 @@
                     },
                     "settings": {
                       "properties": {
+                        "backgroundSpeed": {
+                          "type": "string"
+                        },
                         "backgroundTaskPriority": {
                           "type": "string"
                         },
@@ -849,7 +860,8 @@
                         "windows",
                         "retention",
                         "backupKeepCount",
-                        "backgroundTaskPriority"
+                        "backgroundTaskPriority",
+                        "backgroundSpeed"
                       ],
                       "type": "object"
                     },
@@ -923,6 +935,139 @@
         "x-cost": "constant",
         "x-lane": "default",
         "x-max-body-bytes": 65536
+      }
+    },
+    "/v1/admin/metadata/settings": {
+      "get": {
+        "operationId": "get_metadata_settings",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "includeAdult": {
+                      "type": "boolean"
+                    },
+                    "localArtworkLimitBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "tmdbCredentialConfigured": {
+                      "type": "boolean"
+                    },
+                    "tvdbCredentialConfigured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "localArtworkLimitBytes",
+                    "includeAdult",
+                    "tmdbCredentialConfigured",
+                    "tvdbCredentialConfigured"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Read provider credentials status and artwork storage limit",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default"
+      },
+      "put": {
+        "operationId": "put_metadata_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "includeAdult": {
+                    "type": "boolean"
+                  },
+                  "localArtworkLimitBytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "tmdbReadToken": {
+                    "type": "string"
+                  },
+                  "tvdbProjectKey": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "localArtworkLimitBytes",
+                  "includeAdult"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "includeAdult": {
+                      "type": "boolean"
+                    },
+                    "localArtworkLimitBytes": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "tmdbCredentialConfigured": {
+                      "type": "boolean"
+                    },
+                    "tvdbCredentialConfigured": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "revision",
+                    "localArtworkLimitBytes",
+                    "includeAdult",
+                    "tmdbCredentialConfigured",
+                    "tvdbCredentialConfigured"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Save provider credential overrides and artwork storage limit",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "default",
+        "x-max-body-bytes": 32768
       }
     },
     "/v1/admin/sessions": {
@@ -4026,6 +4171,52 @@
         "x-lane": "realtime"
       }
     },
+    "/v1/items/{id}/metadata/refresh": {
+      "post": {
+        "operationId": "refresh_items_metadata",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Fetch current metadata for a title",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "browsing",
+        "x-max-body-bytes": 4096
+      }
+    },
     "/v1/items/{itemId}/playback-options": {
       "get": {
         "operationId": "get_playback_options",
@@ -5213,6 +5404,226 @@
         "x-access": "device",
         "x-cost": "page_sized",
         "x-lane": "default"
+      }
+    },
+    "/v1/libraries/{id}/metadata/attention": {
+      "get": {
+        "operationId": "get_metadata_attention",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "entries": {
+                      "items": {
+                        "properties": {
+                          "candidates": {
+                            "items": {
+                              "properties": {
+                                "confidence": {
+                                  "type": "number"
+                                },
+                                "identity": {
+                                  "properties": {
+                                    "id": {
+                                      "type": "string"
+                                    },
+                                    "provider": {
+                                      "type": "string"
+                                    },
+                                    "type": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "provider",
+                                    "type",
+                                    "id"
+                                  ],
+                                  "type": "object"
+                                },
+                                "key": {
+                                  "type": "string"
+                                },
+                                "orders": {
+                                  "items": {
+                                    "properties": {
+                                      "id": {
+                                        "type": "string"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "id",
+                                      "name"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
+                                "reasons": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "title": {
+                                  "type": "string"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "key",
+                                "identity",
+                                "title",
+                                "year",
+                                "confidence",
+                                "reasons",
+                                "orders"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "confidence": {
+                            "type": "number"
+                          },
+                          "entityId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "entityId",
+                          "kind",
+                          "title",
+                          "revision",
+                          "reason",
+                          "confidence",
+                          "candidates"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "nextCursor": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "libraryId",
+                    "entries",
+                    "nextCursor"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "List unmatched and uncertain titles with their best candidates",
+        "x-access": "owner",
+        "x-cost": "page_sized",
+        "x-lane": "browsing"
+      },
+      "post": {
+        "operationId": "post_metadata_attention",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "action": {
+                    "type": "string"
+                  },
+                  "candidateKey": {
+                    "type": "string"
+                  },
+                  "entityId": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "order": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  },
+                  "providerId": {
+                    "type": "string"
+                  },
+                  "query": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "entityId",
+                  "expectedRevision",
+                  "action"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Accept a candidate, search, enter a provider ID or dismiss a title",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "browsing",
+        "x-max-body-bytes": 4096
       }
     },
     "/v1/me/devices/current/capabilities": {
@@ -14170,6 +14581,52 @@
         "x-access": "public",
         "x-cost": "constant",
         "x-lane": "default"
+      }
+    },
+    "/v1/shows/{id}/metadata/refresh": {
+      "post": {
+        "operationId": "refresh_shows_metadata",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "status"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          }
+        },
+        "summary": "Fetch current metadata for a title",
+        "x-access": "owner",
+        "x-cost": "constant",
+        "x-lane": "browsing",
+        "x-max-body-bytes": 4096
       }
     }
   }

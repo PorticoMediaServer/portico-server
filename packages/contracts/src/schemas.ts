@@ -4678,6 +4678,9 @@ export const schemas = {
       },
       "settings": {
         "properties": {
+          "backgroundSpeed": {
+            "type": "string"
+          },
           "backgroundTaskPriority": {
             "type": "string"
           },
@@ -4755,7 +4758,8 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority"
+          "backgroundTaskPriority",
+          "backgroundSpeed"
         ],
         "type": "object"
       },
@@ -6551,6 +6555,174 @@ export const schemas = {
       "done",
       "failed",
       "totalKnown"
+    ],
+    "type": "object"
+  },
+  "GetMetadataAttentionRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMetadataAttentionResponse": {
+    "properties": {
+      "entries": {
+        "items": {
+          "properties": {
+            "candidates": {
+              "items": {
+                "properties": {
+                  "confidence": {
+                    "type": "number"
+                  },
+                  "identity": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "provider": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "type",
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "orders": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "reasons": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "key",
+                  "identity",
+                  "title",
+                  "year",
+                  "confidence",
+                  "reasons",
+                  "orders"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "entityId": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "entityId",
+            "kind",
+            "title",
+            "revision",
+            "reason",
+            "confidence",
+            "candidates"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "libraryId",
+      "entries",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
+  "GetMetadataSettingsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMetadataSettingsResponse": {
+    "properties": {
+      "includeAdult": {
+        "type": "boolean"
+      },
+      "localArtworkLimitBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "tmdbCredentialConfigured": {
+        "type": "boolean"
+      },
+      "tvdbCredentialConfigured": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "revision",
+      "localArtworkLimitBytes",
+      "includeAdult",
+      "tmdbCredentialConfigured",
+      "tvdbCredentialConfigured"
     ],
     "type": "object"
   },
@@ -9426,6 +9598,57 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "PostMetadataAttentionRequest": {
+    "properties": {
+      "action": {
+        "type": "string"
+      },
+      "candidateKey": {
+        "type": "string"
+      },
+      "entityId": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "order": {
+        "type": "string"
+      },
+      "provider": {
+        "type": "string"
+      },
+      "providerId": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "kind",
+      "entityId",
+      "expectedRevision",
+      "action"
+    ],
+    "type": "object"
+  },
+  "PostMetadataAttentionResponse": {
+    "properties": {
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "type": "object"
+  },
   "PrepareQueueNextRequest": {
     "properties": {
       "sessionGeneration": {
@@ -9910,6 +10133,9 @@ export const schemas = {
       },
       "settings": {
         "properties": {
+          "backgroundSpeed": {
+            "type": "string"
+          },
           "backgroundTaskPriority": {
             "type": "string"
           },
@@ -9987,7 +10213,8 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority"
+          "backgroundTaskPriority",
+          "backgroundSpeed"
         ],
         "type": "object"
       }
@@ -10054,6 +10281,9 @@ export const schemas = {
       },
       "settings": {
         "properties": {
+          "backgroundSpeed": {
+            "type": "string"
+          },
           "backgroundTaskPriority": {
             "type": "string"
           },
@@ -10131,7 +10361,8 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority"
+          "backgroundTaskPriority",
+          "backgroundSpeed"
         ],
         "type": "object"
       },
@@ -10604,6 +10835,106 @@ export const schemas = {
     "required": [
       "selfRegistration",
       "deviceApproval"
+    ],
+    "type": "object"
+  },
+  "PutMetadataSettingsRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "includeAdult": {
+        "type": "boolean"
+      },
+      "localArtworkLimitBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "tmdbReadToken": {
+        "type": "string"
+      },
+      "tvdbProjectKey": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "localArtworkLimitBytes",
+      "includeAdult"
+    ],
+    "type": "object"
+  },
+  "PutMetadataSettingsResponse": {
+    "properties": {
+      "includeAdult": {
+        "type": "boolean"
+      },
+      "localArtworkLimitBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "tmdbCredentialConfigured": {
+        "type": "boolean"
+      },
+      "tvdbCredentialConfigured": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "revision",
+      "localArtworkLimitBytes",
+      "includeAdult",
+      "tmdbCredentialConfigured",
+      "tvdbCredentialConfigured"
+    ],
+    "type": "object"
+  },
+  "RefreshItemsMetadataRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RefreshItemsMetadataResponse": {
+    "properties": {
+      "itemId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "itemId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "RefreshShowsMetadataRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RefreshShowsMetadataResponse": {
+    "properties": {
+      "itemId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "itemId",
+      "status"
     ],
     "type": "object"
   },

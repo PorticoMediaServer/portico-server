@@ -164,8 +164,9 @@ func (s *TVDB) SearchScreen(ctx context.Context, kind, title string, year int, l
 		}
 		y, _ := strconv.Atoi(v.Year)
 		r := ScreenRecord{Identity: ScreenID{"tvdb", kind, v.ID}, Title: v.Name, Year: y, Overview: v.Overview, Aliases: v.Aliases}
+		r = BoundScreenRecord(r)
 		if e := ValidateScreenRecord(r); e != nil {
-			return nil, e
+			continue
 		}
 		out = append(out, r)
 	}
@@ -259,6 +260,7 @@ func (s *TVDB) ScreenDetails(ctx context.Context, kind, id, locale, region strin
 			r.Orders = append(r.Orders, ScreenOrder{o, o})
 		}
 	}
+	r = BoundScreenRecord(r)
 	return r, ValidateScreenRecord(r)
 }
 

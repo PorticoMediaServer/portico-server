@@ -314,6 +314,7 @@ type MaintenanceSettingsDocument struct {
 	// offered for removal. Nothing is deleted automatically.
 	BackupKeepCount        int    `json:"backupKeepCount"`
 	BackgroundTaskPriority string `json:"backgroundTaskPriority"`
+	BackgroundSpeed        string `json:"backgroundSpeed"`
 }
 
 // DefaultMaintenanceSettings is the answer before any owner write: one nightly
@@ -325,10 +326,14 @@ func DefaultMaintenanceSettings() MaintenanceSettingsDocument {
 		Retention:              retention,
 		BackupKeepCount:        7,
 		BackgroundTaskPriority: "lower",
+		BackgroundSpeed:        "normal",
 	}
 }
 
 func normalizeMaintenance(v *MaintenanceSettingsDocument) {
+	if v.BackgroundSpeed == "" {
+		v.BackgroundSpeed = "normal"
+	}
 	if v.BackgroundTaskPriority == "" {
 		v.BackgroundTaskPriority = "lower"
 	}
@@ -357,6 +362,9 @@ func normalizeMaintenance(v *MaintenanceSettingsDocument) {
 
 func validateMaintenance(v *MaintenanceSettingsDocument) error {
 	fields := []string{}
+	if v.BackgroundSpeed != "gentle" && v.BackgroundSpeed != "normal" && v.BackgroundSpeed != "fast" {
+		fields = append(fields, "settings.backgroundSpeed")
+	}
 	if v.BackgroundTaskPriority != "lower" && v.BackgroundTaskPriority != "normal" {
 		fields = append(fields, "settings.backgroundTaskPriority")
 	}

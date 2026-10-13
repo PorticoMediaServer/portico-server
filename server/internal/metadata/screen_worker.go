@@ -125,7 +125,7 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 		}
 		return nil, gated.Commit()
 	}
-	p := &screenClaim{Base: b, Token: identity.Token(), Until: tvdbStamp(s.publicationTime().Add(120 * time.Second))}
+	p := &screenClaim{Base: b, Token: identity.Token(), Until: tvdbStamp(s.publicationTime().Add(240 * time.Second))}
 	if err = tx.QueryRowContext(ctx, `SELECT attempts FROM screen_metadata_work WHERE target_kind=? AND target_id=?`, kind, target).Scan(&p.Attempts); err != nil {
 		return nil, err
 	}
@@ -205,9 +205,12 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 		}
 		return gated3.Commit()
 	}
-	delay := time.Duration(1<<min(p.Attempts, 10)) * 30 * time.Second
+	delay := min(6*time.Hour, time.Duration(1<<min(p.Attempts, 10))*30*time.Second)
 	status, reason := "pending", "provider_unavailable"
 	var pe *metadataprovider.Error
+	if errors.Is(problem, context.DeadlineExceeded) {
+		problem = &metadataprovider.Error{Code: "unavailable"}
+	}
 	if !errors.As(problem, &pe) {
 		// Not the provider's fault: a local publication error. Say so.
 		reason = "publication_failed"
@@ -241,6 +244,7 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 	counted := 1
 	if pe != nil && pe.Code == "provider_backoff" {
 		status, counted = "pending", 0
+		delay = pe.RetryAfter
 	}
 	next := tvdbStamp(s.publicationTime().Add(delay))
 	if status == "unavailable" {
@@ -258,7 +262,7 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 			if !screenRecoverable[reason] {
 				reason = "provider_unavailable"
 			}
-			next = tvdbStamp(s.publicationTime().Add(max(delay, screenRecoveryCoolOff)))
+			next = tvdbStamp(s.publicationTime().Add(max(delay, screenRecoveryCoolOff) + time.Duration(p.Base.Entity%31)*time.Second))
 		}
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status=?,error=?,attempts=attempts+?,next_attempt=?,revision=revision+1,lease='',lease_until='' WHERE target_kind=? AND target_id=? AND lease=?`, status, reason, counted, next, p.Base.TargetKind, p.Base.Entity, p.Token)
@@ -271,7 +275,7 @@ func (s *Service) failScreen(ctx context.Context, p *screenClaim, problem error)
 // screenRecoveryCoolOff is the least a parked title waits before it is tried
 // again: long enough that a provider which is down is asked about each title
 // about once an hour at first, and far less often after that.
-const screenRecoveryCoolOff = time.Hour
+const screenRecoveryCoolOff = 15 * time.Minute
 
 // screenRecoverable are the recorded reasons that can only mean the provider
 // could not be reached or would not serve for now: a network failure, a rate
@@ -316,11 +320,11 @@ func (s *Service) screenBeforeRequest(ctx context.Context, p *screenClaim, provi
 	return nil
 }
 func (s *Service) screenRequestContext(parent context.Context, p *screenClaim) (context.Context, context.CancelFunc) {
-	ctx, cancel := context.WithTimeout(parent, 75*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 180*time.Second)
 	// Revocation/configuration and superseding owner selections cancel in-flight
 	// I/O, not merely publication. All source observations are rechecked at commit.
 	supervise.Go("metadata.screen-worker.watch", func() {
-		tick := time.NewTicker(250 * time.Millisecond)
+		tick := time.NewTicker(time.Second)
 		defer tick.Stop()
 		for {
 			select {
@@ -652,7 +656,12 @@ func (s *Service) dispatchScreenChildren(ctx context.Context, p *screenClaim) er
 		return err
 	}
 	for _, id := range ids {
-		_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='item' AND target_id=? AND selection_mode<>'owner'`, id)
+		_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='item' AND target_id=? AND selection_mode<>'owner'
+ AND NOT (status='matched' AND force_refresh=0 AND EXISTS(
+ SELECT 1 FROM screen_metadata_publications parent JOIN screen_metadata_publications episode ON episode.id=screen_metadata_work.accepted_publication
+ JOIN metadata_document_freshness f ON f.provider=episode.provider AND f.kind='episode' AND f.resource=episode.provider_id||'@'||episode.language||':'||episode.region
+ WHERE parent.id=screen_metadata_work.parent_publication AND parent.provider=? AND parent.provider_id=? AND parent.language=? AND parent.region=?
+ AND episode.language=? AND episode.region=? AND f.checked_at>?))`, id, p.Base.Provider, p.Base.ProviderID, p.Base.Language, p.Base.Region, p.Base.Language, p.Base.Region, s.publicationTime().Add(-24*time.Hour).Unix())
 		if err != nil {
 			return err
 		}

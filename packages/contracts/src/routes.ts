@@ -617,6 +617,48 @@ export const routes = [
     "status": 200
   },
   {
+    "id": "get_metadata_attention",
+    "method": "GET",
+    "path": "/v1/libraries/{id}/metadata/attention",
+    "summary": "List unmatched and uncertain titles with their best candidates",
+    "access": "owner",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_metadata_settings",
+    "method": "GET",
+    "path": "/v1/admin/metadata/settings",
+    "summary": "Read provider credentials status and artwork storage limit",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_playback_options",
     "method": "GET",
     "path": "/v1/items/{itemId}/playback-options",
@@ -982,6 +1024,26 @@ export const routes = [
     "status": 204
   },
   {
+    "id": "post_metadata_attention",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/metadata/attention",
+    "summary": "Accept a candidate, search, enter a provider ID or dismiss a title",
+    "access": "owner",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "revision_mismatch",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 202
+  },
+  {
     "id": "prepare_queue_next",
     "method": "POST",
     "path": "/v1/queues/{id}:prepare-next",
@@ -1099,6 +1161,62 @@ export const routes = [
       "internal"
     ],
     "status": 200
+  },
+  {
+    "id": "put_metadata_settings",
+    "method": "PUT",
+    "path": "/v1/admin/metadata/settings",
+    "summary": "Save provider credential overrides and artwork storage limit",
+    "access": "owner",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 32768,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "refresh_items_metadata",
+    "method": "POST",
+    "path": "/v1/items/{id}/metadata/refresh",
+    "summary": "Fetch current metadata for a title",
+    "access": "owner",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 202,
+    "optionalBody": true
+  },
+  {
+    "id": "refresh_shows_metadata",
+    "method": "POST",
+    "path": "/v1/shows/{id}/metadata/refresh",
+    "summary": "Fetch current metadata for a title",
+    "access": "owner",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 202,
+    "optionalBody": true
   },
   {
     "id": "remove_queue_entry",

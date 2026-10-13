@@ -16,6 +16,24 @@ import {settingsMessages} from './en-US/settings.ts';
 import {channelBuilderMessages} from './en-US/channel-builder.ts';
 
 export const enUS = {
+ 'metadata.attention.title':'Needs attention',
+ 'metadata.attention.low_confidence':'This match may need a check.',
+ 'metadata.attention.unmatched':'No confident match was found.',
+ 'metadata.attention.needs_selection':'Choose the title that belongs to this file.',
+ 'metadata.attention.unavailable':'The metadata source could not answer. Portico will try again when it can.',
+ 'metadata.attention.dismiss':'Dismiss',
+ 'metadata.attention.enterId':'Enter a provider ID',
+ 'metadata.settings.backgroundSpeed':'Background work speed',
+ 'metadata.settings.gentle':'Gentle',
+ 'metadata.settings.normal':'Normal',
+ 'metadata.settings.fast':'Fast',
+ 'metadata.settings.artworkLimit':'Local artwork storage limit',
+ 'metadata.settings.artworkFull':'Local artwork has reached its storage limit. Raise the limit to accept more images.',
+ 'metadata.settings.tmdbToken':'Your TMDB read token',
+ 'metadata.settings.tvdbKey':'Your TheTVDB project key',
+ 'metadata.settings.includeAdult':'Include adult titles when matching',
+ 'metadata.nfo.fieldsSkipped':'Some details in the NFO file could not be read. The usable details were kept.',
+
   // ── Common actions ────────────────────────────────────────────────
   'action.tryAgain': 'Try again',
   'error.queueTooLarge': 'This queue is too long. Remove some of it or start a new one.',

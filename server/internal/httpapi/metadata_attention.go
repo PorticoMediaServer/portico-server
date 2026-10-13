@@ -9,6 +9,7 @@ import (
 
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/metadata"
 )
 
@@ -58,4 +59,56 @@ func registerMetadataAttention(registry *apikit.Registry, d Dependencies) {
 		e = d.Metadata.AttentionAction(ctx, r.PathValue("id"), in, metadata.MBActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 		return attentionReceipt{Status: "accepted"}, metadataAttentionError(e)
 	})
+}
+
+func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
+	failures := []string{"unauthorized", "not_permitted", "invalid_request", "revision_mismatch", "internal"}
+	v1Route(registry, apikit.Metadata{ID: "get_metadata_settings", Method: "GET", Path: "/v1/admin/metadata/settings", Summary: "Read provider credentials status and artwork storage limit", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.MetadataSettings, error) {
+		if _, e := d.owner(r); e != nil {
+			return metadata.MetadataSettings{}, e
+		}
+		out, e := d.Metadata.MetadataSettings(ctx)
+		if e != nil {
+			return out, e
+		}
+		_, e = d.owner(r)
+		return out, e
+	})
+	v1Route(registry, apikit.Metadata{ID: "put_metadata_settings", Method: "PUT", Path: "/v1/admin/metadata/settings", Summary: "Save provider credential overrides and artwork storage limit", Access: apikit.Owner, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, BodyLimit: 32768, Errors: failures}, func(ctx context.Context, r *http.Request, in metadata.MetadataSettingsUpdate) (metadata.MetadataSettings, error) {
+		p, e := d.owner(r)
+		if e != nil {
+			return metadata.MetadataSettings{}, e
+		}
+		out, e := d.Metadata.UpdateMetadataSettings(ctx, in, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		return out, metadataAttentionError(e)
+	})
+}
+
+type refreshReceipt struct {
+	ItemID string `json:"itemId"`
+	Status string `json:"status"`
+}
+
+func registerMetadataRefresh(registry *apikit.Registry, d Dependencies) {
+	for _, kind := range []string{"items", "shows"} {
+		v1Route(registry, apikit.Metadata{ID: "refresh_" + kind + "_metadata", Method: "POST", Path: "/v1/" + kind + "/{id}/metadata/refresh", Summary: "Fetch current metadata for a title", Access: apikit.Owner, Lane: apikit.Browsing, Cost: apikit.Constant, Status: 202, OptionalBody: true, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (refreshReceipt, error) {
+			p, e := d.owner(r)
+			if e != nil {
+				return refreshReceipt{}, e
+			}
+			write, e := dbwork.Begin(ctx, d.DB, dbwork.ClassInteractive)
+			if e != nil {
+				return refreshReceipt{}, e
+			}
+			defer write.Rollback()
+			if e = d.resourceAuthorize(write.Tx(), p, ""); e != nil {
+				return refreshReceipt{}, e
+			}
+			e = d.Metadata.QueueRefreshTx(ctx, write.Tx(), r.PathValue("id"))
+			if e != nil {
+				return refreshReceipt{}, metadataAttentionError(e)
+			}
+			return refreshReceipt{ItemID: r.PathValue("id"), Status: "queued"}, write.Commit()
+		})
+	}
 }

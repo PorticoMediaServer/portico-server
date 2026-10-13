@@ -14,7 +14,7 @@ import (
 )
 
 const ScreenDisclosureVersion = "screen-metadata-v1"
-const ScreenDisclosure = "Portico can send cleaned movie or show titles, release years, typed provider identifiers, selected episode numbers and your metadata language/region to the providers you enable. It does not send media files, full source paths, account/profile details or playback history. These requests are made by your server using Portico’s application credentials (AniList public queries need no account). Local NFO reading stays under the library’s scan policy. You can change provider order, pause remote metadata or withdraw confirmation here."
+const ScreenDisclosure = "Portico can send cleaned movie or show titles, release years, typed provider identifiers, selected episode numbers and your metadata language/region to the providers you enable. It does not send media files, full source paths, account/profile details or playback history. These requests are made by your server using Portico’s application credentials (AniList public queries need no account). Local NFO reading stays under the library’s scan policy. You can choose a provider, pause remote metadata or withdraw confirmation here."
 
 type ScreenPolicy struct {
 	LibraryID       string `json:"libraryId"`
@@ -126,7 +126,7 @@ func readScreenPolicy(ctx context.Context, tx *sql.Tx, library string) (ScreenPo
 		return out, err
 	}
 	if out.LibraryKind == "anime" {
-		out.AvailableProviders = []string{"tmdb", "tvdb", "anilist"}
+		out.AvailableProviders = metadataprovider.ProvidersFor(out.LibraryKind)
 	}
 	err = json.Unmarshal([]byte(raw), &out.Providers)
 	return out, err

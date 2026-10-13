@@ -48,23 +48,25 @@ type Service struct {
 	// The artist chain's sources (Spec — Page Content §8): MusicBrainz artist
 	// details plus Wikidata, Wikipedia and Commons. One transport each, so
 	// each keeps the standard pacing. Tests substitute bounded fakes.
-	wikidata       wikidataArtistSource
-	wikipedia      wikipediaSource
-	commons        commonsSource
-	LocalArtwork   func(string) (*os.File, string, error)
-	db             *sql.DB
-	token          string
-	client         *http.Client
-	base           string
-	cacheRoot      string
-	artDirMu       sync.Mutex
-	missingMu      sync.Mutex
-	missingArtwork map[missingArtwork]struct{}
-	missingWake    worker.Broadcast
-	acoustid       AcousticProvider
-	acoustidConfig string
-	artClient      *http.Client
-	artDirectory   *os.File
+	wikidata         wikidataArtistSource
+	wikipedia        wikipediaSource
+	commons          commonsSource
+	LocalArtwork     func(string) (*os.File, string, error)
+	db               *sql.DB
+	token            string
+	client           *http.Client
+	base             string
+	cacheRoot        string
+	settingsMu       sync.Mutex
+	settingsRevision int64
+	artDirMu         sync.Mutex
+	missingMu        sync.Mutex
+	missingArtwork   map[missingArtwork]struct{}
+	missingWake      worker.Broadcast
+	acoustid         AcousticProvider
+	acoustidConfig   string
+	artClient        *http.Client
+	artDirectory     *os.File
 }
 
 func New(db *sql.DB, token string) *Service {
@@ -108,6 +110,7 @@ func imageURL(path, size string) string {
 }
 func (s *Service) Run(ctx context.Context) {
 	ctx = dbwork.WithClass(ctx, dbwork.ClassBackgroundMedia)
+	_ = s.loadProviderSettings(ctx)
 	s.logProviderState(ctx)
 	// Woken by any committed write rather than asking once a second whether
 	// anything changed. On a server with nothing queued this runs at the safety
@@ -126,10 +129,26 @@ func (s *Service) Run(ctx context.Context) {
 		}
 		// Provider refresh remains a bounded background batch under load.
 		progress.Reset()
+		_ = s.loadProviderSettings(ctx)
 		if !dbwork.Yield(ctx) {
 			return 0
 		}
-		_ = s.ScreenStep(ctx)
+		ctx = dbwork.WithBackgroundSpeed(ctx, dbwork.ReadBackgroundSpeed(ctx, s.db))
+		for _, provider := range s.screenProviders {
+			if paced, ok := provider.(interface{ SetBackgroundSpeed(string) }); ok {
+				paced.SetBackgroundSpeed(dbwork.BackgroundSpeed(ctx))
+			}
+		}
+		batchStarted := time.Now()
+		var batch sync.WaitGroup
+		for i := 0; i < dbwork.BackgroundConcurrency(ctx); i++ {
+			batch.Add(1)
+			supervise.Go("metadata.screen", func() { defer batch.Done(); _ = s.ScreenStep(ctx) })
+		}
+		batch.Wait()
+		if !dbwork.PaceBackground(ctx, batchStarted) {
+			return 0
+		}
 		if !dbwork.Yield(ctx) {
 			return 0
 		}
@@ -154,7 +173,7 @@ func (s *Service) Run(ctx context.Context) {
 		_ = s.DiscoveryStep(ctx)
 		if progress.Moved() {
 			// Something moved, so there is probably more behind it.
-			return time.Second
+			return 10 * time.Millisecond
 		}
 		return 0
 	})

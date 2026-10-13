@@ -34,6 +34,7 @@ index analysis_stage_job
 index api_events_audience
 index api_events_expiry
 index api_idempotency_expiry
+index artwork_candidates_source
 index artwork_entity_heads_entity
 index artwork_jobs_due
 index artwork_objects_compaction
@@ -809,6 +810,7 @@ table metadata_relationship_decisions
 table metadata_repair_cascade_items
 table metadata_repair_cascades
 table metadata_repair_work_receipts
+table metadata_runtime_settings
 table metadata_stage_credits
 table metadata_stage_genres
 table metadata_stage_movies

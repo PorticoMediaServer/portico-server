@@ -263,3 +263,20 @@ func (s *TVDB) Episodes(ctx context.Context, seriesID int64, order EpisodeOrder,
 	result.Episodes = envelope.Data.Episodes
 	return result, nil
 }
+
+func (s *TVDB) SetBackgroundSpeed(speed string) { s.http.setSpeed(speed) }
+
+func (s *TVDB) SetCredential(ctx context.Context, key string) error {
+	select {
+	case s.auth <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { <-s.auth }()
+	if s.projectKey != key {
+		s.projectKey = key
+		s.token = ""
+		s.expires = time.Time{}
+	}
+	return nil
+}

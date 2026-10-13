@@ -1522,6 +1522,7 @@ CREATE TABLE artwork_candidates(
  provider TEXT NOT NULL,image_id TEXT NOT NULL,origin TEXT NOT NULL,locale TEXT NOT NULL DEFAULT '',rank REAL NOT NULL DEFAULT 0,
  attribution TEXT NOT NULL,source_fence TEXT NOT NULL,observed_at TEXT NOT NULL, votes INTEGER CHECK(votes IS NULL OR votes>=0),
  UNIQUE(kind,entity_id,role,subject,provider,image_id)) STRICT;
+CREATE INDEX artwork_candidates_source ON artwork_candidates(provider,origin,id);
 CREATE TABLE artwork_selections(
  kind TEXT NOT NULL,entity_id INTEGER NOT NULL,role TEXT NOT NULL,subject TEXT NOT NULL DEFAULT '',
  candidate_id TEXT NOT NULL REFERENCES artwork_candidates(id),digest TEXT NOT NULL REFERENCES artwork_objects(digest),
@@ -2065,13 +2066,19 @@ CREATE TABLE lyric_fetch_runs (
  missing INTEGER NOT NULL DEFAULT 0, cancel_requested INTEGER NOT NULL DEFAULT 0,
  created_ms INTEGER NOT NULL, updated_ms INTEGER NOT NULL
 ) STRICT;
+CREATE TABLE metadata_runtime_settings(
+ singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
+ local_artwork_limit_bytes INTEGER NOT NULL DEFAULT 2147483648 CHECK(local_artwork_limit_bytes>0),
+ include_adult INTEGER NOT NULL DEFAULT 0 CHECK(include_adult IN(0,1)),
+ tmdb_read_token TEXT NOT NULL DEFAULT '',tvdb_project_key TEXT NOT NULL DEFAULT '') STRICT;
+INSERT INTO metadata_runtime_settings(singleton) VALUES(1);
 CREATE TABLE screen_metadata_consent(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
  confirmed INTEGER NOT NULL DEFAULT 0 CHECK(confirmed IN(0,1)),confirmed_at TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE screen_metadata_policies(
  library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL DEFAULT 1,enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN(0,1)),
- providers TEXT NOT NULL,language TEXT NOT NULL DEFAULT 'en-US',region TEXT NOT NULL DEFAULT '',
+ providers TEXT NOT NULL,language TEXT NOT NULL DEFAULT 'en-US',region TEXT NOT NULL DEFAULT 'US',
  refresh_mode TEXT NOT NULL DEFAULT 'replace_unlocked' CHECK(refresh_mode IN('replace_unlocked','fill_missing'))) STRICT;
 CREATE TABLE screen_metadata_work(
  target_kind TEXT NOT NULL CHECK(target_kind IN('item','show')),target_id INTEGER NOT NULL,
@@ -2085,6 +2092,7 @@ CREATE TABLE screen_metadata_work(
  requested_provider TEXT NOT NULL DEFAULT '',query_override TEXT NOT NULL DEFAULT '',
  accepted_publication TEXT NOT NULL DEFAULT '',child_cursor TEXT NOT NULL DEFAULT '',
  parent_id INTEGER NOT NULL DEFAULT 0,parent_publication TEXT NOT NULL DEFAULT '', year_override INTEGER NOT NULL DEFAULT 0,
+ force_refresh INTEGER NOT NULL DEFAULT 0 CHECK(force_refresh IN(0,1)),
  PRIMARY KEY(target_kind,target_id)) STRICT;
 CREATE TABLE screen_metadata_candidates(
  candidate_key TEXT PRIMARY KEY,target_kind TEXT NOT NULL,target_id INTEGER NOT NULL,

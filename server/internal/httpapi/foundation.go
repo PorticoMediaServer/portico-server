@@ -613,6 +613,8 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerDownloadRequests(registry, d)
 	registerPlaylistWindows(registry, d)
 	registerMetadataAttention(registry, d)
+	registerMetadataSettings(registry, d)
+	registerMetadataRefresh(registry, d)
 	registerCapabilityReport(registry)
 	// Lane C's /v1/events (886f5011) on the shared contextual registry.
 	err = apikit.Register(registry, apikit.Route[struct{}, eventfeed.Page]{Metadata: apikit.Metadata{

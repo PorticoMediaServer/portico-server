@@ -449,24 +449,9 @@ func (s *Service) ArtworkStep(ctx context.Context) error {
 	}
 	workCtx, cancel := s.artworkRequestContext(ctx, j.target, j.provider, j.fence)
 	defer cancel()
-	raw, err := s.fetchArtwork(workCtx, j.origin, j.provider)
+	a, b, err := s.acquireArtworkObjects(workCtx, j)
 	if err != nil {
 		return s.failArtwork(ctx, j, err)
-	}
-	original, thumb, w, h, err := normalizeArtworkFormatsContext(workCtx, raw, map[string]bool{"jpeg": true, "png": true})
-	if err != nil {
-		return s.failArtwork(ctx, j, err)
-	}
-	// No lock: files are installed first, the publication commits, and any file
-	// a concurrent retirement moved aside is reinstalled (artwork_lifecycle.go).
-	a, err := s.installArtworkContext(workCtx, original, w, h)
-	if err != nil {
-		return s.failArtwork(ctx, j, errors.New("storage_unavailable"))
-	}
-	tc, _, _ := image.DecodeConfig(bytes.NewReader(thumb))
-	b, err := s.installArtworkContext(workCtx, thumb, tc.Width, tc.Height)
-	if err != nil {
-		return s.failArtwork(ctx, j, errors.New("storage_unavailable"))
 	}
 	var gated2 *dbwork.Write
 	gated2, err = dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
@@ -702,12 +687,12 @@ func (s *Service) CleanupArtwork(ctx context.Context) error {
 	}
 	digests := make([]string, 0, len(candidates))
 	if len(candidates) > 0 {
-		history, err := s.ownerHistoryText(ctx)
+		history, err := s.ownerHistoryDigests(ctx, candidates)
 		if err != nil {
 			return err
 		}
 		for _, d := range candidates {
-			if !strings.Contains(history, d) {
+			if !history[d] {
 				digests = append(digests, d)
 			}
 		}
@@ -807,22 +792,29 @@ func artUnreferencedArgs(d string) []any {
 	return args
 }
 
-func (s *Service) ownerHistoryText(ctx context.Context) (string, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT before_json||' '||after_json FROM metadata_owner_history`)
+// Stream one history row at a time; never concatenate the whole owner journal.
+func (s *Service) ownerHistoryDigests(ctx context.Context, candidates []string) (map[string]bool, error) {
+	out := map[string]bool{}
+	rows, err := s.db.QueryContext(ctx, `SELECT before_json,after_json FROM metadata_owner_history`)
 	if err != nil {
-		return "", err
+		return out, err
 	}
 	defer rows.Close()
-	var b strings.Builder
 	for rows.Next() {
-		var v string
-		if err := rows.Scan(&v); err != nil {
-			return "", err
+		var before, after string
+		if err = rows.Scan(&before, &after); err != nil {
+			return out, err
 		}
-		b.WriteString(v)
-		b.WriteByte('\n')
+		for _, digest := range candidates {
+			if !out[digest] && (strings.Contains(before, digest) || strings.Contains(after, digest)) {
+				out[digest] = true
+			}
+		}
+		if len(out) == len(candidates) {
+			break
+		}
 	}
-	return b.String(), rows.Err()
+	return out, rows.Err()
 }
 
 // nextArtworkDirectoryBatch returns the next 128 entries of the cache directory

@@ -3,6 +3,7 @@ package metadataprovider
 import (
 	"context"
 	"errors"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -16,6 +17,9 @@ type ArtworkImage struct {
 // Artwork reuses the existing private token/rate-budget transport. Type IDs are
 // resolved from the provider's own type registry, never guessed from magic IDs.
 func (s *TVDB) Artwork(ctx context.Context, id int64) ([]ArtworkImage, error) {
+	return s.ArtworkForKind(ctx, "show", id, "")
+}
+func (s *TVDB) ArtworkForKind(ctx context.Context, kind string, id int64, locale string) ([]ArtworkImage, error) {
 	if id <= 0 {
 		return nil, errors.New("invalid artwork entity")
 	}
@@ -67,7 +71,13 @@ func (s *TVDB) Artwork(ctx context.Context, id int64) ([]ArtworkImage, error) {
 			}
 		}
 	}
-	if err := s.get(ctx, "/series/"+strconv.FormatInt(id, 10)+"/artworks", &result); err != nil {
+	route := "/series/" + strconv.FormatInt(id, 10) + "/artworks"
+	if kind == "movie" {
+		route = "/movies/" + strconv.FormatInt(id, 10) + "/extended"
+	} else if kind != "show" {
+		return nil, errors.New("invalid artwork kind")
+	}
+	if err := s.get(ctx, route, &result); err != nil {
 		return nil, err
 	}
 	if result.Status != "success" || result.Data.ID != id || len(result.Data.Artworks) > 4000 {
@@ -80,9 +90,34 @@ func (s *TVDB) Artwork(ctx context.Context, id int64) ([]ArtworkImage, error) {
 			continue
 		}
 		out = append(out, ArtworkImage{a.ID, role, a.Image, a.Language, a.Score})
-		if len(out) == 80 {
-			break
+
+	}
+	preferred := strings.Split(strings.ToLower(locale), "-")[0]
+	rank := func(l string) int {
+		if strings.EqualFold(l, preferred) {
+			return 0
+		}
+		if l == "" {
+			return 1
+		}
+		if l == "en" || l == "eng" {
+			return 2
+		}
+		return 3
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if a, b := rank(out[i].Language), rank(out[j].Language); a != b {
+			return a < b
+		}
+		return out[i].Score > out[j].Score
+	})
+	kept := []ArtworkImage{}
+	counts := map[string]int{}
+	for _, im := range out {
+		if counts[im.Role] < 20 && len(kept) < 80 {
+			kept = append(kept, im)
+			counts[im.Role]++
 		}
 	}
-	return out, nil
+	return kept, nil
 }

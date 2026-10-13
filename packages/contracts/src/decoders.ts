@@ -33,6 +33,8 @@ export function decodeGetDownloadRequestResponse(input: unknown): types.GetDownl
 export function decodeGetEventsResponse(input: unknown): types.GetEventsResponse { return decode("GetEventsResponse", input) as types.GetEventsResponse; }
 export function decodeGetJobResponse(input: unknown): types.GetJobResponse { return decode("GetJobResponse", input) as types.GetJobResponse; }
 export function decodeGetJobFailuresResponse(input: unknown): types.GetJobFailuresResponse { return decode("GetJobFailuresResponse", input) as types.GetJobFailuresResponse; }
+export function decodeGetMetadataAttentionResponse(input: unknown): types.GetMetadataAttentionResponse { return decode("GetMetadataAttentionResponse", input) as types.GetMetadataAttentionResponse; }
+export function decodeGetMetadataSettingsResponse(input: unknown): types.GetMetadataSettingsResponse { return decode("GetMetadataSettingsResponse", input) as types.GetMetadataSettingsResponse; }
 export function decodeGetPlaybackOptionsResponse(input: unknown): types.GetPlaybackOptionsResponse { return decode("GetPlaybackOptionsResponse", input) as types.GetPlaybackOptionsResponse; }
 export function decodeGetPlaybackSessionResponse(input: unknown): types.GetPlaybackSessionResponse { return decode("GetPlaybackSessionResponse", input) as types.GetPlaybackSessionResponse; }
 export function decodeGetPlaylistOrderResponse(input: unknown): types.GetPlaylistOrderResponse { return decode("GetPlaylistOrderResponse", input) as types.GetPlaylistOrderResponse; }
@@ -52,12 +54,16 @@ export function decodePostDeviceApprovalResponse(input: unknown): types.PostDevi
 export function decodePostDeviceSessionBindingResponse(input: unknown): types.PostDeviceSessionBindingResponse { return decode("PostDeviceSessionBindingResponse", input) as types.PostDeviceSessionBindingResponse; }
 export function decodePostDirectProfilePinResetResponse(input: unknown): types.PostDirectProfilePinResetResponse { return decode("PostDirectProfilePinResetResponse", input) as types.PostDirectProfilePinResetResponse; }
 export function decodePostDirectSignOutEverywhereResponse(input: unknown): types.PostDirectSignOutEverywhereResponse { return decode("PostDirectSignOutEverywhereResponse", input) as types.PostDirectSignOutEverywhereResponse; }
+export function decodePostMetadataAttentionResponse(input: unknown): types.PostMetadataAttentionResponse { return decode("PostMetadataAttentionResponse", input) as types.PostMetadataAttentionResponse; }
 export function decodePrepareQueueNextResponse(input: unknown): types.PrepareQueueNextResponse { return decode("PrepareQueueNextResponse", input) as types.PrepareQueueNextResponse; }
 export function decodePreviewInvitationResponse(input: unknown): types.PreviewInvitationResponse { return decode("PreviewInvitationResponse", input) as types.PreviewInvitationResponse; }
 export function decodePutAdminMaintenanceSettingsResponse(input: unknown): types.PutAdminMaintenanceSettingsResponse { return decode("PutAdminMaintenanceSettingsResponse", input) as types.PutAdminMaintenanceSettingsResponse; }
 export function decodePutDeviceCapabilitiesResponse(input: unknown): types.PutDeviceCapabilitiesResponse { return decode("PutDeviceCapabilitiesResponse", input) as types.PutDeviceCapabilitiesResponse; }
 export function decodePutDirectProfileRestrictionsResponse(input: unknown): types.PutDirectProfileRestrictionsResponse { return decode("PutDirectProfileRestrictionsResponse", input) as types.PutDirectProfileRestrictionsResponse; }
 export function decodePutDirectRegistrationPolicyResponse(input: unknown): types.PutDirectRegistrationPolicyResponse { return decode("PutDirectRegistrationPolicyResponse", input) as types.PutDirectRegistrationPolicyResponse; }
+export function decodePutMetadataSettingsResponse(input: unknown): types.PutMetadataSettingsResponse { return decode("PutMetadataSettingsResponse", input) as types.PutMetadataSettingsResponse; }
+export function decodeRefreshItemsMetadataResponse(input: unknown): types.RefreshItemsMetadataResponse { return decode("RefreshItemsMetadataResponse", input) as types.RefreshItemsMetadataResponse; }
+export function decodeRefreshShowsMetadataResponse(input: unknown): types.RefreshShowsMetadataResponse { return decode("RefreshShowsMetadataResponse", input) as types.RefreshShowsMetadataResponse; }
 export function decodeRemoveQueueEntryResponse(input: unknown): types.RemoveQueueEntryResponse { return decode("RemoveQueueEntryResponse", input) as types.RemoveQueueEntryResponse; }
 export function decodeReorderPlaylistWindowResponse(input: unknown): types.ReorderPlaylistWindowResponse { return decode("ReorderPlaylistWindowResponse", input) as types.ReorderPlaylistWindowResponse; }
 export function decodeReportPlaybackTimelineResponse(input: unknown): types.ReportPlaybackTimelineResponse { return decode("ReportPlaybackTimelineResponse", input) as types.ReportPlaybackTimelineResponse; }

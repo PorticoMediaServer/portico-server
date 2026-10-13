@@ -10,6 +10,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -24,9 +25,13 @@ import (
 )
 
 type Service struct {
-	root, binary string
-	storage      *storage.Client
-	mu           sync.Mutex
+	ArtworkLimit     func(context.Context) int64
+	artworkBytes     int64
+	artworkAccounted bool
+	lastArtworkIssue string
+	root, binary     string
+	storage          *storage.Client
+	mu               sync.Mutex
 	// sidecars caches sidecar-file reads by full path (positive hits only,
 	// bounded): one show's hundred episodes share a single poster read.
 	sidecars map[string]string
@@ -126,17 +131,29 @@ func (s *Service) store(raw []byte) (string, error) {
 	if _, err = os.Stat(target); err == nil {
 		return key, nil
 	}
-	entries, err := os.ReadDir(s.root)
-	if err != nil {
-		return "", err
-	}
-	var total int64
-	for _, entry := range entries {
-		if info, e := entry.Info(); e == nil {
-			total += info.Size()
+	if !s.artworkAccounted {
+		entries, err := os.ReadDir(s.root)
+		if err != nil {
+			return "", err
 		}
+		var total int64
+		for _, entry := range entries {
+			if info, e := entry.Info(); e == nil {
+				total += info.Size()
+			}
+		}
+		s.artworkBytes = total
+		s.artworkAccounted = true
 	}
-	if total+int64(len(raw)) > 128<<20 {
+	limit := int64(2 << 30)
+	if s.ArtworkLimit != nil {
+		limit = s.ArtworkLimit(context.Background())
+	}
+	if s.artworkBytes+int64(len(raw)) > limit {
+		if s.lastArtworkIssue != "capacity" {
+			log.Printf("Local artwork has reached its storage limit. Raise the local artwork limit in metadata settings to accept more images.")
+			s.lastArtworkIssue = "capacity"
+		}
 		return "", errors.New("local artwork cache full")
 	}
 	file, err := os.CreateTemp(s.root, "art-")
@@ -178,7 +195,7 @@ func (s *Service) MovieArtwork(ctx context.Context, library, path string, f asse
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	stem := strings.TrimSuffix(path, filepath.Ext(path))
-	for _, candidate := range []string{stem + "-poster.jpg", stem + "-poster.png", filepath.Join(filepath.Dir(path), "poster.jpg"), filepath.Join(filepath.Dir(path), "poster.png")} {
+	for _, candidate := range []string{stem + "-poster.jpg", stem + "-poster.png", filepath.Join(filepath.Dir(path), "poster.jpg"), filepath.Join(filepath.Dir(path), "poster.png"), filepath.Join(filepath.Dir(path), "folder.jpg"), filepath.Join(filepath.Dir(path), "folder.png")} {
 		if unlisted(ctx, candidate) {
 			continue
 		}
@@ -189,6 +206,8 @@ func (s *Service) MovieArtwork(ctx context.Context, library, path string, f asse
 		if key, err := s.store(raw); err == nil {
 			f.ArtworkKey = key
 			return f
+		} else {
+			f.LocalMetadataIssue = "invalid_local_cover"
 		}
 	}
 	return f
