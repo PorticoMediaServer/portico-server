@@ -197,22 +197,36 @@ func TestAPIKeyInheritsItsLocalOwnersProfileRestrictions(t *testing.T) {
 	}
 }
 
-func TestRestrictionChangeEndsTheProfilesSessions(t *testing.T) {
+// A restriction change applies live: the profile's devices stay signed in and
+// the next read of its restrictions is the new document.
+func TestRestrictionChangeAppliesWithoutSigningTheProfileOut(t *testing.T) {
 	ctx := context.Background()
 	s, login, child := restrictionFixture(t)
 	selected, e := s.SelectDirectProfile(ctx, login.AccountToken, child.ID, DirectSelection{})
 	if e != nil {
 		t.Fatal(e)
 	}
+	p, e := s.Authenticate(selected.Session.AccessToken)
+	if e != nil {
+		t.Fatal(e)
+	}
+	before, e := s.ViewerRestrictions(ctx, p)
+	if e != nil || before.Active() {
+		t.Fatalf("restrictions before the change: %+v %v", before, e)
+	}
+	if _, e = s.SetProfileRestrictions(ctx, login.AccountToken, child.ID, ProfileRestrictionEdit{ExpectedRevision: 1, RatingSystem: "mpaa", MaximumAgeRating: "PG", AllowUnrated: true}); e != nil {
+		t.Fatal(e)
+	}
 	if _, e = s.Authenticate(selected.Session.AccessToken); e != nil {
-		t.Fatal(e)
+		t.Fatalf("a restriction change signed the profile out: %v", e)
 	}
-	if _, e = s.SetProfileRestrictions(ctx, login.AccountToken, child.ID, ProfileRestrictionEdit{ExpectedRevision: 1, RatingSystem: "mpaa", MaximumAgeRating: "PG"}); e != nil {
-		t.Fatal(e)
+	after, e := s.ViewerRestrictions(ctx, p)
+	if e != nil || after.MaximumAge == nil || *after.MaximumAge != 8 || after.Revision == before.Revision {
+		t.Fatalf("the new restriction is not what the next request reads: %+v %v", after, e)
 	}
-	// An open page, cursor or playback grant must not outlive the change.
-	if _, e = s.Authenticate(selected.Session.AccessToken); !errors.Is(e, ErrUnauthorized) {
-		t.Fatalf("the profile's session survived a restriction change: %v", e)
+	// The restricted profile still cannot change its own restrictions.
+	if _, e = s.SetProfileRestrictions(ctx, selected.Session.AccessToken, child.ID, ProfileRestrictionEdit{ExpectedRevision: 2, AllowUnrated: true}); !errors.Is(e, ErrForbidden) {
+		t.Fatalf("a child profile loosened its own restrictions: %v", e)
 	}
 }
 

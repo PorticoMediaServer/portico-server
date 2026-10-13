@@ -134,10 +134,32 @@ func TestTierPredicateOrdersOwnerAdminMemberAndRefusesUnknown(t *testing.T) {
 	}
 }
 
-func TestRoleChangeRequiresRevisionRevokesSessionsAndRefusesPeers(t *testing.T) {
+// A tier change applies live. The account's sessions take the new tier in the
+// same transaction and stay signed in; sessions that were issued narrower than
+// the account on purpose stay narrow.
+func TestRoleChangeRequiresRevisionAppliesLiveAndRefusesPeers(t *testing.T) {
 	store, db, _ := fixture(t)
 	ctx := context.Background()
 	testauth.InsertSession(t, db, "hash", "member", "member-profile", "local", "member", "2099-01-01T00:00:00Z")
+	// An account session held between sign-in and choosing a profile.
+	testauth.InsertSession(t, db, "account-hash", "member", "member-profile", "local", "account", "2099-01-01T00:00:00Z")
+	// A viewer-only device.
+	testauth.InsertSession(t, db, "viewer-hash", "member", "member-profile", "local", "member", "2099-01-01T00:00:00Z")
+	if _, err := db.Exec(`INSERT INTO authorization_family_grants(family_id,grant_kind) VALUES('fixture-family-viewer-hash','viewer_only')`); err != nil {
+		t.Fatal(err)
+	}
+	// A second profile of the same account, which is a member whatever the account is.
+	if _, err := db.Exec(`INSERT INTO direct_profiles(id,account_id,name,is_primary) VALUES('second-profile','member','Second',0)`); err != nil {
+		t.Fatal(err)
+	}
+	testauth.InsertSession(t, db, "second-hash", "member", "second-profile", "local", "member", "2099-01-01T00:00:00Z")
+	session := func(hash string) (role string, revoked, epoch int) {
+		t.Helper()
+		if err := db.QueryRow(`SELECT role,revoked,epoch FROM authorization_access WHERE hash=?`, hash).Scan(&role, &revoked, &epoch); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	if _, err := store.SetRole(ctx, nil, owner(), "member", RoleChange{ExpectedRevision: 9, OperationID: "operation-1", Role: identity.TierAdmin}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale revision: %v", err)
 	}
@@ -145,9 +167,14 @@ func TestRoleChangeRequiresRevisionRevokesSessionsAndRefusesPeers(t *testing.T) 
 	if err != nil || out.Role != identity.TierAdmin || out.Revision != 2 {
 		t.Fatalf("promote: %v %+v", err, out)
 	}
-	var revoked int
-	if err = db.QueryRow(`SELECT revoked FROM authorization_access WHERE hash='hash'`).Scan(&revoked); err != nil || revoked != 1 {
-		t.Fatalf("sessions survived a tier change: %v %d", err, revoked)
+	for hash, want := range map[string]string{"hash": "admin", "account-hash": "account", "viewer-hash": "member", "second-hash": "member"} {
+		if role, revoked, _ := session(hash); role != want || revoked != 0 {
+			t.Fatalf("after promotion, session %s: role=%s revoked=%d, want role=%s and still signed in", hash, role, revoked, want)
+		}
+	}
+	var epoch int
+	if err = db.QueryRow(`SELECT epoch FROM accounts WHERE id='member'`).Scan(&epoch); err != nil || epoch != 1 {
+		t.Fatalf("a tier change moved the account epoch (which ends every session): %d %v", epoch, err)
 	}
 	// A replay of the same operation returns the same document rather than
 	// applying a second time.
@@ -158,9 +185,22 @@ func TestRoleChangeRequiresRevisionRevokesSessionsAndRefusesPeers(t *testing.T) 
 	if _, err = store.SetRole(ctx, nil, owner(), "member", RoleChange{ExpectedRevision: 1, OperationID: "operation-1", Role: identity.TierMember}); !errors.Is(err, ErrIdempotencyKeyReused) {
 		t.Fatalf("reused key: %v", err)
 	}
+	// An admin may not edit a peer. The refusal is of a valid session: a
+	// refusal (403), not a failed credential (401).
 	admin := identity.Principal{Viewer: identity.Viewer{AccountID: "admin-actor", Role: identity.TierAdmin}}
-	if _, err = store.SetRole(ctx, nil, admin, "member", RoleChange{ExpectedRevision: 2, OperationID: "operation-2", Role: identity.TierMember}); !errors.Is(err, identity.ErrUnauthorized) {
+	if _, err = store.SetRole(ctx, nil, admin, "member", RoleChange{ExpectedRevision: 2, OperationID: "operation-2", Role: identity.TierMember}); !errors.Is(err, identity.ErrForbidden) {
 		t.Fatalf("an admin edited a peer: %v", err)
+	}
+	if _, err = store.SetRole(ctx, nil, owner(), "owner", RoleChange{ExpectedRevision: 1, OperationID: "operation-self", Role: identity.TierMember}); !errors.Is(err, identity.ErrForbidden) {
+		t.Fatalf("the owner changed its own tier: %v", err)
+	}
+	// Demotion is live too: the administrator's devices stop being an
+	// administrator's at once, and stay signed in.
+	if out, err = store.SetRole(ctx, nil, owner(), "member", RoleChange{ExpectedRevision: 2, OperationID: "operation-3", Role: identity.TierMember}); err != nil || out.Role != identity.TierMember {
+		t.Fatalf("demote: %v %+v", err, out)
+	}
+	if role, revoked, _ := session("hash"); role != "member" || revoked != 0 {
+		t.Fatalf("after demotion: role=%s revoked=%d", role, revoked)
 	}
 }
 

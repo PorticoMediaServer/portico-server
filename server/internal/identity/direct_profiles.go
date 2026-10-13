@@ -205,7 +205,12 @@ func (s *Service) EditDirectProfile(ctx context.Context, bearer, id string, q Di
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_profiles SET revision=revision+1 WHERE id=?`, id); e != nil {
 		return DirectSnapshot{}, e
 	}
-	if q.PIN != nil || q.Policy != nil {
+	// A new PIN is a new credential: the devices already on this profile got
+	// there with the old one, so they are signed out and device trust is
+	// forgotten. A change to which libraries the profile may see is not a
+	// credential. It takes effect on the profile's next request, because every
+	// request reads the live list, and nobody is signed out for it.
+	if q.PIN != nil {
 		if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_trust WHERE profile_id=?`, id); e != nil {
 			return DirectSnapshot{}, e
 		}

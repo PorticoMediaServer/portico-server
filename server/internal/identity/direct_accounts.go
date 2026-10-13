@@ -696,8 +696,10 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 	if e != nil {
 		return e
 	}
+	// A signed-in person who may not do this is refused (403), never told to
+	// authenticate (401): clients end a sign-in on a 401.
 	if !Administrative(c.account.Role) {
-		return ErrUnauthorized
+		return ErrForbidden
 	}
 	var role string
 	var revision int64
@@ -705,7 +707,7 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 		return e
 	}
 	if !ManagesTier(c.account.Role, role) {
-		return ErrUnauthorized
+		return ErrForbidden
 	}
 	if revision != q.ExpectedRevision {
 		return ErrProfileChanged
@@ -720,20 +722,23 @@ func (s *Service) UpdateDirectMember(ctx context.Context, bearer, id string, q D
 		q.AllowedLibraries = []string{}
 	}
 	raw, _ := json.Marshal(q.AllowedLibraries)
-	reason := RevokedAdminRevoke
-	if q.Password != "" {
-		reason = RevokedPasswordChange
-	}
-	if q.Disabled {
-		reason = RevokedMembershipRemoved
-	}
-	if e = s.revokeCredentialsWithReasonTx(ctx, tx, id, reason); e != nil {
-		return e
+	// The member is signed out only when they lose access altogether (the
+	// account is turned off) or their password is replaced. Giving or taking a
+	// library applies to their next request and signs nobody out: every request
+	// reads the live library list.
+	if q.Disabled || q.Password != "" {
+		reason := RevokedPasswordChange
+		if q.Disabled {
+			reason = RevokedMembershipRemoved
+		}
+		if e = s.revokeCredentialsWithReasonTx(ctx, tx, id, reason); e != nil {
+			return e
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id=?`, id); e != nil {
+			return e
+		}
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET disabled=?,allowed_libraries=?,revision=revision+1 WHERE account_id=?`, q.Disabled, string(raw), id); e != nil {
-		return e
-	}
-	if _, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id=?`, id); e != nil {
 		return e
 	}
 	if passwordHash != nil {
@@ -813,20 +818,18 @@ func (s *Service) transferOwnershipTx(ctx context.Context, tx *sql.Tx, c directC
 	if c.account.Role != "owner" {
 		return ErrForbidden
 	}
-	if target == c.account.ID || expected != c.account.Revision {
-		return ErrUnauthorized
+	if expected != c.account.Revision {
+		return ErrProfileChanged
+	}
+	if target == c.account.ID {
+		return ErrForbidden
 	}
 	var active bool
 	if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM direct_memberships WHERE account_id=? AND role='member' AND disabled=0)`, target).Scan(&active); e != nil {
 		return e
 	}
 	if !active {
-		return ErrUnauthorized
-	}
-	for _, id := range []string{c.account.ID, target} {
-		if e = s.revokeDirectTx(ctx, tx, id, "", ""); e != nil {
-			return e
-		}
+		return ErrForbidden
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role='member',allowed_libraries='[]',revision=revision+1 WHERE account_id=?`, c.account.ID); e != nil {
 		return e
@@ -834,6 +837,11 @@ func (s *Service) transferOwnershipTx(ctx context.Context, tx *sql.Tx, c directC
 	if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role='owner',revision=revision+1 WHERE account_id=?`, target); e != nil {
 		return e
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id IN(?,?)`, c.account.ID, target)
-	return e
+	// Both people stay signed in. Their sessions take their new tiers in this
+	// same transaction, so the former owner's devices stop being an owner's at
+	// once and the new owner's become one without signing in again.
+	if e = RetierFamiliesTx(ctx, tx, c.account.ID, TierMember); e != nil {
+		return e
+	}
+	return RetierFamiliesTx(ctx, tx, target, TierOwner)
 }

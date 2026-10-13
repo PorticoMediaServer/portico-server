@@ -413,7 +413,7 @@ func (s *Service) ApproveDevice(ctx context.Context, bearer, id string, approved
 		return Device{}, e
 	}
 	if !Administrative(c.role) {
-		return Device{}, ErrUnauthorized
+		return Device{}, ErrForbidden
 	}
 	var target deviceCaller
 	if e = tx.QueryRowContext(ctx, `SELECT authority,account_id FROM identity_devices WHERE id=?`, id).Scan(&target.authority, &target.account); e != nil {
@@ -421,14 +421,14 @@ func (s *Service) ApproveDevice(ctx context.Context, bearer, id string, approved
 	}
 	if c.role == TierAdmin {
 		if target.authority != "local" {
-			return Device{}, ErrUnauthorized
+			return Device{}, ErrForbidden
 		}
 		var targetRole string
 		if e = tx.QueryRowContext(ctx, `SELECT role FROM direct_memberships WHERE account_id=?`, target.account).Scan(&targetRole); e != nil {
 			return Device{}, e
 		}
 		if !ManagesTier(c.role, targetRole) {
-			return Device{}, ErrUnauthorized
+			return Device{}, ErrForbidden
 		}
 	}
 	c.authority, c.account = target.authority, target.account

@@ -212,8 +212,9 @@ func TestMemberLimitsAndRoleRoutesCarryRevisionsAndRefuseAdminPeers(t *testing.T
 	if w.Code != 409 || !strings.Contains(w.Body.String(), `"currentRevision":2`) {
 		t.Fatalf("conflict: %d %s", w.Code, w.Body)
 	}
-	// An admin may promote nobody to admin.
-	if w = f.call("PUT", "/v1/admin/access/members/member/role", f.admin, `{"expectedRevision":1,"operationId":"role-route-1","role":"admin"}`); w.Code != 401 {
+	// An admin may promote nobody to admin. The admin's own session is fine,
+	// so the answer is a refusal (403), never "sign in again" (401).
+	if w = f.call("PUT", "/v1/admin/access/members/member/role", f.admin, `{"expectedRevision":1,"operationId":"role-route-1","role":"admin"}`); w.Code != 403 {
 		t.Fatalf("an admin promoted an account to admin: %d %s", w.Code, w.Body)
 	}
 	if w = f.call("PUT", "/v1/admin/access/members/member/role", f.owner, `{"expectedRevision":1,"operationId":"role-route-2","role":"admin"}`); w.Code != 200 {

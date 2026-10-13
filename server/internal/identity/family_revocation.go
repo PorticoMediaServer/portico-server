@@ -81,3 +81,26 @@ func RevokeFamiliesMatchingTx(ctx context.Context, tx *sql.Tx, reason Revocation
 	}
 	return nil
 }
+
+// RetierFamiliesTx carries a change of an account's tier to the sessions it
+// already holds, in the transaction that changes the tier, so nobody is signed
+// out for being promoted or demoted. A session's tier is stored with it and
+// checked against the membership on every request; a session left claiming a
+// tier the account no longer has would be refused, which is what used to make
+// a tier change end every sign-in.
+//
+// Only sessions of the account's primary profile carry its tier. Sessions of
+// its other profiles are members whatever the account is, the account session
+// a device holds between sign-in and choosing a profile has no tier at all,
+// and a session that was issued narrower than its account on purpose (a
+// viewer-only device, a Cast target) stays as narrow as it was issued.
+func RetierFamiliesTx(ctx context.Context, tx *sql.Tx, account, role string) error {
+	if !ValidTier(role) {
+		return errors.New("invalid tier")
+	}
+	_, err := tx.ExecContext(ctx, `UPDATE authorization_session_families SET role=?
+ WHERE authority='local' AND account_id=? AND revoked=0 AND role IN('owner','admin','member') AND role<>?
+ AND profile_id=(SELECT profile_id FROM accounts WHERE id=?)
+ AND NOT EXISTS(SELECT 1 FROM authorization_family_grants g WHERE g.family_id=authorization_session_families.id)`, role, account, role, account)
+	return err
+}

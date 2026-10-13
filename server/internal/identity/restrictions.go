@@ -272,8 +272,8 @@ func (s *Service) ProfileRestrictions(ctx context.Context, bearer, profile strin
 // management authority is carried by the ordinary session; a child profile's
 // viewing session cannot manage the account.
 //
-// Tightening or loosening both revoke the profile's viewing families, so an open
-// page, cursor or playback grant cannot outlive the change.
+// The change applies live. The profile's devices stay signed in; what they may
+// see changes on their next request.
 func (s *Service) SetProfileRestrictions(ctx context.Context, bearer, profile string, edit ProfileRestrictionEdit) (ProfileRestrictions, error) {
 	if !validFamilyID(profile) || edit.ExpectedRevision < 1 {
 		return ProfileRestrictions{}, ErrRestrictionInput
@@ -318,15 +318,10 @@ func (s *Service) SetProfileRestrictions(ctx context.Context, bearer, profile st
 		profile, system, code, ceiling, edit.AllowUnrated, string(raw), edit.AllowDownloads, edit.AllowLiveTV, edit.AllowDVR, edit.AllowWatchTogether, current.Revision+1); e != nil {
 		return ProfileRestrictions{}, e
 	}
-	// A restriction change ends the profile's live sessions. The family hook is the
-	// same one a PIN change uses, so playback occurrences, queues and physical
-	// readers retire through the v2 controller model rather than being orphaned.
-	if _, e = tx.ExecContext(ctx, `DELETE FROM direct_profile_trust WHERE profile_id=?`, profile); e != nil {
-		return ProfileRestrictions{}, e
-	}
-	if e = s.revokeDirectTx(ctx, tx, c.account.ID, profile, ""); e != nil {
-		return ProfileRestrictions{}, e
-	}
+	// Nobody is signed out. The new restrictions apply to the profile's next
+	// request: every catalogue read and every playback start reads this row,
+	// and its revision is part of the fence that expires open pages, cursors
+	// and cached counts (catalog.RestrictionFence).
 	out, e := RestrictionsTx(ctx, tx, profile)
 	if e != nil {
 		return out, e

@@ -101,8 +101,9 @@ type RoleChange struct {
 // actor is the calling principal's tier. identity.ManagesTier decides both ends:
 // the caller must out-rank the account's current tier and the tier it is moving
 // to, so an admin can neither promote anyone to admin nor demote another admin.
-// Changing a tier bumps the account epoch, which revokes its live sessions, so
-// a demoted administrator loses administrative tokens immediately.
+// A tier change applies live: the account's sessions take the new tier in the
+// same transaction, so a demoted administrator's devices lose administration
+// at once and nobody is signed out.
 func (s *Store) SetRole(ctx context.Context, auth Authorize, actor identity.Principal, account string, c RoleChange) (out Member, err error) {
 	if !validID(account) {
 		return out, invalid("accountId")
@@ -114,7 +115,7 @@ func (s *Store) SetRole(ctx context.Context, auth Authorize, actor identity.Prin
 		return out, invalid("role")
 	}
 	if account == actor.AccountID {
-		return out, identity.ErrUnauthorized
+		return out, identity.ErrForbidden
 	}
 	err = s.transaction(ctx, auth, func(tx *sql.Tx) error {
 		scope := "role:" + account
@@ -131,7 +132,7 @@ func (s *Store) SetRole(ctx context.Context, auth Authorize, actor identity.Prin
 			return e
 		}
 		if !identity.ManagesTier(actor.Role, current) || !identity.ManagesTier(actor.Role, c.Role) {
-			return identity.ErrUnauthorized
+			return identity.ErrForbidden
 		}
 		if revision != c.ExpectedRevision {
 			return &ConflictError{revision}
@@ -139,10 +140,9 @@ func (s *Store) SetRole(ctx context.Context, auth Authorize, actor identity.Prin
 		if _, e = tx.ExecContext(ctx, `UPDATE direct_memberships SET role=?,revision=revision+1 WHERE account_id=?`, c.Role, account); e != nil {
 			return e
 		}
-		if e = identity.RevokeFamiliesMatchingTx(ctx, tx, identity.RevokedMembershipRemoved, `authority='local' AND account_id=?`, account); e != nil {
-			return e
-		}
-		if _, e = tx.ExecContext(ctx, `UPDATE accounts SET epoch=epoch+1 WHERE id=?`, account); e != nil {
+		// The account's sessions move to the new tier here, in the same
+		// transaction, and stay signed in.
+		if e = identity.RetierFamiliesTx(ctx, tx, account, c.Role); e != nil {
 			return e
 		}
 		if out, e = readMember(ctx, tx, account); e != nil {

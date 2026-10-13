@@ -164,7 +164,7 @@ func (s *Store) Invite(ctx context.Context, auth Authorize, actor identity.Princ
 		return out, invalid("role")
 	}
 	if !identity.ManagesTier(actor.Role, q.Role) {
-		return out, identity.ErrUnauthorized
+		return out, identity.ErrForbidden
 	}
 	if q.AllowedLibraries == nil {
 		q.AllowedLibraries = []string{}
