@@ -41,6 +41,24 @@ session id to keep: every request stands alone.
 A signed-in app session is not accepted here: use a key or token, so that what
 the assistant may do is something you chose.
 
+After adding the remote server in your desktop assistant, let it initialize
+and list tools before asking it to act. Keep the credential in that application's
+private secret settings. An assistant on another machine needs a route that
+reaches this origin; `127.0.0.1` always means that assistant's own machine.
+A client supporting only local stdio needs a remote-HTTP bridge of its own;
+Portico does not install a desktop bridge.
+
+You can check the protocol with `curl` (replace `$KEY` with the scoped credential):
+
+```bash
+curl -fsS "$BASE/v1/mcp" -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"Desktop assistant","version":"1.0"}}}'
+curl -fsS "$BASE/v1/mcp" -H "Authorization: Bearer $KEY" \
+  -H 'Content-Type: application/json' \
+  --data '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}'
+```
+
 ## What the assistant can do
 
 `tools/list` returns only the tools the key's scopes **and** its member's role

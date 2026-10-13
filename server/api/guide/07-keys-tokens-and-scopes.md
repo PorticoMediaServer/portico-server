@@ -69,7 +69,7 @@ create_access_token)` take the same body:
 }
 ```
 
-`expiresAt` is optional; leave it out for a credential that lasts until it is
+`expiresAt` is at most ten years ahead and is optional; leave it out for a credential that lasts until it is
 revoked. `operationId` identifies the request: sending the same one again does
 not make a second credential.
 
@@ -173,3 +173,9 @@ your limit; retry after the stated delay.
 A key or token is a bearer secret. Do not put one in a web page other people can
 load. Requests from a browser page on another origin are refused unless the
 server's operator has listed that origin.
+
+To allow a separate browser app, set `PORTICO_ALLOWED_ORIGINS` to its exact
+origin (comma-separated for several) before starting the server. This adds to
+built-in first-party origins. It is not needed for the bundled same-origin web
+app and does not allow cross-origin first-run setup. CORS permission does not
+replace authentication, scopes or library restrictions.

@@ -22,7 +22,8 @@ operation ID after a lost response.
 operation ID. Each row has its own outcome. `GET` and `PUT
 /v1/containers/{kind}/{id}/personal-state` cover shows, seasons, albums and books.
 A container mark applies to visible members present at its watermark; later
-additions remain unwatched. Explicit item intent takes precedence. Container
+additions remain unwatched. A new container mark supersedes older item intent and clears progress; later
+explicit item intent can supersede it. Container
 undo and progress reset have separate routes in the registry contract.
 
 `GET /v1/personal-history` and `POST /v1/personal-history/actions` read and change
@@ -37,7 +38,7 @@ and refresh. Membership is captured in the background; `totalKnown` is false
 until that step finishes. Poll `GET /v1/jobs/{id}` and page its `/failures`.
 A 202 receipt means accepted work, not completed work. Use the per-operation
 schema and returned outcomes rather than assuming a partial failure rolled back
-all rows. Source: `internal/httpapi/jobs_routes.go` and `internal/jobs/`.
+all rows. Source: `internal/httpapi/bulk_jobs.go` and the bulk-job implementation in `internal/catalog/`.
 
 ## Downloads
 

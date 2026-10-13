@@ -70,15 +70,14 @@ Start-Service PorticoMediaServer
 ### macOS
 
 Run the PKG, including the one inside the DMG. Then open the installed app, or
-open the console address in your browser. Service inspection and restart:
+open the console address in your browser. Inspect the service:
 
 ```sh
 sudo launchctl print system/tv.getportico.server.service
-sudo launchctl kickstart -k system/tv.getportico.server.service
 ```
 
-For a clean stop before copying state, use `launchctl bootout` and bootstrap it
-again afterwards:
+For a restart, or a clean stop before copying state, use `launchctl bootout`
+and bootstrap it again afterwards:
 
 ```sh
 sudo launchctl bootout system/tv.getportico.server.service

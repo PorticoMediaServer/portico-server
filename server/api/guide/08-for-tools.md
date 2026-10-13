@@ -57,9 +57,10 @@ Details, files and playback are the title's own routes (`GET
 **Walking a whole library.** Follow `nextCursor` until it is absent. The cursor
 seeks to the last row you saw; it is not tied to the library's revision, so the
 walk finishes even while a scan is adding titles. A title added behind the
-cursor is not seen on this walk, one added ahead of it is, and none is returned
-twice. A cursor belongs to the query and the caller that made it and lasts 30
-minutes (`400 invalid_cursor` otherwise). To pick up what changed since a walk,
+cursor is not seen on this walk, one added ahead of it is. With unchanged sort keys, titles are not returned
+twice. A concurrent edit can move a title across the cursor; reconcile your
+index by stable title ID. A cursor belongs to the query and the caller that made it and lasts 30
+minutes (`400 invalid_cursor` or `cursor_expired` if unusable). To pick up what changed since a walk,
 ask for `sort=added&order=desc` and stop at the first title you already have.
 
 "Do you have this film?" is one request:
@@ -168,3 +169,8 @@ A Test connection checks that the script can run; it intentionally does not scan
 Use a real import/delete to verify the mapped path is queued, then check scan
 progress or a `scan.finished` webhook. These are examples of the Custom Script
 environment; event availability depends on the installed Sonarr/Radarr version.
+
+The upstream [Sonarr Custom Script source](https://github.com/Sonarr/Sonarr/blob/develop/src/NzbDrone.Core/Notifications/CustomScript/CustomScript.cs)
+and [Radarr Custom Script source](https://github.com/Radarr/Radarr/blob/develop/src/NzbDrone.Core/Notifications/CustomScript/CustomScript.cs)
+define the series/movie path and Test event variables. Check the documentation
+for your installed version when selecting triggers.

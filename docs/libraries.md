@@ -98,7 +98,7 @@ for film, TV and anime; the registry also offers TheTVDB for film/TV/anime and
 AniList for anime. Music uses MusicBrainz. Audiobook metadata is local in the current provider registry. Choose
 local metadata only (`metadataAgent: "local"`) to use filenames, embedded tags,
 NFO files and local artwork without online matching. The available choices are
-published by `GET /v1/metadata/providers`; use the server's list in an API client.
+published by `GET /v1/library-kinds/{kind}/metadata-agents`; use the server's list in an API client.
 Owner-supplied TMDB/TheTVDB credentials are server-wide Metadata settings.
 
 Matching weighs names, aliases, year, provider IDs and other available evidence.

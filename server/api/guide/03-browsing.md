@@ -26,7 +26,7 @@ For structured browse, read capabilities first. An example request:
 The response has `entries`, the applied query, `pageInfo` and optional letter
 anchors in `positionIndex`. Use `pageInfo.nextCursor` for the next page or the
 returned revision with a positional range. Do not use a page index from another
-revision. Source: `internal/httpapi/browse_routes.go` and `browse.go`.
+revision. Source: `internal/httpapi/browse_routes.go` and the browse engine.
 
 Content screens publish their allowed sort/filter choices, including grouped
 screens. Use those choices for genres, collections, series, people and other
@@ -44,7 +44,7 @@ a person commits a search, not on every keystroke or continuation.
 `GET /v1/search/history` and DELETE on the same address read/clear the viewer's
 search history. `GET /v1/people` searches people; `GET /v1/people/{id}` reads
 credits. Source: `internal/httpapi/search.go`, `search_sort_routes.go` and
-`search_people.go`.
+`people_routes.go`.
 
 For indexing by title or provider ID, use [GET /v1/titles](08-for-tools.md),
 which is bounded separately from the composed-screen query grammar.

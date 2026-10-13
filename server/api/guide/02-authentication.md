@@ -112,8 +112,9 @@ HTTP and HTTPS have the same credential semantics.
 
 `DELETE /v1/sessions/current` signs out the whole session family and accepts an
 authentic expired/retired family token so a stale device can still sign out.
-Send no query or body. Device administration uses `/v1/devices`; there are no
-`/v1/direct/sessions` routes. Disabling an account, changing its password or
+Send no query or body. Device administration uses `/v1/devices`. Account managers can list
+`GET /v1/direct/sessions`, revoke `DELETE /v1/direct/sessions/{id}`, or call
+`POST /v1/direct/sessions/sign-out-everywhere` with their ordinary session. Disabling an account, changing its password or
 blocking a device ends sessions. Ordinary permission changes apply live.
 
 ## TV code

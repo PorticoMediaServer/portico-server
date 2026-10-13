@@ -1,20 +1,20 @@
 
-### Registry revision p39.B1
+# Profile preferences
 
 Every field declares its consumer. Integers declare `step: 1`. Locale uses the
 semantic type `locale`, defaulting to `auto` for client environment resolution.
 Language lists use `languageList`, canonical BCP-47 tags, and reject duplicates
 after canonicalization.
 
-There is no time zone preference (removed in registry revision p39.CD32.B4):
+There is no time zone preference:
 every client shows times in the device's own zone. `region.timeZone` is an
 unknown key in a patch, and a value stored for it earlier is ignored on read
 and dropped by the next save of that document.
 
-Video bitrate choices are labelled objects in `allowedValues`: Original (0),
-40, 20, 12, 8, 4, 2, 1 Mbps, with `maxVideoHeight` on each bounded choice.
-Audio choices are Original (0), 320, 256, 192, 128, and 96 kbps. A zero bitrate
-means unrestricted original quality, subject to explicit administrator caps.
+Saved quality choices are `original` (default), `automatic`, `2160p`, `1440p`,
+`1080p`, `720p`, `480p`, `360p`, in `quality.home` and `quality.remote`.
+Automatic starts at Original and adapts; it is an explicit choice. Use the
+registry's allowed values instead of keeping an independent quality ladder.
 
 The effective response also includes `audioEffects` (`gapless`,
 `crossfadeSeconds`, `normalization`), derived from the three `music.*` registry

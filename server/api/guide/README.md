@@ -21,3 +21,8 @@ Examples below are illustrative requests, with IDs and secrets to replace.
 For owner setup and media organisation, see [installation](../../../INSTALLING.md)
 and [libraries](../../../docs/libraries.md). Topic references in the API folder
 cover metadata editing, downloads, administration and social playback.
+
+The checked-in generated contract also needs regeneration as source-registered
+routes move forward. For example, current account-session routes are registered
+in `internal/httpapi/foundation.go` but are missing from this generated snapshot.
+Use their documented current source until that snapshot is refreshed.

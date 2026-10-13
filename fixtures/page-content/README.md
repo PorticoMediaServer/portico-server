@@ -28,10 +28,10 @@ exactly as the releases so the match succeeds.
 ## Generating
 
 ```bash
-fixtures/page-content/generate.py --out <target-dir>   # creates tv/ music/ audiobooks/
-fixtures/page-content/generate.py --out <dir> --dry-run  # list files + tags, generate nothing (--list works too)
-fixtures/page-content/generate.py --out <dir> --only tv --video-seconds 5
-fixtures/page-content/generate.py --out <dir> --force --audio-seconds 8
+fixtures/page-content/generate.py --out /tmp/portico-page-content   # creates tv/ music/ audiobooks/
+fixtures/page-content/generate.py --out /tmp/portico-page-content --dry-run  # list files + tags, generate nothing (--list works too)
+fixtures/page-content/generate.py --out /tmp/portico-page-content --only tv --video-seconds 5
+fixtures/page-content/generate.py --out /tmp/portico-page-content --force --audio-seconds 8
 ```
 
 ffmpeg is taken from `PORTICO_FFMPEG` or `PATH` (falls back to

@@ -1,7 +1,8 @@
 # Administration: people, diagnostics and connectivity
 
-Companion to `admin-access.openapi.yaml`. The OpenAPI document is the contract;
-this page explains the rules behind it and says where each one is enforced.
+Companion to the current administration handlers and `portico.openapi.json`;
+the hand-written `admin-access.openapi.yaml` is historical.
+This page explains the rules behind it and says where each one is enforced.
 
 ## Access tiers
 
@@ -66,7 +67,7 @@ so a client can write against that revision without a create step.
 
 | Limit | Enforced in |
 | --- | --- |
-| `maxStreams` | `httpapi.admitPlayback`, before a playback lease exists (`POST /v1/playback/sessions` including channel and queue-entry starts, queue transitions, `POST /v2/playback/occurrences`). Counts live legacy sessions and live `playback_v1_sessions` rows; a v1 session's legacy presentation row is excluded, so one stream counts once. |
+| `maxStreams` | `httpapi.admitPlayback`, before a playback lease exists (`POST /v1/playback/sessions` including channel and queue-entry starts, queue transitions). Counts active playback sessions without double-counting their presentation rows. |
 | `remoteBitrateKbps` | `httpapi.admitPlayback` returns it as `Decision.MaxVideoBitrateBPS` when the request is remote. Every v1 start path admits through `playbackv1.Caller.Admit` (item, channel, queue-entry starts and queue transitions), and a v1 PATCH that re-plans (quality, version, audio or part change) re-admits the same way, so the cap reaches the transcode decision on each; the playback-options preview reads the same cap through `v1Reach` without admitting. The server-wide ceiling is applied separately through `RegistryDeliverySettings.Delivery()`; the delivery policy clamps against both, so the lower wins. |
 | `maxContentRating` / `ratingSystem` / `allowUnrated` | Folded into the viewer's content restrictions before any title is judged (`access.Limits.Narrow`, `contentaccess.RestrictionsTx`), then applied by the one catalogue predicate for lists, counts, search, detail and playback alike. |
 | `tagPolicy.deniedLabels` | The same predicate. Matched case-insensitively against the catalog's `label` and `tag` attributes. |
@@ -191,9 +192,10 @@ debugged.
 
 Any authenticated principal, including an API key, may upload. The body is
 bounded twice — by the request reader and by the store — at 256 KiB; the account
-and profile come from the credential, never from the body. The newest 500
-uploads are kept regardless of the retention sweep, so a misbehaving client
-cannot fill the state directory.
+and profile come from the credential, never from the body. At most 100 uploads
+are retained, at most five per authenticated device.
+Each account has a 1 MiB daily upload budget; uploaded device names do not
+replace the session’s verified device identity.
 
 ## Diagnostics bundle
 
@@ -215,7 +217,7 @@ correctly instead of silently overwriting each other.
 
 | Setting | Effect |
 | --- | --- |
-| `remoteSignInPolicy` | `allow` / `owner-only` / `off`, applied in `httpapi.admitRemoteSignIn` after a sign-in succeeds. A refused session is revoked before the response. Sessions already signed in are not disturbed. |
+| `remoteSignInPolicy` | `allow` / `owner-only` / `off`, applied at session creation, before admission commits. Off refuses remote sign-in before credentials are examined. Sessions already signed in are not disturbed. |
 | `remoteBitrateLimitKbps` | Server-wide ceiling, exposed as `playback.DeliveryConfiguration.MaxVideoBitrateBPS` through `RegistryDeliverySettings.Delivery()`. |
 | `lanNetworks` | The complete home-network list, stored masked. Defaults include standard local ranges and attached subnets. An empty list means all requests are remote. |
 | `trustedProxies` | Socket addresses or ranges allowed to supply forwarded client address, scheme and host. |
@@ -251,13 +253,13 @@ refuses the enumeration yields an empty list rather than an error), each
 address classified as `public`, `lan` or `loopback` against the configured LAN
 networks, the certificate state from `internal/networking`, and the real
 discovery state. `warnings` names policy this host cannot satisfy:
-`secure_connections_required_without_tls`,
 `remote_sign_in_without_public_address`,
 `lan_discovery_unsupported_on_this_host`.
 
 ## Concurrency and retries
 
-Every mutation carries `expectedRevision` and `operationId`.
+Revision-fenced configuration mutations carry `expectedRevision` and, where
+the route requires it, `operationId`. Missing required revisions answer 428.
 
 - `expectedRevision` is the revision of the document being changed. A mismatch
   is `409 administration_conflict` with `error.currentRevision`.
@@ -266,5 +268,5 @@ Every mutation carries `expectedRevision` and `operationId`.
   `400 invalid_request` naming `operationId`. Receipts are a retry aid, not
   history: the newest 2000 are kept.
 
-Lists page by opaque cursor (sort key plus identifier), never by offset, so a
-concurrent insert cannot cause a row to be skipped.
+Lists use their own cursor or positional paging contract. Reuse returned
+cursors and revisions unchanged; do not infer a uniform pagination rule.

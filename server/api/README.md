@@ -16,3 +16,8 @@ This is a prerelease API with no compatibility promise. The current public
 routes use `/v1`; the former `/v2` playback model has been removed. There are no
 legacy sign-in shortcuts to preserve. Library and content screens are composed
 by the server. Tools can use the additional bounded title query.
+
+The checked-in generated contract also needs regeneration as source-registered
+routes move forward. For example, current account-session routes are registered
+in `internal/httpapi/foundation.go` but are missing from this generated snapshot.
+Use their documented current source until that snapshot is refreshed.

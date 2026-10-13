@@ -19,8 +19,9 @@ have moved there yet; their current handlers take precedence over old YAML.
 Calendar timestamps normally use RFC 3339 UTC, for example
 `2026-10-13T18:22:04Z`. Some surfaces require whole seconds (the TV guide); do
 not assume a fixed millisecond suffix. Notification timestamps are integer
-Unix milliseconds. Catalogue durations and progress are seconds, often fractional;
-playback session positions use integer milliseconds. Subtitle cue documents and
+Unix milliseconds. Catalogue durations and progress use whole milliseconds (`durationMs`,
+`progressMs`, `startMs`), as do playback session positions. Do not infer the
+wire shape from a Go field ending in Seconds: custom JSON methods convert it. Subtitle cue documents and
 social timelines use decimal microsecond strings. Use the unit named in the
 field and preserve decimal strings. Revisions and IDs are opaque even when a
 revision looks numeric; keep the exact JSON type returned by that route.
@@ -92,3 +93,8 @@ Bounds are published as `x-max-body-bytes`; other handlers have their own read
 bounds. A limit is not permission to send unbounded nested data. Session sign-in
 has per-address, network and account budgets; API keys and tokens have their own
 rate and concurrency budgets, documented in [keys and tokens](07-keys-tokens-and-scopes.md).
+
+The checked-in generated contract also needs regeneration as source-registered
+routes move forward. For example, current account-session routes are registered
+in `internal/httpapi/foundation.go` but are missing from this generated snapshot.
+Use their documented current source until that snapshot is refreshed.

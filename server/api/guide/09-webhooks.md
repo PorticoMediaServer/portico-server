@@ -115,7 +115,11 @@ def verify(secret: str, signature_header: str, body: bytes, tolerance=300) -> bo
 import {createHmac, timingSafeEqual} from 'node:crypto';
 
 export function verify(secret, signatureHeader, rawBody, toleranceSeconds = 300) {
-  const parts = Object.fromEntries(signatureHeader.split(',').map(p => p.split('=', 2)));
+  if (typeof signatureHeader !== 'string') return false;
+  const pairs = signatureHeader.split(',').map(p => p.trim().split('=', 2));
+  if (pairs.length !== 2 || pairs.some(p => p.length !== 2)) return false;
+  const parts = Object.fromEntries(pairs);
+  if (Object.keys(parts).sort().join(',') !== 't,v1' || !/^[0-9a-f]{64}$/.test(parts.v1 ?? '')) return false;
   if (!/^\d+$/.test(parts.t ?? '') || Math.abs(Date.now() / 1000 - Number(parts.t)) > toleranceSeconds) return false;
   const expected = createHmac('sha256', secret).update(`${parts.t}.`).update(rawBody).digest('hex');
   const given = Buffer.from(parts.v1 ?? '', 'utf8');
