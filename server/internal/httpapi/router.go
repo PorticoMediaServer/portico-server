@@ -815,7 +815,6 @@ func New(d Dependencies) http.Handler {
 	d.deliveryRoutes(mux)
 	d.activityRoutes(mux)
 	d.discoveryRoutes(mux)
-	d.contentHomeRoutes(mux)
 	d.browseRoutes(mux)
 	d.notificationRoutes(mux)
 	d.downloadRoutes(mux)

@@ -838,6 +838,60 @@ export const routes = [
     "sse": true
   },
   {
+    "id": "get_home",
+    "method": "GET",
+    "path": "/v1/home",
+    "summary": "Read this viewer's composed Home rows and destinations",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "stale_continuation",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_home_row",
+    "method": "GET",
+    "path": "/v1/home/rows/{id}",
+    "summary": "Page a composed Home row",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "limit",
+      "cursor",
+      "start",
+      "revision",
+      "anchorId"
+    ],
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "stale_continuation",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
     "id": "get_items_screen_metadata",
     "method": "GET",
     "path": "/v1/items/{id}/metadata/screen",
@@ -941,6 +995,34 @@ export const routes = [
       "not_permitted",
       "invalid_request",
       "revision_mismatch",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_personal_history",
+    "method": "GET",
+    "path": "/v1/personal-history",
+    "summary": "Read this viewer's history within current title access",
+    "access": "device",
+    "requires": "read",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "cursor",
+      "period",
+      "libraryId",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "stale_continuation",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "rate_limited",
       "internal"
     ],
     "status": 200
@@ -1064,6 +1146,36 @@ export const routes = [
     "bodyLimit": 0,
     "errors": [
       "unauthorized",
+      "internal"
+    ],
+    "status": 200
+  },
+  {
+    "id": "get_saved_content",
+    "method": "GET",
+    "path": "/v1/content",
+    "summary": "Read a saved list or playlist directory",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "view",
+      "sort",
+      "direction",
+      "filter",
+      "limit",
+      "cursor"
+    ],
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "stale_continuation",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "rate_limited",
       "internal"
     ],
     "status": 200
@@ -2154,7 +2266,8 @@ export const routes = [
       "idempotency_key_reused",
       "revision_mismatch",
       "rate_limited",
-      "internal"
+      "internal",
+      "operation_expired"
     ],
     "status": 200
   },

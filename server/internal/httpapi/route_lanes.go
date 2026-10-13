@@ -192,7 +192,7 @@ var routeLanes = map[string]string{
 	"GET /v1/auth/remembered-accounts":                                laneAuth,
 	"GET /v1/collections/{id}":                                        laneBrowsing,
 	"GET /v1/collections/{id}/items":                                  laneBrowsing,
-	"GET /v1/content":                                                 laneDefault,
+	"GET /v1/content":                                                 laneBrowsing,
 	"GET /v1/direct":                                                  laneDefault,
 	"GET /v1/devices":                                                 laneAuth,
 	"GET /v1/direct/members":                                          laneAuth,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -169,9 +170,7 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 			if e != nil {
 				return e
 			}
-			if e = snapshotPersonalByID(tx, profile, item, before); e != nil {
-				return e
-			}
+
 			if e = fenceEvidenceByID(tx, profile, item); e != nil {
 				return e
 			}
@@ -199,6 +198,12 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 			return e
 		}
 		out.Watchlisted, out.Favorite, e = readContainerSaved(ctx, tx, profile, containerID)
+		if e != nil {
+			return e
+		}
+		until := time.Now().UTC().Add(containerUndoLifetime)
+		out.UndoUntil = until.Format("2006-01-02T15:04:05.000Z")
+		_, e = tx.ExecContext(ctx, `UPDATE container_personal_undo SET expires_ms=? WHERE token=?`, until.UnixMilli(), out.UndoToken)
 		return e
 	})
 	return

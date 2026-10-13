@@ -26,6 +26,8 @@ func bulkError(err error) error {
 		return &apierror.Error{Code: "invalid_request", Cause: err}
 	case errors.Is(err, catalog.ErrOperationConflict):
 		return &apierror.Error{Code: "idempotency_key_reused", Cause: err}
+	case errors.Is(err, catalog.ErrOperationExpired):
+		return &apierror.Error{Code: "operation_expired", Cause: err}
 	case errors.Is(err, catalog.ErrPersonalConflict), errors.Is(err, catalog.ErrStaleContinuation):
 		return &apierror.Error{Code: "revision_mismatch", Cause: err}
 	case errors.Is(err, catalog.ErrPersonalCapacity), errors.Is(err, operations.ErrCapacity):
@@ -103,7 +105,7 @@ func registerBulkJobs(r *apikit.Registry, d Dependencies) {
 			out, e := d.Catalog.SetContainerPersonal(ctx, p, q.PathValue("kind"), q.PathValue("id"), in, d.Scheduler, d.bulkAccess)
 			return out, bulkError(e)
 		})
-	v1Route(r, apikit.Metadata{ID: "undo_container_personal_state", Method: "POST", Path: "/v1/containers/{kind}/{id}/personal-state/undo", Summary: "Restore watched and resume state before a recent container mark", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 2048, Status: 200, Errors: errorsList},
+	v1Route(r, apikit.Metadata{ID: "undo_container_personal_state", Method: "POST", Path: "/v1/containers/{kind}/{id}/personal-state/undo", Summary: "Restore watched and resume state before a recent container mark", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 2048, Status: 200, Errors: append(errorsList, "operation_expired")},
 		func(ctx context.Context, q *http.Request, in catalog.ContainerUndoMutation) (catalog.ContainerPersonal, error) {
 			p, _, e := scope(q)
 			if e != nil {

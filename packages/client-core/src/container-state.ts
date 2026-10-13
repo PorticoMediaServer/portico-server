@@ -1,14 +1,15 @@
 import {unreadableServerResponse} from './server-messages.ts';
 /**
- * Container personal state (`server/api/jobs.openapi.yaml`): an O(1) watched default for a show, season, album or book,
+ * Container personal state (`server/api/jobs.openapi.yaml`): an atomic watched mark for a show, season, album or book,
  * and the title's own Watchlist and Favorite flags (a show can be on the Watchlist; a show, album,
  * book or artist can be a Favorite), so a show's action row matches a movie's.
  *
  * `GET /v1/containers/{kind}/{id}/personal-state` reads the revision the
  * approved PUT contract requires, plus the viewer's visible-member counts.
  * `PUT` writes one profile/container watermark with `{expectedRevision,
- * watched}`; a 409 `revision_mismatch` means reread before authoring another
- * intent. Explicit item watched intent overrides the default; the latest
+ * watched}`; a 412 `revision_mismatch` means reread before authoring another
+ * intent. A mark clears member progress and overrides older item intent. Newer
+ * item intent overrides the default; the latest
  * applicable container watermark wins (season wins a timestamp tie); items
  * added after the watermark appear unwatched.
  */
@@ -33,7 +34,7 @@ export function containerCarries(kind:string|undefined,flag:ContainerFlag|'watch
  if(flag==='watchlisted')return kind==='show'||kind==='book';
  return kind==='show'||kind==='album'||kind==='book'||kind==='artist';
 }
-/** Shared error-code correction: a stale revision is HTTP 409 (see `bulk-jobs.ts`). */
+/** Shared error-code correction: a stale revision is HTTP 412 (see `bulk-jobs.ts`). */
 export const CONTAINER_REVISION_MISMATCH='revision_mismatch';
 
 const object=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
@@ -75,7 +76,7 @@ export async function getContainerState(api:ContainerStateApi,kind:ContainerKind
 }
 
 /**
- * Writes the container watched default. On a 409 `revision_mismatch`, reread
+ * Writes the container watched default. On a 412 `revision_mismatch`, reread
  * with `getContainerState` before authoring another intent.
  */
 export async function setContainerState(api:ContainerStateApi,kind:ContainerKind,containerId:string,input:Readonly<{expectedRevision:number;watched:boolean}>,signal?:AbortSignal):Promise<ContainerState>{
@@ -88,7 +89,7 @@ export async function setContainerState(api:ContainerStateApi,kind:ContainerKind
    {expectedRevision:input.expectedRevision,watched:input.watched},signal),false);
  }catch(e){
   const v=e as {status?:unknown;code?:unknown};
-  const code=typeof v?.code==='string'&&v.code?v.code:v?.status===409?CONTAINER_REVISION_MISMATCH:'container_state_not_saved';
+  const code=typeof v?.code==='string'&&v.code?v.code:(v?.status===409||v?.status===412)?CONTAINER_REVISION_MISMATCH:'container_state_not_saved';
   throw Object.assign(new Error(e instanceof Error?e.message:'The watched state could not be saved.'),{code});
  }
 }

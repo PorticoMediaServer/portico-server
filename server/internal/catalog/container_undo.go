@@ -48,15 +48,22 @@ func containerMemberIDs(ctx context.Context, tx *sql.Tx, members string, contain
 func captureContainerUndo(ctx context.Context, tx *sql.Tx, profile, kind string, container int64, previous ContainerPersonal, clear string, out *ContainerPersonal, ids []int64) error {
 	// One live receipt per container; expired snapshots are removed on subsequent
 	// actions. Bound each cleanup so a busy household cannot monopolize a write.
-	if _, e := tx.ExecContext(ctx, `DELETE FROM container_personal_undo WHERE token IN(SELECT token FROM container_personal_undo WHERE expires_ms<? LIMIT 64) OR (profile_id=? AND kind=? AND container_id=?)`, time.Now().UnixMilli(), profile, kind, container); e != nil {
+	if _, e := tx.ExecContext(ctx, `DELETE FROM container_personal_undo WHERE token IN(SELECT token FROM container_personal_undo WHERE expires_ms<? LIMIT 1) OR (profile_id=? AND kind=? AND container_id=?)`, time.Now().UnixMilli(), profile, kind, container); e != nil {
 		return e
 	}
 	until := time.Now().UTC().Add(containerUndoLifetime)
 	out.UndoUntil = until.Format("2006-01-02T15:04:05.000Z")
-	if _, e := tx.ExecContext(ctx, `INSERT INTO container_personal_undo(token,profile_id,kind,container_id,revision,previous_watched,previous_watermark,previous_clear,watermark,expires_ms) VALUES(?,?,?,?,?,?,?,?,?,?)`, out.UndoToken, profile, kind, container, out.Revision, previous.Watched, previous.Watermark, clear, out.Watermark, until.UnixMilli()); e != nil {
+	if _, e := tx.ExecContext(ctx, `INSERT INTO container_personal_undo(token,profile_id,kind,container_id,revision,previous_watched,previous_watermark,previous_clear,watermark,expires_ms,member_count) VALUES(?,?,?,?,?,?,?,?,?,?,?)`, out.UndoToken, profile, kind, container, out.Revision, previous.Watched, previous.Watermark, clear, out.Watermark, until.UnixMilli(), len(ids)); e != nil {
 		return e
 	}
 	for _, id := range ids {
+		before, e := readPersonalByID(tx, profile, id, personalstate.SQL("?", "?"))
+		if e != nil {
+			return e
+		}
+		if e = snapshotPersonalByID(tx, profile, id, before); e != nil {
+			return e
+		}
 		if _, e := tx.ExecContext(ctx, `INSERT INTO container_personal_undo_items(token,item_id,previous_watched,after_revision,position,unit,playback_id,activity_at,activity_state,book_position)
  SELECT ?,e.id,COALESCE(`+personalstate.SQL("?", "e.id")+`,0),COALESCE(pi.revision,0)+1,p.position,p.unit,p.playback_id,a.updated_at,a.state,
  (SELECT b.position FROM book_resume b WHERE b.profile_id=? AND b.item_id=e.id)
@@ -101,7 +108,8 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 		}
 		var previousWatermark, clear, mark string
 		var expires, revision int64
-		e = tx.QueryRowContext(ctx, `SELECT u.previous_watched,u.previous_watermark,u.previous_clear,u.watermark,u.expires_ms,c.revision FROM container_personal_undo u JOIN container_personal_state c ON c.profile_id=u.profile_id AND c.kind=u.kind AND c.container_id=u.container_id AND c.revision=u.revision WHERE u.token=? AND u.profile_id=? AND u.kind=? AND u.container_id=?`, m.UndoToken, profile, kind, container).Scan(&out.Watched, &previousWatermark, &clear, &mark, &expires, &revision)
+		var memberCount int
+		e = tx.QueryRowContext(ctx, `SELECT u.previous_watched,u.previous_watermark,u.previous_clear,u.watermark,u.expires_ms,c.revision,u.member_count FROM container_personal_undo u JOIN container_personal_state c ON c.profile_id=u.profile_id AND c.kind=u.kind AND c.container_id=u.container_id AND c.revision=u.revision WHERE u.token=? AND u.profile_id=? AND u.kind=? AND u.container_id=?`, m.UndoToken, profile, kind, container).Scan(&out.Watched, &previousWatermark, &clear, &mark, &expires, &revision, &memberCount)
 		if errors.Is(e, sql.ErrNoRows) {
 			return ErrPersonalConflict
 		}
@@ -128,7 +136,7 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 		if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM container_personal_undo_items WHERE token=?`, m.UndoToken).Scan(&count); e != nil {
 			return e
 		}
-		if changed != 0 || count != len(ids) {
+		if changed != 0 || count != len(ids) || count != memberCount {
 			return ErrPersonalConflict
 		}
 		for _, item := range ids {
@@ -148,11 +156,6 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 				return ErrPersonalConflict
 			}
 		}
-		out.Revision = revision + 1
-		out.Watermark = previousWatermark
-		if _, e = tx.ExecContext(ctx, `UPDATE container_personal_state SET watched=?,watermark=?,cleared_through=?,revision=? WHERE profile_id=? AND kind=? AND container_id=?`, out.Watched, previousWatermark, clear, out.Revision, profile, kind, container); e != nil {
-			return e
-		}
 		for _, item := range ids {
 			before, e := readPersonalByID(tx, profile, item, personalstate.SQL("?", "?"))
 			if e != nil {
@@ -161,6 +164,13 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 			if e = snapshotPersonalByID(tx, profile, item, before); e != nil {
 				return e
 			}
+		}
+		out.Revision = revision + 1
+		out.Watermark = previousWatermark
+		if _, e = tx.ExecContext(ctx, `UPDATE container_personal_state SET watched=?,watermark=?,cleared_through=?,revision=? WHERE profile_id=? AND kind=? AND container_id=?`, out.Watched, previousWatermark, clear, out.Revision, profile, kind, container); e != nil {
+			return e
+		}
+		for _, item := range ids {
 			if _, e = tx.ExecContext(ctx, `UPDATE personal_items SET watched=(SELECT previous_watched FROM container_personal_undo_items WHERE token=? AND item_id=?),revision=revision+1 WHERE profile_id=? AND item_id=?`, m.UndoToken, item, profile, item); e != nil {
 				return e
 			}

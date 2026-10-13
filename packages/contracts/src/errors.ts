@@ -187,6 +187,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "operation_expired",
+    "status": 409,
+    "message": "The time to undo this change has passed.",
+    "retry": "never"
+  },
+  {
     "code": "password_change_required",
     "status": 403,
     "message": "Change your password before continuing.",
@@ -317,6 +323,12 @@ export const errors = [
     "status": 503,
     "message": "The file for this title can't be reached right now.",
     "retry": "same_request"
+  },
+  {
+    "code": "stale_continuation",
+    "status": 409,
+    "message": "This list changed. Refresh it to continue.",
+    "retry": "after_refresh"
   },
   {
     "code": "stream_exists",

@@ -110,19 +110,22 @@ func TestLibraryVideoCompletionUsesApprovedCreditsOrThreshold(t *testing.T) {
 	}
 }
 
-func TestStartedThresholdHonoursPercentUnderThirtySeconds(t *testing.T) {
+func TestStartedThresholdHonoursPercentForLongAndShortTitles(t *testing.T) {
 	s, db, v := savedFixture(t)
 	item := phase34SavedFixtureItem(t, db)
 	key := identity.PersonalKey(v)
 	if _, e := db.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,completed,playback_id) VALUES(?,?,0,0,0,'play')`, key, item.ID); e != nil {
 		t.Fatal(e)
 	}
-	// The thirty-second ceiling still applies: five percent of a long feature is
-	// 360 seconds, so 40 seconds already counts as started.
+	// Five percent of a long feature is 360 seconds. Brief playback stays below it.
 	accept(t, s, db, v, item.Public, 1, 40, 7200, "playing")
 	p, e := s.Personal(key, item.Public)
-	if e != nil || p.ProgressSeconds != 40 {
-		t.Fatalf("thirty-second ceiling lost: %+v %v", p, e)
+	if e != nil || p.ProgressSeconds != 0 {
+		t.Fatalf("percentage ignored: %+v %v", p, e)
+	}
+	accept(t, s, db, v, item.Public, 2, 360, 7200, "playing")
+	if p, e = s.Personal(key, item.Public); e != nil || p.ProgressSeconds != 360 {
+		t.Fatal(p, e)
 	}
 	// A one-percent viewer on a short item starts sooner than the default five.
 	s2, db2, v2 := savedFixture(t)

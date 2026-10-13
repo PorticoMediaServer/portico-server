@@ -1253,6 +1253,7 @@ container_personal_state.watermark
 container_personal_undo.container_id
 container_personal_undo.expires_ms
 container_personal_undo.kind
+container_personal_undo.member_count
 container_personal_undo.previous_clear
 container_personal_undo.previous_watched
 container_personal_undo.previous_watermark
@@ -2885,6 +2886,9 @@ personal_batch_receipts.operation_id
 personal_batch_receipts.profile_id
 personal_batch_receipts.request_hash
 personal_batch_receipts.response
+personal_completed_plays.item_id
+personal_completed_plays.playback_id
+personal_completed_plays.profile_id
 personal_conflicts.base_revision
 personal_conflicts.base_value
 personal_conflicts.field

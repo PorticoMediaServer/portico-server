@@ -182,6 +182,7 @@ func movePersonalTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 		`UPDATE book_resume SET item_id=?2 WHERE item_id=?1`,
 
 		`UPDATE personal_history SET item_id=?2 WHERE item_id=?1`,
+		`UPDATE personal_completed_plays SET item_id=?2 WHERE item_id=?1`,
 		`INSERT INTO personal_play_counts(profile_id,item_id,plays) SELECT profile_id,?2,plays FROM personal_play_counts INDEXED BY personal_play_counts_item WHERE item_id=?1
  ON CONFLICT(profile_id,item_id) DO UPDATE SET plays=personal_play_counts.plays+excluded.plays`,
 		`DELETE FROM personal_play_counts WHERE item_id=?1`,

@@ -236,29 +236,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "operationId": out.OperationID, "resourceId": out.ResourceID, "playlistId": out.PlaylistID, "revision": out.Revision, "pinRevision": out.PinRevision, "pinned": out.Pinned, "deleted": out.Deleted})
 	})
-	mux.HandleFunc("GET /v1/personal-history", func(w http.ResponseWriter, r *http.Request) {
-		limit, e := savedPageQuery(r, "period", "libraryId")
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		p, libraries, fence, e := d.homeScope(r)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		viewer, e := d.catalogViewer(r, p, libraries, fence)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		out, e := d.Catalog.WithContext(r.Context()).History(d.Identity.ID(), fence, identity.PersonalKey(p.Viewer), r.URL.Query().Get("cursor"), r.URL.Query().Get("period"), r.URL.Query().Get("libraryId"), libraries, limit, viewer)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		d.savedResponse(w, r, fence, out)
-	})
+
 	mux.HandleFunc("POST /v1/me/recommendations:reset", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
 		if e != nil {
@@ -295,4 +273,28 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "receipt": out, "receiptLifetimeSeconds": 2592000})
 	})
+}
+
+func (d Dependencies) servePersonalHistory(w http.ResponseWriter, r *http.Request) {
+	limit, e := savedPageQuery(r, "period", "libraryId")
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	p, libraries, fence, e := d.homeScope(r)
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	viewer, e := d.catalogViewer(r, p, libraries, fence)
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	out, e := d.Catalog.WithContext(r.Context()).History(d.Identity.ID(), fence, identity.PersonalKey(p.Viewer), r.URL.Query().Get("cursor"), r.URL.Query().Get("period"), r.URL.Query().Get("libraryId"), libraries, limit, viewer)
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	d.savedResponse(w, r, fence, out)
 }

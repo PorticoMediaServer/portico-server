@@ -959,16 +959,14 @@ paths:
     get:
       operationId: getGlobalContent
       tags: [content]
-      summary: The server-composed home, watchlist, favourites or playlist directory
+      summary: The viewer’s saved lists and playlist directory
       description: >-
-        Any authenticated viewer. `view=home` returns the home screen with fixed, server-defined
-        sections — the server rejects any attempt to choose sections or a limit other than 12,
-        because home composition is the server's decision, not the client's. `view=watchlist`,
-        `view=favorites` and `view=playlists` return cursor-paged saved surfaces that additionally
-        accept `sort`, `direction`, `cursor` and a `limit` of 1–100.
+        Any authenticated viewer. `view=watchlist`, `view=favorites` and
+        `view=playlists` return cursor-paged saved surfaces. Home is composed
+        by `GET /v1/home` with its own row paging and explicit destinations.
       parameters:
-        - { name: view, in: query, required: true, schema: { type: string, enum: [home, watchlist, favorites, playlists] }, description: Which global surface to compose. }
-        - { name: limit, in: query, required: false, schema: { type: integer }, description: 'Must be exactly 12 for `view=home`; 1–100 for the saved views.' }
+        - { name: view, in: query, required: true, schema: { type: string, enum: [watchlist, favorites, playlists] }, description: Which global surface to compose. }
+        - { name: limit, in: query, required: false, schema: { type: integer }, description: '1–100 items for a saved view.' }
         - { name: sort, in: query, required: false, schema: { type: string }, description: Saved views only. }
         - { name: direction, in: query, required: false, schema: { type: string, enum: [asc, desc] }, description: Saved views only. }
         - $ref: '#/components/parameters/Cursor'

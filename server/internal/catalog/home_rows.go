@@ -277,7 +277,7 @@ const homeRetired = `NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE
 // homeVisible requires a live entity and its available, non-DVR-retired item
 // projection.
 func homeVisible(alias string) string {
-	return fmt.Sprintf(`EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_item_availability v ON v.entity_id=e.id WHERE e.id=%s AND e.retired=0 AND v.available=1 AND v.retired=0)`, alias)
+	return fmt.Sprintf(`EXISTS(SELECT 1 FROM catalog_entities e JOIN catalog_item_availability v ON v.entity_id=e.id WHERE e.id=%s AND e.retired=0 AND v.available=1 AND v.retired=0 AND EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id WHERE link.entity_id=e.id AND link.available=1 AND asset.available=1))`, alias)
 }
 
 // continueListeningMaximum bounds Continue Listening the way the owner maximum
@@ -306,7 +306,7 @@ func homeContinueBase(mode string) string {
 	// Progress positions are milliseconds (unit 0); asset durations are seconds.
 	return `SELECT pid(i.public_id) AS id,a.item_id AS entity,a.updated_at AS ord FROM ` + activity + ` CROSS JOIN progress p ON p.profile_id=a.profile_id AND p.item_id=a.item_id JOIN catalog_entities i ON i.id=a.item_id JOIN catalog_kinds k ON k.id=i.kind` +
 		` WHERE a.profile_id=? AND ` + libraries + ` AND i.retired=0 AND EXISTS(SELECT 1 FROM catalog_libraries cl WHERE cl.id=i.library_id AND cl.library_id=a.library_id) AND ` + kind +
-		` AND ` + fmt.Sprintf(homeRetired, "i.id") + ` AND a.state!='ended' AND NOT EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=p.profile_id AND d.item_id=p.item_id AND d.playback_id=p.playback_id) AND p.position>0` +
+		` AND ` + homeVisible("i.id") + ` AND ` + fmt.Sprintf(homeRetired, "i.id") + ` AND a.state!='ended' AND NOT EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=p.profile_id AND d.item_id=p.item_id AND d.playback_id=p.playback_id) AND p.position>0` +
 		` AND p.position<(SELECT COALESCE(max(NULLIF(COALESCE(l.end_seconds,s.duration)-l.start_seconds,0))*1000-CASE WHEN i.kind=9 THEN 0 ELSE 3000 END,9223372036854775807) FROM catalog_asset_links l JOIN catalog_assets s ON s.id=l.asset_id WHERE l.entity_id=i.id AND s.available=1 AND l.available=1)`
 }
 

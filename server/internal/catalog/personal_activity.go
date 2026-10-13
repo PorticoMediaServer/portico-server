@@ -79,8 +79,8 @@ func (s *Service) acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 		creditsHit = creditsStart.Valid && position >= creditsStart.Float64
 	}
 	completed := state == "ended" || ((!video || settings.VideoCompletion != "credits") && thresholdHit) || creditsHit
-	// A play has started once it is past the point where it would resume: thirty
-	// seconds at most, sooner for a short title, at once for an audiobook file.
+	// Known durations honor the viewer percentage; unknown durations start at
+	// thirty seconds. Audiobook parts keep the listening rule of one second.
 	threshold := 30.
 	if duration > 0 {
 		threshold = duration * started / 100
@@ -97,8 +97,9 @@ func (s *Service) acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 	if preferences.Bool("privacy.pauseWatchHistory") {
 		return nil
 	}
-	if counted {
-		if e = countPersonalPlay(tx, profile, entityID); e != nil {
+	personalCounted := false
+	if completed {
+		if personalCounted, e = countPersonalPlay(tx, profile, playbackID, entityID); e != nil {
 			return e
 		}
 	}
@@ -117,13 +118,27 @@ func (s *Service) acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 		return e
 	}
 	previousPosition := out.ProgressSeconds
-	meaningful := completed || position >= threshold && (positionMillis(position) != positionMillis(previousPosition) || out.LastPlayedAt == "")
+	previousLastPlayed := out.LastPlayedAt
+	meaningful := personalCounted || counted || completed && (!out.Watched || kind == int64(compactcatalog.Part) && positionMillis(position) != positionMillis(previousPosition)) || !completed && position >= threshold && (positionMillis(position) != positionMillis(previousPosition) || out.LastPlayedAt == "")
 	if meaningful {
 		out.LastPlayedAt = now
 	}
 	var blocked int
 	if e = tx.QueryRow(`SELECT (SELECT count(*) FROM personal_evidence_fences WHERE profile_id=? AND item_id=? AND playback_id=?)+(SELECT count(*) FROM playback_personal_fences f WHERE f.profile_key=? AND f.item_id=? AND f.through_ordinal>=COALESCE((SELECT accepted_ordinal FROM playback_personal_claims WHERE playback_id=? AND profile_key=f.profile_key AND item_id=f.item_id),0))+(SELECT count(*) FROM playback_personal_profile_fences f WHERE f.profile_key=? AND f.through_ordinal>=COALESCE((SELECT accepted_ordinal FROM playback_personal_claims WHERE playback_id=? AND profile_key=f.profile_key),0))`, profile, entityID, playbackID, profile, entityID, playbackID, profile, playbackID).Scan(&blocked); e != nil {
 		return e
+	}
+	// Historical observations retain history but never overwrite newer personal
+	// evidence or an explicit container watermark.
+	var latest string
+	if e = tx.QueryRow(`SELECT COALESCE(max(stamp),'') FROM (
+ SELECT authored_at AS stamp FROM personal_watched_intents WHERE profile_id=? AND item_id=?
+ UNION ALL SELECT watermark FROM container_personal_state c WHERE c.profile_id=? AND ((c.kind='show' AND c.container_id=(SELECT show_id FROM catalog_episodes WHERE entity_id=?)) OR (c.kind='season' AND c.container_id=(SELECT season_id FROM catalog_episodes WHERE entity_id=?)) OR (c.kind='album' AND c.container_id=(SELECT album_id FROM catalog_songs WHERE entity_id=?)) OR (c.kind='book' AND c.container_id=(SELECT book_id FROM catalog_book_files WHERE entity_id=?))))`, profile, entityID, profile, entityID, entityID, entityID, entityID).Scan(&latest); e != nil {
+		return e
+	}
+	for _, stamp := range []string{latest, previousLastPlayed} {
+		if at, err := time.Parse(time.RFC3339Nano, stamp); err == nil && at.After(clock) {
+			blocked++
+		}
 	}
 	for _, c := range out.Conflicts {
 		if c.Field == "watched" {
@@ -149,7 +164,7 @@ func (s *Service) acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 		}
 		if completed || position >= threshold {
 			if meaningful {
-				if e = personalstate.Write(tx, profile, entityID, out.Watched); e != nil {
+				if e = personalstate.WriteAt(tx, profile, entityID, out.Watched, clock); e != nil {
 					return e
 				}
 			}

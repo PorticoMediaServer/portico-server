@@ -9,6 +9,8 @@ import (
 
 func policyErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "stale_continuation", Status: 409, Message: "This list changed. Refresh it to continue.", Retry: apierror.AfterRefresh},
+		{Code: "operation_expired", Status: 409, Message: "The time to undo this change has passed.", Retry: apierror.Never},
 		{Code: "metadata_unavailable", Status: 503, Message: "Metadata is temporarily unavailable.", Retry: apierror.SameRequest},
 		{Code: "artwork_pending", Status: 404, Message: "Artwork is not available yet.", Retry: apierror.SameRequest},
 		{Code: "artwork_gone", Status: 410, Message: "This artwork version is no longer available.", Retry: apierror.AfterRefresh},

@@ -2042,6 +2042,11 @@ CREATE TABLE dvr_catalog_provenance(
  state TEXT NOT NULL CHECK(state IN('completed','incomplete-playable'))) STRICT;
 CREATE TABLE continue_dismissals(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,playback_id TEXT NOT NULL,PRIMARY KEY(profile_id,item_id)) STRICT;
 CREATE TABLE personal_evidence_fences(profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,playback_id TEXT NOT NULL,PRIMARY KEY(profile_id,item_id)) STRICT;
+CREATE TABLE personal_completed_plays(
+ profile_id TEXT NOT NULL,playback_id TEXT NOT NULL,
+ item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ PRIMARY KEY(profile_id,playback_id)) WITHOUT ROWID, STRICT;
+CREATE INDEX personal_completed_plays_item ON personal_completed_plays(item_id);
 CREATE TABLE personal_history(id TEXT NOT NULL,profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,started_at TEXT NOT NULL,updated_at TEXT NOT NULL,sequence INTEGER NOT NULL,position INTEGER NOT NULL,unit INTEGER NOT NULL DEFAULT 0 CHECK(unit BETWEEN 0 AND 99),completed INTEGER NOT NULL,PRIMARY KEY(profile_id,id)) STRICT;
 CREATE TABLE personal_activity_revisions(profile_id TEXT PRIMARY KEY,revision INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE saved_operation_fences(owner_key TEXT NOT NULL,domain TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(owner_key,domain,operation_id)) STRICT;
@@ -3624,9 +3629,11 @@ CREATE TABLE personal_watched_intents(profile_id TEXT NOT NULL,item_id INTEGER N
 CREATE TABLE container_personal_undo(
  token TEXT PRIMARY KEY,profile_id TEXT NOT NULL,kind TEXT NOT NULL,container_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  revision INTEGER NOT NULL,previous_watched INTEGER NOT NULL,previous_watermark TEXT NOT NULL,previous_clear TEXT NOT NULL,
- watermark TEXT NOT NULL,expires_ms INTEGER NOT NULL,
+ watermark TEXT NOT NULL,expires_ms INTEGER NOT NULL,member_count INTEGER NOT NULL,
  UNIQUE(profile_id,kind,container_id)
 ) STRICT;
+CREATE INDEX container_personal_undo_expiry ON container_personal_undo(expires_ms);
+CREATE INDEX container_personal_undo_container ON container_personal_undo(container_id);
 CREATE TABLE container_personal_undo_items(
  token TEXT NOT NULL REFERENCES container_personal_undo(token) ON DELETE CASCADE,
  item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
@@ -3634,6 +3641,7 @@ CREATE TABLE container_personal_undo_items(
  position INTEGER,unit INTEGER,playback_id TEXT,activity_at TEXT,activity_state TEXT,book_position INTEGER,
  PRIMARY KEY(token,item_id)
 ) STRICT;
+CREATE INDEX container_personal_undo_items_item ON container_personal_undo_items(item_id,token);
 CREATE TABLE personal_job_destinations(
  job_id TEXT PRIMARY KEY REFERENCES personal_jobs(id) ON DELETE CASCADE,
  kind TEXT NOT NULL,target_id TEXT NOT NULL,revision INTEGER NOT NULL,
