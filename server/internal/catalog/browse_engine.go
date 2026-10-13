@@ -157,8 +157,7 @@ func resolveBrowseSorts(pivot browsePivot, selection []BrowseSortSelection) ([]B
 
 // browseKeyedSorts reports whether every selected sort is a column of
 // `catalog_browse_rows`, which is what lets a page seek to its cursor rather than
-// skip to it. A profile sort is a correlated aggregate over the membership
-// table, and a keyset over one would evaluate it for every row it skipped.
+// skip to it. Profile sorts use their own indexed valued/rest streams.
 func browseKeyedSorts(selection []BrowseSortSelection) bool {
 	for _, entry := range selection {
 		definition, ok := browseSortByID(entry.Field)
@@ -396,9 +395,8 @@ func (s *Service) BrowseEntities(viewer Viewer, request BrowseRequest) (BrowseRe
 }
 
 // browseSelect resolves the pivot, compiles the expression and returns the
-// selected entity rows. Ranges are absolute (start/limit) and cursors are
-// revision-fenced offsets over the same compiled clause, so a virtualized grid
-// and a paged list can never disagree about membership.
+// selected entity rows. Ranges and keyset continuations share one compiled
+// clause, so a virtualized grid and a paged list agree about membership.
 func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow, error) {
 	out := BrowseResult{Entries: []ContentEntry{}, PositionIndex: []BrowsePositionAnchor{}}
 	lib, err := s.library(request.Library)
@@ -546,7 +544,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 			out.PositionIndex = anchors
 		}
-	} else if request.Query == nil && request.Cursor == "" && len(sorts) > 0 && sorts[0].Field != "playCount" && sorts[0].Field != "random" && sorts[0].Field != "releaseDate" && sorts[0].Field != "criticRating" && sorts[0].Field != "episodeCount" && sorts[0].Field != "album" && sorts[0].Field != "artist" && sorts[0].Field != "trackNumber" && sorts[0].Field != "fileSize" && sorts[0].Field != "resolution" {
+	} else if request.Query == nil && request.Cursor == "" && len(sorts) > 0 && browseHasPositionAnchors(sorts[0].Field) {
 		// Every other sort publishes anchors too (M10): title descending by
 		// letter, the rest by value buckets.
 		var anchors []BrowsePositionAnchor
@@ -976,4 +974,9 @@ func containerView(kind string) string {
 	default:
 		return kind
 	}
+}
+
+func browseHasPositionAnchors(field string) bool {
+	definition, ok := browseSortByID(field)
+	return ok && (definition.Ordering >= 0 || field == "personalRating" || field == "lastPlayed" || field == "forYou")
 }

@@ -24,9 +24,9 @@ import (
 // so a descending page is the ascending run at the mirrored position, read
 // backwards, and one block set serves both directions.
 //
-// A posted query (a filter), or more than one sort, has no blocks: its pages
-// are offsets over its order, costing what the position costs, and its total is
-// counted once per revision (a cursor carries it).
+// A posted query has no position blocks: continuation pages seek to their
+// saved keys. A direct range walks bounded keyset chunks; its total is counted
+// once per revision and carried by its cursor.
 
 // browseRowColumns selects a browseRow over e (catalog_browse_rows) and ce.
 var browseRowColumns = `pid(ce.public_id),e.entity_id,` + compactBrowseKindSQL("e.kind") + `,e.title,e.year,COALESCE(e.added_text,''),e.sort_key,COALESCE(e.duration_max,0),COALESCE(e.rating_max,0)`

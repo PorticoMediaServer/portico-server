@@ -12,6 +12,7 @@ import (
 
 	"portico.local/server/internal/facettext"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/sorttext"
 	"time"
 )
 
@@ -364,7 +365,20 @@ func (c *browseCompiler) predicate(node BrowseNode) (string, error) {
 	return c.itemPredicate(field, node)
 }
 
+func foldBrowseText(field browseField) bool {
+	switch field.ID {
+	case "collection", "memberOf", "person", "list":
+		return false
+	}
+	return field.Type == valueString || field.Type == valueSet || field.Type == valueEnum
+}
 func collated(field browseField, expression string) string {
+	if foldBrowseText(field) {
+		return "portico_filter_fold(" + expression + ")"
+	}
+	if field.ID == "collection" || field.ID == "memberOf" || field.ID == "person" || field.ID == "list" {
+		return "(" + expression + ")"
+	}
 	if field.Type == valueString || field.Type == valueEnum || field.Type == valueSet {
 		return "(" + expression + ") COLLATE NOCASE"
 	}
@@ -502,6 +516,23 @@ func (c *browseCompiler) comparison(field browseField, expression, operator stri
 		}
 	}
 	target := collated(field, expression)
+	if foldBrowseText(field) {
+		fold := func(v any) any {
+			if text, ok := v.(string); ok {
+				return sorttext.Fold(text)
+			}
+			return v
+		}
+		if values, ok := value.([]any); ok {
+			copy := make([]any, len(values))
+			for i, v := range values {
+				copy[i] = fold(v)
+			}
+			value = copy
+		} else {
+			value = fold(value)
+		}
+	}
 	switch operator {
 	case "equals":
 		c.args = append(c.args, value)
@@ -600,6 +631,9 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 }
 
 func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (string, error) {
+	if field.ID == "subtitleLanguage" {
+		return c.subtitleLanguagePredicate(field, node)
+	}
 	if field.Type == valueBoolean {
 		flag, _ := node.Value.(bool)
 		positive := (node.Operator == "equals") == flag
@@ -712,4 +746,44 @@ func (BrowseNode) JSONSchema() map[string]any {
 		"field": map[string]any{"type": "string"}, "operator": map[string]any{"type": "string"}, "value": map[string]any{},
 		"all": group, "any": group, "not": child,
 	}, "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds."}
+}
+
+// Subtitle languages come from current file evidence and the viewer's own or
+// shared subtitle revisions. Private uploads never become another viewer's
+// filter values, and obsolete revisions never claim a playable language.
+func (c *browseCompiler) subtitleLanguagePredicate(field browseField, node BrowseNode) (string, error) {
+	if node.Operator == "contains-all" {
+		values, _ := node.Value.([]any)
+		parts := []string{}
+		for _, value := range values {
+			clause, err := c.subtitleLanguagePredicate(field, BrowseNode{Field: field.ID, Operator: "equals", Value: value})
+			if err != nil {
+				return "", err
+			}
+			parts = append(parts, clause)
+		}
+		return "(" + strings.Join(parts, " AND ") + ")", nil
+	}
+	neg := node.Operator == "not-equals" || node.Operator == "not-in" || node.Operator == "is-missing"
+	if neg {
+		node.Operator = map[string]string{"not-equals": "equals", "not-in": "in", "is-missing": "is-present"}[node.Operator]
+	}
+	sources := []browseField{
+		{ID: "subtitle-attribute", Type: valueSet, Join: attributeJoin("subtitleLanguage"), Value: "ca.source_value"},
+		{ID: "subtitle-file", Type: valueSet, Join: `JOIN catalog_asset_links link ON link.entity_id=bei.item_id JOIN catalog_assets asset ON asset.id=link.asset_id JOIN asset_subtitle_facts facts ON facts.asset_id=asset.token AND facts.size=asset.size AND facts.modified_ns=asset.modified_ns AND facts.status='known' JOIN asset_subtitles track ON track.asset_id=asset.token`, Value: "track.language"},
+		{ID: "subtitle-resource", Type: valueSet, Profile: 1, Join: `JOIN subtitle_resources resource ON resource.item_id=bei.item_id AND resource.deleted=0 AND (resource.scope='shared' OR resource.owner=?) JOIN subtitle_revisions revision ON revision.resource_id=resource.id AND revision.revision=resource.current_revision JOIN catalog_assets asset ON asset.token=resource.source_id AND asset.size=revision.source_size AND asset.modified_ns=revision.source_modified_ns`, Value: "revision.language"},
+	}
+	parts := []string{}
+	for _, source := range sources {
+		clause, err := c.exists(source, func() (string, error) { return c.comparison(source, source.Value, node.Operator, node.Value) })
+		if err != nil {
+			return "", err
+		}
+		parts = append(parts, clause)
+	}
+	clause := "(" + strings.Join(parts, " OR ") + ")"
+	if neg {
+		clause = "NOT " + clause
+	}
+	return clause, nil
 }

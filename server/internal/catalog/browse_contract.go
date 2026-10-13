@@ -161,7 +161,7 @@ var browseFields = []browseField{
 		Join: `JOIN catalog_book_files bfl ON bfl.entity_id=bei.item_id JOIN catalog_books bok ON bok.entity_id=bfl.book_id`, Value: "NULLIF(bok.narrator,'')"},
 	{ID: "series", LabelKey: "browse.field.series", Type: valueSet, Operators: stringOperators(true), ControlHint: "facet-multi-select", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(bookKinds), Facet: "series",
 		Join: attributeJoin("series"), Value: "ca.source_value"},
-	{ID: "subtitleLanguage", LabelKey: "browse.field.subtitleLanguage", Type: valueSet, Operators: stringOperators(true), ControlHint: "facet-multi-select", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Join: attributeJoin("subtitleLanguage"), Value: "ca.source_value"},
+	{ID: "subtitleLanguage", LabelKey: "browse.field.subtitleLanguage", Type: valueSet, Operators: stringOperators(true), ControlHint: "facet-multi-select", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Join: attributeJoin("subtitleLanguage"), Value: "ca.source_value", Profile: 1},
 	{ID: "versions", LabelKey: "browse.field.versions", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(assetedKinds), Join: `JOIN (SELECT 1) version_scope`, Value: `(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=bei.item_id AND l.part_index=0)`},
 	{ID: "memberOf", LabelKey: "browse.field.memberOf", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(commonKinds), Join: `JOIN catalog_browse_memberships parent ON parent.item_id=bei.item_id JOIN catalog_entities container ON container.id=parent.entity_id`, Value: "pid(container.public_id)"},
 	{ID: "person", LabelKey: "browse.field.person", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Join: `JOIN catalog_credits credit ON credit.entity_id IN(bei.item_id,bei.entity_id) JOIN catalog_people person ON person.id=credit.person_id`, Value: "person.token"},
@@ -467,9 +467,13 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		}
 		out.Sorts = append(out.Sorts, BrowseSortCapability{ID: entry.ID, LabelKey: entry.LabelKey, Directions: entry.Directions, DefaultDirection: entry.DefaultDirection, Expensive: entry.ID == "forYou", Seeded: entry.ID == "random", ApplicableKinds: entry.ApplicableKinds})
 	}
-	if out.ResolvedPivot != nil && out.ResolvedPivot.Aggregate != "" {
-		for _, id := range []string{"title", "count", "recentActivity"} {
-			out.Sorts = append(out.Sorts, BrowseSortCapability{ID: id, LabelKey: "sort." + id, Directions: []string{"asc", "desc"}, DefaultDirection: map[string]string{"title": "asc", "count": "desc", "recentActivity": "desc"}[id], ApplicableKinds: out.ResolvedPivot.EntityKinds})
+	if out.ResolvedPivot == nil || out.ResolvedPivot.Aggregate != "" {
+		groupSorts := []string{"count", "recentActivity"}
+		if out.ResolvedPivot != nil {
+			groupSorts = append([]string{"title"}, groupSorts...)
+		}
+		for _, id := range groupSorts {
+			out.Sorts = append(out.Sorts, BrowseSortCapability{ID: id, LabelKey: "sort." + id, Directions: []string{"asc", "desc"}, DefaultDirection: map[string]string{"title": "asc", "count": "desc", "recentActivity": "desc"}[id], ApplicableKinds: []string{"category", "book_series"}})
 		}
 	}
 	availableFields := map[string]bool{}
@@ -485,6 +489,9 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 	out.QuickFilters = quick
 	ids, filters := []string{}, []string{}
 	for _, sort := range out.Sorts {
+		if out.ResolvedPivot == nil && (sort.ID == "count" || sort.ID == "recentActivity") {
+			continue
+		}
 		ids = append(ids, sort.ID)
 	}
 	for _, field := range out.Fields {
@@ -510,6 +517,9 @@ func pivotFilterKinds(libraryKind string, pivot browsePivot) []string {
 	return entityKindMembers(pivot)
 }
 func pivotFieldIDs(libraryKind string, pivot browsePivot) []string {
+	if !pivot.Browsable && pivot.Aggregate == "" {
+		return []string{}
+	}
 	allowed := map[string]bool{}
 	for _, k := range pivotFilterKinds(libraryKind, pivot) {
 		allowed[k] = true
@@ -523,6 +533,9 @@ func pivotFieldIDs(libraryKind string, pivot browsePivot) []string {
 	return out
 }
 func pivotSortIDs(libraryKind string, pivot browsePivot) []string {
+	if !pivot.Browsable && pivot.Aggregate == "" {
+		return []string{}
+	}
 	if pivot.Aggregate != "" {
 		return []string{"title", "count", "recentActivity"}
 	}

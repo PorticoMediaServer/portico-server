@@ -306,6 +306,7 @@ export class BrowseQueryBuilder{
   if(!pivot)throw new BrowseQueryError('pivot','That view is not available in this library.');
   if(!pivot.browsable)throw new BrowseQueryError('pivot','That view is not queryable.');
   this.pivot=pivot;
+  this.capabilities={...capabilities,fields:pivot.filters?.length?capabilities.fields.filter(field=>pivot.filters?.includes(field.id)):capabilities.fields};
  }
  /** Adds one condition to the implicit conjunction. */
  where(field:string,operator:BrowseOperator,value:BrowseScalar|readonly BrowseScalar[]|null=null):this{

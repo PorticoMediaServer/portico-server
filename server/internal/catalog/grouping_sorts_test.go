@@ -180,3 +180,157 @@ func TestGroupingScopesRespectListsAndHiddenMembers(t *testing.T) {
 		}
 	}
 }
+
+func TestGroupingKindSortsFollowSourceEdits(t *testing.T) {
+	c := catalogtest.Open(t)
+	music := c.Library("music", "Music", "music", "/music")
+	artist := c.Artist(music, "Zulu")
+	album := c.Album(artist, "Zulu album", 2000)
+	for i := 3; i > 0; i-- {
+		c.Song(album, i, fmt.Sprintf("/music/%d.flac", i), fmt.Sprintf("Song %d", i))
+	}
+	tv := c.Library("tv", "TV", "tv", "/tv")
+	show := c.Show(tv, "Show", 2000)
+	season := c.Season(show, 1)
+	for i := 1; i < 4; i++ {
+		ep := c.Episode(show, season, i, fmt.Sprintf("/tv/%d.mkv", i))
+		c.Fields(ep.ID, map[string]any{"release_date": fmt.Sprintf("2020-01-%02d", i)})
+	}
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"music", "tv"}}
+	for _, field := range []string{"album", "artist", "trackNumber"} {
+		for _, direction := range []string{"asc", "desc"} {
+			got := walkBrowse(t, s, v, BrowseRequest{Library: "music", Pivot: "songs", Sort: []BrowseSortSelection{{Field: field, Direction: direction}}, Limit: 1})
+			if len(got) != 3 {
+				t.Fatalf("%s %s %+v", field, direction, got)
+			}
+			if field == "trackNumber" && direction == "asc" && got[0].Title != "Song 1" {
+				t.Fatal("track order")
+			}
+		}
+	}
+	for _, field := range []string{"episodeCount", "latestAired"} {
+		got := walkBrowse(t, s, v, BrowseRequest{Library: "tv", Pivot: "shows", Sort: []BrowseSortSelection{{Field: field, Direction: "desc"}}, Limit: 1})
+		if len(got) != 1 || got[0].ID != show.Public {
+			t.Fatalf("%s %+v", field, got)
+		}
+	}
+	var count int
+	var latest string
+	if err := c.DB.QueryRow(`SELECT episode_count,latest_aired_key FROM catalog_browse_rows WHERE entity_id=?`, show.ID).Scan(&count, &latest); err != nil || count != 3 || latest != "2020-01-03T00:00:00.000Z" {
+		t.Fatalf("episode keys %d %s %v", count, latest, err)
+	}
+	c.Fields(artist.ID, map[string]any{"title": "Alpha"})
+	c.Fields(album.ID, map[string]any{"title": "Alpha album"})
+	c.Drain()
+	var stale int
+	if err := c.DB.QueryRow(`SELECT count(*) FROM catalog_browse_rows WHERE kind=7 AND (artist_key NOT LIKE 'alpha%' OR album_key NOT LIKE 'alpha%')`).Scan(&stale); err != nil || stale != 0 {
+		t.Fatalf("rename left %d stale keys: %v", stale, err)
+	}
+	c.Fields(show.ID, map[string]any{"title": "New show"})
+	c.Drain()
+}
+
+func TestGroupingCursorSurvivesRemovedAnchorAndFencesSeed(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("m", "Movies", "movie", "/m")
+	for i := 0; i < 7; i++ {
+		item := c.Movie(library, fmt.Sprintf("/m/%d.mkv", i), fmt.Sprintf("Movie %d", i), 2000)
+		c.Fields(item.ID, map[string]any{"release_date": fmt.Sprintf("2020-01-%02d", i+1)})
+	}
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
+	r := BrowseRequest{Library: "m", Pivot: "movies", Sort: []BrowseSortSelection{{Field: "releaseDate", Direction: "asc"}}, Limit: 2}
+	first, err := s.BrowseEntities(v, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.Exec(`DELETE FROM catalog_entities WHERE public_id=pid_blob(?)`, first.Entries[1].ID)
+	c.Drain()
+	r.Cursor = first.PageInfo.NextCursor
+	next, err := s.BrowseEntities(v, r)
+	if err != nil || len(next.Entries) != 2 || next.Entries[0].Title != "Movie 2" {
+		t.Fatalf("removed anchor %+v %v", next, err)
+	}
+	r.Cursor = ""
+	r.Sort = []BrowseSortSelection{{Field: "random", Direction: "asc", Seed: 123}}
+	first, err = s.BrowseEntities(v, r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Cursor = first.PageInfo.NextCursor
+	r.Sort[0].Seed = 124
+	if _, err = s.BrowseEntities(v, r); err == nil {
+		t.Fatal("cursor accepted another seed")
+	}
+}
+
+func TestGroupingTextFiltersFoldCaseAndAccents(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("m", "Movies", "movie", "/m")
+	film := c.Movie(library, "/m/a.mkv", "Amélie", 2000)
+	c.Genres(film.ID, "fixture", "Comédie")
+	c.Drain()
+	s := New(c.DB)
+	for _, node := range []BrowseNode{{Field: "title", Operator: "contains", Value: "amelie"}, {Field: "title", Operator: "equals", Value: "AMÉLIE"}, {Field: "genre", Operator: "equals", Value: "COMEDIE"}, {Field: "genre", Operator: "contains-all", Value: []any{"comédie"}}} {
+		got := walkBrowse(t, s, Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}, BrowseRequest{Library: "m", Pivot: "movies", Query: &node, Limit: 1})
+		if len(got) != 1 || got[0].ID != film.Public {
+			t.Fatalf("%+v: %+v", node, got)
+		}
+	}
+}
+
+func TestGroupingSubtitleFilterReadsCurrentEvidenceAndPrivateUploads(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("m", "Movies", "movie", "/m")
+	item := c.Movie(library, "/m/a.mkv", "Film", 2000)
+	c.Exec(`INSERT INTO asset_subtitle_facts(asset_id,revision,size,modified_ns,origin_us,timing_known,status,fingerprint) SELECT token,1,size,modified_ns,0,1,'known','f' FROM catalog_assets WHERE id=?`, item.Asset)
+	c.Exec(`INSERT INTO asset_subtitles(id,asset_id,origin,locator,stream_index,format,language,title,is_default,is_forced,reason) VALUES('file-caption',?,'embedded','stream1',1,'srt','fr','French',0,0,'')`, item.Token)
+	c.Exec(`INSERT INTO subtitle_resources(id,item_id,source_id,scope,owner,current_revision) VALUES('private-caption',?,?,'personal','p',1)`, item.ID, item.Token)
+	c.Exec(`INSERT INTO subtitle_revisions(resource_id,revision,digest,size,format,language,title,origin,rights,original_digest,source_size,source_modified_ns,source_facts_revision,created_at) SELECT 'private-caption',1,'d',1,'srt','es','Spanish','upload','owner','d',size,modified_ns,1,'now' FROM catalog_assets WHERE id=?`, item.Asset)
+	c.Drain()
+	s := New(c.DB)
+	for _, tc := range []struct {
+		profile, language string
+		want              int
+	}{{"p", "fr", 1}, {"other", "fr", 1}, {"p", "es", 1}, {"other", "es", 0}} {
+		got := walkBrowse(t, s, Viewer{Profile: tc.profile, Fence: tc.profile, Libraries: []string{"m"}}, BrowseRequest{Library: "m", Pivot: "movies", Query: &BrowseNode{Field: "subtitleLanguage", Operator: "equals", Value: tc.language}, Limit: 1})
+		if len(got) != tc.want {
+			t.Fatalf("%s %s %+v", tc.profile, tc.language, got)
+		}
+	}
+	c.Exec(`UPDATE asset_subtitle_facts SET size=size+1 WHERE asset_id=?`, item.Token)
+	got := walkBrowse(t, s, Viewer{Profile: "p", Fence: "p", Libraries: []string{"m"}}, BrowseRequest{Library: "m", Pivot: "movies", Query: &BrowseNode{Field: "subtitleLanguage", Operator: "equals", Value: "fr"}, Limit: 1})
+	if len(got) != 0 {
+		t.Fatal("obsolete subtitle evidence still matched")
+	}
+}
+
+func TestGroupingOrderCountsAndRecentAddition(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("m", "Movies", "movie", "/m")
+	for i := 0; i < 9; i++ {
+		item := c.Movie(library, fmt.Sprintf("/m/%d.mkv", i), fmt.Sprintf("Film %d", i), 1990)
+		year := 1980
+		if i < 2 {
+			year = 1970
+		} else if i < 5 {
+			year = 2000
+		}
+		c.Fields(item.ID, map[string]any{"year": year, "added_text": fmt.Sprintf("2026-01-%02dT00:00:00.000Z", i+1)})
+	}
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
+	for _, tc := range []struct {
+		field, direction string
+		want             []string
+	}{{"title", "asc", []string{"decade:1970", "decade:1980", "decade:2000"}}, {"count", "desc", []string{"decade:1980", "decade:2000", "decade:1970"}}, {"recentActivity", "desc", []string{"decade:1980", "decade:2000", "decade:1970"}}} {
+		got := entryIDs(walkBrowse(t, s, v, BrowseRequest{Library: "m", Pivot: "categories", Sort: []BrowseSortSelection{{Field: tc.field, Direction: tc.direction}}, Limit: 1}))
+		if !reflect.DeepEqual(got, tc.want) {
+			t.Fatalf("%s %s: %v", tc.field, tc.direction, got)
+		}
+	}
+}

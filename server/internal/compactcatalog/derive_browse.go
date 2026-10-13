@@ -506,7 +506,14 @@ func deriveItemMetrics(ctx context.Context, tx *sql.Tx, k Key, limit int, touche
 	}
 	var duration, rating sql.NullFloat64
 	var added sql.NullString
+	var air string
+	var critic float64
+	var size, resolution int64
 	if exists {
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT strftime('%Y-%m-%dT%H:%M:%fZ',release_date) FROM catalog_item_details WHERE entity_id=?1),''),COALESCE((SELECT max(value) FROM metadata_ratings WHERE item_id=?1 AND provider IN('metacritic','rottentomatoes')),0),COALESCE(max(a.size),0),COALESCE(max(a.height),0) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?1`, k.ID).Scan(&air, &critic, &size, &resolution); err != nil {
+			return false, err
+		}
+
 		if err = tx.QueryRowContext(ctx, `SELECT max(a.duration) FROM catalog_asset_links l JOIN catalog_assets a ON a.id=l.asset_id WHERE l.entity_id=?`, k.ID).Scan(&duration); err != nil {
 			return false, err
 		}
@@ -531,9 +538,9 @@ func deriveItemMetrics(ctx context.Context, tx *sql.Tx, k Key, limit int, touche
 			return false, err
 		}
 		if exists {
-			if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_browse_member_metrics(entity_id,item_id,source,duration,rating,added)
- SELECT m.entity_id,m.item_id,m.source,?,?,? FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
- WHERE m.entity_id=? AND m.item_id=? AND m.source=?`, duration, rating, added, edge.entity, k.ID, edge.source); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_browse_member_metrics(entity_id,item_id,source,duration,rating,added,air_key,critic,file_size,resolution)
+ SELECT m.entity_id,m.item_id,m.source,?,?,?,?,?,?,? FROM catalog_browse_memberships m JOIN catalog_browse_rows r ON r.entity_id=m.entity_id
+ WHERE m.entity_id=? AND m.item_id=? AND m.source=?`, duration, rating, added, air, critic, size, resolution, edge.entity, k.ID, edge.source); err != nil {
 				return false, err
 			}
 		}

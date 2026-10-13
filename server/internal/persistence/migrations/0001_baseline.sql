@@ -533,11 +533,16 @@ CREATE TABLE catalog_browse_member_metrics(
  duration REAL,
  rating REAL,
  added TEXT,
+ air_key TEXT NOT NULL DEFAULT '',critic REAL NOT NULL DEFAULT 0,file_size INTEGER NOT NULL DEFAULT 0,resolution INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY(entity_id,item_id,source)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_browse_metric_item ON catalog_browse_member_metrics(item_id,entity_id,source);
 CREATE INDEX catalog_browse_metric_duration ON catalog_browse_member_metrics(entity_id,duration DESC) WHERE duration IS NOT NULL;
 CREATE INDEX catalog_browse_metric_rating ON catalog_browse_member_metrics(entity_id,rating DESC) WHERE rating IS NOT NULL;
 CREATE INDEX catalog_browse_metric_added ON catalog_browse_member_metrics(entity_id,added DESC) WHERE added IS NOT NULL;
+CREATE INDEX catalog_browse_metric_air_key ON catalog_browse_member_metrics(entity_id,air_key DESC);
+CREATE INDEX catalog_browse_metric_critic ON catalog_browse_member_metrics(entity_id,critic DESC);
+CREATE INDEX catalog_browse_metric_file_size ON catalog_browse_member_metrics(entity_id,file_size DESC);
+CREATE INDEX catalog_browse_metric_resolution ON catalog_browse_member_metrics(entity_id,resolution DESC);
 CREATE TABLE catalog_browse_metric_cursors(
  domain INTEGER NOT NULL,
  entity_id INTEGER NOT NULL,
@@ -6116,16 +6121,16 @@ END;
 CREATE TRIGGER catalog_browse_rows_retain_delete BEFORE DELETE ON catalog_browse_rows WHEN (SELECT retaining FROM catalog_generations WHERE singleton=1)=1 BEGIN
  INSERT INTO catalog_browse_rows_previous(generation,present,entity_id,library_id,kind,title,sort_key,head,year,added_text,item_id,rating_key,label_key,available,recent,backdrop,duration_max,rating_max,recent_text,release_key,latest_aired_key,critic_key,episode_count,album_key,artist_key,track_key,file_size,resolution_key,random_key) SELECT generation,1,OLD.entity_id,OLD.library_id,OLD.kind,OLD.title,OLD.sort_key,OLD.head,OLD.year,OLD.added_text,OLD.item_id,OLD.rating_key,OLD.label_key,OLD.available,OLD.recent,OLD.backdrop,OLD.duration_max,OLD.rating_max,OLD.recent_text,OLD.release_key,OLD.latest_aired_key,OLD.critic_key,OLD.episode_count,OLD.album_key,OLD.artist_key,OLD.track_key,OLD.file_size,OLD.resolution_key,OLD.random_key FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id) DO NOTHING;
 END;
-CREATE INDEX catalog_browse_previous_release_key ON catalog_browse_rows_previous(generation,library_id,kind,release_key,entity_id);
-CREATE INDEX catalog_browse_previous_latest_aired_key ON catalog_browse_rows_previous(generation,library_id,kind,latest_aired_key,entity_id);
-CREATE INDEX catalog_browse_previous_critic_key ON catalog_browse_rows_previous(generation,library_id,kind,critic_key,entity_id);
-CREATE INDEX catalog_browse_previous_episode_count ON catalog_browse_rows_previous(generation,library_id,kind,episode_count,entity_id);
-CREATE INDEX catalog_browse_previous_album_key ON catalog_browse_rows_previous(generation,library_id,kind,album_key,entity_id);
-CREATE INDEX catalog_browse_previous_artist_key ON catalog_browse_rows_previous(generation,library_id,kind,artist_key,entity_id);
-CREATE INDEX catalog_browse_previous_track_key ON catalog_browse_rows_previous(generation,library_id,kind,track_key,entity_id);
-CREATE INDEX catalog_browse_previous_file_size ON catalog_browse_rows_previous(generation,library_id,kind,file_size,entity_id);
-CREATE INDEX catalog_browse_previous_resolution_key ON catalog_browse_rows_previous(generation,library_id,kind,resolution_key,entity_id);
-CREATE INDEX catalog_browse_previous_random_key ON catalog_browse_rows_previous(generation,library_id,kind,random_key,entity_id);
+CREATE INDEX catalog_browse_release_key_previous ON catalog_browse_rows_previous(generation,library_id,kind,release_key,entity_id);
+CREATE INDEX catalog_browse_latest_aired_key_previous ON catalog_browse_rows_previous(generation,library_id,kind,latest_aired_key,entity_id);
+CREATE INDEX catalog_browse_critic_key_previous ON catalog_browse_rows_previous(generation,library_id,kind,critic_key,entity_id);
+CREATE INDEX catalog_browse_episode_count_previous ON catalog_browse_rows_previous(generation,library_id,kind,episode_count,entity_id);
+CREATE INDEX catalog_browse_album_key_previous ON catalog_browse_rows_previous(generation,library_id,kind,album_key,entity_id);
+CREATE INDEX catalog_browse_artist_key_previous ON catalog_browse_rows_previous(generation,library_id,kind,artist_key,entity_id);
+CREATE INDEX catalog_browse_track_key_previous ON catalog_browse_rows_previous(generation,library_id,kind,track_key,entity_id);
+CREATE INDEX catalog_browse_file_size_previous ON catalog_browse_rows_previous(generation,library_id,kind,file_size,entity_id);
+CREATE INDEX catalog_browse_resolution_key_previous ON catalog_browse_rows_previous(generation,library_id,kind,resolution_key,entity_id);
+CREATE INDEX catalog_browse_random_key_previous ON catalog_browse_rows_previous(generation,library_id,kind,random_key,entity_id);
 CREATE TABLE catalog_browse_blocks_previous(generation INTEGER NOT NULL,present INTEGER NOT NULL,library_id INTEGER,kind INTEGER,ordering INTEGER,sort_value ANY,entity_id INTEGER,total INTEGER,PRIMARY KEY(generation,library_id,kind,ordering,sort_value,entity_id)) WITHOUT ROWID, STRICT;
 CREATE VIEW catalog_browse_blocks_serving AS
  SELECT r.library_id,r.kind,r.ordering,r.sort_value,r.entity_id,r.total FROM catalog_browse_blocks r WHERE NOT EXISTS(SELECT 1 FROM catalog_generations g JOIN catalog_browse_blocks_previous p ON p.generation=g.generation WHERE g.singleton=1 AND g.retaining=1 AND p.library_id=r.library_id AND p.kind=r.kind AND p.ordering=r.ordering AND p.sort_value=r.sort_value AND p.entity_id=r.entity_id)
@@ -6178,18 +6183,18 @@ END;
 CREATE TRIGGER catalog_browse_memberships_retain_delete BEFORE DELETE ON catalog_browse_memberships WHEN (SELECT retaining FROM catalog_generations WHERE singleton=1)=1 BEGIN
  INSERT INTO catalog_browse_memberships_previous(generation,present,entity_id,item_id,source) SELECT generation,1,OLD.entity_id,OLD.item_id,OLD.source FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id,item_id,source) DO NOTHING;
 END;
-CREATE TABLE catalog_browse_member_metrics_previous(generation INTEGER NOT NULL,present INTEGER NOT NULL,entity_id INTEGER,item_id INTEGER,source INTEGER,duration REAL,rating REAL,added TEXT,PRIMARY KEY(generation,entity_id,item_id,source)) WITHOUT ROWID, STRICT;
+CREATE TABLE catalog_browse_member_metrics_previous(generation INTEGER NOT NULL,present INTEGER NOT NULL,entity_id INTEGER,item_id INTEGER,source INTEGER,duration REAL,rating REAL,added TEXT,air_key TEXT,critic REAL,file_size INTEGER,resolution INTEGER,PRIMARY KEY(generation,entity_id,item_id,source)) WITHOUT ROWID, STRICT;
 CREATE VIEW catalog_browse_member_metrics_serving AS
- SELECT r.entity_id,r.item_id,r.source,r.duration,r.rating,r.added FROM catalog_browse_member_metrics r WHERE NOT EXISTS(SELECT 1 FROM catalog_generations g JOIN catalog_browse_member_metrics_previous p ON p.generation=g.generation WHERE g.singleton=1 AND g.retaining=1 AND p.entity_id=r.entity_id AND p.item_id=r.item_id AND p.source=r.source)
- UNION ALL SELECT p.entity_id,p.item_id,p.source,p.duration,p.rating,p.added FROM catalog_browse_member_metrics_previous p WHERE p.generation=(SELECT generation FROM catalog_generations WHERE singleton=1 AND retaining=1) AND p.present=1;
+ SELECT r.entity_id,r.item_id,r.source,r.duration,r.rating,r.added,r.air_key,r.critic,r.file_size,r.resolution FROM catalog_browse_member_metrics r WHERE NOT EXISTS(SELECT 1 FROM catalog_generations g JOIN catalog_browse_member_metrics_previous p ON p.generation=g.generation WHERE g.singleton=1 AND g.retaining=1 AND p.entity_id=r.entity_id AND p.item_id=r.item_id AND p.source=r.source)
+ UNION ALL SELECT p.entity_id,p.item_id,p.source,p.duration,p.rating,p.added,p.air_key,p.critic,p.file_size,p.resolution FROM catalog_browse_member_metrics_previous p WHERE p.generation=(SELECT generation FROM catalog_generations WHERE singleton=1 AND retaining=1) AND p.present=1;
 CREATE TRIGGER catalog_browse_member_metrics_retain_insert BEFORE INSERT ON catalog_browse_member_metrics WHEN (SELECT retaining FROM catalog_generations WHERE singleton=1)=1 AND NOT EXISTS(SELECT 1 FROM catalog_browse_member_metrics r WHERE r.entity_id=NEW.entity_id AND r.item_id=NEW.item_id AND r.source=NEW.source) BEGIN
- INSERT INTO catalog_browse_member_metrics_previous(generation,present,entity_id,item_id,source,duration,rating,added) SELECT generation,0,NEW.entity_id,NEW.item_id,NEW.source,NEW.duration,NEW.rating,NEW.added FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id,item_id,source) DO NOTHING;
+ INSERT INTO catalog_browse_member_metrics_previous(generation,present,entity_id,item_id,source,duration,rating,added,air_key,critic,file_size,resolution) SELECT generation,0,NEW.entity_id,NEW.item_id,NEW.source,NEW.duration,NEW.rating,NEW.added,NEW.air_key,NEW.critic,NEW.file_size,NEW.resolution FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id,item_id,source) DO NOTHING;
 END;
 CREATE TRIGGER catalog_browse_member_metrics_retain_update BEFORE UPDATE ON catalog_browse_member_metrics WHEN (SELECT retaining FROM catalog_generations WHERE singleton=1)=1 BEGIN
- INSERT INTO catalog_browse_member_metrics_previous(generation,present,entity_id,item_id,source,duration,rating,added) SELECT generation,1,OLD.entity_id,OLD.item_id,OLD.source,OLD.duration,OLD.rating,OLD.added FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id,item_id,source) DO NOTHING;
+ INSERT INTO catalog_browse_member_metrics_previous(generation,present,entity_id,item_id,source,duration,rating,added,air_key,critic,file_size,resolution) SELECT generation,1,OLD.entity_id,OLD.item_id,OLD.source,OLD.duration,OLD.rating,OLD.added,OLD.air_key,OLD.critic,OLD.file_size,OLD.resolution FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id,item_id,source) DO NOTHING;
 END;
 CREATE TRIGGER catalog_browse_member_metrics_retain_delete BEFORE DELETE ON catalog_browse_member_metrics WHEN (SELECT retaining FROM catalog_generations WHERE singleton=1)=1 BEGIN
- INSERT INTO catalog_browse_member_metrics_previous(generation,present,entity_id,item_id,source,duration,rating,added) SELECT generation,1,OLD.entity_id,OLD.item_id,OLD.source,OLD.duration,OLD.rating,OLD.added FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id,item_id,source) DO NOTHING;
+ INSERT INTO catalog_browse_member_metrics_previous(generation,present,entity_id,item_id,source,duration,rating,added,air_key,critic,file_size,resolution) SELECT generation,1,OLD.entity_id,OLD.item_id,OLD.source,OLD.duration,OLD.rating,OLD.added,OLD.air_key,OLD.critic,OLD.file_size,OLD.resolution FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id,item_id,source) DO NOTHING;
 END;
 CREATE TABLE catalog_home_buckets_previous(generation INTEGER NOT NULL,present INTEGER NOT NULL,library_id INTEGER,kind INTEGER,available INTEGER,recent INTEGER,backdrop INTEGER,rating_key TEXT,label_key TEXT,dated INTEGER,retired INTEGER,total INTEGER,PRIMARY KEY(generation,library_id,kind,available,recent,backdrop,rating_key,label_key,dated,retired)) WITHOUT ROWID, STRICT;
 CREATE VIEW catalog_home_buckets_serving AS
@@ -6474,3 +6479,36 @@ CREATE TRIGGER catalog_facet_members_retain_delete BEFORE DELETE ON catalog_face
  INSERT INTO catalog_facet_members_previous(generation,present,entity_id,field,value,library_id,rating_key,label_key,recent_key) SELECT generation,1,OLD.entity_id,OLD.field,OLD.value,OLD.library_id,OLD.rating_key,OLD.label_key,OLD.recent_key FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id,field,value) DO NOTHING;
 END;
 CREATE INDEX catalog_facet_members_previous_group ON catalog_facet_members_previous(generation,library_id,field,value,recent_key,entity_id);
+
+CREATE TABLE catalog_browse_episode_counts(entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,total INTEGER NOT NULL CHECK(total>=0)) STRICT;
+CREATE TRIGGER catalog_browse_episode_join AFTER INSERT ON catalog_browse_memberships WHEN NEW.source IN(1,2) BEGIN
+ INSERT INTO catalog_browse_episode_counts(entity_id,total) VALUES(NEW.entity_id,1) ON CONFLICT(entity_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER catalog_browse_episode_leave AFTER DELETE ON catalog_browse_memberships WHEN OLD.source IN(1,2) BEGIN
+ UPDATE catalog_browse_episode_counts SET total=max(0,total-1) WHERE entity_id=OLD.entity_id;
+END;
+CREATE TRIGGER catalog_browse_episode_move AFTER UPDATE OF entity_id,source ON catalog_browse_memberships WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.source IS NOT NEW.source BEGIN
+ UPDATE catalog_browse_episode_counts SET total=max(0,total-1) WHERE entity_id=OLD.entity_id AND OLD.source IN(1,2);
+ INSERT INTO catalog_browse_episode_counts(entity_id,total) SELECT NEW.entity_id,1 WHERE NEW.source IN(1,2) ON CONFLICT(entity_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER catalog_browse_sort_parent_title AFTER UPDATE OF title,sort_key ON catalog_entities WHEN NEW.kind IN(5,6) AND (OLD.title IS NOT NEW.title OR OLD.sort_key IS NOT NEW.sort_key) BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(34,NEW.id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER catalog_browse_sort_album_artist AFTER UPDATE OF artist_id ON catalog_albums WHEN OLD.artist_id IS NOT NEW.artist_id BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(34,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+
+CREATE TABLE catalog_personal_play_totals(profile_id TEXT NOT NULL,entity_id INTEGER NOT NULL,total INTEGER NOT NULL CHECK(total>=0),PRIMARY KEY(profile_id,entity_id)) WITHOUT ROWID, STRICT;
+CREATE TRIGGER catalog_personal_plays_join AFTER INSERT ON catalog_personal_sort_members BEGIN
+ INSERT INTO catalog_personal_play_totals(profile_id,entity_id,total) VALUES(NEW.profile_id,NEW.entity_id,NEW.play_count)
+ ON CONFLICT(profile_id,entity_id) DO UPDATE SET total=total+excluded.total;
+END;
+CREATE TRIGGER catalog_personal_plays_leave AFTER DELETE ON catalog_personal_sort_members BEGIN
+ UPDATE catalog_personal_play_totals SET total=max(0,total-OLD.play_count) WHERE profile_id=OLD.profile_id AND entity_id=OLD.entity_id;
+ DELETE FROM catalog_personal_play_totals WHERE profile_id=OLD.profile_id AND entity_id=OLD.entity_id AND total=0;
+END;
+CREATE TRIGGER catalog_personal_plays_move AFTER UPDATE OF play_count,profile_id,entity_id ON catalog_personal_sort_members BEGIN
+ UPDATE catalog_personal_play_totals SET total=max(0,total-OLD.play_count) WHERE profile_id=OLD.profile_id AND entity_id=OLD.entity_id;
+ INSERT INTO catalog_personal_play_totals(profile_id,entity_id,total) VALUES(NEW.profile_id,NEW.entity_id,NEW.play_count)
+ ON CONFLICT(profile_id,entity_id) DO UPDATE SET total=total+excluded.total;
+END;

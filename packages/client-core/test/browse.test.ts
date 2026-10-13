@@ -83,8 +83,8 @@ test('a filter, sort, pivot or quick filter this app cannot read is not offered 
   assert.deepEqual([parsed.fields[2].complexity, parsed.fields[2].cost, 'future' in parsed.fields[2]], ['advanced', 'indexed-join', false]);
   assert.deepEqual(parsed.sorts.map(v => [v.id, v.directions, v.defaultDirection, v.expensive]), [['title', ['asc'], 'asc', false], ['year', ['asc', 'desc'], 'desc', true]]);
   assert.deepEqual(parsed.pivots, [
-    {id: 'movies', labelKey: 'library.movies', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['grid'], browsable: true},
-    {id: 'unsure', labelKey: 'library.unsure', entityKinds: [], defaultSort: [], supportedViews: [], browsable: false},
+    {id: 'movies', labelKey: 'library.movies', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['grid'], sorts: [], filters: [], browsable: true},
+    {id: 'unsure', labelKey: 'library.unsure', entityKinds: [], defaultSort: [], supportedViews: [], sorts: [], filters: [], browsable: false},
   ]);
   assert.deepEqual(parsed.quickFilters.map(f => f.id), ['favorites']);
 });
@@ -240,4 +240,22 @@ test('pin arrangements are read and written as server state', () => {
   assert.throws(() => pinOrderRequest(-1, []), /cannot be saved/i);
   assert.deepEqual(libraryNavigationRequest(0, ['a']), {expectedRevision: 0, pinnedLibraryIds: ['a']});
   assert.throws(() => libraryNavigationRequest(0, ['a', 'a']), /cannot be saved/i);
+});
+
+test('surface options and a stable random seed survive parsing and request building', () => {
+  const raw=capabilitiesPayload();
+  raw.pivots[1].sorts=['title','random'];raw.pivots[1].filters=['title'];raw.pivots[1].paging='keyset';
+  raw.resolvedPivot={...raw.pivots[1]};raw.queryLimits.maximumSorts=1;
+  raw.sorts.push({id:'random',labelKey:'sort.random',directions:['asc','desc'],defaultDirection:'asc',expensive:false,seeded:true,applicableKinds:['movie']});
+  raw.surfaces=[{id:'library',endpoint:'/v1/libraries/{id}/browse',sorts:['title','random'],filters:['title'],paging:'keyset'}];
+  const parsed=parseBrowseCapabilities(raw);
+  assert.deepEqual(parsed.resolvedPivot?.sorts,['title','random']);
+  assert.equal(parsed.surfaces?.[0].paging,'keyset');
+  assert.deepEqual(new BrowseQueryBuilder(parsed).sort('random','asc',123).build().sort,[{field:'random',direction:'asc',seed:123}]);
+  assert.throws(()=>new BrowseQueryBuilder(parsed).sort('year'),BrowseQueryError);
+  assert.throws(()=>new BrowseQueryBuilder(parsed).sort('title','asc',1),BrowseQueryError);
+  assert.throws(()=>new BrowseQueryBuilder(parsed).sort('random','asc',-1),BrowseQueryError);
+  assert.throws(()=>new BrowseQueryBuilder(parsed).sort('random','asc',4294967296),BrowseQueryError);
+  const page=parseBrowseResult(resultPayload({applied:{query:null,sort:[{field:'random',direction:'asc',seed:123}]}}));
+  assert.equal(page.applied.sort[0].seed,123);
 });

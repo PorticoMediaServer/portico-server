@@ -112,11 +112,13 @@ func stepPersonalSortMember(ctx context.Context, tx *sql.Tx, limit int) (int, er
 			return 0, err
 		}
 	}
-	rows, err := tx.QueryContext(ctx, `WITH current AS (
-	 SELECT p.profile_id,p.item_id FROM (SELECT profile_id,item_id FROM personal_items UNION SELECT profile_id,item_id FROM personal_play_counts) p WHERE p.item_id=? AND p.profile_id>? ORDER BY p.profile_id LIMIT ?
-	), prior AS (
-	 SELECT DISTINCT profile_id,item_id FROM catalog_personal_sort_members INDEXED BY catalog_personal_sort_member_item_id WHERE item_id=? AND profile_id>? ORDER BY profile_id,item_id LIMIT ?
-	) SELECT profile_id,item_id FROM current UNION SELECT profile_id,item_id FROM prior ORDER BY profile_id,item_id LIMIT ?`, item, after, limit, item, after, limit, limit)
+	rows, err := tx.QueryContext(ctx, `WITH items AS (
+ SELECT profile_id,item_id FROM personal_items WHERE item_id=?1 AND profile_id>?2 ORDER BY profile_id LIMIT ?3
+), plays AS (
+ SELECT profile_id,item_id FROM personal_play_counts WHERE item_id=?1 AND profile_id>?2 ORDER BY profile_id LIMIT ?3
+), current AS (SELECT profile_id,item_id FROM items UNION SELECT profile_id,item_id FROM plays ORDER BY profile_id,item_id LIMIT ?3), prior AS (
+ SELECT DISTINCT profile_id,item_id FROM catalog_personal_sort_members INDEXED BY catalog_personal_sort_member_item_id WHERE item_id=?1 AND profile_id>?2 ORDER BY profile_id,item_id LIMIT ?3
+) SELECT profile_id,item_id FROM current UNION SELECT profile_id,item_id FROM prior ORDER BY profile_id,item_id LIMIT ?3`, item, after, limit)
 	if err != nil {
 		return 0, err
 	}
@@ -226,7 +228,7 @@ func stepPersonalSortBackfill(ctx context.Context, tx *sql.Tx, limit int) (int, 
 	if done {
 		return 0, nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT profile_id,item_id FROM (SELECT profile_id,item_id FROM personal_items UNION SELECT profile_id,item_id FROM personal_play_counts) WHERE (profile_id,item_id)>(?,?) ORDER BY profile_id,item_id LIMIT ?`, afterProfile, afterItem, limit)
+	rows, err := tx.QueryContext(ctx, `WITH items AS(SELECT profile_id,item_id FROM personal_items WHERE (profile_id,item_id)>(?1,?2) ORDER BY profile_id,item_id LIMIT ?3),plays AS(SELECT profile_id,item_id FROM personal_play_counts WHERE (profile_id,item_id)>(?1,?2) ORDER BY profile_id,item_id LIMIT ?3) SELECT profile_id,item_id FROM items UNION SELECT profile_id,item_id FROM plays ORDER BY profile_id,item_id LIMIT ?3`, afterProfile, afterItem, limit)
 	if err != nil {
 		return 0, err
 	}
@@ -337,7 +339,7 @@ func refreshPersonalSortEntity(ctx context.Context, tx *sql.Tx, profile string, 
 		return err
 	}
 	var plays int
-	if err := tx.QueryRowContext(ctx, `SELECT COALESCE(sum(play_count),0) FROM catalog_personal_sort_members WHERE profile_id=? AND entity_id=?`, profile, entity).Scan(&plays); err != nil {
+	if err := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT total FROM catalog_personal_play_totals WHERE profile_id=? AND entity_id=?),0)`, profile, entity).Scan(&plays); err != nil {
 		return err
 	}
 	month, year := personalDateKeys(last)

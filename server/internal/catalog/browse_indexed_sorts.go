@@ -188,7 +188,7 @@ func (s *Service) indexedPersonalPage(p pageShape, definition browseSort, desc b
 			if desc {
 				direction = "DESC"
 			}
-			order = key + ` ` + direction + `,e.entity_id ` + direction
+			order = key + ` ` + direction + `,personal.entity_id ` + direction
 		} else {
 			where += ` AND NOT EXISTS(SELECT 1 FROM catalog_personal_sort_rows personal WHERE personal.profile_id=? AND personal.entity_id=e.entity_id AND personal.` + column + `>` + zero + `)`
 		}
