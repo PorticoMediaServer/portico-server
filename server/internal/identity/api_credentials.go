@@ -10,14 +10,20 @@ import (
 
 // API keys and personal access tokens.
 //
-// A key or token is not a second kind of authority. It is a session of the
-// member who made it, with three differences: it does not rotate, it lasts
-// until it is revoked or reaches the expiry its maker chose, and the HTTP edge
-// holds it to the scopes it was given. Everything else is the session
-// machinery unchanged — the same family row, the same live checks of the
-// account, the profile, the epoch and the device on every request — so a
-// member who is removed, disabled or signed out everywhere loses their keys
-// and tokens in the same statement that ends their sessions.
+// A key or token is not a second kind of authority: it acts as the member who
+// made it, and every request it makes gets the same live checks of the account,
+// the profile, the role and the device that a session gets. It is stored in the
+// same family tables so that all of that code applies to it unchanged, and the
+// HTTP edge holds it to the scopes it was given.
+//
+// Its lifetime, though, is its own. It does not rotate, and it ends only when
+// it is revoked, when it reaches the expiry its maker chose, or when its member
+// is disabled or deleted. Changing a password or signing out everywhere ends a
+// member's sessions and leaves their keys and tokens working: an owner who
+// changes their password must not silently break what they have connected. The
+// rules that keep the session machinery from ending a credential are triggers
+// in the schema (api_credential_*), so they hold for every present and future
+// path that ends sessions.
 //
 // Two rules keep a credential from ever being used as an unscoped session:
 //
@@ -178,7 +184,9 @@ func (s *Service) IssueAPICredentialTx(ctx context.Context, tx *sql.Tx, maker Pr
 	return out, ctx.Err()
 }
 
-// RevokeAPICredentialTx ends a key or token: the family is revoked, whatever
+// RevokeAPICredentialTx ends a key or token whose credential row the caller has
+// already marked revoked in this transaction (until it is, the schema refuses
+// to revoke its family): the family is revoked, whatever
 // hangs off it (queues, playback, streams) retires through the same hook a
 // sign-out uses, and its device row goes so it no longer shows in device lists.
 func (s *Service) RevokeAPICredentialTx(ctx context.Context, tx *sql.Tx, familyID, deviceID string) error {

@@ -45,7 +45,7 @@ Refusals:
 
 | Status | `code` | Meaning |
 |---|---|---|
-| `401` | `unauthorized` | The secret is unknown, revoked or expired, or the member behind it can no longer sign in. |
+| `401` | `unauthorized` | The secret is unknown, revoked or expired, or its member has been disabled or deleted. |
 | `403` | `insufficient_scope` | The credential was not given the scope this operation needs; `reason` names the scope. |
 | `403` | `session_required` | This operation is for signed-in sessions only. |
 | `403` | `not_permitted` / `forbidden` | The scope is fine but the member's role is not (a member's token on an owner's route). |
@@ -103,7 +103,7 @@ list_member_access_tokens)`) show `hint` (the last characters of the secret),
 | `awaiting_approval` | The owner approves new devices by hand, and a member's new token waits for that approval like any new device. |
 | `expired` | Past its `expiresAt`. |
 | `revoked` | Revoked where it is managed. |
-| `ended` | The member's sessions were ended and this went with them; `endedReason` says why when the server recorded it. |
+| `ended` | It stopped working without being revoked by hand; `endedReason` says why (`member_disabled`, `profile_deleted`, `not_approved`). |
 
 Revoke with `DELETE /v1/admin/api-keys/{id} (portico.openapi.json, operationId
 revoke_api_key)`, `DELETE /v1/me/access-tokens/{id} (portico.openapi.json,
@@ -119,16 +119,29 @@ rate.
 
 ### What ends a key or token
 
-A key or token is a session of its member that does not rotate. Anything that
-ends **all** of a member's sessions ends their keys and tokens too:
+A key or token has a lifetime of its own. It stops working only when:
 
-- the member's password is changed, or they "sign out everywhere";
-- the member is removed or disabled, or their role or library access is changed;
-- the profile the credential was made under is deleted.
+- it is **revoked** (by whoever made it, or by the owner);
+- it reaches its **`expiresAt`**;
+- its member is **disabled or deleted** (enabling the member again does not
+  bring it back; make a new one);
+- the profile it was made under is deleted.
 
-This is deliberate: there is no way for a credential to outlive the access of
-the person it acts as. After such a change, make a new key and update whatever
-used the old one.
+It does **not** stop when its member changes their password, signs out
+everywhere, or signs out a device, and it does not stop when the owner changes
+the member's library access. Those end the member's signed-in sessions and
+leave what they have connected working.
+
+A key or token always acts as its member **as they are now**. If the member's
+role is lowered it can no longer do what that role allowed (the calls answer
+`403`), and if their library access is narrowed it sees less; if the member is
+promoted it can do more, but never beyond the scopes it was given.
+
+**Restoring a backup.** Keys and tokens are part of the server's database, so a
+restore brings back the ones that existed when the backup was taken, and they
+keep working. A key that was revoked *after* that backup is therefore valid
+again once the older database is restored: after restoring, check the lists and
+revoke anything that should not be there.
 
 ## Limits
 

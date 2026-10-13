@@ -5668,9 +5668,50 @@ CREATE TABLE api_credentials(
  account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE, profile_id TEXT NOT NULL,
  name TEXT NOT NULL, scopes TEXT NOT NULL, secret_hash TEXT NOT NULL UNIQUE, hint TEXT NOT NULL,
  family_id TEXT NOT NULL UNIQUE, device_id TEXT NOT NULL,
- created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL DEFAULT 0, revoked_ms INTEGER NOT NULL DEFAULT 0) STRICT;
+ created_ms INTEGER NOT NULL, expires_ms INTEGER NOT NULL DEFAULT 0, revoked_ms INTEGER NOT NULL DEFAULT 0,
+ ended_reason TEXT NOT NULL DEFAULT '') STRICT;
 CREATE INDEX api_credentials_page ON api_credentials(kind,created_ms DESC,id DESC);
 CREATE INDEX api_credentials_account ON api_credentials(account_id,kind,created_ms DESC,id DESC);
+-- A key or token has a lifetime of its own. It ends when it is revoked, when
+-- it expires, or when its member is disabled or deleted, and at no other time:
+-- not when the member changes their password, not when they sign out
+-- everywhere, not when the owner edits their access. The session machinery
+-- ends every session of a member in several places and will grow more; these
+-- rules are kept here, in the schema, so none of those places can end a key by
+-- accident and none has to know keys exist.
+--
+-- 1. While its credential is live, a credential's family does not stay revoked.
+--    Whatever revokes it (a sweep of every family of the account, or anything
+--    written later) is undone for that row in the same statement, so the
+--    revocation is never visible outside the transaction and the other rows
+--    of the sweep are revoked exactly as before. Revoking a key marks the
+--    credential first, after which its family is revoked like any other.
+CREATE TRIGGER api_credential_family_guard AFTER UPDATE OF revoked ON authorization_session_families
+ WHEN NEW.revoked=1 AND OLD.revoked=0 AND EXISTS(SELECT 1 FROM api_credentials c WHERE c.family_id=NEW.id AND c.revoked_ms=0) BEGIN
+ UPDATE authorization_session_families SET revoked=0,revoked_reason='',revoked_at='' WHERE id=NEW.id;
+END;
+-- 2. Ending a member's sessions moves the account's epoch, and a session whose
+--    epoch is behind is refused. A live credential's family moves with it.
+CREATE TRIGGER api_credential_epoch AFTER UPDATE OF epoch ON accounts WHEN NEW.epoch<>OLD.epoch BEGIN
+ UPDATE authorization_session_families SET epoch=NEW.epoch
+  WHERE id IN(SELECT family_id FROM api_credentials WHERE account_id=NEW.id AND revoked_ms=0);
+END;
+-- 3. A credential acts as its member, so it holds the role its member holds
+--    now: lowered when they are demoted, raised when they are promoted, always
+--    within the scopes it was given. A credential made under a profile that is
+--    not the account's main one is a member's, as that profile's sessions are.
+CREATE TRIGGER api_credential_role AFTER UPDATE OF role ON direct_memberships WHEN NEW.role<>OLD.role BEGIN
+ UPDATE authorization_session_families SET role=NEW.role
+  WHERE id IN(SELECT family_id FROM api_credentials WHERE account_id=NEW.account_id AND revoked_ms=0)
+   AND profile_id=(SELECT profile_id FROM accounts WHERE id=NEW.account_id);
+END;
+-- 4. Disabling a member ends their keys and tokens for good: enabling the
+--    member again does not bring them back.
+CREATE TRIGGER api_credential_member_disabled AFTER UPDATE OF disabled ON direct_memberships WHEN NEW.disabled=1 AND OLD.disabled=0 BEGIN
+ UPDATE api_credentials SET revoked_ms=CAST((julianday('now')-2440587.5)*86400000 AS INTEGER),ended_reason='member_disabled' WHERE account_id=NEW.account_id AND revoked_ms=0;
+ UPDATE authorization_session_families SET revoked=1,revoked_reason='membership_removed'
+  WHERE revoked=0 AND id IN(SELECT family_id FROM api_credentials WHERE account_id=NEW.account_id);
+END;
 -- Kept apart from api_credentials so that recording a use never looks like a
 -- change of authority.
 CREATE TABLE api_credential_use(

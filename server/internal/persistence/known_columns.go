@@ -182,6 +182,7 @@ api_credential_use.requests
 api_credentials.account_id
 api_credentials.created_ms
 api_credentials.device_id
+api_credentials.ended_reason
 api_credentials.expires_ms
 api_credentials.family_id
 api_credentials.hint

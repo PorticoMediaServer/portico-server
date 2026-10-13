@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -162,7 +163,7 @@ func TestCredentialScopeNeverRaisesTheMemberBehindIt(t *testing.T) {
 	}
 }
 
-func TestCredentialEndsWithTheMembersSessionsAndItsOwnExpiry(t *testing.T) {
+func TestCredentialExpiresWhenItsMakerChose(t *testing.T) {
 	f := administrationFixtureNew(t)
 	expiring := time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339)
 	token := issueCredential(t, f, "/v1/me/access-tokens", f.member, `{"operationId":"token-expiry-1","name":"Short","scopes":["read"],"expiresAt":"`+expiring+`"}`)
@@ -196,20 +197,177 @@ func TestCredentialEndsWithTheMembersSessionsAndItsOwnExpiry(t *testing.T) {
 	if w := f.call("GET", "/v1/me", token.Secret, ""); w.Code != 401 {
 		t.Fatalf("token outlived its family horizon: %d %s", w.Code, w.Body)
 	}
-	// Whatever ends every session of the member ends their tokens.
 	if w := f.call("GET", "/v1/me", lasting.Secret, ""); w.Code != 200 {
-		t.Fatalf("lasting token: %d %s", w.Code, w.Body)
+		t.Fatalf("a token with no expiry: %d %s", w.Code, w.Body)
 	}
-	if _, err := f.deps.DB.Exec(`UPDATE accounts SET epoch=epoch+1 WHERE id='member'`); err != nil {
+}
+
+// endSessions does what every "end this member's sessions" path does: revoke
+// the member's families for a reason and move the account's epoch.
+func endSessions(t *testing.T, f administrationFixture, account string, reason identity.RevocationReason) {
+	t.Helper()
+	err := dbwork.WithWriteTx(context.Background(), f.deps.DB, dbwork.ClassSecurityFence, func(tx *sql.Tx) error {
+		if e := identity.RevokeFamiliesMatchingTx(context.Background(), tx, reason, `authority='local' AND account_id=?`, account); e != nil {
+			return e
+		}
+		_, e := tx.Exec(`UPDATE accounts SET epoch=epoch+1 WHERE id=?`, account)
+		return e
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (f administrationFixture) session(t *testing.T, account, role string) string {
+	t.Helper()
+	var epoch int
+	if err := f.deps.DB.QueryRow(`SELECT epoch FROM accounts WHERE id=?`, account).Scan(&epoch); err != nil {
+		t.Fatal(err)
+	}
+	out, err := f.deps.Identity.Issue(account, account+"-profile", "local", role, epoch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return out.AccessToken
+}
+
+func TestPasswordChangeAndSignOutEverywhereKeepKeysWorking(t *testing.T) {
+	f := administrationFixtureNew(t)
+	// Sessions made before and after the credentials, so the statement that
+	// ends them meets a credential in the middle of its rows.
+	before := f.session(t, "owner", "owner")
+	key := issueCredential(t, f, "/v1/admin/api-keys", f.owner, `{"operationId":"key-lasting-1","name":"Download manager","scopes":["read","library"]}`)
+	token := issueCredential(t, f, "/v1/me/access-tokens", f.owner, `{"operationId":"token-lasting-1","name":"Script","scopes":["admin"]}`)
+	after := f.session(t, "owner", "owner")
+	works := func(when string) {
+		t.Helper()
+		if w := f.call("GET", "/v1/me", key.Secret, ""); w.Code != 200 {
+			t.Fatalf("%s: the key stopped working: %d %s", when, w.Code, w.Body)
+		}
+		if w := f.call("GET", "/v1/admin/access/members", token.Secret, ""); w.Code != 200 {
+			t.Fatalf("%s: the token stopped working: %d %s", when, w.Code, w.Body)
+		}
+	}
+	works("at first")
+	// The owner changes their password: every session ends, on every device.
+	endSessions(t, f, "owner", identity.RevokedPasswordChange)
+	for name, session := range map[string]string{"the first session": f.owner, "a session made before the key": before, "a session made after the key": after} {
+		if w := f.call("GET", "/v1/me", session, ""); w.Code != 401 {
+			t.Fatalf("%s survived a password change: %d %s", name, w.Code, w.Body)
+		}
+	}
+	works("after a password change")
+	// The owner signs in again and signs out everywhere, through the real path.
+	again := f.session(t, "owner", "owner")
+	if err := f.deps.Identity.SignOutEverywhere(context.Background(), again); err != nil {
+		t.Fatalf("sign out everywhere: %v", err)
+	}
+	if w := f.call("GET", "/v1/me", again, ""); w.Code != 401 {
+		t.Fatalf("a session survived sign out everywhere: %d %s", w.Code, w.Body)
+	}
+	works("after signing out everywhere")
+	// They are still listed as working and can still be revoked one at a time.
+	fresh := f.session(t, "owner", "owner")
+	w := f.call("GET", "/v1/admin/api-keys", fresh, "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"state":"active"`) || strings.Contains(w.Body.String(), `"state":"ended"`) {
+		t.Fatalf("list after ending sessions: %d %s", w.Code, w.Body)
+	}
+	if w = f.call("DELETE", "/v1/admin/api-keys/"+key.Credential.ID, fresh, ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"state":"revoked"`) {
+		t.Fatalf("revoke after ending sessions: %d %s", w.Code, w.Body)
+	}
+	if w = f.call("GET", "/v1/me", key.Secret, ""); w.Code != 401 {
+		t.Fatalf("a revoked key works: %d %s", w.Code, w.Body)
+	}
+	if w = f.call("GET", "/v1/me", token.Secret, ""); w.Code != 200 {
+		t.Fatalf("revoking one credential ended another: %d %s", w.Code, w.Body)
+	}
+	// A key's own entry is not among the member's devices, where "sign out"
+	// and "forget" would act on it by accident.
+	var listed int
+	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM identity_devices WHERE platform='api' AND approval_state='approved'`).Scan(&listed); err != nil || listed == 0 {
+		t.Fatalf("credential devices: %d %v", listed, err)
+	}
+	if w = f.call("GET", "/v1/devices", fresh, ""); w.Code == 200 && strings.Contains(w.Body.String(), "Script") {
+		t.Fatalf("a token is listed among devices: %s", w.Body)
+	}
+}
+
+func TestDisablingOrDeletingTheMemberEndsTheirKeysForGood(t *testing.T) {
+	f := administrationFixtureNew(t)
+	token := issueCredential(t, f, "/v1/me/access-tokens", f.member, `{"operationId":"token-disable-1","name":"Member script","scopes":["read"]}`)
+	other := issueCredential(t, f, "/v1/me/access-tokens", f.admin, `{"operationId":"token-disable-2","name":"Admin script","scopes":["read"]}`)
+	if w := f.call("GET", "/v1/me", token.Secret, ""); w.Code != 200 {
+		t.Fatalf("before: %d %s", w.Code, w.Body)
+	}
+	// The owner disables the member, as the member editor does.
+	endSessions(t, f, "member", identity.RevokedMembershipRemoved)
+	if _, err := f.deps.DB.Exec(`UPDATE direct_memberships SET disabled=1,revision=revision+1 WHERE account_id='member'`); err != nil {
 		t.Fatal(err)
 	}
 	dbwork.BumpAuthority()
-	if w := f.call("GET", "/v1/me", lasting.Secret, ""); w.Code != 401 {
-		t.Fatalf("token survived the member being signed out everywhere: %d %s", w.Code, w.Body)
+	if w := f.call("GET", "/v1/me", token.Secret, ""); w.Code != 401 {
+		t.Fatalf("a disabled member's token works: %d %s", w.Code, w.Body)
 	}
-	w := f.call("GET", "/v1/admin/access-tokens", f.owner, "")
-	if w.Code != 200 || !strings.Contains(w.Body.String(), `"state":"ended"`) {
-		t.Fatalf("ended token is not listed as ended: %d %s", w.Code, w.Body)
+	w := f.call("GET", "/v1/admin/access-tokens?accountId=member", f.owner, "")
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"state":"ended"`) || !strings.Contains(w.Body.String(), `"endedReason":"member_disabled"`) {
+		t.Fatalf("list after disabling: %d %s", w.Code, w.Body)
+	}
+	// Enabling the member again does not bring the token back.
+	if _, err := f.deps.DB.Exec(`UPDATE direct_memberships SET disabled=0,revision=revision+1 WHERE account_id='member'`); err != nil {
+		t.Fatal(err)
+	}
+	endSessions(t, f, "member", identity.RevokedAdminRevoke)
+	if w = f.call("GET", "/v1/me", token.Secret, ""); w.Code != 401 {
+		t.Fatalf("re-enabling the member revived their token: %d %s", w.Code, w.Body)
+	}
+	// Another member's token was not touched.
+	if w = f.call("GET", "/v1/me", other.Secret, ""); w.Code != 200 {
+		t.Fatalf("disabling one member ended another's token: %d %s", w.Code, w.Body)
+	}
+	// Deleting a member takes their tokens with them.
+	if _, err := f.deps.DB.Exec(`DELETE FROM accounts WHERE id='admin'`); err != nil {
+		t.Fatal(err)
+	}
+	dbwork.BumpAuthority()
+	if w = f.call("GET", "/v1/me", other.Secret, ""); w.Code != 401 {
+		t.Fatalf("a deleted member's token works: %d %s", w.Code, w.Body)
+	}
+	var left int
+	if err := f.deps.DB.QueryRow(`SELECT count(*) FROM api_credentials WHERE account_id='admin'`).Scan(&left); err != nil || left != 0 {
+		t.Fatalf("a deleted member's tokens are still stored: %d %v", left, err)
+	}
+}
+
+func TestACredentialHoldsTheRoleItsMemberHoldsNow(t *testing.T) {
+	f := administrationFixtureNew(t)
+	token := issueCredential(t, f, "/v1/me/access-tokens", f.admin, `{"operationId":"token-role-1","name":"Admin script","scopes":["admin"]}`)
+	narrow := issueCredential(t, f, "/v1/me/access-tokens", f.admin, `{"operationId":"token-role-2","name":"Admin reader","scopes":["read"]}`)
+	if w := f.call("GET", "/v1/admin/access/members", token.Secret, ""); w.Code != 200 {
+		t.Fatalf("an administrator's token: %d %s", w.Code, w.Body)
+	}
+	setRole := func(account, role string) {
+		t.Helper()
+		if _, err := f.deps.DB.Exec(`UPDATE direct_memberships SET role=?,revision=revision+1 WHERE account_id=?`, role, account); err != nil {
+			t.Fatal(err)
+		}
+		endSessions(t, f, account, identity.RevokedMembershipRemoved)
+	}
+	// Demoted: the token keeps working as a member's and loses administration.
+	setRole("admin", "member")
+	if w := f.call("GET", "/v1/me", token.Secret, ""); w.Code != 200 || !strings.Contains(w.Body.String(), `"role":"member"`) {
+		t.Fatalf("a demoted member's token: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("GET", "/v1/admin/access/members", token.Secret, ""); w.Code != 403 {
+		t.Fatalf("a demoted member's token still administers: %d %s", w.Code, w.Body)
+	}
+	// Promoted again: the token can do what its member can, within its scopes,
+	// and a token that was given less is still held to less.
+	setRole("admin", "admin")
+	if w := f.call("GET", "/v1/admin/access/members", token.Secret, ""); w.Code != 200 {
+		t.Fatalf("a promoted member's admin token: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("GET", "/v1/admin/access/members", narrow.Secret, ""); w.Code != 403 || registryErrorCode(t, w) != "insufficient_scope" {
+		t.Fatalf("a read token administers after a promotion: %d %s", w.Code, w.Body)
 	}
 }
 

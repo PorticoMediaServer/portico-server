@@ -15,9 +15,11 @@ import (
 
 // API keys and personal access tokens.
 //
-// Both are the same thing underneath: a session of the member who made it that
-// does not rotate (internal/identity/api_credentials.go), plus the row here
-// that names it and lists its scopes. They differ only in who makes them and
+// Both are the same thing underneath: a credential that acts as the member who
+// made it (internal/identity/api_credentials.go), plus the row here that names
+// it and lists its scopes. Its lifetime is its own: it ends when it is revoked,
+// when it expires, or when its member is disabled or deleted, and not when the
+// member changes their password or signs out everywhere. They differ only in who makes them and
 // where they are listed: an API key is made by the owner in the console; a
 // personal access token is made by any member for themselves.
 //
@@ -69,9 +71,9 @@ type Credential struct {
 	ExpiresAt  string `json:"expiresAt,omitempty"`
 	LastUsedAt string `json:"lastUsedAt,omitempty"`
 	// State is active, awaiting_approval, expired, revoked or ended. "ended"
-	// means the member's sessions were ended (their password changed, they were
-	// signed out everywhere, removed or their access changed) and this went
-	// with them; EndedReason says which when the server recorded it.
+	// means it stopped working without being revoked by hand; EndedReason says
+	// why: member_disabled, profile_deleted, not_approved or unavailable. A
+	// password change or "sign out everywhere" does not end a credential.
 	State       string           `json:"state"`
 	EndedReason string           `json:"endedReason,omitempty"`
 	Member      CredentialMember `json:"member"`
@@ -126,7 +128,7 @@ func NormalizeScopes(requested []string) ([]string, bool) {
 	return out, true
 }
 
-const credentialColumns = `c.id,c.kind,c.name,c.scopes,c.hint,c.created_ms,c.expires_ms,c.revoked_ms,c.account_id,c.profile_id,
+const credentialColumns = `c.id,c.kind,c.name,c.scopes,c.hint,c.created_ms,c.expires_ms,c.revoked_ms,c.ended_reason,c.account_id,c.profile_id,
  COALESCE(u.last_used_ms,0),COALESCE(f.revoked,1),COALESCE(f.revoked_reason,''),COALESCE(d.approval_state,''),
  CASE WHEN a.epoch IS NOT NULL AND a.epoch=f.epoch THEN 1 ELSE 0 END,COALESCE(a.username,''),COALESCE(p.name,''),
  COALESCE(m.disabled,1),COALESCE(p.deleted,1)`
@@ -141,10 +143,10 @@ const credentialJoins = ` FROM api_credentials c
 
 func (s *Store) credentialRow(row interface{ Scan(...any) error }) (Credential, error) {
 	var c Credential
-	var scopes, reason, approval string
+	var scopes, reason, ended, approval string
 	var created, expires, revoked, used int64
 	var familyRevoked, epochCurrent, disabled, deleted int
-	if err := row.Scan(&c.ID, &c.Kind, &c.Name, &scopes, &c.Hint, &created, &expires, &revoked, &c.Member.AccountID, &c.Member.ProfileID,
+	if err := row.Scan(&c.ID, &c.Kind, &c.Name, &scopes, &c.Hint, &created, &expires, &revoked, &ended, &c.Member.AccountID, &c.Member.ProfileID,
 		&used, &familyRevoked, &reason, &approval, &epochCurrent, &c.Member.Username, &c.Member.Profile, &disabled, &deleted); err != nil {
 		return c, err
 	}
@@ -157,17 +159,26 @@ func (s *Store) credentialRow(row interface{ Scan(...any) error }) (Credential, 
 	if used > 0 {
 		c.LastUsedAt = time.UnixMilli(used).UTC().Format(time.RFC3339)
 	}
+	_ = reason
 	switch {
+	case revoked > 0 && ended != "":
+		// Ended by something other than a person revoking it: its member was
+		// disabled.
+		c.State, c.EndedReason = "ended", ended
 	case revoked > 0:
 		c.State = "revoked"
 	case expires > 0 && expires <= s.now():
 		c.State = "expired"
-	case familyRevoked != 0 || epochCurrent == 0 || disabled != 0 || deleted != 0 || approval == "" || approval == "denied":
-		c.State = "ended"
-		c.EndedReason = reason
-		if c.EndedReason == "" {
-			c.EndedReason = "sessions_ended"
-		}
+	case disabled != 0:
+		c.State, c.EndedReason = "ended", "member_disabled"
+	case deleted != 0:
+		c.State, c.EndedReason = "ended", "profile_deleted"
+	case approval == "denied":
+		c.State, c.EndedReason = "ended", "not_approved"
+	case familyRevoked != 0 || epochCurrent == 0 || approval == "":
+		// Not expected: the schema keeps a live credential's family alive. If it
+		// happens the credential does not work, and the list must say so.
+		c.State, c.EndedReason = "ended", "unavailable"
 	case approval == "pending":
 		c.State = "awaiting_approval"
 	default:
@@ -336,10 +347,12 @@ func (s *Store) RevokeCredential(ctx context.Context, auth Authorize, issuer *id
 			return e
 		}
 		if revoked == 0 {
-			if e = issuer.RevokeAPICredentialTx(ctx, tx, family, device); e != nil {
+			// The credential is marked first: while it is live the schema will
+			// not let its family be revoked by anything (api_credential_family_guard).
+			if _, e = tx.ExecContext(ctx, `UPDATE api_credentials SET revoked_ms=? WHERE id=? AND revoked_ms=0`, s.now(), id); e != nil {
 				return e
 			}
-			if _, e = tx.ExecContext(ctx, `UPDATE api_credentials SET revoked_ms=? WHERE id=? AND revoked_ms=0`, s.now(), id); e != nil {
+			if e = issuer.RevokeAPICredentialTx(ctx, tx, family, device); e != nil {
 				return e
 			}
 		}

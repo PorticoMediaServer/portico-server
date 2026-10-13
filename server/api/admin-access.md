@@ -103,9 +103,13 @@ and drop the duplicated columns. No wire shape has to change.
 
 ## API keys and personal access tokens
 
-A key (the owner's) or a token (any member's) is a session family of the member
-who made it that does not rotate, plus an `api_credentials` row holding its
-name, its scopes and the digest of its secret. It authenticates on every route
+A key (the owner's) or a token (any member's) acts as the member who made it.
+It is stored as a family that does not rotate plus an `api_credentials` row
+holding its name, its scopes and the digest of its secret, and it has a
+lifetime of its own: the `api_credential_*` triggers in the schema keep
+anything that ends a member's sessions (a password change, sign out
+everywhere) from ending it. It ends when revoked, when it expires, or when its
+member is disabled or deleted. It authenticates on every route
 with `Authorization: Bearer pk.…` or `pat.…`, as that member, with every live
 check a session gets; `internal/httpapi/api_gate.go` resolves it, holds it to
 the route's declared scope and to its own rate and concurrency limits before

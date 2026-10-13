@@ -1047,6 +1047,10 @@ trigger admin_revision_jobs_UPDATE
 trigger admin_revision_libraries_DELETE
 trigger admin_revision_libraries_INSERT
 trigger admin_revision_libraries_UPDATE
+trigger api_credential_epoch
+trigger api_credential_family_guard
+trigger api_credential_member_disabled
+trigger api_credential_role
 trigger artwork_album_changed
 trigger artwork_album_insert
 trigger artwork_book_part_delete
