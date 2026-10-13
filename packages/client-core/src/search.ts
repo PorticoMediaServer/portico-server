@@ -201,6 +201,7 @@ export class SearchService{
    const data=parse(raw,op,scope,this.pageSize);
    await context?.settle?.();
    if(this.disposed||generation!==this.generation||controller.signal.aborted||this.operation!==op||this.state.phase!=='ready')return;
+   if(JSON.stringify(data)===JSON.stringify(this.state.data))return;
    this.publish({data,groups:data.groups});
   }catch(error){
    if(this.disposed||generation!==this.generation||controller.signal.aborted)return;

@@ -259,6 +259,7 @@ export class SavedService {
    await context?.settle?.();
    if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted || this.commands.length || this.state.phase !== 'ready') return;
    // A playlist whose order moved elsewhere: the order loaded for arranging it here no longer describes it.
+   if (JSON.stringify(parsed) === JSON.stringify(this.state.projection) && JSON.stringify(playlist) === JSON.stringify(this.state.playlist)) return;
    const moved = !!playlist && !!this.state.playlist && playlist.revision !== this.state.playlist.revision;
    this.publish({ projection: parsed, playlist, ...(moved ? { order: null, orderLoading: false, orderError: null } : {}), pagination: { ...this.state.pagination, next: parsed.sections.filter(s => s.nextCursor).map(s => ({ sectionId: s.id, cursor: s.nextCursor })) } });
   } catch (error) {

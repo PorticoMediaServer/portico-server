@@ -307,6 +307,8 @@ export class DetailService {
       // Another viewer's answer, or one older than what is shown (a change made here has not reached this read), is not shown.
       if (data.scope.viewerFence !== this.state.data.scope.viewerFence) { await this.refresh(); return; }
       if (data.revision.catalog < this.state.data.revision.catalog || data.personal.revision < this.state.data.personal.revision) return;
+      // Nothing on the page changed: nothing is published, so nothing re-renders.
+      if (JSON.stringify(data) === JSON.stringify(this.state.data)) return;
       this.publish({ data });
     } catch (error) {
       if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted) return;

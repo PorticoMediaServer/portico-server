@@ -129,6 +129,8 @@ export class ShowWorkspaceService{
    const entries=data.episodes.sections[0]?.entries??[],held=this.state.anchor;
    const a=(held.expandedEpisodeId&&!entries.some(e=>e.id===held.expandedEpisodeId))||(held.focusedEpisodeId&&!entries.some(e=>e.id===held.focusedEpisodeId))?blankAnchor():held;
    op.anchor=a;
+   // Nothing on the page changed: nothing is published, so the episode list is not touched at all.
+   if(a===held&&JSON.stringify(data)===JSON.stringify(this.state.data))return;
    this.publish({data,anchor:a,pagination:Object.freeze({...this.state.pagination,nextCursor:data.episodes.sections[0]?.nextCursor||null}),seasonPagination:Object.freeze({...this.state.seasonPagination,nextCursor:data.nextSeasonCursor||null})});
   }catch(e){
    if(this.disposed||gen!==this.generation||c.signal.aborted)return;

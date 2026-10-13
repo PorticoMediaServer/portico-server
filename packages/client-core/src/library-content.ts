@@ -386,9 +386,14 @@ export class LibraryContentService {
       const result = projection(raw, route, bound, this.pageSize);
       await context?.settle?.();
       if (this.disposed || generation !== this.generation || controller.signal.aborted || this.snapshot.phase !== 'ready') return;
+      // Nothing changed on the first page: nothing is published, so nothing re-renders.
+      if (this.current.cursor === null && JSON.stringify(result) === JSON.stringify(this.snapshot.projection)) return;
       const head = Object.freeze({ serial: ++this.headSerial, sections: result.sections });
       const appended = mergeHead(this.snapshot.appended, result.sections);
-      if (this.current.cursor === null) this.publish({ projection: result, sections: result.sections, appended, head, pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze(result.sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
+      // A section that did not change is the same object as before, so a list built on it is left alone.
+      const before = new Map(this.snapshot.sections.map(s => [s.id, s]));
+      const sections = Object.freeze(result.sections.map(s => { const old = before.get(s.id); return old && JSON.stringify(old) === JSON.stringify(s) ? old : s; }));
+      if (this.current.cursor === null) this.publish({ projection: result, sections, appended, head, pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze(result.sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
       else this.publish({ head, appended });
     } catch (error) {
       if (this.disposed || generation !== this.generation || controller.signal.aborted) return;
