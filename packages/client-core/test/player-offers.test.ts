@@ -61,3 +61,45 @@ test('audio track labels read like a menu, not a probe dump',async()=>{
  assert.equal(audioTrackLabel({codec:'dts',language:'und'},3),'Track 3 · DTS');
 });
 test('retired optional audio payload cannot invalidate quality, source or subtitle offers',async()=>{for(const audioPlan of [{renditions:[]},{renditions:Array(3).fill({})},'invalid']){const d=data();d.current.delivery='hls';d.current.audioSelection='server_first_audio';d.current.subtitleSelection='disabled';d.audioPlan=audioPlan;const s=service(async()=>d);await s.select(q);assert.equal(s.getSnapshot().phase,'ready');assert(s.getSnapshot().data!.sources[0].qualities.length>0);assert.equal('audioPlan' in s.getSnapshot().data!,false);s.dispose();}});
+
+test('quiet pre-play refresh keeps choices while reading and clears them on lost authority',async()=>{
+ const pending=deferred();let calls=0;
+ const first=data();first.current=null;
+ const next=data();next.current=null;next.sources.push({...next.sources[0],id:'another-version'});
+ const s=service(async()=>++calls===1?first:pending.promise);
+ const target={libraryId:'library',itemId:'item'};
+ await s.select(target);
+ const held=s.getSnapshot().data;
+ const refreshing=s.refresh({quiet:true});
+ assert.equal(s.getSnapshot().data,held);
+ pending.resolve(next);await refreshing;
+ assert.equal(s.getSnapshot().data!.sources.length,2);
+ s.setScope(scope,{request:async()=>{throw {status:403};}});
+ await s.select(target);assert.equal(s.getSnapshot().data,null);
+ s.dispose();
+});
+
+test('quiet refresh tolerates a temporary failure but never keeps another target or revoked facts',async()=>{
+ let failure:any;
+ const d=data();d.current=null;
+ const s=service(async()=>{if(failure)throw failure;return d;});
+ const target={libraryId:'library',itemId:'item'};
+ await s.select(target);const held=s.getSnapshot().data;
+ failure={status:503};await s.refresh({quiet:true});assert.equal(s.getSnapshot().data,held);
+ failure={status:403};await s.refresh({quiet:true});assert.equal(s.getSnapshot().data,null);
+ failure=null;await s.select(target);
+ const late=deferred();s.setScope(scope,{request:async()=>late.promise as any});
+ const read=s.select({...target,itemId:'other'},true);
+ assert.equal(s.getSnapshot().data,null);s.cancel();late.resolve(d);await read;
+ assert.equal(s.getSnapshot().data,null);s.dispose();
+});
+
+test('quiet retry of an unreadable new title cannot resurrect the previous title',async()=>{
+ const d=data();d.current=null;
+ const s=service(async path=>{if(path.includes('/other/'))throw {status:503};return d;});
+ await s.select({libraryId:'library',itemId:'item'});
+ await s.select({libraryId:'library',itemId:'other'});
+ await s.refresh({quiet:true});
+ assert.equal(s.getSnapshot().data,null);
+ s.dispose();
+});

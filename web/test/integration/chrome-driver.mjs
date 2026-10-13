@@ -19,6 +19,7 @@ export class ChromeDriver {
   }
   constructor(url, output) {
     this.output = output;
+    this.started = Date.now();
     this.sequence = 0;
     this.pending = new Map();
     this.events = [];
@@ -45,7 +46,7 @@ export class ChromeDriver {
       if (event.method === 'Network.requestWillBeSent') this.requests.set(event.params.requestId, event.params.request.url);
       if (event.method === 'Runtime.exceptionThrown') this.record({kind: 'exception', detail: event.params.exceptionDetails});
       if (event.method === 'Runtime.consoleAPICalled' && ['error', 'warning'].includes(event.params.type)) this.record({kind: 'console', detail: event.params});
-      if (event.method === 'Log.entryAdded' && ['error', 'warning'].includes(event.params.entry.level)) this.record({kind: 'log', detail: event.params.entry});
+      if (event.method === 'Log.entryAdded' && ['error', 'warning'].includes(event.params.entry.level) && event.params.entry.timestamp >= this.started) this.record({kind: 'log', detail: event.params.entry});
       if (event.method === 'Network.loadingFailed') this.record({kind: 'network', url: this.requests.get(event.params.requestId), detail: event.params});
       if (event.method === 'Network.responseReceived' && event.params.response.status >= 400) this.record({kind: 'http', url: event.params.response.url, status: event.params.response.status});
     };
@@ -76,19 +77,21 @@ export class ChromeDriver {
     }
     throw new Error(`Timed out waiting for ${expression}`);
   }
-  async viewport(width, height) { await this.send('Emulation.setDeviceMetricsOverride', {width, height, deviceScaleFactor: 1, mobile: width < 600}); }
+  async viewport(width, height) { await this.send('Emulation.setDeviceMetricsOverride', {width, height, screenWidth: width, screenHeight: height, deviceScaleFactor: 1, mobile: width < 600}); }
   async screenshot(name) {
     const {data} = await this.send('Page.captureScreenshot', {format: 'png', captureBeyondViewport: false});
     const file = path.join(this.output, 'screenshots', name + '.png');
     mkdirSync(path.dirname(file), {recursive: true}); writeFileSync(file, Buffer.from(data, 'base64')); return file;
   }
-  async clickText(text, selector = 'button,a,[role="menuitem"],[role="tab"],[role="radio"]') {
-    const point = await this.evaluate(`(() => {const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.getClientRects().length && (e.innerText.trim() === ${JSON.stringify(text)} || e.getAttribute('aria-label') === ${JSON.stringify(text)})); if (!el) throw new Error('Control not found: ' + ${JSON.stringify(text)}); el.scrollIntoView({block:'center'}); const r=el.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+  async clickText(text, selector = 'button,a,[role="menuitem"],[role="tab"],[role="radio"]', index = 0) {
+    const point = await this.evaluate(`(() => {const el = [...document.querySelectorAll(${JSON.stringify(selector)})].filter(e => e.getClientRects().length && (e.innerText.trim() === ${JSON.stringify(text)} || e.getAttribute('aria-label') === ${JSON.stringify(text)}))[${index}]; if (!el) throw new Error('Control not found: ' + ${JSON.stringify(text)}); el.scrollIntoView({block:'center'}); const r=el.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+    await this.send('Input.dispatchMouseEvent', {type: 'mouseMoved', ...point});
+    await new Promise(resolve => setTimeout(resolve, 120));
     await this.send('Input.dispatchMouseEvent', {type: 'mousePressed', ...point, button: 'left', clickCount: 1});
     await this.send('Input.dispatchMouseEvent', {type: 'mouseReleased', ...point, button: 'left', clickCount: 1});
   }
   async fill(selector, value) {
-    return this.evaluate(`(() => {const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('Input not found'); const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); return true;})()`);
+    return this.evaluate(`(() => {const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('Input not found'); const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : el.tagName === 'SELECT' ? HTMLSelectElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); return true;})()`);
   }
   async inspect() {
     return this.evaluate(`({url:location.href, title:document.title, text:document.body.innerText, controls:[...document.querySelectorAll('input,select,button,a,[role="tab"]')].filter(e=>e.getClientRects().length).map(e=>({tag:e.tagName,type:e.type,id:e.id,text:e.innerText,aria:e.getAttribute('aria-label'),placeholder:e.placeholder,href:e.getAttribute('href'),value:e.type==='password'?'[redacted]':e.value,disabled:e.disabled}))})`);
