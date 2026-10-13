@@ -8803,6 +8803,9 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "engine": {
+              "type": "string"
+            },
             "id": {
               "type": "string"
             },
@@ -8849,6 +8852,38 @@ export const schemas = {
             },
             "protocol": {
               "type": "string"
+            },
+            "quality": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "maxAudioBitrateKbps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "maxHeight": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "maxVideoBitrateKbps": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "step": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "mode"
+              ],
+              "type": "object"
             },
             "startedAt": {
               "type": "string"

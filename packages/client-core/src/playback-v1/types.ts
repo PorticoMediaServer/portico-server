@@ -272,6 +272,8 @@ export function parseDevice(v: unknown): ControllableDevice {
 export type AdminSession = Readonly<{
   id: string; user: string; profile: string; device: string; itemId?: string; title: string; kind: SessionKind; state: string; positionMs: number;
   decision: Readonly<{video?: Decision; audio?: Decision; subtitles?: Decision}>; bitrateKbps?: number; bandwidthKbps?: number;
+  /** The player engine the device is playing with and the quality in force (absent for a channel). */
+  engine?: PlaybackEngine; quality?: QualityInForce;
   transcode?: Readonly<{speed?: number; hardware: boolean; throttled: boolean}>; location: 'local' | 'remote' | 'other'; startedAt?: string;
 }>;
 export function parseAdminSession(v: unknown): AdminSession {
@@ -285,6 +287,7 @@ export function parseAdminSession(v: unknown): AdminSession {
     kind: oneOf(v.kind, ['vod', 'audio', 'live', 'channel'] as const, 'other' as never), state: str(v.state), positionMs: num(v.positionMs),
     decision: Object.freeze({video: decision(d.video), audio: decision(d.audio), subtitles: decision(d.subtitles)}),
     bitrateKbps: optNum(v.bitrateKbps), bandwidthKbps: optNum(v.bandwidthKbps),
+    engine: typeof v.engine === 'string' && v.engine ? engineOf(v.engine) : undefined, quality: obj(v.quality) ? parseQuality(v.quality) : undefined,
     transcode: obj(v.transcode) ? Object.freeze({speed: optNum(v.transcode.speed), hardware: bool(v.transcode.hardware), throttled: bool(v.transcode.throttled)}) : undefined,
     location: oneOf(v.location, ['local', 'remote'] as const, 'other' as never), startedAt: typeof v.startedAt === 'string' ? v.startedAt : undefined,
   });
