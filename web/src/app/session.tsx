@@ -80,7 +80,8 @@ export type SessionValue = {
    * retrying; pages that need the server show their own state. A sign-in that has ended is
    * not a server problem: that goes to the sign-in screen (`signInHint`).
    */
-  serverProblem?: {kind: 'unreachable'; serverId: string; serverUrl: string};
+  /** `replaced`: something at the saved address answers as a different server; the saved sign-in is kept all the same. */
+  serverProblem?: {kind: 'unreachable' | 'replaced'; serverId: string; serverUrl: string};
   /** Set when a sign-in has ended (renewal refused, credential revoked, the server replaced):
    * the sign-in screen opens on the same way in, with the server and username filled in. */
   signInHint?: SignInHint;
@@ -181,7 +182,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
   const [busy, setBusy] = useState(false);
   const [restoring, setRestoring] = useState(true);
   const [restoreMessage, setRestoreMessage] = useState<string>();
-  const [offline, setOffline] = useState<{record: SelectedViewerRecord; kind: 'unreachable'}>();
+  const [offline, setOffline] = useState<{record: SelectedViewerRecord; kind: 'unreachable' | 'replaced'}>();
   const [signInHint, setSignInHint] = useState<SignInHint>();
   /** A sign-in has ended: forget it and open the sign-in screen for the same server (below). */
   const signInEnded = useRef<(serverUrl: string, session: LocalSession, username?: string, portico?: boolean) => void>(() => {});
@@ -278,13 +279,14 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
           setRestoring(false);
           return;
         }
-        // Reset only when the renewal was refused or the server now has another id (shared rule,
-        // client-core 440a731); a 400, a 404 or a mismatched saved connection keeps the sign-in.
+        // Reset only when the renewal was refused (shared rule, client-core 440a731); a 400, a 404
+        // or a mismatched saved connection keeps the sign-in, and so does an address that now
+        // answers as a different server: that answer is unsigned and must not end a valid sign-in.
         const outcome = record ? await restoreOutcome(e, {serverUrl: record.serverUrl, serverId: record.session.viewer.serverId}) : retryableServerRestore(e) ? 'retry' : 'reset';
         if (!active) return;
-        if (outcome === 'retry') {
-          setRestoreMessage('Your server is not responding. Portico keeps trying to reconnect.');
-          if (record) { setOffline({record, kind: 'unreachable'}); setRestoring(false); }
+        if (outcome === 'retry' || outcome === 'replaced') {
+          setRestoreMessage(currentI18n().t('web.restore.reconnectingBody'));
+          if (record) { setOffline({record, kind: outcome === 'replaced' ? 'replaced' : 'unreachable'}); setRestoring(false); }
           // Quick retries first, then about every two minutes (plus on 'online' and Try again),
           // with jitter, and only while the tab is visible.
           const wait = attempts < 5 ? Math.min(30000, 2000 * 2 ** attempts) : 120000;
@@ -297,7 +299,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
           if (record) {
             if (portico && isAccessRefused(e)) dropServerRef.current(record.session.viewer.serverId);
             signInEnded.current(record.serverUrl, record.session, undefined, portico);
-          } else setError('Your saved connection could not be verified. Sign in again to continue.');
+          } else setError(currentI18n().t('web.session.unverified'));
           setRestoring(false);
         }
       } finally {
@@ -328,7 +330,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
       void new HttpLocalApi(scope.serverUrl!, scope.session.accessToken).logout().catch(() => {});
       stopRefresh();
       viewer.clear();
-      void commit.clear().catch(() => {});
+      void commit.clear(scope.session).catch(() => {});
       setApi(idle());
     }
   }, [scope, account, commit, established, stopRefresh]);
@@ -505,7 +507,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
               finally { await forgetBrowserConnection(record.session); }
             }
           },
-          cleanupFailed: () => { if (operation?.isCurrent() !== false) setError('An unused server session could not be ended. It will expire on its own.'); },
+          cleanupFailed: () => { if (operation?.isCurrent() !== false) setError(currentI18n().t('web.session.unusedSessionKept')); },
         });
       } catch (e) {
         if (import.meta.env.DEV) console.error('[session] commit failed', e);
@@ -959,7 +961,8 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
     setAttachedServer(undefined);
     setSystem(undefined);
     setApi(idle());
-    void commit.clear().catch(() => setError('Server selection could not be cleared from this tab.'));
+    // Only this tab's own sign-in is removed from the browser: a profile another tab chose since stays saved.
+    void commit.clear(current.session ?? unverified).catch(() => setError(currentI18n().t('web.session.clearFailed')));
     if (current.session) {
       void forgetBrowserConnection(current.session).catch(() => {});
       void new HttpLocalApi(current.serverUrl!, current.session.accessToken).logout().catch(() => {});
@@ -995,7 +998,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
       // A Portico Account member whose session the server migrated is re-admitted, not signed out.
       if (portico && isSessionMigrated(error)) { void readmitRef.current(current.serverUrl, current.session); return; }
       signInEnded.current(current.serverUrl, current.session, portico ? undefined : local?.username, portico);
-    } else { disconnectServer(); setError('Your sign-in has ended. Sign in again.'); }
+    } else { disconnectServer(); setError(currentI18n().t('web.session.ended')); }
   };
   useEffect(() => { if (scope.phase === 'ready') setSignInHint(undefined); }, [scope.phase]);
 

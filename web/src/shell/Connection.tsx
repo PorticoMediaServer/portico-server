@@ -19,8 +19,10 @@ import s from './Shell.module.css';
  * is given back exactly as it was (see `pageAfterOutage`).
  *
  * - The remembered server couldn't be reached at launch (`serverProblem`): "Can't reach" with
- *   Try again while Portico keeps retrying. A sign-in that has ended never shows here: the app
- *   goes straight to the sign-in screen (`signInHint`, app/session.tsx).
+ *   Try again while Portico keeps retrying. When something else answers at its address, the
+ *   status says so and also offers Use another server; the saved sign-in is never dropped for
+ *   it. A sign-in that has ended never shows here: the app goes straight to the sign-in screen
+ *   (`signInHint`, app/session.tsx).
  * - A server that was working drops off (route offline, or an address answering with another
  *   identity, or a proxy answering 502/503/504 for it): "Reconnecting", after a moment so a
  *   blip never flashes one.
@@ -35,7 +37,7 @@ export function pageAfterOutage(page: {edited: boolean}): 'keep' | 'reload' {
 }
 
 export function ConnectionOverlay({children}: {children: React.ReactNode}) {
-  const {api, serverProblem, retryRestore, servers, system, serverUrl} = useSession();
+  const {api, serverProblem, retryRestore, disconnectServer, servers, system, serverUrl} = useSession();
   const i18n = useI18n();
   const route = useSyncExternalStore(api.subscribeRoute, api.getRouteSnapshot);
   const unavailable = !serverProblem && !!route && (route.phase === 'offline' || route.phase === 'identity_mismatch' || route.phase === 'probing');
@@ -63,13 +65,17 @@ export function ConnectionOverlay({children}: {children: React.ReactNode}) {
   const name = system?.name ?? servers.find(x => x.id === serverProblem?.serverId)?.name ?? friendlyHost(serverProblem?.serverUrl ?? serverUrl) ?? i18n.t('web.settings.serverFallback');
   // A live route that proves a different identity may be an impostor at the address: that reads
   // as unreachable, never as an ended sign-in.
-  const unreachable = serverProblem?.kind === 'unreachable';
+  const unreachable = !!serverProblem;
+  // Something else answers at the saved address. The sign-in is kept and Portico keeps trying;
+  // only the person can decide that their server really was set up again.
+  const replaced = serverProblem?.kind === 'replaced';
   const status = unreachable || shown ? (
     <div className={unreachable ? s.connectionStatus : s.connectionCover}>
       <StatusScreen
-        title={i18n.t('launch.reconnectingTitle')}
-        body={i18n.t('web.connection.reconnectingBody', {server: name})}
+        title={i18n.t(replaced ? 'web.connection.replacedTitle' : 'launch.reconnectingTitle')}
+        body={i18n.t(replaced ? 'web.connection.replacedBody' : 'web.connection.reconnectingBody', {server: name})}
         action={{label: i18n.t('action.tryAgain'), onClick: serverProblem ? retryRestore : () => void api.recoverRoute().catch(() => {})}}
+        secondaryAction={replaced ? {label: i18n.t('web.restore.useAnother'), onClick: disconnectServer} : undefined}
       />
     </div>
   ) : null;

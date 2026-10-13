@@ -5,7 +5,8 @@ import {BrowserProtectedStore} from './server-connections';
  * the window or restarting the computer does not sign anyone out. The server decides how long a
  * sign-in is good for (ninety days from its last use) and can end it at any moment; this only
  * stops the browser from forgetting it first. A tab keeps the viewer it started with until it
- * is reloaded.
+ * is reloaded or the server ends that sign-in; a tab whose own sign-in has ended never removes a
+ * record another tab saved since (`clearIfFamily`).
  *
  * SEC-12: the record carries the viewer's access token, so it is never script-readable
  * plaintext. It lives in IndexedDB encrypted with AES-GCM under a non-extractable key made for
@@ -49,5 +50,15 @@ export const browserViewerStorage:SelectedViewerStorage={
    await store.change(()=>undefined);
    if((await store.read())!==undefined)throw new Error('The old server credential could not be removed from this browser.');
   }
+ },
+ async clearIfFamily(sessionFamilyId){
+  await migrate();
+  // One step in the store, so a record another tab saves in the meantime is never the one removed.
+  await store.change(current=>{
+   if(!current)return undefined;
+   let family:string|undefined;
+   try{family=parseSelectedViewerRecord(current)?.session.sessionFamilyId;}catch{return undefined;}
+   return family===sessionFamilyId?undefined:current;
+  });
  },
 };
