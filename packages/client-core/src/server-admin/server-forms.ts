@@ -57,7 +57,7 @@ export const RETENTION_LIMITS: Readonly<Record<'diagnosticDays' | 'notificationD
 export function runtimeForm(deps: ServerFormDeps): DraftForm<RuntimeSettings, RuntimeStatus> {
   return new DraftForm<RuntimeSettings, RuntimeStatus>({
     load: async () => runtimeLoaded(await deps.console.settings()),
-    save: async (draft, _saved, status) => runtimeLoaded(await deps.console.applySettings(status?.revision ?? 0, draft)),
+    save: async (draft, saved, status) => runtimeLoaded(await deps.console.applySettings(status?.revision ?? 0, draft, saved)),
     validate: draft => (draft.name.trim() ? undefined : 'server.form.nameRequired'),
   });
 }

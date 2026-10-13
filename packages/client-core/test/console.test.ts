@@ -61,10 +61,11 @@ test('known revision conflicts keep drafts but permit a deliberate revised submi
  c.setDraft('runtime-settings',{revision:1,values});await assert.rejects(c.applySettings(1,values),/revision: 4/);assert.equal(c.hasUnconfirmed(),false);assert.ok(c.getDraft('runtime-settings'));
  conflict=false;assert.equal((await c.applySettings(4,values)).revision,5);c.dispose();
 });
-test('a patch or a row command that lost a race is sent again with the current revision, without a conflict shown',async()=>{
+test('an edit whose fields are unchanged is reread and retried at the current revision',async()=>{
  const sent:any[]=[];let current=4;
- const c=client(async(_path:string,_method?:string,body?:any)=>{sent.push(body);if(body.expectedRevision!==current)throw new ConsoleTransportError(409,'console_conflict',current,[]);return envelope(settings(current+1));});
- assert.equal((await c.applySettings(1,values)).revision,5);
+ const c=client(async(_path:string,method?:string,body?:any)=>{if(method==='GET')return envelope(settings(current));sent.push(body);if(body.expectedRevision!==current)throw new ConsoleTransportError(409,'console_conflict',current,[]);return envelope(settings(current+1));});
+ current=1;await c.settings();current=4;
+ assert.equal((await c.applySettings(1,{...values,name:'Renamed'})).revision,5);
  assert.deepEqual(sent.map(b=>b.expectedRevision),[1,4]);
  assert.deepEqual(sent[1].values,sent[0].values,'the same change, against the newer document');
  assert.equal(c.hasUnconfirmed(),false);c.dispose();
@@ -190,4 +191,42 @@ test('complete owner settings retain missing-title and API policies after the me
  assert.equal(read.connectionLimit,0);assert.equal(read.apiRequestsPerMinute,0);assert.equal(read.blockMemberAccessTokens,false);
  for(const retired of ['library.trashRetentionDays','secureConnectionsPolicy','treatWanAsLan'])assert.equal(retired in read,false);
  for(const bad of [{'library.missingTitles':'trash'},{'library.missingTitlesDays':0},{connectionLimit:65537},{apiRequestsPerMinute:100001},{blockMemberAccessTokens:'yes'}])assert.throws(()=>parseSettings({...settings(),requested:{...values,...bad}}));
+});
+
+test('a runtime save rebases only edited fields and preserves concurrent owner changes',async()=>{
+ let stored={...values},rev=1;const bodies:any[]=[];
+ const c=client(async(_path,method,body)=>{
+  if(method==='GET')return envelope({...settings(rev),requested:stored,effective:stored});
+  bodies.push(body);if(body.expectedRevision!==rev)throw new ConsoleTransportError(409,'console_conflict',rev,[]);
+  stored={...stored,...body.values};rev++;return envelope({...settings(rev),requested:stored,effective:stored});
+ });
+ const initial=await c.settings();stored={...stored,connectionLimit:123};rev=2;
+ try {await c.applySettings(initial.revision,{...initial.requested,name:'Renamed'});
+  assert.equal(stored.name,'Renamed');assert.equal(stored.connectionLimit,123);
+  assert.deepEqual(Object.keys(bodies.at(-1).values),['name']);
+ }finally{c.dispose();}
+});
+
+test('a runtime save keeps the draft and refuses a true conflict on an edited field',async()=>{
+ let stored={...values},rev=1;let writes=0;
+ const c=client(async(_path,method)=>{if(method==='GET')return envelope({...settings(rev),requested:stored,effective:stored});writes++;throw new ConsoleTransportError(409,'console_conflict',rev,[]);});
+ const initial=await c.settings();stored={...stored,name:'Other owner'};rev=2;
+ c.setDraft('runtime-settings',{...initial.requested,name:'My edit'});
+ try {await assert.rejects(c.applySettings(initial.revision,{...initial.requested,name:'My edit'}));assert.equal(writes,1);assert.ok(c.getDraft('runtime-settings'));}finally{c.dispose();}
+});
+
+test('a conflicting job command rereads its available actions before retrying',async()=>{
+ const job={id:'operation-one',kind:'library-scan',resource:'library',trigger:'owner',state:'running' as const,phase:'all sources',revision:2,attempt:1,createdAt:1,updatedAt:2,nextAt:3,settingsRevision:1,lane:'background-media',actions:['pause','cancel'] as ('pause'|'cancel')[]};
+ const calls:any[]=[];
+ const c=client(async(_path,method,body)=>{if(method==='GET')return envelope({items:[{...job,revision:3}],nextCursor:''});calls.push(body);if(body.expectedRevision!==3)throw new ConsoleTransportError(409,'console_conflict',3,[]);return envelope({...job,revision:4,state:'paused',actions:['resume','cancel']});});
+ try {assert.equal((await c.jobCommand(job,'pause')).state,'paused');assert.deepEqual(calls.map(x=>x.expectedRevision),[2,3]);}finally{c.dispose();}
+});
+
+test('a quiet form reload keeps its original comparison basis while an owner edits',async()=>{
+ const {DraftForm}=await import('../src/server-admin/draft-form.ts');
+ let remote={name:'Initial',limit:0};let sent:unknown;
+ const form=new DraftForm({load:async()=>({value:remote,status:{revision:1}}),save:async(draft,saved)=>{sent={draft,saved};return {value:draft};}});
+ await form.load();form.set({name:'My edit'});remote={name:'Initial',limit:123};await form.load();await form.save();
+ assert.deepEqual(sent,{draft:{name:'My edit',limit:0},saved:{name:'Initial',limit:0}});
+ form.dispose();
 });

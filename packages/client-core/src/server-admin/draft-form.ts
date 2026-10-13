@@ -66,7 +66,9 @@ export class DraftForm<T extends object, S = undefined> {
 
   private adopt(loaded: Loaded<T, S> | null, keepDraft: boolean) {
     if (loaded === null) { this.publish({loading: false, unavailable: true, loadError: undefined, saved: undefined, draft: undefined, status: undefined}); return; }
-    // A refresh while the owner is editing keeps what they typed; the saved value moves under it.
+    // Keep the comparison basis while editing: moving saved under a whole draft would turn
+    // somebody else's changed fields into local edits when this form next saves.
+    if (keepDraft && this.state.dirty) { this.publish({loading: false, loadError: undefined}); return; }
     this.publish({loading: false, unavailable: false, loadError: undefined, saved: loaded.value, status: loaded.status, draft: keepDraft && this.state.dirty ? this.state.draft : loaded.value});
   }
 
