@@ -200,7 +200,8 @@ func TestExpiredFamilyPrunesRefreshPredecessorWithoutRevocation(t *testing.T) {
 }
 
 func TestPendingDeviceReceivesNoAccountOrViewingSession(t *testing.T) {
-	s, db, _ := directFixture(t)
+	s, _, _, _ := memberWithSession(t)
+	db := s.db
 	if err := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); err != nil {
 		t.Fatal(err)
 	}
@@ -209,7 +210,7 @@ func TestPendingDeviceReceivesNoAccountOrViewingSession(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pending, err := s.DirectLoginFrom(ctx, "owner", "Testing1!", true)
+	pending, err := s.DirectLoginFrom(ctx, "member", "Testing2!", true)
 	if err != nil || !pending.DeviceApprovalPending || pending.AccountToken != "" || pending.Session != nil {
 		t.Fatal("pending device obtained working credentials", pending, err)
 	}

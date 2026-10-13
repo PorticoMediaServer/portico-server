@@ -39,6 +39,12 @@ func (d Dependencies) featureAllowed(ctx context.Context, p identity.Principal, 
 func requestFeature(r *http.Request) string {
 	path := r.URL.Path
 	switch {
+	// A profile that has had downloads turned off must still be able to hear
+	// so: renewal is how the copies already on its devices are withdrawn, and
+	// it refuses each of them by name. The plays it made while it was allowed
+	// still count. Neither route hands out anything.
+	case path == "/v1/downloads/receipts/revalidate", path == "/v1/downloads/progress":
+		return ""
 	case strings.HasPrefix(path, "/v1/downloads"), strings.HasSuffix(path, "/download-options"):
 		return "downloads"
 	case strings.HasPrefix(path, "/v1/groups"):

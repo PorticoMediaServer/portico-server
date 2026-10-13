@@ -19,26 +19,56 @@ test('target and scope switches abort and ignore late reads',async()=>{const d=d
 test('late mutation cannot start a read for the new item',async()=>{const d=deferred();const paths:string[]=[];const s=setup(async(p,m)=>{paths.push(p);if(m!=='GET')return d.promise;return p.includes('/shows/')?tv():music();});await s.select(target);const old=s.choose('2','dvd');await s.select({kind:'album',entityId:'album',libraryId:'library'});await old;d.resolve({showId:'show',status:'pending_episodes'});await tick();assert.equal(paths.length,3);assert.equal(s.getSnapshot().data!.provider,'musicbrainz');});
 test('bounded timeout works even when transport ignores abort',async()=>{const s=setup(async()=>new Promise(()=>{}),5);await s.select(target);assert.equal(s.getSnapshot().error!.code,'timeout');s.dispose();});
 test('MB album and song routes preserve edition, selected provenance and explicit search/retry',async()=>{for(const kind of ['album','song'] as const){let state=music(kind);const calls:any[]=[];const s=setup(async(p,m,b)=>{calls.push([p,m,b]);if(m==='GET')return state;state={...state,revision:state.revision+1,status:'pending',selectedId:mb,manual:true};return {entityId:kind,status:'pending'};});await s.select({kind,entityId:kind,libraryId:'library'});assert.equal(s.getSnapshot().data!.candidates[0].provenance.edition,'Edition');await s.choose(mb);await s.searchAlternatives();await s.retryProvider();assert.equal(calls[0][0],`/v1/${kind==='album'?'albums':'items'}/${kind}/metadata/musicbrainz`);assert.deepEqual(calls.filter(c=>c[1]!=='GET').map(c=>c[2]),[{expectedRevision:1,providerId:mb},{expectedRevision:2},{expectedRevision:3}]);}});
-test('malformed, oversized, wrong-scope and unknown status/action responses clear evidence',async()=>{for(const patch of [{serverId:'other'},{libraryId:'other'},{showId:'other'},{revision:1.5},{status:'invented'},{actions:['select','search']},{orders:['invented']},{candidates:Array(26).fill(tv().candidates[0])},{candidates:[tv().candidates[0],tv().candidates[0]]}]){const s=setup(async()=>({...tv(),...patch}));await s.select(target);assert.equal(s.getSnapshot().error!.code,'invalid_metadata_review');assert.equal(s.getSnapshot().data,null);}});
+test('malformed, oversized, wrong-scope and unreadable-selection responses clear evidence',async()=>{for(const patch of [{serverId:'other'},{libraryId:'other'},{showId:'other'},{revision:1.5},{viewerFence:''},{status:undefined},{providerId:'2'},{order:'invented'},{actions:'select'},{actions:Array(17).fill('select')},{orders:Array(17).fill('dvd')},{candidates:{}},{candidates:Array(26).fill(tv().candidates[0])}]){const s=setup(async()=>({...tv(),...patch}));await s.select(target);assert.equal(s.getSnapshot().error!.code,'invalid_metadata_review');assert.equal(s.getSnapshot().data,null);}});
+test('an unknown status, action, order or field keeps the review and offers only what this app knows',async()=>{
+ const s=setup(async()=>({...tv(),status:'invented',actions:['select','select','archive','retry'],orders:['dvd','streaming','dvd'],later:{nested:true}}));await s.select(target);const d=s.getSnapshot().data!;
+ assert.equal(d.status,'unresolved');assert.deepEqual(d.actions,['select','retry']);assert.deepEqual(d.orders,['dvd']);assert.deepEqual(d.candidates.map(c=>c.id),['2','1']);assert.equal('later' in d,false);
+ assert.throws(()=>s.choose('2','streaming'));assert.throws(()=>s.searchAlternatives());
+});
+test('one unreadable or repeated candidate is left out, and Select is not offered when none can be read',async()=>{
+ const [first,second]=tv().candidates;
+ const s=setup(async()=>({...tv(),candidates:[first,{...second,id:'one'},first,null,{...second,name:'n'.repeat(2049)},second]}));await s.select(target);
+ assert.deepEqual(s.getSnapshot().data!.candidates.map(c=>c.id),['2','1']);assert.deepEqual(s.getSnapshot().data!.actions,['select']);
+ const none=setup(async()=>({...tv(),actions:['select','retry'],candidates:[{...first,id:0}]}));await none.select(target);
+ assert.deepEqual(none.getSnapshot().data!.candidates,[]);assert.deepEqual(none.getSnapshot().data!.actions,['retry']);assert.throws(()=>none.choose('2','dvd'));
+});
+test('a command acknowledgement with an unknown status is accepted, and one for another entity is not',async()=>{
+ let state=tv(),ack:any={showId:'show',status:'accepted',later:1};const s=setup(async(_p,m)=>{if(m==='GET')return state;state={...state,revision:state.revision+1};return ack;});
+ await s.select(target);await s.choose('2','dvd');assert.equal(s.getSnapshot().mutationError,null);assert.equal(s.getSnapshot().data!.revision,2);
+ ack={showId:'other',status:'pending_episodes'};await s.choose('1','dvd');assert.equal(s.getSnapshot().mutationError!.code,'invalid_metadata_review');
+});
 test('same-target older revision and changed fence cannot authorize another selection',async()=>{let state=tv(3);const s=setup(async()=>state);await s.select(target);state=tv(2);await s.refresh();assert.equal(s.getSnapshot().error!.code,'metadata_scope_changed');await s.select(target);state={...tv(4),viewerFence:'different'};await s.refresh();assert.equal(s.getSnapshot().data,null);assert.throws(()=>s.choose('2','dvd'));});
 
-test('published music evidence remains distinct from candidates and rejects inconsistent track totals',async()=>{
+test('published music evidence remains distinct from candidates and is left out when its track totals disagree',async()=>{
  const published={releaseId:mb,releaseGroupId:mb,recordingId:'',trackId:'',title:'Selected edition',artist:'Provider artist',date:'2026',country:'CA',observedAt:'2026-09-05T00:00:00Z',trackTitle:'',trackStatus:'',reconciliationPending:true,totalTracks:3,matchedTracks:1,pendingTracks:1,reviewTracks:1};
  const s=setup(async()=>({...music(),published}));await s.select({kind:'album',entityId:'album',libraryId:'library'});
  assert.equal(s.getSnapshot().data!.published!.title,'Selected edition');assert.equal(s.getSnapshot().data!.candidates[0].title,'Album');assert.ok(Object.isFrozen(s.getSnapshot().data!.published));
- for(const patch of [{matchedTracks:3},{recordingId:'bad'},{pendingTracks:-1},{releaseId:''}]){const broken=setup(async()=>({...music(),published:{...published,...patch}}));await broken.select({kind:'album',entityId:'album',libraryId:'library'});assert.equal(broken.getSnapshot().error!.code,'invalid_metadata_review');}
+ // Published evidence that cannot be read is left out alone; the candidates and the review state are kept.
+ for(const patch of [{matchedTracks:3},{recordingId:'bad'},{pendingTracks:-1},{releaseId:''}]){const broken=setup(async()=>({...music(),published:{...published,...patch}}));await broken.select({kind:'album',entityId:'album',libraryId:'library'});const d=broken.getSnapshot().data!;assert.equal(d.published,undefined);assert.equal(d.candidates.length,1);assert.equal(d.status,'needs_selection');}
+ const detailed=setup(async()=>({...music(),published:{...published,details:'unreadable'},observation:'unreadable'}));await detailed.select({kind:'album',entityId:'album',libraryId:'library'});
+ assert.equal(detailed.getSnapshot().data!.published!.title,'Selected edition');assert.equal('details' in detailed.getSnapshot().data!.published!,false);assert.equal('observation' in detailed.getSnapshot().data!,false);
+ // The music policy carries the revision a later change sends back, so an unreadable one still refuses the answer.
+ const policy=setup(async()=>({...music(),policy:'unreadable'}));await policy.select({kind:'album',entityId:'album',libraryId:'library'});assert.equal(policy.getSnapshot().phase,'error');assert.equal(policy.getSnapshot().data,null);
 });
 
 
-test('MB current evidence is required, bounded and detached from caller mutation',async()=>{
+test('MB current evidence is required per candidate, bounded and detached from caller mutation',async()=>{
  const value=music();const s=setup(async()=>value);await s.select({kind:'album',entityId:'album',libraryId:'library'});
  const c=s.getSnapshot().data!.candidates[0];assert.equal(c.confidence,0.5);assert.equal(c.decision,'candidate');assert.ok(Object.isFrozen(c.reasons));value.candidates[0].reasons.push('later');assert.equal(c.reasons!.length,4);
- for(const patch of [{confidence:undefined},{confidence:NaN},{confidence:1.1},{reasons:[]},{reasons:['duplicate','duplicate']},{reasons:Array(17).fill('reason')},{decision:'automatic'}]){
-  const raw=music();Object.assign(raw.candidates[0],patch);const broken=setup(async()=>raw);await broken.select({kind:'album',entityId:'album',libraryId:'library'});assert.equal(broken.getSnapshot().error!.code,'invalid_metadata_review');
+ // A candidate without readable evidence is left out alone, and with none left Select is not offered.
+ for(const patch of [{confidence:undefined},{confidence:NaN},{confidence:1.1},{reasons:[]},{reasons:[7,'two\nlines']},{id:'not-a-uuid'}]){
+  const raw=music();Object.assign(raw.candidates[0],patch);const broken=setup(async()=>raw);await broken.select({kind:'album',entityId:'album',libraryId:'library'});
+  assert.deepEqual(broken.getSnapshot().data!.candidates,[]);assert.deepEqual(broken.getSnapshot().data!.actions,['retry','search']);
  }
+ // A repeated or unreadable reason is listed once or left out, and an unknown decision is left off the candidate.
+ const loose=music();Object.assign(loose.candidates[0],{reasons:['exact_title','exact_title',7,'exact_artist'],decision:'automatic',later:true});const kept=setup(async()=>({...loose,status:'invented',actions:['select','merge','select']}));await kept.select({kind:'album',entityId:'album',libraryId:'library'});
+ const k=kept.getSnapshot().data!;assert.deepEqual(k.candidates[0].reasons,['exact_title','exact_artist']);assert.equal('decision' in k.candidates[0],false);assert.equal('later' in k.candidates[0],false);assert.equal(k.status,'unresolved');assert.deepEqual(k.actions,['select']);
+ // Bounds and the current selection still refuse the whole answer.
+ for(const patch of [{reasons:Array(17).fill('reason')}]){const raw=music();Object.assign(raw.candidates[0],patch);const broken=setup(async()=>raw);await broken.select({kind:'album',entityId:'album',libraryId:'library'});assert.equal(broken.getSnapshot().error!.code,'invalid_metadata_review');}
+ for(const patch of [{selectedId:'not-a-uuid'},{manual:'yes'},{kind:'song'},{entityId:'other'}]){const broken=setup(async()=>({...music(),...patch}));await broken.select({kind:'album',entityId:'album',libraryId:'library'});assert.equal(broken.getSnapshot().error!.code,'invalid_metadata_review');}
 });
 test('MB continuation flag requires current payload and survives zero pending track counts',async()=>{
  const published={releaseId:mb,releaseGroupId:mb,recordingId:'',trackId:'',title:'Edition',artist:'Artist',date:'',country:'',observedAt:'2026-09-05',trackTitle:'',trackStatus:'',totalTracks:0,matchedTracks:0,pendingTracks:0,reviewTracks:0,reconciliationPending:true};
  const s=setup(async()=>({...music(),published}));await s.select({kind:'album',entityId:'album',libraryId:'library'});assert.equal(s.getSnapshot().data!.published!.reconciliationPending,true);
- for(const flag of [undefined,'true',0]){const broken=setup(async()=>({...music(),published:{...published,reconciliationPending:flag}}));await broken.select({kind:'album',entityId:'album',libraryId:'library'});assert.equal(broken.getSnapshot().error!.code,'invalid_metadata_review');}
+ for(const flag of [undefined,'true',0]){const broken=setup(async()=>({...music(),published:{...published,reconciliationPending:flag}}));await broken.select({kind:'album',entityId:'album',libraryId:'library'});assert.equal(broken.getSnapshot().data!.published,undefined);}
 });

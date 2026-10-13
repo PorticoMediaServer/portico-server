@@ -25,7 +25,7 @@ func TestPlaybackV1CapabilitiesAndOptions(t *testing.T) {
 		t.Fatalf("unchanged document bumped the revision: %q", w.Header().Get("ETag"))
 	}
 	changed := webCapabilities()
-	changed["form"] = "desktop"
+	changed["client"] = map[string]any{"family": "web", "form": "desktop"}
 	w = f.call("PUT", path, map[string]string{"If-Match": `"7"`}, changed, 412, nil)
 	var stale struct {
 		Error struct {
@@ -34,7 +34,7 @@ func TestPlaybackV1CapabilitiesAndOptions(t *testing.T) {
 		} `json:"error"`
 	}
 	_ = json.Unmarshal(w.Body.Bytes(), &stale)
-	if stale.Error.Code != "revision_mismatch" || stale.Error.Current.Revision != 1 || stale.Error.Current.Capabilities.Form != "browser" {
+	if stale.Error.Code != "revision_mismatch" || stale.Error.Current.Revision != 1 || stale.Error.Current.Document.Client.Form != "browser" {
 		t.Fatalf("412 body %s", w.Body.String())
 	}
 	if w = f.call("PUT", path, map[string]string{"If-Match": "1"}, changed, 204, nil); w.Header().Get("ETag") != `"2"` {
@@ -42,7 +42,7 @@ func TestPlaybackV1CapabilitiesAndOptions(t *testing.T) {
 	}
 	var doc playbackv1.CapabilitiesDocument
 	f.call("GET", path, nil, nil, 200, &doc)
-	if doc.Revision != 2 || doc.Capabilities.Form != "desktop" {
+	if doc.Revision != 2 || doc.Document.Client.Form != "desktop" || doc.Document.EngineSetting != "automatic" {
 		t.Fatalf("document %+v", doc)
 	}
 	// Strict requests: an unknown field is refused, an unknown value is kept.
@@ -52,7 +52,7 @@ func TestPlaybackV1CapabilitiesAndOptions(t *testing.T) {
 		t.Fatalf("unknown field accepted: %d", w.Code)
 	}
 	future := webCapabilities()
-	future["video"] = []map[string]any{{"codec": "h267", "maxBitDepth": 12}}
+	nativeEngine(future)["video"] = []map[string]any{{"codec": "h267", "bitDepths": []int{12}}}
 	f.call("PUT", path, nil, future, 204, nil)
 	f.call("PUT", path, nil, webCapabilities(), 204, nil)
 

@@ -3,7 +3,6 @@ import type {ContentEntry, ContentSection} from '@core/library-content.ts';
 import {captionFor, continueTitle, formatDuration, iconFor, isContinueRow, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {cardCaptionOf, continueCaptionOf} from '../../app/content';
 import {useEntryHref, useOpenEntry} from '../../app/open';
-import {currentI18n} from '../../app/i18n';
 import {accumulatePage, mergeSectionPages, SECTION_WINDOW_AT, type AppendedSections, type PageStore} from './section-pages';
 import {selectableKind, useIsSelected, useSelectionActions, useSelectionActive, useSelectionSection} from '../../app/selection';
 import type {MenuAnchor} from '../../ui';
@@ -16,11 +15,12 @@ import {serverTextLabel} from '@core/presentation/index.ts';
  * row, a title page's More like X) is the catalogue message with its params, else its fallback;
  * other headings keep the server's words as before.
  */
-export function sectionHeading(heading: ContentHeading): string {
-  return heading.key.startsWith('home.row.') ? serverTextLabel(currentI18n(), heading, heading.fallback) : heading.fallback;
+export function sectionHeading(i18n: I18n, heading: ContentHeading): string {
+  return heading.key.startsWith('home.row.') ? serverTextLabel(i18n, heading, heading.fallback) : heading.fallback;
 }
 import {Button, Card, Grid, Icon, ListRow, Section, Shelf, Skeleton, Surface, Inset, WindowedGrid, createStaticCollection, gridColumnMin, type ShelfDensity, type GridDensity} from '../../ui';
 import l from './EntryListRow.module.css';
+import {useI18n, type I18n} from '../../app/i18n';
 
 function densityFor(kind: ContentEntry['kind']): ShelfDensity & GridDensity {
   const shape = shapeFor(kind);
@@ -63,6 +63,7 @@ export function useAppendedSections(routeKey: string, pageCursor: string | null,
 export {SECTION_WINDOW_AT};
 
 export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libraryId, noSelect, loadingMore, origin, alwaysSeeAll}: {/** See all even when the row shows everything it has (a saved view's page has more than its row). */ alwaysSeeAll?: boolean; section: ContentSection; onSeeAll?: () => void; onMore?: () => void; hideTitle?: boolean; inShow?: boolean; libraryId?: string; /** WEB-LIB-08: Home rows don't offer the selection checkbox. */ noSelect?: boolean; /** A "More" page is on its way; the button shows it instead of firing again. */ loadingMore?: boolean; /** Where the cards sit, for their actions menu (a recommendation row offers Not interested). */ origin?: EntryOrigin}) {
+  const i18n = useI18n();
   const selecting = useSelectionActive();
   const actions = useSelectionActions();
   useSelectionSection(section.id, section.entries);
@@ -91,7 +92,7 @@ export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libra
   const card = (entry: ContentEntry) => <EntryCard key={entry.id} entry={entry} siblings={siblings} inShow={inShow} libraryId={libraryId} selectable={selectable} noSelect={noSelect} rowShape={rowShape ?? (inShow ? undefined : 'poster')} origin={origin} resume={isContinueRow(section.id)} />;
   if (section.type === 'list') {
     return (
-      <Section title={hideTitle ? undefined : sectionHeading(section.heading)}>
+      <Section title={hideTitle ? undefined : sectionHeading(i18n, section.heading)}>
         <Inset>
           <Surface padless>
             {section.entries.length > SECTION_WINDOW_AT ? (
@@ -111,7 +112,7 @@ export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libra
   }
   if (section.type === 'grid') {
     return (
-      <Section title={hideTitle ? undefined : sectionHeading(section.heading)} subtitle={!hideTitle && section.totalCount > section.entries.length ? `${section.entries.length} of ${section.totalCount}` : undefined}>
+      <Section title={hideTitle ? undefined : sectionHeading(i18n, section.heading)} subtitle={!hideTitle && section.totalCount > section.entries.length ? i18n.t('title.shownOfTotal', {shown: section.entries.length, total: section.totalCount}) : undefined}>
         {section.entries.length > SECTION_WINDOW_AT ? (
           <WindowedSectionGrid section={section} density={density} renderItem={card} />
         ) : (
@@ -122,7 +123,7 @@ export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libra
     );
   }
   return (
-    <Shelf title={hideTitle ? undefined : sectionHeading(section.heading)} count={!onSeeAll && section.totalCount > section.entries.length ? section.totalCount : undefined} density={density} action={onSeeAll && (section.totalCount > section.entries.length || section.seeAll || alwaysSeeAll) ? {label: currentI18n().t('shelf.seeAll'), ariaLabel: currentI18n().t('shelf.seeAllCount', {count: section.totalCount}), onClick: onSeeAll} : undefined}>
+    <Shelf title={hideTitle ? undefined : sectionHeading(i18n, section.heading)} count={!onSeeAll && section.totalCount > section.entries.length ? section.totalCount : undefined} density={density} action={onSeeAll && (section.totalCount > section.entries.length || section.seeAll || alwaysSeeAll) ? {label: i18n.t('shelf.seeAll'), ariaLabel: i18n.t('shelf.seeAllCount', {count: section.totalCount}), onClick: onSeeAll} : undefined}>
       {section.entries.map(card)}
       {onMore && section.nextCursor ? <LoadMoreSentinel onMore={fireMore} /> : null}
     </Shelf>
@@ -131,15 +132,17 @@ export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libra
 
 /** PERF-S02: an explicit "Show more" (one request per press, like Apple's grid button). */
 function ShowMoreButton({loading, onMore}: {loading?: boolean; onMore: () => void}) {
+  const {t} = useI18n();
   return (
     <div style={{display: 'flex', justifyContent: 'center', padding: '12px 0'}}>
-      <Button variant="secondary" size="sm" label={currentI18n().t('action.showMore')} loading={loading} onClick={onMore} />
+      <Button variant="secondary" size="sm" label={t('action.showMore')} loading={loading} onClick={onMore} />
     </div>
   );
 }
 
 /** PERF-S02: a large appended grid section renders only its visible window. */
 function WindowedSectionGrid({section, density, renderItem}: {section: ContentSection; density: GridDensity; renderItem: (entry: ContentEntry) => React.ReactNode}) {
+  const i18n = useI18n();
   const store = React.useMemo(() => createStaticCollection<ContentEntry>({keyOf: e => e.id}), []);
   React.useEffect(() => { store.setItems(section.entries); }, [store, section.entries]);
   React.useEffect(() => () => store.collection.dispose(), [store]);
@@ -149,7 +152,7 @@ function WindowedSectionGrid({section, density, renderItem}: {section: ContentSe
       collection={store.collection}
       columnMin={gridColumnMin(density)}
       estimateRowHeight={density === 'square' ? 240 : 300}
-      label={sectionHeading(section.heading)}
+      label={sectionHeading(i18n, section.heading)}
       renderItem={render}
       renderPlaceholder={() => <div aria-hidden><Skeleton style={{aspectRatio: density === 'square' ? '1 / 1' : '2 / 3', width: '100%'}} /><Skeleton height={14} width="70%" style={{marginTop: 8}} /></div>}
     />
@@ -158,6 +161,7 @@ function WindowedSectionGrid({section, density, renderItem}: {section: ContentSe
 
 /** PERF-S02: a large appended list section renders only its visible window. */
 function WindowedSectionList({section, libraryId}: {section: ContentSection; libraryId?: string}) {
+  const i18n = useI18n();
   const store = React.useMemo(() => createStaticCollection<ContentEntry>({keyOf: e => e.id}), []);
   React.useEffect(() => { store.setItems(section.entries); }, [store, section.entries]);
   React.useEffect(() => () => store.collection.dispose(), [store]);
@@ -166,7 +170,7 @@ function WindowedSectionList({section, libraryId}: {section: ContentSection; lib
     <WindowedGrid
       collection={store.collection}
       estimateRowHeight={64}
-      label={sectionHeading(section.heading)}
+      label={sectionHeading(i18n, section.heading)}
       renderItem={render}
       renderPlaceholder={() => <div style={{height: 64, padding: '8px 16px'}}><Skeleton height={48} /></div>}
     />
@@ -201,11 +205,12 @@ function LoadMoreSentinel({onMore}: {onMore: () => void}) {
 
 /** WEB-LIB-04: one list row with the same identity and actions as a card (Play, More, watched state). */
 export const EntryListRow = React.memo(function EntryListRow({entry, libraryId, artShape, origin}: {entry: ContentEntry; libraryId?: string; artShape?: ReturnType<typeof shapeFor>; origin?: EntryOrigin}) {
-  const t = currentI18n().t;
+  const i18n = useI18n();
+  const {t} = i18n;
   const open = useOpenEntry();
   const activatePlays = playsOnActivate(entry);
   const progress = progressFor(entry);
-  const added = entry.addedAt && Number.isFinite(Date.parse(entry.addedAt)) ? new Date(entry.addedAt).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'}) : '';
+  const added = entry.addedAt && Number.isFinite(Date.parse(entry.addedAt)) ? i18n.date(entry.addedAt) : '';
   const watched = entry.watched === true && entry.kind !== 'category' && entry.kind !== 'collection';
   const anchor = (el: Element): MenuAnchor => { const r = el.getBoundingClientRect(); return {x: r.left, y: r.top, width: r.width, height: r.height}; };
   return (

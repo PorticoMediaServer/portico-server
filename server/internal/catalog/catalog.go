@@ -471,8 +471,19 @@ func commitMovieItem(ctx context.Context, tx *sql.Tx, library string, asset int6
 	if !errors.Is(err, sql.ErrNoRows) {
 		return item, err
 	}
-	title, year := FilenameTitle(path)
-	return AttachMovieTx(ctx, tx, MovieFile{Library: library, Asset: asset, Path: path, Title: title, Year: year})
+	reading := naming.Read(path, "movie")
+	title, year := reading.PreferredTitle()
+	file := MovieFile{Library: library, Asset: asset, Path: path, Title: title, Year: year}
+	seen := map[string]bool{}
+	for _, hint := range reading.ProviderIDs {
+		p := hint.Value
+		if seen[p.Provider] {
+			continue
+		}
+		seen[p.Provider] = true
+		file.Provider = append(file.Provider, compactcatalog.ProviderIdentity{Provider: p.Provider, Kind: "movie", ID: p.ID})
+	}
+	return AttachMovieTx(ctx, tx, file)
 }
 
 func projectArtwork(i *Item) {

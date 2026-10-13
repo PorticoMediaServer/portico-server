@@ -16,17 +16,18 @@ import (
 	"portico.local/server/internal/identity"
 )
 
-// checkSessionPolicy enforces owner transcoding policy and stream caps for v1
-// sessions. Private presentations share their owner's slot.
-func checkSessionPolicy(ctx context.Context, tx *sql.Tx, p identity.Principal, mode, replacing string) error {
-	var transcode bool
+// checkSessionPolicy enforces the owner's stream caps for a new presentation.
+// Private presentations share their owner's slot.
+//
+// Whether a title may be converted is not decided here. The owner's
+// conversion switch is applied to the plan itself (create refuses a plan that
+// converts anything while it is off), so a stream that only repackages the
+// file, which converts nothing and has its own owner switch, still plays.
+func checkSessionPolicy(ctx context.Context, tx *sql.Tx, p identity.Principal, replacing string) error {
 	var accountCap, serverCap sql.NullInt64
-	err := tx.QueryRowContext(ctx, `SELECT transcoding_enabled,per_account_cap,server_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&transcode, &accountCap, &serverCap)
+	err := tx.QueryRowContext(ctx, `SELECT per_account_cap,server_cap FROM playback_owner_policy WHERE singleton=1`).Scan(&accountCap, &serverCap)
 	if err != nil {
 		return err
-	}
-	if mode == "hls" && !transcode {
-		return controlFault("transcoding_disabled", 422)
 	}
 	now := time.Now()
 	for _, limit := range []struct {

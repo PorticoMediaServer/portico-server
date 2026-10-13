@@ -139,7 +139,9 @@ func hostileFixture(t *testing.T) (http.Handler, string) {
 	}
 	body, _ := json.Marshal(map[string]string{"setupToken": string(secret), "username": "owner", "password": "long-test-password", "name": "Owner"})
 	w := httptest.NewRecorder()
-	handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/setup", bytes.NewReader(body)))
+	setup := httptest.NewRequest("POST", "/v1/setup", bytes.NewReader(body))
+	setup.Header.Set("Content-Type", "application/json")
+	handler.ServeHTTP(w, setup)
 	if w.Code != 201 {
 		t.Fatalf("setup %d %s", w.Code, w.Body.String())
 	}
@@ -225,7 +227,7 @@ func TestTheParsedRoutesSurviveEveryHostileBody(t *testing.T) {
 	handler, token := hostileFixture(t)
 	routes := []struct{ method, path string }{
 		{"POST", "/v1/libraries"},
-		{"POST", "/v1/sessions"},
+		{"POST", "/v1/direct/sign-in"},
 		{"POST", "/v1/setup"},
 		{"GET", "/v1/search"},
 		{"GET", "/v1/items"},

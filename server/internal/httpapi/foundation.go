@@ -104,7 +104,7 @@ func foundationAuthError(err error) error {
 	if errors.Is(err, identity.ErrRestrictionInput) {
 		return &apierror.Error{Code: "invalid_request"}
 	}
-	if errors.Is(err, identity.ErrRestrictionChanged) {
+	if errors.Is(err, identity.ErrRestrictionChanged) || errors.Is(err, identity.ErrProfileChanged) {
 		return &apierror.Error{Code: "revision_mismatch"}
 	}
 	if errors.Is(err, identity.ErrBusy) {
@@ -622,8 +622,13 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerBackups(registry, d); err != nil {
 		return nil, err
 	}
+	if err := registerClientReports(registry, d); err != nil {
+		return nil, err
+	}
 	registerBulkJobs(registry, d)
 	registerDownloadRequests(registry, d)
+	registerDownloads(registry, d)
+	registerSocial(registry, d)
 	registerPlaylistWindows(registry, d)
 	registerMetadataAttention(registry, d)
 	registerMetadataSettings(registry, d)
@@ -631,10 +636,11 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerScreenMetadataReads(registry, d)
 	registerFreshnessRoutes(registry, d)
 	registerCapabilityReport(registry)
+	registerLiveContracts(registry, d)
 	registerIdentityRoutes(registry, d)
 	// Lane C's /v1/events (886f5011) on the shared contextual registry.
 	err = apikit.Register(registry, apikit.Route[struct{}, eventfeed.Page]{Metadata: apikit.Metadata{
-		ID: "get_events", Method: "GET", Path: "/v1/events", Summary: "Read the authorized event ring by long-poll or server-sent stream", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Realtime, Cost: apikit.Constant, Status: 200, SSE: true, Query: []string{"after", "waitSeconds"}, Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "event_stream_exists", "stream_unavailable", "internal"},
+		ID: "get_events", Method: "GET", Path: "/v1/events", Summary: "Read the authorized event ring by long-poll or server-sent stream", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Realtime, Cost: apikit.Constant, Status: 200, SSE: true, Query: []string{"after", "waitSeconds"}, Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "stream_unavailable", "internal"},
 	}, RawHandler: func(w http.ResponseWriter, r *http.Request) {
 		if d.Events == nil {
 			registry.Errors().Write(w, "", &apierror.Error{Code: "internal"})
@@ -648,6 +654,12 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerDeviceRoutes(registry, d); err != nil {
 		return nil, err
 	}
+	if err := d.registerSubtitleRoutes(registry); err != nil {
+		return nil, err
+	}
+	if err := d.registerTrickplayImageRoutes(registry); err != nil {
+		return nil, err
+	}
 	if err := registerCredentialRoutes(registry, d); err != nil {
 		return nil, err
 	}
@@ -657,7 +669,16 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err := registerWebhookRoutes(registry, d); err != nil {
 		return nil, err
 	}
+	if err := registerMemberRoutes(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerRememberedAccountRoutes(registry, d); err != nil {
+		return nil, err
+	}
 	if err := registerMCP(registry, d); err != nil {
+		return nil, err
+	}
+	if err := registerConversionSettings(registry, d); err != nil {
 		return nil, err
 	}
 	registry.Freeze()

@@ -120,7 +120,11 @@ func TestTitleQueryPagesByIndexAndAppliesTheCallersRestrictions(t *testing.T) {
 	}
 
 	// A restricted member: the ceiling is applied in the query, so pages are
-	// full pages of what they may see and the walk never reveals the rest.
+	// full pages of what they may see and the walk never reveals the rest. A
+	// limit is judged by classified ages; a rating not yet classified is withheld.
+	if _, err := f.deps.Catalog.ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	limits := access.DefaultLimits()
 	limits.MaxContentRating = "PG"
 	limits.AllowUnrated = false

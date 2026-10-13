@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {probeAudioDecode} from '../src/bridge/audio/capabilities.ts';
-import {clientProfileProblem} from '../../packages/client-core/src/client-profile.ts';
+import {capabilityDocumentProblem, webDeclaredProfile} from '../../packages/client-core/src/client-profile.ts';
 
 test('audioDecode declares only what passed the fixtures on this engine and the browser confirms', async () => {
   const all = async () => true;
@@ -19,7 +19,7 @@ test('audioDecode declares only what passed the fixtures on this engine and the 
   assert.equal(limited.find(a => a.codec === 'aac')!.maxChannels, 2);
 });
 
-test('the client profile carries audioDecode and passes the admission rules', async () => {
+test('the capability document carries audioDecode and passes the admission rules', async () => {
   const audioDecode = (await probeAudioDecode(async () => true, 'blink')).map(a => ({...a, containers: [...a.containers]}));
-  assert.equal(clientProfileProblem({version: 1, client: {family: 'browser'}, evidence: 'probed', audioDecode}), null);
+  assert.equal(capabilityDocumentProblem({...webDeclaredProfile(), audioDecode}), null);
 });

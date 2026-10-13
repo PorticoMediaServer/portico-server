@@ -113,9 +113,6 @@ func (d Dependencies) consoleRoutes(mux *http.ServeMux) {
 	slots := make(chan struct{}, 8)
 	type action func(*http.Request, identity.Principal, operations.Authorize) (any, error)
 	register := func(pattern string, owner bool, query []string, fn action) {
-		if d.registry != nil && (pattern == "GET /v1/admin/console/settings" || pattern == "PATCH /v1/admin/console/settings") {
-			return
-		}
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Cache-Control", "no-store")
 			ctx, cancel := context.WithTimeout(r.Context(), 7*time.Second)
@@ -182,13 +179,6 @@ func (d Dependencies) consoleRoutes(mux *http.ServeMux) {
 		required := []string{}
 		var values map[string]json.RawMessage
 		switch v.(type) {
-		case *operations.SettingsChange:
-			required = []string{"name", "transcodingEnabled", "perAccountCap", "serverCap",
-				"hardwareBackend", "hardwareDevice", "hdrToneMapping", "hdrToneMappingAlgorithm", "x264Preset",
-				"directStreamRemux", "planningPolicy", "throttleBufferSeconds", "playedRetentionSeconds",
-				"temporaryDirectory", "maxConcurrentSessions", "maxHardwareSessions", "maxSoftwareSessions",
-				"maxBackgroundSessions", "diagnosticDays", "notificationDays", "jobDays"}
-			_ = json.Unmarshal(top["values"], &values)
 		case *operations.ScheduleChange:
 			required = []string{"id", "kind", "resource", "enabled", "timezone", "startMinute", "windowMinutes", "catchUp"}
 			_ = json.Unmarshal(top["value"], &values)
@@ -208,32 +198,6 @@ func (d Dependencies) consoleRoutes(mux *http.ServeMux) {
 		}
 		return nil
 	}
-	register("GET /v1/console/registry", false, nil, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
-		fields := []operations.Field{}
-		for _, f := range operations.Registry() {
-			if f.Permission != "owner" || p.Role == "owner" {
-				fields = append(fields, f)
-			}
-		}
-		return map[string]any{"revision": operations.RegistryRevision, "fields": fields, "externalScopes": map[string]string{"account": "existing account and security surface", "library": "existing library configuration surface", "installation": "local platform preferences; never authorization"}}, nil
-	})
-	register("GET /v1/admin/console/settings", true, nil, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
-		return d.Console.Settings(r.Context(), a)
-	})
-	register("PATCH /v1/admin/console/settings", true, nil, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
-		var c operations.SettingsChange
-		if e := decodeBody(r, &c); e != nil {
-			return nil, e
-		}
-		out, e := d.Console.ApplySettings(r.Context(), p, a, c)
-		if e == nil && d.connectionPolicy != nil {
-			d.connectionPolicy.set(out)
-		}
-		if e == nil && d.SettingsApplied != nil {
-			d.SettingsApplied(r.Context())
-		}
-		return out, e
-	})
 	register("GET /v1/preferences", false, []string{"deviceClass"}, func(r *http.Request, p identity.Principal, a operations.Authorize) (any, error) {
 		return d.Console.Preferences(r.Context(), p, r.URL.Query().Get("deviceClass"), a)
 	})

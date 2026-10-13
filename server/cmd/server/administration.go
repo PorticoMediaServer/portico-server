@@ -34,12 +34,20 @@ func memberCeilingReader() playback.MemberCeilingReader {
 // existing log.Printf call in the server lands in the message log and the live
 // tail without a single call site changing. Containers and interactive runs
 // keep stderr; packaged background launchers opt out once this recorder exists.
-func initializeAdministration(ctx context.Context, db *sql.DB, console *operations.Store, ident *identity.Service, state string, port int) (httpapi.AccessArea, func()) {
-	recorder := servicelog.New(servicelog.Options{Directory: filepath.Join(state, "logs")})
+func initializeAdministration(ctx context.Context, db *sql.DB, console *operations.Store, ident *identity.Service, state string, port int, existing ...*servicelog.Recorder) (httpapi.AccessArea, func()) {
+	var recorder *servicelog.Recorder
+	if len(existing) > 0 {
+		recorder = existing[0]
+	}
+	if recorder == nil {
+		recorder = servicelog.New(servicelog.Options{Directory: filepath.Join(state, "logs")})
+	}
 	installMessageLogOutput(recorder)
 	advertiser := connectivity.NewAdvertiser(connectivity.AdvertiserOptions{Instance: ident.Name(), Host: ident.Name(), Port: port,
 		TXT: []string{"serverId=" + ident.ID(), "product=portico"}})
 	out := httpapi.AccessArea{Access: access.New(db), Logs: recorder, ClientLogs: servicelog.NewClientLogStore(db), Advertiser: advertiser}
+	// Invite-only sign-up spends its invitation through the invitation store.
+	ident.RedeemInvitation = out.Access.RegistrationRedeemer()
 	if console != nil {
 		if document, err := console.Settings(ctx, operations.AllowServerScope); err == nil {
 			recorder.SetLevel(document.Effective.LogLevel)

@@ -301,7 +301,7 @@ func TestPreparedProfilesAndCompleteOutputValidation(t *testing.T) {
 	if e = acceptOutput(f, f, p); e != nil {
 		t.Fatal(e)
 	}
-	for _, change := range []func(*probed){func(o *probed) { o.Duration = 20 }, func(o *probed) { o.AudioTracks = 0 }, func(o *probed) { o.HDR = true }, func(o *probed) { o.Width = 1281 }, func(o *probed) { o.VideoCodec = "hevc" }, func(o *probed) { o.AudioChannels = []int{6} }, func(o *probed) { o.OtherStreams = 1 }, func(o *probed) { o.VideoLevel = 51 }, func(o *probed) { o.VideoProfile = "High 10" }, func(o *probed) { o.FrameRate = 60 }, func(o *probed) { o.FrameRate = 0 }} {
+	for _, change := range []func(*probed){func(o *probed) { o.Duration = 20 }, func(o *probed) { o.AudioTracks = 0 }, func(o *probed) { o.HDR = true }, func(o *probed) { o.Width = 1281 }, func(o *probed) { o.VideoCodec = "hevc" }, func(o *probed) { o.AudioChannels = []int{6} }, func(o *probed) { o.OtherStreams = 1 }, func(o *probed) { o.VideoLevel = 51 }, func(o *probed) { o.VideoProfile = "High 10" }, func(o *probed) { o.FrameRate = 61 }, func(o *probed) { o.FrameRate = 0 }} {
 		bad := f
 		change(&bad)
 		if e = acceptOutput(f, bad, p); !errors.Is(e, ErrOutput) {

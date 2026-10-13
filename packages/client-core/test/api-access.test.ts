@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
  accessTokenPrefix,apiKeyPrefix,apiScopePresets,createAccessToken,createApiKey,createWebhook,isApiCredentialSecret,listApiKeys,listMemberAccessTokens,listWebhookDeliveries,
- parseApiAccessOptions,parseApiCredential,parseIssuedApiCredential,parseIssuedWebhook,parsePathReport,parseTitlePage,parseWebhook,parseWebhookDelivery,parseWebhookList,
+ parseApiAccessOptions,parseApiCredential,parseIssuedApiCredential,parseIssuedWebhook,parsePathReport,parseTitlePage,parseWebhook,parseWebhookDelivery,parseWebhookDeliveryPage,parseWebhookList,
  presetOf,queryTitles,reportChangedPaths,revokeApiKey,sendWebhookTest,updateWebhook,type ApiAccessTransport,
 } from '../src/api-access.ts';
 
@@ -43,7 +43,9 @@ test('scope presets map to exact scope sets and back', () => {
  assert.deepEqual(apiScopePresets.library,['read','playback','library']);
  const options=parseApiAccessOptions({scopes:[{id:'read'},{id:'playback'},{id:'library'},{id:'admin'}],maximumKeys:100,maximumTokens:25,tokensAllowed:false,requestsPerMinute:600});
  assert.equal(options.tokensAllowed,false);
- assert.throws(()=>parseApiAccessOptions({scopes:[{id:'session'}],maximumKeys:1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1}));
+ // A scope this app does not know is not offered; a list of keys holding one is refused whole, never shown with a guessed scope.
+ assert.deepEqual([...parseApiAccessOptions({scopes:[{id:'session'},{id:'read'},{id:'read'}],maximumKeys:1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1}).scopes],['read']);
+ assert.throws(()=>parseApiAccessOptions({scopes:[{id:'read'}],maximumKeys:-1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1}));
 });
 
 test('credential services call the documented routes', async () => {
@@ -74,6 +76,9 @@ test('webhook documents are parsed strictly and keep event names a newer server 
  const delivery={id:'d1',event:'webhook.test',state:'pending',attempts:1,createdAt:'2026-10-13T12:00:00Z',nextAttemptAt:'2026-10-13T12:00:30Z',status:500,durationMs:12,error:'status_500'};
  assert.equal(parseWebhookDelivery(delivery).error,'status_500');
  assert.throws(()=>parseWebhookDelivery({...delivery,state:'lost'}));
+ // The log leaves out a line it cannot read; a list of webhooks with one it cannot read is refused whole.
+ assert.deepEqual(parseWebhookDeliveryPage({items:[delivery,{...delivery,id:'d2',state:'lost'},{...delivery,event:'again'}],limit:50}).items.map(d=>[d.id,d.event]),[['d1','webhook.test']]);
+ assert.throws(()=>parseWebhookList({items:[webhook,{...webhook,id:'w2',failing:-1}],events:[],maximum:20}));
  const made=recorder({webhook,secret:'whsec_x'});
  await createWebhook(made.transport,{name:'Home',url:webhook.url,events:['playback.started']});
  assert.deepEqual(made.calls[0],{path:'/v1/admin/webhooks',method:'POST',body:{name:'Home',url:webhook.url,events:['playback.started']}});
@@ -90,8 +95,10 @@ test('webhook documents are parsed strictly and keep event names a newer server 
 test('the title query and the paths-changed report', async () => {
  const row={id:'t1',kind:'movie',title:'A Film',libraryId:'movies',year:2001,available:true,providerIds:{tmdb:'603'}};
  assert.equal(parseTitlePage({items:[row],limit:50,nextCursor:'n'}).items[0].providerIds.tmdb,'603');
- assert.throws(()=>parseTitlePage({items:[{...row,providerIds:undefined}],limit:50}));
- assert.throws(()=>parseTitlePage({items:[{...row,available:'yes'}],limit:50}));
+ // One title that cannot be read is left out alone; the page size and the cursor stay exact.
+ assert.deepEqual(parseTitlePage({items:[{...row,providerIds:undefined},{...row,available:'yes'},row,{...row,title:'Again'}],limit:50,futureField:1}).items.map(t=>t.title),['A Film']);
+ assert.throws(()=>parseTitlePage({items:[row],limit:-1}));
+ assert.throws(()=>parseTitlePage({items:Array(101).fill(row),limit:50}));
  const titles=recorder({items:[row],limit:2});
  await queryTitles(titles.transport,{library:'movies',kind:'movie',sort:'year',order:'desc',yearFrom:2000,limit:2});
  assert.equal(titles.calls[0].path,'/v1/titles?library=movies&kind=movie&sort=year&order=desc&yearFrom=2000&limit=2');

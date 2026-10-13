@@ -119,11 +119,13 @@ type SelfRegistrationRequest struct {
 	InvitationCode string `json:"invitationCode,omitempty"`
 }
 
-// InvitationRedeemer is installed by whoever owns invitations. It must consume the
-// code inside the given transaction and return the libraries the invitation grants.
-// When it is absent, invite-only registration refuses every attempt rather than
-// silently degrading to open registration.
-type InvitationRedeemer func(ctx context.Context, code string) ([]string, error)
+// InvitationRedeemer is installed by whoever owns invitations. It spends the
+// code for the account being created, inside the registration's transaction,
+// and returns the libraries the invitation grants: the invitation is consumed
+// if and only if the account is created. When it is absent, invite-only
+// registration refuses every attempt rather than silently degrading to open
+// registration.
+type InvitationRedeemer func(ctx context.Context, tx *sql.Tx, code, account string) ([]string, error)
 
 // Register creates a member account under the owner's self-registration policy and
 // signs it in. A new account is always a member with no libraries: reaching the
@@ -133,6 +135,9 @@ func (s *Service) Register(ctx context.Context, q SelfRegistrationRequest, priva
 	if mode == SelfRegistrationOff || s.SetupRequired() {
 		return DirectSignIn{}, ErrRegistrationClosed
 	}
+	if RemoteSignInClosed(ctx) {
+		return DirectSignIn{}, ErrRemoteSignIn
+	}
 	username := strings.ToLower(strings.TrimSpace(q.Username))
 	if username == "" || len(username) > 64 || !directName(username) || strings.ContainsAny(username, " /\\:@") {
 		return DirectSignIn{}, ErrDirectInput
@@ -141,25 +146,13 @@ func (s *Service) Register(ctx context.Context, q SelfRegistrationRequest, priva
 		return DirectSignIn{}, ErrDirectInput
 	}
 	libraries := []string{}
-	if mode == SelfRegistrationInvite {
-		if s.RedeemInvitation == nil || strings.TrimSpace(q.InvitationCode) == "" {
-			return DirectSignIn{}, ErrRegistrationInvite
-		}
-		granted, e := s.RedeemInvitation(ctx, q.InvitationCode)
-		if e != nil {
-			return DirectSignIn{}, e
-		}
-		if !directLibraries(granted) {
-			return DirectSignIn{}, ErrRegistrationInvite
-		}
-		libraries = granted
+	if mode == SelfRegistrationInvite && (s.RedeemInvitation == nil || strings.TrimSpace(q.InvitationCode) == "") {
+		return DirectSignIn{}, ErrRegistrationInvite
 	}
-	select {
-	case s.hashSlots <- struct{}{}:
-		defer func() { <-s.hashSlots }()
-	default:
-		return DirectSignIn{}, ErrBusy
+	if slotErr := s.takeHashSlot(ctx); slotErr != nil {
+		return DirectSignIn{}, slotErr
 	}
+	defer func() { <-s.hashSlots }()
 	hash, e := bcrypt.GenerateFromPassword([]byte(q.Password), PasswordCost)
 	if e != nil {
 		return DirectSignIn{}, e
@@ -187,6 +180,19 @@ func (s *Service) Register(ctx context.Context, q SelfRegistrationRequest, priva
 	account, profile := Token(), Token()
 	if _, e = tx.ExecContext(ctx, `INSERT INTO accounts(id,username,password_hash,profile_id,epoch) VALUES(?,?,?,?,1)`, account, username, hash, profile); e != nil {
 		return DirectSignIn{}, e
+	}
+	if mode == SelfRegistrationInvite {
+		// The invitation is spent here, after the username was found free and
+		// in the transaction that creates the account: a refusal anywhere
+		// leaves the invitation unspent.
+		granted, e := s.RedeemInvitation(ctx, tx, q.InvitationCode, account)
+		if e != nil {
+			return DirectSignIn{}, e
+		}
+		if !directLibraries(granted) {
+			return DirectSignIn{}, ErrRegistrationInvite
+		}
+		libraries = granted
 	}
 	// The accounts trigger installs the membership and the primary profile. An
 	// account created this way is a member even if it somehow arrives first.

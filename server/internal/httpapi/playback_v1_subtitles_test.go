@@ -43,6 +43,13 @@ func TestPlaybackV1SubtitleSidecars(t *testing.T) {
 	if len(s.Presentation.Subtitles) != 1 || s.Presentation.Subtitles[0].TrackID != receipt.ResourceID || !strings.HasPrefix(s.Presentation.Subtitles[0].URL, "/v1/media/") {
 		t.Fatalf("subtitles %+v", s.Presentation.Subtitles)
 	}
+	if !strings.HasSuffix(s.Presentation.Subtitles[0].URL, ".vtt") {
+		t.Fatal("WebVTT URL has no WebVTT suffix")
+	}
+	payload := f.raw("GET", s.Presentation.Subtitles[0].URL, "", nil, nil)
+	if payload.Code != 200 || !strings.HasPrefix(payload.Header().Get("Content-Type"), "text/vtt") || !strings.HasPrefix(payload.Body.String(), "WEBVTT") {
+		t.Fatalf("WebVTT delivery: %d %s", payload.Code, payload.Body.String())
+	}
 	var off playbackv1.SessionView
 	f.call("PATCH", "/v1/playback/sessions/"+s.ID, map[string]string{"If-Match": s.Revision}, map[string]any{"subtitles": map[string]any{"trackId": nil}}, 200, &off)
 	if len(off.Presentation.Subtitles) != 0 || off.Presentation.Generation != s.Presentation.Generation {
@@ -154,5 +161,53 @@ func TestPlaybackV1SubtitleBurnIn(t *testing.T) {
 	}
 	if w := f.raw("PATCH", "/v1/playback/sessions/"+s.ID, f.owner.AccessToken, map[string]string{"If-Match": drawn.Revision}, map[string]any{"subtitles": map[string]any{"trackId": receipt.ResourceID, "delivery": "sidecar"}}); w.Code != 400 {
 		t.Fatalf("a styled track as a sidecar: %d", w.Code)
+	}
+}
+
+func TestPlaybackV1SubtitleOriginalUsesGrantRangesAndRevocation(t *testing.T) {
+	f, subs, principal, source := v1SubtitleFixture(t)
+	body := "[Script Info]\nScriptType: v4.00+\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\nDialogue: 0,0:00:00.00,0:00:02.00,Default,,0,0,0,,Styled\r\n"
+	receipt, e := subs.Mutate(context.Background(), principal, f.items[0], subtitles.Mutation{OperationID: "original-ass", SourceID: source, Scope: "personal", Format: "ass", Language: "en", Title: "English", Rights: "Own transcript", OffsetUS: "0", Content: &body})
+	if e != nil {
+		t.Fatal(e)
+	}
+	var session playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "original-key-00001"}, startBody(f.items[0], map[string]any{"subtitles": map[string]any{"trackId": receipt.ResourceID, "delivery": "embeddedClient"}}), 201, &session)
+	if len(session.Presentation.Subtitles) != 1 || session.Presentation.Subtitles[0].Format != "ass" {
+		t.Fatal(session.Presentation.Subtitles)
+	}
+	file := session.Presentation.Subtitles[0]
+	if !strings.HasPrefix(file.URL, "/v1/media/subtitles/") || file.FontsURL != strings.TrimSuffix(file.URL, "/original.ass")+"/fonts" {
+		t.Fatal("original or font list escaped the subtitle namespace", file)
+	}
+	full := f.raw("GET", file.URL, "", nil, nil)
+	if full.Code != 200 || full.Body.String() != body {
+		t.Fatalf("original %d %s", full.Code, full.Body.String())
+	}
+	partial := f.raw("GET", file.URL, "", map[string]string{"Range": "bytes=0-7"}, nil)
+	if partial.Code != 206 || partial.Body.String() != body[:8] || partial.Header().Get("Accept-Ranges") != "bytes" {
+		t.Fatalf("range %d %s", partial.Code, partial.Body.String())
+	}
+	head := f.raw("HEAD", file.URL, "", nil, nil)
+	if head.Code != 200 || head.Body.Len() != 0 {
+		t.Fatalf("original HEAD %d %s", head.Code, head.Body.String())
+	}
+	var fonts subtitles.FontFiles
+	f.call("GET", file.FontsURL, nil, nil, 200, &fonts)
+	// The media grant is tied to the session generation, not the bearer credential.
+	grant, _, ok := strings.Cut(strings.TrimPrefix(file.URL, "/v1/media/subtitles/"), "/")
+	if !ok {
+		t.Fatal("original URL has no grant")
+	}
+	result, e := f.db.Exec(`UPDATE playback_sessions SET state='stopped' WHERE grant_token=?`, grant)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if n, e := result.RowsAffected(); e != nil || n != 1 {
+		t.Fatal("grant did not address the playback session", n, e)
+	}
+	revoked := f.raw("GET", file.URL, "", nil, nil)
+	if revoked.Code == 200 || revoked.Code == 206 {
+		t.Fatal("stopped session retained subtitle access")
 	}
 }

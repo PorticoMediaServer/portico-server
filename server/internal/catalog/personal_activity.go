@@ -25,6 +25,13 @@ import (
 // watched state and resume point that go with it) stops while they have paused
 // it.
 func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool) error {
+	return acceptPlaybackProgress(tx, v, playbackID, item, sequence, position, duration, state, canonical, time.Now().UTC())
+}
+
+// acceptPlaybackProgress is the one writer. clock is when the evidence was
+// recorded: now for a session reporting live, earlier for a play reported
+// after the fact (offline_play.go).
+func acceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playbackID, item string, sequence int64, position, duration float64, state string, canonical bool, clock time.Time) error {
 	preferences, preferenceSources, _, e := operations.EffectivePreferences(tx, v, "")
 	if e != nil {
 		return e
@@ -47,7 +54,6 @@ func (s *Service) AcceptPlaybackProgress(tx *sql.Tx, v identity.Viewer, playback
 		played = float64(preferences.Int("playback.playedThresholdPercent"))
 	}
 	profile := identity.PersonalKey(v)
-	clock := time.Now().UTC()
 	now := clock.Format("2006-01-02T15:04:05.000Z")
 	position = math.Max(0, position)
 	if duration > 0 {

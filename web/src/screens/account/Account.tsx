@@ -1,6 +1,6 @@
 import React, {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {Link, useNavigate, useSearch} from '@tanstack/react-router';
-import {defaultI18n} from '@i18n';
+import {useI18n} from '../../app/i18n';
 import {AccountSessionReviewService} from '@core/account-sessions';
 import {accountApi, type AccountScope} from '../../bridge/account-api';
 import {useSession} from '../../app/session';
@@ -14,12 +14,10 @@ import {ErrorNotice, errorText} from '../../app/errors';
 import {Badge, Button, ConfirmDialog, Dialog, Input, Loading, Notice, SettingsGroup, SettingsPage, SettingsRow, StateView, Text, relative} from '../../ui';
 import {AccountSecurity} from './Security';
 
-const t = defaultI18n.t;
 // Account profiles and Hosted invitations are gone (Spec — Hosted at Scale): each server keeps its own
 // profiles and invitations.
 const tabIds = ['sessions', 'security', 'servers', 'notifications'] as const;
 export type AccountTab = (typeof tabIds)[number];
-const when = (iso: string) => new Date(iso).toLocaleDateString(undefined, {year: 'numeric', month: 'short', day: 'numeric'});
 function useService<S extends {subscribe(fn: () => void): () => void; getSnapshot(): unknown; dispose(): void}>(make: () => S, deps: readonly unknown[]): S {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const service = useMemo(make, deps);
@@ -30,6 +28,7 @@ function useService<S extends {subscribe(fn: () => void): () => void; getSnapsho
 /** The Portico Account workspace: the things that belong to the account rather than to any
  * one server. It needs only the account's own sign-in, so it works with no server at all. */
 export function AccountWorkspace() {
+  const {t} = useI18n();
   const session = useSession();
   const navigate = useNavigate();
   const search = useSearch({strict: false}) as {tab?: AccountTab; identityTransaction?: string};
@@ -118,6 +117,8 @@ export const revokeAllOtherSessions = async (service: RevokeAllService): Promise
 }
 
 function Sessions({scope}: {scope: AccountScope}) {
+  const i18n = useI18n();
+  const {t} = i18n;
   const api = useMemo(() => accountApi(scope), [scope.accountId, scope.familyId]);
   const service = useService(() => new AccountSessionReviewService({scope, api}), [api]);
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
@@ -162,7 +163,7 @@ function Sessions({scope}: {scope: AccountScope}) {
         <SettingsGroup title={t('web.hostedAccount.whereSignedIn')} description={t('web.hostedAccount.whereSignedInHelp')} action={others.length ? <Button size="sm" variant="ghost" label={t('web.hostedAccount.signOutOthers')} loading={allBusy} disabled={state.pending !== null || allBusy} onClick={() => setConfirmAll(true)} /> : undefined}>
           {active.map(s => {
             const d = devices[s.id];
-            const help = [d?.app && d.platform ? t('web.hostedAccount.appOn', {app: d.app, platform: d.platform}) : d?.app || d?.platform || '', t('web.hostedAccount.signedInOn', {date: when(s.createdAt)}), d?.lastSeenAt ? t('web.hostedAccount.lastUsed', {when: relative(Date.now() - Date.parse(d.lastSeenAt))}) : ''].filter(Boolean).join(' · ');
+            const help = [d?.app && d.platform ? t('web.hostedAccount.appOn', {app: d.app, platform: d.platform}) : d?.app || d?.platform || '', t('web.hostedAccount.signedInOn', {date: i18n.date(s.createdAt)}), d?.lastSeenAt ? t('web.hostedAccount.lastUsed', {when: relative(Date.now() - Date.parse(d.lastSeenAt))}) : ''].filter(Boolean).join(' · ');
             return <SettingsRow key={s.id} icon={s.mode === 'browser' ? 'globe' : 'tvDevice'} label={<>{deviceName(s.id)}{s.current ? <> <Badge tone="accent">{t('web.hostedAccount.thisBrowser')}</Badge></> : null}</>} help={help} control={s.current ? undefined : <Button size="sm" variant="ghost" label={t('action.signOut')} loading={state.pending === s.id} disabled={state.pending !== null || allBusy} onClick={() => setEnding(s.id)} />} />;
           })}
         </SettingsGroup>

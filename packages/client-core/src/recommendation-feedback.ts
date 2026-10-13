@@ -69,9 +69,10 @@ export async function resetRecommendations(api: Api, input: {serverId: string; o
 
 export function parseRecommendationsReset(raw: unknown, serverId: string, operationId: string): RecommendationsResetReceipt {
   const v = raw as {serverId?: unknown; operationId?: unknown; clearedNotInterested?: unknown} | null;
-  const cleared = v?.clearedNotInterested;
-  if (!v || typeof v !== 'object' || v.serverId !== serverId || v.operationId !== operationId || typeof cleared !== 'number' || !Number.isSafeInteger(cleared) || cleared < 0) {
+  // The receipt must be this server's answer to this operation. The count is only shown: one that cannot be read is 0.
+  if (!v || typeof v !== 'object' || v.serverId !== serverId || v.operationId !== operationId) {
     throw Object.assign(new Error(unreadableServerResponse), {code: 'invalid_recommendations_reset'});
   }
-  return Object.freeze({operationId, clearedNotInterested: cleared});
+  const cleared = v.clearedNotInterested;
+  return Object.freeze({operationId, clearedNotInterested: typeof cleared === 'number' && Number.isSafeInteger(cleared) && cleared >= 0 ? cleared : 0});
 }

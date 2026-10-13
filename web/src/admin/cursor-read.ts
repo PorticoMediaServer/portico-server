@@ -8,14 +8,23 @@ import {useRead, type Read} from './console';
  */
 export type CursorRead<T> = Read<T> & {page: number; canPrevious: boolean; canNext: boolean; next: () => void; previous: () => void; first: () => void};
 
+const FIRST_PAGE: readonly string[] = [''];
+
 export function useCursorRead<T extends {nextCursor?: string}>(fetch: (cursor: string) => Promise<T>, deps: readonly unknown[]): CursorRead<T> {
-  const [stack, setStack] = useState<readonly string[]>(['']);
+  const [walked, setWalked] = useState<{deps: readonly unknown[]; stack: readonly string[]}>({deps, stack: ['']});
+  // A cursor belongs to the list it came from: when what is being listed changes (another
+  // account, another filter) the walk starts again from the first page instead of sending the
+  // new list a cursor of the old one.
+  const sameList = walked.deps.length === deps.length && walked.deps.every((dep, i) => Object.is(dep, deps[i]));
+  if (!sameList) setWalked({deps, stack: ['']});
+  const stack = sameList ? walked.stack : FIRST_PAGE;
+  const setStack = useCallback((change: readonly string[] | ((stack: readonly string[]) => readonly string[])) => setWalked(prev => ({deps: prev.deps, stack: typeof change === 'function' ? change(prev.stack) : change})), []);
   const cursor = stack[stack.length - 1] ?? '';
   const read = useRead(() => fetch(cursor), [...deps, cursor]);
   const nextCursor = read.data?.nextCursor ?? '';
-  const next = useCallback(() => { if (nextCursor) setStack(s => [...s, nextCursor].slice(-1000)); }, [nextCursor]);
-  const previous = useCallback(() => setStack(s => (s.length > 1 ? s.slice(0, -1) : s)), []);
-  const first = useCallback(() => setStack(['']), []);
+  const next = useCallback(() => { if (nextCursor) setStack(s => [...s, nextCursor].slice(-1000)); }, [nextCursor, setStack]);
+  const previous = useCallback(() => setStack(s => (s.length > 1 ? s.slice(0, -1) : s)), [setStack]);
+  const first = useCallback(() => setStack(FIRST_PAGE), [setStack]);
   return {...read, page: stack.length, canPrevious: stack.length > 1, canNext: !!nextCursor, next, previous, first};
 }
 

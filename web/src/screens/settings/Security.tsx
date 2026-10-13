@@ -3,15 +3,13 @@ import {IdentityClient, deviceAwaitingApproval, type Device, type ProfileRestric
 import {useSession} from '../../app/session';
 import {browserInstallation} from '../../bridge/profile-trust';
 import {Badge, Button, ConfirmDialog, Dialog, Input, Loading, Notice, PasswordInput, QR, Select, SettingsGroup, SettingsRow, Switch, Text, relative, type IconName} from '../../ui';
-import {defaultI18n} from '@i18n';
+import {currentI18n, useI18n, type I18n} from '../../app/i18n';
 import {errorText} from '../../app/errors';
 
-const t = defaultI18n.t;
-
-/** Every failure is worded by the shared presenter (X-04); a wrong password gets its own words. */
+/** Every failure is worded by the shared presenter (X-04); a wrong password gets its own words. Called when a request fails, not while drawing. */
 const say = (e: unknown, context: 'account' | 'devices' | 'profiles', operation: 'load' | 'save' | 'action' = 'action') => {
   const status = (e as {status?: number})?.status;
-  return operation !== 'load' && (status === 401 || status === 403) ? t('account.wrongPassword') : errorText(e, context, operation);
+  return operation !== 'load' && (status === 401 || status === 403) ? currentI18n().t('account.wrongPassword') : errorText(e, context, operation);
 };
 
 function useIdentity() {
@@ -37,7 +35,7 @@ function useLoaded<T>(load: (signal: AbortSignal) => Promise<T>, deps: React.Dep
 
 /* ---------- Profile restrictions ---------- */
 
-const permissions = (): {key: 'allowDownloads' | 'allowLiveTv' | 'allowDvr' | 'allowWatchTogether'; label: string; help: string}[] => [
+const permissions = (t: I18n['t']): {key: 'allowDownloads' | 'allowLiveTv' | 'allowDvr' | 'allowWatchTogether'; label: string; help: string}[] => [
  {key: 'allowDownloads', label: t('limits.feature.downloads'), help: t('web.limits.downloadsHelp')},
  {key: 'allowLiveTv', label: t('limits.feature.liveTv'), help: t('web.limits.liveTvHelp')},
  {key: 'allowDvr', label: t('limits.feature.dvr'), help: t('web.limits.dvrHelp')},
@@ -46,7 +44,9 @@ const permissions = (): {key: 'allowDownloads' | 'allowLiveTv' | 'allowDvr' | 'a
 
 /** What one profile may see and do. C45: the signed-in account session is the authority (the server
  * refuses a profile session), so saving asks for no password. */
-export function ProfileRestrictionsDialog({profile, onClose}: {profile: {id: string; name: string}; onClose: () => void}) {
+export function ProfileRestrictionsDialog({profile, onClose}: {profile: {id: string; name: string; /** This viewer may look but not change (a profile opening its own limits). */ readOnly?: boolean}; onClose: () => void}) {
+  const readOnly = !!profile.readOnly;
+  const {t} = useI18n();
   const identity = useIdentity();
   const systems = useLoaded<readonly RatingSystem[]>(s => identity.ratingSystems(s), [identity], 'profiles');
   const current = useLoaded<ProfileRestrictions>(s => identity.restrictions(profile.id, s), [identity, profile.id], 'profiles');
@@ -69,12 +69,14 @@ export function ProfileRestrictionsDialog({profile, onClose}: {profile: {id: str
   return (
     <>
       <Dialog open onOpenChange={o => !o && onClose()} title={t('limits.title', {name: profile.name})} description={t('limits.subtitle')} width={560}
-        actions={<><Button variant="ghost" label={t('action.cancel')} onClick={onClose} /><Button variant="primary" label={t('limits.save')} disabled={!dirty} loading={busy} onClick={() => void save()} /></>}>
+        actions={readOnly ? <Button variant="primary" label={t('action.close')} onClick={onClose} /> : <><Button variant="ghost" label={t('action.cancel')} onClick={onClose} /><Button variant="primary" label={t('limits.save')} disabled={!dirty} loading={busy} onClick={() => void save()} /></>}>
+        {readOnly ? <Notice tone="info" compact>{t('limits.readOnly')}</Notice> : null}
         {failure ? <Notice tone="error" compact>{failure}</Notice> : null}
         {(current.error || systems.error) && !draft ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => { current.reload(); systems.reload(); }}}>{current.error || systems.error}</Notice> : null}
         {!draft && !current.error ? <Loading label={t('limits.loading')} /> : null}
         {draft ? (
-          <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
+          // Looking without changing: every control is there to be read, none can be operated.
+          <fieldset disabled={readOnly} style={{display: 'flex', flexDirection: 'column', gap: 16, border: 0, padding: 0, margin: 0, minWidth: 0}}>
             <SettingsGroup title={t('limits.content')}>
               <SettingsRow label={t('limits.ratingSystem')} control={<Select hideLabel label={t('limits.ratingSystem')} value={draft.ratingSystem} onChange={e => setDraft({...draft, ratingSystem: e.target.value, maximumAgeRating: ''})} options={(systems.value ?? []).map(s => ({value: s.id, label: t('web.limits.systemOption', {name: s.name, region: s.region})}))} />} />
               <SettingsRow label={t('limits.highestRating')} help={t('limits.highestRatingHelp')} control={<Select hideLabel label={t('limits.highestRating')} value={draft.maximumAgeRating} onChange={e => setDraft({...draft, maximumAgeRating: e.target.value})} options={[{value: '', label: t('limits.noLimit')}, ...(system?.values ?? []).map(v => ({value: v.code, label: t('web.limits.ratingOption', {label: v.label, age: v.minimumAge})}))]} />} />
@@ -82,9 +84,9 @@ export function ProfileRestrictionsDialog({profile, onClose}: {profile: {id: str
               <SettingsRow label={t('web.limits.hiddenLabels')} help={t('web.limits.hiddenLabelsHelp')} stack control={<Input hideLabel label={t('web.limits.hiddenLabels')} value={labels} onChange={e => setLabels(e.target.value)} style={{width: '100%'}} />} />
             </SettingsGroup>
             <SettingsGroup title={t('limits.features')}>
-              {permissions().map(p => <SettingsRow key={p.key} label={p.label} help={p.help} control={<Switch checked={draft[p.key]} onCheckedChange={v => setDraft({...draft, [p.key]: v})} label={p.label} />} />)}
+              {permissions(t).map(p => <SettingsRow key={p.key} label={p.label} help={p.help} control={<Switch checked={draft[p.key]} onCheckedChange={v => setDraft({...draft, [p.key]: v})} label={p.label} />} />)}
             </SettingsGroup>
-          </div>
+          </fieldset>
         ) : null}
       </Dialog>
     </>
@@ -93,12 +95,13 @@ export function ProfileRestrictionsDialog({profile, onClose}: {profile: {id: str
 
 /* ---------- Devices ---------- */
 
-const platformName = (platform: string): string => ({web: t('device.platform.web'), ios: t('device.platform.ios'), tvos: t('device.platform.tvos'), android: t('device.platform.android'), androidtv: t('device.platform.androidtv')} as Record<string, string>)[platform] ?? platform;
+const platformName = (t: I18n['t'], platform: string): string => ({web: t('device.platform.web'), ios: t('device.platform.ios'), tvos: t('device.platform.tvos'), android: t('device.platform.android'), androidtv: t('device.platform.androidtv')} as Record<string, string>)[platform] ?? platform;
 // Mid-sentence: "last seen just now" (the shared helper lowercases the sentence-case forms).
 const ago = (iso: string) => relative(Date.now() - Date.parse(iso));
 
 /** Settings › This device: what this browser is called in every device list, with Rename. */
 export function DeviceNameRow() {
+  const {t} = useI18n();
   const identity = useIdentity();
   const installation = browserInstallation();
   const devices = useLoaded<readonly Device[]>(s => identity.devices(installation, s), [identity, installation], 'devices');
@@ -112,7 +115,7 @@ export function DeviceNameRow() {
   };
   return (
     <>
-      <SettingsRow label={t('settings.row.deviceName')} meta={current.name || platformName(current.platform) || t('web.devices.device')} control={<Button size="sm" variant="secondary" label={t('settings.device.rename')} onClick={() => { setName(current.name); setFailure(''); }} />} />
+      <SettingsRow label={t('settings.row.deviceName')} meta={current.name || platformName(t, current.platform) || t('web.devices.device')} control={<Button size="sm" variant="secondary" label={t('settings.device.rename')} onClick={() => { setName(current.name); setFailure(''); }} />} />
       <Dialog open={name !== undefined} onOpenChange={o => !o && setName(undefined)} title={t('settings.row.deviceName')} width={440}
         actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setName(undefined)} /><Button variant="primary" label={t('web.devices.saveName')} disabled={!name?.trim() || name.trim() === current.name} onClick={() => void save()} /></>}>
         <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
@@ -125,6 +128,8 @@ export function DeviceNameRow() {
 }
 
 export function DevicesSection() {
+  const i18n = useI18n();
+  const {t} = i18n;
   const identity = useIdentity();
   const installation = browserInstallation();
   const devices = useLoaded<readonly Device[]>(s => identity.devices(installation, s), [identity, installation], 'devices');
@@ -141,14 +146,14 @@ export function DevicesSection() {
       {devices.error ? <div style={{padding: 12}}><Notice tone={list ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: devices.reload}}>{devices.error}</Notice></div> : null}
       {!list && !devices.error ? <div style={{padding: 16}}><Loading label={t('status.loadingThing', {thing: t('devices.title').toLowerCase()})} /></div> : null}
       {list?.map(d => (
-        <SettingsRow key={d.id} icon={deviceGlyph(d.platform, d.name)} label={<>{d.name || platformName(d.platform) || t('web.devices.device')} {d.current ? <Badge tone="accent">{t('device.thisDevice')}</Badge> : null} {deviceAwaitingApproval(d) ? <Badge tone="warning" dot>{t('web.devices.waitingApproval')}</Badge> : null}</>}
-          help={[platformName(d.platform), d.appVersion ? `${d.app} ${d.appVersion}` : '', t('web.devices.lastSeen', {when: ago(d.lastSeen)}), d.ip ?? ''].filter(Boolean).join(' · ')}
+        <SettingsRow key={d.id} icon={deviceGlyph(d.platform, d.name)} label={<>{d.name || platformName(t, d.platform) || t('web.devices.device')} {d.current ? <Badge tone="accent">{t('device.thisDevice')}</Badge> : null} {deviceAwaitingApproval(d) ? <Badge tone="warning" dot>{t('web.devices.waitingApproval')}</Badge> : null}</>}
+          help={[platformName(t, d.platform), d.appVersion ? `${d.app} ${d.appVersion}` : '', t('web.devices.lastSeen', {when: ago(d.lastSeen)}), d.ip ?? ''].filter(Boolean).join(' · ')}
           meta={d.sessions ? t('web.devices.sessions', {count: d.sessions}) : t('device.signedOut')} onClick={() => { setChosen(d); setName(d.name); setFailure(''); }} />
       ))}
       {list && !list.length ? <div style={{padding: 16}}><Text variant="caption" tone="tertiary">{t('web.devices.none')}</Text></div> : null}
       <div style={{padding: '8px 16px 16px'}}><Button variant="outline" size="sm" icon="signOut" label={t('account.signOutEverywhere.row')} onClick={() => { setEverywhere(true); setFailure(''); }} /></div>
 
-      <Dialog open={!!chosen} onOpenChange={o => !o && setChosen(undefined)} title={chosen?.name || platformName(chosen?.platform ?? '') || t('web.devices.device')} description={chosen ? t('web.devices.firstSeen', {date: new Date(chosen.firstSeen).toLocaleDateString()}) : undefined} width={480}
+      <Dialog open={!!chosen} onOpenChange={o => !o && setChosen(undefined)} title={chosen?.name || platformName(t, chosen?.platform ?? '') || t('web.devices.device')} description={chosen ? t('web.devices.firstSeen', {date: i18n.date(chosen.firstSeen)}) : undefined} width={480}
         actions={<><Button variant="ghost" label={t('action.close')} onClick={() => setChosen(undefined)} /><Button variant="primary" label={t('web.devices.saveName')} disabled={!chosen || name.trim() === chosen.name || !name.trim()} onClick={() => chosen && void act(() => identity.editDevice(chosen.id, {name: name.trim()}))} /></>}>
         {chosen ? (
           <div style={{display: 'flex', flexDirection: 'column', gap: 16}}>
@@ -169,7 +174,7 @@ export function DevicesSection() {
           </div>
         ) : null}
       </Dialog>
-      <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('confirm.removeDevice.title', {device: removing?.name || platformName(removing?.platform ?? '')})} body={t('confirm.removeDevice.body')} confirmLabel={t('web.devices.removeAction')} cancelLabel={t('action.cancel')} onConfirm={() => { const d = removing!; setRemoving(undefined); void act(() => identity.removeDevice(d.id)); }} />
+      <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('confirm.removeDevice.title', {device: removing?.name || platformName(t, removing?.platform ?? '')})} body={t('confirm.removeDevice.body')} confirmLabel={t('web.devices.removeAction')} cancelLabel={t('action.cancel')} onConfirm={() => { const d = removing!; setRemoving(undefined); void act(() => identity.removeDevice(d.id)); }} />
       <Dialog open={everywhere} onOpenChange={setEverywhere} title={t('account.signOutEverywhere.title')} description={t('web.devices.everywhereBody')} width={440}
         actions={<><Button variant="ghost" label={t('action.cancel')} onClick={() => setEverywhere(false)} /><Button variant="danger" label={t('account.signOutEverywhere.action')} onClick={() => void act(async () => { await identity.signOutEverywhere(); setEverywhere(false); session.signOut(); })} /></>}>
         {/* C45: no password; the signed-in session is the authority. */}
@@ -182,6 +187,7 @@ export function DevicesSection() {
 /* ---------- Two-factor ---------- */
 
 export function TwoFactorSection() {
+  const {t} = useI18n();
   const identity = useIdentity();
   const state = useLoaded<TwoFactorState>(s => identity.twoFactor(s), [identity], 'account');
   const [step, setStep] = useState<'idle' | 'password' | 'scan' | 'codes' | 'disable'>('idle');

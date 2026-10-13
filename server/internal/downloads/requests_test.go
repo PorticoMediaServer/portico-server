@@ -180,14 +180,54 @@ func TestContainerRequestSelectionAndAuthorityChanges(t *testing.T) {
 	if e = h.service.advanceRequests(ctx); e != nil {
 		t.Fatal(e)
 	}
-	out, e := h.service.ContainerRequest(ctx, h.viewer, r.RequestID, "", 100)
-	if e != nil || out.ErrorCode != "selection_changed" {
-		t.Fatal(out, e)
-	}
-	var n int
+	// The library moved while the selection was being read (a scan added a
+	// file somewhere). Nothing had been admitted, so the reading starts again;
+	// the request does not fail.
+	var n, captured, restarts int
 	h.db.QueryRow(`SELECT count(*) FROM download_preparations`).Scan(&n)
 	if n != 0 {
 		t.Fatal("effects before capture", n)
+	}
+	if e = h.db.QueryRow(`SELECT total,restarts FROM download_requests WHERE id=?`, r.RequestID).Scan(&captured, &restarts); e != nil || captured != 0 || restarts != 1 {
+		t.Fatal("a changed selection was not read again", captured, restarts, e)
+	}
+	drainRequestAdmission(t, h, ctx, r.RequestID)
+	out, e := h.service.ContainerRequest(ctx, h.viewer, r.RequestID, "", 100)
+	if e != nil || out.ErrorCode != "" || out.Total != 24 {
+		t.Fatal(out, e)
+	}
+	// A library that never holds still is read through anyway.
+	busy, e := h.service.SubmitContainer(ctx, h.viewer, ContainerRequest{OperationID: "busy", Target: ContainerTarget{Kind: "show", ID: h.show}, DeviceID: "device", Quality: "720p", Policy: EpisodePolicy{Episodes: "all"}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < 40; i++ {
+		if _, e = h.db.Exec(`UPDATE library_revisions SET revision=revision+1`); e != nil {
+			t.Fatal(e)
+		}
+		if e = h.service.advanceRequests(ctx); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if out, e = h.service.ContainerRequest(ctx, h.viewer, busy.RequestID, "", 100); e != nil || out.ErrorCode != "" || out.Total != 24 {
+		t.Fatal("a request against a busy library never finished", out, e)
+	}
+	// The viewer's own state is no part of "all of it".
+	if _, e = h.db.Exec(`DELETE FROM download_requests`); e != nil {
+		t.Fatal(e)
+	}
+	all := newContainerRequest("all-of-it", h.show)
+	if _, e = h.service.SubmitContainer(ctx, h.viewer, all); e != nil {
+		t.Fatal(e)
+	}
+	if _, e = h.db.Exec(`INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT ?,library_id,99 FROM library_revisions WHERE true ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=viewer_revisions.revision+1`, identity.PersonalKey(h.viewer.Viewer)); e != nil {
+		t.Fatal(e)
+	}
+	if e = h.service.advanceRequests(ctx); e != nil {
+		t.Fatal(e)
+	}
+	if e = h.db.QueryRow(`SELECT restarts FROM download_requests WHERE operation_id='all-of-it'`).Scan(&restarts); e != nil || restarts != 0 {
+		t.Fatal("watching something restarted a request for everything", restarts, e)
 	}
 	r, e = h.service.SubmitContainer(ctx, h.viewer, newContainerRequest("revoked", h.show))
 	if e != nil {

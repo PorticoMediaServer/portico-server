@@ -43,10 +43,15 @@ const audioRecipeBitrateBPS = 192_000
 // delivered bytes agree.
 const canonicalAudioRung = "1080p"
 
-// resolveSource reads the source file for an item: its best version that is
-// there (a title with several versions is one download, not a refusal). A multi-part item has
-// no single artifact to hand a client, so it is refused here with a reason code
-// rather than silently downloading one part.
+// resolveSource reads the file a download of this item is a download of.
+//
+// A title may have several files in two different ways. Several files at the
+// same place in the title are versions of it (a 4K copy and a 1080p copy):
+// one of them is the download, the best version that is there, by the same
+// rule playback uses when no version is named. Several files at different
+// places are parts of one title (a film in two files): there is no single
+// file to hand over, so the title is refused with a reason that says so. This
+// is the one place that choice is made.
 func resolveSource(ctx context.Context, tx *sql.Tx, item string) (source, error) {
 	var s source
 	var available int
@@ -71,11 +76,37 @@ func sourceReason(s source, e error) string {
 	case e != nil:
 		return ReasonFailed
 	case s.Parts != 1:
-		return ReasonSourceMissing
-	case !s.Available:
+		return ReasonSeveralFiles
+	case !s.Available || s.Size <= 0:
 		return ReasonSourceMissing
 	}
 	return ""
+}
+
+// qualityReason says why a quality cannot be had for this file, or "" when it
+// can. A converted quality is real when a finished copy of it already exists,
+// or when the conversion code reports it can make one; a rung that is only a
+// name in the ladder is refused before a claim that could only fail is made.
+func qualityReason(ctx context.Context, tx *sql.Tx, quality string, found source) string {
+	if quality == QualityOriginal {
+		return ""
+	}
+	rung, ok := ladderRung(quality)
+	if !ok {
+		return ReasonNotOptimized
+	}
+	if !audioKind(found.Kind) && found.Height > 0 && rung.Height > found.Height {
+		return ReasonNotOptimized
+	}
+	recipe := preparedProfile(found.Kind, rung)
+	if preparedmedia.Producible(recipe) {
+		return ""
+	}
+	versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item)
+	if e == nil && selectableVersion(versions, recipe) != nil {
+		return ""
+	}
+	return ReasonNotOptimized
 }
 
 // preparedProfile maps a published quality ladder rung onto the immutable

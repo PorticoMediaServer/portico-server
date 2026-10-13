@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"portico.local/server/internal/apispec"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/persistence"
@@ -22,6 +23,12 @@ func TestLiveOwnerSourcePreviewPublishGuideAndMemberDenial(t *testing.T) {
 		t.Fatal(e)
 	}
 	mux := http.NewServeMux()
+	d.LiveChannels = store
+	registry, err := FoundationRegistry(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.mountRegistry(mux, registry)
 	d.liveChannelRoutes(mux, store)
 	call := func(method, path, token string, body any) *httptest.ResponseRecorder {
 		var payload []byte
@@ -30,6 +37,7 @@ func TestLiveOwnerSourcePreviewPublishGuideAndMemberDenial(t *testing.T) {
 		}
 		r := httptest.NewRequest(method, path, bytes.NewReader(payload))
 		if token != "" {
+			r.Header.Set("Content-Type", "application/json")
 			r.Header.Set("Authorization", "Bearer "+token)
 		}
 		w := httptest.NewRecorder()
@@ -79,9 +87,16 @@ func TestLiveRoutesRejectUnknownBodyAndQuery(t *testing.T) {
 	d, owner, _ := liveHTTPFixture(t)
 	store, _ := livechannels.New(d.DB)
 	mux := http.NewServeMux()
+	d.LiveChannels = store
+	registry, err := FoundationRegistry(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.mountRegistry(mux, registry)
 	d.liveChannelRoutes(mux, store)
 	for _, v := range []struct{ method, path, body string }{{"POST", "/v1/admin/live-sources/preview", `{"unexpected":"secret"}`}, {"GET", "/v1/guide?kind=live-source&kind=library-channel", ""}, {"GET", "/v1/admin/live-sources?private=secret", ""}} {
 		r := httptest.NewRequest(v.method, v.path, strings.NewReader(v.body))
+		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("Authorization", "Bearer "+owner.AccessToken)
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, r)
@@ -134,6 +149,12 @@ func TestLivePreviewRechecksRevocationAfterRequestWork(t *testing.T) {
 	d, owner, _ := liveHTTPFixture(t)
 	store, _ := livechannels.New(d.DB)
 	mux := http.NewServeMux()
+	d.LiveChannels = store
+	registry, err := FoundationRegistry(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.mountRegistry(mux, registry)
 	d.liveChannelRoutes(mux, store)
 	in := livechannels.SourceInput{Name: "Secret source name", Playlist: "#EXTM3U\n#EXTINF:-1 tvg-id=\"one\",Private title\nhttps://fixture.invalid/stream\n"}
 	body, _ := json.Marshal(in)
@@ -143,6 +164,7 @@ func TestLivePreviewRechecksRevocationAfterRequestWork(t *testing.T) {
 		}
 	}}
 	r := httptest.NewRequest("POST", "/v1/admin/live-sources/preview", reader)
+	r.Header.Set("Content-Type", "application/json")
 	r.Header.Set("Authorization", "Bearer "+owner.AccessToken)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, r)
@@ -160,6 +182,12 @@ func TestLiveRemotePreviewAsksForLANConfirmation(t *testing.T) {
 		t.Fatal(e)
 	}
 	mux := http.NewServeMux()
+	d.LiveChannels = store
+	registry, err := FoundationRegistry(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	d.mountRegistry(mux, registry)
 	d.liveChannelRoutes(mux, store)
 	tuner := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -176,6 +204,7 @@ func TestLiveRemotePreviewAsksForLANConfirmation(t *testing.T) {
 	preview := func() *httptest.ResponseRecorder {
 		payload, _ := json.Marshal(draft)
 		r := httptest.NewRequest("POST", "/v1/admin/live-sources/remote/preview", bytes.NewReader(payload))
+		r.Header.Set("Content-Type", "application/json")
 		r.Header.Set("Authorization", "Bearer "+owner.AccessToken)
 		w := httptest.NewRecorder()
 		mux.ServeHTTP(w, r)
@@ -185,17 +214,21 @@ func TestLiveRemotePreviewAsksForLANConfirmation(t *testing.T) {
 	if w.Code != 422 {
 		t.Fatalf("unconfirmed LAN tuner: %d %s", w.Code, w.Body.String())
 	}
-	assertSpecResponse(t, "POST", "/v1/admin/live-sources/remote/preview", w)
+	if e := apispec.ValidateErrorEnvelope(w.Code, w.Body.Bytes()); e != nil {
+		t.Fatal(e)
+	}
 	var refusal struct {
 		Error struct {
-			Code         string   `json:"code"`
-			ConfirmRoots []string `json:"confirmRoots"`
+			Code    string `json:"code"`
+			Current struct {
+				ConfirmRoots []string `json:"confirmRoots"`
+			} `json:"current"`
 		} `json:"error"`
 	}
-	if json.Unmarshal(w.Body.Bytes(), &refusal) != nil || refusal.Error.Code != "source_lan_confirmation_required" || len(refusal.Error.ConfirmRoots) != 1 || refusal.Error.ConfirmRoots[0] != tuner.URL+"/" {
+	if json.Unmarshal(w.Body.Bytes(), &refusal) != nil || refusal.Error.Code != "source_lan_confirmation_required" || len(refusal.Error.Current.ConfirmRoots) != 1 || refusal.Error.Current.ConfirmRoots[0] != tuner.URL+"/" {
 		t.Fatalf("refusal: %s", w.Body.String())
 	}
-	draft["confirmedLanRoots"] = refusal.Error.ConfirmRoots
+	draft["confirmedLanRoots"] = refusal.Error.Current.ConfirmRoots
 	if w = preview(); w.Code != 200 {
 		t.Fatalf("confirmed LAN tuner: %d %s", w.Code, w.Body.String())
 	}

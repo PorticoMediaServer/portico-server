@@ -6,7 +6,12 @@ import {PlayerOffersService, type PlayerOffersSnapshot} from '@core/player-offer
 import {SubtitleService, fetchSubtitleDocument, type SubtitleDocument, type SubtitleSnapshot} from '@core/subtitles.ts';
 import {PlayerChaptersService, type PlayerChaptersSnapshot} from '@core/player-chapters.ts';
 import type {ContentScope} from '@core/library-content.ts';
+import {drawnRenderingFor, readSubtitleFile, readSubtitleFontList, selectedSubtitleOriginal, type DrawnSubtitleFormat} from '@core/subtitle-originals.ts';
+import {subtitleSessionChange} from './subtitles/selection';
 import type {SubtitleSurface} from './subtitle-surface';
+import type {SubtitleOverlay} from './subtitles/overlay';
+import {subtitleRenderingKinds} from './subtitles/declaration';
+import type {DrawnSubtitleSource, ReadSubtitleFile} from './subtitles/types';
 
 /*
  * Option services for the active playback session: audio plan installation,
@@ -79,10 +84,21 @@ function useSessionFacts(playback: PlaybackService): SessionFacts {
 }
 
 /**
- * Subtitle catalogue for the session, and the cue document of the chosen track shown on the
- * player's subtitle surface (the one place a subtitle meets the video element).
+ * Subtitle catalogue for the session, and the chosen track on the picture: a text track's cue
+ * document on the player's subtitle surface, or a styled or image track drawn on the overlay
+ * canvas from its original (`subtitles/overlay.ts`).
+ *
+ * A track this browser can draw is asked for as its original, so the server leaves the video
+ * alone. If drawing it fails here, the same track is asked for the ordinary way (text, or burned
+ * in) and is not tried again in this viewing.
+ *
+ * Choices are made on the playing session itself (`PATCH` of the session, through
+ * `PlaybackService.changePlayback`): the session then knows the track and how it is delivered, so
+ * a change of quality or audio, or a re-plan after the player failed, comes back with the same
+ * subtitle drawn the same way, and the choice is remembered for the next episode. Where there is
+ * no such session (or it refuses), the subtitle route is used as before.
  */
-export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, surface: SubtitleSurface | null, resourceKey: string, audio: boolean) {
+export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, surface: SubtitleSurface | null, resourceKey: string, audio: boolean, overlay: SubtitleOverlay | null = null) {
   const state = useSessionFacts(playback);
   const available = !audio && !!state.sessionId && state.generation !== undefined && !!state.itemId && !state.channel && !['error', 'ended', 'idle'].includes(state.phase);
   const service = useMemo(() => available ? new SubtitleService(api, {itemId: state.itemId!, sessionId: state.sessionId!, generation: state.generation!}, () => crypto.randomUUID(), {positionUs: () => String(Math.max(0, Math.round((playback.getSnapshot().pendingSeek?.positionSeconds ?? playback.getSnapshot().positionSeconds) * 1e6))), install: p => playback.getSnapshot().intentId === state.intentId && playback.installSubtitlePresentation(p)}) : null, [api, scope.serverId, scope.viewerId, available, state.itemId, state.intentId, state.sessionId, state.generation]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -97,7 +113,14 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
       service?.stop();
     };
   }, [service]);
-  const subtitles = useSyncExternalStore(service?.subscribe ?? noop, service?.getSnapshot ?? (() => empty));
+  const stored = useSyncExternalStore(service?.subscribe ?? noop, service?.getSnapshot ?? (() => empty));
+  /* A change made on the session is not the subtitle service's own: while one is in flight the menu
+     is busy, and "off" hides the subtitle at once instead of after the round trip. */
+  const [changing, setChanging] = useState(0);
+  const [hiding, setHiding] = useState(false);
+  useEffect(() => { if (hiding && (!stored.plan || stored.plan.mode === 'off')) setHiding(false); }, [hiding, stored.plan]);
+  useEffect(() => { setHiding(false); setChanging(0); }, [service]);
+  const subtitles = useMemo<SubtitleSnapshot>(() => (changing || hiding ? {...stored, busy: stored.busy || changing > 0, suppressed: stored.suppressed || hiding} : stored), [stored, changing, hiding]);
   const [rendererError, setRendererError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   const plan = subtitles.plan;
@@ -108,14 +131,97 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
   const offsetSeconds = nudged ?? savedOffset;
   const shown = useRef<{doc: SubtitleDocument; url: string} | null>(null);
   useEffect(() => { setNudged(null); }, [plan?.selected?.id, plan?.offsetUs]);
-  useEffect(() => { if (surface && shown.current && nudged !== null) surface.show(shown.current.doc.cues, nudged); }, [surface, nudged]);
+  useEffect(() => { if (surface && shown.current && nudged !== null) surface.show(shown.current.doc.cues, nudged); if (overlay && nudged !== null) overlay.setDelay(nudged); }, [surface, overlay, nudged]);
   const selectedId = plan?.selected?.id;
+  /* Drawn subtitles. `draws` is what this browser renders itself; a track that failed to draw in
+     this viewing is in `undrawable` and is asked for the ordinary way from then on. */
+  const draws = useMemo(() => (overlay ? subtitleRenderingKinds() : ['text']), [overlay]);
+  const undrawable = useRef(new Set<string>());
+  const upgraded = useRef(new Set<string>());
+  const renderingFor = (resource: {id: string}) => (undrawable.current.has(resource.id) ? undefined : drawnRenderingFor(resource, draws));
+  type Track = NonNullable<Parameters<SubtitleService['choose']>[0]>;
+  /** Selects a track (or none) with a delivery: the original for this browser to draw, or the ordinary way. */
+  const select = (resource: Track | null, rendering: DrawnSubtitleFormat | undefined, offsetUs?: string): Promise<void> => {
+    if (!service) return Promise.reject(new Error('Start playback to select subtitles.'));
+    const offset = resource ? offsetUs ?? resource.offsetUs : '0';
+    const byRoute = () => (resource ? service.choose(resource, offset, rendering) : service.choose(null));
+    if (!playback.changesInPlace()) return byRoute();
+    setChanging(count => count + 1);
+    if (!resource) setHiding(true);
+    return playback.changePlayback(subtitleSessionChange(resource, rendering, draws, offset))
+      .then(() => { void service.refresh(); }, () => { setHiding(false); return byRoute(); })
+      .finally(() => setChanging(count => Math.max(0, count - 1)));
+  };
+  const original = service && overlay && !subtitles.suppressed ? selectedSubtitleOriginal(plan) : null;
+  const originalKey = original ? [original.format, original.url, original.companionUrl ?? '', plan?.selected?.revision ?? ''].join('|') : '';
+  const drawnKey = useRef('');
+  const drawRun = useRef(0);
+  const [drawing, setDrawing] = useState(false);
+  const [drawFallbacks, setDrawFallbacks] = useState(0);
   useEffect(() => {
     const selected = plan?.selected;
     if (nudged === null || !service || !selected) return;
-    const timer = setTimeout(() => { void service.choose(selected, String(Math.round(nudged * 1e6))).catch(() => {}); }, 900);
+    // The timing is saved for the delivery in use: a drawn track stays drawn.
+    const timer = setTimeout(() => { void select(selected, selectedSubtitleOriginal(plan)?.format, String(Math.round(nudged * 1e6))).catch(() => {}); }, 900);
     return () => clearTimeout(timer);
   }, [nudged, service, selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+  /* A track selected for the viewer (by the server at the start, or carried from the last
+     episode) as text or burned in, which this browser can draw: ask for its original, once. */
+  useEffect(() => {
+    const selected = plan?.selected;
+    if (!service || !overlay || !plan || !selected || plan.mode !== 'track' || subtitles.suppressed || subtitles.busy || selectedSubtitleOriginal(plan)) return;
+    const rendering = renderingFor(selected);
+    // Once for a track in a session: a server that answers with text or a burn-in again is not asked twice.
+    const once = plan.sessionId + ':' + selected.id;
+    if (!rendering || upgraded.current.has(once)) return;
+    upgraded.current.add(once);
+    void select(selected, rendering, plan.offsetUs).catch(() => {});
+  }, [service, overlay, selectedId, plan?.renderer, plan?.mode, subtitles.suppressed, subtitles.busy]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!overlay) return;
+    if (!original || !service || !plan?.selected) { drawRun.current++; drawnKey.current = ''; overlay.clear(); setDrawing(false); return; }
+    overlay.setDelay(Number(plan.offsetUs) / 1e6);
+    if (drawnKey.current === originalKey && overlay.active) return;
+    // The server handed over the original of a track that already failed to draw here: nothing is tried again.
+    if (undrawable.current.has(plan.selected.id)) { overlay.clear(); setDrawing(false); setRendererError('Subtitles could not be loaded.'); return; }
+    drawnKey.current = originalKey;
+    const run = ++drawRun.current, current = () => drawRun.current === run, selected = plan.selected, offsetUs = plan.offsetUs;
+    const absolute = (path: string) => { const url = api.mediaUrl(path); if (new URL(url).origin !== new URL(api.baseUrl).origin) throw new Error('Unexpected subtitle origin'); return url; };
+    const read: ReadSubtitleFile = (url, maxBytes, signal) => readSubtitleFile(fetch, url, maxBytes, signal);
+    const failed = () => {
+      if (!current()) return;
+      drawRun.current++;
+      drawnKey.current = '';
+      overlay.clear();
+      setDrawing(false);
+      // Shown another way: text for a styled track, burned in for an image track.
+      undrawable.current.add(selected.id);
+      setDrawFallbacks(count => count + 1);
+      void select(selected, undefined, offsetUs).catch(() => {});
+    };
+    setDrawing(true);
+    setRendererError(null);
+    void (async () => {
+      try {
+        let source: DrawnSubtitleSource;
+        // Use the original, companion and font paths supplied by this plan.
+        // Their namespace belongs to the server, not the renderer.
+        if (original.format === 'ass') {
+          // The fonts attached to the file; a subtitle whose font list cannot be read is still drawn, in the fallback fonts.
+          let fonts: string[] = [];
+          if (original.fontsUrl) { try { fonts = (await readSubtitleFontList(fetch, absolute(original.fontsUrl), original.fontsUrl, new AbortController().signal)).map(font => absolute(font.url)); } catch { fonts = []; } }
+          source = {kind: 'ass', script: absolute(original.url), fonts};
+        } else if (original.format === 'vobsub') source = {kind: 'vobsub', index: absolute(original.url), data: absolute(original.companionUrl ?? '')};
+        else source = {kind: original.format, data: absolute(original.url)};
+        if (!current()) return;
+        await overlay.present(source, read, failed);
+        if (current()) setDrawing(false);
+      } catch { failed(); }
+    })();
+  }, [api, overlay, service, originalKey, plan?.offsetUs]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => { drawRun.current++; drawnKey.current = ''; overlay?.clear(); }, [overlay, service]);
+  const choose = (resource: Track, offsetUs?: string): Promise<void> => select(resource, renderingFor(resource), offsetUs);
+  const turnOff = (): Promise<void> => select(null, undefined);
   const nudge = (delta: number): number | undefined => {
     if (!plan?.selected || plan.mode !== 'track' || subtitles.suppressed) return undefined;
     const next = Math.max(-600, Math.min(600, Math.round((offsetSeconds + delta) * 10) / 10));
@@ -202,7 +308,19 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
       surface.guard(false);
     };
   }, [api, service, surface, resourceKey, plan?.documentUrl, plan?.offsetUs, plan?.revision, plan?.mode, subtitles.suppressed, retry]); // eslint-disable-line react-hooks/exhaustive-deps
-  return {service, snapshot: subtitles, rendererError, retryRenderer: () => setRetry(v => v + 1), offsetSeconds, nudge};
+  return {
+    service, snapshot: subtitles, rendererError, retryRenderer: () => setRetry(v => v + 1), offsetSeconds, nudge,
+    /** Selects a track, as its original when this browser draws that kind. */
+    choose,
+    /** Turns subtitles off. */
+    turnOff,
+    /** Whether this browser draws this track itself (so the video is not converted for it). */
+    draws: (resource: {id: string}) => renderingFor(resource) !== undefined,
+    /** The kind being drawn on the canvas now, and whether it is still loading. */
+    drawnKind: original?.format ?? null, drawing,
+    /** Counts the times a track could not be drawn and was shown another way. */
+    drawFallbacks,
+  };
 }
 
 /** Chapter list for the active session; seeking stays with the playback service. */

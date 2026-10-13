@@ -2,6 +2,7 @@ package identity
 
 import (
 	"context"
+	"database/sql"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -58,4 +59,61 @@ func (s *Service) PruneSessionHistory(ctx context.Context) (int64, error) {
 		total += n
 	}
 	return total, nil
+}
+
+// EndedSessionRetention is how long the record of a session that has ended is
+// kept. It is what lets a person see when and why a device was signed out;
+// after this long it is only growth.
+const EndedSessionRetention = 90 * 24 * time.Hour
+
+// PruneEndedSessions removes the records of sessions that ended (were signed
+// out, or lapsed unused) longer ago than EndedSessionRetention, a bounded
+// batch at a time. A live session is never touched, whatever its age: a
+// device that keeps renewing keeps its session.
+func (s *Service) PruneEndedSessions(ctx context.Context) (int64, error) {
+	cutoff := time.Now().Add(-EndedSessionRetention).UTC().Format(time.RFC3339)
+	const ended = `SELECT id FROM authorization_session_families WHERE (revoked=1 AND revoked_at<>'' AND revoked_at<=?1) OR authorization_horizon<=?1 LIMIT 64`
+	var due bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(`+ended+`)`, cutoff).Scan(&due); err != nil || !due {
+		return 0, err
+	}
+	var removed int64
+	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		removed = 0
+		rows, err := tx.QueryContext(ctx, ended, cutoff)
+		if err != nil {
+			return err
+		}
+		var ids []string
+		for rows.Next() {
+			var id string
+			if err = rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			ids = append(ids, id)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			// What refers to the session without following its deletion goes
+			// first; the rest goes with the row.
+			for _, statement := range []string{
+				`DELETE FROM authorization_family_renewals WHERE family_id=?`,
+				`DELETE FROM authorization_family_tokens WHERE family_id=?`,
+				`DELETE FROM identity_device_families WHERE family_id=?`,
+				`DELETE FROM authorization_session_families WHERE id=?`,
+			} {
+				if _, err = tx.ExecContext(ctx, statement, id); err != nil {
+					return err
+				}
+			}
+			removed++
+		}
+		return nil
+	})
+	return removed, err
 }

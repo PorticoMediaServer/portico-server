@@ -308,18 +308,7 @@ func tl6V1Code(w *httptest.ResponseRecorder) string {
 	return body.Error.Code
 }
 
-func tl6WebCapabilities() map[string]any {
-	return map[string]any{
-		"form":       "browser",
-		"network":    map[string]any{"class": "local"},
-		"containers": []map[string]any{{"container": "mp4", "direct": true}, {"container": "webm", "direct": true}},
-		"streaming":  map[string]any{"hls": map[string]any{"fmp4": true, "ts": true}, "progressive": true},
-		"video":      []map[string]any{{"codec": "h264", "maxBitDepth": 8, "maxWidth": 3840, "maxHeight": 2160, "maxFps": 60}},
-		"audio":      []map[string]any{{"codec": "aac", "maxChannels": 6}, {"codec": "mp3", "maxChannels": 2}},
-		"subtitles":  []map[string]any{{"format": "webvtt", "render": "native"}},
-		"features":   map[string]any{"chapters": true, "embeddedAudioSwitching": true},
-	}
-}
+func tl6WebCapabilities() map[string]any { return webCapabilities() }
 
 func tl6QueueItems(ids ...string) map[string]any {
 	return map[string]any{"items": map[string]any{"ids": ids}}

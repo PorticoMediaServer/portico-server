@@ -1,6 +1,6 @@
 # Social and remote playback for third-party clients
 
-Companion to `social.openapi.yaml`. That document is the schema; this one is the
+Companion to `portico.openapi.json`. That document is the schema; this one is the
 behaviour you cannot read off a schema: how the group timeline works, what the
 handoff state machine guarantees, and what this server deliberately does not do.
 
@@ -59,7 +59,8 @@ The authoritative clock is four fields inside `group.timeline`:
   "anchorPositionUs": "184320000",
   "anchorAt": "2026-09-16T20:14:03.118Z",
   "rate": {"numerator": "1", "denominator": "1"},
-  "queuePosition": 2
+  "queuePosition": 2,
+  "waitUntil": null
 }
 ```
 
@@ -88,18 +89,21 @@ A late joiner loads the extrapolated timeline. It never restarts the group.
 
 Every authoritative command carries both:
 
-* `expectedRevision` — the `group.revision` you last read. A stale value is
+* `expectedRevision` — the `group.playbackRevision` you last read. A stale value is
   refused with `409 revision_conflict` and the response names
   `error.currentRevision`. Re-read, re-decide, re-send. This is what stops a
   retried Play from undoing a Pause that landed in between.
 * `idempotencyKey` — 1 to 120 characters, unique per member per group. A replay
   returns the stored receipt with `disposition: "duplicate"` and does not move
   the group again. The same key with a different body is `409
-  idempotency_conflict` — never a silent overwrite. The window is the most recent
+  idempotency_key_reused` — never a silent overwrite. The window is the most recent
   128 keys per group.
 
-Queue mutations fence on `queueRevision`, which is a separate counter from
-`revision`, because a reorder and a seek are not the same kind of change.
+Queue mutations fence on `queueRevision`; shuffle/repeat changes fence on
+`settingsRevision`; host transfer and ending a group fence on `governanceRevision`.
+`revision` orders semantic snapshots. Presence/readiness telemetry does not advance
+any command fence. An actual transport command, host transfer, host-loss pause or
+host end-of-title report advances `playbackRevision`.
 
 ### Host authority
 
@@ -119,17 +123,30 @@ overriding visibility stay with the host.
 
 ### Readiness
 
-Readiness is evidence about one member, never a command. `POST
-/v1/groups/{id}/readiness` records `buffering`, `ready` or `lagging` plus your
-position. The aggregate is the worst state present: `lagging` beats `buffering`
-beats `ready`, and a report older than 30 seconds counts as *stale*, which holds
-the aggregate away from `ready` just as `lagging` does.
+Readiness records `buffering`, `ready` or `lagging`, `positionUs` and the
+`playbackRevision` being followed. An older report is acknowledged and ignored;
+it cannot release a newer seek or title change. Active members count in the
+aggregate; disconnected members do not hold it away from ready.
 
-A lobby promotes itself from `preparing` to `ready` only when every joined member
-has reported `ready`. One member buffering never pauses the others — and the host
-may start anyway. `ready` means "can start the exact media at the commanded
-position with its current plan". An HTTP success or a metadata load is not
-readiness; do not report it as one.
+Seek and title-selection commands enter `group.state: waiting`. The timeline is
+paused at the target and `timeline.waitUntil` names a deadline five seconds away.
+The wait ends when every active member reports ready within 750 ms of that target
+for the current playback revision, or at the deadline. Playing groups resume;
+paused groups remain paused; an initial title becomes ready for the host to start.
+Play starts immediately if the host wants to go ahead. Buffering during ordinary
+playback never pauses everyone.
+
+A heartbeat proves presence separately from readiness: away after 30 seconds,
+disconnected after 120 seconds, and non-host membership leaves after ten minutes.
+Disconnected people do not block queue eligibility. Readiness still becomes stale
+after 30 seconds. Privacy-off members stay visibly present with `private: true`,
+a neutral display name and withheld personal positions/report times; counts and
+readiness states still coordinate the room.
+
+The follower must wait for seeks to land, load paused when the timeline is paused,
+and clamp to its own playable duration. A host that reaches the end reports
+`ended: true` with that playback revision and final position. This pauses the
+clock once; it does not automatically advance the queue.
 
 ### The host-disconnect timeline
 
@@ -150,9 +167,11 @@ A host returning **before** the pause boundary restores the prior playing or
 paused state. A host returning **after** it finds the group paused and must send
 an explicit `play`. Both bump `reconnectGeneration`.
 
-A member may claim host authority for itself — and only for itself — while the
-group is in a `host-reconnecting-*` state. That is the recovery path when a host
-does not come back.
+A member may claim host authority for itself after the host has been silent for
+two minutes, only while it is connected and ready. A sitting host may transfer
+only to a connected, ready member. In anyone-control groups active member commands
+and heartbeats sustain the group; an absent host does not re-pause their Play.
+Pre-play phases survive host reconnection.
 
 The boundaries are wall-clock, not traffic-driven: they fire whether or not
 anybody is polling.
@@ -172,10 +191,10 @@ placeholder:
 `entryId` and `position` survive, so ordering and stable identity are preserved.
 Nothing else does — no title, no artwork, no source, no owner, no provenance.
 
-The placeholder covers the queue. Once a host override (below) makes such an
-entry current, `timeline.itemId` and the `group.transport` event still carry
-that item's opaque id to every member; it resolves to nothing for a member who
-cannot see the item, and no title, artwork or media access comes with it.
+A hidden current entry retains `currentEntryId` but blanks `timeline.itemId`.
+Snapshots, transport events and receipts (including replays) apply the reader's
+current visibility. A follower must pause the previous title and report buffering
+when there is a current entry but no visible item.
 
 The **host** additionally receives `queue.eligibility`, naming which members are
 blocked by which entries, and whether the current entry is one of them. A host is
@@ -227,7 +246,7 @@ data: {"protocolVersion":"1.0","serverTime":"...","group":{...}}
 
 id: 7
 event: group.transport
-data: {"command":"play","state":"playing","anchorPositionUs":"184320000","anchorAt":"...","revision":"12","override":null}
+data: {"command":"play","groupState":"playing","state":"playing","itemId":"item_7f2","currentEntryId":"ent_9c1","anchorPositionUs":"184320000","anchorAt":"...","rate":{"numerator":"1","denominator":"1"},"queuePosition":2,"waitUntil":null,"revision":"12","playbackRevision":"4","override":null}
 
 event: heartbeat
 data: {"serverTime":"2026-09-16T20:14:18.004Z"}
@@ -263,14 +282,19 @@ first-party receiver — a TV app — without either side guessing.
 
 ### Registration and grants
 
-A receiver registers with a stable `deviceId`, a `displayName` and a
-`keyFingerprint` (base64url SHA-256 of its public key). The fingerprint is the
-fence: re-registering with a different one **revokes every open grant**, **fails
+A receiver registers its `displayName` and a
+`keyFingerprint` (a base64url SHA-256 registration fingerprint). Authenticated
+device identity authorizes receiver operations; the fingerprint is a rotation
+fence, not proof that a caller holds a private key. Re-registering with a
+different fingerprint **revokes every open grant**, **fails
 every handoff in flight**, and advances `authorizationRevision`. A credential
-minted against an old key can never drive a rotated one.
+minted against an old fingerprint can never drive a rotated one.
 
-A controller asks for a grant with `POST /v1/receivers/{id}/grants`. The
-receiver's `grantPolicy` decides what happens:
+A controller asks for a grant with `POST /v1/receivers/{id}/grants`. Device ids
+come from authenticated sessions; registration/grant bodies no longer claim them.
+Only the registered receiver device may decide a grant or report handoff readiness.
+Heartbeat fingerprints are required. The receiver's `grantPolicy` decides what
+happens:
 
 * `open` — accepted immediately.
 * `per-device` (default) — a controller that already holds a live accepted grant
@@ -288,7 +312,7 @@ A receiver waits on one read: `GET /v1/receivers/{id}/inbox`. It returns the gra
 requests still `pending` for this receiver and the handoffs addressed to it that are
 still open (`prepared` or `committing`, not yet expired), oldest first. Each handoff
 carries the `itemId` and `requestedPositionUs` to load. It is a snapshot read that takes
-no write gate, so polling it every few seconds while idle is the intended use; presence
+no write gate. The inbox remains available while the receiver is playing; presence
 is still proved by `POST /v1/receivers/{id}/heartbeat`. Another viewer asking for the
 same receiver gets `404`.
 
@@ -327,15 +351,24 @@ Three facts you can build on:
    from `waiting` to `pending` and changes nothing else. The source is still
    live, still authoritative, still the progress writer. Only `commit` ends
    it (end reason `transferred`). The only accepted readiness value is `playing`; a buffered first segment
-   or an HTTP 200 is not readiness.
+   or an HTTP 200 is not readiness. The session must be live on the registered
+   receiving device, belong to the same profile, and play the proposed item.
+   Commit rechecks those facts before retiring the source.
 2. **Commit is fenced twice.** It carries the handoff `revision` the controller
-   last read, and it re-reads the source session: a source that has since ended
+   last read, and it re-reads the source session: a source that changed item or ended
    settles the handoff as `failed` rather than ending something twice.
    A retried commit returns the same commit.
 3. **Failure returns to the retained source.** The source was never retired, so
    there is nothing to restore. Rollback, expiry (120 seconds), a revoked grant
    and a rotated receiver key all discard the prepared target and leave the
    source exactly where it was.
+
+After commit, the phone controls `receiverPlaybackId` through the existing
+Playback v1 GET/PATCH/DELETE session routes: pause/resume with `state`, seek with
+`seek`, and stop with DELETE. Client-core's `HandoffController` exposes these
+operations and can reconnect to a committed handoff without starting another film.
+The receiving player must consume session-change events through its ordinary
+session controller.
 
 Only one open handoff per source session: two prepared proposals racing for
 one terminal is exactly the ambiguity this design exists to prevent. A retried
@@ -419,12 +452,29 @@ also sit behind the per-address sign-in limiter.
 A paired Cast device also appears in the viewer's receiver directory with
 `kind: "cast"`, so one directory answers "where can I send this?".
 
+Sender departure never stops Cast playback. Standard CAF LOAD/PLAY/SEEK require
+the paired controller just like the custom channel. The `paired` response carries
+a 48-character `controlToken`; a returning sender presents it on a custom `status`
+request to recover the same playing session. Store it privately on the sending
+installation, scoped to server and receiver. It is a controller proof, separate
+from the receiver's server credential. A denied or disconnected pending takeover
+revokes its unused pairing and retires that receiver-directory entry. Cleanup
+sends its pairing generation in `If-Match` on DELETE; a late cleanup cannot revoke
+a newer pairing that reused the same device row. Explicit unpair without that
+header revokes the current pairing.
+
 The Cast application id is the setting `cast.applicationId`, readable at
 `GET /v1/cast/configuration` and writable by the server owner at
 `PUT /v1/cast/configuration`. **It has no default.** An empty value means this
 server has not been registered with the Google Cast console, and a sender must
 not advertise Cast — a Cast button that connects to nothing is worse than no
 button.
+
+Group creation is capped at four live groups per creator and eight per hour.
+Commands and member telemetry each have a 120-per-minute member/group budget.
+Portico receiver creation is capped at sixteen active receivers per profile and
+thirty new registrations per hour; handoff proposals allow sixty per minute.
+Existing group, queue, receipt, event and Cast-attempt bounds remain in effect.
 
 The receiver application is a static HTML and JavaScript bundle under
 `server/receiver/cast/`, compiled into the server binary and served from

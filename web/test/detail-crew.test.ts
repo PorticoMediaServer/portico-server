@@ -16,7 +16,7 @@ async function detailApp(credits:any[], service?:any){
  const ready={snapshot:{phase:'ready',data,pending:[]},mutate:()=>{},retry:()=>{}};
  const app=await componentModule(new URL('../src/screens/detail/Detail.tsx',import.meta.url),{
   react:h.react,'@tanstack/react-router':{useNavigate:()=>()=>{},useParams:()=>({itemId:'item'}),useSearch:()=>({library:'library'})},
-  '@core/recommendations.ts':recommendationsModule,'@core/home.ts':homeModule,'@core/presentation/index.ts':{...presentation,formatDuration:()=>'1m'},'../../app/i18n':{currentI18n:()=>defaultI18n},'../../app/downloads':{useDownloads:()=>({state:{unavailable:true},ask:()=>{}})},'../../app/errors':{ErrorNotice:'ErrorNotice',ErrorState:'ErrorState'},  '../../app/detail':{useDetail:()=>service??ready,useCreditPages:(_i,_g,initial)=>({credits:initial,more:()=>{},done:true}),useItemRecommendations:()=>({phase:'loading',data:null,retry:()=>{}})},
+  '../../app/together':{useGroupActions:()=>({inRoom:false,canQueue:false})},'../../app/delete-media':{useDeleteMedia:()=>undefined},'../../player/engine':{usePlayer:()=>({queue:undefined})},'@core/recommendations.ts':recommendationsModule,'@core/home.ts':homeModule,'@core/presentation/index.ts':{...presentation,formatDuration:()=>'1m'},'../../app/i18n':{useI18n:()=>defaultI18n,currentI18n:()=>defaultI18n},'../../app/downloads':{useDownloads:()=>({state:{unavailable:true},ask:()=>{}})},'../../app/errors':{ErrorNotice:'ErrorNotice',ErrorState:'ErrorState'},  '../../app/detail':{useDetail:()=>service??ready,useCreditPages:(_i,_g,initial)=>({credits:initial,more:()=>{},done:true}),useItemRecommendations:()=>({phase:'loading',data:null,retry:()=>{}})},
   '../../app/not-interested':{announceNotInterested:()=>{},markNotInterested:async()=>({undo:async()=>{}}),withoutHidden:(r:any)=>r},'../../app/not-interested-notice':{useNotInterested:()=>({hidden:new Set(),notice:null})},'@core/recommendation-feedback.ts':{isRecommendationRow:()=>false},'../../app/continue-watching':{announceRemoval:()=>{},removeFromContinueWatching:async()=>({undo:async()=>{}})},'../../app/metadata-editor':{useMetadataEditor:()=>undefined},'../../app/viewer-scope':{useViewerScope:()=>({})},'../../app/session':{useSession:()=>({owner:false})},
   '../../player/PlayerContext':{usePlayerActions:()=>({play:()=>{},more:()=>{}})},
   '../../ui':{...ui,anchorOf:()=>undefined,cx:()=>''},'../shared/EntryActions':{PlaylistPicker:'PlaylistPicker',CollectionPicker:'CollectionPicker'},'../shared/Sections':{},'./Detail.module.css':{default:{}},
@@ -89,7 +89,7 @@ test('a loading-to-error transition renders the error state: every hook runs bef
  // Static guard: a hook below the early return would throw ("fewer hooks than
  // expected") the moment a loading page turns into this error view.
  const text=readFileSync(new URL('../src/screens/detail/Detail.tsx',import.meta.url),'utf8');
- const body=text.slice(text.indexOf('export function DetailScreen()'),text.indexOf('\nexport function qualityLabel'));
+ const body=text.slice(text.indexOf('export function DetailScreen()'),text.indexOf('\n/** Cast on the page before See all. */'));
  const early=body.indexOf("if ((snapshot.phase === 'error' && !data) || missing)");
  assert.ok(early>0,'the error early-return exists');
  assert.ok(body.lastIndexOf('const keyCrewList',early)>0&&body.lastIndexOf('const [allPeople',early)>0,'crew hooks run before the early return');

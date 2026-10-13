@@ -31,14 +31,15 @@ var (
 	loadErr  error
 )
 
-// Documents returns every server/api/*.openapi.yaml plus openapi.yaml.
+// Documents returns authored API documents and the generated typed contract.
 func Documents() ([]Document, error) {
 	loadOnce.Do(func() {
 		_, here, _, _ := runtime.Caller(0)
 		dir := filepath.Join(filepath.Dir(here), "..", "..", "api")
 		files, _ := filepath.Glob(filepath.Join(dir, "*.openapi.yaml"))
-		files = append(files, filepath.Join(dir, "openapi.yaml"))
+		files = append(files, filepath.Join(dir, "openapi.yaml"), filepath.Join(dir, "portico.openapi.json"))
 		sort.Strings(files)
+		files = append(files, filepath.Join(dir, "portico.openapi.json"))
 		for _, file := range files {
 			raw, err := os.ReadFile(file)
 			if err != nil {

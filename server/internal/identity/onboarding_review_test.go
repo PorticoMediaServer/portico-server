@@ -20,7 +20,7 @@ func TestW2I02RecoveryLoginPolicyAndIssuance(t *testing.T) {
 	if _, e = db.Exec(`INSERT INTO onboarding_state_v1(singleton,auth_mode,operation_id,request_hash,setup_hash,receipt_until,recovery_account,recovery_confirmed,remote_recovery,ready) VALUES(1,'hosted','review','hash','hash',0,'account',1,0,1)`); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.LoginFrom(context.Background(), "OWNER", password, false); !errors.Is(e, ErrUnauthorized) {
+	if _, e = s.loginFrom(context.Background(), "OWNER", password, false); !errors.Is(e, ErrUnauthorized) {
 		t.Fatal("private recovery account issued remote family", e)
 	}
 	count := func() int {
@@ -33,19 +33,19 @@ func TestW2I02RecoveryLoginPolicyAndIssuance(t *testing.T) {
 	if count() != 0 {
 		t.Fatal("denied login minted a family")
 	}
-	if _, e = s.LoginFrom(context.Background(), "owner", password, true); e != nil {
+	if _, e = s.loginFrom(context.Background(), "owner", password, true); e != nil {
 		t.Fatal("private recovery unavailable", e)
 	}
 	if _, e = db.Exec(`UPDATE onboarding_state_v1 SET remote_recovery=1,revision=revision+1`); e != nil {
 		t.Fatal(e)
 	}
-	if _, e = s.LoginFrom(context.Background(), "owner", password, false); e != nil {
+	if _, e = s.loginFrom(context.Background(), "owner", password, false); e != nil {
 		t.Fatal("explicitly enabled recovery rejected", e)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	before := count()
-	if _, e = s.LoginFrom(ctx, "owner", password, false); !errors.Is(e, context.Canceled) || count() != before {
+	if _, e = s.loginFrom(ctx, "owner", password, false); !errors.Is(e, context.Canceled) || count() != before {
 		t.Fatal("cancelled request issued a family", e)
 	}
 }

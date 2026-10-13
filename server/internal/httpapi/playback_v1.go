@@ -42,6 +42,7 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "transcode_not_allowed", Status: 403, Message: "This title needs converting, and converting is turned off for this account.", Retry: apierror.Never},
 		{Code: "source_unavailable", Status: 503, Message: "The file for this title can't be reached right now.", Retry: apierror.SameRequest},
 		{Code: "unsupported_media", Status: 422, Message: "This title can't be played on this device.", Retry: apierror.Never},
+		{Code: "connection_too_slow", Status: 422, Message: "Your connection to this server is too slow for this quality. Choose a lower quality or Automatic.", Retry: apierror.Never},
 		{Code: "feature_restricted", Status: 403, Message: "This feature is not permitted for this profile.", Retry: apierror.Never},
 		{Code: "queue_ended", Status: 409, Message: "There is nothing after this in the queue.", Retry: apierror.Never},
 		{Code: "unsupported_selector", Status: 422, Message: "This selection can't be played as a queue.", Retry: apierror.Never},
@@ -74,6 +75,9 @@ func v1ErrorDefinitions() []apierror.Definition {
 		{Code: "rate_limited", Status: 429, Message: "Too many attempts. Try again later.", Retry: apierror.SameRequest},
 		// Plex-model server backups (spec §4): owner-only, published with the
 		// API registry.
+		{Code: "client_log_budget", Status: 429, Message: "The daily client log limit has been reached.", Retry: apierror.Never},
+		{Code: "device_session_required", Status: 403, Message: "Sign in on this device to upload logs.", Retry: apierror.Never},
+		{Code: "restore_lock_unavailable", Status: 409, Message: "Portico cannot safely restore data in this folder. Use a folder on a local disk and try again.", Retry: apierror.Never},
 		{Code: "restore_source_invalid", Status: 400, Message: "This restore source can't be used. Pick one of the listed backups or a Portico database file on the server.", Retry: apierror.Never},
 		{Code: "restore_schema_newer", Status: 409, Message: "This backup was written by a newer Portico. Update this server before restoring it.", Retry: apierror.Never},
 		{Code: "restore_pre_release", Status: 409, Message: "This backup was created by an earlier pre-release Portico and can't be restored.", Retry: apierror.Never},
@@ -119,7 +123,7 @@ func v1Error(err error) error {
 		code = "not_permitted"
 	case errors.Is(err, identity.ErrUnauthorized):
 		code = "unauthorized"
-	case errors.Is(err, identity.ErrContentRestricted), errors.Is(err, access.ErrContentRating), errors.Is(err, access.ErrLabelDenied), errors.Is(err, access.ErrChannelDenied),
+	case errors.Is(err, identity.ErrContentRestricted), errors.Is(err, access.ErrChannelDenied),
 		errors.Is(err, sql.ErrNoRows), errors.Is(err, playbackv1.ErrNotFound):
 		code = "not_found"
 	case errors.Is(err, errFeatureRestricted):
@@ -164,8 +168,6 @@ func v1Error(err error) error {
 		code = "not_controllable"
 	case errors.Is(err, playbackv1.ErrStreamExists):
 		code = "stream_exists"
-	case errors.Is(err, access.ErrDeviceTrust):
-		code = "not_permitted"
 	case errors.Is(err, identity.ErrDeviceUnknown):
 		code = "device_not_found"
 	case errors.Is(err, playbackv1.ErrNoTuner):
@@ -185,11 +187,18 @@ func v1Error(err error) error {
 		default:
 			code = "channel_unavailable"
 		}
+	case errors.As(err, new(*playbackv1.ThroughputError)):
+		code = "connection_too_slow"
 	default:
 		return err
 	}
 	if code == "queue_building" || code == "visibility_building" {
 		return &apierror.Error{Code: code, RetryAfterSeconds: 2, Cause: err}
+	}
+	var slow *playbackv1.ThroughputError
+	if errors.As(err, &slow) {
+		// Reason names the widest fixed quality the measured connection carries.
+		return &apierror.Error{Code: "connection_too_slow", Reason: slow.Suggested, Cause: err}
 	}
 	var transition *playbackv1.TransitionError
 	if errors.As(err, &transition) {
@@ -206,7 +215,7 @@ func itemAdmission(err error) error {
 	if err == nil {
 		return nil
 	}
-	if errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, sql.ErrNoRows) || errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, access.ErrContentRating) || errors.Is(err, access.ErrLabelDenied) || errors.Is(err, playbackv1.ErrNotFound) {
+	if errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, sql.ErrNoRows) || errors.Is(err, identity.ErrContentRestricted) || errors.Is(err, playbackv1.ErrNotFound) {
 		return &apierror.Error{Code: "not_found", Cause: err}
 	}
 	return v1Error(err)
@@ -315,50 +324,17 @@ func muxPattern(method, path string) string {
 	return method + " " + strings.Join(parts, "/")
 }
 
-// v1SharedPatterns are mux patterns a legacy handler still owns; that handler
-// hands v1 requests to the registry (see playback_sessions.go).
-var v1SharedPatterns = map[string]bool{
-	"POST /v1/playback/sessions":        true,
-	"GET /v1/playback/sessions/{id}":    true,
-	"DELETE /v1/playback/sessions/{id}": true,
-}
-
-// mountRegistry hands every registry route to the registry, except the patterns
-// a legacy handler shares (it dispatches v1 requests itself).
+// mountRegistry hands every registry route to the registry. Playback Protocol
+// v1 is the only way to start, read, change and stop playback: no other
+// handler shares its patterns.
 func (d Dependencies) mountRegistry(mux *http.ServeMux, registry *apikit.Registry) {
 	mounted := map[string]bool{}
 	for _, route := range registry.Definitions() {
 		pattern := muxPattern(route.Method, route.Path)
-		// With no legacy playback service the shared patterns are the registry's.
-		if mounted[pattern] || v1SharedPatterns[pattern] && d.Playback != nil {
+		if mounted[pattern] {
 			continue
 		}
 		mounted[pattern] = true
 		mux.Handle(pattern, registry)
 	}
-}
-
-// v1OrLegacy serves a pattern shared with a deprecated legacy handler: v1
-// requests go to the registry, everything else to the legacy handler, which
-// is marked deprecated until clients migrate (strangler).
-func (d Dependencies) v1OrLegacy(isV1 func(*http.Request) bool, legacy http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if d.registry != nil && d.v1 != nil && isV1(r) {
-			d.registry.ServeHTTP(w, r)
-			return
-		}
-		markDeprecated(w)
-		legacy(w, r)
-	}
-}
-
-// markDeprecated labels a response from a route Playback Protocol v1 replaces.
-func markDeprecated(w http.ResponseWriter) {
-	w.Header().Set("Deprecation", "true")
-	w.Header().Set("Link", `</v1/playback/sessions>; rel="successor-version"`)
-}
-
-func (d Dependencies) isV1Start(r *http.Request) bool { return r.Header.Get("Idempotency-Key") != "" }
-func (d Dependencies) isV1Session(r *http.Request) bool {
-	return d.v1.IsV1Session(r.Context(), r.PathValue("id"))
 }

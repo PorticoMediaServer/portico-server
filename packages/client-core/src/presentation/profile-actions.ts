@@ -57,7 +57,8 @@ export function profileActions(profile: ProfileRef, viewer?: ProfileViewer): rea
   if (canManage) {
     out.push({id: 'rename', label: 'profile.rename', icon: 'edit', furtherStep: true});
   }
-  out.push({id: 'limits', label: 'profile.limits', icon: 'shield', furtherStep: true});
+  // A profile may look at its own limits; only a managing profile may open (and change) another's.
+  if (canManage || isCurrent) out.push({id: 'limits', label: 'profile.limits', icon: 'shield', furtherStep: true});
   if (canManage) {
     out.push({
       id: 'changePin',
@@ -71,7 +72,8 @@ export function profileActions(profile: ProfileRef, viewer?: ProfileViewer): rea
   if (canManage || isCurrent) {
     out.push({id: 'forgetDevices', label: 'profile.forgetDevices', icon: 'shield'});
   }
-  if (!profile.primary) {
+  // Deleting a profile is managing it: not offered to a profile that cannot.
+  if (!profile.primary && canManage) {
     out.push({id: 'delete', label: 'profile.delete', icon: 'trash', destructive: true, furtherStep: true});
   }
   return Object.freeze(out);

@@ -50,8 +50,13 @@ function SettingsFrame({address}: {address?: string}) {
       downloads: !downloads.state.unavailable,
       // The devices list (and renaming this browser in it) is the server account's.
       deviceName: local,
+      // The owner makes API keys under Server › Integrations; everyone else makes personal tokens.
+      accessTokens: !!session.session && !session.owner,
+      // A browser decodes sound itself and never hands it on undecoded; HDR is offered where the screen shows it.
+      audioPassthrough: false,
+      hdr: hdrScreen(),
     },
-  }), [session.owner, registry, local, session.local?.hostedAccountId, session.hosted, downloads.state.unavailable]);
+  }), [session.owner, session.session, registry, local, session.local?.hostedAccountId, session.hosted, downloads.state.unavailable]);
   const [query, setQuery] = useState('');
   const matches = useMemo(() => searchSettings(structure, query, t), [structure, query, t]);
   const current = address || !narrow ? findSettingsPage(structure, address) : undefined;
@@ -97,6 +102,11 @@ function SettingsFrame({address}: {address?: string}) {
       </div>
     </Page>
   );
+}
+
+/** Whether this screen shows HDR now (a browser that cannot say is taken as one that can, so the switch is never hidden wrongly). */
+function hdrScreen(): boolean {
+  try { return typeof matchMedia !== 'function' || matchMedia('(dynamic-range: high)').matches; } catch { return true; }
 }
 
 const rowAnchor = (rowId: string) => 'setting-' + rowId.replace(/[^A-Za-z0-9_-]/g, '-');
@@ -155,7 +165,7 @@ function SectionView({section, save}: {section: SettingsSection; save: (patch: P
   const body = (
     <>
       {groups.map(draw)}
-      {rows.length ? <SettingsGroup title={!section.advanced && section.title ? t(section.title) : undefined}>{rows.map(draw)}</SettingsGroup> : null}
+      {rows.length ? <SettingsGroup title={!section.advanced && section.title ? t(section.title) : undefined} description={!section.advanced && section.title && section.description ? t(section.description) : undefined}>{rows.map(draw)}</SettingsGroup> : null}
     </>
   );
   if (!shown.length) return null;

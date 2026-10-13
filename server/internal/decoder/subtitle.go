@@ -54,15 +54,17 @@ func RunSubtitleExtract(ctx context.Context, sup *storage.Supervisor, key, execu
 		codec = "webvtt"
 		mux = "webvtt"
 	case "ass", "ssa":
-		codec = "ass"
+		codec = "copy"
 		mux = "ass"
-	case "pgs", "vobsub", "dvb", "mks":
+	case "pgs":
+		mux = "sup"
+	case "vobsub", "dvb", "mks":
 		mux = "matroska"
 	default:
 		res.Close()
 		return nil, ErrInvalidConfiguration
 	}
-	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-threads", "1", "-copyts", "-start_at_zero", "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,avi,mpegts", "-i", input, "-map", "0:" + strconv.Itoa(index), "-vn", "-an", "-dn", "-c:s", codec, "-map_metadata", "-1", "-f", mux, "pipe:1"}
+	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-threads", "1", "-copyts", "-start_at_zero", "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,avi,mpegts,mpeg", "-i", input, "-map", "0:" + strconv.Itoa(index), "-vn", "-an", "-dn", "-c:s", codec, "-map_metadata", "-1", "-f", mux, "pipe:1"}
 	cmd, err := confinedCommand(executable, args, endpoint, files...)
 	if err != nil {
 		res.Close()

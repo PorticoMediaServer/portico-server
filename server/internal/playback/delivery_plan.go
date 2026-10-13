@@ -98,39 +98,41 @@ type BurnInSpec struct {
 }
 
 type DeliveryPlan struct {
-	BurnIn           *BurnInSpec             `json:"burnIn,omitempty"`
-	TextRenditions   []TextRenditionPlan     `json:"-"`
-	Renditions       []AudioRenditionPlan    `json:"audioRenditions,omitempty"`
-	Prepared         *PreparedDelivery       `json:"prepared,omitempty"`
-	Policy           *ResolvedDeliveryPolicy `json:"policy,omitempty"`
-	Trace            *DecisionTrace          `json:"trace,omitempty"`
-	SourceSize       int64                   `json:"-"`
-	SourceModifiedNS int64                   `json:"-"`
-	Profile          string                  `json:"profile"`
-	SourceID         string                  `json:"sourceId"`
-	FactsRevision    int64                   `json:"factsRevision"`
-	SourceContainer  string                  `json:"sourceContainer"`
-	SourceVideoCodec string                  `json:"sourceVideoCodec"`
-	SourceAudioCodec string                  `json:"sourceAudioCodec"`
-	Duration         float64                 `json:"duration"`
-	Mode             string                  `json:"mode"`
-	Strategy         DeliveryStrategy        `json:"strategy"`
-	Reason           string                  `json:"reason"`
-	ReasonCodes      []string                `json:"reasonCodes"`
-	OutputContainer  string                  `json:"outputContainer"`
-	VideoAction      string                  `json:"videoAction"`
-	AudioAction      string                  `json:"audioAction"`
-	OutputVideoCodec string                  `json:"outputVideoCodec"`
-	OutputAudioCodec string                  `json:"outputAudioCodec"`
-	AudioChannels    int                     `json:"audioChannels"`
-	QualityID        string                  `json:"qualityId"`
-	TargetWidth      int                     `json:"targetDisplayWidth,omitempty"`
-	TargetHeight     int                     `json:"targetDisplayHeight,omitempty"`
-	VideoBitrateBPS  int                     `json:"videoBitrateBps,omitempty"`
-	AudioBitrateBPS  int                     `json:"audioBitrateBps,omitempty"`
-	ToneMap          bool                    `json:"toneMap"`
-	ToneMapAlgorithm string                  `json:"toneMapAlgorithm,omitempty"`
-	HardwareBackend  string                  `json:"hardwareBackend"`
+	ConversionTarget *decoder.ConversionTarget `json:"-"`
+	ConversionProbe  *decoder.HardwareProbe    `json:"-"`
+	BurnIn           *BurnInSpec               `json:"burnIn,omitempty"`
+	TextRenditions   []TextRenditionPlan       `json:"-"`
+	Renditions       []AudioRenditionPlan      `json:"audioRenditions,omitempty"`
+	Prepared         *PreparedDelivery         `json:"prepared,omitempty"`
+	Policy           *ResolvedDeliveryPolicy   `json:"policy,omitempty"`
+	Trace            *DecisionTrace            `json:"trace,omitempty"`
+	SourceSize       int64                     `json:"-"`
+	SourceModifiedNS int64                     `json:"-"`
+	Profile          string                    `json:"profile"`
+	SourceID         string                    `json:"sourceId"`
+	FactsRevision    int64                     `json:"factsRevision"`
+	SourceContainer  string                    `json:"sourceContainer"`
+	SourceVideoCodec string                    `json:"sourceVideoCodec"`
+	SourceAudioCodec string                    `json:"sourceAudioCodec"`
+	Duration         float64                   `json:"duration"`
+	Mode             string                    `json:"mode"`
+	Strategy         DeliveryStrategy          `json:"strategy"`
+	Reason           string                    `json:"reason"`
+	ReasonCodes      []string                  `json:"reasonCodes"`
+	OutputContainer  string                    `json:"outputContainer"`
+	VideoAction      string                    `json:"videoAction"`
+	AudioAction      string                    `json:"audioAction"`
+	OutputVideoCodec string                    `json:"outputVideoCodec"`
+	OutputAudioCodec string                    `json:"outputAudioCodec"`
+	AudioChannels    int                       `json:"audioChannels"`
+	QualityID        string                    `json:"qualityId"`
+	TargetWidth      int                       `json:"targetDisplayWidth,omitempty"`
+	TargetHeight     int                       `json:"targetDisplayHeight,omitempty"`
+	VideoBitrateBPS  int                       `json:"videoBitrateBps,omitempty"`
+	AudioBitrateBPS  int                       `json:"audioBitrateBps,omitempty"`
+	ToneMap          bool                      `json:"toneMap"`
+	ToneMapAlgorithm string                    `json:"toneMapAlgorithm,omitempty"`
+	HardwareBackend  string                    `json:"hardwareBackend"`
 	// AudioStream is the absolute source stream index the session plays, -1 when
 	// the source has no audio or the plan predates track choice.
 	AudioStream    int     `json:"audioStream"`
@@ -148,9 +150,21 @@ type DeliveryPlan struct {
 	// made for "remote" or "local". The remote ceilings follow it on a later
 	// re-plan; a v1 plan stored without it is treated as remote.
 	TargetReach string `json:"-"`
-	// AudioSampleRate is the rate converted audio is resampled to; zero keeps
-	// the source's.
+	// AudioSampleRate is the explicit converted rate, including supported
+	// source rates. An unknown rate selects a device-supported rate.
 	AudioSampleRate int `json:"-"`
+	// Engine is the player engine the plan was made for: native or mpv. The
+	// device plays this presentation with that engine.
+	Engine string `json:"engine"`
+	// OutputBitDepth and OutputRange describe a converted picture: 8-bit "sdr"
+	// today, 10-bit "hdr10" or "hlg" where the converter keeps HDR.
+	OutputBitDepth int    `json:"outputBitDepth,omitempty"`
+	OutputRange    string `json:"outputRange,omitempty"`
+	// AudioLossless is true when converted audio loses nothing of the source.
+	AudioLossless bool `json:"audioLossless,omitempty"`
+	// AudioPassthrough is true when the device hands the delivered audio to a
+	// receiver undecoded.
+	AudioPassthrough bool `json:"audioPassthrough,omitempty"`
 }
 
 // DownmixITULimited names the one downmix the server performs: the ITU-R BS.775
@@ -185,6 +199,9 @@ type DeliveryInput struct {
 	AudioStream             int
 	HasAudioChoice          bool
 	PreferredAudioLanguages []string
+	// RememberedAudioLanguage is the language this profile last chose for the
+	// show or film being played; it outranks the preferred list.
+	RememberedAudioLanguage string
 	// Excluded routes were reported broken by this device for this source.
 	Excluded map[DeliveryStrategy]RouteRejection
 	// FMP4Output says this server build can produce fragmented MP4 HLS.
@@ -199,6 +216,26 @@ type DeliveryInput struct {
 	Config             DeliveryConfiguration
 	TranscodingEnabled bool
 	Hardware           decoder.HardwareProbe
+
+	// Device is the device's whole capability document. When it is set planning
+	// chooses the engine and Client is ignored; Engine pins one (the re-plan of
+	// a presentation that is already playing in that engine).
+	Device *CapabilityDocument
+	Engine string
+	// ExcludedByEngine is Excluded per engine, for a plan that chooses one.
+	ExcludedByEngine map[string]map[DeliveryStrategy]RouteRejection
+	// SubtitleKind is the kind of the subtitle the viewer chose for this
+	// presentation (ass, pgs, vobsub, dvb), empty for none or for text that is
+	// delivered beside the stream. An engine that cannot draw the kind itself
+	// would need it burned into the picture, which weighs in the engine choice.
+	SubtitleKind string
+	// SubtitleBesideStream says the chosen subtitle can be handed to the device
+	// as it is beside a stream, so an engine that draws its kind needs no
+	// burn-in even when the file is repackaged or converted.
+	SubtitleBesideStream bool
+	// Outputs overrides what the converter can produce (tests); nil reads the
+	// server's current outputs.
+	Outputs *ConversionOutputs
 }
 
 type routeCost int
@@ -219,6 +256,23 @@ type candidate struct {
 	rank      int
 }
 
+// assumedBitrate is what a file of unknown bitrate is taken to need, by the
+// height of its picture: a generous ordinary rate, so a small ceiling converts
+// the file and a roomy one does not. An unknown height is taken as 1080p.
+func assumedBitrate(height int) int64 {
+	switch {
+	case height > 1440:
+		return 40_000_000
+	case height > 1080:
+		return 20_000_000
+	case height > 720 || height <= 0:
+		return 12_000_000
+	case height > 480:
+		return 6_000_000
+	}
+	return 3_000_000
+}
+
 func bitrateOver(actual int64, ceiling int) bool {
 	// Ten percent of tolerance: an average rate is not a peak, and a file a hair
 	// over a round-number ceiling is not worth a conversion.
@@ -234,7 +288,14 @@ func bitrateOver(actual int64, ceiling int) bool {
 // maximum_compatibility deliberately takes the most converted admissible route,
 // because the most normalized output is the most widely playable.
 func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
+	if in.Device != nil {
+		return planDevice(in)
+	}
 	cfg := in.Config.Normalized()
+	outputs := currentConversionOutputs()
+	if in.Outputs != nil {
+		outputs = *in.Outputs
+	}
 	source := legacySource(in)
 	if in.Source != nil {
 		source = *in.Source
@@ -249,6 +310,10 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		OutputContainer: source.Container, VideoAction: "original", AudioAction: "original",
 		QualityID: in.Target.RungID, SoftwarePreset: cfg.SoftwarePreset,
 		ToneMapAlgorithm: cfg.ToneMapAlgorithm, HardwareBackend: string(decoder.BackendSoftware), AudioStream: -1,
+		Engine: client.Engine,
+	}
+	if p.Engine == "" {
+		p.Engine = EngineNative
 	}
 	if p.QualityID == "" {
 		p.QualityID = "auto"
@@ -257,12 +322,28 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		if err == nil {
 			if p.Trace != nil && p.Trace.Video != nil && source.Video != nil {
 				v := source.Video
-				p.Trace.Video.OutputRange = effectiveRange(v, client.videoCodec(v.Codec))
+				p.Trace.Video.OutputRange = effectiveRange(v, client.videoCodec(v.Codec), client)
 				if p.VideoAction == "copy" && v.DolbyVisionProfile == 7 {
 					p.Trace.Video.OutputRange = assets.RangeHDR10
 				}
 				if p.VideoAction == "convert" {
 					p.Trace.Video.OutputRange = assets.RangeSDR
+					if p.OutputRange != "" {
+						p.Trace.Video.OutputRange = p.OutputRange
+					}
+				}
+				// The engine, not the display, turns this HDR picture into
+				// what the screen shows.
+				if shown := p.Trace.Video.OutputRange; shown != assets.RangeSDR && client.ToneMapsHDR && len(client.Display.DynamicRanges) > 0 && !containsString(client.Display.DynamicRanges, shown) {
+					p.Trace.Notes = append(p.Trace.Notes, NoteDeviceToneMaps)
+				}
+			}
+			// A track that reaches the device as it is in the file, and that
+			// the device hands on to a receiver rather than decoding.
+			if selected := sourceAudioAt(source.Audio, p.AudioStream); selected != nil && p.AudioAction != "convert" && client.audioCodec(selected.Codec) == nil && audioPassedThrough(selected, client) {
+				p.AudioPassthrough = true
+				if p.Trace != nil {
+					p.Trace.Notes = append(p.Trace.Notes, NoteAudioPassthrough)
 				}
 			}
 			p.Renditions = planAudioRenditions(p, source, client, in.Target, in.TranscodingEnabled && in.Policy.Transcode != "never")
@@ -275,6 +356,15 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if client.Evidence == EvidenceBuiltin {
 		trace.Notes = append(trace.Notes, NoteBaselineProfile)
 	}
+	if client.Overrides.ForceStereo {
+		trace.Notes = append(trace.Notes, NoteOverrideStereo)
+	}
+	if client.Overrides.DisablePassthrough {
+		trace.Notes = append(trace.Notes, NoteOverrideNoPassthrough)
+	}
+	if client.Overrides.DisableHDR {
+		trace.Notes = append(trace.Notes, NoteOverrideNoHDR)
+	}
 	if in.Source != nil && !source.DetailKnown {
 		trace.Notes = append(trace.Notes, NoteDetailUnobserved)
 	}
@@ -283,11 +373,11 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if in.HasAudioChoice {
 		explicit = in.AudioStream
 	}
-	audio, chosenBy := chooseAudio(source.Audio, explicit, in.PreferredAudioLanguages)
+	audio, chosenBy := chooseAudio(source.Audio, explicit, in.RememberedAudioLanguage, in.PreferredAudioLanguages)
 	video := source.Video
 	if video != nil {
 		p.SourceVideoCodec, p.OutputVideoCodec = video.Codec, video.Codec
-		trace.Video = &TraceVideo{Codec: video.Codec, Profile: video.Profile, Level: video.Level, BitDepth: video.BitDepth, Width: video.Width, Height: video.Height, FrameRate: video.FrameRate, Interlaced: video.Interlaced, DynamicRange: video.DynamicRange, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionLevel: video.DolbyVisionLevel, DolbyVisionCompatibility: video.DolbyVisionCompatibility, BitRate: video.BitRate}
+		trace.Video = &TraceVideo{Rotation: video.Rotation, SampleAspectRatio: video.SampleAspectRatio, Codec: video.Codec, Profile: video.Profile, Level: video.Level, BitDepth: video.BitDepth, Width: video.Width, Height: video.Height, FrameRate: video.FrameRate, Interlaced: video.Interlaced, DynamicRange: video.DynamicRange, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionLevel: video.DolbyVisionLevel, DolbyVisionCompatibility: video.DolbyVisionCompatibility, BitRate: video.BitRate}
 	}
 	if audio != nil {
 		p.SourceAudioCodec, p.OutputAudioCodec = audio.Codec, audio.Codec
@@ -316,7 +406,16 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		ceiling = client.MaxBitrateBPS
 		trace.Notes = append(trace.Notes, NoteDeviceBitrate)
 	}
-	overBitrate := bitrateOver(max(source.BitRate, source.MaxBitRate), ceiling)
+	sourceRate := max(source.BitRate, source.MaxBitRate)
+	if sourceRate == 0 && ceiling > 0 && video != nil && source.DetailKnown {
+		// A file whose streams were read but whose bitrate was never observed (no
+		// size or no duration) must not pass every ceiling on that account: it is
+		// taken to be an ordinary file of its picture size. A file not analysed
+		// yet is left alone: its picture is itself a guess, and it may be a song.
+		sourceRate = assumedBitrate(height)
+		trace.Notes = append(trace.Notes, NoteBitrateAssumed)
+	}
+	overBitrate := bitrateOver(sourceRate, ceiling)
 
 	// Rules that close every route which leaves the picture as it is.
 	var pictureRules []RouteRejection
@@ -330,7 +429,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		pictureRules = append(pictureRules, RouteRejection{ReasonHeightExceedsPolicy, fmt.Sprintf("%d>%d", height, in.Target.MaxVideoHeight)})
 	}
 	if overBitrate {
-		pictureRules = append(pictureRules, RouteRejection{ReasonBitrateExceedsPolicy, fmt.Sprintf("%d>%d", source.BitRate, ceiling)})
+		pictureRules = append(pictureRules, RouteRejection{ReasonBitrateExceedsPolicy, fmt.Sprintf("%d>%d", sourceRate, ceiling)})
 	}
 
 	candidates := []candidate{}
@@ -403,7 +502,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		}
 	}
 
-	transports := hlsTransports(client, in.FMP4Output)
+	transports := hlsTransports(client, in.FMP4Output, video)
 	if in.NoHLS {
 		// This server has no converter at all: every HLS route closes with the
 		// same reason instead of being planned and then failing to start.
@@ -440,11 +539,17 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	// Route 3: video copied, audio converted.
 	if !audioOnly {
 		rejections := excluded(DeliveryAudioConversion)
-		converted := audioConversionTarget(audio, client, in.Target)
-		rejections = append(rejections, serverConversionRejections(in.Server, in.Hardware, nil, audio, converted.Codec, false)...)
+		transport, r := bestCopyTransport(transports, client, video, nil, in.Target.AllowHDR, true)
+		converted := audioOutputFor(audio, client, in.Target, transportNamed(transports, transport), outputs)
+		rejections = append(rejections, serverConversionRejections(in.Server, in.Hardware, nil, audio, "", converted.Codec, false)...)
 		if audio != nil && converted.NoRate {
 			// Nothing this server converts audio to is at a rate the device takes.
 			rejections = append(rejections, RouteRejection{RejectAudioSampleRate, strconv.Itoa(audio.SampleRate)})
+		}
+		if t := transportNamed(transports, transport); audio != nil && t != nil && !containsString(t.Audio, converted.Codec) {
+			// The device takes none of this server's audio outputs on the
+			// transport that carries the picture.
+			rejections = append(rejections, RouteRejection{RejectAudioCodec, converted.Codec + " in " + transport})
 		}
 		rejections = append(rejections, pictureRules...)
 		if !conversionAllowed {
@@ -453,7 +558,6 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		if audio == nil {
 			rejections = append(rejections, RouteRejection{RejectNoAudio, ""})
 		}
-		transport, r := bestCopyTransport(transports, client, video, nil, in.Target.AllowHDR, true)
 		rejections = append(rejections, r...)
 		if evaluate(DeliveryAudioConversion, transport, rejections) {
 			candidates = append(candidates, candidate{DeliveryAudioConversion, costAudioConversion, "hls", transport, []string{ReasonAudioCodecRequiresConvert}, 0})
@@ -461,30 +565,39 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	}
 
 	// Route 4: full conversion (or, for an audio file, audio conversion).
+	var picture videoOutput
 	{
 		var rejections []RouteRejection
+		transport := ""
+		if audioOnly {
+			for _, t := range transports {
+				if t.Transport == TransportHLSTS && containsString(t.Audio, "aac") {
+					transport = t.Transport
+					break
+				}
+			}
+		} else if chosen, ok := chooseVideoOutput(video, client, transports, in.Target.AllowHDR, outputs); ok {
+			picture, transport = chosen, chosen.Transport
+		}
+		carrier := transportNamed(transports, transport)
 		audioToDecode := audio
-		if t := transportNamed(transports, TransportHLSTS); audio != nil && t != nil && len(audioRejections(audio, client, *t)) == 0 && serverCopyAudio(TransportHLSTS, audio.Codec) && !bitrateOver(audio.BitRate, in.Target.MaxAudioBitrateBPS) && in.Source != nil && !audioOnly {
+		if audio != nil && carrier != nil && len(audioRejections(audio, client, *carrier)) == 0 && serverCopyAudio(transport, audio.Codec) && !bitrateOver(audio.BitRate, in.Target.MaxAudioBitrateBPS) && in.Source != nil && !audioOnly {
 			audioToDecode = nil
 		}
 		hardware := in.Hardware
 		if in.BurnIn {
 			hardware.NativeFilters = false
 		}
-		converted := audioConversionTarget(audio, client, in.Target)
-		rejections = append(rejections, serverConversionRejections(in.Server, hardware, video, audioToDecode, converted.Codec, hdr && cfg.ToneMapping)...)
+		converted := audioOutputFor(audio, client, in.Target, carrier, outputs)
+		rejections = append(rejections, serverConversionRejections(in.Server, hardware, video, audioToDecode, picture.Codec, converted.Codec, hdr && picture.Range == assets.RangeSDR && cfg.ToneMapping)...)
 		if audioToDecode != nil && converted.NoRate {
 			rejections = append(rejections, RouteRejection{RejectAudioSampleRate, strconv.Itoa(audioToDecode.SampleRate)})
 		}
+		if audioToDecode != nil && carrier != nil && !containsString(carrier.Audio, converted.Codec) {
+			rejections = append(rejections, RouteRejection{RejectAudioCodec, converted.Codec + " in " + transport})
+		}
 		if !conversionAllowed {
 			rejections = append(rejections, RouteRejection{RejectTranscodingDisabled, ""})
-		}
-		transport := ""
-		for _, t := range transports {
-			if t.Transport == TransportHLSTS && (audioOnly || containsString(t.Video, "h264")) && containsString(t.Audio, "aac") {
-				transport = t.Transport
-				break
-			}
 		}
 		if transport == "" {
 			rejections = append(rejections, RouteRejection{RejectTransport, TransportHLSTS})
@@ -612,9 +725,9 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		output = "fmp4_hls"
 	}
 	convertAudio := func() {
-		target := audioConversionTarget(audio, client, in.Target)
+		target := audioOutputFor(audio, client, in.Target, transportNamed(transports, chosen.transport), outputs)
 		p.AudioAction, p.OutputAudioCodec, p.AudioChannels, p.AudioBitrateBPS = "convert", target.Codec, target.Channels, target.Bitrate
-		p.AudioSampleRate = target.SampleRate
+		p.AudioSampleRate, p.AudioLossless = target.SampleRate, target.Lossless
 		if target.Downmix {
 			p.Downmix = DownmixITULimited
 		}
@@ -641,7 +754,8 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		return p, nil
 	}
 	p.OutputContainer = output
-	p.VideoAction, p.OutputVideoCodec = "convert", "h264"
+	p.VideoAction, p.OutputVideoCodec = "convert", picture.Codec
+	p.OutputBitDepth, p.OutputRange = picture.BitDepth, picture.Range
 	// The audio of a converted picture is still copied when the device takes it:
 	// re-encoding a track the device can already decode only loses quality.
 	if audio == nil {
@@ -651,13 +765,13 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	} else {
 		convertAudio()
 	}
-	h264 := client.videoCodec("h264")
+	encoded := client.videoCodec(picture.Codec)
 	p.TargetHeight = in.Target.MaxVideoHeight
-	if h264 != nil {
-		p.TargetWidth = h264.MaxWidth
+	if encoded != nil {
+		p.TargetWidth = encoded.MaxWidth
 	}
-	if h264 != nil && h264.MaxHeight > 0 && (p.TargetHeight == 0 || h264.MaxHeight < p.TargetHeight) && height > h264.MaxHeight {
-		p.TargetHeight = h264.MaxHeight
+	if encoded != nil && encoded.MaxHeight > 0 && (p.TargetHeight == 0 || encoded.MaxHeight < p.TargetHeight) && height > encoded.MaxHeight {
+		p.TargetHeight = encoded.MaxHeight
 	}
 	budgetTarget := in.Target
 	budgetTarget.MaxVideoBitrateBPS = ceiling
@@ -665,17 +779,18 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 		budgetTarget.MaxVideoHeight = p.TargetHeight
 	}
 	p.VideoBitrateBPS = videoBudget(budgetTarget, height)
-	// The output of a conversion is 8-bit BT.709. An HDR picture that is not tone
-	// mapped on the way there is simply wrong — grey and washed out — so the
-	// owner's switch is the only thing that turns it off, and the trace says so.
-	if hdr {
+	// A conversion that keeps the source's HDR needs no tone mapping. One that
+	// writes a standard picture from an HDR source does: left unmapped it is
+	// simply wrong — grey and washed out — so the owner's switch is the only
+	// thing that turns it off, and the trace says so.
+	if hdr && picture.Range == assets.RangeSDR {
 		if cfg.ToneMapping {
 			p.ToneMap = true
 			if video.DynamicRange == assets.RangeDolbyVision && dolbyVisionFallback(video) == "" {
 				trace.Notes = append(trace.Notes, NoteDolbyVisionNoLayer)
 				// COMPAT-04: only libplacebo applies Profile 5's reshaping; say so
 				// in the decision, so clients can warn before play.
-				if !decoder.ReshapesDolbyVision(decoder.ConversionRequest{ConvertVideo: true, ToneMap: true, Toolchain: decoder.CurrentToolchain(), Probe: in.Hardware}) {
+				if !decoder.ReshapesDolbyVision(decoder.ConversionRequest{ConvertVideo: true, ToneMap: true, Toolchain: decoder.CurrentToolchain(), Probe: in.Hardware, Target: &decoder.ConversionTarget{VideoCodec: "h264", ToneMap: true, DolbyVisionProfile: video.DolbyVisionProfile, DolbyVisionCompatibility: video.DolbyVisionCompatibility}}) {
 					p.ReasonCodes = append(p.ReasonCodes, ReasonDolbyVisionApproximate)
 				}
 			}
@@ -686,8 +801,8 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if video != nil {
 		p.Deinterlace = video.Interlaced
 		limit := 60.0
-		if h264 != nil && h264.MaxFrameRate > 0 {
-			limit = h264.MaxFrameRate
+		if encoded != nil && encoded.MaxFrameRate > 0 {
+			limit = encoded.MaxFrameRate
 		}
 		if video.FrameRate > limit+0.01 {
 			p.MaxFrameRate = limit
@@ -696,11 +811,24 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	p.HardwareDevice = cfg.HardwareDevice
 	if in.Hardware.Available && in.Hardware.Backend != decoder.BackendSoftware {
 		p.HardwareBackend, p.HardwareNative = string(in.Hardware.Backend), in.Hardware.NativeFilters
+		if !p.ToneMap {
+			p.HardwareNative = p.HardwareNative || in.Hardware.ScaleFilters
+		}
 		p.ReasonCodes = append(p.ReasonCodes, ReasonHardwareBackend)
 	} else {
 		p.ReasonCodes = append(p.ReasonCodes, ReasonSoftwareFallback)
 	}
 	return p, nil
+}
+
+// sourceAudioAt is the source track with the given absolute stream index.
+func sourceAudioAt(tracks []SourceAudio, index int) *SourceAudio {
+	for i := range tracks {
+		if tracks[i].Index == index {
+			return &tracks[i]
+		}
+	}
+	return nil
 }
 
 func transportNamed(transports []ClientTransport, name string) *ClientTransport {
@@ -819,6 +947,7 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		return decoder.ConversionGraph{}, errors.New("delivery plan does not describe ordinary HLS")
 	}
 	request := decoder.ConversionRequest{
+		Target:           p.ConversionTarget,
 		BurnIn:           burn,
 		Toolchain:        decoder.CurrentToolchain(),
 		Probe:            decoder.HardwareProbe{Backend: decoder.HardwareBackend(p.HardwareBackend), Available: p.HardwareBackend != "" && p.HardwareBackend != string(decoder.BackendSoftware), NativeFilters: p.HardwareNative, Device: p.HardwareDevice},
@@ -836,6 +965,9 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 		Downmix:          p.Downmix == DownmixITULimited,
 		AudioSampleRate:  p.AudioSampleRate,
 	}
+	if p.ConversionProbe != nil && p.HardwareBackend == string(p.ConversionProbe.Backend) && p.HardwareBackend != string(decoder.BackendSoftware) {
+		request.Probe = *p.ConversionProbe
+	}
 	switch p.VideoAction {
 	case "copy":
 		request.CopyVideo = true
@@ -849,13 +981,57 @@ func (p DeliveryPlan) conversionGraph(burn *decoder.BurnIn) (decoder.ConversionG
 	case "copy":
 		request.CopyAudio = true
 	case "convert":
-		if (p.OutputAudioCodec != "aac" && p.OutputAudioCodec != "ac3" && p.OutputAudioCodec != "eac3") || (p.AudioChannels != 2 && p.AudioChannels != 6) {
+		if p.ConversionTarget == nil && ((p.OutputAudioCodec != "aac" && p.OutputAudioCodec != "ac3" && p.OutputAudioCodec != "eac3") || (p.AudioChannels != 2 && p.AudioChannels != 6)) {
 			return decoder.ConversionGraph{}, errors.New("invalid delivery audio action")
 		}
 		request.ConvertAudio = true
 	case "none":
 	default:
 		return decoder.ConversionGraph{}, errors.New("invalid delivery audio action")
+	}
+	if request.ConvertVideo && p.Trace != nil && p.Trace.Video != nil && p.Trace.Video.DolbyVisionProfile > 0 {
+		t := request.Target
+		if t == nil {
+			t = &decoder.ConversionTarget{VideoCodec: p.OutputVideoCodec, BitDepth: 8, DynamicRange: "sdr", ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
+		}
+		copy := *t
+		copy.DolbyVisionProfile = p.Trace.Video.DolbyVisionProfile
+		copy.DolbyVisionCompatibility = p.Trace.Video.DolbyVisionCompatibility
+		request.Target = &copy
+	}
+	if request.ConvertVideo && p.OutputVideoCodec == "h264" && request.Target == nil && p.Trace != nil && p.Trace.Video != nil {
+		v := p.Trace.Video
+		w, h := convertedDimensions(p)
+		rate := v.FrameRate
+		if p.MaxFrameRate > 0 {
+			rate = min(rate, p.MaxFrameRate)
+		}
+		request.Target = &decoder.ConversionTarget{VideoCodec: "h264", BitDepth: 8, DynamicRange: "sdr", ToneMap: p.ToneMap, Width: p.TargetWidth, Height: p.TargetHeight, FrameRate: p.MaxFrameRate, VideoBitrateBPS: p.VideoBitrateBPS, VideoLevel: decoder.H264OutputLevel(w, h, rate), AudioCodec: p.OutputAudioCodec, AudioChannels: p.AudioChannels, AudioSampleRate: p.AudioSampleRate, AudioBitrateBPS: p.AudioBitrateBPS, Packaging: p.OutputContainer}
+	}
+	if request.Target != nil && (request.Target.VideoCodec == "hevc" || request.Target.VideoCodec == "h264") && request.Target.VideoLevel == 0 {
+		target := *request.Target
+		w, h := convertedDimensions(p)
+		rate := target.FrameRate
+		if p.Trace != nil && p.Trace.Video != nil {
+			rate = p.Trace.Video.FrameRate
+			if target.FrameRate > 0 {
+				rate = min(rate, target.FrameRate)
+			}
+		}
+		target.VideoLevel = decoder.HEVCOutputLevel(w, h, rate)
+		if target.VideoCodec == "h264" {
+			target.VideoLevel = decoder.H264OutputLevel(w, h, rate)
+		}
+		request.Target = &target
+	}
+	if p.Trace != nil && p.Trace.Video != nil {
+		v := p.Trace.Video
+		request.DisableHardwareDecode = v.Rotation != 0 || v.SampleAspectRatio != "" && v.SampleAspectRatio != "1:1" && v.SampleAspectRatio != "0:1"
+		if request.Target != nil && request.Target.SourceRange == "" {
+			target := *request.Target
+			target.SourceRange = v.DynamicRange
+			request.Target = &target
+		}
 	}
 	return decoder.BuildConversion(request)
 }
@@ -890,7 +1066,11 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 		var stored storedPolicy
 		if err = json.Unmarshal([]byte(policy), &stored); err == nil {
 			p.Policy, p.Target, p.TargetReach, p.AudioSampleRate = stored.ResolvedDeliveryPolicy, stored.SessionTarget, stored.SessionReach, stored.AudioSampleRate
+			p.Engine, p.OutputBitDepth, p.OutputRange, p.AudioLossless, p.AudioPassthrough = stored.Engine, stored.OutputBitDepth, stored.OutputRange, stored.AudioLossless, stored.AudioPassthrough
 		}
+	}
+	if p.Engine == "" {
+		p.Engine = EngineNative
 	}
 	if trace != "" {
 		var decoded DecisionTrace
@@ -917,6 +1097,9 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 	} else if !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
+	if err = loadConversionTarget(q, session, p); err != nil {
+		return nil, err
+	}
 	return p, nil
 }
 
@@ -925,15 +1108,20 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 // the reach it was admitted with, the rate converted audio is resampled to).
 type storedPolicy struct {
 	*ResolvedDeliveryPolicy
-	SessionTarget   *QualityTarget `json:"sessionTarget,omitempty"`
-	SessionReach    string         `json:"sessionReach,omitempty"`
-	AudioSampleRate int            `json:"audioSampleRate,omitempty"`
+	SessionTarget    *QualityTarget `json:"sessionTarget,omitempty"`
+	SessionReach     string         `json:"sessionReach,omitempty"`
+	AudioSampleRate  int            `json:"audioSampleRate,omitempty"`
+	Engine           string         `json:"engine,omitempty"`
+	OutputBitDepth   int            `json:"outputBitDepth,omitempty"`
+	OutputRange      string         `json:"outputRange,omitempty"`
+	AudioLossless    bool           `json:"audioLossless,omitempty"`
+	AudioPassthrough bool           `json:"audioPassthrough,omitempty"`
 }
 
 func persistDeliveryPlan(tx *sql.Tx, session string, p *DeliveryPlan) error {
 	policy := ""
-	if p.Policy != nil || p.Target != nil || p.TargetReach != "" || p.AudioSampleRate != 0 {
-		raw, err := json.Marshal(storedPolicy{p.Policy, p.Target, p.TargetReach, p.AudioSampleRate})
+	if p.Policy != nil || p.Target != nil || p.TargetReach != "" || p.AudioSampleRate != 0 || p.Engine != "" {
+		raw, err := json.Marshal(storedPolicy{p.Policy, p.Target, p.TargetReach, p.AudioSampleRate, p.Engine, p.OutputBitDepth, p.OutputRange, p.AudioLossless, p.AudioPassthrough})
 		if err != nil {
 			return err
 		}
@@ -969,12 +1157,12 @@ type PreparedDelivery struct {
 	Facts          preparedmedia.Facts `json:"facts"`
 }
 
-func serverConversionRejections(f *decoder.ToolchainFacts, hardware decoder.HardwareProbe, video *SourceVideo, audio *SourceAudio, audioEncoder string, toneMap bool) []RouteRejection {
+func serverConversionRejections(f *decoder.ToolchainFacts, hardware decoder.HardwareProbe, video *SourceVideo, audio *SourceAudio, videoOutput, audioEncoder string, toneMap bool) []RouteRejection {
 	if f == nil {
 		return nil
 	}
 	out := []RouteRejection{}
-	if video != nil {
+	if video != nil && (videoOutput == "" || videoOutput == "h264") {
 		encoder := "libx264"
 		if hardware.Available && hardware.Encoder != "" {
 			encoder = hardware.Encoder

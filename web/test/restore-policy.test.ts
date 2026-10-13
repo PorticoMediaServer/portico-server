@@ -26,8 +26,8 @@ test('a 400 keeps the saved sign-in (retry), as does a 404', async () => {
   assert.equal(await restoreOutcome(new SessionRefreshError('refresh_failed', 'Try again.', false), saved, system('srv_saved')), 'retry');
 });
 
-test('a different server id at the saved address is a reset; the same id is not', async () => {
-  assert.equal(await restoreOutcome(new ApiError(404, 'not_found', 'Not found'), saved, system('srv_new')), 'reset');
+test('a different server id at the saved address keeps the sign-in (the answer is unsigned); the same id is an ordinary retry', async () => {
+  assert.equal(await restoreOutcome(new ApiError(404, 'not_found', 'Not found'), saved, system('srv_new')), 'replaced');
   assert.equal(await restoreOutcome(new Error('The saved connection no longer matches this tab’s profile.'), saved, system('srv_saved')), 'retry');
   assert.equal(await serverReplaced(saved.serverUrl, saved.serverId, system('srv_new')), true);
 });

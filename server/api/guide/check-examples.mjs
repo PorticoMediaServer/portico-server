@@ -41,15 +41,12 @@ const YAML_FILES = [
   "admin-libraries.openapi.yaml",
   "browse.openapi.yaml",
   "delivery.openapi.yaml",
-  "download-requests.openapi.yaml",
-  "downloads.openapi.yaml",
   "home.openapi.yaml",
   "identity.openapi.yaml",
   "jobs.openapi.yaml",
   "metadata-editor.openapi.yaml",
   "notifications.openapi.yaml",
   "search-people.openapi.yaml",
-  "social.openapi.yaml",
   "telemetry.openapi.yaml",
 ];
 

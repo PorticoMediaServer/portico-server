@@ -96,6 +96,22 @@ export class KnownDirectServers {
     })}));
   }
 
+  /**
+   * The address the server was last proven at (its identity was verified there). A server that
+   * moved keeps working for the sign-in in use, because that follows the verified route; this
+   * keeps the remembered entry, which a later switch back starts from, pointing at the same
+   * place. Order and profile are untouched; an address that is not a plain http(s) origin is ignored.
+   */
+  async setAddress(serverId: string, address: string): Promise<void> {
+    const verified = knownServerAddress(address);
+    if (!verified) return;
+    await this.storage.change(current => {
+      const items = parseKnownServers(current);
+      // Nothing to write when it is unknown or unchanged: no storage churn on every reconnect.
+      return items.some(s => s.serverId === serverId && s.address !== verified) ? {version: '1', items: items.map(s => (s.serverId === serverId ? {...s, address: verified} : s))} : current;
+    });
+  }
+
   async forget(serverId: string): Promise<void> {
     await this.storage.change(current => ({version: '1', items: parseKnownServers(current).filter(s => s.serverId !== serverId)}));
   }

@@ -424,7 +424,7 @@ func (s *Service) encodeAndPublish(ctx context.Context, w work, custody *attempt
 		return e
 	}
 	progress := &progressWriter{s: s, w: w, out: output, ctx: ctx}
-	recipe := decoder.PreparedRecipe{DropChapters: !strings.HasSuffix(p.ID, "-v1"), BoundedFragments: strings.HasSuffix(p.ID, "-v3"), AudioOnly: p.Kind == "audio", Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps}
+	recipe := recipeFor(p)
 	e = s.encode(ctx, w, custody, source, recipe, progress)
 	if e != nil {
 		return e
@@ -676,6 +676,7 @@ func probeRate(raw string) float64 {
 	}
 	return n / d
 }
+
 func acceptOutput(original, output probed, p Profile) error {
 	if math.IsNaN(output.Duration) || math.IsInf(output.Duration, 0) || output.Duration <= 0 || output.OtherStreams != 0 {
 		return ErrOutput
@@ -698,7 +699,7 @@ func acceptOutput(original, output probed, p Profile) error {
 		if output.VideoStreams != 0 {
 			return ErrOutput
 		}
-	} else if output.VideoStreams != 1 || output.VideoCodec != "h264" || output.PixFmt != "yuv420p" || output.Width < 2 || output.Height < 2 || output.Width > p.Width || output.Height > p.Height || output.Width%2 != 0 || output.Height%2 != 0 || (output.VideoProfile != "High" && output.VideoProfile != "Main" && output.VideoProfile != "Constrained Baseline" && output.VideoProfile != "Baseline") || output.VideoLevel < 1 || output.VideoLevel > 40 || output.FrameRate <= 0 || output.FrameRate > 30.1 {
+	} else if output.VideoStreams != 1 || output.VideoCodec != "h264" || output.PixFmt != "yuv420p" || output.Width < 2 || output.Height < 2 || output.Width > p.Width || output.Height > p.Height || output.Width%2 != 0 || output.Height%2 != 0 || (output.VideoProfile != "High" && output.VideoProfile != "Main" && output.VideoProfile != "Constrained Baseline" && output.VideoProfile != "Baseline") || output.VideoLevel < 1 || output.VideoLevel > decoder.H264OutputLevel(p.Width, p.Height, 60) || output.FrameRate <= 0 || output.FrameRate > 60.1 {
 		return ErrOutput
 	}
 	return nil

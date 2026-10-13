@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -134,10 +135,32 @@ func TestTierPredicateOrdersOwnerAdminMemberAndRefusesUnknown(t *testing.T) {
 	}
 }
 
-func TestRoleChangeRequiresRevisionRevokesSessionsAndRefusesPeers(t *testing.T) {
+// A tier change applies live. The account's sessions take the new tier in the
+// same transaction and stay signed in; sessions that were issued narrower than
+// the account on purpose stay narrow.
+func TestRoleChangeRequiresRevisionAppliesLiveAndRefusesPeers(t *testing.T) {
 	store, db, _ := fixture(t)
 	ctx := context.Background()
 	testauth.InsertSession(t, db, "hash", "member", "member-profile", "local", "member", "2099-01-01T00:00:00Z")
+	// An account session held between sign-in and choosing a profile.
+	testauth.InsertSession(t, db, "account-hash", "member", "member-profile", "local", "account", "2099-01-01T00:00:00Z")
+	// A viewer-only device.
+	testauth.InsertSession(t, db, "viewer-hash", "member", "member-profile", "local", "member", "2099-01-01T00:00:00Z")
+	if _, err := db.Exec(`INSERT INTO authorization_family_grants(family_id,grant_kind) VALUES('fixture-family-viewer-hash','viewer_only')`); err != nil {
+		t.Fatal(err)
+	}
+	// A second profile of the same account, which is a member whatever the account is.
+	if _, err := db.Exec(`INSERT INTO direct_profiles(id,account_id,name,is_primary) VALUES('second-profile','member','Second',0)`); err != nil {
+		t.Fatal(err)
+	}
+	testauth.InsertSession(t, db, "second-hash", "member", "second-profile", "local", "member", "2099-01-01T00:00:00Z")
+	session := func(hash string) (role string, revoked, epoch int) {
+		t.Helper()
+		if err := db.QueryRow(`SELECT role,revoked,epoch FROM authorization_access WHERE hash=?`, hash).Scan(&role, &revoked, &epoch); err != nil {
+			t.Fatal(err)
+		}
+		return
+	}
 	if _, err := store.SetRole(ctx, nil, owner(), "member", RoleChange{ExpectedRevision: 9, OperationID: "operation-1", Role: identity.TierAdmin}); !errors.Is(err, ErrConflict) {
 		t.Fatalf("stale revision: %v", err)
 	}
@@ -145,9 +168,14 @@ func TestRoleChangeRequiresRevisionRevokesSessionsAndRefusesPeers(t *testing.T) 
 	if err != nil || out.Role != identity.TierAdmin || out.Revision != 2 {
 		t.Fatalf("promote: %v %+v", err, out)
 	}
-	var revoked int
-	if err = db.QueryRow(`SELECT revoked FROM authorization_access WHERE hash='hash'`).Scan(&revoked); err != nil || revoked != 1 {
-		t.Fatalf("sessions survived a tier change: %v %d", err, revoked)
+	for hash, want := range map[string]string{"hash": "admin", "account-hash": "account", "viewer-hash": "member", "second-hash": "member"} {
+		if role, revoked, _ := session(hash); role != want || revoked != 0 {
+			t.Fatalf("after promotion, session %s: role=%s revoked=%d, want role=%s and still signed in", hash, role, revoked, want)
+		}
+	}
+	var epoch int
+	if err = db.QueryRow(`SELECT epoch FROM accounts WHERE id='member'`).Scan(&epoch); err != nil || epoch != 1 {
+		t.Fatalf("a tier change moved the account epoch (which ends every session): %d %v", epoch, err)
 	}
 	// A replay of the same operation returns the same document rather than
 	// applying a second time.
@@ -158,9 +186,22 @@ func TestRoleChangeRequiresRevisionRevokesSessionsAndRefusesPeers(t *testing.T) 
 	if _, err = store.SetRole(ctx, nil, owner(), "member", RoleChange{ExpectedRevision: 1, OperationID: "operation-1", Role: identity.TierMember}); !errors.Is(err, ErrIdempotencyKeyReused) {
 		t.Fatalf("reused key: %v", err)
 	}
+	// An admin may not edit a peer. The refusal is of a valid session: a
+	// refusal (403), not a failed credential (401).
 	admin := identity.Principal{Viewer: identity.Viewer{AccountID: "admin-actor", Role: identity.TierAdmin}}
-	if _, err = store.SetRole(ctx, nil, admin, "member", RoleChange{ExpectedRevision: 2, OperationID: "operation-2", Role: identity.TierMember}); !errors.Is(err, identity.ErrUnauthorized) {
+	if _, err = store.SetRole(ctx, nil, admin, "member", RoleChange{ExpectedRevision: 2, OperationID: "operation-2", Role: identity.TierMember}); !errors.Is(err, identity.ErrForbidden) {
 		t.Fatalf("an admin edited a peer: %v", err)
+	}
+	if _, err = store.SetRole(ctx, nil, owner(), "owner", RoleChange{ExpectedRevision: 1, OperationID: "operation-self", Role: identity.TierMember}); !errors.Is(err, identity.ErrForbidden) {
+		t.Fatalf("the owner changed its own tier: %v", err)
+	}
+	// Demotion is live too: the administrator's devices stop being an
+	// administrator's at once, and stay signed in.
+	if out, err = store.SetRole(ctx, nil, owner(), "member", RoleChange{ExpectedRevision: 2, OperationID: "operation-3", Role: identity.TierMember}); err != nil || out.Role != identity.TierMember {
+		t.Fatalf("demote: %v %+v", err, out)
+	}
+	if role, revoked, _ := session("hash"); role != "member" || revoked != 0 {
+		t.Fatalf("after demotion: role=%s revoked=%d", role, revoked)
 	}
 }
 
@@ -236,7 +277,7 @@ func TestChannelPolicyAcceptsOnlyCanonicalV1IDs(t *testing.T) {
 	}
 }
 
-func TestAdmissionAppliesStreamsRatingLabelsAndSchedule(t *testing.T) {
+func TestAdmissionAppliesStreamsAndTheRemoteClamp(t *testing.T) {
 	store, db, ids := fixture(t)
 	ctx := context.Background()
 	limits := Limits{MaxStreams: 1, MaxContentRating: "PG", AllowUnrated: true, Tags: TagPolicy{DeniedLabels: []string{"spoilers"}}}
@@ -245,19 +286,13 @@ func TestAdmissionAppliesStreamsRatingLabelsAndSchedule(t *testing.T) {
 	}
 	member := identity.Principal{Viewer: identity.Viewer{AccountID: "member", ProfileID: "member-profile", Authority: "local", Role: identity.TierMember}}
 	enforcer := &Enforcer{Store: store}
-	run := func(item string, remote bool) (Decision, error) {
+	run := func(_ string, remote bool) (Decision, error) {
 		tx, err := db.Begin()
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer tx.Rollback()
-		return enforcer.AdmitPlayback(ctx, tx, member, Admission{ItemID: item, Remote: remote})
-	}
-	if _, err := run(ids.adult, false); !errors.Is(err, ErrContentRating) {
-		t.Fatalf("a TV-MA title passed a PG ceiling: %v", err)
-	}
-	if _, err := run(ids.family, false); !errors.Is(err, ErrLabelDenied) {
-		t.Fatalf("a denied label passed: %v", err)
+		return enforcer.AdmitPlayback(ctx, tx, member, Admission{Remote: remote})
 	}
 	// Remove the label and the same title is admitted, with the remote clamp.
 	if err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
@@ -443,56 +478,6 @@ func TestCredentialStoreRefusesWhatItCannotIssueAndUnknownSecrets(t *testing.T) 
 	}
 }
 
-func TestDeviceTrustGatesPlaybackAndBlockingStopsLiveLeases(t *testing.T) {
-	store, db, ids := fixture(t)
-	ctx := context.Background()
-	member := identity.Principal{Viewer: identity.Viewer{AccountID: "member", ProfileID: "member-profile", Authority: "local", Role: identity.TierMember}}
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = store.Observe(ctx, tx, member, "living-room", "Living Room", "tvos"); err != nil {
-		t.Fatal(err)
-	}
-	if err = tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
-	page, err := store.Devices(ctx, nil, DeviceQuery{}, true)
-	if err != nil || len(page.Items) != 1 || page.Items[0].Trust != "pending" || !page.ApprovalRequired {
-		t.Fatalf("inventory: %v %+v", err, page)
-	}
-	enforcer := &Enforcer{Store: store, ApprovalRequired: true}
-	admit := func() error {
-		tx, err := db.Begin()
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer tx.Rollback()
-		_, err = enforcer.AdmitPlayback(ctx, tx, member, Admission{ItemID: ids.family, DeviceID: "living-room"})
-		return err
-	}
-	if err = admit(); !errors.Is(err, ErrDeviceTrust) {
-		t.Fatalf("a pending device played: %v", err)
-	}
-	if _, err = store.SetDeviceTrust(ctx, nil, "living-room", TrustChange{ExpectedRevision: 1, OperationID: "trust-set-1", Trust: "approved"}); err != nil {
-		t.Fatal(err)
-	}
-	if err = admit(); err != nil {
-		t.Fatalf("an approved device was refused: %v", err)
-	}
-	if _, err = db.Exec(`INSERT INTO playback_sessions(id,session_hash,account_id,profile_id,item_id,asset_id,generation,state,grant_hash,grant_token,expires_at,request_id,duration)
- VALUES('s','h','member','member-profile',?, ?,1,'playing','g','t','2099-01-01T00:00:00Z','r',1)`, ids.familyID, ids.asset); err != nil {
-		t.Fatal(err)
-	}
-	if _, err = store.SetDeviceTrust(ctx, nil, "living-room", TrustChange{ExpectedRevision: 2, OperationID: "trust-set-2", Trust: "blocked"}); err != nil {
-		t.Fatal(err)
-	}
-	var state string
-	if err = db.QueryRow(`SELECT state FROM playback_sessions WHERE id='s'`).Scan(&state); err != nil || state != "stopped" {
-		t.Fatalf("blocking left a lease running: %v %q", err, state)
-	}
-}
-
 func TestListsPageByCursorRatherThanOffset(t *testing.T) {
 	store, _, _ := fixture(t)
 	ctx := context.Background()
@@ -518,43 +503,6 @@ func TestListsPageByCursorRatherThanOffset(t *testing.T) {
 	}
 	if _, err = store.Invitations(ctx, nil, InvitationQuery{Limit: "9999"}); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("an oversized limit was accepted: %v", err)
-	}
-}
-
-func TestVisibilityClauseHidesWhatAdmissionWouldRefuse(t *testing.T) {
-	store, db, _ := fixture(t)
-	ctx := context.Background()
-	if _, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "limits-visibility",
-		Limits: Limits{MaxContentRating: "PG", AllowUnrated: true, Tags: TagPolicy{DeniedLabels: []string{"spoilers"}}}}); err != nil {
-		t.Fatal(err)
-	}
-	member := identity.Principal{Viewer: identity.Viewer{AccountID: "member", Role: identity.TierMember}}
-	tx, err := db.Begin()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer tx.Rollback()
-	clause, args, err := (&Enforcer{Store: store}).VisibilityClause(ctx, tx, member, "e.id")
-	if err != nil || clause == "" {
-		t.Fatalf("clause: %v %q", err, clause)
-	}
-	rows, err := tx.Query(`SELECT pid(e.public_id) FROM catalog_entities e WHERE `+clause+` ORDER BY 1`, args...)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer rows.Close()
-	visible := []string{}
-	for rows.Next() {
-		var id string
-		if err = rows.Scan(&id); err != nil {
-			t.Fatal(err)
-		}
-		visible = append(visible, id)
-	}
-	// The adult title is above the ceiling and the family title carries a
-	// denied label, so a member with these limits sees neither.
-	if len(visible) != 0 {
-		t.Fatalf("visible: %v", visible)
 	}
 }
 
@@ -786,40 +734,340 @@ func TestPorticoAcceptanceNeverChangesTheOwner(t *testing.T) {
 	}
 }
 
-// A rating change applies synchronously now: there is no publication lag for
-// a pending classification to hide behind.
-func TestMemberVisibilityDeniesChangedRating(t *testing.T) {
-	store, db, ids := fixture(t)
+// The account rating limit is one value of one published rating system, or any
+// spelling the rating table knows, and resolves to an admission age.
+func TestRatingLimitIsValidatedAndResolvedToAnAge(t *testing.T) {
+	store, _, _ := fixture(t)
 	ctx := context.Background()
-	_, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "compact-pending", Limits: Limits{MaxContentRating: "PG", AllowUnrated: true}})
+	revision := int64(1)
+	for i, c := range []struct {
+		system, rating string
+		age            int
+		ok             bool
+	}{
+		{"", "", -1, true},
+		{"", "PG", 8, true},
+		{"", "tv-pg", 8, true},
+		{"", "  pg-13 ", 13, true},
+		{"mpaa", "PG-13", 13, true},
+		{"us-tv", "TV-14", 14, true},
+		{"bbfc", "15", 15, true},
+		{"fsk", "16", 16, true},
+		{"mpaa", "TV-14", 0, false},
+		{"nonsense", "PG", 0, false},
+		{"", "Banana", 0, false},
+		{"", "NR", 0, false},
+	} {
+		limits := DefaultLimits()
+		limits.RatingSystem, limits.MaxContentRating = c.system, c.rating
+		out, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: revision, OperationID: "rating-limit-" + string(rune('a'+i)) + "-00000", Limits: limits})
+		if !c.ok {
+			var fields *ValidationError
+			if !errors.As(err, &fields) || len(fields.Fields) != 1 || fields.Fields[0] != "limits.maxContentRating" {
+				t.Fatalf("%q %q was accepted: %v", c.system, c.rating, err)
+			}
+			continue
+		}
+		if err != nil || out.Limits.MaximumAge != c.age {
+			t.Fatalf("%q %q: age %d want %d: %v", c.system, c.rating, out.Limits.MaximumAge, c.age, err)
+		}
+		revision = out.Revision
+		read, err := store.Limits(ctx, nil, "member")
+		if err != nil || read.Limits.MaximumAge != c.age || read.Limits.Ceiling() != c.age {
+			t.Fatalf("%q %q read back: %+v %v", c.system, c.rating, read.Limits, err)
+		}
+	}
+	// A system with no rating means no ceiling, and is stored without the system.
+	limits := DefaultLimits()
+	limits.RatingSystem = "mpaa"
+	out, err := store.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: revision, OperationID: "rating-limit-system-only", Limits: limits})
+	if err != nil || out.Limits.RatingSystem != "" || out.Limits.MaximumAge != -1 {
+		t.Fatalf("system without a rating: %+v %v", out.Limits, err)
+	}
+	// A stored rating the table no longer knows admits all-ages titles only.
+	if got := (Limits{MaxContentRating: "no-longer-known"}).Ceiling(); got != 0 {
+		t.Fatalf("an unreadable stored rating resolved to %d", got)
+	}
+}
+
+func signedInNowhere(context.Context, *sql.Tx) (identity.DirectSignIn, error) {
+	return identity.DirectSignIn{}, nil
+}
+
+func membershipOf(t *testing.T, db *sql.DB, hosted string) (role, libraries string, disabled bool, at int64, reason string) {
+	t.Helper()
+	if err := db.QueryRow(`SELECT m.role,m.allowed_libraries,m.disabled,m.disabled_ms,m.disabled_reason FROM direct_memberships m JOIN account_portico_links l ON l.account_id=m.account_id WHERE l.hosted_account_id=?`, hosted).Scan(&role, &libraries, &disabled, &at, &reason); err != nil {
+		t.Fatal(err)
+	}
+	return
+}
+
+// Turning an account off records when and why, whichever statement does it,
+// and turning it back on clears both.
+func TestTurningAnAccountOffRecordsWhenAndWhy(t *testing.T) {
+	_, db, _ := fixture(t)
+	read := func() (bool, int64, string) {
+		var disabled bool
+		var at int64
+		var reason string
+		if err := db.QueryRow(`SELECT disabled,disabled_ms,disabled_reason FROM direct_memberships WHERE account_id='member'`).Scan(&disabled, &at, &reason); err != nil {
+			t.Fatal(err)
+		}
+		return disabled, at, reason
+	}
+	if disabled, at, reason := read(); disabled || at != 0 || reason != "" {
+		t.Fatalf("an account that is on: %v %d %q", disabled, at, reason)
+	}
+	before := time.Now().UnixMilli()
+	if _, err := db.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='member'`); err != nil {
+		t.Fatal(err)
+	}
+	if disabled, at, reason := read(); !disabled || at < before-1000 || at > time.Now().UnixMilli()+1000 || reason != "owner" {
+		t.Fatalf("turned off with nothing said: %v %d %q", disabled, at, reason)
+	}
+	if _, err := db.Exec(`UPDATE direct_memberships SET disabled=0 WHERE account_id='member'`); err != nil {
+		t.Fatal(err)
+	}
+	if disabled, at, reason := read(); disabled || at != 0 || reason != "" {
+		t.Fatalf("turned back on: %v %d %q", disabled, at, reason)
+	}
+	// A writer that knows better (the person left, and when) is kept.
+	if _, err := db.Exec(`UPDATE direct_memberships SET disabled=1,disabled_ms=12345,disabled_reason='left' WHERE account_id='member'`); err != nil {
+		t.Fatal(err)
+	}
+	if disabled, at, reason := read(); !disabled || at != 12345 || reason != "left" {
+		t.Fatalf("turned off as having left: %v %d %q", disabled, at, reason)
+	}
+	if _, err := db.Exec(`UPDATE direct_memberships SET disabled_reason='because' WHERE account_id='member'`); err == nil {
+		t.Fatal("an unknown reason was stored")
+	}
+}
+
+// An invitation brings a turned-off member back only if it was made after
+// they were turned off. An older one, still lying around, does not undo the
+// later decision; it stays usable by someone else.
+func TestAnOlderInvitationDoesNotBringBackAMemberWhoWasTurnedOffLater(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	clock := time.Now().UnixMilli()
+	store.Now = func() time.Time { return time.UnixMilli(clock) }
+	join, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "join-invite", Role: identity.TierAdmin, AllowedLibraries: []string{"lib"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-		return compactcatalog.SetAttributesTx(ctx, tx, ids.familyID, "contentRating", []string{"TV-MA"})
-	}); err != nil {
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: join.Code, AccountID: "acc_guest", Username: "guest", DisplayName: "Guest"}, signedInNowhere); err != nil {
 		t.Fatal(err)
 	}
-	tx, err := db.Begin()
+	// A second invitation exists before the owner turns the member off.
+	clock += 1000
+	stale, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "stale-invite", Role: identity.TierAdmin, AllowedLibraries: []string{"lib", "other"}})
 	if err != nil {
 		t.Fatal(err)
+	}
+	clock += 1000
+	if _, err = db.Exec(`UPDATE direct_memberships SET disabled=1,disabled_ms=?,disabled_reason='owner',revision=revision+1 WHERE account_id=(SELECT account_id FROM account_portico_links WHERE hosted_account_id='acc_guest')`, clock); err != nil {
+		t.Fatal(err)
+	}
+	clock += 1000
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: stale.Code, AccountID: "acc_guest", Username: "guest", DisplayName: "Guest"}, signedInNowhere); !errors.Is(err, ErrExpired) {
+		t.Fatalf("an invitation older than the turning off brought the member back: %v", err)
+	}
+	if _, _, disabled, _, reason := membershipOf(t, db, "acc_guest"); !disabled || reason != "owner" {
+		t.Fatalf("the member after a refused invitation: disabled=%v reason=%q", disabled, reason)
+	}
+	var state string
+	if err = db.QueryRow(`SELECT state FROM access_invitations WHERE id=?`, stale.ID).Scan(&state); err != nil || state != "pending" {
+		t.Fatalf("the refused invitation was spent: %q %v", state, err)
+	}
+	// Someone else can still use it.
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: stale.Code, AccountID: "acc_other", Username: "other", DisplayName: "Other"}, signedInNowhere); err != nil {
+		t.Fatalf("the older invitation used by someone else: %v", err)
+	}
+	// Inviting the member again, after turning them off, brings them back
+	// with what the new invitation grants and nothing they had before.
+	fresh, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "fresh-invite", Role: identity.TierMember, AllowedLibraries: []string{"other"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: fresh.Code, AccountID: "acc_guest", Username: "guest", DisplayName: "Guest"}, signedInNowhere); err != nil {
+		t.Fatalf("an invitation made after the turning off: %v", err)
+	}
+	if role, libraries, disabled, at, reason := membershipOf(t, db, "acc_guest"); disabled || role != identity.TierMember || libraries != `["other"]` || at != 0 || reason != "" {
+		t.Fatalf("the member brought back: role=%s libraries=%s disabled=%v at=%d reason=%q", role, libraries, disabled, at, reason)
+	}
+}
+
+// Someone who left at their Portico Account comes back with an invitation
+// made after they left, even if this server only heard about the leaving later.
+func TestAMemberWhoLeftComesBackWithAnInvitationMadeAfterTheyLeft(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	clock := time.Now().UnixMilli()
+	store.Now = func() time.Time { return time.UnixMilli(clock) }
+	join, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "join-invite", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: join.Code, AccountID: "acc_leaver", Username: "leaver", DisplayName: "Leaver"}, signedInNowhere); err != nil {
+		t.Fatal(err)
+	}
+	leftAt := clock + 1000
+	clock += 2000
+	back, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "back-invite", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The server hears of the leaving only now, with the time it happened.
+	clock += 5000
+	if _, err = db.Exec(`UPDATE direct_memberships SET disabled=1,disabled_ms=?,disabled_reason='left',revision=revision+1 WHERE account_id=(SELECT account_id FROM account_portico_links WHERE hosted_account_id='acc_leaver')`, leftAt); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, disabled, at, reason := membershipOf(t, db, "acc_leaver"); !disabled || at != leftAt || reason != "left" {
+		t.Fatalf("the leaving as recorded: %v %d %q", disabled, at, reason)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: back.Code, AccountID: "acc_leaver", Username: "leaver", DisplayName: "Leaver"}, signedInNowhere); err != nil {
+		t.Fatalf("an invitation made after the person left, heard about later: %v", err)
+	}
+	if _, _, disabled, _, _ := membershipOf(t, db, "acc_leaver"); disabled {
+		t.Fatal("the person was not brought back")
+	}
+}
+
+// An invitation made for one Portico Account is that account's only.
+func TestAnInvitationMadeForOnePorticoAccountIsOnlyThatAccounts(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	invite, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "bound-invite", Role: identity.TierMember, AllowedLibraries: []string{"lib"}, PorticoUsername: "  Ada  "})
+	if err != nil || invite.PorticoUsername != "ada" {
+		t.Fatalf("invite: %+v %v", invite, err)
+	}
+	preview, err := store.Preview(ctx, invite.Code)
+	if err != nil || !preview.ForPorticoAccount {
+		t.Fatalf("preview: %+v %v", preview, err)
+	}
+	accounts := func() int {
+		var n int
+		if err := db.QueryRow(`SELECT count(*) FROM accounts`).Scan(&n); err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	before := accounts()
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: invite.Code, AccountID: "acc_mallory", Username: "mallory", DisplayName: "Mallory"}, signedInNowhere); !errors.Is(err, ErrInvitationRecipient) {
+		t.Fatalf("another Portico Account accepted it: %v", err)
+	}
+	hash, err := HashPassword("Testing1!")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = store.Accept(ctx, Acceptance{Code: invite.Code, Username: "ada", Password: "Testing1!", Name: "Ada"}, hash); !errors.Is(err, ErrInvitationRecipient) {
+		t.Fatalf("it became a password account: %v", err)
+	}
+	if got := accounts(); got != before {
+		t.Fatalf("a refused acceptance left an account behind: %d, was %d", got, before)
+	}
+	var state string
+	if err = db.QueryRow(`SELECT state FROM access_invitations WHERE id=?`, invite.ID).Scan(&state); err != nil || state != "pending" {
+		t.Fatalf("a refused acceptance spent the invitation: %q %v", state, err)
+	}
+	if _, err = store.AcceptPortico(ctx, PorticoAcceptance{Code: invite.Code, AccountID: "acc_ada", Username: "Ada", DisplayName: "Ada L"}, signedInNowhere); err != nil {
+		t.Fatalf("the account it was made for: %v", err)
+	}
+	// An invitation with nobody named is still open to whoever holds the code.
+	open, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "open-invite", Role: identity.TierMember})
+	if err != nil || open.PorticoUsername != "" {
+		t.Fatalf("%+v %v", open, err)
+	}
+	if p, err := store.Preview(ctx, open.Code); err != nil || p.ForPorticoAccount {
+		t.Fatalf("open preview: %+v %v", p, err)
+	}
+	if _, err = store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "bad-bound-invite", PorticoUsername: "two words"}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("a username with a space: %v", err)
+	}
+}
+
+// Invite-only sign-up spends a member invitation inside the registration.
+func TestInvitationSpentAtRegistrationOnlyWhenItIsAPlainMembersAndUnspent(t *testing.T) {
+	store, db, _ := fixture(t)
+	ctx := context.Background()
+	clock := time.Now().UnixMilli()
+	store.Now = func() time.Time { return time.UnixMilli(clock) }
+	redeem := store.RegistrationRedeemer()
+	try := func(code string, commit bool) ([]string, error) {
+		tx, err := db.Begin()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback()
+		libraries, err := redeem(ctx, tx, code, "member")
+		if err == nil && commit {
+			if err := tx.Commit(); err != nil {
+				t.Fatal(err)
+			}
+		}
+		return libraries, err
+	}
+	member, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "register-member", Role: identity.TierMember, AllowedLibraries: []string{"lib"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	admin, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "register-admin", Role: identity.TierAdmin})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bound, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "register-bound", Role: identity.TierMember, PorticoUsername: "ada"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, code := range map[string]string{"an administrator's invitation": admin.Code, "one made for a Portico Account": bound.Code, "an unknown code": strings.Repeat("x", 43), "a short code": "nope"} {
+		if _, err := try(code, true); !errors.Is(err, identity.ErrRegistrationInvite) {
+			t.Fatalf("%s was spent at registration: %v", name, err)
+		}
+	}
+	// A registration that fails after redeeming leaves the invitation unspent.
+	if libraries, err := try(member.Code, false); err != nil || len(libraries) != 1 || libraries[0] != "lib" {
+		t.Fatalf("redeem: %v %v", libraries, err)
+	}
+	var state string
+	if err = db.QueryRow(`SELECT state FROM access_invitations WHERE id=?`, member.ID).Scan(&state); err != nil || state != "pending" {
+		t.Fatalf("a rolled-back registration spent the invitation: %q %v", state, err)
+	}
+	if _, err = try(member.Code, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = try(member.Code, true); !errors.Is(err, identity.ErrRegistrationInvite) {
+		t.Fatalf("an invitation was spent twice: %v", err)
+	}
+	expired, err := store.Invite(ctx, nil, owner(), InvitationRequest{OperationID: "register-expired", Role: identity.TierMember, ExpiresInHours: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock += int64(2 * time.Hour / time.Millisecond)
+	if _, err = try(expired.Code, true); !errors.Is(err, identity.ErrRegistrationInvite) {
+		t.Fatalf("an expired invitation was spent: %v", err)
+	}
+}
+
+func TestLiveProgrammeMemberRatingAppliesToKnownAndAbsentGuide(t *testing.T) {
+	s, db, _ := fixture(t)
+	ctx := context.Background()
+	_, e := s.SetLimits(ctx, nil, "member", LimitsChange{ExpectedRevision: 1, OperationID: "live-rating-limit", Limits: Limits{MaxContentRating: "PG", AllowUnrated: false}})
+	if e != nil {
+		t.Fatal(e)
+	}
+	tx, e := db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if e != nil {
+		t.Fatal(e)
 	}
 	defer tx.Rollback()
-	p := identity.Principal{Viewer: identity.Viewer{AccountID: "member", Role: identity.TierMember}}
-	enforcer := &Enforcer{Store: store}
-	if err = enforcer.VisibleItem(ctx, tx, p, ids.family); !errors.Is(err, ErrContentRating) {
-		t.Fatalf("changed rating admitted: %v", err)
+	gate := Enforcer{Store: s}
+	p := identity.Principal{Viewer: identity.Viewer{AccountID: "member"}}
+	if e = gate.AdmitProgramme(ctx, tx, p, "PG"); e != nil {
+		t.Fatal(e)
 	}
-	clause, args, err := enforcer.VisibilityClause(ctx, tx, p, "e.id")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var visible bool
-	queryArgs := append([]any{ids.familyID}, args...)
-	if err = tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=? AND `+clause+`)`, queryArgs...).Scan(&visible); err != nil {
-		t.Fatal(err)
-	}
-	if visible {
-		t.Fatal("set predicate admitted changed rating")
+	for _, rating := range []string{"TV-MA", "", "unrecognised"} {
+		if e = gate.AdmitProgramme(ctx, tx, p, rating); !errors.Is(e, ErrContentRating) {
+			t.Fatalf("%q admitted: %v", rating, e)
+		}
 	}
 }

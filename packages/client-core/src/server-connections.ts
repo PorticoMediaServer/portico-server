@@ -199,8 +199,11 @@ export async function connectTrustedProfileServer(env:ConnectionEnvironment,scop
 
 /** Renew when less than this much access time remains. */
 export const REFRESH_MIN_VALID_MS = 60_000;
-/** The one 403 a renewal answers after revoking the family itself (the member's access schedule). */
-const REFRESH_REVOKED_403 = 'access_limit';
+/**
+ * The 403 a renewal answers outside the hours the owner allows this account. The server ends
+ * nothing: the same credential renews again once the hours return, so the sign-in is kept.
+ */
+export const REFRESH_OUTSIDE_HOURS = 'outside_allowed_hours';
 
 /**
  * A refresh that could not complete. `signOut` means the sign-in is over on this device. Either
@@ -259,7 +262,22 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
   let requestId=record.pendingRefresh;
   if(!requestId){
    const id=routeBase64((o.env.crypto??webRouteCrypto).random(24));requestId=id;
-   await o.env.storage.change(current=>same(current)&&current!.session.refreshToken===session.refreshToken?{...current!,pendingRefresh:id}:current);
+   // The first context to save a request id owns this renewal. The lock above does not reach
+   // other tabs where the browser has no Web Locks (a page on plain HTTP), so two tabs can get
+   // here together: the store's own atomic change lets exactly one id in, and the other tab
+   // reads it back and sends the very same request, which the server answers once for both.
+   // Sending two different ids for one refresh credential would look like theft and end the sign-in.
+   await o.env.storage.change(current=>same(current)&&current!.session.refreshToken===session.refreshToken&&!current!.pendingRefresh?{...current!,pendingRefresh:id}:current);
+   let after:RememberedServer|undefined;
+   try{after=parseRememberedServer(await o.env.storage.read());}catch{after=undefined;}
+   if(after&&same(after)){
+    if(after.session.refreshToken!==session.refreshToken){
+     // Another context finished the renewal in the meantime: use what it stored, send nothing.
+     if(Date.parse(after.session.expiresAt)-now()>minValid&&!after.pendingRefresh)return after.session;
+     throw new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false);
+    }
+    if(after.pendingRefresh)requestId=after.pendingRefresh;
+   }
   }
   // React Native lacks AbortSignal.any/timeout: a plain controller bounds the request.
   const bound=new AbortController(),abort=()=>bound.abort(),timer=setTimeout(abort,o.timeoutMs??15_000);
@@ -268,11 +286,12 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
   try{raw=await o.api.request<unknown>('/v1/auth/refresh','POST',{refreshToken:session.refreshToken,installationId:identity.installationId,requestId},bound.signal);}
   catch(e){
    const status=(e as {status?:unknown}|null)?.status;
-   // Only a refusal ends the sign-in: a 401 (revoked, unknown family, or a reused refresh token), or
-   // the 403 with which the server revokes a renewal outside the member's access limits. Any other
-   // 403 (a gateway's page, a rejected origin) says nothing about the family and keeps the credential,
-   // as does a malformed request (400), which is this client's problem.
-   if(status===401||(status===403&&(e as {code?:unknown}|null)?.code===REFRESH_REVOKED_403)){
+   // Only a 401 ends the sign-in (revoked, unknown family, or a reused refresh token). No 403 does:
+   // the server's own (outside the account's allowed hours), a gateway's page and a rejected origin
+   // all leave the family as it was, so the credential is kept. A malformed request (400) is this
+   // client's problem and keeps it too.
+   if(status===403&&(e as {code?:unknown}|null)?.code===REFRESH_OUTSIDE_HOURS)throw new SessionRefreshError(REFRESH_OUTSIDE_HOURS,'This account can’t be used at this time of day.',false,403);
+   if(status===401){
     await o.env.storage.change(current=>same(current)&&current!.session.refreshToken===session.refreshToken?undefined:current).catch(()=>{});
     forgetSessionRoute(session.accessToken);
     // The server's move to its own membership (migration 0120) ended this family: not a sign-out.
@@ -283,7 +302,10 @@ export function refreshStoredSession(o:RefreshStoredOptions):Promise<LocalSessio
    if(status===404||status===405)throw new SessionRefreshError('refresh_unsupported','This server doesn’t renew sign-ins.',false,status as number);
    // Transport failures keep their own shape so restore policies still see "offline, retry".
    if(typeof status!=='number')throw e;
-   throw new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false,status);
+   // The server's own wait (a 429 or 503 with Retry-After) travels with the failure, so the next try respects it.
+   const busy=new SessionRefreshError('refresh_unavailable_now','The server couldn’t renew your sign-in right now.',false,status);
+   const wait=(e as {retryAfterSeconds?:unknown}|null)?.retryAfterSeconds;if(typeof wait==='number'&&Number.isFinite(wait)&&wait>0)busy.retryAfterSeconds=wait;
+   throw busy;
   }finally{clearTimeout(timer);o.signal?.removeEventListener('abort',abort);}
   let next:LocalSession;
   try{next=parseLocalSession(raw,{authority:session.viewer.authority,accountId:session.viewer.accountId,profileId:session.viewer.profileId,serverId:session.viewer.serverId,role:session.viewer.role});}

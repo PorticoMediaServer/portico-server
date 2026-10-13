@@ -61,9 +61,6 @@ type soakSettings struct {
 
 func soakConfiguration() soakSettings {
 	s := soakSettings{seconds: 180, viewers: 200, streams: 100, eventHolds: 20, catalogue: 4000, faultPeriod: 5 * time.Second, streamBytesPerSecond: 1 << 20, playbackProtocol: "v1"}
-	if os.Getenv("PORTICO_SOAK_PLAYBACK") == "legacy" {
-		s.playbackProtocol = "legacy"
-	}
 	if value, err := strconv.Atoi(os.Getenv("PORTICO_SOAK_SECONDS")); err == nil && value > 0 {
 		s.seconds = value
 	}
@@ -270,7 +267,7 @@ func TestSoakUnderFaultsAndRealMediaBytes(t *testing.T) {
 	lockEscapes.Store(0)
 
 	shape := soakShape(settings.catalogue)
-	tier := performanceTier{name: "soak", shape: shape, catalogItems: shape.Items(), concurrentViewers: settings.viewers, iterations: 1, think: 250 * time.Millisecond, mediaPath: media, playbackV1: settings.playbackProtocol == "v1"}
+	tier := performanceTier{name: "soak", shape: shape, catalogItems: shape.Items(), concurrentViewers: settings.viewers, iterations: 1, think: 250 * time.Millisecond, mediaPath: media, capabilities: true}
 	f := newLoadFixture(t, tier)
 
 	// Real sockets, not a recorder: a write deadline, a client that stops reading
@@ -1193,12 +1190,8 @@ func soakViewerRound(ctx context.Context, client *http.Client, base, token strin
 func soakStream(ctx context.Context, client *http.Client, base, token string, f *loadFixture, index int, o *soakObservations, isClean func() bool, bytesPerSecond int, protocol string) {
 	quiet := isClean()
 	requestID := fmt.Sprintf("soak-stream-%d-%d", index, time.Now().UnixNano())
-	startBody := map[string]string{"itemId": f.playable, "quality": "auto", "requestId": requestID}
-	var headers map[string]string
-	if protocol == "v1" {
-		startBody = map[string]string{"itemId": f.playable, "startFrom": "beginning"}
-		headers = map[string]string{"Idempotency-Key": requestID}
-	}
+	startBody := map[string]string{"itemId": f.playable, "startFrom": "beginning"}
+	headers := map[string]string{"Idempotency-Key": requestID}
 	code, body := soakCallHeaders(ctx, client, base, token, "playback-create", "POST", "/v1/playback/sessions", startBody, headers, o, quiet)
 	if code != 201 {
 		select {
@@ -1209,15 +1202,11 @@ func soakStream(ctx context.Context, client *http.Client, base, token string, f 
 	}
 	var session playback.Session
 	var view playbackv1.SessionView
-	if protocol == "v1" {
-		if json.Unmarshal(body, &view) != nil || view.Presentation.Mode != "direct" {
-			o.record("playback-invalid-presentation", http.StatusBadGateway, 0, quiet, false)
-			return
-		}
-		session.ID, session.StreamURL = view.ID, view.Presentation.URL
-	} else if json.Unmarshal(body, &session) != nil {
+	if json.Unmarshal(body, &view) != nil || view.Presentation.Mode != "direct" {
+		o.record("playback-invalid-presentation", http.StatusBadGateway, 0, quiet, false)
 		return
 	}
+	session.ID, session.StreamURL = view.ID, view.Presentation.URL
 	if session.StreamURL == "" {
 		o.record("playback-missing-media", http.StatusBadGateway, 0, quiet, false)
 		return

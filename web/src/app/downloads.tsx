@@ -1,5 +1,5 @@
 import React, {createContext, useCallback, useContext, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
-import {DownloadsService, downloadBytes, downloadReasonMessage, type DownloadOptionsView, type DownloadTarget, type DownloadsSnapshot, type DownloadRequestKind, type DownloadEpisodes} from '@core/index.ts';
+import {DownloadsService, downloadBytes, downloadReasonMessage, type DownloadOptionsView, type DownloadQualityChoice, type DownloadTarget, type DownloadsSnapshot, type DownloadRequestKind, type DownloadEpisodes} from '@core/index.ts';
 import {sessionIdentity, useSession} from './session';
 import {Button, Dialog, ListRow, Loading, Notice, Surface, Text} from '../ui';
 import {errorText} from './errors';
@@ -18,6 +18,9 @@ export function DownloadsProvider({children}: {children: React.ReactNode}) {
   const service = useMemo(() => (key ? new DownloadsService(api) : null), [api, key]);
   // One early read tells the whole app whether this server offers downloads at all (rail, Settings, menus).
   useEffect(() => { void service?.refresh(); return () => service?.dispose(); }, [service]);
+  // A whole show or season asked for from this browser is found again after a reload.
+  const deviceId = session?.deviceId;
+  useEffect(() => { if (deviceId) service?.followDevice(deviceId); }, [service, deviceId]);
   const [request, setRequest] = useState<Request | null>(null);
   const ask = useCallback((r: Request) => setRequest(r), []);
   const value = useMemo(() => ({service, ask}), [service, ask]);
@@ -51,10 +54,14 @@ function DownloadDialog({request, service, onClose}: {request: Request; service:
   const [policy, setPolicy] = useState<DownloadEpisodes>('all');
   const [keepNext, setKeepNext] = useState(1);
   const itemId = request.optionsFor ?? request.target.mediaId;
+  // With no single title to read a menu for (a whole season), the server says which qualities it
+  // can hand over at all.
+  const [choices, setChoices] = useState<readonly DownloadQualityChoice[]>();
   useEffect(() => {
-    if (!itemId) return;
     const controller = new AbortController();
-    service.options(itemId, controller.signal).then(setView, e => { if (!controller.signal.aborted) setError(errorText(e, 'downloads', 'load')); });
+    const failed = (e: unknown) => { if (!controller.signal.aborted) setError(errorText(e, 'downloads', 'load')); };
+    if (itemId) service.options(itemId, controller.signal).then(setView, failed);
+    else service.qualities(controller.signal).then(setChoices, failed);
     return () => controller.abort();
   }, [service, itemId]);
   const choose = async (quality: string) => {
@@ -70,18 +77,18 @@ function DownloadDialog({request, service, onClose}: {request: Request; service:
         return;
       }
       const batch = await service.request(request.target, quality);
-      setDone(batch.accepted ? (batch.rejected.length ? i18n.t('downloads.addedMixed', {accepted: batch.accepted, rejected: batch.rejected.length, reason: downloadReasonMessage(batch.rejected[0].code)}) : batch.duplicate ? i18n.t('downloads.already') : i18n.t('downloads.addedMany', {count: batch.accepted})) : downloadReasonMessage(batch.rejected[0]?.code ?? ''));
+      // Nothing new was accepted and nothing was refused: it is already in the list.
+      setDone(batch.accepted ? (batch.rejected.length ? i18n.t('downloads.addedMixed', {accepted: batch.accepted, rejected: batch.rejected.length, reason: downloadReasonMessage(batch.rejected[0].code)}) : batch.duplicate ? i18n.t('downloads.already') : i18n.t('downloads.addedMany', {count: batch.accepted})) : batch.rejected.length ? downloadReasonMessage(batch.rejected[0].code) : i18n.t('downloads.already'));
     } catch (e) { setError(errorText(e, 'downloads', 'save')); } finally { setBusy(''); }
   };
   if (done) return <Dialog open onOpenChange={o => !o && onClose()} title={i18n.t('feature.downloads')} width={420} actions={<><Button variant="ghost" label={i18n.t('action.close')} onClick={onClose} /><Button variant="primary" label={i18n.t('downloads.view')} to="/downloads" onClick={onClose} /></>}><Text as="p" variant="body" tone="secondary">{done}</Text></Dialog>;
   const blocked = view && !view.policy.allowDownloads;
-  // Without a single title to ask about (a whole season), offer the ladder's common rungs.
-  const fallback = [{quality: 'original', label: i18n.t('downloads.quality.original'), help: i18n.t('downloads.quality.originalHelp')}, {quality: '1080p', label: '1080p', help: i18n.t('downloads.quality.smaller')}, {quality: '720p', label: '720p', help: i18n.t('downloads.quality.smallest')}];
+  const fallback = (choices ?? []).map(c => ({quality: c.quality, label: c.kind === 'source' ? i18n.t('downloads.quality.original') : c.label, help: c.kind === 'source' ? i18n.t('downloads.quality.originalHelp') : i18n.t('downloads.quality.smaller')}));
   return (
     <Dialog open onOpenChange={o => !o && onClose()} title={i18n.t('action.download')} description={request.title} width={460} actions={<Button variant="ghost" label={i18n.t('action.cancel')} onClick={onClose} />}>
       <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
         {error ? <Notice tone="error" compact>{error}</Notice> : null}
-        {itemId && !view && !error ? <Loading label={i18n.t('downloads.checking')} /> : null}
+        {(itemId ? !view : !choices) && !error ? <Loading label={i18n.t('downloads.checking')} /> : null}
         {blocked ? <Notice tone="info" compact>{downloadReasonMessage(view.policy.reason) || i18n.t('downloads.offForProfile')}</Notice> : null}
         {container && !session?.deviceId ? <Notice tone="info" compact>{i18n.t('web.downloads.noDevice')}</Notice> : null}
         {container ? (
