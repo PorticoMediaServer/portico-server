@@ -147,3 +147,69 @@ registerPlaybackController)`, every `/v2` call also carrying
 `X-Playback-Controller-Token`) are control-plane setup, not per-play calls.
 Typed invalidation topics beyond the registered `notification.changed`,
 `operation.updated`, and `stream.resync` event types are **not specified**.
+
+## Subtitle delivery
+
+The generated registry contract in `portico.openapi.json` describes the subtitle
+routes. `GET /v1/items/{id}/subtitles` includes all admitted discoveries as
+selectable resources. Discovery is enough to choose or automatically choose a
+track: clients do not import a track before playback. Its bytes are an internal
+cache, filled on first delivery. A disconnected first request does not discard
+that work; a retry joins it. A cold embedded track can still require a full demux
+pass before its bytes are available.
+
+Each resource and playback-option track exposes `deliveries`. Formats are `text`,
+`ass`, `pgs`, `vobsub`, and `dvb`. A selected track includes URLs under the current
+playback grant:
+
+| Delivery | Payload | Additional files |
+| --- | --- | --- |
+| `text` | `{base}.vtt`, UTF-8 WebVTT | None |
+| `ass` | `{base}/original.ass` or `original.ssa`, authored script | `{base}/fonts` lists font names and grant URLs |
+| `pgs` | `{base}/original.sup`, PGS packets | None |
+| `vobsub` | `{base}/original.idx` | `companionUrl` supplies `original.sub`; preserve the matching basename locally |
+| `dvb` | `{base}/original.mks`, a single-track Matroska DVB packet capsule | None |
+
+Here `{base}` is `/v1/media/{grant}/subtitles/{resource}/{revision}`. Original and
+font files accept GET, HEAD, byte ranges, and conditional reads. WebVTT also
+supports byte ranges. ASS/SSA originals preserve their source encoding; the
+response content type declares its detected charset. Decode that encoding before
+passing script text to a renderer that requires Unicode. Font filenames are
+labels; download through each returned URL, not a filename-derived path.
+
+The separate `{base}` route returns a version 1 JSON cue document:
+`{version:1,timeDomain:"source-relative",cues:[{startUs,endUs,text,italic?,top?}],skippedCues?}`.
+Times are decimal microsecond strings. The selected `documentUrl` names this JSON
+form; a presentation labelled `webvtt` names the `.vtt` form. Plain-text clients
+apply the selected offset locally to JSON cues. WebVTT includes the offset.
+
+Subtitle selection accepts `rendering: "text"|"ass"|"pgs"|"vobsub"|"dvb"` when a
+device chooses a supported delivery itself. `renderer: "client"` means an
+original is drawn on the device, without changing the video. The v1
+`embeddedClient` selection now uses this path and returns the original URLs.
+A client should choose it only for formats its player declares it can render;
+otherwise the server's ordinary burn-in path remains available subject to policy.
+Styled resources can also be explicitly selected with `rendering: "text"`.
+
+Grants, live session pins, viewer visibility, exact source bytes, and remote
+representation evidence authorize delivery. Stopping a session or changing its
+grant ends access. Re-read the presentation after renewal. JSON cue clients can
+retain the existing validator-based authorization checks; byte ranges and
+conditional responses never bypass grant checks.
+
+Admission remains bounded: 32 discovered tracks per file, 4 MiB source text,
+32 MiB bitmap data, 20,000 cues, 8 KiB per plain cue, and a 24-hour timeline.
+Inventory capacity retains usable tracks and a warning. Font extraction admits
+up to 16 attempts, 8 MiB per font, 16 MiB total; a font list can report
+`skippedCount`. Malformed cues are skipped; `skippedCues` reports the count where
+available. Two cache fills run at once, with at most 64 in flight. Each track
+allows two minutes without input progress, bounded by two hours overall.
+
+Subtitle search uses the profile's preferred subtitle language when `language`
+is empty, falling back to English. It keeps regional Portuguese/Chinese tags and
+uses title/provider identities or series and episode identity. OpenSubtitles
+configuration uses `PORTICO_OPENSUBTITLES_API_KEY`, optional
+`PORTICO_OPENSUBTITLES_USERNAME` and `PORTICO_OPENSUBTITLES_PASSWORD`, and optional
+`PORTICO_OPENSUBTITLES_USER_AGENT`. Username/password enable login and renewal;
+credentials and tokens never appear in subtitle responses. The former immutable
+`PORTICO_OPENSUBTITLES_TOKEN` input is removed.

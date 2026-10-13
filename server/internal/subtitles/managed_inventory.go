@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"path/filepath"
 	"portico.local/server/internal/storage"
+	"strings"
 )
 
 // Page rows are retained only for the exact scan/configuration. Discovery refuses
@@ -19,7 +20,7 @@ func CommitManagedPage(ctx context.Context, tx *sql.Tx, source, incarnation, job
 		if e != nil {
 			return e
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_inventory_entries(source_id,incarnation,job_id,directory,path,snapshot) VALUES(?,?,?,?,?,?) ON CONFLICT(source_id,job_id,path) DO UPDATE SET snapshot=excluded.snapshot`, source, incarnation, job, directory, entry.Path, string(raw)); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_inventory_entries(source_id,incarnation,job_id,directory,directory_key,path,name,snapshot) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(source_id,job_id,path) DO UPDATE SET directory_key=excluded.directory_key,name=excluded.name,snapshot=excluded.snapshot`, source, incarnation, job, directory, strings.ToLower(directory), entry.Path, strings.ToLower(entry.Name), string(raw)); e != nil {
 			return e
 		}
 	}
@@ -34,7 +35,10 @@ func DiscoverManaged(ctx context.Context, db *sql.DB, c *storage.Client, source,
 	if done != 1 {
 		return &Inventory{Status: "unavailable"}, nil
 	}
-	rows, e := db.QueryContext(ctx, `SELECT snapshot FROM subtitle_inventory_entries WHERE source_id=? AND incarnation=? AND job_id=? AND directory=? ORDER BY path LIMIT 4097`, source, incarnation, job, filepath.Dir(path))
+	stem := strings.ToLower(strings.TrimSuffix(filepath.Base(path), filepath.Ext(path)))
+	escaped := strings.NewReplacer("\\", "\\\\", "%", "\\%", "_", "\\_").Replace(stem)
+	directory := strings.ToLower(filepath.Dir(path))
+	rows, e := db.QueryContext(ctx, `SELECT snapshot FROM subtitle_inventory_entries WHERE source_id=? AND incarnation=? AND job_id=? AND directory_key IN(?,?,?) AND name LIKE ? ESCAPE '\' ORDER BY path LIMIT 4097`, source, incarnation, job, directory, strings.ToLower(filepath.Join(filepath.Dir(path), "Subs")), strings.ToLower(filepath.Join(filepath.Dir(path), "Subtitles")), escaped+".%")
 	if e != nil {
 		return nil, e
 	}

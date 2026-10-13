@@ -32,3 +32,9 @@ test('rejected preparation does not suppress the currently burned subtitle video
  const service=new SubtitleService(api,{itemId:'movie',sessionId:'session',generation:2},()=> 'retry',{positionUs:()=> '2000000',install:()=>true});
  service.start();await flush();await service.choose(null);assert.equal(service.getSnapshot().plan?.renderer,'burn_in');assert.equal(service.getSnapshot().suppressed,false);assert.equal(service.getSnapshot().canRetry,true);service.stop();
 });
+test('reading an unchanged subtitle generation never replays a historical presentation',async()=>{
+ let installs=0;
+ const api:LibraryContentApi={request:async(path:string)=> (path.includes('/playback/')?plan(2,true):catalog) as any};
+ const service=new SubtitleService(api,{itemId:'movie',sessionId:'session',generation:2},()=> 'same',{positionUs:()=> '42000000',install:()=>{installs++;return true;}});
+ service.start();await flush();assert.equal(service.getSnapshot().plan?.generation,2);assert.equal(installs,0);service.stop();
+});

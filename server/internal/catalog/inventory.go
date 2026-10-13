@@ -96,7 +96,7 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 			return err
 		}
 	}
-	if page.Remote != nil {
+	{
 		if err = subtitles.CommitManagedPage(ctx, tx, source.ID, source.Incarnation, job, filepath.Join(source.ResolvedPath, relative), page.Entries); err != nil {
 			return err
 		}

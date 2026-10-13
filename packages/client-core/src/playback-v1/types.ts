@@ -1,3 +1,4 @@
+import {validateSubtitleDelivery} from '../subtitles.ts';
 /**
  * Playback v1 resource shapes and tolerant readers (style guide amendment 3): unknown fields are
  * ignored, unknown open-enum values map to a fallback, absent arrays read as empty. Strict only
@@ -32,7 +33,7 @@ export function url(v: unknown, what: string): string {
 // ── Options (spec §4.1) ─────────────────────────────────────────────
 export type VideoStream = Readonly<{id: string; codec: string; profile?: string; bitDepth?: number; width?: number; height?: number; fps?: number; hdr?: string; bitrateKbps?: number}>;
 export type AudioStream = Readonly<{id: string; codec: string; channels?: number; layout?: string; atmos: boolean; language?: string; title?: string; default: boolean; commentary: boolean; visualImpaired: boolean}>;
-export type SubtitleStream = Readonly<{id: string; format: string; source: 'embedded' | 'sidecar' | 'downloaded' | 'other'; language?: string; title?: string; forced: boolean; sdh: boolean; default: boolean}>;
+export type SubtitleStream = Readonly<{id: string; format: string; source: 'embedded' | 'sidecar' | 'downloaded' | 'other'; language?: string; title?: string; forced: boolean; sdh: boolean; default: boolean; deliveries?: readonly import('../subtitles.ts').SubtitleDelivery[]}>;
 export type VersionPart = Readonly<{id: string; index: number; durationMs: number; sizeBytes?: number}>;
 export type MediaVersion = Readonly<{id: string; label: string; edition?: string; container?: string; sizeBytes?: number; durationMs: number; bitrateKbps?: number; parts: readonly VersionPart[]; video: readonly VideoStream[]; audio: readonly AudioStream[]; subtitles: readonly SubtitleStream[]}>;
 /** A skippable segment (spec §4.2). `id` is what a skip report names; the viewer's `auto`
@@ -61,7 +62,7 @@ export function parseOptions(v: unknown): PlaybackOptions {
       parts: Object.freeze(arr(x.parts).filter(obj).map(p => Object.freeze({id: id(p.id, 'part id'), index: num(p.index), durationMs: num(p.durationMs), sizeBytes: optNum(p.sizeBytes)}))),
       video: Object.freeze(arr(x.video).filter(obj).map(s => Object.freeze({id: id(s.id, 'video id'), codec: str(s.codec), profile: typeof s.profile === 'string' ? s.profile : undefined, bitDepth: optNum(s.bitDepth), width: optNum(s.width), height: optNum(s.height), fps: optNum(s.fps), hdr: typeof s.hdr === 'string' ? s.hdr : undefined, bitrateKbps: optNum(s.bitrateKbps)}))),
       audio: Object.freeze(arr(x.audio).filter(obj).map(s => Object.freeze({id: id(s.id, 'audio id'), codec: str(s.codec), channels: optNum(s.channels), layout: typeof s.layout === 'string' ? s.layout : undefined, atmos: bool(s.atmos), language: typeof s.language === 'string' ? s.language : undefined, title: typeof s.title === 'string' ? s.title : undefined, default: bool(s.default), commentary: bool(s.commentary), visualImpaired: bool(s.visualImpaired)}))),
-      subtitles: Object.freeze(arr(x.subtitles).filter(obj).map(s => Object.freeze({id: id(s.id, 'subtitle id'), format: str(s.format), source: oneOf(s.source, ['embedded', 'sidecar', 'downloaded'] as const, 'other' as never), language: typeof s.language === 'string' ? s.language : undefined, title: typeof s.title === 'string' ? s.title : undefined, forced: bool(s.forced), sdh: bool(s.sdh), default: bool(s.default)}))),
+      subtitles: Object.freeze(arr(x.subtitles).filter(obj).map(s => Object.freeze({id: id(s.id, 'subtitle id'), format: str(s.format), source: oneOf(s.source, ['embedded', 'sidecar', 'downloaded'] as const, 'other' as never), language: typeof s.language === 'string' ? s.language : undefined, title: typeof s.title === 'string' ? s.title : undefined, forced: bool(s.forced), sdh: bool(s.sdh), default: bool(s.default), ...(s.deliveries===undefined?{}:{deliveries:Object.freeze(arr(s.deliveries).map(validateSubtitleDelivery))})}))),
     });
   });
   const plan = obj(v.plan) ? Object.freeze({
@@ -86,7 +87,7 @@ export function parseOptions(v: unknown): PlaybackOptions {
 export type Decision = Readonly<{action: StreamAction; reasons: readonly string[]; to?: string; channels?: number}>;
 export type Presentation = Readonly<{
   generation: number; mode: 'direct' | 'stream'; url: string; startPositionMs: number;
-  subtitles: readonly Readonly<{trackId: string; format: string; url: string}>[];
+  subtitles: readonly Readonly<{trackId: string; format: string; url: string; companionUrl?: string; fontsUrl?: string}>[];
   decision: Readonly<{video?: Decision; audio?: Decision; subtitles?: Decision}>;
   bitrateKbps?: number;
   hdr?: Readonly<{source?: string; delivered?: string; toneMapped: boolean}>;
@@ -141,7 +142,7 @@ export function parsePresentation(p: unknown, prepared = false): Presentation {
   const d = obj(p.decision) ? p.decision : {};
   return Object.freeze({
     generation, mode: oneOf(p.mode, ['direct', 'stream'] as const, 'stream'), url: prepared && (p.url === undefined || p.url === '') ? '' : url(p.url, 'presentation url'), startPositionMs: num(p.startPositionMs),
-    subtitles: Object.freeze(arr(p.subtitles).filter(obj).map(s => Object.freeze({trackId: id(s.trackId, 'subtitle track'), format: str(s.format), url: url(s.url, 'subtitle url')}))),
+    subtitles: Object.freeze(arr(p.subtitles).filter(obj).map(s => Object.freeze({trackId: id(s.trackId, 'subtitle track'), format: str(s.format), url: url(s.url, 'subtitle url'), ...(s.companionUrl===undefined?{}:{companionUrl:url(s.companionUrl,'subtitle companion url')}), ...(s.fontsUrl===undefined?{}:{fontsUrl:url(s.fontsUrl,'subtitle fonts url')})}))),
     decision: Object.freeze({video: decision(d.video), audio: decision(d.audio), subtitles: decision(d.subtitles)}),
     bitrateKbps: optNum(p.bitrateKbps),
     hdr: obj(p.hdr) ? Object.freeze({source: typeof p.hdr.source === 'string' ? p.hdr.source : undefined, delivered: typeof p.hdr.delivered === 'string' ? p.hdr.delivered : undefined, toneMapped: bool(p.hdr.toneMapped)}) : undefined,
