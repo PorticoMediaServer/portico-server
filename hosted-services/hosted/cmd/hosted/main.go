@@ -329,7 +329,6 @@ func run() error {
 	// Within 30 days of expiry the operator is alerted daily; once expired,
 	// readiness fails so the deployment shows it, since servers reject every
 	// document signed with an expired certificate.
-	keyExpired := func() bool { return !time.Now().Before(keys.Certificate.NotAfter) }
 	ready := func(ctx context.Context) error {
 		if e := keys.ValidateSigner(time.Now()); e != nil {
 			return fmt.Errorf("signing authority unavailable: %w", e)

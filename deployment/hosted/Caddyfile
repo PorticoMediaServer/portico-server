@@ -90,7 +90,7 @@ cast.getportico.tv {
 	header {
 		Referrer-Policy "no-referrer"
 		Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
-		Content-Security-Policy "default-src 'self' https://www.gstatic.com; script-src 'self' https://www.gstatic.com; connect-src https:; media-src https: blob:; img-src https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
+		Content-Security-Policy "default-src 'self' https://www.gstatic.com; script-src 'self' https://www.gstatic.com/cast/; connect-src https:; media-src https: blob:; img-src https: data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'"
 		Cache-Control "no-store"
 	}
 	root * /opt/portico-cast-receiver/current

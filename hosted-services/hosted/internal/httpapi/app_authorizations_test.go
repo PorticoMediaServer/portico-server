@@ -76,3 +76,42 @@ func TestCredentialAdmissionSharesRoutesBeforeDatabase(t *testing.T) {
 		t.Fatal(w.Code, w.Header())
 	}
 }
+
+func TestAppAuthorizationPageIsEscapedAndUsesExternalAssets(t *testing.T) {
+	h := &Handler{AppAuthorizations: &AppAuthorizations{}, Origins: map[string]bool{}}
+	b64 := base64.RawURLEncoding.EncodeToString(make([]byte, 32))
+	q := url.Values{"serverId": {"srv_" + b64}, "challenge": {b64}, "redirectUri": {"https://client.example/finish"}, "state": {strings.Repeat("s", 32)}, "appName": {"</p><script>alert(1)</script>"}, "codeChallenge": {b64}}
+	r := httptest.NewRequest("GET", "/auth/apps/authorize?"+q.Encode(), nil)
+	w := httptest.NewRecorder()
+	handler := h.Routes()
+	handler.ServeHTTP(w, r)
+	if w.Code != 200 || !strings.Contains(w.Header().Get("Content-Type"), "text/html") || w.Header().Get("X-Frame-Options") != "DENY" || w.Header().Get("Referrer-Policy") != "no-referrer" || w.Header().Get("Cache-Control") != "no-store" {
+		t.Fatal(w.Code, w.Header())
+	}
+	body := w.Body.String()
+	if strings.Contains(body, "<script>alert") || strings.Contains(body, "unsafe-inline") || !strings.Contains(body, `src="/auth/apps/authorize.js"`) || !strings.Contains(body, `id="strings" hidden`) || !strings.Contains(w.Header().Get("Content-Security-Policy"), "frame-ancestors 'none'") {
+		t.Fatal("page escaping/CSP", body)
+	}
+	for _, path := range []string{"/auth/apps/authorize.js", "/auth/apps/authorize.css"} {
+		w = httptest.NewRecorder()
+		handler.ServeHTTP(w, httptest.NewRequest("GET", path, nil))
+		if w.Code != 200 || w.Body.Len() == 0 {
+			t.Fatal(path, w.Code)
+		}
+	}
+}
+
+func TestAppAuthorizationAdmissionCannotResetWithRequestID(t *testing.T) {
+	h := &Handler{}
+	r := httptest.NewRequest("POST", "/v1/app-authorizations/app_first/decision", nil)
+	for range 60 {
+		if !h.appAuthorizationRate(httptest.NewRecorder(), r) {
+			t.Fatal("early refusal")
+		}
+	}
+	r.URL.Path = "/v1/app-authorizations/app_next/decision"
+	w := httptest.NewRecorder()
+	if h.appAuthorizationRate(w, r) || w.Code != 429 || w.Header().Get("Retry-After") != "60" {
+		t.Fatal("request ID reset rate", w.Code, w.Header())
+	}
+}

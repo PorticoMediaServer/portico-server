@@ -57,7 +57,9 @@ func appAuthorizationQueryAllowed(r *http.Request) bool {
 	return e == nil
 }
 func (h *Handler) appAuthorizationRate(w http.ResponseWriter, r *http.Request) bool {
-	if !h.allowAuth(r) {
+	address := h.allowAttempt("appauth:"+budgetIP(peer(r)), 60)
+	network := h.allowAttempt("appauthnet:"+budgetNetwork(peer(r)), 600)
+	if !address || !network {
 		w.Header().Set("Retry-After", "60")
 		fail(w, 429, "rate_limited", "Try again shortly.", true)
 		return false
@@ -113,11 +115,17 @@ func (h *Handler) appAuthorizationRoutes(mux *http.ServeMux) {
 		}{string(raw), i18n.AppSignInJSON(), i18n.AppSignIn})
 	})
 	mux.HandleFunc("GET /auth/apps/authorize.js", func(w http.ResponseWriter, r *http.Request) {
+		if !h.allowCredentialLookup(w, r, "appasset") {
+			return
+		}
 		w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
 		raw, _ := appAuthorizationAssets.ReadFile("appauthassets/authorize.js")
 		_, _ = w.Write(raw)
 	})
 	mux.HandleFunc("GET /auth/apps/authorize.css", func(w http.ResponseWriter, r *http.Request) {
+		if !h.allowCredentialLookup(w, r, "appasset") {
+			return
+		}
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
 		raw, _ := appAuthorizationAssets.ReadFile("appauthassets/authorize.css")
 		_, _ = w.Write(raw)

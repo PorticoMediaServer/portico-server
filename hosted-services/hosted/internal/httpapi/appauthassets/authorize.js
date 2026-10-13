@@ -27,7 +27,7 @@
  async function work(action){
   buttons.forEach(b=>b.disabled=true);status.textContent='';
   try{await action();}catch(e){status.textContent=e.name==='TimeoutError'?strings.failed:e.message;}
-  finally{buttons.forEach(b=>b.disabled=false);}
+  finally{buttons.forEach(b=>b.disabled=false);if(reviewed)document.getElementById('approve').focus();}
  }
  document.getElementById('review').addEventListener('click',()=>work(async()=>{
   reviewed=await call('/v1/app-authorizations',request);
@@ -35,7 +35,6 @@
   text('account-name',reviewed.accountName);
   text('return-address',reviewed.redirectUri);
   document.getElementById('signin').hidden=true;document.getElementById('consent').hidden=false;
-  document.getElementById('approve').focus();
  }));
  const decide=approve=>work(async()=>{
   const result=await call('/v1/app-authorizations/'+encodeURIComponent(reviewed.id)+'/decision',{accountId:reviewed.accountId,approve});
