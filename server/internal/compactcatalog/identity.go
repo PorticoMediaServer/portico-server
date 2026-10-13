@@ -323,3 +323,14 @@ func findLiveTx(ctx context.Context, tx *sql.Tx, library int64, kind Kind, key s
 	}
 	return id, err
 }
+
+// BestVersionOrder is the ORDER BY that puts a title's best file first, for a
+// query whose link and asset rows are aliased link and asset: the first part,
+// a file that is there before one that is not, the taller picture, then the
+// larger file (the higher bit rate of two encodes of one length). It is the
+// version the server plays when a viewer names none. Which version a
+// particular device plays best is the playback planner's question; this is
+// the answer when nothing else is known.
+func BestVersionOrder(link, asset string) string {
+	return link + ".part_index," + asset + ".available DESC," + asset + ".height DESC," + asset + ".size DESC," + asset + ".token"
+}

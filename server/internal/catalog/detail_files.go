@@ -2,19 +2,26 @@ package catalog
 
 import (
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/compactcatalog"
 )
 
 // TitleFile is one file of a title as its Files list reads: where it is (owners only), how big
 // it is and every track in it. It rides on the detail response only; browse rows keep the short
 // assets.Source.
 type TitleFile struct {
-	ID        string           `json:"id"`
-	Path      string           `json:"path,omitempty"`
-	Size      int64            `json:"size"`
-	Container string           `json:"container"`
-	Duration  float64          `json:"duration"`
-	BitRate   int64            `json:"bitRate,omitempty"`
-	Available bool             `json:"available"`
+	ID        string  `json:"id"`
+	Path      string  `json:"path,omitempty"`
+	Size      int64   `json:"size"`
+	Container string  `json:"container"`
+	Duration  float64 `json:"duration"`
+	BitRate   int64   `json:"bitRate,omitempty"`
+	Available bool    `json:"available"`
+	// PartIndex is 0 for a whole title. Files with the same part index are
+	// versions of one another; the first listed is the one played by default.
+	PartIndex int `json:"partIndex"`
+	// Edition is the version's edition label where its name or local metadata
+	// gave one.
+	Edition   string           `json:"edition,omitempty"`
 	Video     *TitleFileVideo  `json:"video,omitempty"`
 	Audio     []TitleFileTrack `json:"audio"`
 	Subtitles []TitleFileTrack `json:"subtitles"`
@@ -49,9 +56,9 @@ type TitleFileTrack struct {
 // titleFiles reads a title's files with their tracks: a handful of rows per file, the title's
 // own. The path is the owner's to see.
 func (s *Service) titleFiles(item string, owner bool) ([]TitleFile, error) {
-	rows, err := s.read().Query(`SELECT a.token,a.path,a.size,a.container,a.duration,a.video_codec,a.width,a.height,link.available
+	rows, err := s.read().Query(`SELECT a.token,a.path,a.size,a.container,a.duration,a.video_codec,a.width,a.height,link.available,link.part_index,link.edition
  FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id
- WHERE link.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) ORDER BY link.part_index,a.token`, item)
+ WHERE link.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) ORDER BY `+compactcatalog.BestVersionOrder("link", "a"), item)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +67,7 @@ func (s *Service) titleFiles(item string, owner bool) ([]TitleFile, error) {
 		f := TitleFile{Audio: []TitleFileTrack{}, Subtitles: []TitleFileTrack{}}
 		var codec string
 		var width, height int
-		if err = rows.Scan(&f.ID, &f.Path, &f.Size, &f.Container, &f.Duration, &codec, &width, &height, &f.Available); err != nil {
+		if err = rows.Scan(&f.ID, &f.Path, &f.Size, &f.Container, &f.Duration, &codec, &width, &height, &f.Available, &f.PartIndex, &f.Edition); err != nil {
 			rows.Close()
 			return nil, err
 		}
