@@ -2,6 +2,7 @@ import React, {createContext, useCallback, useContext, useEffect, useMemo, useRe
 import {HttpLocalApi, ViewerService, type HostedServer, type HostedSession, type LocalSession, type SystemInfo} from '@core/index.ts';
 import {connectHostedServer, connectPairedServer, inspectDirectServer, rememberNativeSession, type RememberedServer} from '@core/server-connections.ts';
 import type {ServerPin} from '@core/route-identity.ts';
+import {firstAnswering, serverAddress as likelyServerAddress, serverAddressCandidates} from '@core/server-address.ts';
 import {ViewerSelectionCommit, selectedViewerRecord, type SelectedViewerRecord} from '@core/viewer-selection.ts';
 import {changeRequiredPassword, completeDirectSignInChallenge, devE2ESignIn, directSignIn, selectDirectProfile, type DirectSignIn, parseDirectSnapshot, type DirectSnapshot} from '@core/profile-management.ts';
 import type {SelectedSession} from '@core/session-selection.ts';
@@ -162,14 +163,16 @@ const idle = () => new HttpLocalApi('http://127.0.0.1:1');
 const signInText = (e: unknown, step: SignInStep, server?: string) => signInFailure(e, {step, server, online: typeof navigator === 'undefined' ? undefined : navigator.onLine}, currentI18n()).text;
 const hostOf = (origin?: string) => (origin ? friendlyHost(origin) ?? origin.replace(/^https?:\/\//, '') : undefined);
 
-/** What a person types is rarely a URL. A bare host gets a scheme: plain HTTP for an address on
- * the home network (an IP, localhost, a .local name), HTTPS for anything else. */
-export function serverAddress(typed: string): string {
-  const value = typed.trim().replace(/\/+$/, '');
-  if (/^https?:\/\//i.test(value)) return value;
-  const host = value.replace(/[:/].*$/, '');
-  const home = /^(localhost|\d{1,3}(\.\d{1,3}){3}|\[[0-9a-f:]+\]|[^.]+|.+\.local|.+\.lan|.+\.home)$/i.test(host);
-  return (home ? 'http://' : 'https://') + value;
+/** What a person types is rarely a URL: the shared rule turns it into the addresses worth trying (`@core/server-address.ts`). */
+export const serverAddress = likelyServerAddress;
+
+/**
+ * Finds the server for a typed address: each likely address in turn until one answers and proves
+ * an identity. The most likely one gets the full wait; the others a shorter one.
+ */
+async function findDirectServer(typed: string): Promise<{origin: string; identity: ServerPin}> {
+  const found = await firstAnswering(serverAddressCandidates(typed), (origin, index) => inspectDirectServer(origin, browserConnectionEnvironment(), AbortSignal.timeout(index === 0 ? 15000 : 6000)));
+  return {origin: found.origin, identity: found.value};
 }
 
 export function SessionProvider({children}: {children: React.ReactNode}) {
@@ -527,8 +530,8 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
     setError('');
     const gen = ++generation.current;
     try {
-      const found = await inspectDirectServer(directOrigin.trim(), browserConnectionEnvironment(), AbortSignal.timeout(15000));
-      if (gen === generation.current) setPin(found);
+      const found = await findDirectServer(directOrigin);
+      if (gen === generation.current) { setDirectOrigin(found.origin); setPin(found.identity); }
     } catch (e) {
       setError(signInText(e, 'password', hostOf(directOrigin.trim())));
     } finally {
@@ -714,11 +717,15 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
         // One page, one button: the server is looked up and its identity pinned as part of signing in.
         // `at`: sign in at this address now (a just-accepted invitation), not the typed one.
         if (at) setDirectOrigin(at);
-        const origin = serverAddress(at ?? directOrigin);
+        let origin = serverAddress(at ?? directOrigin);
         let identity = at ? undefined : pin;
         if (!identity) {
-          identity = await inspectDirectServer(origin, browserConnectionEnvironment(), AbortSignal.timeout(15000));
+          // An address typed without a scheme or port may be any of a few; the one that answers is kept.
+          const found = await findDirectServer(at ?? directOrigin);
           if (gen !== generation.current) return;
+          origin = found.origin;
+          identity = found.identity;
+          if (origin !== serverAddress(at ?? directOrigin)) setDirectOrigin(origin);
           setPin(identity);
         }
         connected = await connectPairedServer(origin, identity, browserConnectionEnvironment(), AbortSignal.timeout(15000));
@@ -877,8 +884,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
     let connected: Awaited<ReturnType<typeof connectPairedServer>> | undefined;
     let kept = false;
     try {
-      const address = serverAddress(origin);
-      const identity = await inspectDirectServer(address, browserConnectionEnvironment(), AbortSignal.timeout(15000));
+      const {origin: address, identity} = await findDirectServer(origin);
       connected = await connectPairedServer(address, identity, browserConnectionEnvironment(), AbortSignal.timeout(15000));
       const api = connected.api;
       setDirectOrigin(address);
