@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
 import {createWebhook, deleteWebhook, listWebhookDeliveries, listWebhooks, sendWebhookTest, updateWebhook, type IssuedWebhook, type Webhook, type WebhookDelivery} from '@core/api-access.ts';
-import {deliveryProblem, deliveryProgress, deliveryTone, webhookEventGroups, webhookEventLabel, webhookTrouble} from '@core/server-admin/api-words.ts';
+import {deliveryProblem, deliveryProgress, deliveryTone, webhookAddressOk, webhookEventGroups, webhookEventLabel, webhookTrouble} from '@core/server-admin/api-words.ts';
 import {problem, useAction, useRead} from '../../admin/console';
 import {usePollWhile} from '../../admin/poll-while';
 import {useSession} from '../../app/session';
@@ -8,14 +8,6 @@ import {useI18n} from '../../app/i18n';
 import {Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, PasswordInput, SettingsGroup, SettingsRow, Status, Switch, Text, TextArea, type MenuItem} from '../../ui';
 
 type Draft = {name: string; url: string; events: readonly string[]; secret: string};
-
-/** A web address the server can be asked to send to: http or https, with a host, and no name or password in it. */
-export function webhookAddressOk(address: string): boolean {
-  try {
-    const url = new URL(address.trim());
-    return (url.protocol === 'http:' || url.protocol === 'https:') && !!url.hostname && !url.username && !url.password;
-  } catch { return false; }
-}
 
 /**
  * Integrations › Webhooks: messages this server sends to another service when something

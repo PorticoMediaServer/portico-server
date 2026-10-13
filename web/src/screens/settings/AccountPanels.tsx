@@ -9,7 +9,7 @@ import {DeviceNameRow, DevicesSection, ProfileRestrictionsDialog, TwoFactorSecti
 import {LocalProfiles, PasswordGroup} from './Profiles';
 import s from './Settings.module.css';
 
-// Few members ever make a token: its list and dialog load when the section is opened.
+// Few members ever make a token: the list and its dialogs are a chunk of their own, outside the first load of Settings.
 const AccessTokens = React.lazy(() => import('./AccessTokens'));
 
 /** Panels that bring their own group and heading; the rest are rows inside their section's group. */

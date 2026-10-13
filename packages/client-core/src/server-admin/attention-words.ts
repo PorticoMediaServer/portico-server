@@ -62,3 +62,6 @@ export function typedProviderId(text: string): string | undefined {
   const value = text.trim();
   return value && value.length <= 2048 && !/[\x00-\x1f\s]/.test(value) ? value : undefined;
 }
+
+/** Libraries whose titles are matched with the film and TV providers: the only ones with a needs-attention list. */
+export const hasAttentionList = (libraryKind: string): boolean => libraryKind === 'movie' || libraryKind === 'tv' || libraryKind === 'anime';

@@ -1,6 +1,6 @@
 import React, {createContext, useContext, useEffect, useMemo, useSyncExternalStore} from 'react';
 import {FormSet, type AnyDraftForm, type DraftForm, type FormState} from '@core/server-admin/draft-form.ts';
-import {createServerForm, formValue, withFormValue, type ServerFormDeps, type ServerFormId} from '@core/server-admin/server-forms.ts';
+import {createServerForm, formValue, withFormValue, withListEntry, type ServerFormDeps, type ServerFormId} from '@core/server-admin/server-forms.ts';
 import {serverChoices, serverRowShown, type ServerSettingRow} from '@core/presentation/index.ts';
 import {useSession} from '../../app/session';
 import {useI18n, type MessageId} from '../../app/i18n';
@@ -160,12 +160,6 @@ export function ServerSettingRowView({row, anchor}: {row: ServerSettingRow; anch
   }
 }
 
-/** The list with one entry added: trimmed, never empty, never a repeat. */
-export function withEntry(list: readonly string[], typed: string): readonly string[] {
-  const entry = typed.trim();
-  return !entry || list.includes(entry) ? list : [...list, entry];
-}
-
 /**
  * A list of addresses or networks, edited an entry at a time: each one on its own row with
  * Remove, and a field to add another. The server checks what an entry means when the page is
@@ -186,7 +180,7 @@ function LinesField({label, example, value, onChange}: {label: string; example?:
           ))}
         </ul>
       ) : <p className={s.entryNone}>{t('settings.list.none')}</p>}
-      <form className={s.entryAdd} onSubmit={e => { e.preventDefault(); onChange(withEntry(value, typed)); setTyped(''); }}>
+      <form className={s.entryAdd} onSubmit={e => { e.preventDefault(); onChange(withListEntry(value, typed)); setTyped(''); }}>
         <Input hideLabel label={t('settings.list.addTo', {list: label})} mono placeholder={example} value={typed} onChange={e => setTyped(e.target.value)} autoCapitalize="off" autoComplete="off" spellCheck={false} />
         <Button type="submit" variant="secondary" label={t('settings.list.add')} disabled={!typed.trim()} />
       </form>

@@ -144,3 +144,18 @@ export function deliveryProgress(t: Translate, delivery: WebhookDelivery, time: 
     delivery.state === 'pending' && delivery.nextAttemptAt && delivery.attempts > 0 ? t('api.webhooks.nextAttempt', {when: time(delivery.nextAttemptAt)}) : '',
   ].filter(Boolean).join(' · ');
 }
+
+// ── Addresses ───────────────────────────────────────────────────────────────
+
+/** An address the server can be asked to send a webhook to: http or https, with a host, and no name or password in it. The server decides the rest. */
+export function webhookAddressOk(address: string): boolean {
+  try {
+    const url = new URL(address.trim());
+    return (url.protocol === 'http:' || url.protocol === 'https:') && !!url.hostname && !url.username && !url.password;
+  } catch { return false; }
+}
+
+/** Where an assistant connects: the server's address with the path every Portico server uses. */
+export function assistantAddress(serverBase: string): string {
+  return new URL('/v1/mcp', serverBase).toString();
+}

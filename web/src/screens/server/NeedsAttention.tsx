@@ -1,7 +1,8 @@
 import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import {metadataAttentionService, type AttentionCandidate, type AttentionCommand, type AttentionEntry} from '@core/metadata-attention.ts';
-import {attentionCount, attentionInProgress, attentionOffers, attentionReason, candidateFacts, candidateLine, providerName, typedProviderId, type AttentionCount} from '@core/server-admin/attention-words.ts';
+import {attentionCount, attentionInProgress, attentionOffers, attentionReason, candidateFacts, candidateLine, hasAttentionList, providerName, typedProviderId, type AttentionCount} from '@core/server-admin/attention-words.ts';
+export {hasAttentionList} from '@core/server-admin/attention-words.ts';
 import {useAction} from '../../admin/console';
 import {useCursorRead} from '../../admin/cursor-read';
 import {usePollWhile} from '../../admin/poll-while';
@@ -13,9 +14,6 @@ import page from '../settings/Settings.module.css';
 
 type Api = ReturnType<typeof useSession>['api'];
 const serviceFor = (api: Api, libraryId: string) => metadataAttentionService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body), libraryId);
-
-/** Libraries whose titles are matched with the film and TV providers: the only ones with a needs-attention list. */
-export const hasAttentionList = (kind: string): boolean => kind === 'movie' || kind === 'tv' || kind === 'anime';
 
 /**
  * How many titles wait for the owner in each library, for the badge beside it. The server has no

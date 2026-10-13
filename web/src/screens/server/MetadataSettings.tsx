@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
-import {metadataSettingsService, type MetadataSettings} from '@core/metadata-settings.ts';
+import {artworkLimitBytes as limitBytes, artworkLimitText as limitText, metadataSettingsService, type MetadataSettings} from '@core/metadata-settings.ts';
 import {parseEnvelope, parseStorageReport} from '@core/administration.ts';
 import {problem, useRead} from '../../admin/console';
 import {useInlineForm} from '../settings/ServerForms';
@@ -8,12 +8,6 @@ import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
 import {Button, Input, Loading, Notice, PasswordInput, SettingsGroup, SettingsRow, Status, Switch} from '../../ui';
 import page from '../settings/Settings.module.css';
-
-const GB = 2 ** 30;
-/** The stored limit as the field shows it: whole gigabytes where it is a whole number, otherwise two places. */
-export const limitText = (bytes: number): string => { const gb = bytes / GB; return Number.isInteger(gb) ? String(gb) : gb.toFixed(2).replace(/0+$/, '').replace(/\.$/, ''); };
-/** What a typed limit stores, or nothing when it is not a size the server takes (0.1 GB to about a million). */
-export const limitBytes = (text: string): number | undefined => { const gb = Number(text.trim().replace(',', '.')); return text.trim() && Number.isFinite(gb) && gb >= 0.1 && gb <= 1_000_000 ? Math.round(gb * GB) : undefined; };
 
 /** A provider key as the owner edits it: left alone, replaced by what was typed, or removed so Portico's own is used again. */
 type KeyEdit = Readonly<{typed: string; remove: boolean}>;

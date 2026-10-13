@@ -2,12 +2,8 @@ import {useState} from 'react';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
 import {Button, SettingsGroup, SettingsRow, Text} from '../../ui';
+import {assistantAddress} from '@core/server-admin/api-words.ts';
 import {useOpenApiKeys} from './ApiAccess';
-
-/** Where an assistant connects: this server's address with the path every Portico server uses. */
-export function assistantAddress(serverBase: string): string {
-  return new URL('/v1/mcp', serverBase).toString();
-}
 
 /**
  * Integrations › Assistants: what it is, the address to give an assistant, and the way to the
