@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os/exec"
 	"portico.local/server/internal/linearinput"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/remotemedia"
@@ -87,4 +88,59 @@ func TestSharedChannelReadersHaveIndependentLifetime(t *testing.T) {
 		t.Fatalf("idle channel not retired: %d", count.Load())
 	}
 	third.Close()
+}
+
+func TestSharedTransportReconnectsGeneratedStreamAndRecordsGap(t *testing.T) {
+	ffmpeg, e := exec.LookPath("ffmpeg")
+	if e != nil {
+		t.Skip("ffmpeg is unavailable")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	data, e := exec.CommandContext(ctx, ffmpeg, "-nostdin", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=10", "-t", "2", "-c:v", "mpeg2video", "-f", "mpegts", "pipe:1").Output()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if len(data) == 0 || len(data)%188 != 0 || len(data) > 1<<20 {
+		t.Fatal("bad generated transport stream")
+	}
+	var requests atomic.Int32
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		attempt := requests.Add(1)
+		for {
+			if _, e := w.Write(data); e != nil {
+				return
+			}
+			w.(http.Flusher).Flush()
+			if attempt == 1 {
+				return
+			}
+			select {
+			case <-r.Context().Done():
+				return
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}))
+	defer source.Close()
+	approval, e := (remotemedia.Policy{}).Approve(ctx, source.URL+"/")
+	if e != nil {
+		t.Fatal(e)
+	}
+	gateway, e := linearinput.Open(ctx, livechannels.Input{Locator: source.URL + "/stream", SourceID: source.URL, ChannelID: "one", Policy: remotemedia.Policy{Approvals: []remotemedia.Approval{approval}}, RetryWindowSeconds: 5})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer gateway.Close()
+	response, e := http.Get(gateway.URL())
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer response.Body.Close()
+	if _, e = io.ReadFull(response.Body, make([]byte, len(data)+188)); e != nil {
+		t.Fatal(e)
+	}
+	if requests.Load() < 2 || gateway.Snapshot().Gaps == 0 {
+		t.Fatalf("requests=%d span=%+v", requests.Load(), gateway.Snapshot())
+	}
 }

@@ -17,12 +17,16 @@ import (
 // Readers have independent private endpoints, output sinks and cancellation.
 // Only acquisition and its bounded byte ring belong to the channel.
 type sharedInput struct {
-	ready    chan struct{}
-	gateway  *Gateway
-	err      error
-	readers  int
-	idle     *time.Timer
-	idleDone chan struct{}
+	fence      string
+	closing    bool
+	retired    chan struct{}
+	retireOnce sync.Once
+	ready      chan struct{}
+	gateway    *Gateway
+	err        error
+	readers    int
+	idle       *time.Timer
+	idleDone   chan struct{}
 }
 
 var inputs = struct {
@@ -33,24 +37,48 @@ var inputs = struct {
 const inputGrace = 3 * time.Second
 
 func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
-	key := in.SourceID + "\n" + in.ChannelID + "\n" + in.Fence()
+	key := in.SourceID + "\n" + in.ChannelID
+	fence := in.Fence()
 	// Anonymous inputs are used by internal fixtures and have no channel identity.
 	if in.SourceID == "" || in.ChannelID == "" {
 		return openInput(ctx, in)
 	}
 	inputs.Lock()
 	entry := inputs.entries[key]
+	if entry != nil && entry.fence != fence && !entry.closing {
+		entry.closing = true
+		supervise.Go("linearinput.channel.replace", func() { retireInput(key, entry) })
+	}
+	if entry != nil && entry.closing {
+		retired := entry.retired
+		inputs.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-retired:
+			return Open(ctx, in)
+		}
+	}
 	if entry != nil {
 		select {
 		case <-entry.ready:
 			if entry.err != nil || entry.gateway != nil && entry.gateway.Snapshot().Ended {
-				entry = nil
+				entry.closing = true
+				supervise.Go("linearinput.channel.failed", func() { retireInput(key, entry) })
+				retired := entry.retired
+				inputs.Unlock()
+				select {
+				case <-ctx.Done():
+					return nil, ctx.Err()
+				case <-retired:
+					return Open(ctx, in)
+				}
 			}
 		default:
 		}
 	}
 	if entry == nil {
-		entry = &sharedInput{ready: make(chan struct{})}
+		entry = &sharedInput{fence: fence, retired: make(chan struct{}), ready: make(chan struct{})}
 		inputs.entries[key] = entry
 		supervise.Go("linearinput.channel.open", func() {
 			// Acquisition is bounded; the channel lifetime is detached from the first reader.
@@ -81,7 +109,12 @@ func Open(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 		return nil, entry.err
 	}
 	child, cancel := context.WithCancel(ctx)
-	g := &Gateway{ctx: child, cancel: cancel, shared: entry.gateway, release: release, policy: in.Policy, resources: map[string]resource{}, reverse: map[string]string{}, clients: map[*remotemedia.Client]bool{}, bodies: map[io.ReadCloser]bool{}, changed: make(chan struct{}), hls: entry.gateway.hls}
+	span := entry.gateway.Snapshot()
+	baseline := span.Gaps
+	if span.Reconnecting {
+		baseline = max(0, baseline-1)
+	}
+	g := &Gateway{gapBaseline: baseline, ctx: child, cancel: cancel, shared: entry.gateway, release: release, policy: in.Policy, resources: map[string]resource{}, reverse: map[string]string{}, clients: map[*remotemedia.Client]bool{}, bodies: map[io.ReadCloser]bool{}, changed: make(chan struct{}), hls: entry.gateway.hls}
 	var e error
 	g.secret, e = token()
 	if e != nil {
@@ -127,18 +160,28 @@ func releaseInput(key string, entry *sharedInput) {
 			close(done)
 			return
 		}
-		if inputs.entries[key] == entry {
-			delete(inputs.entries, key)
-		}
+		entry.closing = true
 		inputs.Unlock()
-		<-entry.ready
-		if entry.gateway != nil {
-			_ = entry.gateway.Close()
-		}
+		retireInput(key, entry)
 		close(done)
 	})
 	inputs.Unlock()
 	// The last reader retains its durable tuner allocation until acquisition is
 	// physically closed, including the grace interval, or another reader joins.
 	<-done
+}
+
+func retireInput(key string, entry *sharedInput) {
+	entry.retireOnce.Do(func() {
+		<-entry.ready
+		if entry.gateway != nil {
+			_ = entry.gateway.Close()
+		}
+		inputs.Lock()
+		if inputs.entries[key] == entry {
+			delete(inputs.entries, key)
+		}
+		close(entry.retired)
+		inputs.Unlock()
+	})
 }

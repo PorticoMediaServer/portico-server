@@ -191,16 +191,11 @@ func (f SourceFetcher) fetch(ctx context.Context, c remoteConfig) (SourceInput, 
 		if remaining <= 0 {
 			return in, 0, ErrInvalid
 		}
-		b, e := ReadSource(ctx, d.GuideURL, p, remaining)
+		file, digest, e := readGuideFile(ctx, d.GuideURL, p, remaining)
+		in.guideFile, in.guideDigest = file, digest
 		if e != nil {
 			return in, 0, e
 		}
-		// A configured XMLTV response must be a document, not an empty success
-		// response that would silently erase the last published guide.
-		if strings.TrimSpace(string(b)) == "" {
-			return in, 0, ErrInvalid
-		}
-		in.Guide = string(b)
 	}
 	return in, physical, nil
 }

@@ -303,7 +303,7 @@ func itoa(v int64) string {
 
 func assignments(ctx context.Context, tx *sql.Tx, source, condition string, bound int64) ([]TunerAssignment, error) {
 	out := []TunerAssignment{}
-	rows, err := tx.QueryContext(ctx, `SELECT id,channel_id,programme_json,state,start_ms,end_ms,allocation_id FROM dvr_recordings WHERE source_id=? AND `+condition+` ORDER BY start_ms,id`, source, bound)
+	rows, err := tx.QueryContext(ctx, `SELECT id,channel_id,programme_json,state,start_ms,end_ms,allocation_id,account_id,profile_id FROM dvr_recordings WHERE source_id=? AND `+condition+` ORDER BY start_ms,id`, source, bound)
 	if err != nil {
 		return out, err
 	}
@@ -312,13 +312,14 @@ func assignments(ctx context.Context, tx *sql.Tx, source, condition string, boun
 		var a TunerAssignment
 		var programme string
 		var start, end int64
-		if err = rows.Scan(&a.RecordingID, &a.ChannelID, &programme, &a.State, &start, &end, &a.AllocationID); err != nil {
+		if err = rows.Scan(&a.RecordingID, &a.ChannelID, &programme, &a.State, &start, &end, &a.AllocationID, &a.AccountID, &a.ProfileID); err != nil {
 			return out, err
 		}
 		var decoded struct {
 			Title string `json:"title"`
 		}
 		_ = json.Unmarshal([]byte(programme), &decoded)
+		a.Kind = "recording"
 		a.Title, a.StartsAt, a.EndsAt = decoded.Title, timeFromMilliseconds(start), timeFromMilliseconds(end)
 		out = append(out, a)
 	}
@@ -332,12 +333,17 @@ func overlapExcess(list []TunerAssignment, tuners int) int {
 		return 0
 	}
 	type point struct {
-		at    string
-		delta int
+		at      string
+		delta   int
+		channel string
 	}
 	points := make([]point, 0, len(list)*2)
 	for _, a := range list {
-		points = append(points, point{a.StartsAt, 1}, point{a.EndsAt, -1})
+		key := a.ChannelID
+		if key == "" {
+			key = a.RecordingID
+		}
+		points = append(points, point{a.StartsAt, 1, key}, point{a.EndsAt, -1, key})
 	}
 	sort.Slice(points, func(i, j int) bool {
 		if points[i].at == points[j].at {
@@ -346,8 +352,16 @@ func overlapExcess(list []TunerAssignment, tuners int) int {
 		return points[i].at < points[j].at
 	})
 	current, worst := 0, 0
+	counts := map[string]int{}
 	for _, p := range points {
-		current += p.delta
+		old := counts[p.channel]
+		counts[p.channel] += p.delta
+		if old == 0 && counts[p.channel] > 0 {
+			current++
+		}
+		if old > 0 && counts[p.channel] == 0 {
+			current--
+		}
 		if current > worst {
 			worst = current
 		}

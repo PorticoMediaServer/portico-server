@@ -2,6 +2,8 @@ package livechannels
 
 import (
 	"bufio"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/xml"
 	"fmt"
 	"io"
@@ -15,7 +17,7 @@ import (
 	"unicode/utf8"
 )
 
-var attribute = regexp.MustCompile(`([a-zA-Z0-9_-]+)="([^"]*)"`)
+var attribute = regexp.MustCompile(`([a-zA-Z0-9_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s,]+))`)
 
 func validText(v string, max int) bool {
 	return v != "" && len(v) <= max && utf8.ValidString(v) && !strings.ContainsFunc(v, unicode.IsControl)
@@ -30,8 +32,13 @@ func validLocator(v string) bool {
 
 // Parse uploaded data only. Advertised logo URLs are recorded for the
 // background importer; parsing never fetches them.
-func parse(in SourceInput) (parsedSource, error) {
-	out := parsedSource{diagnostics: ImportDiagnostics{Examples: []string{}}}
+func parse(in SourceInput) (out parsedSource, result error) {
+	out = parsedSource{diagnostics: ImportDiagnostics{Examples: []string{}}}
+	defer func() {
+		if result != nil {
+			out.close()
+		}
+	}()
 	if !validText(in.Name, 120) || len(in.Playlist) == 0 || in.TunerCount < 0 || in.TunerCount > 256 || in.ExpectedRevision < 0 {
 		return out, ErrInvalid
 	}
@@ -74,45 +81,43 @@ func parse(in SourceInput) (parsedSource, error) {
 					skip("live.import.channelAddressMissing")
 				}
 				pending = false
-				comma, quoted := -1, false
-				for i, r := range line {
-					if r == '"' {
-						quoted = !quoted
-					}
-					if r == ',' && !quoted {
-						comma = i
-						break
-					}
-				}
-				if comma < 0 || quoted {
+				comma := playlistSeparator(line)
+				if comma < 0 {
 					skip("live.import.channelDescriptionInvalid")
 				} else {
 					ch = parsedChannel{name: strings.TrimSpace(line[comma+1:])}
 					for _, m := range attribute.FindAllStringSubmatch(line[:comma], -1) {
+						value := m[2]
+						if m[3] != "" {
+							value = m[3]
+						}
+						if m[4] != "" {
+							value = m[4]
+						}
 						switch strings.ToLower(m[1]) {
 						case "tvg-id":
-							ch.key = m[2]
-							ch.guideKey = m[2]
+							ch.key = value
+							ch.guideKey = value
 						case "tvg-name":
 							if ch.name == "" {
-								ch.name = m[2]
+								ch.name = value
 							}
 						case "tvg-chno":
-							ch.number = m[2]
+							ch.number = value
 						case "group-title":
-							ch.group = m[2]
+							ch.group = value
 						case "tvg-country":
-							ch.country = m[2]
+							ch.country = value
 						case "tvg-logo":
-							if validLocator(m[2]) {
-								ch.logo = m[2]
+							if validLocator(value) {
+								ch.logo = value
 							}
 						case "catchup":
-							ch.catchup = m[2]
+							ch.catchup = value
 						case "catchup-source":
-							ch.catchupSource = m[2]
+							ch.catchupSource = value
 						case "catchup-days", "timeshift":
-							ch.catchupDays = m[2]
+							ch.catchupDays = value
 						}
 					}
 					if !validText(ch.name, 256) || ch.key != "" && !validText(ch.key, 256) || ch.number != "" && !validText(ch.number, 32) || ch.group != "" && !validText(ch.group, 120) {
@@ -142,7 +147,7 @@ func parse(in SourceInput) (parsedSource, error) {
 						if old == ch {
 							continue
 						}
-						ch.key += "-" + id(ch.name, ch.number, ch.group)[:16]
+						ch.key = "variant-" + id(ch.key, ch.name, ch.number, ch.group)
 						if keys[ch.key] {
 							skip("live.import.channelRepeated")
 							continue
@@ -193,11 +198,17 @@ func parse(in SourceInput) (parsedSource, error) {
 	for _, ch := range out.channels {
 		mapping[channelGuide[ch.key]] = append(mapping[channelGuide[ch.key]], ch.key)
 	}
-	if strings.TrimSpace(in.Guide) == "" {
+	if in.guideFile == "" && strings.TrimSpace(in.Guide) == "" {
 		applyConfiguration(&out, in.configuration, in.guideDays)
 		return out, nil
 	}
-	dec := newGuideDecoder(strings.NewReader(in.Guide))
+	reader, e := in.openGuide()
+	if e != nil {
+		return out, e
+	}
+	defer reader.Close()
+	digest := sha256.New()
+	dec := newGuideDecoder(io.TeeReader(reader, digest))
 	depth := 0
 	root := false
 	closed := false
@@ -205,6 +216,11 @@ func parse(in SourceInput) (parsedSource, error) {
 	seen := map[string]parsedProgramme{}
 	icons := map[string]bool{}
 	for {
+		if in.parseContext != nil {
+			if e := in.parseContext.Err(); e != nil {
+				return out, e
+			}
+		}
 		tok, e := dec.Token()
 		if e == io.EOF {
 			break
@@ -399,19 +415,37 @@ func parse(in SourceInput) (parsedSource, error) {
 						p.lineage = "provider-id"
 					}
 				}
-				if old, ok := seen[p.key]; ok {
-					if old != p {
-						out.diagnostics.SkippedProgrammes++
-						out.diagnostics.note("live.import.programmeRepeated")
+				if out.spool == nil && len(out.programmes) >= programmeMemoryRows {
+					if e = out.spill(); e != nil {
+						return out, e
 					}
-					continue
+					seen = nil
 				}
-				if len(out.programmes) >= limits.Programmes {
+				if out.spool == nil {
+					if old, ok := seen[p.key]; ok {
+						if old != p {
+							out.diagnostics.SkippedProgrammes++
+							out.diagnostics.note("live.import.programmeRepeated")
+						}
+						continue
+					}
+				}
+				if out.programmeCount() >= limits.Programmes {
 					out.diagnostics.SkippedProgrammes++
 					continue
 				}
-				seen[p.key] = p
-				out.programmes = append(out.programmes, p)
+				if out.spool != nil {
+					kept, e := out.spool.add(p)
+					if e != nil {
+						return out, e
+					}
+					if !kept {
+						out.diagnostics.SkippedProgrammes++
+					}
+				} else {
+					seen[p.key] = p
+					out.programmes = append(out.programmes, p)
+				}
 			}
 		case xml.EndElement:
 			depth--
@@ -424,8 +458,18 @@ func parse(in SourceInput) (parsedSource, error) {
 			}
 		}
 	}
+	if in.guideFile != "" && hex.EncodeToString(digest.Sum(nil)) != in.guideDigest {
+		return out, ErrConflict
+	}
 	if !root || !closed || depth != 0 {
 		return out, ErrInvalid
+	}
+	if out.spool != nil {
+		if e := out.normaliseSpool(in.guideDays); e != nil {
+			return out, e
+		}
+		applyConfiguration(&out, in.configuration, 0)
+		return out, nil
 	}
 	sort.Slice(out.programmes, func(i, j int) bool {
 		a, b := out.programmes[i], out.programmes[j]
@@ -468,22 +512,25 @@ func PreviewSource(in SourceInput) (Preview, error) {
 	if e != nil {
 		return Preview{}, e
 	}
-	p := Preview{Diagnostics: data.diagnostics, Channels: len(data.channels), Programmes: len(data.programmes), Names: []string{}}
-	for _, c := range data.channels {
+	defer data.close()
+	return previewParsed(data)
+}
+func previewParsed(data parsedSource) (Preview, error) {
+	p := Preview{Diagnostics: data.diagnostics, Channels: len(data.channels), Programmes: data.programmeCount(), Names: []string{}}
+	for _, c := range data.channels[:min(100, len(data.channels))] {
 		p.Names = append(p.Names, c.name)
 	}
-	var start, end time.Time
-	for _, v := range data.programmes {
-		if start.IsZero() || v.start.Before(start) {
-			start = v.start
-		}
-		if end.IsZero() || v.end.After(end) {
-			end = v.end
-		}
+	ranges, e := data.ranges()
+	if e != nil {
+		return p, e
 	}
-	if !start.IsZero() {
-		p.AvailableStart = start.Format(time.RFC3339)
-		p.AvailableEnd = end.Format(time.RFC3339)
+	for _, v := range ranges {
+		if p.AvailableStart == "" || v[0] < p.AvailableStart {
+			p.AvailableStart = v[0]
+		}
+		if v[1] > p.AvailableEnd {
+			p.AvailableEnd = v[1]
+		}
 	}
 	return p, nil
 }
@@ -707,4 +754,21 @@ func playlistLine(r *bufio.Reader) (string, bool, error) {
 		}
 		return string(out), long, e
 	}
+}
+
+func playlistSeparator(line string) int {
+	var quote rune
+	for i, r := range line {
+		if r == '"' || r == '\'' {
+			if quote == 0 {
+				quote = r
+			} else if quote == r {
+				quote = 0
+			}
+		}
+		if r == ',' && quote == 0 {
+			return i
+		}
+	}
+	return -1
 }

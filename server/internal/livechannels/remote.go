@@ -1,7 +1,7 @@
 package livechannels
 
 // Remote source setup is deliberately two-phase: preview fetches into a private,
-// expiring encrypted snapshot; only SaveRemote publishes configuration and guide.
+// expiring private snapshot; only SaveRemote publishes configuration and guide.
 // No URL or credential is included in a projection, error, receipt, or log.
 import (
 	"context"
@@ -49,8 +49,10 @@ type remoteConfig struct {
 }
 
 type remoteSnapshot struct {
-	Config remoteConfig `json:"config"`
-	Input  SourceInput  `json:"input"`
+	GuideFile   string       `json:"guideFile,omitempty"`
+	GuideDigest string       `json:"guideDigest,omitempty"`
+	Config      remoteConfig `json:"config"`
+	Input       SourceInput  `json:"input"`
 }
 
 type RemotePreview struct {
@@ -81,11 +83,8 @@ type SourceFetcher struct {
 	defaults LiveDefaults
 }
 
-// maxSealed bounds a stored payload the server wrote itself. A remote preview's snapshot holds the
-// fetched playlist and guide (up to MaxUploadBytes together) as JSON, which escapes the guide's
-// XML markup (`<` becomes six bytes), so the bound leaves generous room. It was 128 KiB, left
-// over from encrypted payloads, and refused every real guide: the preview succeeded and the save
-// answered guide_unavailable.
+// maxSealed bounds private source/playlist snapshots. Large guide bodies stay
+// in bounded temporary files and are represented by a private path and digest.
 const maxSealed = 8 * MaxUploadBytes
 
 func (s *Store) unseal(raw []byte, _ string) (string, error) {
@@ -150,13 +149,20 @@ func (s *Store) PreviewRemote(ctx context.Context, a Authority, f SourceFetcher,
 	if e != nil {
 		return out, e
 	}
+	keepGuide := false
+	defer func() {
+		if !keepGuide {
+			input.removeGuide()
+		}
+	}()
 	c.PhysicalCount = physical
 	input.TunerCount = effectiveCapacity(physical, d.OwnerLimit, d.UseDiscoveredCapacity)
-	preview, e := PreviewSource(input)
+	parsed, e := parse(input)
 	if e != nil {
 		return out, e
 	}
-	parsed, e := parse(input)
+	defer parsed.close()
+	preview, e := previewParsed(parsed)
 	if e != nil {
 		return out, e
 	}
@@ -167,7 +173,7 @@ func (s *Store) PreviewRemote(ctx context.Context, a Authority, f SourceFetcher,
 	if e != nil {
 		return out, e
 	}
-	payload, e := json.Marshal(remoteSnapshot{Config: c, Input: input})
+	payload, e := json.Marshal(remoteSnapshot{Config: c, Input: input, GuideFile: input.guideFile, GuideDigest: input.guideDigest})
 	if e != nil {
 		return out, ErrInvalid
 	}
@@ -203,8 +209,8 @@ func (s *Store) PreviewRemote(ctx context.Context, a Authority, f SourceFetcher,
 	if e != nil {
 		return out, e
 	}
-	keys := make([]MappingKey, 0, len(parsed.channels))
-	for _, ch := range parsed.channels {
+	keys := make([]MappingKey, 0, min(100, len(parsed.channels)))
+	for _, ch := range parsed.channels[:min(100, len(parsed.channels))] {
 		guide := ch.key
 		for _, m := range input.Mappings {
 			if m.ChannelKey == ch.key {
@@ -221,6 +227,7 @@ func (s *Store) PreviewRemote(ctx context.Context, a Authority, f SourceFetcher,
 	if d.OwnerLimit > 0 {
 		mode = "configured"
 	}
+	keepGuide = true
 	return RemotePreview{ID: token, Preview: preview, DiscoveredCapacity: physical, CapacityMode: mode, MappingKeys: keys, ExpiresAt: expiry.UTC().Format(time.RFC3339)}, nil
 }
 
@@ -319,6 +326,8 @@ func (s *Store) SaveRemote(ctx context.Context, a Authority, previewID, requestI
 	if replay != nil {
 		return *replay, nil
 	}
+	snap.Input.guideFile, snap.Input.guideDigest = snap.GuideFile, snap.GuideDigest
+	snap.Input.parseContext = ctx
 	snap.Input.RequestID = requestID
 	snap.Input.remote = true
 	raw, e := json.Marshal(snap.Config)
@@ -472,6 +481,8 @@ func (s *Store) RefreshOne(ctx context.Context, f SourceFetcher) (bool, error) {
 		var physical int
 		fetchCtx, cancel := context.WithTimeout(ctx, 75*time.Second)
 		in, physical, e = s.fetchSource(fetchCtx, f, c)
+		in.parseContext = ctx
+		defer in.removeGuide()
 		cancel()
 		if e == nil {
 			in.ID = sid
@@ -694,5 +705,14 @@ func (s *Store) ConsumerAccessTx(ctx context.Context, tx *sql.Tx, sid string, ow
 
 func sourceHash(in SourceInput) string {
 	b, _ := json.Marshal(in.Mappings)
-	return id(in.ID, fmt.Sprint(in.ExpectedRevision), in.Name, in.Playlist, in.Guide, fmt.Sprint(in.TunerCount), string(b))
+	guide := in.Guide
+	if in.guideFile != "" {
+		guide = in.guideDigest
+	}
+	config, _ := json.Marshal(in.configuration)
+	selection, _ := json.Marshal(struct {
+		Groups, Channels []string
+		Limits           ImportLimits
+	}{in.EnabledGroups, in.EnabledChannels, in.Limits})
+	return id(in.ID, fmt.Sprint(in.ExpectedRevision), in.Name, in.Playlist, guide, fmt.Sprint(in.TunerCount), string(b), string(config), string(selection))
 }

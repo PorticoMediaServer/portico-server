@@ -41,6 +41,7 @@ func New(db *sql.DB) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	cleanupGuideFiles()
 	return &Store{db: db, cursorKey: cursor}, nil
 }
 
@@ -212,10 +213,12 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 	if e := s.configureInput(ctx, &in); e != nil {
 		return Source{}, e
 	}
+	in.parseContext = ctx
 	data, e := parse(in)
 	if e != nil {
 		return Source{}, e
 	}
+	defer data.close()
 	hash := id(sourceHash(in), fmt.Sprint(refresh))
 	generation := ""
 	status := ""
@@ -262,7 +265,7 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 		if _, e = tx.ExecContext(ctx, `INSERT INTO live_source_identities VALUES(?) ON CONFLICT DO NOTHING`, in.ID); e != nil {
 			return ErrUnavailable
 		}
-		if _, e = tx.ExecContext(ctx, `INSERT INTO live_generations VALUES(?,?,?,?,?,?,?)`, generation, in.ID, in.Name, in.TunerCount, len(data.channels), len(data.programmes), time.Now().UTC().Format(time.RFC3339)); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO live_generations VALUES(?,?,?,?,?,?,?)`, generation, in.ID, in.Name, in.TunerCount, len(data.channels), data.programmeCount(), time.Now().UTC().Format(time.RFC3339)); e != nil {
 			return ErrUnavailable
 		}
 		examples, _ := json.Marshal(data.diagnostics.Examples)
@@ -277,17 +280,9 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 	if e != nil || status == "published" {
 		return result, e
 	}
-	ranges := map[string][2]string{}
-	for _, p := range data.programmes {
-		v := ranges[p.channel]
-		start, end := p.start.Format(time.RFC3339), p.end.Format(time.RFC3339)
-		if v[0] == "" || start < v[0] {
-			v[0] = start
-		}
-		if end > v[1] {
-			v[1] = end
-		}
-		ranges[p.channel] = v
+	ranges, e := data.ranges()
+	if e != nil {
+		return Source{}, e
 	}
 	for begin := 0; begin < len(data.channels); begin += StageBatch {
 		end := min(begin+StageBatch, len(data.channels))
@@ -323,34 +318,33 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 			return Source{}, e
 		}
 	}
-	for begin := 0; begin < len(data.programmes); begin += StageBatch {
-		end := min(begin+StageBatch, len(data.programmes))
-		e = s.transaction(ctx, a, true, func(tx *sql.Tx) error {
+	e = data.batches(ctx, StageBatch, func(batch []parsedProgramme) error {
+		return s.transaction(ctx, a, true, func(tx *sql.Tx) error {
 			if e := staging(ctx, tx, in.RequestID); e != nil {
 				return e
 			}
-			for _, p := range data.programmes[begin:end] {
-				pid, err := programmeIdentityTx(ctx, tx, in.ID, generation, p)
-				if err != nil {
-					return err
+			for _, p := range batch {
+				pid, e := programmeIdentityTx(ctx, tx, in.ID, generation, p)
+				if e != nil {
+					return e
 				}
-				if _, e := tx.ExecContext(ctx, `INSERT INTO live_programmes VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(generation_id,id) DO NOTHING`, generation, pid, id(in.ID, p.channel), p.key, p.title, p.start.Format(time.RFC3339), p.end.Format(time.RFC3339), p.lineage); e != nil {
+				if _, e = tx.ExecContext(ctx, `INSERT INTO live_programmes VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(generation_id,id) DO NOTHING`, generation, pid, id(in.ID, p.channel), p.key, p.title, p.start.Format(time.RFC3339), p.end.Format(time.RFC3339), p.lineage); e != nil {
 					return ErrUnavailable
 				}
-				if _, e := tx.ExecContext(ctx, `INSERT INTO live_programme_metadata(generation_id,id,series_id,episode_id,new_evidence,description,facts) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, generation, pid, p.series, p.episode, p.newEvidence, p.description, factsOrEmpty(p.facts)); e != nil {
+				if _, e = tx.ExecContext(ctx, `INSERT INTO live_programme_metadata(generation_id,id,series_id,episode_id,new_evidence,description,facts) VALUES(?,?,?,?,?,?,?) ON CONFLICT DO NOTHING`, generation, pid, p.series, p.episode, p.newEvidence, p.description, factsOrEmpty(p.facts)); e != nil {
 					return ErrUnavailable
 				}
 				if p.icon != "" {
-					if _, e := tx.ExecContext(ctx, `INSERT INTO live_programme_icons(generation_id,programme_id,url) VALUES(?,?,?) ON CONFLICT DO NOTHING`, generation, pid, p.icon); e != nil {
+					if _, e = tx.ExecContext(ctx, `INSERT INTO live_programme_icons(generation_id,programme_id,url) VALUES(?,?,?) ON CONFLICT DO NOTHING`, generation, pid, p.icon); e != nil {
 						return ErrUnavailable
 					}
 				}
 			}
 			return nil
 		})
-		if e != nil {
-			return Source{}, e
-		}
+	})
+	if e != nil {
+		return Source{}, e
 	}
 	conflict := false
 	e = s.transaction(ctx, a, true, func(tx *sql.Tx) error {
@@ -367,7 +361,7 @@ func (s *Store) save(ctx context.Context, a Authority, in SourceInput, refresh b
 			return ErrConflict
 		}
 		var channels, programmes int
-		if e := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM live_channel_versions WHERE generation_id=?),(SELECT count(*) FROM live_programmes WHERE generation_id=?)`, generation, generation).Scan(&channels, &programmes); e != nil || channels != len(data.channels) || programmes != len(data.programmes) {
+		if e := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM live_channel_versions WHERE generation_id=?),(SELECT count(*) FROM live_programmes WHERE generation_id=?)`, generation, generation).Scan(&channels, &programmes); e != nil || channels != len(data.channels) || programmes != data.programmeCount() {
 			return ErrUnavailable
 		}
 		var rev int64

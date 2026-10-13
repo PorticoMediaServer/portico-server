@@ -71,7 +71,7 @@ test('CD-43: a capped 64-root page parses as truncated; a 65th root still refuse
 });
 
 test('a guide-only live source may not carry stream tuning or a guide attachment',()=>{
- const base={sourceId:'src',sourceName:'Rooftop aerial',revision:3,digest:'d',tunerCount:2,availableKinds:['playlist','xmltv-guide','hdhomerun'],settings:{kind:'playlist',streamBufferSeconds:12,retryWindowSeconds:null,userAgent:'',guideSourceId:'src-guide',filters:{categories:{mode:'include',values:['News']},countries:{mode:'include',values:[]},keywords:{mode:'exclude',values:['shopping']}},logoImport:{enabled:true,overwriteExisting:false},channelNumbering:{mode:'sequential',startAt:100,step:1}},effective:{streamBufferSeconds:12,retryWindowSeconds:60,userAgent:'Portico/1.0',guideDays:7,logoImport:true,discoveryEnabled:true}};
+ const base={sourceId:'src',sourceName:'Rooftop aerial',revision:3,digest:'d',tunerCount:2,availableKinds:['playlist','xmltv-guide','hdhomerun'],settings:{enabledGroups:[],enabledChannels:[],kind:'playlist',streamBufferSeconds:12,retryWindowSeconds:null,userAgent:'',guideSourceId:'src-guide',filters:{categories:{mode:'include',values:['News']},countries:{mode:'include',values:[]},keywords:{mode:'exclude',values:['shopping']}},logoImport:{enabled:true,overwriteExisting:false},channelNumbering:{mode:'sequential',startAt:100,step:1}},effective:{importLimits:{bytes:536870912,channels:50000,programmes:5000000},streamBufferSeconds:12,retryWindowSeconds:60,userAgent:'Portico/1.0',guideDays:7,logoImport:true,discoveryEnabled:true}};
  const parsed=parseLiveSourceDocument(base);
  assert.equal(parsed.settings.streamBufferSeconds,12);
  assert.equal(parsed.settings.retryWindowSeconds,null);
@@ -103,7 +103,7 @@ test('the DVR document refuses deleting the original with no conversion, and tem
 });
 
 test('the tuner view must agree with its own in-use count',()=>{
- const assignment={recordingId:'rec-1',channelId:'bbc-two',title:'Nova',state:'recording',startsAt:'2026-09-16T20:00:00Z',endsAt:'2026-09-16T21:00:00Z',allocationId:'alloc-1'};
+ const assignment={kind:'recording',accountId:'account',profileId:'profile',recordingId:'rec-1',channelId:'bbc-two',title:'Nova',state:'recording',startsAt:'2026-09-16T20:00:00Z',endsAt:'2026-09-16T21:00:00Z',allocationId:'alloc-1'};
  const view=parseTunerView({observedAt:'2026-09-16T20:11:04Z',upcomingWindowHours:48,sources:[{sourceId:'src',sourceName:'Rooftop aerial',tunerCount:2,inUse:1,conflicts:1,active:[assignment],upcoming:[{...assignment,recordingId:'rec-2',state:'scheduled',allocationId:''}]}]});
  assert.equal(view.sources[0].conflicts,1);
  assert.throws(()=>parseTunerView({observedAt:'',upcomingWindowHours:48,sources:[{sourceId:'src',sourceName:'x',tunerCount:2,inUse:2,conflicts:0,active:[assignment],upcoming:[]}]}));

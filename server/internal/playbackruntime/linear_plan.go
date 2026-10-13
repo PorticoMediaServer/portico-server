@@ -253,10 +253,10 @@ func linearPlan(raw []byte, w playback.LinearWork) (decoder.LinearEncoding, erro
 		if !w.TranscodingEnabled {
 			return plan, channelFault("transcoding_disabled", 422)
 		}
-		if hdr && !q.AllowHDRToSDR {
+		if hdr && plan.ConvertVideo && !q.AllowHDRToSDR {
 			return plan, channelFault("hdr_conversion_not_allowed", 422)
 		}
-		plan.HDRToSDR = hdr
+		plan.HDRToSDR = hdr && plan.ConvertVideo
 	}
 	return plan, nil
 }

@@ -121,6 +121,7 @@ func (s *Store) configureInput(ctx context.Context, in *SourceInput) error {
 		in.EnabledChannels = v.EnabledChannels
 	}
 	if in.remote {
+		in.parseContext = ctx
 		in.guideDays = d.GuideDays
 	}
 	in.configuration = &v
@@ -150,6 +151,23 @@ func (s *Store) configureInput(ctx context.Context, in *SourceInput) error {
 	}
 	sort.Slice(in.Mappings, func(i, j int) bool { return in.Mappings[i].ChannelKey < in.Mappings[j].ChannelKey })
 	return nil
+}
+
+// Preview applies the same saved import policy as publication.
+func (s *Store) Preview(ctx context.Context, a Authority, in SourceInput) (Preview, error) {
+	if e := s.snapshot(ctx, a, true, func(*sql.Tx) error { return nil }); e != nil {
+		return Preview{}, e
+	}
+	if e := s.configureInput(ctx, &in); e != nil {
+		return Preview{}, e
+	}
+	in.parseContext = ctx
+	value, e := PreviewSource(in)
+	if e != nil {
+		return Preview{}, e
+	}
+	e = s.snapshot(ctx, a, true, func(*sql.Tx) error { return nil })
+	return value, e
 }
 func applyConfiguration(data *parsedSource, v *LiveSourceSettings, days int) {
 	if v == nil {
@@ -217,6 +235,7 @@ func (s *Store) fetchSource(ctx context.Context, f SourceFetcher, c remoteConfig
 	if e != nil {
 		return in, count, e
 	}
+	in.parseContext = ctx
 	in.guideDays = d.GuideDays
 	in.remote = true
 	if e = s.configureInput(ctx, &in); e != nil {

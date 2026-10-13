@@ -37,7 +37,7 @@ export type FolderToken=Readonly<{token:string;description:string;example:string
 export type KeepPolicy=Readonly<{mode:'keep-all'|'keep-count'|'keep-days';keepCount:number;keepDays:number;keepUntilWatched:boolean}>;
 export type DVRDefaults=Readonly<{prePaddingSeconds:number;postPaddingSeconds:number;keepPolicy:KeepPolicy;conversion:Readonly<{mode:'none'|'remux'|'ladder';ladderId:string;deleteOriginal:boolean}>;folderTemplate:string;movieFolderTemplate:string;recordingProfile:string;sidecars:Readonly<{nfo:boolean;poster:boolean;fanart:boolean;thumbnail:boolean}>;tunerPreference:string}>;
 export type DVRDocument=Readonly<{revision:number;digest:string;settings:DVRDefaults;folderTokens:readonly FolderToken[];enumerations:Readonly<Record<string,readonly string[]>>}>;
-export type TunerAssignment=Readonly<{recordingId:string;channelId:string;title:string;state:string;startsAt:string;endsAt:string;allocationId:string}>;
+export type TunerAssignment=Readonly<{kind:string;accountId:string;profileId:string;recordingId:string;channelId:string;title:string;state:string;startsAt:string;endsAt:string;allocationId:string}>;
 export type TunerAllocation=Readonly<{sourceId:string;sourceName:string;tunerCount:number;inUse:number;conflicts:number;active:readonly TunerAssignment[];upcoming:readonly TunerAssignment[]}>;
 export type TunerView=Readonly<{observedAt:string;upcomingWindowHours:number;sources:readonly TunerAllocation[]}>;
 export type StorageCategory=Readonly<{id:string;name:string;description:string;directories:readonly string[];cleanable:boolean;regenerable:boolean;retentionKey:string}>;
@@ -301,16 +301,17 @@ export function folderTemplateProblems(template:string,tokens:readonly FolderTok
 
 function parseAssignment(v:unknown):TunerAssignment{
  if(!object(v)||!filled(v.recordingId,256)||!text(v.channelId,256)||!text(v.title,1024)||!filled(v.state,64)||!text(v.startsAt,64)||!text(v.endsAt,64))invalid('tuner assignment');
- return Object.freeze({recordingId:v.recordingId,channelId:v.channelId,title:v.title,state:v.state,startsAt:v.startsAt,endsAt:v.endsAt,allocationId:text(v.allocationId,256)?v.allocationId:''});
+ if(!text(v.kind,64)||!text(v.accountId,256)||!text(v.profileId,256))invalid("tuner owner");
+ return Object.freeze({kind:v.kind,accountId:v.accountId,profileId:v.profileId,recordingId:v.recordingId,channelId:v.channelId,title:v.title,state:v.state,startsAt:v.startsAt,endsAt:v.endsAt,allocationId:text(v.allocationId,256)?v.allocationId:''});
 }
 /** parseTunerView reads the allocation page. */
 export function parseTunerView(v:unknown):TunerView{
  if(!object(v)||!text(v.observedAt,64)||!count(v.upcomingWindowHours))invalid('tuner view');
  const sources=list(v.sources,64,'tuner sources').map(entry=>{
   if(!object(entry)||!filled(entry.sourceId,256)||!text(entry.sourceName,512)||!count(entry.tunerCount)||!count(entry.inUse)||!count(entry.conflicts))invalid('tuner allocation');
-  const active=list(entry.active,200,'active recordings').map(parseAssignment);
-  if(active.length!==entry.inUse)invalid('tuner allocation counts');
-  return Object.freeze({sourceId:entry.sourceId,sourceName:entry.sourceName,tunerCount:entry.tunerCount,inUse:entry.inUse,conflicts:entry.conflicts,active:Object.freeze(active),upcoming:Object.freeze(list(entry.upcoming,200,'upcoming recordings').map(parseAssignment))});
+  const active=list(entry.active,100000,'active streams').map(parseAssignment);
+  if(new Set(active.map(v=>v.channelId)).size!==entry.inUse)invalid('tuner allocation counts');
+  return Object.freeze({sourceId:entry.sourceId,sourceName:entry.sourceName,tunerCount:entry.tunerCount,inUse:entry.inUse,conflicts:entry.conflicts,active:Object.freeze(active),upcoming:Object.freeze(list(entry.upcoming,100000,'upcoming recordings').map(parseAssignment))});
  });
  return Object.freeze({observedAt:v.observedAt,upcomingWindowHours:v.upcomingWindowHours,sources:Object.freeze(sources)});
 }

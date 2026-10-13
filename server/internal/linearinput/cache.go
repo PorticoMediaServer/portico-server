@@ -43,6 +43,17 @@ func (g *Gateway) resourceBytes(ctx context.Context, res resource, rng string) (
 	entry = &cachedResource{ready: make(chan struct{})}
 	g.cache[key] = entry
 	g.mu.Unlock()
+	select {
+	case g.resourceSlots <- struct{}{}:
+		defer func() { <-g.resourceSlots }()
+	case <-g.ctx.Done():
+		g.mu.Lock()
+		entry.err = ErrUnavailable
+		delete(g.cache, key)
+		close(entry.ready)
+		g.mu.Unlock()
+		return nil, ErrUnavailable
+	}
 	work, cancel := context.WithTimeout(g.ctx, 30*time.Second)
 	defer cancel()
 	limit := int64(maxSegment)
@@ -70,8 +81,23 @@ func (g *Gateway) resourceBytes(ctx context.Context, res resource, rng string) (
 		}
 	}
 	g.mu.Lock()
-	if g.cacheBytes+int64(len(entry.data)) > maxSegment {
-		e = ErrUnavailable
+	for e == nil && g.cacheBytes+int64(len(entry.data)) > maxSegment {
+		oldest := ""
+		var until time.Time
+		for key, value := range g.cache {
+			if value == entry || value.expires.IsZero() {
+				continue
+			}
+			if oldest == "" || value.expires.Before(until) {
+				oldest, until = key, value.expires
+			}
+		}
+		if oldest == "" {
+			e = ErrUnavailable
+			break
+		}
+		g.cacheBytes -= int64(len(g.cache[oldest].data))
+		delete(g.cache, oldest)
 	}
 	if e != nil {
 		entry.data = nil

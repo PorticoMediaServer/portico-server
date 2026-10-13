@@ -123,3 +123,39 @@ func TestChannelSharingCountsOneTunerAndReportsEveryReader(t *testing.T) {
 		t.Fatalf("readers: %d %v", count, e)
 	}
 }
+
+func TestLargeProgrammeGuideUsesDiskSpoolAndBoundedPreview(t *testing.T) {
+	in := testInput()
+	var guide strings.Builder
+	guide.WriteString("<tv>")
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	for i := 0; i < programmeMemoryRows+2; i++ {
+		a := start.Add(time.Duration(i) * time.Minute)
+		fmt.Fprintf(&guide, `<programme channel="one" start="%s" stop="%s"><title>Episode %d</title></programme>`, a.Format("20060102150405 -0700"), a.Add(time.Minute).Format("20060102150405 -0700"), i)
+	}
+	guide.WriteString("</tv>")
+	in.Guide = guide.String()
+	data, e := parse(in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer data.close()
+	if data.spool == nil || len(data.programmes) != 0 || data.programmeCount() != programmeMemoryRows+2 {
+		t.Fatalf("spool=%v memory=%d rows=%d", data.spool != nil, len(data.programmes), data.programmeCount())
+	}
+	preview, e := previewParsed(data)
+	if e != nil || preview.Programmes != programmeMemoryRows+2 {
+		t.Fatalf("%+v %v", preview, e)
+	}
+	count := 0
+	e = data.batches(context.Background(), 128, func(batch []parsedProgramme) error {
+		if len(batch) > 128 {
+			t.Fatal("unbounded batch")
+		}
+		count += len(batch)
+		return nil
+	})
+	if e != nil || count != preview.Programmes {
+		t.Fatalf("%d %v", count, e)
+	}
+}

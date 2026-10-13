@@ -27,20 +27,22 @@ const LiveSource Provenance = "live-source"
 const LibraryChannel Provenance = "library-channel"
 
 type SourceInput struct {
-	configuration    *LiveSourceSettings
-	remote           bool
-	guideDays        int
-	RequestID        string           `json:"requestId"`
-	ID               string           `json:"id"`
-	ExpectedRevision int64            `json:"expectedRevision"`
-	Name             string           `json:"name"`
-	Playlist         string           `json:"playlist"`
-	Guide            string           `json:"guide"`
-	TunerCount       int              `json:"tunerCount"`
-	Limits           ImportLimits     `json:"limits,omitempty"`
-	EnabledGroups    []string         `json:"enabledGroups,omitempty"`
-	EnabledChannels  []string         `json:"enabledChannels,omitempty"`
-	Mappings         []ChannelMapping `json:"mappings,omitempty"`
+	guideFile, guideDigest string
+	parseContext           context.Context
+	configuration          *LiveSourceSettings
+	remote                 bool
+	guideDays              int
+	RequestID              string           `json:"requestId"`
+	ID                     string           `json:"id"`
+	ExpectedRevision       int64            `json:"expectedRevision"`
+	Name                   string           `json:"name"`
+	Playlist               string           `json:"playlist"`
+	Guide                  string           `json:"guide"`
+	TunerCount             int              `json:"tunerCount"`
+	Limits                 ImportLimits     `json:"limits,omitempty"`
+	EnabledGroups          []string         `json:"enabledGroups,omitempty"`
+	EnabledChannels        []string         `json:"enabledChannels,omitempty"`
+	Mappings               []ChannelMapping `json:"mappings,omitempty"`
 }
 type Source struct {
 	Diagnostics        ImportDiagnostics `json:"diagnostics"`
@@ -210,6 +212,7 @@ type parsedProgramme struct {
 	start, end                                time.Time
 }
 type parsedSource struct {
+	spool       *programmeSpool
 	diagnostics ImportDiagnostics
 	channels    []parsedChannel
 	programmes  []parsedProgramme

@@ -105,7 +105,10 @@ func registerLiveContracts(r *apikit.Registry, d Dependencies) {
 		return out, e
 	})
 	liveContract(r, d, "POST", "/v1/admin/live-sources/preview", "preview_live_source", 48<<20, func(ctx context.Context, q *http.Request, p identity.Principal, in livechannels.SourceInput) (LivePreviewDocument, error) {
-		value, e := livechannels.PreviewSource(in)
+		if d.LiveChannels == nil {
+			return LivePreviewDocument{}, livechannels.ErrUnavailable
+		}
+		value, e := d.LiveChannels.Preview(ctx, d.liveAuthority(p), in)
 		return LivePreviewDocument{"1.0", d.Identity.ID(), value}, e
 	})
 	liveContract(r, d, "POST", "/v1/admin/live-sources", "save_live_source", 48<<20, func(ctx context.Context, q *http.Request, p identity.Principal, in livechannels.SourceInput) (LiveSourceDocument, error) {

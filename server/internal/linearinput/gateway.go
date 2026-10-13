@@ -64,46 +64,50 @@ func routeExtension(kind string, u *url.URL) string {
 }
 
 type Span struct {
-	First, Last time.Time
-	Bytes       int64
-	Gaps        int
-	Ended       bool
+	First, Last  time.Time
+	Bytes        int64
+	Gaps         int
+	Reconnecting bool
+	Ended        bool
 }
 
 // Gateway retains the one raw tuner connection for probe and capture readers.
 // For HLS, every nested URI is replaced by an opaque private route and independently
 // passes the same DNS-pinned policy. No source URL escapes in an error/header.
 type Gateway struct {
-	shared      *Gateway
-	release     func()
-	closeOnce   sync.Once
-	input       livechannels.Input
-	cache       map[string]*cachedResource
-	cacheBytes  int64
-	output      *privateoutput.Route
-	closing     bool
-	ctx         context.Context
-	cancel      context.CancelFunc
-	policy      remotemedia.Policy
-	secret      string
-	address     string
-	mu          sync.Mutex
-	resources   map[string]resource
-	reverse     map[string]string
-	hls         bool
-	first       []byte
-	raw         [][]byte
-	base, total int64
-	span        Span
-	failure     error
-	done        bool
-	changed     chan struct{}
-	active      int
-	clients     map[*remotemedia.Client]bool
-	bodies      map[io.ReadCloser]bool
-	http        *http.Server
-	v4, v6      *net.TCPListener
-	wg          sync.WaitGroup
+	rawTimes      []time.Time
+	resourceSlots chan struct{}
+	gapBaseline   int
+	shared        *Gateway
+	release       func()
+	closeOnce     sync.Once
+	input         livechannels.Input
+	cache         map[string]*cachedResource
+	cacheBytes    int64
+	output        *privateoutput.Route
+	closing       bool
+	ctx           context.Context
+	cancel        context.CancelFunc
+	policy        remotemedia.Policy
+	secret        string
+	address       string
+	mu            sync.Mutex
+	resources     map[string]resource
+	reverse       map[string]string
+	hls           bool
+	first         []byte
+	raw           [][]byte
+	base, total   int64
+	span          Span
+	failure       error
+	done          bool
+	changed       chan struct{}
+	active        int
+	clients       map[*remotemedia.Client]bool
+	bodies        map[io.ReadCloser]bool
+	http          *http.Server
+	v4, v6        *net.TCPListener
+	wg            sync.WaitGroup
 }
 
 func token() (string, error) {
@@ -115,7 +119,7 @@ func token() (string, error) {
 }
 func openInput(ctx context.Context, in livechannels.Input) (*Gateway, error) {
 	child, cancel := context.WithCancel(ctx)
-	g := &Gateway{input: in, cache: map[string]*cachedResource{}, ctx: child, cancel: cancel, policy: in.Policy, resources: map[string]resource{}, reverse: map[string]string{}, clients: map[*remotemedia.Client]bool{}, bodies: map[io.ReadCloser]bool{}, changed: make(chan struct{})}
+	g := &Gateway{resourceSlots: make(chan struct{}, 4), input: in, cache: map[string]*cachedResource{}, ctx: child, cancel: cancel, policy: in.Policy, resources: map[string]resource{}, reverse: map[string]string{}, clients: map[*remotemedia.Client]bool{}, bodies: map[io.ReadCloser]bool{}, changed: make(chan struct{})}
 	var e error
 	g.secret, e = token()
 	if e != nil {
@@ -215,6 +219,7 @@ func (g *Gateway) pump(r io.Reader) {
 		n, e := r.Read(buf)
 		g.mu.Lock()
 		if n > 0 {
+			g.span.Reconnecting = false
 			now := time.Now()
 			if g.span.First.IsZero() {
 				g.span.First = now
@@ -225,14 +230,14 @@ func (g *Gateway) pump(r io.Reader) {
 			g.span.Last = now
 			g.span.Bytes += int64(n)
 			g.raw = append(g.raw, buf[:n])
+			g.rawTimes = append(g.rawTimes, now)
 			g.total += int64(n)
-			limit := int64(ringBytes)
-			if g.input.StreamBufferSeconds > 0 {
-				limit = min(128<<20, max(1<<20, int64(g.input.StreamBufferSeconds)*4<<20))
-			}
-			for g.total-g.base > limit && len(g.raw) > 1 {
+			seconds := g.input.StreamBufferSeconds
+			limit := min(int64(128<<20), max(int64(1<<20), int64(seconds)*4<<20))
+			for len(g.raw) > 1 && (g.total-g.base > limit || seconds > 0 && now.Sub(g.rawTimes[0]) > time.Duration(seconds)*time.Second) {
 				g.base += int64(len(g.raw[0]))
 				g.raw = g.raw[1:]
+				g.rawTimes = g.rawTimes[1:]
 			}
 		}
 		g.signal()
@@ -251,6 +256,7 @@ func (g *Gateway) pump(r io.Reader) {
 				delete(g.clients, c)
 			}
 			g.span.Gaps++
+			g.span.Reconnecting = true
 			g.mu.Unlock()
 			until := time.Now().Add(time.Duration(g.input.RetryWindowSeconds) * time.Second)
 			if g.input.RetryWindowSeconds <= 0 {
@@ -424,6 +430,9 @@ func (g *Gateway) serve(w http.ResponseWriter, r *http.Request) {
 		}
 		fetched, e := owner.resourceBytes(ctx, res, rng)
 		if e != nil {
+			g.mu.Lock()
+			g.span.Gaps++
+			g.mu.Unlock()
 			http.Error(w, "Source unavailable", 502)
 			return
 		}
@@ -495,7 +504,7 @@ func (g *Gateway) serveRawFor(w http.ResponseWriter, r *http.Request, reader *Ga
 			}
 			reader.span.Last = now
 			reader.span.Bytes += int64(n)
-			reader.span.Gaps = gaps
+			reader.span.Gaps = max(0, gaps-reader.gapBaseline)
 			reader.mu.Unlock()
 			offset += int64(n)
 			if f, ok := w.(http.Flusher); ok {

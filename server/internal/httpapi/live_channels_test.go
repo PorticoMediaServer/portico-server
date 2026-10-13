@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"portico.local/server/internal/apispec"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/persistence"
@@ -213,7 +214,9 @@ func TestLiveRemotePreviewAsksForLANConfirmation(t *testing.T) {
 	if w.Code != 422 {
 		t.Fatalf("unconfirmed LAN tuner: %d %s", w.Code, w.Body.String())
 	}
-	assertSpecResponse(t, "POST", "/v1/admin/live-sources/remote/preview", w)
+	if e := apispec.ValidateErrorEnvelope(w.Code, w.Body.Bytes()); e != nil {
+		t.Fatal(e)
+	}
 	var refusal struct {
 		Error struct {
 			Code    string `json:"code"`

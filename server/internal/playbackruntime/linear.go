@@ -687,6 +687,9 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 	if e != nil {
 		return e
 	}
+	if e = entry.buffer.SetLiveDelay(input.StreamBufferSeconds); e != nil {
+		return e
+	}
 	// Allocation is committed before physical acquisition; every exit closes the
 	// decoder and gateway before releasing its exact token/generation.
 	defer func() {
@@ -831,7 +834,7 @@ func (l *LinearRuntime) produceLibrary(ctx context.Context, w playback.LinearWor
 	plan.SeekUS = max(int64(0), w.Selection.SourceOffsetMS+now-w.Selection.EntryStartMS) * 1000
 	plan.ClipEndUS = (w.Selection.SourceOffsetMS + w.Selection.EntryEndMS - w.Selection.EntryStartMS) * 1000
 	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal, Scheduled: true, TimelineBaseMS: w.Selection.EntryStartMS - w.Selection.SourceOffsetMS, EndMS: w.Selection.EntryEndMS}, func() error {
-		if e := l.owner.Linear.authority.CheckLinearProducer(ctx, w); e != nil {
+		if e := l.checkProducerWithPatience(ctx, w); e != nil {
 			return e
 		}
 		_, e := borrow.Validate(ctx)

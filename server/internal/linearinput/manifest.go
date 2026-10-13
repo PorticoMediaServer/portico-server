@@ -131,9 +131,25 @@ func selectVariant(lines []string) []string {
 	if best < 0 {
 		return lines
 	}
+	selected, _ := parseAttributes(strings.TrimPrefix(lines[best], "#EXT-X-STREAM-INF:"))
+	groups := map[string]bool{}
+	for _, key := range []string{"AUDIO", "VIDEO", "SUBTITLES", "CLOSED-CAPTIONS"} {
+		if group := attribute(selected, key); group != "" {
+			groups[group] = true
+		}
+	}
 	kept := make([]string, 0, len(lines))
 	skip := false
 	for i, line := range lines {
+		if strings.HasPrefix(line, "#EXT-X-I-FRAME-STREAM-INF:") {
+			continue
+		}
+		if strings.HasPrefix(line, "#EXT-X-MEDIA:") {
+			attrs, e := parseAttributes(strings.TrimPrefix(line, "#EXT-X-MEDIA:"))
+			if e != nil || !groups[attribute(attrs, "GROUP-ID")] {
+				continue
+			}
+		}
 		if strings.HasPrefix(line, "#EXT-X-STREAM-INF:") {
 			skip = i != best
 			if skip {
