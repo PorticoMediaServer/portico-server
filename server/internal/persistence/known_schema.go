@@ -171,6 +171,9 @@ index console_receipts_expiry
 index console_records_page
 index console_reports_owner
 index console_reports_status
+index container_personal_undo_container
+index container_personal_undo_expiry
+index container_personal_undo_items_item
 index content_rating_age_lookup
 index continue_dismissals_item_id_fk
 index continue_show_dismissals_show_id_fk
@@ -310,6 +313,7 @@ index notification_records_live
 index notification_records_page
 index notification_records_resume
 index personal_batch_receipts_expiry
+index personal_completed_plays_item
 index personal_conflict_open
 index personal_conflicts_item_id_fk
 index personal_event_ancestor
@@ -630,8 +634,9 @@ table console_report_events
 table console_reports
 table console_schedules
 table console_settings_revision
-table container_personal_resets
 table container_personal_state
+table container_personal_undo
+table container_personal_undo_items
 table content_rating_ages
 table content_rating_pending
 table continue_dismissals
@@ -863,6 +868,7 @@ table onboarding_state_v1
 table personal_activity_receipts
 table personal_activity_revisions
 table personal_batch_receipts
+table personal_completed_plays
 table personal_conflicts
 table personal_device_sequences
 table personal_evidence_fences

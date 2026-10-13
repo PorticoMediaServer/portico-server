@@ -460,8 +460,8 @@ func TestRecommendationCommunityPrivacyAndCurrentAccess(t *testing.T) {
 	s := New(f.db)
 	r := engineRequest("movies")
 	r.CommunityActivity = true
-	engineExec(t, f, `INSERT INTO accounts VALUES('a','a',x'00','p',1),('b','b',x'00','q',1);UPDATE direct_memberships SET allowed_libraries='["movies"]' WHERE account_id='b'`)
-	for i, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q")} {
+	engineExec(t, f, `INSERT INTO accounts VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["movies"]' WHERE account_id IN('b','c')`)
+	for i, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q"), persistence.PersonalOwnerKey("local", "c", "r")} {
 		engineExec(t, f, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed) VALUES(?,?,?,?,?,1,300,0,1)`, fmt.Sprint(i), key, f.items["m1"].ID, r.Now.Format(time.RFC3339), r.Now.Format(time.RFC3339))
 	}
 	check := func(n int) {

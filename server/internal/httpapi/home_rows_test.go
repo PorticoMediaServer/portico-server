@@ -242,3 +242,28 @@ func tl11AssertHomeSpecResponse(t *testing.T, method, path string, w *httptest.R
 		t.Fatalf("%s %s %d does not match %s: %v\n%s", method, path, w.Code, doc.File, problems, w.Body.String())
 	}
 }
+
+func TestHomeHasOneComposedEndpoint(t *testing.T) {
+	h, viewer, _ := homeAPIFixture(t)
+	call := func(path string) *httptest.ResponseRecorder {
+		request := httptest.NewRequest("GET", path, nil)
+		request.Header.Set("Authorization", "Bearer "+viewer.AccessToken)
+		response := httptest.NewRecorder()
+		h.ServeHTTP(response, request)
+		return response
+	}
+	legacy := call("/v1/content?view=home&limit=12")
+	if legacy.Code != 400 {
+		t.Fatal(legacy.Code, legacy.Body.String())
+	}
+	current := call("/v1/home?limit=12")
+	var home catalog.HomeDocument
+	if e := json.Unmarshal(current.Body.Bytes(), &home); e != nil || current.Code != 200 {
+		t.Fatal(current.Code, current.Body.String(), e)
+	}
+	for _, row := range home.Rows {
+		if row.SeeAll == nil {
+			t.Fatal("missing explicit destination", row.ID)
+		}
+	}
+}

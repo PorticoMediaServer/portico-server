@@ -78,27 +78,16 @@ func (m *restrictionEnv) containerWatermarkSecurity(t *testing.T) {
 	items["watermark-new"] = add("watermark-new", "G", time.Now().Add(time.Second).UTC().Format(time.RFC3339Nano), 3)
 	counts(2, 1)
 	no := false
-	if _, e = m.catalog.SetPersonal("local:matrix-limited", profile, items["watermark-visible"].Public, catalog.PersonalMutation{OperationID: "matrix-explicit-false", Watched: &no}, nil); e != nil {
+	if _, e = m.catalog.SetPersonal("local:matrix-limited", profile, items["watermark-visible"].Public, catalog.PersonalMutation{OperationID: "matrix-explicit-false", ExpectedRevision: 1, Watched: &no}, nil); e != nil {
 		t.Fatal(e)
 	}
 	counts(1, 2) // Explicit item state wins over the container.
 	yes := true
-	if _, e = m.catalog.SetPersonal("local:matrix-limited", profile, items["watermark-hidden"].Public, catalog.PersonalMutation{OperationID: "matrix-explicit-true", Watched: &yes}, nil); e != nil {
+	if _, e = m.catalog.SetPersonal("local:matrix-limited", profile, items["watermark-hidden"].Public, catalog.PersonalMutation{OperationID: "matrix-explicit-true", ExpectedRevision: 1, Watched: &yes}, nil); e != nil {
 		t.Fatal(e)
 	}
 	put(1, false)
 	counts(0, 3)
-	var reset string
-	if e = m.db.QueryRow(`SELECT id FROM container_personal_resets WHERE profile_id=? AND container_id=?`, profile, show.ID).Scan(&reset); e != nil {
-		t.Fatal(e)
-	}
-	if result, e := m.catalog.ContainerResetAdapter().Step(ctx, reset); e != nil || result.State != "succeeded" {
-		t.Fatal(result, e)
-	}
-	var intents int
-	if e = m.db.QueryRow(`SELECT count(*) FROM personal_watched_intents WHERE profile_id=? AND item_id IN(?,?)`, profile, items["watermark-visible"].ID, items["watermark-hidden"].ID).Scan(&intents); e != nil || intents != 0 {
-		t.Fatal("old explicit states not cleared", intents, e)
-	}
 	counts(0, 3)
 	// The job routes are isolated by profile and re-check current content access.
 	body := fmt.Sprintf(`{"operationId":"matrix-job-isolation","command":"personal-state","selector":{"items":{"ids":[%q,%q]}},"args":{"favorite":true}}`, items["watermark-visible"].Public, items["watermark-hidden"].Public)
@@ -117,5 +106,36 @@ func (m *restrictionEnv) containerWatermarkSecurity(t *testing.T) {
 	}
 	if code, body = m.call("GET", "/v1/jobs/"+job.JobID, "", "restricted"); code != 200 {
 		t.Fatalf("own job: %d %s", code, body)
+	}
+}
+
+func TestContainerUndoHTTPReceiptAndRestrictionScope(t *testing.T) {
+	m := buildRestrictionMatrix(t)
+	m.containerWatermarkSecurity(t)
+	show := m.visibleEntities["show"][0]
+	path := "/v1/containers/show/" + show + "/personal-state"
+	code, body := m.call("GET", path, "", "restricted")
+	var before catalog.ContainerPersonalView
+	if e := json.Unmarshal([]byte(body), &before); e != nil || code != 200 {
+		t.Fatal(code, body, e)
+	}
+	code, body = m.call("PUT", path, fmt.Sprintf(`{"expectedRevision":%d,"watched":true}`, before.Revision), "restricted")
+	var mark catalog.ContainerPersonal
+	if e := json.Unmarshal([]byte(body), &mark); e != nil || code != 200 || mark.UndoToken == "" {
+		t.Fatal(code, body, e)
+	}
+	request := fmt.Sprintf(`{"expectedRevision":%d,"undoToken":%q}`, mark.Revision, mark.UndoToken)
+	code, body = m.call("POST", path+"/undo", request, "open")
+	if code != 412 {
+		t.Fatal("other profile used undo receipt", code, body)
+	}
+	code, body = m.call("POST", path+"/undo", request, "restricted")
+	var restored catalog.ContainerPersonal
+	if e := json.Unmarshal([]byte(body), &restored); e != nil || code != 200 || restored.Watched != before.Watched || restored.Revision != mark.Revision+1 {
+		t.Fatal(code, body, e)
+	}
+	code, body = m.call("POST", path+"/undo", request, "restricted")
+	if code != 412 {
+		t.Fatal("used receipt reapplied", code, body)
 	}
 }

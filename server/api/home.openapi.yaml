@@ -331,6 +331,35 @@ components:
         code: {type: string}
         params: {type: object, additionalProperties: {type: string}}
         fallback: {type: string}
+    HomeSeeAll:
+      oneOf:
+        - type: object
+          required: [type, libraryId, pivot, sort]
+          properties:
+            type: {type: string, enum: [library]}
+            libraryId: {type: string}
+            pivot: {type: string}
+            query: {$ref: 'browse.openapi.yaml#/components/schemas/BrowseNode'}
+            sort:
+              type: array
+              minItems: 1
+              maxItems: 3
+              items:
+                type: object
+                required: [field, direction]
+                properties:
+                  field: {type: string}
+                  direction: {type: string, enum: [asc, desc]}
+        - type: object
+          required: [type, rowId]
+          properties:
+            type: {type: string, enum: [row]}
+            rowId: {type: string}
+        - type: object
+          required: [type, resourceId]
+          properties:
+            type: {type: string, enum: [saved_view]}
+            resourceId: {type: string}
     HomeRow:
       type: object
       required:
@@ -346,6 +375,7 @@ components:
         artworkShape: {type: string, enum: [poster, square, landscape]}
         explanation: {type: string}
         endpoint: {type: string}
+        seeAll: {$ref: '#/components/schemas/HomeSeeAll'}
         libraryId: {type: string}
         privacySensitivity: {type: string, enum: [personal, catalog, aggregated]}
         policyState: {type: string, enum: [available, disabled_by_owner]}

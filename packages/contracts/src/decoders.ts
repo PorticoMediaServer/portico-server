@@ -65,6 +65,8 @@ export function decodeGetDownloadSubtitleResponse(input: unknown): types.GetDown
 export function decodeGetDownloadSubtitleOriginalResponse(input: unknown): types.GetDownloadSubtitleOriginalResponse { return decode("GetDownloadSubtitleOriginalResponse", input) as types.GetDownloadSubtitleOriginalResponse; }
 export function decodeGetDownloadUsageResponse(input: unknown): types.GetDownloadUsageResponse { return decode("GetDownloadUsageResponse", input) as types.GetDownloadUsageResponse; }
 export function decodeGetEventsResponse(input: unknown): types.GetEventsResponse { return decode("GetEventsResponse", input) as types.GetEventsResponse; }
+export function decodeGetHomeResponse(input: unknown): types.GetHomeResponse { return decode("GetHomeResponse", input) as types.GetHomeResponse; }
+export function decodeGetHomeRowResponse(input: unknown): types.GetHomeRowResponse { return decode("GetHomeRowResponse", input) as types.GetHomeRowResponse; }
 export function decodeGetItemsScreenMetadataResponse(input: unknown): types.GetItemsScreenMetadataResponse { return decode("GetItemsScreenMetadataResponse", input) as types.GetItemsScreenMetadataResponse; }
 export function decodeGetJobResponse(input: unknown): types.GetJobResponse { return decode("GetJobResponse", input) as types.GetJobResponse; }
 export function decodeGetJobFailuresResponse(input: unknown): types.GetJobFailuresResponse { return decode("GetJobFailuresResponse", input) as types.GetJobFailuresResponse; }
@@ -73,12 +75,14 @@ export function decodeGetLiveSourceConfigurationResponse(input: unknown): types.
 export function decodeGetLiveTunersResponse(input: unknown): types.GetLiveTunersResponse { return decode("GetLiveTunersResponse", input) as types.GetLiveTunersResponse; }
 export function decodeGetMetadataAttentionResponse(input: unknown): types.GetMetadataAttentionResponse { return decode("GetMetadataAttentionResponse", input) as types.GetMetadataAttentionResponse; }
 export function decodeGetMetadataSettingsResponse(input: unknown): types.GetMetadataSettingsResponse { return decode("GetMetadataSettingsResponse", input) as types.GetMetadataSettingsResponse; }
+export function decodeGetPersonalHistoryResponse(input: unknown): types.GetPersonalHistoryResponse { return decode("GetPersonalHistoryResponse", input) as types.GetPersonalHistoryResponse; }
 export function decodeGetPlaybackOptionsResponse(input: unknown): types.GetPlaybackOptionsResponse { return decode("GetPlaybackOptionsResponse", input) as types.GetPlaybackOptionsResponse; }
 export function decodeGetPlaybackSessionResponse(input: unknown): types.GetPlaybackSessionResponse { return decode("GetPlaybackSessionResponse", input) as types.GetPlaybackSessionResponse; }
 export function decodeGetPlaylistOrderResponse(input: unknown): types.GetPlaylistOrderResponse { return decode("GetPlaylistOrderResponse", input) as types.GetPlaylistOrderResponse; }
 export function decodeGetQueueResponse(input: unknown): types.GetQueueResponse { return decode("GetQueueResponse", input) as types.GetQueueResponse; }
 export function decodeGetQueueWindowResponse(input: unknown): types.GetQueueWindowResponse { return decode("GetQueueWindowResponse", input) as types.GetQueueWindowResponse; }
 export function decodeGetRatingSystemsResponse(input: unknown): types.GetRatingSystemsResponse { return decode("GetRatingSystemsResponse", input) as types.GetRatingSystemsResponse; }
+export function decodeGetSavedContentResponse(input: unknown): types.GetSavedContentResponse { return decode("GetSavedContentResponse", input) as types.GetSavedContentResponse; }
 export function decodeGetServerResponse(input: unknown): types.GetServerResponse { return decode("GetServerResponse", input) as types.GetServerResponse; }
 export function decodeGetShowsScreenMetadataResponse(input: unknown): types.GetShowsScreenMetadataResponse { return decode("GetShowsScreenMetadataResponse", input) as types.GetShowsScreenMetadataResponse; }
 export function decodeGetV1ItemsIdChaptersChapterImageResponse(input: unknown): types.GetV1ItemsIdChaptersChapterImageResponse { return decode("GetV1ItemsIdChaptersChapterImageResponse", input) as types.GetV1ItemsIdChaptersChapterImageResponse; }
@@ -217,5 +221,6 @@ export function decodeStopPlaybackSessionResponse(input: unknown): types.StopPla
 export function decodeSyncDownloadProgressResponse(input: unknown): types.SyncDownloadProgressResponse { return decode("SyncDownloadProgressResponse", input) as types.SyncDownloadProgressResponse; }
 export function decodeTerminateAdminSessionResponse(input: unknown): types.TerminateAdminSessionResponse { return decode("TerminateAdminSessionResponse", input) as types.TerminateAdminSessionResponse; }
 export function decodeTestWebhookResponse(input: unknown): types.TestWebhookResponse { return decode("TestWebhookResponse", input) as types.TestWebhookResponse; }
+export function decodeUndoContainerPersonalStateResponse(input: unknown): types.UndoContainerPersonalStateResponse { return decode("UndoContainerPersonalStateResponse", input) as types.UndoContainerPersonalStateResponse; }
 export function decodeUpdateQueueResponse(input: unknown): types.UpdateQueueResponse { return decode("UpdateQueueResponse", input) as types.UpdateQueueResponse; }
 export function decodeUpdateWebhookResponse(input: unknown): types.UpdateWebhookResponse { return decode("UpdateWebhookResponse", input) as types.UpdateWebhookResponse; }

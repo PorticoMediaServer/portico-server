@@ -129,6 +129,8 @@ export const enUS = {
   'action.signOut': 'Sign out',
   'action.update': 'Update',
   'action.undo': 'Undo',
+  'personal.listChanged': 'This list changed. Refresh it to continue.',
+  'personal.undoExpired': 'The time to undo this change has passed.',
   'action.view': 'View',
   'action.showMore': 'Show more',
   'action.showMoreEpisodes': 'Show more episodes',

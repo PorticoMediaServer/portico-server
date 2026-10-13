@@ -36,7 +36,7 @@ func (s *Service) homeViewSpecs(r HomeRequest) []homeRowSpec {
 			continue
 		}
 		out = append(out, homeRowSpec{ID: id, Title: view.Name, Kind: "saved_view", ArtworkShape: homeArtwork(lib.Kind), LibraryID: view.Definition.LibraryID,
-			Priority: 90 + i, CacheTTL: 60, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available", Direction: "asc"})
+			SeeAll: &HomeSeeAll{Type: "saved_view", ResourceID: view.ID}, Priority: 90 + i, CacheTTL: 60, Hideable: true, Reorderable: true, Cursors: true, Privacy: "personal", PolicyState: "available", Direction: "asc"})
 	}
 	return out
 }

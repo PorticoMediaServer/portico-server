@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"portico.local/server/internal/personalstate"
 )
@@ -16,7 +17,8 @@ func (s *Service) workspaceNextUp(r ShowWorkspaceRequest, show string) (*Content
 	if err != nil {
 		return nil, "", err
 	}
-	base, args := homeShowContinuation(request, cutoffs, premieres, 1, show, nil)
+	cutoffs = idsCutoffs(request.Libraries, "0001-01-01T00:00:00.000Z")
+	base, args := homeShowContinuation(request, cutoffs, premieres, 1, show, nil, true)
 	args = append(args, show)
 	var id string
 	err = s.read().QueryRow(`SELECT candidate.id FROM (`+base+`) candidate JOIN catalog_entities item ON item.public_id=pid_blob(candidate.id) JOIN catalog_episodes ep ON ep.entity_id=item.id JOIN catalog_entities sh ON sh.id=ep.show_id WHERE sh.public_id=pid_blob(?) LIMIT 1`, args...).Scan(&id)
@@ -54,4 +56,13 @@ func (s *Service) workspaceNextUp(r ShowWorkspaceRequest, show string) (*Content
 		return nil, "", err
 	}
 	return &entries[0], season.String, nil
+}
+
+func idsCutoffs(libraries []string, stamp string) string {
+	values := map[string]string{}
+	for _, library := range libraries {
+		values[library] = stamp
+	}
+	raw, _ := json.Marshal(values)
+	return string(raw)
 }

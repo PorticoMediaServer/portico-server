@@ -113,13 +113,15 @@ paths:
     put:
       operationId: set_container_personal_state
       description: |
-        Writes one profile/container watermark. Explicit item intent wins, then
+        Marks up to 5,000 current members atomically, clearing their resume points. The mark supersedes older explicit item intent; newer intent wins, then
         the most recent applicable container watermark (season breaks a tie). Album/book defaults apply to their parts. Inheritance
         requires item added_at <= watermark. Items added later are unwatched.
         A hidden item that existed at the watermark inherits if it later becomes
         visible. This is the profile's own state, not disclosure of a hidden item.
-        Unwatched immediately fences older watched overrides, then the job worker
-        removes those overrides in bounded batches; later item intents survive.
+        Both marks fence previous playback and supersede older watched overrides.
+        A response includes undoToken and undoUntil, valid for thirty seconds.
+        Undo restores the previous completion mix and resume points and refuses
+        later changes, changed membership, overlapping marks or an expired token.
         The same route sets the title's own saved flags: send exactly one of
         `watched`, `watchlisted` or `favorite`. `watchlisted` is for a show;
         `favorite` for a show, album, book or artist. The flags are plain values
@@ -147,7 +149,34 @@ paths:
           content:
             application/json:
               schema: {$ref: '#/components/schemas/ContainerState'}
-        '409': {description: revision_mismatch; read current state before a new intent}
+        '412': {description: revision_mismatch; read current state before a new intent}
+  /v1/containers/{kind}/{id}/personal-state/undo:
+    parameters:
+      - {name: kind, in: path, required: true, schema: {type: string, enum: [show, season, album, book]}}
+      - {name: id, in: path, required: true, schema: {type: string}}
+    post:
+      operationId: undo_container_personal_state
+      summary: Restore the watched and resume state before a recent mark
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [expectedRevision, undoToken]
+              properties:
+                expectedRevision: {type: integer, minimum: 1}
+                undoToken: {type: string, minLength: 1, maxLength: 128}
+      responses:
+        '200':
+          description: Restored default with a new revision; history and saved flags are preserved
+          content:
+            application/json:
+              schema: {$ref: '#/components/schemas/ContainerState'}
+        '412': {description: revision_mismatch}
+        '409': {description: operation_expired}
+
 components:
   securitySchemes:
     bearerAuth: {type: http, scheme: bearer}
@@ -161,6 +190,8 @@ components:
         revision: {type: integer, minimum: 0}
         watched: {type: boolean}
         watermark: {type: string, description: 'UTC existence cutoff, empty when no state exists'}
+        undoToken: {type: string, description: Scoped to this profile and container; present only after a mark.}
+        undoUntil: {type: string, format: date-time}
         watchlisted: {type: boolean, description: The title itself is on the Watchlist (shows).}
         favorite: {type: boolean, description: 'The title itself is a Favorite (shows, albums, books, artists).'}
     Selector:

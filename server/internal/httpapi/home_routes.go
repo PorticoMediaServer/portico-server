@@ -94,128 +94,7 @@ func homeAllowedQuery(r *http.Request, allowed ...string) error {
 }
 
 func (d Dependencies) homeRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /v1/home", func(w http.ResponseWriter, r *http.Request) {
-		if e := homeAllowedQuery(r, "limit"); e != nil {
-			homeFailure(w, e)
-			return
-		}
-		limit, e := homeQueryLimit(r)
-		if e != nil {
-			homeFailure(w, e)
-			return
-		}
-		// The viewer and their restriction come from the authority caches, so the
-		// scope resolution, the validator and the whole composition can then run
-		// on one read snapshot rather than on four.
-		p, e := d.principal(r)
-		if e != nil {
-			homeFailure(w, e)
-			return
-		}
-		restrictions, _, e := d.viewerRestrictions(r, p)
-		if e != nil {
-			homeFailure(w, e)
-			return
-		}
-		var out catalog.HomeDocument
-		var request catalog.HomeRequest
-		notModified := false
-		e = d.composeScope(r, restrictions, func(ctx context.Context, cat *catalog.Service) error {
-			var scopeErr error
-			if request, scopeErr = d.homeRequestFor(r.WithContext(ctx), p, restrictions); scopeErr != nil {
-				return scopeErr
-			}
-			request.Limit = limit
-			// Personal/catalog revisions cover mutations; the minute bucket also
-			// expires provider feeds and daily rotation. Community composition
-			// must recheck other profiles' membership and privacy on every read.
-			if revision, revisionErr := cat.HomeRevision(request.Libraries, request.Profile); revisionErr == nil && !request.CommunityActivity {
-				tag := responseTag("home", request.ViewerFence, number(revision.Catalog), number(revision.Viewer), number(request.LayoutRevision), number(int64(limit)), number(time.Now().UTC().Unix()/60))
-				if conditional(w, r, tag) {
-					notModified = true
-					return nil
-				}
-			}
-			var composeErr error
-			out, composeErr = cat.HomeRows(request)
-			return composeErr
-		})
-		if e != nil {
-			homeFailure(w, e)
-			return
-		}
-		if notModified {
-			return
-		}
-		after, e := d.homeFenceAfter(r, p)
-		if e != nil {
-			homeFailure(w, e)
-			return
-		}
-		if after != request.ViewerFence {
-			homeFailure(w, catalog.ErrStaleContinuation)
-			return
-		}
-		write(w, 200, out)
-	})
-	mux.HandleFunc("GET /v1/home/rows/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if e := homeAllowedQuery(r, "limit", "cursor", "start", "revision", "anchorId"); e != nil {
-			homeFailure(w, e)
-			return
-		}
-		limit, e := homeQueryLimit(r)
-		if e != nil {
-			homeFailure(w, e)
-			return
-		}
-		page := catalog.HomeRowPage{Limit: limit, Cursor: r.URL.Query().Get("cursor"), Revision: r.URL.Query().Get("revision"), AnchorID: r.URL.Query().Get("anchorId")}
-		if raw := r.URL.Query().Get("start"); raw != "" {
-			start, err := strconv.Atoi(raw)
-			if err != nil || start < 0 || start > 100000 {
-				homeFailure(w, catalog.ErrCursor)
-				return
-			}
-			page.Start = start
-		}
-		p, request, e := d.homeRequest(r)
-		if e != nil {
-			homeFailure(w, e)
-			return
-		}
-		// The minute bucket expires provider feeds and daily rotation, as the
-		// Home document's validator does; community rows recheck other
-		// profiles' privacy on every read, so they carry no validator.
-		tag := ""
-		if !request.CommunityActivity {
-			tag = gridTag(r, p, time.Minute, request.ViewerFence)
-			if gridNotModified(w, r, tag) {
-				return
-			}
-		}
-		var out catalog.HomeRow
-		e = d.compose(r, request.Restrictions, func(cat *catalog.Service) error {
-			var composeErr error
-			out, composeErr = cat.HomeSingleRow(request, r.PathValue("id"), page)
-			return composeErr
-		})
-		if e != nil {
-			homeFailure(w, e)
-			return
-		}
-		after, e := d.homeFenceAfter(r, p)
-		if e != nil {
-			homeFailure(w, e)
-			return
-		}
-		if after != request.ViewerFence {
-			homeFailure(w, catalog.ErrStaleContinuation)
-			return
-		}
-		if tag != "" {
-			setGridTag(w, tag)
-		}
-		write(w, 200, out)
-	})
+
 	// CON-23: every row this viewer can arrange, empty or not, with the saved layout.
 	mux.HandleFunc("GET /v1/home/layout", func(w http.ResponseWriter, r *http.Request) {
 		if e := homeAllowedQuery(r); e != nil {
@@ -376,6 +255,130 @@ func (d Dependencies) applyHomeLayout(w http.ResponseWriter, r *http.Request, re
 	if e != nil {
 		consoleError(w, e)
 		return
+	}
+	write(w, 200, out)
+}
+
+func (d Dependencies) serveHomeDocument(w http.ResponseWriter, r *http.Request) {
+	if e := homeAllowedQuery(r, "limit"); e != nil {
+		homeFailure(w, e)
+		return
+	}
+	limit, e := homeQueryLimit(r)
+	if e != nil {
+		homeFailure(w, e)
+		return
+	}
+	// The viewer and their restriction come from the authority caches, so the
+	// scope resolution, the validator and the whole composition can then run
+	// on one read snapshot rather than on four.
+	p, e := d.principal(r)
+	if e != nil {
+		homeFailure(w, e)
+		return
+	}
+	restrictions, _, e := d.viewerRestrictions(r, p)
+	if e != nil {
+		homeFailure(w, e)
+		return
+	}
+	var out catalog.HomeDocument
+	var request catalog.HomeRequest
+	notModified := false
+	e = d.composeScope(r, restrictions, func(ctx context.Context, cat *catalog.Service) error {
+		var scopeErr error
+		if request, scopeErr = d.homeRequestFor(r.WithContext(ctx), p, restrictions); scopeErr != nil {
+			return scopeErr
+		}
+		request.Limit = limit
+		// Personal/catalog revisions cover mutations; the minute bucket also
+		// expires provider feeds and daily rotation. Community composition
+		// must recheck other profiles' membership and privacy on every read.
+		if revision, revisionErr := cat.HomeRevision(request.Libraries, request.Profile); revisionErr == nil && !request.CommunityActivity {
+			tag := responseTag("home", request.ViewerFence, number(revision.Catalog), number(revision.Viewer), number(request.LayoutRevision), number(int64(limit)), number(time.Now().UTC().Unix()/60))
+			if conditional(w, r, tag) {
+				notModified = true
+				return nil
+			}
+		}
+		var composeErr error
+		out, composeErr = cat.HomeRows(request)
+		return composeErr
+	})
+	if e != nil {
+		homeFailure(w, e)
+		return
+	}
+	if notModified {
+		return
+	}
+	after, e := d.homeFenceAfter(r, p)
+	if e != nil {
+		homeFailure(w, e)
+		return
+	}
+	if after != request.ViewerFence {
+		homeFailure(w, catalog.ErrStaleContinuation)
+		return
+	}
+	write(w, 200, out)
+}
+
+func (d Dependencies) serveHomeRow(w http.ResponseWriter, r *http.Request) {
+	if e := homeAllowedQuery(r, "limit", "cursor", "start", "revision", "anchorId"); e != nil {
+		homeFailure(w, e)
+		return
+	}
+	limit, e := homeQueryLimit(r)
+	if e != nil {
+		homeFailure(w, e)
+		return
+	}
+	page := catalog.HomeRowPage{Limit: limit, Cursor: r.URL.Query().Get("cursor"), Revision: r.URL.Query().Get("revision"), AnchorID: r.URL.Query().Get("anchorId")}
+	if raw := r.URL.Query().Get("start"); raw != "" {
+		start, err := strconv.Atoi(raw)
+		if err != nil || start < 0 || start > 100000 {
+			homeFailure(w, catalog.ErrCursor)
+			return
+		}
+		page.Start = start
+	}
+	p, request, e := d.homeRequest(r)
+	if e != nil {
+		homeFailure(w, e)
+		return
+	}
+	// The minute bucket expires provider feeds and daily rotation, as the
+	// Home document's validator does; community rows recheck other
+	// profiles' privacy on every read, so they carry no validator.
+	tag := ""
+	if !request.CommunityActivity {
+		tag = gridTag(r, p, time.Minute, request.ViewerFence)
+		if gridNotModified(w, r, tag) {
+			return
+		}
+	}
+	var out catalog.HomeRow
+	e = d.compose(r, request.Restrictions, func(cat *catalog.Service) error {
+		var composeErr error
+		out, composeErr = cat.HomeSingleRow(request, r.PathValue("id"), page)
+		return composeErr
+	})
+	if e != nil {
+		homeFailure(w, e)
+		return
+	}
+	after, e := d.homeFenceAfter(r, p)
+	if e != nil {
+		homeFailure(w, e)
+		return
+	}
+	if after != request.ViewerFence {
+		homeFailure(w, catalog.ErrStaleContinuation)
+		return
+	}
+	if tag != "" {
+		setGridTag(w, tag)
 	}
 	write(w, 200, out)
 }

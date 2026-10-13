@@ -16,7 +16,6 @@ import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useNavigate} from '@tanstack/react-router';
 import {CONTINUE_REMOVED, type ContinueRemoval} from '../../app/continue-watching';
 import {isRecommendationRow} from '@core/recommendation-feedback.ts';
-import {homeViewResourceId} from '@core/home.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {withoutHidden} from '../../app/not-interested';
 import {useI18n} from '../../app/i18n';
@@ -44,14 +43,12 @@ export function HomeScreen() {
   // WEB-HOME-03: a row from one library continues where the server says it does (the library's
   // browse on the row's own pivot, conditions and sort), or as the row's own page.
   const seeAll = (row: HomeRow) => {
-    const destination = homeRowSeeAll(row, libraries.items.find(l => l.id === row.libraryId)?.kind);
+    const destination = homeRowSeeAll(row, libraries.items.find(l => l.id === (row.seeAll?.type === 'library' ? row.seeAll.libraryId : row.libraryId))?.kind);
     if (destination?.to === 'browse') void navigate({to: '/library/$libraryId', params: {libraryId: destination.libraryId}, search: {view: destination.tab as LibraryView, ...(destination.sort ? {sort: destination.sort.field, direction: destination.sort.direction} : {}), ...(destination.filters.length ? {filters: encodePredicates(destination.filters)} : {})}});
-    else if (destination?.to === 'row') seeAllRow(row);
+    else if (destination?.to === 'row') void navigate({to: '/home/rows/$rowId', params: {rowId: destination.rowId}});
+    else if (destination?.to === 'saved_view') seeAllView(destination.resourceId, row);
     else if (destination) void navigate({to: '/library/$libraryId', params: {libraryId: destination.libraryId}, search: {}});
   };
-  // P7: a recommendation row with no library of its own (Recommended, Trending now, Picks for
-  // you) opens as its own paged page.
-  const seeAllRow = (row: HomeRow) => void navigate({to: '/home/rows/$rowId', params: {rowId: row.id}});
   // P6: a saved view's row opens the view's own page (the complete list, its filters and sort).
   const seeAllView = (resourceId: string, row: HomeRow) => void navigate({to: '/saved/$kind/$resourceId', params: {kind: 'view', resourceId}, search: {title: row.title}});
   // X-12: a title removed from Continue Watching leaves the row at once; Undo puts it back.
@@ -106,7 +103,7 @@ export function HomeScreen() {
           {state.phase === 'loading' && !document ? <LoadingShelves /> : null}
           {state.phase === 'error' && !document ? <ErrorState error={state.error} context="home" retry={refresh} refresh={refresh} /> : null}
           {state.phase === 'error' && document ? <Inset><ErrorNotice error={state.error} context="home" retry={refresh} refresh={refresh} /></Inset> : null}
-          {rows.map(row => <SectionView key={row.id} section={sectionOf(row, libraryName)} libraryId={row.libraryId} onMore={row.nextCursor && !state.paging.has(row.id) ? () => void more(row.id) : undefined} onSeeAll={homeViewResourceId(row.id) ? () => seeAllView(homeViewResourceId(row.id)!, row) : row.libraryId ? () => seeAll(row) : isRecommendationRow(row) ? () => seeAllRow(row) : undefined} alwaysSeeAll={!!homeViewResourceId(row.id)} noSelect origin={isRecommendationRow(row) ? 'recommendation' : undefined} />)}
+          {rows.map(row => <SectionView key={row.id} section={sectionOf(row, libraryName)} libraryId={row.libraryId} onMore={row.nextCursor && !state.paging.has(row.id) ? () => void more(row.id) : undefined} onSeeAll={row.seeAll || row.libraryId || isRecommendationRow(row) ? () => seeAll(row) : undefined} alwaysSeeAll={row.seeAll?.type === 'saved_view'} noSelect origin={isRecommendationRow(row) ? 'recommendation' : undefined} />)}
           {document && !rows.length && !hero ? (!libraries.items.length && !libraries.loading ? <NoLibraries where="home" /> : <StateView icon="home" title={t('web.empty.homeTitle')} body={t(owner ? 'web.empty.homeOwnerBody' : 'web.empty.homeMemberBody')} />) : null}
         </div>
       </Page>

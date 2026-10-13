@@ -52,6 +52,12 @@ func watchedSQL(profile, item string) string {
 // its integer entity id (catalog_entities.id) as every personal-state helper
 // takes it.
 func Write(tx *sql.Tx, profile string, entity int64, watched bool) error {
-	_, err := tx.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES(?,?,?,?) ON CONFLICT(profile_id,item_id) DO UPDATE SET watched=excluded.watched,authored_at=excluded.authored_at`, profile, entity, watched, Stamp())
+	return WriteAt(tx, profile, entity, watched, time.Now())
+}
+
+// WriteAt preserves when accepted playback evidence happened, including an
+// offline occurrence. Explicit user actions still use the server clock via Write.
+func WriteAt(tx *sql.Tx, profile string, entity int64, watched bool, at time.Time) error {
+	_, err := tx.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES(?,?,?,?) ON CONFLICT(profile_id,item_id) DO UPDATE SET watched=excluded.watched,authored_at=excluded.authored_at`, profile, entity, watched, at.UTC().Format("2006-01-02T15:04:05.000000000Z"))
 	return err
 }

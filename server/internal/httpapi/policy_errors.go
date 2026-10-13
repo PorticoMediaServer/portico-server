@@ -9,6 +9,8 @@ import (
 
 func policyErrorDefinitions() []apierror.Definition {
 	return []apierror.Definition{
+		{Code: "stale_continuation", Status: 409, Message: "This list changed. Refresh it to continue.", Retry: apierror.AfterRefresh},
+		{Code: "operation_expired", Status: 409, Message: "The time to undo this change has passed.", Retry: apierror.Never},
 		{Code: "invalid_channel_input", Status: 400, Message: "The playlist or guide could not be used. Check it and try again.", Retry: apierror.Never},
 		{Code: "channel_revision_conflict", Status: 409, Message: "The channel source changed. Refresh before saving.", Retry: apierror.AfterRefresh},
 		{Code: "source_lan_confirmation_required", Status: 422, Message: "Confirm the source addresses on your local network to continue.", Retry: apierror.Never},

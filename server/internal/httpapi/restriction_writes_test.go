@@ -407,6 +407,13 @@ func restrictionWriteRoutes() map[string]writeRoute {
 			}
 			return out
 		}),
+		"POST /v1/containers/{kind}/{id}/personal-state/undo": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for _, kind := range []string{"show", "season", "album", "book"} {
+				out = append(out, perHidden("POST", "/v1/containers/"+kind+"/ID/personal-state/undo", `{"expectedRevision":1,"undoToken":"matrix-undo"}`, kind).probes(m)...)
+			}
+			return out
+		}),
 		"POST /v1/items/{id}/delete":                                      perHidden("POST", "/v1/items/ID/delete", `{"operationId":"OP"}`, "item"),
 		"POST /v1/items/{id}/delete/preview":                              perHidden("POST", "/v1/items/ID/delete/preview", `{}`, "item"),
 		"POST /v1/items/{id}/metadata/refresh":                            perHidden("POST", "/v1/items/ID/metadata/refresh", `{}`, "item"),

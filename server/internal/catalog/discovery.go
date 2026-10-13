@@ -404,7 +404,11 @@ func (s *Service) DiscoverWithRestrictions(library, profile string, restrictions
 		} else if e = s.read().QueryRow(`SELECT count(*) FROM (`+src.base+`)`, src.args...).Scan(&total); e != nil {
 			return out, e
 		}
-		out.Sections = append(out.Sections, DiscoverySection{ID: id, Title: spec.Title, TitleText: spec.titleText(), Items: entries, Total: total})
+		var seeAll *ContentSeeAll
+		if spec.LibraryID != "" {
+			seeAll = &ContentSeeAll{Pivot: map[string]string{"movie": "movies", "tv": "shows", "anime": "shows", "music": "albums", "audiobook": "books"}[lib.Kind], Sort: []BrowseSortSelection{{Field: "added", Direction: "desc"}}}
+		}
+		out.Sections = append(out.Sections, DiscoverySection{ID: id, Title: spec.Title, TitleText: spec.titleText(), Items: entries, Total: total, SeeAll: seeAll})
 	}
 	// The personal rows, scoped to this library, after Recommended (or first).
 	personal, e := s.recPersonalRowsFor(r, lib.Kind)

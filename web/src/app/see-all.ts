@@ -19,23 +19,22 @@ export function seeAllPredicates(query: BrowseNode | undefined): Predicate[] | u
 export type HomeSeeAllDestination =
   | Readonly<{to: 'browse'; libraryId: string; tab: string; sort?: BrowseSortSelection; filters: readonly Predicate[]}>
   | Readonly<{to: 'row'; rowId: string}>
-  | Readonly<{to: 'library'; libraryId: string}>;
+  | Readonly<{to: 'library'; libraryId: string}>
+  | Readonly<{to: 'saved_view'; resourceId: string}>;
 
-/**
- * Where See all on a Home row goes. The server says: a row that names its own browse (`seeAll`:
- * the pivot, conditions and sort) opens the library on exactly that. Until every row does, the
- * one kind of library row this app knows the meaning of, the server's `recent` kind, opens the
- * library newest first. Any other row opens as its own page, which lists the row and nothing
- * else. Nothing is read out of a row's id. Only a row that offers none of these falls back to
- * its library.
- */
+/** Follow the destination published with the composed Home row. */
 export function homeRowSeeAll(row: Pick<HomeRow, 'id' | 'kind' | 'libraryId' | 'seeAll' | 'cursorCapable'>, libraryKind: string | undefined): HomeSeeAllDestination | undefined {
-  if (row.seeAll && row.libraryId && libraryKind) {
-    const tab = libraryTabForPivot(libraryKind, row.seeAll.pivot);
-    const filters = seeAllPredicates(row.seeAll.query);
-    if (tab && filters) return {to: 'browse', libraryId: row.libraryId, tab: tab.id, ...(row.seeAll.sort[0] ? {sort: row.seeAll.sort[0]} : {}), filters};
+  const target = row.seeAll;
+  if (!target) {
+    if (row.kind === 'recent' && row.libraryId) return {to: 'browse', libraryId: row.libraryId, tab: 'browse', sort: {field: 'added', direction: 'desc'}, filters: []};
+    if (row.cursorCapable) return {to: 'row', rowId: row.id};
+    return row.libraryId ? {to: 'library', libraryId: row.libraryId} : undefined;
   }
-  if (row.kind === 'recent' && row.libraryId && !row.seeAll) return {to: 'browse', libraryId: row.libraryId, tab: 'browse', sort: {field: 'added', direction: 'desc'}, filters: []};
-  if (row.cursorCapable) return {to: 'row', rowId: row.id};
-  return row.libraryId ? {to: 'library', libraryId: row.libraryId} : undefined;
+  if (target.type === 'row') return {to: 'row', rowId: target.rowId};
+  if (target.type === 'saved_view') return {to: 'saved_view', resourceId: target.resourceId};
+  const tab = libraryKind ? libraryTabForPivot(libraryKind, target.pivot) : undefined;
+  const filters = seeAllPredicates(target.query);
+  if (tab && filters) return {to: 'browse', libraryId: target.libraryId, tab: tab.id, ...(target.sort[0] ? {sort: target.sort[0]} : {}), filters};
+  // The row page retains the server's membership when its query cannot be represented here.
+  return {to: 'row', rowId: row.id};
 }
