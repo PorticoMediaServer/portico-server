@@ -34,6 +34,7 @@ index analysis_stage_job
 index api_events_audience
 index api_events_expiry
 index api_idempotency_expiry
+index artwork_candidates_source
 index artwork_entity_heads_entity
 index artwork_jobs_due
 index artwork_objects_compaction
@@ -389,6 +390,7 @@ index saved_resource_entries_item_id_fk
 index saved_resource_owner
 index saved_resource_shared
 index saved_resource_visibility
+index screen_metadata_attention_library
 index screen_metadata_candidate_target
 index screen_metadata_children
 index screen_metadata_due
@@ -810,6 +812,7 @@ table metadata_relationship_decisions
 table metadata_repair_cascade_items
 table metadata_repair_cascades
 table metadata_repair_work_receipts
+table metadata_runtime_settings
 table metadata_stage_credits
 table metadata_stage_genres
 table metadata_stage_movies
@@ -976,6 +979,7 @@ table saved_resources
 table scan_queue
 table schema_migrations
 table screen_anime_seasons
+table screen_metadata_attention
 table screen_metadata_candidates
 table screen_metadata_consent
 table screen_metadata_fields
@@ -1610,6 +1614,8 @@ trigger saved_resources_revision_DELETE
 trigger saved_resources_revision_INSERT
 trigger saved_resources_revision_UPDATE
 trigger screen_asset_change
+trigger screen_attention_insert
+trigger screen_attention_update
 trigger screen_configuration_change
 trigger screen_episode_create
 trigger screen_episode_identity_change

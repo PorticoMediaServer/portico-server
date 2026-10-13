@@ -74,7 +74,9 @@ func (c *screenCache) get(ctx context.Context, key string, out any, fetch func()
 	e.data = raw
 	e.err = err
 	e.at = time.Now()
-	c.bytes += len(raw)
+	if c.entries[key] == e {
+		c.bytes += len(raw)
+	}
 	// The cache remains hard-bounded after insertion as well as before fetching.
 	for c.bytes > 8<<20 {
 		oldest := ""
@@ -91,7 +93,7 @@ func (c *screenCache) get(ctx context.Context, key string, out any, fetch func()
 		c.bytes -= len(c.entries[oldest].data)
 		delete(c.entries, oldest)
 	}
-	if err != nil {
+	if err != nil && c.entries[key] == e {
 		delete(c.entries, key)
 		c.bytes -= len(raw)
 	}
@@ -101,4 +103,21 @@ func (c *screenCache) get(ctx context.Context, key string, out any, fetch func()
 		return err
 	}
 	return json.Unmarshal(raw, out)
+}
+
+func (c *screenCache) invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries = map[string]*screenCacheEntry{}
+	c.bytes = 0
+}
+
+type freshRequestKey struct{}
+
+func freshRequest(ctx context.Context) context.Context {
+	return context.WithValue(ctx, freshRequestKey{}, true)
+}
+func isFreshRequest(ctx context.Context) bool {
+	fresh, _ := ctx.Value(freshRequestKey{}).(bool)
+	return fresh
 }

@@ -437,6 +437,7 @@ func run() error {
 	if e != nil {
 		return e
 	}
+	localMeta.ArtworkLimit = func(ctx context.Context) int64 { return metadata.LocalArtworkLimit(ctx, db) }
 	scanner.LocalMetadata = localMeta
 	lyricProvider, e := lyrics.NewLRCLIB(env("PORTICO_LYRICS_PROVIDER_ORIGIN", "https://lrclib.net"))
 	if e != nil {

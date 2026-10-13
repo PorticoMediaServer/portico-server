@@ -26,28 +26,6 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 	for _, target := range []struct{ route, kind string }{{"items", "item"}, {"shows", "show"}} {
 		kind := target.kind
 		base := "/v1/" + target.route + "/{id}/metadata/screen"
-		mux.HandleFunc("GET "+base, func(w http.ResponseWriter, r *http.Request) {
-			if _, ok := owner(w, r, false); !ok {
-				return
-			}
-			out, err := d.Metadata.ScreenState(r.Context(), kind, r.PathValue("id"))
-			if err != nil {
-				failure(w, err)
-				return
-			}
-			if _, err = d.owner(r); err != nil {
-				failure(w, err)
-				return
-			}
-			_, _, fence, err := d.homeScope(r)
-			if err != nil {
-				failure(w, err)
-				return
-			}
-			out.ServerID = d.Identity.ID()
-			out.ViewerFence = fence
-			write(w, 200, out)
-		})
 		mux.HandleFunc("PUT "+base, func(w http.ResponseWriter, r *http.Request) {
 			p, ok := owner(w, r, true)
 			if !ok {

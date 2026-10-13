@@ -5644,6 +5644,9 @@ export const schemas = {
       },
       "settings": {
         "properties": {
+          "backgroundSpeed": {
+            "type": "string"
+          },
           "backgroundTaskPriority": {
             "type": "string"
           },
@@ -5721,7 +5724,8 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority"
+          "backgroundTaskPriority",
+          "backgroundSpeed"
         ],
         "type": "object"
       },
@@ -8414,6 +8418,743 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetItemsScreenMetadataRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetItemsScreenMetadataResponse": {
+    "properties": {
+      "accepted": {
+        "properties": {
+          "adult": {
+            "type": "boolean"
+          },
+          "advisoryRuntimeMinutes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "backdropPath": {
+            "type": "string"
+          },
+          "certifications": {
+            "items": {
+              "properties": {
+                "rating": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "region",
+                "rating"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "coordinates": {
+            "properties": {
+              "absolute": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "episode": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "order": {
+                "type": "string"
+              },
+              "originalEpisode": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "originalSeason": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "season": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "showId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "showId",
+              "episode",
+              "order"
+            ],
+            "type": "object"
+          },
+          "credits": {
+            "items": {
+              "properties": {
+                "department": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "ordinal": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "role": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "role",
+                "department",
+                "ordinal"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "crosswalk": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "date": {
+            "type": "string"
+          },
+          "episodeCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "fieldLanguages": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "format": {
+            "type": "string"
+          },
+          "genres": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "identity": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "type",
+              "id"
+            ],
+            "type": "object"
+          },
+          "language": {
+            "type": "string"
+          },
+          "orders": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "originalTitle": {
+            "type": "string"
+          },
+          "overview": {
+            "type": "string"
+          },
+          "posterPath": {
+            "type": "string"
+          },
+          "rating": {
+            "properties": {
+              "scale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "value": {
+                "type": "number"
+              },
+              "votes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "value",
+              "scale",
+              "votes"
+            ],
+            "type": "object"
+          },
+          "relations": {
+            "items": {
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "target": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "provider": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "type",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "season": {
+            "type": "string"
+          },
+          "similar": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceMaterial": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "stillPath": {
+            "type": "string"
+          },
+          "tagline": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "year": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "identity",
+          "title"
+        ],
+        "type": "object"
+      },
+      "acceptedAt": {
+        "type": "string"
+      },
+      "acceptedConfidence": {
+        "type": "number"
+      },
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "attempts": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "attribution": {
+        "type": "string"
+      },
+      "candidates": {
+        "items": {
+          "properties": {
+            "attribution": {
+              "type": "string"
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "contradiction": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "orders": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            },
+            "reasons": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "sourceKind": {
+              "type": "string"
+            },
+            "sourceUrl": {
+              "type": "string"
+            },
+            "strongSignals": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "key",
+            "provider",
+            "type",
+            "providerId",
+            "title",
+            "year",
+            "overview",
+            "format",
+            "confidence",
+            "strongSignals",
+            "contradiction",
+            "reasons",
+            "observedAt",
+            "sourceKind",
+            "sourceUrl",
+            "attribution",
+            "orders"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "entityId": {
+        "type": "string"
+      },
+      "episodeStatus": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "explanation": {
+        "type": "string"
+      },
+      "fields": {
+        "items": {
+          "properties": {
+            "confidence": {
+              "type": "number"
+            },
+            "language": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string"
+            },
+            "selectionRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceKind": {
+              "type": "string"
+            },
+            "sourceUrl": {
+              "type": "string"
+            },
+            "value": {}
+          },
+          "required": [
+            "name",
+            "value",
+            "provider",
+            "sourceKind",
+            "sourceUrl",
+            "confidence",
+            "observedAt",
+            "language",
+            "region",
+            "selectionRevision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "localIssues": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "nextAttempt": {
+        "type": "string"
+      },
+      "order": {
+        "type": "string"
+      },
+      "parentId": {
+        "type": "string"
+      },
+      "policy": {
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "availableProviders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "consentRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "disclosure": {
+            "type": "string"
+          },
+          "disclosureVersion": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "language": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "libraryKind": {
+            "type": "string"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "refreshMode": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "libraryId",
+          "libraryKind",
+          "revision",
+          "consentRevision",
+          "confirmed",
+          "status",
+          "agent",
+          "enabled",
+          "providers",
+          "availableProviders",
+          "language",
+          "region",
+          "refreshMode",
+          "disclosure",
+          "disclosureVersion"
+        ],
+        "type": "object"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "seasons": {
+        "items": {
+          "properties": {
+            "anilistId": {
+              "type": "string"
+            },
+            "number": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "number",
+            "anilistId",
+            "revision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "selected": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "type",
+          "id"
+        ],
+        "type": "object"
+      },
+      "selectionMode": {
+        "type": "string"
+      },
+      "selectionRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "libraryId",
+      "entityId",
+      "kind",
+      "revision",
+      "selectionRevision",
+      "status",
+      "explanation",
+      "selected",
+      "selectionMode",
+      "order",
+      "acceptedAt",
+      "acceptedConfidence",
+      "candidates",
+      "actions",
+      "attempts",
+      "nextAttempt",
+      "error",
+      "attribution",
+      "policy",
+      "fields",
+      "localIssues",
+      "seasons",
+      "parentId",
+      "episodeStatus"
+    ],
+    "type": "object"
+  },
   "GetJobFailuresRequest": {
     "properties": {},
     "required": [],
@@ -8497,6 +9238,189 @@ export const schemas = {
       "done",
       "failed",
       "totalKnown"
+    ],
+    "type": "object"
+  },
+  "GetMetadataAttentionRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMetadataAttentionResponse": {
+    "properties": {
+      "entries": {
+        "items": {
+          "properties": {
+            "actions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "candidates": {
+              "items": {
+                "properties": {
+                  "confidence": {
+                    "type": "number"
+                  },
+                  "identity": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "provider": {
+                        "type": "string"
+                      },
+                      "type": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "provider",
+                      "type",
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "key": {
+                    "type": "string"
+                  },
+                  "orders": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "name"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "reasons": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "key",
+                  "identity",
+                  "title",
+                  "year",
+                  "confidence",
+                  "reasons",
+                  "orders"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "entityId": {
+              "type": "string"
+            },
+            "itemKind": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "parentId": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "itemKind",
+            "parentId",
+            "actions",
+            "entityId",
+            "kind",
+            "title",
+            "revision",
+            "reason",
+            "confidence",
+            "candidates"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "nextCursor": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "libraryId",
+      "entries",
+      "nextCursor"
+    ],
+    "type": "object"
+  },
+  "GetMetadataSettingsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMetadataSettingsResponse": {
+    "properties": {
+      "includeAdult": {
+        "type": "boolean"
+      },
+      "localArtworkLimitBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "tmdbCredentialConfigured": {
+        "type": "boolean"
+      },
+      "tvdbCredentialConfigured": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "revision",
+      "localArtworkLimitBytes",
+      "includeAdult",
+      "tmdbCredentialConfigured",
+      "tvdbCredentialConfigured"
     ],
     "type": "object"
   },
@@ -9798,6 +10722,743 @@ export const schemas = {
       "name",
       "api",
       "setupRequired"
+    ],
+    "type": "object"
+  },
+  "GetShowsScreenMetadataRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetShowsScreenMetadataResponse": {
+    "properties": {
+      "accepted": {
+        "properties": {
+          "adult": {
+            "type": "boolean"
+          },
+          "advisoryRuntimeMinutes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "aliases": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "backdropPath": {
+            "type": "string"
+          },
+          "certifications": {
+            "items": {
+              "properties": {
+                "rating": {
+                  "type": "string"
+                },
+                "region": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "region",
+                "rating"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "coordinates": {
+            "properties": {
+              "absolute": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "episode": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "order": {
+                "type": "string"
+              },
+              "originalEpisode": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "originalSeason": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "season": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "showId": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "showId",
+              "episode",
+              "order"
+            ],
+            "type": "object"
+          },
+          "credits": {
+            "items": {
+              "properties": {
+                "department": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "ordinal": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "role": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "role",
+                "department",
+                "ordinal"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "crosswalk": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "date": {
+            "type": "string"
+          },
+          "episodeCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "fieldLanguages": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "format": {
+            "type": "string"
+          },
+          "genres": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "identity": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "provider": {
+                "type": "string"
+              },
+              "type": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "provider",
+              "type",
+              "id"
+            ],
+            "type": "object"
+          },
+          "language": {
+            "type": "string"
+          },
+          "orders": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "originalTitle": {
+            "type": "string"
+          },
+          "overview": {
+            "type": "string"
+          },
+          "posterPath": {
+            "type": "string"
+          },
+          "rating": {
+            "properties": {
+              "scale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "value": {
+                "type": "number"
+              },
+              "votes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "value",
+              "scale",
+              "votes"
+            ],
+            "type": "object"
+          },
+          "relations": {
+            "items": {
+              "properties": {
+                "kind": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "target": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "provider": {
+                      "type": "string"
+                    },
+                    "type": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "provider",
+                    "type",
+                    "id"
+                  ],
+                  "type": "object"
+                }
+              },
+              "required": [
+                "kind",
+                "target"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "season": {
+            "type": "string"
+          },
+          "similar": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "provider",
+                "type",
+                "id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "skipped": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "sourceMaterial": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "stillPath": {
+            "type": "string"
+          },
+          "tagline": {
+            "type": "string"
+          },
+          "tags": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          },
+          "year": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "identity",
+          "title"
+        ],
+        "type": "object"
+      },
+      "acceptedAt": {
+        "type": "string"
+      },
+      "acceptedConfidence": {
+        "type": "number"
+      },
+      "actions": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "attempts": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "attribution": {
+        "type": "string"
+      },
+      "candidates": {
+        "items": {
+          "properties": {
+            "attribution": {
+              "type": "string"
+            },
+            "confidence": {
+              "type": "number"
+            },
+            "contradiction": {
+              "type": "boolean"
+            },
+            "format": {
+              "type": "string"
+            },
+            "key": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "orders": {
+              "items": {
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "providerId": {
+              "type": "string"
+            },
+            "reasons": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "sourceKind": {
+              "type": "string"
+            },
+            "sourceUrl": {
+              "type": "string"
+            },
+            "strongSignals": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "title": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "key",
+            "provider",
+            "type",
+            "providerId",
+            "title",
+            "year",
+            "overview",
+            "format",
+            "confidence",
+            "strongSignals",
+            "contradiction",
+            "reasons",
+            "observedAt",
+            "sourceKind",
+            "sourceUrl",
+            "attribution",
+            "orders"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "entityId": {
+        "type": "string"
+      },
+      "episodeStatus": {
+        "type": "string"
+      },
+      "error": {
+        "type": "string"
+      },
+      "explanation": {
+        "type": "string"
+      },
+      "fields": {
+        "items": {
+          "properties": {
+            "confidence": {
+              "type": "number"
+            },
+            "language": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "observedAt": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string"
+            },
+            "selectionRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sourceKind": {
+              "type": "string"
+            },
+            "sourceUrl": {
+              "type": "string"
+            },
+            "value": {}
+          },
+          "required": [
+            "name",
+            "value",
+            "provider",
+            "sourceKind",
+            "sourceUrl",
+            "confidence",
+            "observedAt",
+            "language",
+            "region",
+            "selectionRevision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "libraryId": {
+        "type": "string"
+      },
+      "localIssues": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "nextAttempt": {
+        "type": "string"
+      },
+      "order": {
+        "type": "string"
+      },
+      "parentId": {
+        "type": "string"
+      },
+      "policy": {
+        "properties": {
+          "agent": {
+            "type": "string"
+          },
+          "availableProviders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "confirmed": {
+            "type": "boolean"
+          },
+          "consentRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "disclosure": {
+            "type": "string"
+          },
+          "disclosureVersion": {
+            "type": "string"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "language": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "libraryKind": {
+            "type": "string"
+          },
+          "providers": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "refreshMode": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "libraryId",
+          "libraryKind",
+          "revision",
+          "consentRevision",
+          "confirmed",
+          "status",
+          "agent",
+          "enabled",
+          "providers",
+          "availableProviders",
+          "language",
+          "region",
+          "refreshMode",
+          "disclosure",
+          "disclosureVersion"
+        ],
+        "type": "object"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "seasons": {
+        "items": {
+          "properties": {
+            "anilistId": {
+              "type": "string"
+            },
+            "number": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "number",
+            "anilistId",
+            "revision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "selected": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "provider": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "type",
+          "id"
+        ],
+        "type": "object"
+      },
+      "selectionMode": {
+        "type": "string"
+      },
+      "selectionRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "serverId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      },
+      "viewerFence": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "viewerFence",
+      "libraryId",
+      "entityId",
+      "kind",
+      "revision",
+      "selectionRevision",
+      "status",
+      "explanation",
+      "selected",
+      "selectionMode",
+      "order",
+      "acceptedAt",
+      "acceptedConfidence",
+      "candidates",
+      "actions",
+      "attempts",
+      "nextAttempt",
+      "error",
+      "attribution",
+      "policy",
+      "fields",
+      "localIssues",
+      "seasons",
+      "parentId",
+      "episodeStatus"
     ],
     "type": "object"
   },
@@ -11372,6 +13033,57 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "PostMetadataAttentionRequest": {
+    "properties": {
+      "action": {
+        "type": "string"
+      },
+      "candidateKey": {
+        "type": "string"
+      },
+      "entityId": {
+        "type": "string"
+      },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "kind": {
+        "type": "string"
+      },
+      "order": {
+        "type": "string"
+      },
+      "provider": {
+        "type": "string"
+      },
+      "providerId": {
+        "type": "string"
+      },
+      "query": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "kind",
+      "entityId",
+      "expectedRevision",
+      "action"
+    ],
+    "type": "object"
+  },
+  "PostMetadataAttentionResponse": {
+    "properties": {
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "type": "object"
+  },
   "PrepareQueueNextRequest": {
     "properties": {
       "sessionGeneration": {
@@ -11886,6 +13598,9 @@ export const schemas = {
       },
       "settings": {
         "properties": {
+          "backgroundSpeed": {
+            "type": "string"
+          },
           "backgroundTaskPriority": {
             "type": "string"
           },
@@ -11963,7 +13678,8 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority"
+          "backgroundTaskPriority",
+          "backgroundSpeed"
         ],
         "type": "object"
       }
@@ -12030,6 +13746,9 @@ export const schemas = {
       },
       "settings": {
         "properties": {
+          "backgroundSpeed": {
+            "type": "string"
+          },
           "backgroundTaskPriority": {
             "type": "string"
           },
@@ -12107,7 +13826,8 @@ export const schemas = {
           "windows",
           "retention",
           "backupKeepCount",
-          "backgroundTaskPriority"
+          "backgroundTaskPriority",
+          "backgroundSpeed"
         ],
         "type": "object"
       },
@@ -12580,6 +14300,106 @@ export const schemas = {
     "required": [
       "selfRegistration",
       "deviceApproval"
+    ],
+    "type": "object"
+  },
+  "PutMetadataSettingsRequest": {
+    "properties": {
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "includeAdult": {
+        "type": "boolean"
+      },
+      "localArtworkLimitBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "tmdbReadToken": {
+        "type": "string"
+      },
+      "tvdbProjectKey": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "expectedRevision",
+      "localArtworkLimitBytes",
+      "includeAdult"
+    ],
+    "type": "object"
+  },
+  "PutMetadataSettingsResponse": {
+    "properties": {
+      "includeAdult": {
+        "type": "boolean"
+      },
+      "localArtworkLimitBytes": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "tmdbCredentialConfigured": {
+        "type": "boolean"
+      },
+      "tvdbCredentialConfigured": {
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "revision",
+      "localArtworkLimitBytes",
+      "includeAdult",
+      "tmdbCredentialConfigured",
+      "tvdbCredentialConfigured"
+    ],
+    "type": "object"
+  },
+  "RefreshItemsMetadataRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RefreshItemsMetadataResponse": {
+    "properties": {
+      "itemId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "itemId",
+      "status"
+    ],
+    "type": "object"
+  },
+  "RefreshShowsMetadataRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "RefreshShowsMetadataResponse": {
+    "properties": {
+      "itemId": {
+        "type": "string"
+      },
+      "status": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "itemId",
+      "status"
     ],
     "type": "object"
   },

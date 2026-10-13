@@ -54,6 +54,8 @@ type ScreenCertification struct {
 	Rating string `json:"rating"`
 }
 type ScreenRecord struct {
+	FieldLanguages         map[string]string     `json:"fieldLanguages,omitempty"`
+	Skipped                []string              `json:"skipped,omitempty"`
 	Identity               ScreenID              `json:"identity"`
 	Title                  string                `json:"title"`
 	OriginalTitle          string                `json:"originalTitle,omitempty"`
@@ -183,6 +185,22 @@ func ValidateScreenRecord(v ScreenRecord) error {
 	fail := func() error { return &Error{Provider: v.Identity.Provider, Code: "invalid_screen_evidence"} }
 	if !ValidScreenID(v.Identity) || strings.TrimSpace(v.Title) == "" || !cleanScreenText(v.Title, 2048) || !cleanScreenText(v.OriginalTitle, 2048) || !cleanScreenText(v.Overview, 65536) || !cleanScreenText(v.Tagline, 4096) || v.Year < 0 || v.Year > 9999 {
 		return fail()
+	}
+	if len(v.FieldLanguages) > 32 {
+		return fail()
+	}
+	for field, locale := range v.FieldLanguages {
+		if !cleanScreenText(field, 128) || !cleanScreenText(locale, 64) {
+			return fail()
+		}
+	}
+	if len(v.Skipped) > 16 {
+		return fail()
+	}
+	for _, issue := range v.Skipped {
+		if !cleanScreenText(issue, 128) {
+			return fail()
+		}
 	}
 	if len(v.Aliases) > 256 || len(v.Genres) > 64 || len(v.Credits) > 128 || len(v.Relations) > 256 || len(v.Crosswalk) > 16 || len(v.Orders) > 64 || len(v.Certifications) > 100 || len(v.Tags) > 64 {
 		return fail()

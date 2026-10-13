@@ -33,8 +33,8 @@ type screenConditionalProvider interface {
 // provider would have produced, without asking.
 func (s *Service) rememberedScreenRecord(ctx context.Context, b screenBase, id metadataprovider.ScreenID) (metadataprovider.ScreenRecord, bool, error) {
 	var payload string
-	e := dbwork.QueryRow(ctx, s.db, `SELECT payload FROM screen_metadata_candidates WHERE target_kind=? AND target_id=? AND provider=? AND provider_type=? AND provider_id=? LIMIT 1`,
-		b.TargetKind, b.Entity, id.Provider, id.Type, id.ID).Scan(&payload)
+	e := dbwork.QueryRow(ctx, s.db, `SELECT payload FROM screen_metadata_candidates WHERE target_kind=? AND target_id=? AND provider=? AND provider_type=? AND provider_id=? AND language=? AND region=? LIMIT 1`,
+		b.TargetKind, b.Entity, id.Provider, id.Type, id.ID, b.Language, b.Region).Scan(&payload)
 	if errors.Is(e, sql.ErrNoRows) {
 		return metadataprovider.ScreenRecord{}, false, nil
 	}
@@ -91,9 +91,13 @@ func (s *Service) screenRefreshRecord(ctx context.Context, p *screenClaim, id me
 		return metadataprovider.ScreenRecord{}, e
 	}
 	kind := id.Type
+	resource := screenDocumentResource(id.ID, b.Language, b.Region)
+	if b.ForceRefresh {
+		held = false
+	}
 	if held {
 		priority := s.screenRefreshPriority(ctx, b, remembered, now)
-		fresh, validators, err := s.documentFresh(ctx, id.Provider, kind, id.ID, priority, now)
+		fresh, validators, err := s.documentFresh(ctx, id.Provider, kind, resource, priority, now)
 		if err != nil {
 			return metadataprovider.ScreenRecord{}, err
 		}
@@ -116,7 +120,7 @@ func (s *Service) screenRefreshRecord(ctx context.Context, p *screenClaim, id me
 			if errors.Is(err, metadataprovider.ErrNotModified) {
 				// The cheapest possible answer: no body, nothing to parse, and the window
 				// starts again from now.
-				if noteErr := s.noteDocumentChecked(ctx, id.Provider, kind, id.ID, fromConditional(out), false, now); noteErr != nil {
+				if noteErr := s.noteDocumentChecked(ctx, id.Provider, kind, resource, fromConditional(out), false, now); noteErr != nil {
 					return metadataprovider.ScreenRecord{}, noteErr
 				}
 				return remembered, nil
@@ -124,17 +128,26 @@ func (s *Service) screenRefreshRecord(ctx context.Context, p *screenClaim, id me
 			if err != nil {
 				return metadataprovider.ScreenRecord{}, err
 			}
-			if noteErr := s.noteDocumentChecked(ctx, id.Provider, kind, id.ID, fromConditional(out), true, now); noteErr != nil {
+			if noteErr := s.noteDocumentChecked(ctx, id.Provider, kind, resource, fromConditional(out), true, now); noteErr != nil {
 				return metadataprovider.ScreenRecord{}, noteErr
 			}
 			return r, nil
 		}
 	}
-	r, e := provider.ScreenDetails(ctx, kind, id.ID, b.Language, b.Region)
+	var r metadataprovider.ScreenRecord
+	if conditional, ok := provider.(screenConditionalProvider); ok && b.ForceRefresh {
+		r, _, e = conditional.ScreenDetailsConditional(ctx, kind, id.ID, b.Language, b.Region, metadataprovider.Conditional{})
+	} else if fresh, ok := provider.(interface {
+		ScreenDetailsFresh(context.Context, string, string, string, string) (metadataprovider.ScreenRecord, error)
+	}); ok && b.ForceRefresh {
+		r, e = fresh.ScreenDetailsFresh(ctx, kind, id.ID, b.Language, b.Region)
+	} else {
+		r, e = provider.ScreenDetails(ctx, kind, id.ID, b.Language, b.Region)
+	}
 	if e != nil {
 		return metadataprovider.ScreenRecord{}, e
 	}
-	if e = s.noteDocumentChecked(ctx, id.Provider, kind, id.ID, documentValidators{}, true, now); e != nil {
+	if e = s.noteDocumentChecked(ctx, id.Provider, kind, resource, documentValidators{}, true, now); e != nil {
 		return metadataprovider.ScreenRecord{}, e
 	}
 	return r, nil
@@ -159,7 +172,13 @@ func (s *Service) rememberedEpisodeRecord(ctx context.Context, b screenBase) (me
 		return metadataprovider.ScreenRecord{}, false, nil
 	}
 	c := r.Coordinates
-	if c == nil || c.ShowID != b.ParentProviderID || c.Order != b.ParentOrder || c.Season == nil || *c.Season != b.Season || c.Episode != b.Number {
+	matches := c != nil && c.ShowID == b.ParentProviderID && c.Order == b.ParentOrder && c.Episode == b.Number
+	if b.Numbering == "absolute" {
+		matches = matches && c.Absolute != nil && *c.Absolute == b.Number
+	} else {
+		matches = matches && c.Season != nil && *c.Season == b.Season
+	}
+	if !matches {
 		return metadataprovider.ScreenRecord{}, false, nil
 	}
 	return r, true, nil
@@ -177,8 +196,12 @@ func (s *Service) screenEpisodeRecord(ctx context.Context, p *screenClaim, provi
 	if e != nil {
 		return metadataprovider.ScreenRecord{}, e
 	}
+	if b.ForceRefresh {
+		held = false
+	}
+	resource := screenDocumentResource(remembered.Identity.ID, b.Language, b.Region)
 	if held {
-		fresh, _, err := s.documentFresh(ctx, remembered.Identity.Provider, "episode", remembered.Identity.ID, s.screenRefreshPriority(ctx, b, remembered, now), now)
+		fresh, _, err := s.documentFresh(ctx, remembered.Identity.Provider, "episode", resource, s.screenRefreshPriority(ctx, b, remembered, now), now)
 		if err != nil {
 			return metadataprovider.ScreenRecord{}, err
 		}
@@ -193,11 +216,38 @@ func (s *Service) screenEpisodeRecord(ctx context.Context, p *screenClaim, provi
 			return remembered, nil
 		}
 	}
-	r, e := provider.ScreenEpisode(ctx, b.ParentProviderID, b.Season, b.Number, b.ParentOrder, b.Language)
+	var r metadataprovider.ScreenRecord
+	if b.ForceRefresh {
+		if b.Numbering == "absolute" {
+			if fresh, ok := provider.(interface {
+				ScreenAbsoluteEpisodeFresh(context.Context, string, int, string, string) (metadataprovider.ScreenRecord, error)
+			}); ok {
+				r, e = fresh.ScreenAbsoluteEpisodeFresh(ctx, b.ParentProviderID, b.Number, b.ParentOrder, b.Language)
+			}
+		} else {
+			if fresh, ok := provider.(interface {
+				ScreenEpisodeFresh(context.Context, string, int, int, string, string) (metadataprovider.ScreenRecord, error)
+			}); ok {
+				r, e = fresh.ScreenEpisodeFresh(ctx, b.ParentProviderID, b.Season, b.Number, b.ParentOrder, b.Language)
+			}
+		}
+	}
+	if r.Identity.ID != "" || e != nil {
+	} else if b.Numbering == "absolute" {
+		if absolute, ok := provider.(interface {
+			ScreenAbsoluteEpisode(context.Context, string, int, string, string) (metadataprovider.ScreenRecord, error)
+		}); ok {
+			r, e = absolute.ScreenAbsoluteEpisode(ctx, b.ParentProviderID, b.Number, b.ParentOrder, b.Language)
+		} else {
+			return r, &metadataprovider.Error{Provider: b.ParentProvider, Code: "order_unavailable"}
+		}
+	} else {
+		r, e = provider.ScreenEpisode(ctx, b.ParentProviderID, b.Season, b.Number, b.ParentOrder, b.Language)
+	}
 	if e != nil {
 		return r, e
 	}
-	if e = s.noteDocumentChecked(ctx, r.Identity.Provider, "episode", r.Identity.ID, documentValidators{}, true, now); e != nil {
+	if e = s.noteDocumentChecked(ctx, r.Identity.Provider, "episode", screenDocumentResource(r.Identity.ID, b.Language, b.Region), documentValidators{}, true, now); e != nil {
 		return metadataprovider.ScreenRecord{}, e
 	}
 	return r, nil
@@ -209,4 +259,8 @@ func toConditional(v documentValidators) metadataprovider.Conditional {
 
 func fromConditional(c metadataprovider.Conditional) documentValidators {
 	return documentValidators{ETag: c.ETag, LastModified: c.LastModified}
+}
+
+func screenDocumentResource(id, language, region string) string {
+	return id + "@" + language + ":" + region
 }

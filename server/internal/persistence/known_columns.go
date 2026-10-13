@@ -2592,6 +2592,12 @@ metadata_repair_work_receipts.item_id
 metadata_repair_work_receipts.next_check
 metadata_repair_work_receipts.operation_id
 metadata_repair_work_receipts.receipt
+metadata_runtime_settings.include_adult
+metadata_runtime_settings.local_artwork_limit_bytes
+metadata_runtime_settings.revision
+metadata_runtime_settings.singleton
+metadata_runtime_settings.tmdb_read_token
+metadata_runtime_settings.tvdb_project_key
 metadata_stage_credits.credit_id
 metadata_stage_credits.department
 metadata_stage_credits.name
@@ -3746,6 +3752,13 @@ screen_anime_seasons.revision
 screen_anime_seasons.season_number
 screen_anime_seasons.show_id
 screen_anime_seasons.source_publication
+screen_metadata_attention.confidence
+screen_metadata_attention.dismissed_generation
+screen_metadata_attention.entity_id
+screen_metadata_attention.generation
+screen_metadata_attention.library_id
+screen_metadata_attention.reason
+screen_metadata_attention.target_kind
 screen_metadata_candidates.candidate_key
 screen_metadata_candidates.confidence
 screen_metadata_candidates.contradiction
@@ -3811,6 +3824,7 @@ screen_metadata_work.attempts
 screen_metadata_work.child_cursor
 screen_metadata_work.episode_order
 screen_metadata_work.error
+screen_metadata_work.force_refresh
 screen_metadata_work.generation
 screen_metadata_work.lease
 screen_metadata_work.lease_until

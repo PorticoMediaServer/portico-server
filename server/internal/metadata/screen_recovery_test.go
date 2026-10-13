@@ -60,7 +60,7 @@ func TestTitleParkedByAnOutageIsRetriedAfterACoolOff(t *testing.T) {
 		if err := s.ScreenStep(ctx); err != nil {
 			t.Fatal(err)
 		}
-		advance(20 * time.Minute)
+		advance(10 * time.Minute)
 	}
 	status, attempts, next := row()
 	if status != "unavailable" || attempts != 6 || next == "" {
@@ -72,7 +72,7 @@ func TestTitleParkedByAnOutageIsRetriedAfterACoolOff(t *testing.T) {
 		t.Fatalf("parked title retried before its cool-off: %v, %d extra requests", err, p.calls-calls)
 	}
 	due, err := time.Parse(time.RFC3339, next)
-	if err != nil || due.Sub(s.publicationTime()) < 30*time.Minute {
+	if err != nil || due.Sub(s.publicationTime()) < 5*time.Minute {
 		t.Fatalf("cool-off is too short to protect the provider: %q %v", next, err)
 	}
 	advance(due.Sub(s.publicationTime()) + time.Second)
@@ -109,7 +109,7 @@ func TestParkedTitleBacksOffFurtherWhileTheOutageLasts(t *testing.T) {
 		advance(due.Sub(s.publicationTime()) + time.Second)
 	}
 	for i, w := range waits {
-		if w < time.Hour || w > 24*time.Hour || i > 0 && w < waits[i-1] {
+		if w < screenRecoveryCoolOff || w > 6*time.Hour+31*time.Second || i > 0 && w < waits[i-1] {
 			t.Fatalf("recovery waits are not a sparse, non-decreasing schedule: %v", waits)
 		}
 	}
@@ -236,7 +236,7 @@ func TestOnlyAnOutageLeavesAParkedTitleARetryTime(t *testing.T) {
 				if err := s.ScreenStep(ctx); err != nil {
 					t.Fatal(err)
 				}
-				advance(20 * time.Minute)
+				advance(10 * time.Minute)
 			}
 			status, _, next := row()
 			var reason string

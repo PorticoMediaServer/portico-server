@@ -144,7 +144,7 @@ export const recordingForm = (deps: ServerFormDeps) => documentForm<DVRDefaults,
 // ── Maintenance: windows, background priority, what is kept and for how long ────────────────
 
 export type MaintenanceWindow = Readonly<{id: string; name: string; enabled: boolean; cadence: string; days: readonly string[]; startMinute: number; durationMinutes: number; timezone: string; tasks: readonly string[]}>;
-export type MaintenanceSettings = Readonly<{windows: readonly MaintenanceWindow[]; retention: Readonly<Record<string, number>>; backupKeepCount: number; backgroundTaskPriority: 'lower' | 'normal'}>;
+export type MaintenanceSettings = Readonly<{windows: readonly MaintenanceWindow[]; retention: Readonly<Record<string, number>>; backupKeepCount: number; backgroundTaskPriority: 'lower' | 'normal'; backgroundSpeed?: 'gentle' | 'normal' | 'fast'}>;
 export type MaintenanceDocument = Readonly<{revision: number; settings: MaintenanceSettings; cadences: readonly {id: string; name: string; days: readonly string[]; description: string}[]; tasks: readonly string[]; days: readonly string[]; retentionMaxima: Readonly<Record<string, number>>; storageCategories: readonly {id: string; name: string; retentionKey: string}[]}>;
 
 /** The document is owner configuration the server validates in full on save, so it is read structurally. */
@@ -152,7 +152,7 @@ export function parseMaintenanceDocument(raw: unknown): MaintenanceDocument {
   const v = raw as MaintenanceDocument;
   if (!v || typeof v.revision !== 'number' || !v.settings || !Array.isArray(v.settings.windows) || !Array.isArray(v.cadences) || !Array.isArray(v.tasks)) throw new Error('The server returned maintenance settings this version cannot read.');
   // Background work is de-prioritized, never paused: anything else reads as "lower".
-  return {...v, settings: {...v.settings, backgroundTaskPriority: v.settings.backgroundTaskPriority === 'normal' ? 'normal' : 'lower'}};
+  return {...v, settings: {...v.settings, backgroundTaskPriority: v.settings.backgroundTaskPriority === 'normal' ? 'normal' : 'lower',backgroundSpeed:v.settings.backgroundSpeed==='gentle'||v.settings.backgroundSpeed==='fast'?v.settings.backgroundSpeed:'normal'}};
 }
 
 export const maintenanceForm = (deps: ServerFormDeps) => documentForm<MaintenanceSettings, MaintenanceDocument>(deps, '/v1/admin/maintenance/settings', parseMaintenanceDocument);

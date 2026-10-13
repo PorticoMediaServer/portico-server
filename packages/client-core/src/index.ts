@@ -1907,3 +1907,6 @@ export * from './inbox.ts';
 export * from './identity-client.ts';
 export * from './sse.ts';
 export * from './downloads-service.ts';
+
+export * from './metadata-attention.ts';
+export * from './metadata-settings.ts';

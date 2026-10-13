@@ -35,6 +35,7 @@ type transport struct {
 	provider, base, userAgent string
 	client                    *http.Client
 	gate                      chan struct{}
+	inflight                  chan struct{}
 	next                      time.Time
 	interval                  time.Duration
 	mu                        sync.Mutex
@@ -43,10 +44,16 @@ type transport struct {
 func newTransport(provider, base, userAgent string) *transport {
 	t := http.DefaultTransport.(*http.Transport).Clone()
 	t.Proxy = nil
-	t.MaxConnsPerHost = 2
-	t.MaxIdleConnsPerHost = 2
+	t.MaxConnsPerHost = 4
+	t.MaxIdleConnsPerHost = 4
 	t.ResponseHeaderTimeout = 10 * time.Second
-	return &transport{provider: provider, base: base, userAgent: userAgent, interval: time.Second, gate: make(chan struct{}, 1), client: &http.Client{Transport: t, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	capacity := 4
+	if provider == "musicbrainz" || provider == "anilist" || provider == "acoustid" {
+		capacity = 1
+	}
+	out := &transport{inflight: make(chan struct{}, capacity), provider: provider, base: base, userAgent: userAgent, interval: time.Second, gate: make(chan struct{}, 1), client: &http.Client{Transport: t, Timeout: 15 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	out.setSpeed("normal")
+	return out
 }
 func (t *transport) acquire(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
@@ -121,9 +128,10 @@ func (t *transport) raw(ctx context.Context, client *http.Client, base, route, t
 	}
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	if err := t.acquire(ctx); err != nil {
+	if err := t.begin(ctx); err != nil {
 		return nil, err
 	}
+	defer t.release()
 	req, err := http.NewRequestWithContext(ctx, "GET", base+route, nil)
 	if err != nil {
 		return nil, errors.New("invalid provider request")
@@ -143,8 +151,11 @@ func (t *transport) raw(ctx context.Context, client *http.Client, base, route, t
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		problem := &Error{Provider: t.provider, Status: resp.StatusCode, Code: "request_rejected"}
-		if resp.StatusCode == 429 || resp.StatusCode == 503 {
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
 			problem.RetryAfter = retryDelay(resp.Header.Get("Retry-After"), time.Now())
+			if resp.StatusCode >= 500 && resp.Header.Get("Retry-After") == "" {
+				problem.RetryAfter = 5 * time.Second
+			}
 			t.deferRequests(ctx, problem.RetryAfter)
 		}
 		return nil, problem
@@ -183,9 +194,10 @@ func (t *transport) request(ctx context.Context, method, route, token string, bo
 			return err
 		}
 	}
-	if err = t.acquire(ctx); err != nil {
+	if err = t.begin(ctx); err != nil {
 		return err
 	}
+	defer t.release()
 	req, err := http.NewRequestWithContext(ctx, method, t.base+route, bytes.NewReader(payload))
 	if err != nil {
 		return errors.New("invalid provider request")
@@ -208,8 +220,11 @@ func (t *transport) request(ctx context.Context, method, route, token string, bo
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		problem := &Error{Provider: t.provider, Status: resp.StatusCode, Code: "request_rejected", location: resp.Header.Get("Location")}
-		if resp.StatusCode == 429 || resp.StatusCode == 503 {
+		if resp.StatusCode == 429 || resp.StatusCode >= 500 {
 			problem.RetryAfter = retryDelay(resp.Header.Get("Retry-After"), time.Now())
+			if resp.StatusCode >= 500 && resp.Header.Get("Retry-After") == "" {
+				problem.RetryAfter = 5 * time.Second
+			}
 			t.deferRequests(ctx, problem.RetryAfter)
 		}
 		return problem
@@ -232,4 +247,49 @@ func (t *transport) request(ctx context.Context, method, route, token string, bo
 		return &Error{Provider: t.provider, Code: "invalid_response"}
 	}
 	return nil
+}
+
+// The in-flight gate spans response consumption; the pacing gate spans only
+// reserving a start time. Both are shared by all routes of one provider.
+func (t *transport) begin(ctx context.Context) error {
+	select {
+	case t.inflight <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	if err := t.acquire(ctx); err != nil {
+		t.release()
+		return err
+	}
+	return nil
+}
+func (t *transport) release() { <-t.inflight }
+func (t *transport) setSpeed(speed string) {
+	interval := time.Second
+	switch t.provider {
+	case "tmdb":
+		interval = 100 * time.Millisecond
+		if speed == "gentle" {
+			interval = 500 * time.Millisecond
+		}
+		if speed == "fast" {
+			interval = 50 * time.Millisecond
+		}
+	case "tvdb":
+		interval = 500 * time.Millisecond
+		if speed == "gentle" {
+			interval = time.Second
+		}
+		if speed == "fast" {
+			interval = 200 * time.Millisecond
+		}
+	case "anilist":
+		interval = 2100 * time.Millisecond
+		if speed == "gentle" {
+			interval = 4 * time.Second
+		}
+	}
+	t.mu.Lock()
+	t.interval = interval
+	t.mu.Unlock()
 }
