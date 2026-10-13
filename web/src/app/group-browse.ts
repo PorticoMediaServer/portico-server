@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
 import {parseBrowseResult, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
 import {BROWSE_PAGE, decodePredicates, encodePredicates, useBrowseCapabilities, useBrowseCollection, useShuffled, type Predicate} from './browse';
-import type {GroupLibrary, GroupSpec} from './group-spec.ts';
+import {groupOffered, type GroupLibrary, type GroupSpec} from './group-spec.ts';
 import {useLibrariesContext} from './libraries';
 import {useSession} from './session';
 export {entityGroups, itemPivot, spanningGroup, titlePivot, type GroupLibrary, type GroupOrder, type GroupSpec} from './group-spec.ts';
@@ -23,7 +23,10 @@ const noSubscribe = () => () => {};
 const titleOrder: BrowseSortSelection = {field: 'title', direction: 'asc'};
 
 export function useGroupBrowse(spec: GroupSpec | undefined, choice: GroupChoice, onChoice: (next: GroupChoice) => void) {
-  const {capabilities, error} = useBrowseCapabilities(spec?.libraryId, spec?.pivot);
+  const read = useBrowseCapabilities(spec?.libraryId, spec?.pivot);
+  // A library whose vocabulary cannot express the group offers no toolbar for it.
+  const capabilities = read.capabilities && spec && groupOffered(spec, read.capabilities) ? read.capabilities : undefined;
+  const error = read.error ?? (read.capabilities && !capabilities ? 'unavailable' : undefined);
   // A filter in the address the library does not offer is not sent (an old or hand-made link).
   const predicates = useMemo<readonly Predicate[]>(() => {
     const asked = decodePredicates(choice.filters);

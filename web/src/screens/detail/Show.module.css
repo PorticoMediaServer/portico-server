@@ -54,8 +54,10 @@
 .heroActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 /* The placeholder is a row's own box (no margin): the windowed list holds every row to the height it
  * measures, and a margin outside that box would be measured in again each time, growing the rows. */
-.episodeRowPlaceholderRow { position: relative; height: 128px; }
-.episodeRowPlaceholderRow::before { content: ''; position: absolute; inset: 8px 0; border-radius: var(--radius-control); background: var(--surface-raised); }
+/* It takes a row's own shape (the still's column, the row's padding), so it is the row's height at every width. */
+.episodeRowPlaceholderRow { display: grid; grid-template-columns: clamp(140px, 16vw, 200px) 1fr; align-items: center; padding: 8px 0; }
+.episodeRowPlaceholderRow::before { content: ''; aspect-ratio: 16 / 9; border-radius: var(--radius-artwork); background: var(--surface-raised); }
+@media (max-width: 720px) { .episodeRowPlaceholderRow { grid-template-columns: 112px 1fr; } }
 /* Next up, pinned above the season's list when it is not already the first row. */
 .nextUp { margin: 0 calc(var(--page-gutter) - 12px) 12px; padding: 4px 12px 8px; border-radius: var(--radius-control); background: var(--surface-raised); border: 1px solid var(--line-soft); }
 .nextUp .episodeRow { margin: 0 -12px; }

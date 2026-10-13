@@ -80,3 +80,20 @@ test('a list held by several libraries is sorted and filtered one library at a t
 test('a list no library holds has no toolbar and nothing to pick', () => {
   assert.deepEqual(spanningGroup([], undefined, personBase, 'default'), {choose: false});
 });
+
+import {groupOffered} from '../src/app/group-spec.ts';
+
+test('a group is offered a toolbar only where the library\'s vocabulary can express it', () => {
+  const spec = entityGroups('lib', 'movie', {kind: 'collection', id: 'c1'}).titles!;
+  const fields = [{id: 'collection', operators: ['equals', 'in']}, {id: 'genre', operators: ['in']}];
+  assert.equal(groupOffered(spec, {fields}), true);
+  assert.equal(groupOffered(spec, {fields, surfaces: [{id: 'library'}, {id: 'collection-titles', membershipField: 'collection'}]}), true);
+  // The field is missing, its operator is, or the server lists its surfaces and this one is not among them.
+  assert.equal(groupOffered(spec, {fields: [{id: 'genre', operators: ['in']}]}), false);
+  assert.equal(groupOffered(spec, {fields: [{id: 'collection', operators: ['in']}]}), false);
+  assert.equal(groupOffered(spec, {fields, surfaces: [{id: 'library'}]}), false);
+  // A person in a music library: the server publishes no person field there.
+  assert.equal(groupOffered({libraryId: 'm', libraryKind: 'music', pivot: 'albums', base: [{field: 'person', operator: 'equals', value: 'p'}]}, {fields: [{id: 'artist', operators: ['equals']}]}), false);
+  // A saved view's own query is not a membership: nothing to check.
+  assert.equal(groupOffered({libraryId: 'l', libraryKind: 'movie', pivot: 'movies', base: [{all: [{field: 'year', operator: 'at-least', value: 2000}]}]}, {fields: []}), true);
+});

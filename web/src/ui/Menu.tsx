@@ -98,7 +98,11 @@ const menuItems = (root: HTMLElement) => [...root.querySelectorAll<HTMLElement>(
 export function AnchoredMenu({anchor, open, onOpenChange, children, label, width = 280}: {anchor?: MenuAnchor; open: boolean; onOpenChange: (o: boolean) => void; children: React.ReactNode; label?: string; width?: number}) {
   const point = !!anchor && anchor.width === 0 && anchor.height === 0;
   const opener = React.useRef<HTMLElement | null>(null);
-  React.useLayoutEffect(() => { if (open && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) opener.current = document.activeElement; }, [open]);
+  // Opened from a row of another menu (a title's ⋯ › Add to playlist…): that menu hands focus back
+  // to its own button as it closes, a moment after this one has opened. That is not the person
+  // leaving this menu, so it does not close it.
+  const openedAt = React.useRef(0);
+  React.useLayoutEffect(() => { if (open) openedAt.current = performance.now(); if (open && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) opener.current = document.activeElement; }, [open]);
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const items = menuItems(e.currentTarget);
     if (!items.length) return;
@@ -115,6 +119,7 @@ export function AnchoredMenu({anchor, open, onOpenChange, children, label, width
       <RPopover.Portal>
         <RPopover.Content className={s.menu} role="menu" aria-label={label} align={point ? 'start' : 'end'} side="bottom" sideOffset={point ? 2 : 6} collisionPadding={12} style={{width, maxWidth: 'min(320px, calc(100vw - 24px))', maxHeight: 'var(--radix-popover-content-available-height)', overflowY: 'auto'}}
           onKeyDown={onKeyDown}
+          onFocusOutside={e => { if (performance.now() - openedAt.current < 600) e.preventDefault(); }}
           onOpenAutoFocus={e => { e.preventDefault(); if (keyboardInput) { const root = e.currentTarget as HTMLElement; requestAnimationFrame(() => menuItems(root)[0]?.focus()); } }}
           onCloseAutoFocus={e => { if (opener.current?.isConnected) { e.preventDefault(); opener.current.focus(); } }}>
           {children}

@@ -68,6 +68,19 @@ const isPlaylistCard = (e: SavedEntry): e is PlaylistCard => e.kind === 'playlis
 const isOccurrence = (e: SavedEntry): e is PlaylistOccurrence => e.kind === 'playlist_entry';
 const isMedia = (e: SavedEntry): e is ContentEntry => !isPlaylistCard(e) && !isOccurrence(e);
 
+/**
+ * A saved list's own sorts, drawn as the library toolbar draws Sort: one control naming the field
+ * and the direction; choosing the current field again turns it round. Nothing when the server
+ * offers no sort for the list.
+ */
+export function SavedSortControl({sorts, active, direction, onChange}: {sorts: readonly Readonly<{id: string; labelKey: string}>[]; active?: string; direction?: 'asc' | 'desc'; onChange: (id: string, direction: 'asc' | 'desc') => void}) {
+  const {t} = useI18n();
+  if (!sorts.length) return null;
+  const now = direction === 'desc' ? 'desc' : 'asc';
+  const label = t('lib.sortChip', {field: sortLabel(t, sorts.find(x => x.id === active)?.labelKey ?? ''), direction: t('web.filters.direction', {kind: sortDirectionKind(active === 'updated' ? 'lastPlayed' : active ?? ''), dir: now})});
+  return <Menu label={t('web.filters.sort')} align="start" trigger={<Chip label={label} icon="sort" aria-label={t('web.filters.sortBy')} />} items={sorts.map(x => ({id: x.id, label: sortLabel(t, x.labelKey), selected: x.id === active, icon: x.id === active ? (now === 'desc' ? 'chevronDown' as const : 'chevronUp' as const) : undefined}))} onSelect={id => onChange(id, id === active ? (now === 'desc' ? 'asc' : 'desc') : now)} />;
+}
+
 export function useSaved(route: SavedRoute | null) {
   const {api} = useSession();
   const scope = useViewerScope();
@@ -133,9 +146,13 @@ export function SavedScreen() {
   const personal = usePersonal(personalRoute);
   const setSearch = (patch: Partial<typeof search>) => void navigate({to: '/saved', search: {...search, ...patch}, replace: true});
   const projection = saved.snapshot.projection;
-  const sorts = savedRoute && tab !== 'playlists' ? projection?.sorts ?? [] : [];
+  // Every list offers the sorts the server gives it: My List and Favorites several, Playlists by name.
+  const sorts = savedRoute ? projection?.sorts ?? [] : [];
   const activeSort = sort ?? projection?.query.sort ?? sorts[0]?.id;
   const activeDirection = direction ?? (projection?.query.direction as 'asc' | 'desc' | undefined);
+  // The list's own sorts, drawn as the library toolbar draws Sort.
+  const sortControl = <SavedSortControl sorts={sorts} active={activeSort} direction={activeDirection} onChange={(id, dir) => setSearch({sort: id, direction: dir})} />;
+  const hasSorts = sorts.length > 0;
   const refresh = personalRoute ? personal.refresh : saved.refresh;
   useSelectionRefresh(refresh);
   usePersonalChanges(refresh);
@@ -154,13 +171,13 @@ export function SavedScreen() {
       {toolbar ? <Inset><GroupBar group={group} /></Inset> : null}
       {(tab === 'watchlist' || tab === 'favorites') && !toolbar ? (
         // The list's own controls, laid out as the library toolbar is: Sort first (one control naming the field and the direction; choosing the current field again turns it round), then what to show.
-        <Inset><Row>{sorts.length ? <Menu label={t('web.filters.sort')} align="start" trigger={<Chip label={t('lib.sortChip', {field: sortLabel(t, sorts.find(x => x.id === activeSort)?.labelKey ?? ''), direction: t('web.filters.direction', {kind: sortDirectionKind(activeSort === 'updated' ? 'lastPlayed' : activeSort ?? ''), dir: activeDirection === 'desc' ? 'desc' : 'asc'})})} icon="sort" aria-label={t('web.filters.sortBy')} />} items={sorts.map(x => ({id: x.id, label: sortLabel(t, x.labelKey), selected: x.id === activeSort, icon: x.id === activeSort ? (activeDirection === 'desc' ? 'chevronDown' as const : 'chevronUp' as const) : undefined}))} onSelect={id => setSearch({sort: id, direction: id === activeSort ? (activeDirection === 'desc' ? 'asc' : 'desc') : activeDirection})} /> : null}<Text variant="label" tone="tertiary">{t('web.notifications.show')}</Text><Chips>{savedListFilters.map(f => <Chip key={f} label={filterLabel(t, f)} count={countFor(f)} pressed={(filter ?? 'all') === f} onClick={() => setSearch({filter: f === 'all' ? undefined : f})} />)}</Chips></Row></Inset>
+        <Inset><Row>{sortControl}<Text variant="label" tone="tertiary">{t('web.notifications.show')}</Text><Chips>{savedListFilters.map(f => <Chip key={f} label={filterLabel(t, f)} count={countFor(f)} pressed={(filter ?? 'all') === f} onClick={() => setSearch({filter: f === 'all' ? undefined : f})} />)}</Chips></Row></Inset>
       ) : null}
       {tab === 'history' ? (
         <Inset><Row style={{justifyContent: 'space-between', flexWrap: 'wrap'}}><Row><Text variant="label" tone="tertiary">{t('web.saved.period')}</Text><Chips>{historyPeriods.map(x => <Chip key={x} label={periodLabel(t, x)} pressed={(period ?? 'all') === x} onClick={() => setSearch({period: x === 'all' ? undefined : x})} />)}</Chips></Row>{personal.snapshot.entries.length ? <Button variant="ghost" size="sm" icon="trash" label={t('web.saved.clearHistory')} onClick={() => { setClearError(''); setClearing(true); }} /> : null}</Row></Inset>
       ) : null}
       {tab === 'collections' ? <Inset><Row><Button variant="secondary" size="sm" icon="plus" label={t('web.saved.newCollection')} onClick={() => setCreating(true)} /></Row></Inset> : null}
-      {canCreatePlaylist ? <Inset><Row><Button variant="secondary" size="sm" icon="plus" label={t('web.saved.newPlaylist')} onClick={() => setCreatingPlaylist(true)} /></Row></Inset> : null}
+      {tab === 'playlists' && (hasSorts || canCreatePlaylist) ? <Inset><Row>{sortControl}{canCreatePlaylist ? <Button variant="secondary" size="sm" icon="plus" label={t('web.saved.newPlaylist')} onClick={() => setCreatingPlaylist(true)} /> : null}</Row></Inset> : null}
       <NameDialog open={creatingPlaylist} title={t('web.saved.newPlaylist')} action={t('web.saved.create')} context="playlist" onClose={() => setCreatingPlaylist(false)} onSave={async (name, summary) => { await saved.service.mutate({action: 'create', name, summary}); saved.refresh(); }} />
       <ConfirmDialog open={clearing} onOpenChange={o => !o && setClearing(false)} title={t('web.saved.clearHistoryTitle')} body={t('web.saved.clearHistoryBody')} confirmLabel={t('web.saved.clearHistoryAction')} destructive busy={clearBusy} error={clearError || undefined} onConfirm={() => void clearHistory()} />
       <NewCollectionDialog open={creating} onClose={() => setCreating(false)} onCreate={async (name, summary, visibility) => { if (!await personal.service.mutate({action: 'create', kind: 'collection', name, summary, visibility})) throw personal.service.getSnapshot().mutationError ?? new Error('not created'); }} />

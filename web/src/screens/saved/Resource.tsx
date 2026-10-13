@@ -12,7 +12,7 @@ import {useEntryHref, useOpenEntry} from '../../app/open';
 import {sequenceContainer} from '../../app/container-play';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
-import {AnchoredMenu, Artwork, Button, Card, ConfirmDialog, Grid, Inset, ListRow, Menu, MenuRow, Notice, Page, PageHeader, Skeleton, StateView, Surface, Switch, WindowedGrid, createStaticCollection, type MenuAnchor, type MenuItem} from '../../ui';
+import {AnchoredMenu, Artwork, Button, Card, ConfirmDialog, Grid, Inset, ListRow, Menu, MenuRow, Notice, Page, PageHeader, Skeleton, StateView, Surface, Switch, WindowedGrid, anchorOf, createStaticCollection, type MenuAnchor, type MenuItem} from '../../ui';
 import {LoadingGrid, SECTION_WINDOW_AT, useAppendedPages} from '../shared/Sections';
 import {ErrorNotice, errorText} from '../../app/errors';
 import {NameDialog} from './Saved';
@@ -25,7 +25,6 @@ import type {BrowseNode} from '@core/browse.ts';
 import {itemPivot, spanningGroup, useGroupBrowse, useGroupLibraries, type GroupChoice, type GroupSpec} from '../../app/group-browse';
 import {useLibrariesContext} from '../../app/libraries';
 import {GroupBar, GroupGrid, GroupLibraryChips, GroupRows} from '../shared/GroupBrowse';
-import {EntryListRow} from '../shared/Sections';
 
 const requestId = () => Promise.resolve(crypto.randomUUID());
 type Visible = Extract<PlaylistOccurrence, {hidden: false}>;
@@ -166,7 +165,11 @@ export function SavedResourceScreen() {
         {media.length && listScope.spec ? <Inset><GroupBar group={group} total={p?.entryCount} /></Inset> : null}
         {group.pending ? <LoadingGrid /> : group.active ? (
           // Sorted or filtered, the playlist is a list of titles: its own order, and moving entries within it, belong to Playlist order.
-          <GroupRows group={group} context="playlist" label={name} estimateRowHeight={72} wrap={list => <Inset><Surface padless>{list}</Surface></Inset>} renderItem={entry => <EntryListRow entry={entry} />} renderPlaceholder={() => <div style={{height: 72, padding: '8px 16px'}}><Skeleton height={56} /></div>} />
+          <GroupRows group={group} context="playlist" label={name} estimateRowHeight={72}
+            // The same framed rows as Playlist order; the frame supplies the page's gutter, so the list inside it has none of its own.
+            wrap={list => <Inset><Surface padless><div style={{'--page-gutter': '0px'} as React.CSSProperties}>{list}</div></Surface></Inset>}
+            renderItem={entry => <ListRow title={entry.title} subtitle={cardCaptionOf(entry)} meta={formatDuration(entry.duration)} art={{path: entry.posterUrl, icon: iconFor(entry.kind), progress: progressFor(entry)}} artShape={shapeFor(entry.kind)} onClick={() => open(entry, entry.playback ? 'play' : 'open')} actions={<Button variant="ghost" icon="more" size="sm" aria-label={t('card.more', {title: entry.title})} onClick={(e: React.MouseEvent<HTMLElement>) => open(entry, 'more', undefined, anchorOf(e.currentTarget))} />} />}
+            renderPlaceholder={() => <div style={{height: 72, padding: '8px 16px'}}><Skeleton height={56} /></div>} />
         ) : media.length > SECTION_WINDOW_AT ? (
           <WindowedRows items={media} estimateRowHeight={72} label={name} renderItem={(e, i) => playlistRow(e, i)} />
         ) : media.length ? (

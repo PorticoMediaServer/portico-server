@@ -1,4 +1,4 @@
-import React, {forwardRef, useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import React, {forwardRef, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {WindowedCollection} from '@core/collections/index.ts';
@@ -12,7 +12,7 @@ import {usePlayerActions} from '../../player/PlayerContext';
 import {useRead} from '../../admin/console';
 import {valueLabel} from './BrowseFilters';
 import type {PlaylistCard} from '@core/saved.ts';
-import {useSaved} from '../saved/Saved';
+import {SavedSortControl, useSaved} from '../saved/Saved';
 import {Artwork, Button, Grid, Icon, Inset, ListRow, Notice, Skeleton, StateView, Surface, Text, WindowedGrid, type MenuAnchor, type WindowedGridHandle} from '../../ui';
 import s from './LibraryViews.module.css';
 
@@ -169,14 +169,18 @@ export function GenreCard({libraryId, entry, onOpen}: {libraryId: string; entry:
 }
 
 /** Music › Playlists: the viewer's playlists, as on Saved. */
-export function LibraryPlaylists() {
+export function LibraryPlaylists({sort, onSort}: {/** The order chosen on this tab; the list's own when none was. */ sort?: BrowseSortSelection; onSort: (next: BrowseSortSelection) => void}) {
   const {t} = useI18n();
   const navigate = useNavigate();
-  const saved = useSaved({view: 'playlists'});
+  const route = useMemo(() => ({view: 'playlists' as const, ...(sort ? {sort: sort.field, direction: sort.direction} : {})}), [sort?.field, sort?.direction]); // eslint-disable-line react-hooks/exhaustive-deps
+  const saved = useSaved(route);
   const snapshot = saved.snapshot;
   const cards = (snapshot.projection?.sections ?? []).flatMap(section => section.entries).filter((e): e is PlaylistCard => e.kind === 'playlist');
   if (snapshot.phase === 'error' && !cards.length) return <Inset><Notice tone="error" action={{label: t('action.tryAgain'), onClick: saved.retry}}>{t('library.playlists.loadFailed')}</Notice></Inset>;
   if (snapshot.phase === 'loading' && !cards.length) return <Inset><Skeleton height={64} /></Inset>;
   if (!cards.length) return <StateView icon="queue" title={t('web.saved.empty.playlists')} body={t('web.saved.empty.playlistsBody')} />;
-  return <Inset><Surface padless>{cards.map(card => <ListRow key={card.id} icon="queue" title={card.title} subtitle={card.subtitle} meta={card.count != null ? t('web.saved.items', {count: card.count}) : undefined} trailingIcon="forward" onClick={() => void navigate({to: '/saved/$kind/$resourceId', params: {kind: 'playlist', resourceId: card.navigation.entityId}, search: {title: card.title}})} />)}</Surface></Inset>;
+  const projection = snapshot.projection;
+  // The same Sort control as every other tab, with the sorts the server offers a list of playlists.
+  const sortBar = projection?.sorts?.length ? <Inset><SavedSortControl sorts={projection.sorts} active={sort?.field ?? projection.query.sort ?? projection.sorts[0]?.id} direction={sort?.direction ?? (projection.query.direction === 'desc' ? 'desc' : 'asc')} onChange={(field, direction) => onSort({field, direction})} /></Inset> : null;
+  return <>{sortBar}<Inset><Surface padless>{cards.map(card => <ListRow key={card.id} icon="queue" title={card.title} subtitle={card.subtitle} meta={card.count != null ? t('web.saved.items', {count: card.count}) : undefined} trailingIcon="forward" onClick={() => void navigate({to: '/saved/$kind/$resourceId', params: {kind: 'playlist', resourceId: card.navigation.entityId}, search: {title: card.title}})} />)}</Surface></Inset></>;
 }

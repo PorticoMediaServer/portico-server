@@ -19,6 +19,25 @@ export type GroupSpec = Readonly<{
   always?: boolean;
 }>;
 
+/** The surface the server advertises for a group's kind of membership (`browse-capabilities` → `surfaces`). */
+const SURFACES: Readonly<Record<string, string>> = {collection: 'collection-titles', memberOf: 'container-titles', person: 'person-titles', list: 'list-titles', search: 'search-results'};
+
+/**
+ * Whether a library's published vocabulary can express a group: every condition that keeps the
+ * list to the group names a field and an operator the pivot offers, and, where the server lists
+ * its surfaces, the surface for that kind of membership is among them. A group it cannot express
+ * gets no toolbar (its page keeps its own list) rather than a request the server would refuse.
+ */
+export function groupOffered(spec: GroupSpec, capabilities: Readonly<{fields: readonly Readonly<{id: string; operators: readonly string[]}>[]; surfaces?: readonly Readonly<{id: string; membershipField?: string}>[]}>): boolean {
+  for (const node of spec.base) {
+    if (!('field' in node)) continue;
+    if (!capabilities.fields.some(field => field.id === node.field && field.operators.includes(node.operator))) return false;
+    const surface = SURFACES[node.field];
+    if (surface && capabilities.surfaces?.length && !capabilities.surfaces.some(s => s.id === surface && s.membershipField === node.field)) return false;
+  }
+  return true;
+}
+
 /** One library's part of a list that spans libraries (a person's titles, a playlist, My List), with how many it holds. */
 export type GroupLibrary = Readonly<{id: string; name: string; kind: string; pivot: string; total: number}>;
 
