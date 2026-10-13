@@ -233,8 +233,8 @@ const accountPages: readonly AuthoredPage[] = [
     id: 'quality', title: 'settings.page.quality', icon: 'quality', sections: [
       // Two saved defaults: at home and away. The player can still choose another quality for one title.
       {id: 'limits', title: 'settings.section.qualityLimits', rows: [
-        pref('quality.home', 'settings.row.qualityHome', {type: 'choice', choices: qualityChoices}, {scope: 'device', help: 'settings.help.qualityHome'}),
-        pref('quality.remote', 'settings.row.qualityAway', {type: 'choice', choices: qualityChoices}, {scope: 'device', help: 'settings.help.qualityAway'}),
+        pref('quality.home', 'settings.row.qualityHome', {type: 'choice', choices: qualityChoices}, {scope: 'deviceClass', help: 'settings.help.qualityHome'}),
+        pref('quality.remote', 'settings.row.qualityAway', {type: 'choice', choices: qualityChoices}, {scope: 'deviceClass', help: 'settings.help.qualityAway'}),
       ]},
       {id: 'method', rows: [
         // One choice in place of three four-way policies; it writes a combination that makes sense.
