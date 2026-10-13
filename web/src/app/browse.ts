@@ -69,7 +69,10 @@ export function useBrowseCollection(input: {libraryId?: string; pivot?: string; 
     shown.current = {collection, query};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collection, query]);
-  useEffect(() => () => collection?.dispose(), [collection]);
+  // The screen's list remembers its loaded window as it unmounts, reading this collection. React
+  // runs this owner's cleanup before the list's, so disposal waits a moment: disposing here at
+  // once would empty the pages before they could be remembered, and Back would start from the top.
+  useEffect(() => () => { if (collection) setTimeout(() => collection.dispose(), 0); }, [collection]);
   /** Reload from the top (a new revision), keeping what's on screen until it arrives. */
   const refresh = useCallback(() => {
     if (collection && libraryId && pivot) collection.invalidate(browsePageSource(api, {libraryId, pivot, predicates, sort}));
