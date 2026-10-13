@@ -1,6 +1,6 @@
 # Cross-domain implementation architecture
 
-Revision: portico.reconciled.1. This is normative architecture for the rebuild, not a prescribed package-by-package rewrite or a claim that these mechanisms already exist.
+Revision: portico.october.1. This is normative architecture for the rebuild, not a prescribed package-by-package rewrite or a claim that these mechanisms already exist.
 
 The [domain amendments](architecture-amendments.md) complete the family contracts and resolve their named cross-domain conflicts.
 
@@ -22,7 +22,7 @@ Retain the Go modular local server with normalized SQLite on reliable local stor
 | Social/receivers | Group and controller authorization, queues and commands; calls playback's handoff and occurrence interfaces |
 | Operations | Common job infrastructure, settings application, audit, backup/restore/update orchestration |
 
-Application services call domain/repository interfaces. HTTP, React, native player objects and shell processes do not own durable intent. SQL storage may share a database, but each table family has an owner; other domains use that owner's transaction-capable methods or explicit projection events. The integration lead coordinates cross-domain migrations once. Avoid direct mutations to another domain's tables merely because they are accessible.
+Application services call domain/repository interfaces. HTTP, React, native player objects and shell processes do not own durable intent. SQL storage may share a database, but each table family has an owner; other domains use that owner's transaction-capable methods or explicit projection events. The integration lead coordinates baseline/schema changes. Pre-release does not preserve old databases or retired APIs. Avoid direct mutations to another domain's tables merely because they are accessible.
 
 Data aggregation uses indexed projections, bounded queries and keyset continuations. Large catalog work does not load a whole library into memory or hold a transaction while users page. A single SQLite connection is acceptable only as a measured current integration limitation; production read concurrency needs a deliberate bounded pool/reader strategy and serialized short writes, with PRAGMAs and cancellation applied consistently. Do not change engines before measuring the actual bottleneck. Background saturation cannot hold the only control-plane connection indefinitely.
 
@@ -62,7 +62,7 @@ An orphan is tolerable temporarily; an authoritative reference to unverified byt
 
 Outbox events are committed alongside domain state and emitted after commit. They have owner/resource identity, revision and bounded safe payload. Subscription transport may vary; semantics do not. Duplicate/out-of-order/gapped events trigger deduplication or a current snapshot, never blind application of old authority. Subscriptions are reauthorized and fenced when access changes. Slow consumers have bounded queues and resnapshot behavior.
 
-Cursors bind stable owner, authorization fence, query/filter/sort, locale/collation, catalog/projection generation and stable tie-breaker. A stale cursor returns a typed restart-required outcome. Keep prior valid content visible while refreshing where still authorized; never carry stale private results across revoked scope. Bulk selection/query jobs capture intended membership as a paged immutable generation, not a live query whose membership can silently grow after confirmation.
+Cursors bind stable owner, authorization fence, query/filter/sort, locale/collation, catalog/projection generation and stable tie-breaker. A valid cursor recovers quietly across publication where current implementation permits; genuine query/permission changes may require a typed restart. Keep browse/search answering during rebuilds. Keep prior valid content visible while refreshing where still authorized; never carry stale private results across revoked scope. Bulk selection/query jobs capture intended membership as a paged immutable generation, not a live query whose membership can silently grow after confirmation.
 
 Headless services own scoped request cancellation, stale-response checks after body parsing, deadlines, mutation receipts and coherent snapshots. UI owns drafts/focus/layout. Cached content and authentication are separate. Independent panel/row failures do not blank healthy data; unsupported, denied, offline, empty and failed are distinct. Localization and semantic action IDs are versioned without server-delivered arbitrary UI code.
 
@@ -75,3 +75,7 @@ Provider snapshots/receipts may store bounded immutable JSON as evidence. Querya
 ## Architectural review gate
 
 Before a domain is described as complete, review its full lifecycle: entry/UI command → authorization → durable intent → external work → publication → read/event/client projection → cancellation/retry → crash/restart → policy change/deletion. Enumerate every writer and reference consumer. The independent implementation reviewer challenges both contract sufficiency and code conformance before behavioral tests under document 33. This documentation review does not waive that independent review or physical-device evidence.
+
+## October implementation boundary
+
+[Architecture amendments](architecture-amendments.md) describe verified current behaviour and gaps. Titles/files, one capability document, scoped API credentials, readable generations, home networks, shared live input, plain backup state and public-client Hosted consent replace conflicting earlier assumptions. The normative publication/job boundaries above remain requirements; they are not evidence that every domain has implemented a complete journal, outbox or restore incarnation. The original “document 32/33” references denote historical playback/review work; the current playback specification and source registry own the API. No consumer email/push, extension system, sub-path hosting or pre-release compatibility is introduced.

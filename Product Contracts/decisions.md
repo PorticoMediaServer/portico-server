@@ -10,7 +10,7 @@
 | P02 | Portico Account versus Direct Sign-In; independent Local recovery owner; account sign-in succeeds with zero servers | Original Identity/Onboarding; journey 08 terminology |
 | P03 | Original username, password, contact-email, Google/Apple, MFA/recovery and privacy choices remain required | Original Identity; incomplete password-only integration is not a product change; **Superseded in part by O13 (12 October 2026): no email or push delivery. Username, password, supported provider sign-in and MFA remain.** |
 | P04 | Ten-minute XXXX-XXXX activation, same visible QR/code, separate device proof, manual approval from any network | Original Onboarding; alphabet spelling and 31-symbol count preserved |
-| P05 | Seven-day signed policy, unchanged daily renewal, thirty-minute heartbeat, forty-five-minute presence, 500ms discovery hedge | Original Networking and accepted journey 08 |
+| P05 | Seven-day signed policy, unchanged daily renewal, thirty-minute heartbeat, forty-five-minute presence, 500ms discovery hedge | Original Networking and accepted journey 08; **superseded as an implementation description by I01 below. The remembered-route discovery hedge is separate.** |
 | P06 | Thirty-day offline receipt, scoped trusted profile proof, expiry blocks without deleting, learned revocation/sign-out deletes, inactive profile remains protected | Original Identity and Saved/Downloads; independent validity conditions |
 | P07 | Unlimited simultaneous playback by default; optional owner per-account/total caps; independent devices; explicit handoff; no predictive hardware veto | Later user decisions, exclusively implemented through document 32 |
 | P08 | Five media families including local audiobooks; remote audiobook enrichment deferred | User clarification; original local-evidence model retained |
@@ -84,3 +84,10 @@ These entries record the owner's programme decisions, not runtime acceptance. Da
 | O18 | 14 October 2026 | Every library subgroup offers the same wide sort/filter vocabulary as the main library: genre, series, category, collection, person's titles and tabs. No grouping is title-order-only. | Title-only aggregate sorting and narrow subgroup controls. Implementation is still in progress in the grouping-sorts report. |
 
 The programme brief records the decisions as a 12–14 October set but gives no separate 13 October attribution. No date is invented for an individual clarification. Historical audit findings and reconciliation rows remain evidence of what was previously intended.
+
+## Verified implementation clarifications
+
+| ID | Current behaviour | Evidence / earlier assumption corrected |
+|---|---|---|
+| I01 | The server owns membership; Hosted keeps a pushed discovery index. There is no current membership-policy renewal/expiry gate. Check-in is weekly when wakes can reach the server, daily otherwise, with jitter. | `main-server/server/internal/hosted/current_schedule.go` and Hosted at Scale; supersedes P05's old online membership/presence timing model as a description of implementation. This is not a separately dated owner decision. |
+| I02 | API keys/tokens have independent lifetime; password changes and ordinary sign-out preserve them. Restore returns keys present in the backup, including later-revoked keys. | api-platform report, decisions 2–2d. Corrects the older universal restore-credential invalidation contract; actual backup/restore integration acceptance remains open. |

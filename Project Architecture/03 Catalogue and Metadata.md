@@ -1,77 +1,39 @@
 # Catalogue and metadata
 
-The catalogue is everything the server knows about the media in its libraries: films, shows, seasons, episodes, artists, albums, songs, books, audiobook files, collections, people and their artwork. Two packages own it:
+The catalogue separates logical titles from physical files. `internal/compactcatalog` owns relational facts and projections; `internal/catalog` composes authorised browse, search, Home and detail documents. Metadata and technical file analysis have separate authority.
 
-- `internal/compactcatalog`: the **write side**. It holds the facts and the derived data kept from them.
-- `internal/catalog`: the **read side**. It covers Home, Discover, browse, detail pages, search and recommendations, plus the per-request snapshot and memo rules.
+## Titles, files and missing media
 
-## Entities and facts
+A title has a stable identity, hierarchy and personal state. It can have several files, versions, editions and parts. Provider identity can merge matching titles within a library. Filename/title/year and useful audio tags provide provisional identity; ambiguous or untagged audio still has path-dependent limitations. A show begins with source-relative folder identity until accepted provider identity or an owner merge joins it.
 
-Every catalogue object is a row in `catalog_entities` (an integer id, a kind, a library, a public id), with narrow side tables for the facts that kind has. Kinds are data (`catalog_kinds`) with flags (`playable`, `container`, `searchable`, `browsable`, `listening`), and code asks the flags, not kind lists. A new kind is an insert plus, if needed, a new side table ([persistence rules](../../apps/portico-server/server/internal/persistence/README.md)).
+A complete healthy observation marks an absent file missing immediately. It stops being offered. A title with no available copies remains visible and missing, with `missingSince`. A verified reported removal can mark the final file missing without waiting for a second scan. Unreachable roots, changed mount identity and unreadable coverage cannot prove absence. Ordinary unexpectedly empty roots remain protected; verified watcher/path reports handle real last-file deletion.
 
-Shared facts use compact vocabularies: genres, tags, studios, networks, countries and credit roles are interned once (`catalog_terms`, credit labels) and referenced by number. External identities (TMDB, TVDB, AniList, IMDb, MusicBrainz) live in `catalog_external_ids`.
+The owner's missing-title rule is immediately, after days (default 30), or never. Reappearance reattaches when identity matches. Final title removal preserves bounded personal state for recognised identity, including provider identity. This is not a promise to restore every history row or playlist position. Removing a library leaves disk media intact and dismantles catalogue state in background batches. Some derived rows can leave a hidden empty library record.
 
-Facts are written synchronously, in the writer's own transaction, through the write API (`compactcatalog/write.go`). Scanning, metadata refresh, manual edits and the metadata editor all go through it.
+Delete previews and typed confirmation precede deletion from disk. There is no state-folder trash copy or restore-from-trash route. An owner can preview/delete one physical version; other versions and state remain, while the last deletion follows missing-title retention. Changed files are not silently substituted into a confirmed deletion. [Identity](../../_program/reports/identity.md), [identity review](../../_program/reports/review-identity.md) and [server follow-ups](../../_program/reports/server-followups.md) record merge-reference, multipart and large-transaction limits.
 
-## Derived data
+## Intake and naming
 
-Everything a read path needs that isn't a fact is **derived**: search documents, browse rows and their sort keys, availability, counts, related titles, categories, inherited attributes, facet counts, and recommendation features. Derivations are maintained, not cached:
+`internal/naming` combines bounded folder, filename and embedded evidence, with provenance and confidence. Usable file evidence wins contradictory folders: S02E01 within Season 1 is season 2. Flat shows, translated season folders, E01/01 within Season 2, episode zero, editions and split parts have reader support and scan integration. Audio tags outrank filename hints.
 
-- The write API and small triggers on the fact tables queue work on `catalog_dirty(domain, entity_id, revision)`.
-- One supervised worker drains the queue in bounded batches, one domain at a time, with short background transactions.
-- Each derivation has a **domain number** and a **version** (`catalog_derivations`). Raising the version rebuilds that domain in the background after startup. Readers of a rebuilding domain answer `ErrBuilding` until it catches up, and clients show a building state.
-- Any derived table can be emptied and rebuilt from facts.
+Scans enumerate current local file facts instead of treating unchanged directory times as proof. A damaged row, bad NFO line, unreadable subtree or failed probe leaves usable neighbours and name-based titles. Owner diagnostics name skipped units. `.plexignore` and `.ignore` are bounded scan configuration, including in File List Only; that tier still does not open media or ordinary sidecar content. Disc folders are grouped unsupported titles, not a guessed main stream.
 
-| Domain | Derivation |
-|---|---|
-| 17 | Search documents |
-| 18, 19 | Browse rows (sort keys, filter columns) and browse edges (membership) |
-| 20, 28 | Availability of items and of libraries |
-| 21 | Related titles |
-| 25, 26, 29 | Item and asset metrics, asset issues |
-| 27 | Categories |
-| 30 | Book context (series, position) |
-| 31 | Attributes a container inherits from its members |
-| 32 | Recommendation features ([Recommendations](05%20Recommendations.md)) |
-| 33 | Facet counts (filter option counts) |
+Monitoring defaults on: native watchers feed limited scans, with debounce, bounded watches and periodic network/failure fallback. Sidecar additions/changes/removals invalidate affected evidence. Jobs queue only missing analysis evidence and prune bounded terminal history. Native Windows/macOS watcher and network-share acceptance remain unverified. [Scan loop](../../_program/reports/scan-loop.md) supersedes earlier naming/sidecar wiring gaps in [naming](../../_program/reports/naming.md).
 
-A new title appears in search, browse, Recently Added and recommendations in the same drain. A removed title leaves at once through cascades, and availability is also checked on read.
+## Metadata and attention
 
-**Cost:** cataloguing is linear in the titles changed (about 6 ms per entity at 10k films on a Mac, 13.5 ms on the runner at 100k). Bulk removal is proportional to what was removed and never rewrites unrelated rows.
+The owner selects one provider per library. TMDB defaults for films, TV and anime; TheTVDB or AniList can be selected where supported. Local metadata only makes no online matching calls. Music uses MusicBrainz and local tag identity; audiobooks remain local. There is no automatic provider chain or Hosted metadata broker.
 
-## Read paths
+Matching accepts convincing yearless titles and minor misspellings, using typed IDs, normalised titles, kind/runtime and conflicting evidence. Low-confidence/unmatched titles enter the owner-only needs-attention queue with candidates, accept/search/provider-ID/dismiss actions and exact totals. Owner edits and locks outrank refresh. Local evidence is reconciled only after complete observations; outages retain prior evidence. Provider rates, concurrency and owner-search priority are bounded.
 
-`internal/catalog` builds every document a client reads:
+Artwork is selected by role and retained locally. Local-artwork usage has its own quota ledger, separate from fetched artwork. Provider locale may be unknown rather than invented. Per-library provider changes schedule rematching and retain presentation until replacement is published. Live-provider results remain unqualified. Sources: [providers/matching](../../_program/reports/providers-matching.md), [music/audiobooks](../../_program/reports/music-audiobooks.md), [console](../../_program/reports/console.md).
 
-- **Home**: an ordered, profile-arrangeable list of rows (Continue Watching, Recently added, Favorites, Recommended, the personal rows, Trending, saved views, …). Each row is a bounded page with its own cursor. A row may be off by default (the per-library Recently added rows) until the profile's layout places it. The Home document also names its **hero** (`hero: {rowId, entryId}`): the first entry of Continue Watching or of Continue Listening, whichever was played more recently, so the hero is an unfinished title or the next episode of the show last watched. There is no hero when neither row is on the viewer's Home. `client-core`'s `homeHero` writes every word on it (the show as the title and "S2 E3 · Episode" under it, the artist or author for something listened to, "Resume · 24m left"), and a title with no wide artwork shows its cover beside the words. Song entries carry the viewer's `plays`; an artist page's five most played songs read the maintained counts ("Popular" when the owner shares activity across profiles, "Your most played" otherwise).
-- **A library's tabs** are authored in client-core, not published by the server: Discover first, then the kind's own (TV and anime: Shows, Recently aired, Collections; movies: Movies, Collections; music: Artists, Albums, Songs, Genres, Playlists, and Unmatched for owners; audiobooks: Books, Authors, Series). There is no Categories tab; genres, decades and studios are filters. Browse is a query engine over the derived browse rows: a filter tree (`all`/`any`/`not` of predicates on genre, year, rating, people, duration, date added, watched state, …), sorts with position anchors for the scrub rail, and cursor paging. Counts and facet option counts come from derived counts, never from `count(*)` over a library.
-- **Recently aired is one card per show** (Justin, 2 Oct 2026): the tab reads the shows pivot sorted by `latestAired` (a show's most recently aired episode, newest first), and each show entry carries `latestEpisode` (air date, season and episode number, title, and how many of the show's episodes aired that day). The card is the show's poster; its caption is the episode ("S1 E4 · Sep 6") or the count ("4 episodes · Sep 17"). A row is posters or squares, never both, and never repeats one poster per episode.
-- **Browse entries** carry what a card or a table row needs without a second read: year, rating, resolution, air date (episodes), the album's artist, the book's author, the song's album, and an absolute episode number for a show numbered across its seasons. The `aired` sort orders episodes by air date (an expression sort: offset paging, no letter anchors). The `match` field finds albums made from untagged files.
-- **Detail pages** (title, show workspace, season, artist, album, book, person): the facts plus related rows and recommendation rows. A show's **per-show settings** (`catalog_show_settings`: hide seasons, absolute numbering, ranges of 100, newest first) are applied in the show workspace, which then lists groups (`all`, `range:<start>`, `specials`) in place of seasons; owners set them with `PUT /v1/admin/libraries/{id}/shows/{show}/settings`.
-- **Search**: across the libraries a viewer may see, from the search documents.
+## Read projections, sorting and freshness
 
-Rules every read path follows:
+Facts queue bounded derivations for search, browse, edges, availability, counts, facets and recommendations. Browse serves the previous relational generation during rebuild; search builds a separate FTS slot and switches publication. First builds serve committed work. Failed titles are recorded and retried without blocking healthy work. There is no normal “being prepared” browse/search state.
 
-- **One snapshot per request.** All reads for a document see one database snapshot.
-- **O(visible).** A page does bounded, indexed work, independent of library size. Guards in the tests reject statements that would scan a large table.
-- **Restrictions in the query.** A profile's library access and content restrictions are joined into the reads, not filtered afterwards.
-- **Memo only under exact keys.** A result may be memoised only when keyed by every revision it read (catalogue, viewer, restriction fence, and any feature revisions), so nothing stale is ever served.
+Read documents use consistent snapshots, restrictions in queries and bounded indexed candidate work. Natural sort strips relevant leading articles/symbols and folds diacritics. Search indexes alternative titles, parent context, people, artists, authors, narrators, years and catalogue collections; CJK uses indexed substring candidates. Genres and Series have real totals and paging. Ratings store integer 0–10; clients display half-stars by dividing by two, with unset distinct from zero.
 
-## Metadata
+The 14 October decision requires the main sort/filter vocabulary in every subgroup. This is a requirement, not a delivered claim: [grouping-sorts](../../_program/reports/grouping-sorts.md) is in progress. [Search/sort](../../_program/reports/search-sort.md) records remaining Saved-collection search, reanchoring and specialised time-field gaps.
 
-`internal/metadata` matches library items to provider records and refreshes them. `internal/metadataprovider` holds the bounded provider transports:
-
-| Media | Providers |
-|---|---|
-| Films and TV | **One provider per library** (2 Oct 2026, as Plex and Jellyfin have it; never a chain): TMDB by default, for anime libraries too; TheTVDB is the alternative an owner picks in the library's Metadata settings, and an anime library may also pick AniList (which names no episodes) |
-| Music | MusicBrainz, with AcoustID fingerprints for matching |
-| Books and audiobooks | Embedded tags and local files |
-
-- Keys ship with the server (the TMDB project token in `metadata/project.go` is intentionally distributed), so the owner configures nothing.
-- **Local metadata only** is a per-library provider choice that never goes online (`internal/localonly`, `internal/localmetadata`).
-- **Changing a library's provider re-matches the library** (2 Oct 2026). Every title matched with the provider it left goes back to unmatched and is searched for again with the new one; what it shows stays until the new match is published, and a different identity supersedes the old provider's facts (details, ratings, tags, credits, episode data). Identity locks on those titles are released, since they kept a match the library can no longer refresh. A show that moves to TheTVDB retires the other provider's facts on its episodes so TheTVDB's episode publication can name them. An automatic TheTVDB match is no longer recorded as an owner's lock. (`screen_review.go` `screenRematchLibraryTx`, `screen_publish.go`.)
-- **A local NFO beside an online provider** (2 Oct 2026): the NFO owns the credit departments it lists (in practice the cast: the parser reads `<actor>`), and the library's provider supplies the departments it leaves out (director, writers, producers). A film's credits are rows per provider, so both sit side by side; a show's are one field, so the provider's share is the `creditsOnline` field, read beside `credits` (`screen_publish.go` `screenCreditsBesideLocal`).
-- Refreshes are conditional (ETag/Last-Modified) where the provider supports it.
-- **Artwork:** each entity has chosen artwork per role (poster, backdrop, logo, still, square, …) in `artwork_selections`. Images are stored once by digest, resized on request, and served with long-lived cache headers.
-- **Manual metadata and Fix Match:** the owner can edit fields, lock them against refresh, and re-match an item from candidate rows with a title/year/provider search.
-- **Media analysis** (`internal/mediaanalysis`, `probefacts`, `audiofacts`) records measured facts about files (streams, loudness, encoder delay, chapters, markers) separately from provider metadata.
+Separate ordering, directory, personal and progress counters avoid conflicts caused by unrelated position ticks. The event stream sends scoped hints; the [client hub](../../_program/reports/freshness-clients.md) quietly rereads visible dependencies. Appended lists, some special screens and device focus still need acceptance or further integration.

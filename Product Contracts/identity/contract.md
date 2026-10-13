@@ -1,10 +1,10 @@
 # Identity, Accounts, Profiles, and Sessions Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
 Contract ID: `PC-IDENTITY`  
-Revision: `portico.reconciled.1`  
+Revision: `portico.october.1`  
 Status: **approved**  
 Owners: Product, Security, Hosted Identity, Server Identity, Client Foundations  
 Imports: `PC-FOUNDATION` viewer scope and permissions; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary  
@@ -15,7 +15,7 @@ Applies to: Hosted Services, Portico Server, Web, Client Core, and every first-p
 
 This contract owns user/account/profile identity, authentication methods, credential/session boundaries, identity switching, email privacy, and account-level server selection semantics. It does not specify server discovery transports, setup-code protocol mechanics, visual layout, media permissions, or deployment topology except where needed to establish an authority boundary. Enterprise federation, organization tenants, anonymous guest accounts, and provider-specific account recovery beyond Google and Apple are not first-release commitments.
 
-There are no unresolved identity product decisions in this revision. Adding another SSO provider, changing profile limits, or permitting email-less accounts requires a contract change.
+The October decisions remove email delivery from release scope. Residual Hosted mail requirements are unfinished reconciliation, not approval to require or send email. Provider/profile identity and access boundaries remain.
 
 ## 1. Authority and precedence
 
@@ -30,7 +30,7 @@ The authority split is absolute:
 | Hosted server membership, invitation, ownership association | Hosted Services | The server receives a signed projection and remains final media authority. |
 | Server-local permissions, media authorization, viewer state | The selected Portico Server | Enforced for every request, including Hosted users. |
 | Profile viewing identity | Hosted Services for Hosted profiles; Portico Server for Local profiles | Profile identifiers from different authorities are unrelated even if their strings match. |
-| Client installation identifier | Client metadata only | Never a credential, proof of possession, or required authentication factor. |
+| Client installation identifier | Client/server device binding | Random stable installation ID; accompanies server refresh and device approval, but is not a secret possession key. |
 
 No identifier may change meaning across boundaries. Every viewer scope follows current `PC-FOUNDATION` ownership and fencing rules; the original [`ViewerScope`](../../../References/Contract%20Baseline%202026-09-05/foundation/viewer-scope.schema.json) is a reference shape to port, not the rebuilt wire authority. `account-only` is Hosted and omits `serverId` before server selection; `server-bound` includes it. `authorizationRevision` fences requests, grants and cached projections. Durable viewer data is owned by the stable authority/account/profile/server key defined in PC-FOUNDATION; a revision change does not create a different owner or erase history.
 
@@ -44,7 +44,7 @@ Every account has:
 
 - one immutable opaque account ID;
 - one required unique username;
-- one verified contact email;
+- private provider/contact data where supplied; no release dependency on Portico email delivery;
 - one or more authentication identities (password, Google, Apple, or future approved provider);
 - zero or more Hosted Devices and session families;
 - one primary profile counted within a maximum of eight active profiles;
@@ -102,24 +102,17 @@ Username is the ordinary social and membership label. Contact email is not shown
 
 ### 3.2 Contact email
 
-A verified contact email is required for recovery and security notices. It is private account data, not a display identity.
+Contact/provider email is private data, never display identity or provider subject identity. Apple private-relay addresses are valid; do not infer the hidden address. Matching addresses never link accounts automatically.
 
-- Password registration completes email verification before the address is treated as verified.
-- A provider-verified email may establish the initial contact address.
-- An Apple private-relay address is valid and remains marked `privateEmail=true`; Portico must not attempt to discover or request the hidden address.
-- If the provider supplies no verified email, onboarding requires a separate email-ownership challenge. Merely submitting an address alongside an SSO assertion never verifies it.
-- A server owner who sends an invitation may see the address they entered while the invitation is pending. After acceptance, membership surfaces use username and profile identity, not the invite or contact address.
-- Logs, telemetry, route documents, QR payloads, device codes, and server-signed policy must not contain raw contact email unless the particular audited operation requires it.
-
-Changing contact email is a high-risk account operation and requires fresh account authentication, MFA when configured, verification of the new address, notification of the old address, and revocation policy appropriate to the risk.
+No Portico email is sent under the October decision. Earlier mail verification, reset links and notices are superseded. Existing Hosted mailoutbox/onboarding code still needs reconciliation. This contract does not invent a replacement recovery proof or describe that residual integration as complete. Logs, route documents, QR codes and ordinary server projections do not expose contact addresses.
 
 ## 4. Authentication methods
 
 ### 4.1 Password
 
-Hosted and Local password creation use the shared password contract: at least eight Unicode characters, at least one uppercase, one lowercase, and one number or non-letter special character, with a maximum of 72 UTF-8 bytes at the bcrypt boundary. Password managers, paste, autofill, and explicit show/hide controls remain enabled. Policy applies at create/change/reset; valid existing hashes remain valid.
+Retain the owner's light password policy and no lockout. Paste, password managers and show/hide remain supported. Request/admission bounds and MFA checks remain. Do not replace the deliberate policy with composition rules or email challenges. Current shared creation validation uses its implementation-defined character/byte bounds; inspect that validator rather than the superseded eight-character mixed-case prescription.
 
-Unknown-account and bad-password responses are indistinguishable. Authentication may upgrade an allowed hash cost. Password reset never reveals whether an account exists and never returns production reset material in the response.
+Sign-in refusals preserve privacy where possible. The accounts report records that under remote “owner only”, a member's correct password is distinguishable from a wrong one; this is not an indistinguishability guarantee.
 
 ### 4.2 Google
 
@@ -156,27 +149,21 @@ Portico does not automatically merge accounts. An explicit future merge feature 
 
 ### 4.7 MFA and recovery
 
-Hosted accounts support TOTP MFA, single-use recovery codes, verified email recovery, session/device review, and account deletion. Accepted TOTP steps cannot replay. Recovery and MFA challenges are purpose-bound, expire, are rate-limited independently of password login, and are audited without secret material.
-
-An SSO-only account may add a password after fresh provider/MFA proof. Password reset operates only for accounts with a password credential and never discloses account existence. Provider-account recovery remains with the provider; Portico must not present its email reset as a way to recover Google or Apple credentials.
+TOTP, single-use recovery codes and session/device review remain supported account-security paths. Accepted TOTP steps cannot replay. Challenges are purpose-bound, expiring and bounded. Provider-account recovery remains with Google/Apple. No Portico email recovery or verification is required by this release contract; residual Hosted mail flows are unfinished. Linking credentials still requires fresh applicable proof and must not remove the last usable method.
 
 ## 5. Session and Device model
 
-Hosted account credentials and selected-server credentials are distinct families with different audiences and revocation boundaries.
+Hosted account and selected-server credentials have separate audiences. A server/challenge-bound Hosted assertion is admitted by the selected local server; Hosted account authority alone never grants media access. Ordinary API/media/token refresh goes directly to that server.
 
-1. Hosted Services authenticates the account and issues the Hosted account family.
-2. The user selects a server and profile.
-3. Hosted Services issues only a short-lived, one-time, exact-server bootstrap/selection envelope.
-4. The verified server exchanges it for its own durable access/refresh family.
-5. Navigation, playback, events, and refresh continue directly with that server.
+Local access tokens are short-lived bearer tokens. Refresh tokens rotate with reuse detection and require the installation ID. A random installation ID is generated once per app installation; the server keeps device records per account/installation. No device private key or request proof of possession exists. Captured bearer/refresh credentials and installation ID can confer the session until revoked or detected as reused; HTTP provides no confidentiality.
 
-Hosted Services must never issue a durable refreshable server credential. A client must never store a Hosted refresh token inside a selected-server session record.
+TV code approval confers the approver's role. Cast targets are a separate exception: playback-only member authority. Remote sign-in policy and account schedules apply at all creation paths. Owner device approval can hold member devices pending. An absent installation ID cannot complete that approval flow; no optional-ID guarantee applies there.
 
-The completed browser remember-session flow uses Secure, HttpOnly, host-scoped renewal cookies and origin/CSRF protections. A deliberately incomplete memory-only bearer flow may remain during local integration, as recorded in accepted journey 08; it must not persist bearer credentials in localStorage or be described as completed browser persistence. Cookie and bearer adapters share the same domain authorization and revocation semantics. Native credentials are bearer-only, excluded from URLs/logs, and stored in Keychain, Keystore, or an equivalent platform secret store. Refresh tokens rotate with reuse detection.
+Session families support scoped sign-out/revocation. Transient transport, TLS, DNS, timeout, 429 and server failures preserve credentials. Learned signer revocation retires affected Hosted-admitted descendants; direct/recovery families remain independent. Live role/access changes are server checks; cached client role presentation still needs timely refresh.
 
-Transient transport, DNS, TLS, timeout, `408`, `429`, and `5xx` failures preserve credentials and signed-in state. Explicit sign-out, verified revocation, invalid/reused refresh, deleted account/profile, or another documented terminal authorization response may clear them. Ambiguous failure is never terminal.
+Scoped keys/tokens use digest-only storage and independent lifetimes. Password change and ordinary sign-out do not end them; explicit revocation, expiry, member disable/deletion and profile deletion do. Restore signs ordinary sessions out, but restores API credentials present in the backup; a previously revoked key may return. Review the key/token lists after restore. Credential management requires an ordinary session.
 
-A Device is authority-issued and revocable. Hosted and server Device IDs are separate namespaces. An optional installation ID may support naming, push, preference partitioning, and recovery hints, but authentication must succeed when it is absent or rotated.
+Native authentication storage must protect secrets and keep them out of URLs/logs. Browser cookie/bearer behaviour must be qualified on the actual host and transport. No completed all-client cookie or cryptographic device-key guarantee is inferred.
 
 ## 6. Multiple-server and zero-server behavior
 
@@ -196,7 +183,7 @@ A server/profile selection becomes visible only after route verification, server
 
 `signed_out → authenticating → onboarding_required | account_authenticated | failed_retryable | failed_terminal`
 
-- `onboarding_required → choosing_username → verifying_contact_email? → account_authenticated`
+- `onboarding_required → choosing_username → account_authenticated`
 - Cancel/abandon before credential issuance returns to `signed_out` without a partial account.
 - A consumed or expired onboarding transaction produces a resumable restart message, not a blank screen.
 - `failed_retryable` preserves prior authenticated state and retries only the attempted candidate.
@@ -252,7 +239,7 @@ Minimum applicability matrix:
 | Zero/multiple servers | not applicable | required | required | required | required | required | required | not applicable |
 | Email privacy | projection only | required | required | required | required | required | no email display | no email display |
 
-Platform adaptations may use native authorization sessions, secret stores, profile controls, and navigation, but may not remove an authentication choice, redefine authority, use email as provider identity, require installation metadata, or publish product UI before durable final scope verification.
+Platform adaptations may use native authorization sessions, secret stores, profile controls, and navigation, but may not remove an authentication choice, redefine authority, use email as provider identity, invent device-key proof, or publish product UI before durable final scope verification.
 
 Approved exceptions use the full `PORTICO-CONTRACT-EXCEPTION` record in `../governance.md`, with `Contract: PC-IDENTITY#<section>`. An exception without approval and conformance evidence is a defect.
 
@@ -262,3 +249,9 @@ The comparative evidence behind several choices is recorded in `../networking/pl
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## October scope and evidence
+
+Session records are installation-bound bearers, not possession keys. Cast is playback-only; TV approval retains the approver role. Member deletion anonymises owner play history. Restricted-profile device powers, failed-attempt pruning, rating-policy gaps and residual Hosted email flows remain unfinished.
+
+Sources: [accounts-security](../../../_program/reports/accounts-security.md), [review-accounts-security](../../../_program/reports/review-accounts-security.md), [hosted](../../../_program/reports/hosted.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

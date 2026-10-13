@@ -1,10 +1,10 @@
 # Navigation and Input Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
 Contract ID: `PC-NAVIGATION-INPUT`  
-Revision: `portico.reconciled.1`  
+Revision: `portico.october.1`  
 Status: **approved**  
 Owners: Product, Client Foundations, Client Core, Accessibility  
 Imports: `PC-FOUNDATION` viewer scope; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary  
@@ -370,3 +370,9 @@ Plex and Jellyfin were reviewed as evidence, not authority. The adopted lessons 
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## October scope and evidence
+
+Libraries remember per-profile/server tabs, sorts and filters on the device. Search text stays in scoped memory outside normal URLs/history. Server-selected See all replaces ID guesses. Subgroup sorting/filter parity is required but still in progress. Paused screen/focus restoration and deep appended-list freshness retain gaps.
+
+Sources: [web-app](../../../_program/reports/web-app.md), [native-app](../../../_program/reports/native-app.md), [native-sync](../../../_program/reports/native-sync.md), [freshness-clients](../../../_program/reports/freshness-clients.md), [grouping-sorts](../../../_program/reports/grouping-sorts.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

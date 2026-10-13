@@ -1,10 +1,10 @@
 # Live TV and DVR Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
 Contract ID: `PC-LIVE-DVR`  
-Revision: `portico.reconciled.1`  
+Revision: `portico.october.1`  
 Status: **approved**  
 Owners: Product, Server Live Sources, DVR Scheduler, Playback, Client Foundations  
 Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes  
@@ -31,7 +31,7 @@ This is a clean pre-release contract. Conforming implementations MUST implement 
 | playback contract | delivery plan, media grant, transcode/remux, timeline and player lifecycle |
 | client | presentation, current guide viewport, non-durable drafts; never scheduler or capacity truth |
 
-Consumer responses MUST NOT reveal source credentials, provider URLs, headers, raw import errors, tuner occupancy belonging to other viewers, recording filesystem paths, global storage paths, or another profile's rules/recordings. Owner operations require an interactive owner session with `server.manage`; an API key does not become owner-interactive merely because it has a broad scope.
+Consumer responses MUST NOT reveal source credentials, provider URLs, headers, raw import errors, tuner occupancy belonging to other viewers, recording filesystem paths, global storage paths, or another profile's rules/recordings. Owner operations require the owner role and the route's declared scope. Where the current registry marks an operation session-only, a broad key cannot substitute for a session.
 
 Every viewer-owned favorite, rule, allocation, recording visibility record, playback state, and event retains the stable owner tuple plus independently checked authorization and operation revisions. A policy refresh never changes recording ownership or destroys its history. Same-string Local and Hosted IDs are never merged.
 
@@ -309,3 +309,19 @@ Protected recording reservations preempt a conflicting live session at the reser
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## October shared input and private recording behaviour
+
+One upstream acquisition per source/channel serves all current viewers and DVR workers. Each has its own durable lease/private reader and may need its own conversion. Admission counts channels rather than multiplying tuner use per viewer. The last reader retains allocation until physical close after a three-second grace.
+
+The same airing recorded by two profiles shares payload storage through a capture leader and immutable hard links, with independent private catalogue ownership and deletion. Active leader cancellation does not seamlessly transfer capture. Guide extension during a running capture is not adopted dynamically. Reliable season/episode facts publish a recorded show/season/episode hierarchy; title identity attach-point integration remains a handoff.
+
+Playlist/guide import retains valid rows, reports bounded diagnostics, supports compressed guides and infers missing stops where possible. Large guides spool to private SQLite and publish bounded checkpoints. Default bounds are 50,000 channels, five million programmes and 512 MiB; owner limits remain real hostile-input/resource bounds. Full five-million-row performance has not been measured. Remote ingestion is distinct from the 48 MiB manual JSON preview budget.
+
+Current live publishing is MPEG-TS. Shared planning filters conversion targets to that transport. fMP4-only live audio/video and full probe-time mpv selection remain unfinished. Reservation countdowns, actual tuners, Windows physical locks/retirement, capture recovery and device codecs need acceptance. Standalone XMLTV-only setup and catch-up playback are not delivered.
+
+## October scope and evidence
+
+Shared input/private recording code is implemented; real tuner/capture/Windows confinement and all-client reservation/presentation acceptance remain open.
+
+Sources: [livetv](../../../_program/reports/livetv.md), [planner-wiring](../../../_program/reports/planner-wiring.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

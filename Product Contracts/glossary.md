@@ -4,7 +4,7 @@ Contract ID: `PC-GLOSSARY`
 
 Status: Approved
 
-Revision: portico.reconciled.1. Foundation and document 32 resolve the ownership and playback distinctions below.
+Revision: portico.october.1. Foundation and document 32 resolve the ownership and playback distinctions below.
 
 This glossary owns cross-contract meanings. A family contract may narrow a term for its domain but MUST NOT redefine it.
 
@@ -15,7 +15,7 @@ This glossary owns cross-contract meanings. A family contract may narrow a term 
 | Profile | An authority-scoped viewing identity beneath an account: Hosted Services owns Portico Account profiles and a Portico Server owns direct/local profiles. A selected server receives only the permitted projection. A profile owns viewer preferences and state where the applicable contract says so; it is not a login identifier. |
 | Server | One Portico Server authority, its media catalogue, local policy, and server-native credential families. |
 | Hosted Services | Portico's global identity and coordination control plane. It does not own media authority or carry ordinary media bytes. |
-| Control plane | Privacy-minimized global coordination for account identity, server claims/directory membership, signed policy/routes, push registration, DNS/certificates, and operator health. It is never the ordinary selected-server interaction or media data path. |
+| Control plane | Privacy-minimized global coordination for account identity, server claims/directory membership, signed policy/routes, DNS/certificates, and operator health. It is never the ordinary selected-server interaction or media data path. |
 | Data plane | Direct communication between a client and the selected Portico Server for authorized browsing, metadata projection, playback, progress, queues, downloads, Live/DVR, receivers, social playback, and server events. |
 | Direct Sign-In | Authentication directly against a selected Portico Server without using a Portico Account for that sign-in. User-facing language is “Sign in directly to a server.” |
 | Selected | Durable product state chosen by the user, such as server, profile, library pivot, quality, version, audio track, or subtitle track. |
@@ -40,3 +40,25 @@ This glossary owns cross-contract meanings. A family contract may narrow a term 
 | Stable viewer owner | Authority-qualified account/profile/server identity that owns durable data; authorization revisions are separate fences. |
 | Authorization revision | Versioned permission evidence; changes request/grant/cache eligibility without creating a new durable owner. |
 | Operation receipt | Immutable evidence of a past committed intent; not a statement that its result is still current or authorized. |
+
+| Title | Logical catalogue identity and its history/state, separate from the files that currently supply it. |
+| File | Physical source bytes with observed revision/custody; may disappear or be replaced without changing a recognised title. |
+| Version | An available file or file grouping for a title, carrying technical quality/edition/part evidence. Persistent multipart edition grouping remains incomplete. |
+| Missing title | A retained title with no available copies, marked missing until the owner's missing-title rule removes it. An unreachable root cannot establish this state. |
+| Trash period | Retention of missing catalogue titles; no trash folder or recoverable disk copy. |
+| Home networks | The owner's complete network list defining local versus remote. No overlay/proxy detection overrides it. |
+| Engine | Native or mpv playback implementation named by the plan; Vega implements its native engine. Capability and permission remain separate. |
+| Capability document | The single device document containing engine profiles, display/audio facts, Player selection and overrides. |
+| Original | Default quality intent retaining source fidelity where compatible; necessary compatibility conversion does not become a lower fixed quality. |
+| Automatic quality | Explicit viewer choice beginning at Original and adapting down/up to connection observations. Distinct from Automatic engine selection. |
+| Needs attention | Owner video metadata queue for unmatched/uncertain titles and candidate review. It does not include every music issue. |
+| Scope | One credential access category (read, playback, library, admin) required by a route in addition to current role/content permissions. |
+| API key | Owner-issued digest-stored bearer credential with named scopes, independent expiry/revocation and current member authority. |
+| Personal access token | Scoped integration bearer issued for a member and bounded by that member's current authority. |
+| Generation | Published read/media incarnation. Browse/search generation differs from playback media generation and from personal-command revision. |
+| Freshness hint | Scoped event asking a client to reread a dependency quietly; not permission or a complete replacement document. |
+| Download claim | Server-side request/preparation/list entry. Its retirement does not alone revoke the device receipt. |
+| Offline receipt | Signed permission and exact artifact/owner evidence with independent verification deadline; source tidying is not revocation. |
+| Shared input | One upstream acquisition per source/channel, with private readers and independent viewer conversions. |
+| Shared recording | One same-airing payload with independent profile-private ownership and deletion. |
+| Installation ID | Random stable app-installation identifier used with device records/refresh. It is not a private possession key. |

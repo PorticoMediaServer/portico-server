@@ -1,6 +1,6 @@
 # Portico Media Presentation Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
 **Contract ID:** `PC-MEDIA-PRESENTATION`  
@@ -421,3 +421,9 @@ Conformance compares semantic elements, order, state, aspect/fit, accessible ide
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## October scope and evidence
+
+Original is the quality default; Automatic is an explicit connection-adaptive choice. Missing cards and server-authored See all destinations have later follow-ups. Every subgroup must expose the main library sort/filter vocabulary; grouping implementation is still in progress. Physical layout/accessibility parity remains unverified.
+
+Sources: [web-app](../../../_program/reports/web-app.md), [native-app](../../../_program/reports/native-app.md), [personal-state](../../../_program/reports/personal-state.md), [grouping-sorts](../../../_program/reports/grouping-sorts.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

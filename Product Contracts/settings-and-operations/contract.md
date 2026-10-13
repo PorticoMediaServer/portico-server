@@ -1,10 +1,10 @@
 # Settings, Administration, and Operations Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
 Contract ID: `PC-SETTINGS-OPERATIONS`  
-Revision: `portico.reconciled.1`  
+Revision: `portico.october.1`  
 Status: **approved**  
 Owners: Product, Security, Server Operations, Hosted Operations, Client Foundations  
 Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes  
@@ -52,7 +52,7 @@ There are no intentionally unresolved product decisions in this revision. Implem
 
 There is exactly one broad Server Owner authority. Portico does not create a second all-powerful `administrator` role. A consumer with playback, download, DVR, feedback, metadata-edit, or library-management capabilities does not inherit server settings, People management, logs, other viewers' activity, backup, restore, provider-secret, update, or operator access.
 
-The `library.manage` permission permits the delegate to view configuration and start/cancel/retry scan, metadata-refresh, match-review and analysis work only for explicitly granted libraries; edit that library's display/descriptive, scan-tier and metadata policy; and view the safe operation summaries produced by those actions. It does not permit creating/removing libraries, adding/editing/removing sources or paths, configuring remote storage/provider credentials, deleting media or Portico records, emptying trash, changing global schedules/resource/retention policy, or accessing logs and server-wide diagnostics. Those remain Server Owner actions.
+The `library.manage` permission permits the delegate to view configuration and start/cancel/retry scan, metadata-refresh, match-review and analysis work only for explicitly granted libraries; edit that library's display/descriptive, scan-tier and metadata policy; and view the safe operation summaries produced by those actions. It does not permit creating/removing libraries, adding/editing/removing sources or paths, configuring remote storage/provider credentials, deleting media or Portico records, emptying retained missing titles, changing global schedules/resource/retention policy, or accessing logs and server-wide diagnostics. Those remain Server Owner actions.
 
 An API key never qualifies as an interactive owner session for restore, account-security changes, secret export, server transfer, or another high-risk operation.
 
@@ -219,7 +219,7 @@ A lost success response is reconciled with the idempotency receipt or a fresh re
 
 ## 6. Candidate configuration and secrets
 
-Provider, remote-storage, network, certificate, email, and other external integrations use a candidate-generation transaction:
+Provider, remote-storage, network, certificate, and other external integrations use a candidate-generation transaction:
 
 `editing → validating-locally → testing-candidate → ready-to-activate → activating → active | failed`
 
@@ -269,7 +269,7 @@ Consumer jobs expose only their own safe operation projection, never Server Cons
 
 ## 8. Destructive and high-risk actions
 
-Destructive actions include server/account/profile deletion, library/source removal, media deletion, empty-trash/cleanup that makes recovery harder, credential/API-key revocation, trust reset, backup deletion, restore, storage relocation, server transfer, shutdown, and update/rollback when data compatibility may change.
+Destructive actions include server/account/profile deletion, library/source removal, media deletion, missing-title cleanup that makes recovery harder, credential/API-key revocation, trust reset, backup deletion, restore, storage relocation, server transfer, shutdown, and update/rollback when data compatibility may change.
 
 Before execution, the authority MUST resolve the exact target and impact. The confirmation shows:
 
@@ -363,32 +363,17 @@ Consumers receive only notifications belonging to their own viewer state. Server
 
 Portico provides online, application-consistent server backups. A backup contains the server database and the Portico-owned configuration/evidence required to restore accounts, profiles, permissions, libraries, metadata decisions, settings, progress, and other canonical state. It excludes original media, ephemeral transcodes/cache/temp files, ordinary logs, active session credentials, and unbounded generated artifacts unless an explicitly selected component says otherwise.
 
-Every backup has an opaque ID, creation operation, Portico/schema version, component manifest, byte size, checksum, consistency result, verification time, encryption/key requirements, retention status, and `restoreReady` result. The manifest classifies Server-authoritative Local identity/configuration separately from cached Hosted membership/profile/policy projections. A file's presence is not proof that it is restore-ready.
+Every backup has an opaque ID, creation operation, Portico/schema version, component manifest, byte size, checksum, consistency result, verification time, required plain configuration components, retention status, and `restoreReady` result. The manifest classifies Server-authoritative Local identity/configuration separately from cached Hosted membership/profile/policy projections. A file's presence is not proof that it is restore-ready.
 
 Scheduled and manual backups use the same verified mechanism. Backup creation reserves space, uses the database backup API/snapshot protocol, writes privately, fsyncs as appropriate, validates the result, and publishes atomically. Backups on the same disk do not satisfy the recommendation for an independent copy. Portico MUST make that limitation visible.
 
 ### 12.2 Restore
 
-Restore is a supervised destructive operation with the state machine in `state-machines.yaml`:
+Restore is an owner-confirmed supervised operation. Validation/staging is detached and pollable with phase/byte progress. Validate the source, exact current pre-release schema/baseline, integrity and space before installation. Retain safety copies and durable staged/result evidence; install at restart and roll back on validated failure. Failed session scrubbing must be retried safely, without corrupting the rollback copy.
 
-`validating → staged → quiescing → safety-copy → installing → reopening-migrating → health-checking → complete`
+Active sign-ins are excluded from backups and invalidated after restore. API keys/tokens are the implemented exception: keys in the backup return, including keys revoked later. The owner must review them after restore. This exception is reported by api-platform; it is not a fresh-credential guarantee.
 
-Failure may enter `rolling-back → failed` or `recovery-required`. The server:
-
-1. requires interactive owner reauthentication and exact backup confirmation;
-2. validates identity, size, manifest, integrity, schema/version compatibility, available space and secret/key prerequisites before quiescing;
-3. durably creates an operation and short-lived status capability;
-4. fences new mutations/jobs and drains or safely interrupts admitted work;
-5. retains a verified safety copy and rollback headroom;
-6. installs with atomic filesystem/database primitives;
-7. establishes a fresh security incarnation outside the restored database and invalidates every restored server-issued session/refresh family, API key, setup/device trust proof, playback/media grant, download-preparation credential and idempotency/status receipt before ordinary traffic can resume. A counter loaded from the backup and incremented is insufficient to prevent rollback/reuse; the supervisor journal retains the incarnation through install and rollback;
-8. quarantines restored Hosted membership/profile/policy projections until the server obtains a current signed projection from Hosted Services; a restored cached projection can never reauthorize a deleted profile or removed member;
-9. reopens, applies only supported forward migration, and runs health/identity checks;
-10. publishes normal service only after success, otherwise verifies rollback or enters recovery mode.
-
-Local password/account records remain Server-authoritative backup data, but all server-issued credential families are new after restore. Hosted members—including a Hosted Server Owner—cannot regain ordinary access from restored cached policy. They authenticate and reconcile against current Hosted authority. If Hosted authority is unavailable, Hosted-member access remains fenced; only the separately approved Local owner-recovery mechanism from `PC-IDENTITY` may administer recovery. Absence of that mechanism is not permission to trust the backup's Hosted projection.
-
-The status capability is scoped to that restore, contains no path or credential, survives browser reload in protected session storage, and is invalid outside its bounded status endpoint. Losing a status response never starts a second restore.
+No older baseline/database compatibility is promised. The earlier status-capability, universal external security-incarnation and all-secret-component design is not certified as implemented. Startup recovery is minimal; the full recovery console remains unfinished. Hosted authority/signing revocation must be reconciled before relying on restored projections. Follow the current backup specification and source reports rather than the retired state-machines wire shapes.
 
 ### 12.3 Recovery mode
 
@@ -398,7 +383,7 @@ Recovery mode never auto-deletes the failed database, chooses an older backup by
 
 ## 13. Maintenance and updates
 
-Maintenance policy declares timezone, allowed window, enabled task classes, cadence, resource limits, playback preemption, and catch-up behavior. A missed window does not cause all accumulated heavy work to start simultaneously. Scheduler triggers are hints to create durable, deduplicated work; job state is the authority.
+Backup timing uses the configured local window. General background work is paced continuously with Gentle/Normal/Fast rather than restricted to that window. An owner may explicitly pause background work for one hour or resume it. Scheduler hints coalesce durable work; job state is the authority. Remaining worker pause boundaries are implementation follow-ups, not proof that every worker stops immediately.
 
 Disabling a schedule stops new scheduled admission. It does not falsely label an already-running job cancelled. The UI links to that job and offers cancellation only when safe.
 
@@ -426,7 +411,7 @@ Hosted Web performs these operations directly against the verified selected serv
 
 ### 14.2 Consumer clients
 
-Mobile, television, Roku, Cast and other consumer clients MUST provide applicable personal/profile playback, language, subtitle, accessibility, privacy, download and device preferences. They MAY show a compact owner-authorized server-health/alert summary when product-approved, but MUST deep-link or device-code hand off to Web for the administrative controls in §14.1.
+Mobile, television, Cast and other consumer clients MUST provide applicable personal/profile playback, language, subtitle, accessibility, privacy, download and device preferences. They MAY show a compact owner-authorized server-health/alert summary when product-approved, but MUST deep-link or device-code hand off to Web for the administrative controls in §14.1.
 
 Consumer clients MUST NOT duplicate provider credential entry, filesystem/remote-source setup, retention editors, raw logs, restore, server updates, arbitrary cleanup, user/API-key administration, or other high-risk Console operations.
 
@@ -503,3 +488,21 @@ For this contract, `<contract-id>` MUST be `PC-SETTINGS-OPERATIONS`. The same ex
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## October operations and API settings
+
+Keep existing useful settings wired. Prefer named profiles and plain numeric limits. The registry carries requested/effective values, bounds, defaults and application mode. Original is the viewer quality default everywhere; a session may override its starting value. Player Automatic/Native/mpv and stereo/passthrough/HDR overrides feed the one capability document. Home networks are the single locality setting; mandatory HTTPS and WAN-as-LAN are removed.
+
+Scoped owner keys and personal tokens are active. Webhooks and MCP run locally. Creation secrets are shown once; credential management is session-only. These features have web screens and shared transports, but broad native administration remains web-first. No MCP toggle is required.
+
+Optional cache/backup paths are startup variables. A restart parent supports owner Restart and asynchronous restore. Windows uses SCM/LocalService by default; macOS uses a system `_portico` daemon and package. Manual backups survive scheduled retention. New databases use bounded incremental reclamation; pre-migration copies stay beside the database. Actual package/service lifecycle and signed release execution are unverified.
+
+Client reports have bounded redacted upload and owner read/download/delete. Resource/status routes publish known usage and report unknown measurements honestly. Later console passes render these, Restart, restore progress, version deletion and exact needs-attention totals. Native report strings/UI and physical acceptance remain open. A minimal startup recovery page is implemented; full recovery console is not.
+
+State and backups are plain at rest. No encrypted-secret backup requirement applies. No consumer push or email is sent under the release decision; residual Hosted mail flows require reconciliation. Quiet HTTP guidance may be shown; unsafe-choice detection/permission enforcement flows are not added.
+
+## October scope and evidence
+
+Later console passes implement many initial screen handoffs. Native broad owner administration remains web-first. Physical OS packaging, full recovery console, release signing and residual pause boundaries remain open.
+
+Sources: [ops-packaging](../../../_program/reports/ops-packaging.md), [limits-settings](../../../_program/reports/limits-settings.md), [server-followups](../../../_program/reports/server-followups.md), [console](../../../_program/reports/console.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

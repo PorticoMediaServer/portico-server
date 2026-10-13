@@ -1,5 +1,7 @@
 # Library Channels builder (design spec)
 
+October scope and evidence: This remains a product design specification. Do not infer that its editor/API examples are the current wire contract. Shared live input/DVR changes do not redesign Library Channels. Verify editor/player behaviour against current registry and client code before marking conformance; physical acceptance remains open. Sources: [livetv](../../../_program/reports/livetv.md), [native-sync](../../../_program/reports/native-sync.md). Existing route examples must be checked against generated contracts before use.
+
 Server package `server/internal/livechannels/library`; builder UI in the web console (`web/src/screens/server/ChannelBuilder.tsx`). The feature is called **Library Channels** (`channels.custom.name`).
 
 Goal (Justin): any channel an owner can describe is easy to make. His three examples are acceptance tests:

@@ -1,54 +1,33 @@
 # Playback and media
 
-Playback matches or exceeds Plex. The server decides how a file reaches a device: played as-is, remuxed, or converted. The player on each client is a thin engine that follows that decision. Quality changes only when a person asks; server load never lowers it.
+The server decides the source, engine and delivery. Clients supply measured capabilities and user choices, play the presentation and report observations. [Playback Protocol](Specs/Spec%20%E2%80%94%20Playback%20Protocol%20v1.md) describes the current API boundary. It is pre-release despite the existing v1 paths.
 
-## Playback Protocol v1
+## One document and two engines
 
-`internal/playbackv1` is the resource layer clients use (API guide: `server/api/guide/04-playback-v1.md`):
+A device publishes one capability document at `PUT /v1/me/devices/current/capabilities`. It contains display/audio-output facts, the Player setting, overrides and profiles for each available engine. There is no second translated client profile.
 
-1. A client opens a **playback session** for an item, declaring its device profile: codecs, containers, HDR, audio channels and subtitle support. Declared profiles for known devices live in `internal/playback/testdata/client-profiles.json`.
-2. The server answers with **offers**, one per way to play: direct play of the original, a direct stream (remux to HLS without re-encoding), or a conversion. Each offer states its audio and subtitle renditions.
-3. The client takes an offer and plays its URL. Progress, seeks, rendition switches and the end are reported on the session. An end is reported once per session generation, and a `404`/`410` from the server counts as a confirmed end.
+Automatic (default) uses native for original playback or plain remux. It uses mpv when that avoids video conversion, lossy audio or subtitle burn-in and mpv can play the original. Native and mpv are explicit choices; a necessary fallback is explained in the plan. The presentation names the selected engine. Compatibility includes codecs, bit depth, container/transport, receiver audio, HDR and subtitle rendering.
 
-`internal/playback` holds the delivery decision (`delivery_decision.go`, `delivery_plan.go`), per-owner delivery settings, and diagnostics that explain why a decision was made.
+mpv implementations exist for iPhone/iPad/Apple TV and Android/Android TV/Fire TV. They are source implementations requiring real builds and device acceptance. mpv PiP/live/music are not delivered. Android mpv declares no bitstream passthrough, interlacing or Dolby Vision profile 5; HDR with mpv-drawn subtitles is tone-mapped. Vega uses its native implementation, text subtitles, SDR and stereo. Per-engine display ranges and multiple rate/resolution limits per codec remain gaps. Sources: [playback core](../../_program/reports/playback-core.md), [native playback](../../_program/reports/native-playback.md), [Apple mpv](../../_program/reports/apple-mpv.md), [Android mpv](../../_program/reports/android-mpv.md), [Vega](../../_program/reports/vega.md).
 
-## Delivery
+## Sessions and quality
 
-- **HLS for video.** Finite (VOD) HLS is produced on demand in segments and closed segments are immutable (`hls_*.go`). Seeks restart production at the nearest keyframe, and a bad network gets bounded retries.
-- **Conversions** run FFmpeg through one executor (`internal/mediaexec`). Background conversions run at the lowest OS priority; interactive ones don't.
-- **Hardware acceleration** is detected and reported to the owner. A failed hardware encode falls back to software, never to lower quality.
-- **Subtitles** (`internal/subtitles`, `internal/subtitlevideo`): text subtitles are delivered as WebVTT renditions where the client supports them. Image subtitles, and styled subtitles a client can't render, are burned in.
-- **Chapters, markers and lyrics:** chapter thumbnails, detected intro/credits markers (`segmentmarkers`) and lyric documents (`lyrics`) are served alongside playback.
-- **Prepared media** (`internal/preparedmedia`): owner-requested full conversions and offline-download preparations are stored as closed artifacts. `artifactlease` pins an artifact while any reader uses it.
+Web and native use PlaybackService, PlaybackSessionController and platform engines. Start/change/stop/timeline calls use the current session API. Version, quality and server track changes replan the same session and retain its queue, position and next entry. Rejected replans retain working authority. Changing the Player setting still starts a replacement session on the same queue entry on native.
 
-## Music and audiobooks
+Original is the saved default at home and away. Fixed lower choices impose explicit ceilings. Optional Automatic begins at Original, then steps down or up using client throughput, buffering and stalls. It is a viewer choice, never a server-load response. Session quality can override the saved starting value; owner/member ceilings still constrain delivery. Direct-file playback lacks fragment throughput evidence and may react only to stalls. Native start-throughput wiring and useful too-slow error hints remain report gaps.
 
-Plex and Plexamp are the standard. Gapless is a hybrid:
+## Conversion and subtitles
 
-- Clients direct-play the original file and decode it on the device. The server supplies the encoder delay, padding and gain metadata the client needs to trim exactly.
-- The server converts only formats a client can't decode, to FLAC or Opus, with exact trim. It never streams raw PCM.
-- The audio plan (`playback/audio_plan*.go`) chooses per track. The web app decodes with WebCodecs (`web/src/bridge/DecodeAudioRender.ts`); the Apple app uses native modules (`PorticoAudioRender`).
-- Queues, shuffle, repeat and listening preferences are shared client-core logic. The server records listening sessions for history and recommendations.
+Ordinary HLS planning now selects and persists executable converter targets. Supported paths include H.264, HEVC 8/10-bit and available AV1; HDR10/HLG preservation or CPU tone mapping; multichannel AAC/AC-3/E-AC-3/Opus/FLAC and compatible copied audio. HEVC/AV1 and applicable lossless audio use fragmented MP4. Upstream E-AC-3 eight-channel encoding is unavailable. Dolby Vision requires a compatible base or qualified reshape; full mastering metadata is not captured. Prepared recipes remain H.264 SDR/AAC. Live publishing remains MPEG-TS, so fMP4-only targets cannot be offered there. GPU/HDR/receiver evidence is still required. See [conversion outputs](../../_program/reports/conversion-outputs.md) and later [planner wiring](../../_program/reports/planner-wiring.md).
 
-## Decoder confinement
+Discovered subtitle tracks become selectable resources before extraction. The server can deliver WebVTT, ASS/SSA originals/fonts, PGS, paired VobSub and DVB capsules under grants. Device rendering is preferred when the engine supports it; burn-in is the fallback. The web contains WebAssembly libass and its own image-subtitle workers. Browser execution, real sample fidelity, font coverage and PiP/Cast transitions remain incomplete. Native/mpv rendering has separate declared limits. See [subtitle text](../../_program/reports/subtitles-text.md) and [web subtitles](../../_program/reports/web-subtitles.md).
 
-Every FFmpeg and ffprobe the server runs goes through `internal/mediaexec` and `internal/decoder`:
+## Listening and offline
 
-- **Always:** the input is passed as an open descriptor or a private loopback bridge (`privateoutput`); the protocol whitelist, minimal environment, bounded output size, no core dumps, own process group, parent-death signal and an orphan ledger.
-- **On Linux, additionally a bubblewrap sandbox** (user, PID, network, IPC and UTS namespaces, read-only mounts of FFmpeg's exact dependencies) where the host allows unprivileged user namespaces. The server tries it at startup and reports the outcome in the console.
-- `PORTICO_DECODER_SANDBOX=required` makes media jobs fail instead of running unsandboxed; `=off` skips the sandbox.
-- **FFmpeg itself** is a qualified bundle (`third_party/ffmpeg`, built by `scripts/build-ffmpeg.sh` and verified against its manifest), or explicitly configured binaries (`PORTICO_FFMPEG`, `PORTICO_FFPROBE`).
+Music/audiobooks use tags, chapters, lyrics and the shared listening/queue authority. Local lyric discovery is automatic before an explicit choice. Audiobook speed reaches 3× on server/web; engine acceptance remains required. Audio work adds gapless resampling, bounded seek/fallback paths, native gain and priming changes. Accurate gapless/deep-seek/output-latency behaviour still needs real fixtures and device evidence. See [music/audiobooks](../../_program/reports/music-audiobooks.md) and [audio engines](../../_program/reports/audio-engines.md).
 
-## Live TV, DVR and Library Channels
+Downloads carry a local title/artwork/subtitle bundle and signed permission receipt. Source replacement, title removal or server cache retirement ends the server claim without revoking valid device bytes. Access revocation and receipt expiry are separate. Ordinary sign-out keeps protected downloads; the viewer can explicitly remove them. Styled/image originals, companions/fonts, local player consumption, next-episode playback and clock rollback are not fully delivered. No server snapshot of an original is made merely to keep a download alive. [Downloads](../../_program/reports/downloads.md), [download review](../../_program/reports/review-downloads.md) and [native sync](../../_program/reports/native-sync.md) give exact limits.
 
-- **Sources:** HDHomeRun tuners, M3U playlists and Xtream accounts (`internal/livechannels`), with an XMLTV or provider guide. Clients never show source-type names.
-- **Live playback** shares one input per channel across viewers (`linearinput`); `linearbuffer` holds closed HLS segments so late joiners and rewinds are cheap.
-- **DVR:** recordings are scheduled from the guide, written to the recordings folder, and become library items (`recordingaccess`, `recordingmedia`).
-- **Library Channels:** owner-scheduled linear channels built from library queries (any browse filter, text match, rating thresholds, boolean groups, ordering). They're always shared, with no personal filters.
+## Live and social
 
-## Casting and remote playback
-
-- **Chromecast:** one shared Cast receiver application serves every server. Its page is compiled into each server at `/receiver/cast/` (`server/receiver/cast`) and published at cast.getportico.tv (`portico-internal/cast-receiver`).
-- **AirPlay:** the system picker, where the platform has one.
-- **Play on:** signed-in Portico devices found by local-network discovery. Watch Together groups (`internal/social`) sync playback across devices.
-- tvOS shows no casting UI.
+Live viewers and DVR share one upstream channel acquisition with private readers/conversions. Recordings stay profile-private; completed same-airing payloads use shared storage ownership. Active leader cancellation is not seamless. Watch Together has distinct command/presence fences and a brief readiness hold; casting/handoff retains independent receiver playback. Paused-first-frame, receiver control delivery and physical acceptance remain gaps. See [Live TV](../../_program/reports/livetv.md) and [social](../../_program/reports/social.md).

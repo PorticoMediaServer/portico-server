@@ -1,10 +1,10 @@
 # Saved State and Offline Downloads Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
 Contract ID: `PC-SAVED-DOWNLOADS`  
-Revision: `portico.reconciled.1`  
+Revision: `portico.october.1`  
 Status: **approved**  
 Owners: Product, Server Personal State, Client Foundations, Offline Media  
 Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes  
@@ -234,7 +234,7 @@ An artifact is playable offline only when the receipt passes schema, equality, p
 
 Opening Portico online revalidates receipts opportunistically without blocking already-valid local playback. Temporary Server or Hosted unavailability before `verifyBy` does not remove access. Temporary unavailability at or after `verifyBy` blocks playback but does not delete the receipt, catalogue entry, or protected bytes. A transport failure, timeout, or absence of a revalidation response is never evidence of revocation.
 
-When the client explicitly learns membership revocation, profile deletion, download-permission removal, media revocation, remote wipe, or sign-out, local playback fails closed and the associated protected bytes, receipt, and catalogue entry are deleted. An identity mismatch authorizes the same deletion only when the client independently establishes an intrinsic disagreement between the signed receipt and its protected catalogue scope, pinned originating Server/key, or artifact. A schema-invalid receipt, failed signature, unpinned or wrong key, or artifact digest/size mismatch is integrity-invalid and follows the same deletion path. Deletion is resumable and MUST be confirmed by the filesystem under section 11.
+When the client explicitly learns membership revocation, profile deletion, download-permission removal, explicit receipt/media-access revocation, or remote wipe, local playback fails closed and the associated protected bytes, receipt, and catalogue entry are deleted. An identity mismatch authorizes the same deletion only when the client independently establishes an intrinsic disagreement between the signed receipt and its protected catalogue scope, pinned originating Server/key, or artifact. A schema-invalid receipt, failed signature, unpinned or wrong key, or artifact digest/size mismatch is integrity-invalid and follows the same deletion path. Deletion is resumable and MUST be confirmed by the filesystem under section 11.
 
 A correctly scoped download belonging to another inactive profile is not an identity mismatch merely because that profile is not selected. It remains protected and invisible until that exact viewer scope is active. Clients revalidate a receipt only under its own stable authenticated server-bound owner tuple, permitting a newer current authorization revision; they never probe it under the currently selected but different viewer.
 
@@ -276,9 +276,9 @@ Offline observations have monotonic device event sequence, not necessarily incre
 | Remove from My List/Favorites | change that set only |
 | Delete playlist/collection/view | delete resource and grants only; never media |
 | Clear watch history | remove chronological history records in the active `ViewerScope`; preserve current resume/watched state, Saved resources, ratings, reactions, and downloads |
-| Reset viewing activity | separately named and confirmed broader action removing history plus resume/watched state in the active `ViewerScope`; preserve Saved resources, ratings, reactions, and downloads |
-| Delete media from server | separate owner action; downloaded copies enter revoked/deletion according to server policy and cannot hide the server-side destructive confirmation |
-| Sign out | remove the account's local protected downloads and scoped state |
+| Reset viewing activity | no destructive bulk reset is currently implemented; do not describe it as an available action |
+| Delete media from server | separate owner action; valid local copies survive source/title/cache retirement and cannot hide server deletion confirmation |
+| Sign out | clear online credentials and active presentation; keep protected downloads unless the person explicitly chooses to remove them |
 
 Deletion is idempotent. Interrupted deletion resumes on next launch. The UI MUST NOT report reclaimed space until the filesystem confirms removal. Secure erasure claims are prohibited on storage where the OS cannot guarantee them.
 
@@ -347,3 +347,21 @@ An offline authorization receipt remains usable for 30 days after successful ser
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## October personal-state and download behaviour
+
+Container Mark Watched/Unwatched applies to all current members, including partially played members. Both clear resume positions and fence older playback. A thirty-second Undo receipt restores the previous completion/progress mix, but refuses later edits/playback, changed membership, overlap or expiry. History, ratings and Saved flags remain. This supersedes protected-member defaults and constant-time container claims; large-container latency still needs qualification.
+
+A server download claim and a signed offline receipt have separate lifetimes. Retention, source replacement, prepared-cache retirement, title removal and removal of the server list claim do not revoke valid local bytes. Current account/profile/library/content permission and explicit receipt revocation still apply. Expired receipts block playback without deleting bytes; renewal requires the same stable owner and current rights. A disappeared title is reported truthfully while its local bundle remains usable. Restoring or merging cannot rewrite a disconnected device's cached receipt; renewal reconciles identity.
+
+Bundles carry title/group facts, artwork, chapters, markers, audio labels and text subtitles. Complete standalone playback also requires the appropriate styled/image originals, companions/fonts and local-player integration; those are unfinished. Chapter/trickplay images and offline next-episode playback remain gaps. No source snapshot is made solely to prolong an original download. Existing optimized recipes remain H.264 SDR/AAC; multipart titles cannot be downloaded as one file.
+
+Ordinary sign-out preserves protected downloads; they remain hidden outside their owner. Explicit removal deletes them resumably. Transfer completion must still be fenced after sign-out, cancellation or owner change. Source and claim housekeeping is never access-revocation evidence.
+
+Offline journal ordering preserves event sequence and observation time mapped to canonical intent order. It records historical plays without replacing a newer resume point or overriding later explicit watched intent. Server tests cover ordering/privacy; clock rollback, iOS partial reuse after URL change and dead-process Android transfer restart remain device gaps. Do not claim monotonic-clock protection is already complete.
+
+## October scope and evidence
+
+Offline current-permission and replay fixes are reported. Source tidying is not revocation. Local extras/next-episode/clock and background-transfer/device acceptance remain open; explicit access revocation still fails closed.
+
+Sources: [personal-state](../../../_program/reports/personal-state.md), [downloads](../../../_program/reports/downloads.md), [review-downloads](../../../_program/reports/review-downloads.md), [native-sync](../../../_program/reports/native-sync.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

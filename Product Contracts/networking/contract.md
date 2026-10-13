@@ -1,10 +1,10 @@
 # Discovery, Routing, Remote Access, and Resilience Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
 Contract ID: `PC-NETWORKING`  
-Revision: `portico.reconciled.1`  
+Revision: `portico.october.1`  
 Status: **approved**  
 Owners: Product, Security, Hosted Infrastructure, Server Networking, Client Foundations  
 Imports: `PC-FOUNDATION` viewer scope, permissions, and resource lanes; `PC-GOVERNANCE` lifecycle/exception law  
@@ -28,7 +28,7 @@ Client ── API, metadata, images, events, playback, downloads ──> selecte
 
 Hosted Services never relays, proxies, caches, transforms, inspects, or meters media, library metadata, artwork, subtitles, playback history, downloads, or server-local settings. Once a server-native session exists, ordinary product traffic and token refresh go directly to that server.
 
-Hosted Services remains involved only for account session renewal, server directory/selection, membership or invitation changes, Hosted profile work, push registration, claim/certificate/route coordination, and recovery when no verified route can be used.
+Hosted Services remains involved only for account session renewal, server directory/selection, membership or invitation changes, Hosted profile work, claim/certificate/route coordination, and recovery when no verified route can be used.
 
 ## 2. Public and transport domains
 
@@ -58,13 +58,13 @@ Address input is a URL/hostname field, not natural language:
 
 - disable spelling correction, smart quotes/dashes, autocapitalization, and content suggestions;
 - trim surrounding whitespace;
-- if a bare non-local host is entered, try canonical `https://` form;
+- for a bare public host, try HTTPS, then HTTP on the documented Portico port;
 - if a bare recognized local hostname/IP is entered, use the documented local default port and local HTTP policy;
 - preserve an explicitly supplied valid scheme and non-default port;
 - remove only a trailing root slash during canonicalization;
 - reject username/password components, protocol-relative values, backslashes, control characters, fragments, and unexpected paths or query parameters;
-- public routes require HTTPS;
-- HTTP is permitted only for loopback, `localhost`, `.local`, link-local, or private LAN addresses under the local-route policy;
+- routes advertised by Hosted require HTTPS;
+- direct HTTP is accepted at any address, including public names and IPv4/IPv6 literals;
 - do not silently follow a redirect to a different origin until that origin proves the expected server identity.
 
 Normalization is followed by public system-info/compatibility verification and identity pinning before credentials are sent. If the input is malformed, explain the accepted examples. If the host is syntactically valid but unreachable, preserve the entered address and classify connectivity separately.
@@ -91,7 +91,7 @@ Discovery is untrusted metadata until matched against either:
 
 After an authenticated Server connection succeeds, the client durably stores the exact raw 32-byte Ed25519 Server identity public key together with its canonical fingerprint and server-native credential. The raw key comes only from the verified signed Hosted route/attachment identity or from the Server's successful native-session credential response; the client recomputes and compares the fingerprint before treating it as an offline-verification pin. A fingerprint alone is not enough because a client cannot reconstruct a public key from its digest. A restart that has credentials or a fingerprint but no durably verified raw key remains fail-closed for signed offline material until the authenticated Server supplies the complete identity again; it never infers, substitutes, or accepts a key carried by a receipt.
 
-Stale TTL records are not connection candidates. A discovered host cannot override a pinned fingerprint, relax HTTPS on public addresses, or cause credentials to be sent before verification.
+Stale TTL records are not connection candidates. A discovered host cannot override a pinned fingerprint, change the chosen transport without the configured address-selection flow, or cause credentials to be sent before verification.
 
 Local Network permission denial is its own state. Clients explain how to enable it and may still use a verified public route; they do not misreport the account or server as invalid.
 
@@ -133,19 +133,11 @@ Clients may retain only the current and immediately previous verified document/c
 
 A route probe checks a minimal public identity/compatibility endpoint with a short timeout and bounded concurrency. It verifies the authenticated transport and pinned identity as specified in the connectivity amendment below; static server ID/fingerprint strings alone cannot authenticate a candidate. Probe failures are quality evidence, not authorization decisions. Later launches race remembered identity-verified addresses first. An address may remain a discovery hint after its discovery TTL or signed route document expires; expired evidence is not current route authorization. Reuse requires fresh transport/identity verification and valid server-native credentials and policy. A stale raw discovery advertisement never becomes a remembered verified candidate. If no remembered candidate succeeds within 500 milliseconds, the client starts fresh Hosted discovery while those probes continue; a conclusive failure of every remembered candidate starts Hosted immediately. A verified cached winner before that boundary creates no Hosted route-discovery request. Bonjour/local discovery and signed public-route probing run concurrently and the first identity-confirmed route wins.
 
-### 7.1 Signed membership-policy continuity
+### 7.1 Server-owned membership continuity
 
-Hosted membership policy is a separate signed document even when its digest or summary accompanies a route response. It contains `serverId`, monotonically increasing generation and policy revision, `issuedAt`, `expiresAt`, member/account/profile bindings, permission IDs from `PC-FOUNDATION`, restrictions, and signing key evidence. A newly issued or renewed document normally has a seven-day validity window. A policy change receives a fresh, strictly higher revision and fresh seven-day expiry. Unchanged authority is reissued after 24 hours with the same policy revision/content and a fresh seven-day expiry, preserving roughly six days of outage buffer without inventing a policy change. The server requests the current generation on its nominal 30-minute heartbeat only when the Hosted digest changes or the daily renewal is due. It accepts same-revision renewal only when policy/content roots are identical and issuance moves forward. The server records the last Hosted-confirmed revision/generation and acknowledgement, and rejects rollback, timestamp rollback, or any same-revision authority collision.
+Membership is owned by the selected local server, with changes pushed to Hosted's discovery index. There is no seven-day Hosted policy lease or daily signed membership renewal in current admission. Established local authority does not expire merely because Hosted is unavailable. Hosted identity admission, current signer revocations and explicit account departures still have their own proof/fence checks.
 
-Policy timing is explicit:
-
-| State | Hosted-member behavior |
-| --- | --- |
-| valid (`now < expiresAt`) | normal operations under the signed policy and local intersection |
-| expired (`now >= expiresAt`) | no new Hosted-member operation or byte authorization; the server fails closed until it verifies a current signed policy. Local Auth and recovery-owner operations remain governed by their own local authority. |
-| learned revocation/new narrower revision | immediate authorization-revision fence and atomic local projection; expiry continuity never overrides observed newer restrictive truth |
-
-Local Auth and the Local recovery-owner authority do not depend on a Hosted policy lease. A Hosted outage is not revocation, but it cannot extend a signed policy beyond its seven-day expiry. When Hosted returns, the server verifies and atomically applies the current revision before admitting Hosted-member operations; failed or ambiguous reconciliation remains fail-closed and publishes a clear `policy-reconciliation-required` state rather than guessing. Clients cannot override this server-owned enforcement with cached policy, request fields, or a locally broadened permission selection.
+Check-in compares the server member sequence/digest, reconciles departures and may deliver a root-signed signing certificate. A nullable certificate is accepted when Hosted's signer is unusable; no signed authority is trusted without verification. This is current source behaviour in `internal/hosted/current_schedule.go`, not an extension of an expired signed-policy document. Historic P05 is superseded as an implementation description.
 
 ## 8. Direct DNS and certificates
 
@@ -167,17 +159,13 @@ Requirements:
 
 Certificate status is not server login status. An expired/mismatched public certificate may make the public route unavailable while a verified LAN route continues safely.
 
-## 9. Hosted presence, polling, and push
+## 9. Hosted check-in and signed wakes
 
-A claimed server publishes a 45-minute Hosted presence lease and renews nominally every 30 minutes with bounded fleet jitter. A local, credential-keyed network signature is sampled without a Hosted request; startup, credential/certificate recovery, and real interface/topology transitions trigger an immediate heartbeat.
+The server's current loop runs event-driven work plus Hosted-supplied check-in: weekly when reachable by signed wake, daily otherwise, with per-server jitter and persisted retry floors. Network observations wake local evaluation but do not force a Hosted request. Membership deltas keep the index current; a mismatched digest/sequence requests bounded full reconciliation.
 
-Heartbeat supplies observed public topology, the locally applied policy revision/digest, and any pending repair directive. Hosted uses the reported revision as convergence evidence. The server requests a signed policy snapshot only when the authoritative digest changes or the unchanged daily renewal is due. There is no steady public-IP request, conditional-repair poll, or rapid `is anything new?` loop.
+Signed content-free server callbacks accelerate erasure, signer and route/index convergence. They are coordination messages, not consumer push notifications. A wake is not media authority; the server verifies current documents and exact generation before acting. Missed callbacks use check-in recovery without signing people out merely for an outage. Fleet rollover and real callback acceptance remain unverified.
 
-Push is an acceleration hint, never the authority. Hosted commits a durable, coalesced, content-free wake alongside relevant policy, profile-authority, or route-repair changes and delivers a short-lived Ed25519-signed callback only to the server's already verified public HTTPS endpoint. The callback can schedule only the server's ordinary outbound signed/credentialed policy, exact-account profile-directory, repair, and heartbeat flows. Policy wakes remain pending until a heartbeat explicitly reports the target policy revision; the separate snapshot acknowledgement remains exact snapshot/digest convergence evidence and is never compared numerically with the policy revision. Profile wakes remain pending until the server explicitly acknowledges the exact server/account/wake/revision tuple after applying it. Missed, duplicated, delayed, or forged callbacks cannot grant access or corrupt state and are retried with bounded backoff.
-
-Hosted profile-directory authority is refreshed on a 30-minute active-account fallback lease and may remain usable for up to the same seven-day signed-policy outage boundary only when no newer restrictive truth has been learned. Profile edits, PIN changes, restrictions, reordering, and deletion enqueue targeted wakes for near-immediate convergence, so the fallback cadence does not become the expected propagation delay.
-
-After connection, clients communicate with Hosted Services only for the control-plane cases in §1. Playback progress, Home refresh, search, notifications, server events, and media changes use the selected server directly.
+Ordinary playback, screens, notifications and metadata communicate with the selected server, not Hosted.
 
 ## 10. Retry and backoff policy
 
@@ -188,7 +176,7 @@ Retry policy is operation-classed and cancellation-aware.
 | Visible activation/setup code refresh | retry automatically while preserving current valid code | start about 5 s, exponential with jitter, cap 30 s | no **Try again** |
 | Selected server reconnect | race remembered LAN/public candidates; hedge Hosted discovery after 500 ms without a verified winner | bounded exponential with jitter, then low-frequency background retry | optional **Choose another server**; manual retry may accelerate |
 | Hosted account/control-plane recovery | preserve account/server credentials | exponential with jitter, cap appropriate to foreground/background | no sign-out; explicit retry only for a failed user mutation |
-| Heartbeat/presence lease | scheduled renewal with fleet jitter | bounded retry before expiry, continue after expiry at reduced rate | settings show factual state |
+| Check-in and signed wakes | event-driven plus daily/weekly backstop | bounded retry with persisted Retry-After and jitter | settings show factual state |
 | User mutation | one request plus safe idempotent retry where receipt exists | honor `Retry-After`; never blind-repeat non-idempotent work | actionable **Try again** may be offered |
 | Media API/playback | server-owned recovery policy | playback has priority; route replacement preserves session | player explains only when recovery cannot continue |
 
@@ -209,7 +197,7 @@ Classify before presenting:
 
 Messages state impact and next action. They never expose raw exception strings, internal domains, full route documents, tokens, public IP evidence, or certificate internals by default. Technical evidence belongs behind diagnostics.
 
-A Hosted outage must not interrupt local authentication or an established server session while its applicable signed membership policy remains valid or in the bounded continuity state above. A server outage must not sign out the Portico Account. A route failure must not clear a durable credential. Ambiguous auth responses must not be treated as revocation.
+A Hosted outage must not interrupt local authentication or an established server session under its current server-owned membership and credential authority. A server outage must not sign out the Portico Account. A route failure must not clear a durable credential. Ambiguous auth responses must not be treated as revocation.
 
 ## 12. Persistent connection transaction
 
@@ -264,3 +252,21 @@ See `plex-jellyfin-precedent-review.md` for the official mature-product evidence
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## Home networks and server transport — October decisions
+
+`lanNetworks` is the complete owner home-network list. Defaults include loopback, private/link-local/unique-local ranges and bounded directly attached subnets. An empty list makes all peers remote. No Tailscale, proxy or WAN-as-LAN detection creates another locality rule. Home classification governs sign-in, delivery and network accounting.
+
+Plain HTTP and TLS share the server port. TLS is encouraged, never forced. Remove mandatory-HTTPS policy. A quiet note may explain HTTP outside home networks; no unsafe-choice detection or blocking flow is added. Trust forwarded headers only from configured proxies, with bounded validated chains. The owner's hostname reverse proxy and certificate pair are supported. Certificate reload retains a valid old pair after an invalid replacement and reports actual serving state.
+
+IPv4, IPv6 and overlays remain supported; CGNAT is not refused. Connectivity still requires a working path. Sub-path hosting is excluded; relay is future work. Docker bridge multicast does not establish LAN discovery. Scoped IPv6 URL handling has regression coverage but needs browser/device acceptance.
+
+Hosted candidates remain TLS-only even though locally entered addresses may be HTTP. There is no confidentiality claim for HTTP. Owner connection-limit overrides require restart and expose requested/effective values. A bounded reserve protects necessary sign-in/console reads; keys and owner media use ordinary capacity. Sustained capacity and actual proxy/container/network acceptance remain unproven.
+
+Hosted server callbacks are signed coordination wakes, not consumer push. TV activation and background requests must honour the shared per-origin outage floor, Retry-After and positive jitter; a 5–30-second protocol retry cap must not shorten a longer shared outage floor.
+
+## October scope and evidence
+
+The appended review fixes supersede the initial ten findings. Runtime HTTP/2/proxy-policy/scoped-IPv6 regressions pass; actual proxy/container/browser discovery, IPv6 zones and capacity acceptance remain open. Never call setup DNS-rebinding protected.
+
+Sources: [networking](../../../_program/reports/networking.md), [review-networking](../../../_program/reports/review-networking.md), [native-sync](../../../_program/reports/native-sync.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

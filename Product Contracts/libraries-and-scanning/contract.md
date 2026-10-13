@@ -1,10 +1,10 @@
 # Sources, Libraries, and Scanning Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
 Contract ID: `PC-LIBRARY-SCANNING`  
-Revision: `portico.reconciled.1`  
+Revision: `portico.october.1`  
 Status: **approved**  
 Owners: Product, Server Storage, Scanner, Media Analysis, Security, Client Foundations  
 Imports: `PC-FOUNDATION` permissions and resource lanes; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary  
@@ -90,7 +90,7 @@ File List Only MUST:
 
 Filesystem directory enumeration and stat calls are not media-content reads. A backend that cannot list without downloading object bodies is not conformant for File List Only.
 
-After inventory commits, File List Only MAY perform descriptive provider matching using only normalized path/name/hierarchy and object-listing evidence. It may retain bounded identity/text decisions, but automatic provider-artwork binary acquisition waits for Basic. This is not permission to open media, NFO/OPF, subtitle, lyric, artwork, `.strm`, or embedded-tag content. Provider matching remains an independent metadata job under `PC-METADATA`; its network requests and match state are reported separately from source-download bytes.
+After inventory commits, File List Only MAY perform descriptive provider matching using only normalized path/name/hierarchy and object-listing evidence. It may retain bounded identity/text decisions, but automatic provider-artwork binary acquisition waits for Basic. This is not permission to open media, NFO/OPF, subtitle, lyric, artwork, `.strm`, or embedded-tag content. Bounded `.plexignore` and `.ignore` reads are scan configuration and are allowed in File List Only. Provider matching remains an independent metadata job under `PC-METADATA`; its network requests and match state are reported separately from source-download bytes.
 
 ### 2.2 Basic
 
@@ -308,17 +308,15 @@ Native rclone/WebDAV inventory and OS-mounted filesystem enumeration use distinc
 
 ## 10. Absence, deletion, and reconciliation
 
-Absence is destructive evidence and requires a complete, healthy, authoritative observation for the exact source/root/generation.
+A title and its files have separate lifetimes. A complete healthy observation of the exact admitted root and subtree marks absent files missing immediately. A verified paths-changed/watch observation can mark the final removed file missing. No second scan or missing-file grace is required.
 
-- Timeout, cancellation, permission loss, disconnected mount, invalid cursor, partial page, provider error, local I/O error, or unhealthy root MUST NOT prove absence.
-- A remote full inventory marks missing candidates only after terminal authoritative commit.
-- Explicit provider deletion in a valid delta may mark a candidate missing but remains subject to configured grace.
-- Remote/network sources default to a nonzero missing grace period. Local sources SHOULD also avoid immediate destructive removal when the root itself is unavailable.
-- A missing version does not delete the canonical item while another version is available.
-- Emptying trash/removing catalog state is a separate, owner-authorized action or clearly enabled policy and uses fresh authoritative evidence.
-- Removing a source is explicit, blocked while active playback uses it, cancels background work, marks its versions unavailable transactionally, then removes private credentials/artifacts after durable state is safe.
+Timeout, cancellation, permission loss, disconnected or changed mounts, invalid cursors, partial pages and unhealthy roots cannot prove absence. Protect the affected subtree and keep healthy observations elsewhere. An ordinary suddenly empty root that held media is unavailable until reachability/coverage can be established; verified reported removal is distinct.
 
-Reappearance within grace restores the same version/item where identity evidence matches. A move, rename, or provider-ID change is reconciled before treating the prior path as a deletion.
+A title with no available copies stays marked missing until the owner removes missing titles immediately, after a configured period (default 30 days), or never. Another recognised copy restores the title. Final removal retains supported personal state by recognised/provider identity; per-play history and playlist positions are not all restored.
+
+Deleting in Portico deletes the selected file on disk after preview and confirmation. There is no state-folder trash, trash restore or trash-folder retention. One-version deletion preserves other copies and personal state; deleting the last follows the missing-title policy. A changed file is not substituted into the deletion. Library removal keeps files and runs bounded catalogue cleanup. Removing one source marks its files unavailable while keeping other sources and protected state.
+
+Hidden empty library rows, large show merge transactions, untagged-audio replacement identity and some absorbed-reference repairs remain implementation limits in the identity reports.
 
 ## 11. Failure and owner-visible states
 
@@ -331,7 +329,7 @@ The UI MUST distinguish:
 - library inventory is usable while enrichment continues;
 - a source is offline while last-known catalog remains;
 - some objects failed but the run completed with warnings;
-- analysis was paused for playback and will resume;
+- analysis was slowed for playback, or explicitly paused by the owner and will resume;
 - credentials, binary approval, range support, or free storage require owner action;
 - a destructive cleanup awaits confirmation.
 
@@ -385,3 +383,17 @@ The informative comparison behind these decisions is in `plex-jellyfin-precedent
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## Naming, monitoring and tolerance — October decisions
+
+Read source-relative folders, filenames and bounded embedded evidence together. Usable file evidence wins conflicts. S02E01 inside Season 1 is season 2; E01/01 inside Season 2, flat files, episode zero, translated seasons, editions and parts are supported reader inputs. Embedded audio tags outrank path hints. Keep provenance, contradictions and confidence; do not require strict folder/file agreement.
+
+A bad file/probe, NFO row, ignore line or unreadable subfolder leaves usable neighbours and owner diagnostics. Bounds, symlink containment and source custody remain enforced. Disc folders become one unsupported logical entry rather than one title per stream.
+
+`monitorChanges` defaults true. Native watchers debounce into limited scans; bounded periodic fallback covers unavailable watches and network sources. Sidecar changes invalidate affected evidence. Unchanged directory times do not prove unchanged local files. Analysis queues only missing/revision-invalid evidence. Terminal job/change/listing history is bounded. Gentle/Normal/Fast controls pacing; playback slows rather than abandons analysis. Windows/macOS watches and network mounts need native acceptance.
+
+## October scope and evidence
+
+The later scan-loop report covers naming/ignore/sidecar wiring left open in earlier reports. Native watchers/network shares and large-merge/reference correctness still need acceptance or fixes.
+
+Sources: [identity](../../../_program/reports/identity.md), [scan-loop](../../../_program/reports/scan-loop.md), [naming](../../../_program/reports/naming.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.

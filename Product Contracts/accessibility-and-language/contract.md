@@ -1,10 +1,10 @@
 # Accessibility and Language Contract
 
-> Current Portico product contract, reconciled 5 September 2026.
+> Current Portico product contract. October decisions supersede the September reconciliation where noted.
 
 
 Contract ID: `PC-ACCESSIBILITY-LANGUAGE`  
-Revision: `portico.reconciled.1`  
+Revision: `portico.october.1`  
 Status: **approved**  
 Owners: Product, Accessibility, Product Language, Client Foundations  
 Imports: `PC-FOUNDATION` viewer scope and canonical semantics; `PC-GOVERNANCE` lifecycle/exception law; `PC-GLOSSARY` vocabulary  
@@ -301,3 +301,9 @@ Plex and Jellyfin lessons and rejected precedents are recorded in [`precedent-re
 ## Reconciled architecture boundary
 
 The applicable section of [Domain architecture and failure boundaries](../architecture-amendments.md) completes this contract. It resolves named implementation conflicts; original UX and product choices remain as recorded in [decisions.md](../decisions.md). Old schema/fixture references are historical inputs to be ported, as defined by the current registry, not a second rebuilt API authority.
+
+## October scope and evidence
+
+Native player caption size/background now have source implementation. Device-drawn ASS/image paths retain declared font and PiP/Cast limits. Screen-reader, large text, keyboard and TV-focus acceptance remain open; a source change does not mark the complete subtitle/accessibility contract met.
+
+Sources: [native-playback](../../../_program/reports/native-playback.md), [web-subtitles](../../../_program/reports/web-subtitles.md). [Owner decisions](../decisions.md) govern. Each existing conformance matrix is required coverage, not proof of execution. Release parity is required for applicable first-party features; truly unsupported platform capabilities are hidden. Roku, CarPlay, Android Auto and light theme are outside this programme. No consumer push or email. No stable API or old-database compatibility is promised before release.
