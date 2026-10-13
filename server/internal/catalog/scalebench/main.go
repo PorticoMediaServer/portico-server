@@ -170,6 +170,10 @@ func run() (runErr error) {
 		}
 	}
 	r.VisibilityBuildSec = time.Since(buildStart).Seconds()
+	if err = db.QueryRow("PRAGMA page_count").Scan(&pages); err != nil {
+		return err
+	}
+	r.BytesPerItem = float64(pages*size) / float64(*n)
 	cases := []struct {
 		name string
 		read func(*catalog.Service) error
