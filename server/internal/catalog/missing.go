@@ -38,7 +38,7 @@ var ErrSourceLooksUnmounted = errors.New("the folder is empty but held media bef
 // before this scan. The scan loop asks before it marks anything missing.
 func (s *Service) SourceLooksUnmounted(ctx context.Context, job, source string) (bool, error) {
 	var unmounted bool
-	err := s.db.QueryRowContext(ctx, `SELECT r.discovered=0 AND (r.reported=0 OR r.root_rebound=1) AND (r.root_rebound=1 OR NOT EXISTS(SELECT 1 FROM inventory_scan_issues x WHERE x.job_id=r.job_id AND x.reason IN('ignored_name','ignored_rule','symlink_disabled')))
+	err := s.db.QueryRowContext(ctx, `SELECT r.discovered=0 AND (r.root_rebound=1 OR NOT EXISTS(SELECT 1 FROM inventory_scan_issues x WHERE x.job_id=r.job_id AND x.reason IN('ignored_name','ignored_rule','symlink_disabled')))
  AND EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path='.' AND d.state='done' AND d.skipped=0)
  AND NOT EXISTS(SELECT 1 FROM inventory_directories d WHERE d.job_id=r.job_id AND d.relative_path<>'.')
  AND EXISTS(SELECT 1 FROM inventory_objects o WHERE o.source_id=r.source_id AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.seen_job<>r.job_id)

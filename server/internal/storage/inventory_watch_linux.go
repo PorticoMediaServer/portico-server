@@ -3,10 +3,12 @@
 package storage
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"golang.org/x/sys/unix"
+	"path/filepath"
 )
 
 type linuxInventoryWatcher struct {
@@ -65,11 +67,12 @@ func (w *linuxInventoryWatcher) Next(ctx context.Context) ([]InventoryChange, er
 			return nil, err
 		}
 		out := []InventoryChange{}
-		seen := map[int]bool{}
+		seen := map[InventoryChange]bool{}
 		for at := 0; at+unix.SizeofInotifyEvent <= n; {
 			wd := int(int32(binary.NativeEndian.Uint32(buf[at:])))
 			mask := binary.NativeEndian.Uint32(buf[at+4:])
 			size := int(binary.NativeEndian.Uint32(buf[at+12:]))
+			nameStart := at + unix.SizeofInotifyEvent
 			at += unix.SizeofInotifyEvent + size
 			if at > n {
 				return nil, ErrInventoryChanged
@@ -80,9 +83,17 @@ func (w *linuxInventoryWatcher) Next(ctx context.Context) ([]InventoryChange, er
 				}
 				return out, nil
 			}
-			if changes, ok := w.directories[wd]; ok && !seen[wd] {
-				out = append(out, changes...)
-				seen[wd] = true
+			if changes, ok := w.directories[wd]; ok {
+				name := string(bytes.TrimRight(buf[nameStart:at], "\x00"))
+				for _, change := range changes {
+					if name != "" && filepath.Base(name) == name && filepath.IsLocal(name) {
+						change.RelativePath = filepath.Join(change.RelativePath, name)
+					}
+					if !seen[change] {
+						out = append(out, change)
+						seen[change] = true
+					}
+				}
 			}
 			if mask&unix.IN_IGNORED != 0 {
 				delete(w.directories, wd)

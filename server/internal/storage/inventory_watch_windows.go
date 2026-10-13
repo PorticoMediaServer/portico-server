@@ -74,7 +74,7 @@ func (w *windowsInventoryWatcher) read(h windows.Handle, root WatchRoot) {
 			for i := range words {
 				words[i] = binary.LittleEndian.Uint16(buf[int(at)+12+i*2:])
 			}
-			relative := filepath.Dir(windows.UTF16ToString(words))
+			relative := windows.UTF16ToString(words)
 			if filepath.IsLocal(relative) {
 				w.send(InventoryChange{SourceID: root.SourceID, RelativePath: relative})
 			}

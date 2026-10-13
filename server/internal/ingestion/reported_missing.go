@@ -4,9 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"io"
-	"os"
-	"path/filepath"
 	"time"
 
 	"portico.local/server/internal/catalog"
@@ -19,15 +16,18 @@ type reportedMissing struct{ source, incarnation, identity, object, revision str
 // root with a readable parent, supplies evidence of removal. Offline roots
 // and unknown paths remain ordinary queued notices.
 func (s *Service) removedPathEvidence(ctx context.Context, paths []string) ([]reportedMissing, error) {
-	rows, err := s.db.QueryContext(ctx, `SELECT id,configured_root,root,incarnation,root_identity FROM library_sources WHERE enabled=1 AND health NOT IN('root_changed','removing') AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=library_sources.library_id) LIMIT 4096`)
+	rows, err := s.db.QueryContext(ctx, `SELECT id,configured_root,root,incarnation,root_identity,follow_symlinks FROM library_sources WHERE enabled=1 AND health NOT IN('root_changed','removing') AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries d WHERE d.library_id=library_sources.library_id) LIMIT 4096`)
 	if err != nil {
 		return nil, err
 	}
-	type root struct{ id, configured, path, incarnation, identity string }
+	type root struct {
+		id, configured, path, incarnation, identity string
+		follow                                      bool
+	}
 	roots := []root{}
 	for rows.Next() {
 		var r root
-		if err = rows.Scan(&r.id, &r.configured, &r.path, &r.incarnation, &r.identity); err != nil {
+		if err = rows.Scan(&r.id, &r.configured, &r.path, &r.incarnation, &r.identity, &r.follow); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -39,6 +39,9 @@ func (s *Service) removedPathEvidence(ctx context.Context, paths []string) ([]re
 		return nil, err
 	}
 	out := []reportedMissing{}
+	// An inconclusive or slow proof leaves the ordinary queued scan in charge.
+	proof, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
 	for _, raw := range paths {
 		path, ok := cleanReportedPath(raw)
 		if !ok {
@@ -60,39 +63,20 @@ func (s *Service) removedPathEvidence(ctx context.Context, paths []string) ([]re
 			if err != nil {
 				return nil, err
 			}
-			root, err := os.OpenRoot(r.path)
-			if err != nil {
-				continue
+			req := storage.InventoryRequest{Root: r.path, RootIdentity: r.identity, RelativePath: relative, FollowSymlinks: r.follow}
+			var absent bool
+			if s.storage != nil {
+				absent, err = s.storage.InventoryAbsence(proof, r.id, req)
+			} else {
+				absent, err = storage.LocalInventoryAbsence(req)
 			}
-			file, err := root.Open(".")
-			if err != nil {
-				root.Close()
-				continue
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
 			}
-			identity, e := storage.FileObjectIdentity(file)
-			file.Close()
-			if e != nil || !storage.SameRoot(identity, r.identity) {
-				root.Close()
-				continue
+			if proof.Err() != nil {
+				return out, nil
 			}
-			parent, e := root.OpenRoot(filepath.Dir(relative))
-			root.Close()
-			if e != nil {
-				continue
-			}
-			_, e = parent.Lstat(filepath.Base(relative))
-			if !errors.Is(e, os.ErrNotExist) {
-				parent.Close()
-				continue
-			}
-			folder, e := parent.Open(".")
-			parent.Close()
-			if e != nil {
-				continue
-			}
-			_, e = folder.ReadDir(1)
-			folder.Close()
-			if e != nil && !errors.Is(e, io.EOF) {
+			if err != nil || !absent {
 				continue
 			}
 			evidence.source, evidence.incarnation, evidence.identity = r.id, r.incarnation, r.identity
