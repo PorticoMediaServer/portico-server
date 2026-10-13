@@ -321,7 +321,9 @@ func finishRollback(state, staged string, marker restoreMarker) error {
 		writeResult(state, "rolled_back", marker.Reason+"; not every file moved back yet (the previous state is kept in backups/"+marker.PreRestore+"), the next start continues")
 		return err
 	}
-	writeResult(state, "rolled_back", marker.Reason)
+	if err := writeResult(state, "rolled_back", marker.Reason, marker); err != nil {
+		return err
+	}
 	_ = os.RemoveAll(staged)
 	return nil
 }
@@ -334,7 +336,9 @@ func finishApplied(ctx context.Context, state, staged string, marker restoreMark
 	if err := verify(ctx, serverDB); err != nil {
 		return failSwitch(state, staged, marker, err)
 	}
-	writeResult(state, "restored", "")
+	if err := writeResult(state, "restored", "", marker); err != nil {
+		return err
+	}
 	_ = os.RemoveAll(staged)
 	return nil
 }
@@ -509,12 +513,7 @@ func writeMarker(staged string, marker restoreMarker) error {
 	if err = os.Rename(tmp, final); err != nil {
 		return err
 	}
-	dir, err := os.Open(staged)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-	return dir.Sync()
+	return syncDirectory(staged)
 }
 
 // RestoreUnresolved reports whether a restore stopped part-way: its marker is
@@ -534,12 +533,26 @@ func RestoreUnresolved(state string) bool {
 	return marker.State != markerStaged
 }
 
-func writeResult(state, outcome, reason string) {
-	raw, err := json.MarshalIndent(RestoreResult{At: time.Now().UTC().Format(time.RFC3339), Outcome: outcome, Reason: reason}, "", "  ")
-	if err != nil {
-		return
+func writeResult(state, outcome, reason string, markers ...restoreMarker) error {
+	result := RestoreResult{At: time.Now().UTC().Format(time.RFC3339), Outcome: outcome, Reason: reason}
+	if len(markers) > 0 {
+		result.JobID = markers[0].JobID
+		result.OperationID = markers[0].OperationID
+		result.SourceDigest = restoreSourceDigest(markers[0].Source)
+		result.SchemaVersion = markers[0].SchemaVersion
 	}
-	_ = os.WriteFile(filepath.Join(state, RestoreResultFile), append(raw, '\n'), 0600)
+	raw, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return err
+	}
+	final := filepath.Join(state, RestoreResultFile)
+	if err = durableFile(final+".next", append(raw, '\n')); err != nil {
+		return err
+	}
+	if err = os.Rename(final+".next", final); err != nil {
+		return err
+	}
+	return syncDirectory(state)
 }
 
 // checkpointFile merges the WAL back into the database so the pre-restore

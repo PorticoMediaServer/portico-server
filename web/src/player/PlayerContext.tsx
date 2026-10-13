@@ -1,4 +1,5 @@
 import type {PreparedChoice} from '@core/prepared-media.ts';
+import type {PlaybackChoices} from '@core/playback-v1/choices.ts';
 import type {MenuAnchor} from '../ui/Menu';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {GuideChannel} from '@core/channel-guide.ts';
@@ -7,8 +8,8 @@ import {ActionsCtx, type EntryOrigin, type SequenceContainer} from './engine';
 
 /** Player intents available to every screen. */
 export type PlayerActions = {
-  /** `prepared`/`quality`: a version picked on the title page before Play. */
-  play: (itemId: string, startSeconds: number, entry?: ContentEntry, prepared?: PreparedChoice, quality?: string) => void;
+  /** `choices`: the quality, version and audio track picked on the title page before Play. */
+  play: (itemId: string, startSeconds: number, entry?: ContentEntry, prepared?: PreparedChoice, quality?: string, choices?: PlaybackChoices) => void;
   /** `container`: on Playback v1, a show/season/album/artist/disc/collection/playlist/book plays as one server request. */
   playSequence: (entries: readonly ContentEntry[], index: number, startSeconds: number, container?: SequenceContainer) => void;
   tune: (channel: GuideChannel) => void;

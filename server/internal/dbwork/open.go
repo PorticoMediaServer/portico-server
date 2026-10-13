@@ -42,10 +42,34 @@ func OpenHandle(path string, policy Policy) (*sql.DB, error) {
 	// process holds on it, so a second handle (the watchdog's reopen) would take
 	// the live handle's locks away, and another connection could then rebuild
 	// the WAL index under its mapping (the retired server's SIGBUS, 2 Sep).
+	created := false
 	if file, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600); err == nil {
 		file.Close()
+		created = true
 	} else if !errors.Is(err, os.ErrExist) {
 		return nil, err
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if created || info.Size() == 0 {
+		// Establish the file format once, before WAL creates the header. It is
+		// intentionally absent from the DSN: repeated assignments on existing
+		// connections can mutate the file being preserved for restore rollback.
+		initial, err := sql.Open("sqlite", path)
+		if err != nil {
+			return nil, err
+		}
+		initial.SetMaxOpenConns(1)
+		_, err = initial.Exec("PRAGMA auto_vacuum=INCREMENTAL; PRAGMA application_id=0")
+		closeErr := initial.Close()
+		if err != nil {
+			return nil, err
+		}
+		if closeErr != nil {
+			return nil, closeErr
+		}
 	}
 	dsn, err := policy.DSN(path)
 	if err != nil {

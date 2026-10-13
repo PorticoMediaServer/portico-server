@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 
-	"portico.local/server/internal/administration"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadata"
@@ -20,30 +19,8 @@ func metadataJobEdit(a catalog.JobArguments) metadata.BulkEdit {
 }
 func (d Dependencies) bulkCommandHooks() catalog.BulkCommandHooks {
 	return catalog.BulkCommandHooks{
-		Trash: func(ctx context.Context, p identity.Principal, operation, item string, auth func(context.Context, *sql.Tx) error, complete func(*sql.Tx) error) error {
-			if d.Administration == nil {
-				return errors.New("trash service unavailable")
-			}
-			e := d.Administration.TrashJobItem(ctx, auth, p.Authority+":"+p.AccountID, operation, item, complete)
-			switch {
-			case errors.Is(e, administration.ErrTrashRecovery):
-				return e
-			case errors.Is(e, administration.ErrDenied):
-				return &catalog.JobItemError{Code: "trash_not_allowed"}
-			case errors.Is(e, administration.ErrConflict):
-				return &catalog.JobItemError{Code: "trash_conflict"}
-			case errors.Is(e, administration.ErrNotFound):
-				return &catalog.JobItemError{Code: "not_found"}
-			}
-			return e
-		},
 		Validate: func(command string, a catalog.JobArguments) error {
 			switch command {
-			case "trash":
-				if d.Administration == nil {
-					return catalog.ErrJobRequest
-				}
-				return nil
 			case "refresh":
 				if d.Metadata == nil {
 					return catalog.ErrJobRequest

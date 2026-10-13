@@ -1,4 +1,3 @@
-import {currentI18n} from '../../app/i18n';
 import React, {useRef, useState} from 'react';
 import {readLibraryChannels, readLibraryDefaults, readLibraryTemplates, saveLibraryChannel, type LibraryChannel, type LibraryChannelConfig, type LibraryChannelTemplate} from '@core/library-channels.ts';
 import {channelRequestID} from '@core/live-source-draft.ts';
@@ -10,7 +9,7 @@ import {useSession} from '../../app/session';
 import {Badge, Button, ConfirmDialog, Dialog, Freshness, KeyValue, Menu, Notice, SettingsGroup, SettingsRow, StateView, Text, type MenuItem} from '../../ui';
 import {SectionHeader} from './Server';
 import {ChannelEditor} from './ChannelBuilder';
-import {useI18n} from '../../app/i18n';
+import {useI18n, type I18n} from '../../app/i18n';
 
 /** CD-13: the logo fence is the logo revision, never the channel configuration revision.
  * The client cannot obtain the logo revision, so it omits the fence for an
@@ -37,7 +36,8 @@ const stateTone = (c: LibraryChannel): 'healthy' | 'warning' | 'danger' | 'neutr
  */
 export function LibraryChannelsPanel() {
   const {api, session} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const serverId = session?.viewer.serverId ?? '';
   const read = useRead<LibraryChannel[]>(() => readLibraryChannels(api, serverId), [api, serverId]);
   const templates = useRead<LibraryChannelTemplate[]>(() => readLibraryTemplates(api, serverId), [api, serverId]);
@@ -88,7 +88,7 @@ export function LibraryChannelsPanel() {
   };
   return (
     <>
-      <SectionHeader lede={t('web.console.nav.channelsLede')} actions={<Menu label={t('builder.newTitle')} trigger={<Button variant="primary" icon="plus" label={t('builder.newTitle')} iconAfter="chevronDown" />} items={[...(templates.data ?? []).map<MenuItem>(t => ({id: 'tpl:' + t.id, label: t.name, meta: t.applicable ? undefined : sentence(t.reason || 'Not enough media'), disabled: !t.applicable, group: 'Templates'})), ...templateStatus(templates), {id: 'blank', label: t('web.libraryChannels.startFromScratch'), icon: 'plus', group: 'Custom'}]} onSelect={id => {
+      <SectionHeader lede={t('web.console.nav.channelsLede')} actions={<Menu label={t('builder.newTitle')} trigger={<Button variant="primary" icon="plus" label={t('builder.newTitle')} iconAfter="chevronDown" />} items={[...(templates.data ?? []).map<MenuItem>(t => ({id: 'tpl:' + t.id, label: t.name, meta: t.applicable ? undefined : sentence(t.reason || 'Not enough media'), disabled: !t.applicable, group: 'Templates'})), ...templateStatus(t, templates), {id: 'blank', label: t('web.libraryChannels.startFromScratch'), icon: 'plus', group: 'Custom'}]} onSelect={id => {
         if (id === 'templates-retry') templates.reload();
         else if (id === 'blank') createBlank();
         else { const template = templates.data?.find(t => 'tpl:' + t.id === id); if (template) review(template); }
@@ -107,7 +107,7 @@ export function LibraryChannelsPanel() {
         ) : null}
         {channels.length ? (
           <SettingsGroup title={t('channels.title')} action={<Freshness at={read.at} onRefresh={read.reload} refreshing={read.loading} />}>
-            {channels.map((c, i) => <SettingsRow key={c.config.id} icon="channels" label={c.config.name} help={`${c.config.description || (c.config.rules.length ? `${c.config.rules.length} rule${c.config.rules.length === 1 ? '' : 's'}` : 'No rules')} · ${c.candidateCount.toLocaleString()} titles${c.generatedThrough ? ` · scheduled through ${new Date(c.generatedThrough).toLocaleString()}` : ''}${c.healthCode ? ` · ${sentence(c.healthCode)}` : ''}`} meta={<Badge tone={stateTone(c)} dot>{!c.config.enabled ? t('web.libraryChannels.offState') : sentence(c.state)}</Badge>} control={<Menu label={c.config.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.storage.actions')} />} items={[{id: 'edit', label: t('web.selection.edit'), icon: 'edit'}, {id: 'toggle', label: c.config.enabled ? t('web.libraryChannels.turnOff') : t('web.libraryChannels.turnOn'), icon: c.config.enabled ? 'pause' : 'play'}, {id: 'regen', label: t('web.libraryChannels.regenSchedule'), icon: 'refresh', disabled: !c.replacementBoundary}, {id: 'health', label: t('web.libraryChannels.checkHealth'), icon: 'pulse'}, {id: 'logo', label: t('web.libraryChannels.uploadLogo'), icon: 'upload'}, {id: 'up', label: t('web.profile.moveUp'), icon: 'chevronUp', disabled: i === 0, separatorBefore: true}, {id: 'down', label: t('web.profile.moveDown'), icon: 'chevronDown', disabled: i === channels.length - 1}, {id: 'delete', label: t('web.libraryChannels.delete'), icon: 'trash', destructive: true, separatorBefore: true}]} onSelect={id => {
+            {channels.map((c, i) => <SettingsRow key={c.config.id} icon="channels" label={c.config.name} help={[c.config.description || t('web.libraryChannels.ruleCount', {count: c.config.rules.length}), t('server.channels.titles', {count: c.candidateCount}), c.generatedThrough ? t('server.channels.through', {when: i18n.dateTime(c.generatedThrough)}) : '', c.healthCode ? sentence(c.healthCode) : ''].filter(Boolean).join(' · ')} meta={<Badge tone={stateTone(c)} dot>{!c.config.enabled ? t('web.libraryChannels.offState') : sentence(c.state)}</Badge>} control={<Menu label={c.config.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.storage.actions')} />} items={[{id: 'edit', label: t('web.selection.edit'), icon: 'edit'}, {id: 'toggle', label: c.config.enabled ? t('web.libraryChannels.turnOff') : t('web.libraryChannels.turnOn'), icon: c.config.enabled ? 'pause' : 'play'}, {id: 'regen', label: t('web.libraryChannels.regenSchedule'), icon: 'refresh', disabled: !c.replacementBoundary}, {id: 'health', label: t('web.libraryChannels.checkHealth'), icon: 'pulse'}, {id: 'logo', label: t('web.libraryChannels.uploadLogo'), icon: 'upload'}, {id: 'up', label: t('web.profile.moveUp'), icon: 'chevronUp', disabled: i === 0, separatorBefore: true}, {id: 'down', label: t('web.profile.moveDown'), icon: 'chevronDown', disabled: i === channels.length - 1}, {id: 'delete', label: t('web.libraryChannels.delete'), icon: 'trash', destructive: true, separatorBefore: true}]} onSelect={id => {
               if (id === 'edit') setEditing({config: c.config, revision: c.revision});
               else if (id === 'health') setHealthFor(c);
               else if (id === 'logo') { logoTarget.current = c; logoPicker.current?.click(); }
@@ -155,7 +155,8 @@ type Health = {healthy: boolean; state: string; message: string; generatedThroug
 /** Whether a channel is actually on the air, and in a sentence what is wrong if it is not. */
 function ChannelHealthDialog({channel, onClose}: {channel: LibraryChannel; onClose: () => void}) {
   const {api} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const read = useRead(async () => { const raw = await api.request<{result?: Health} & Health>(`/v1/admin/library-channels/${encodeURIComponent(channel.config.id)}/health`); return (raw.result ?? raw) as Health; }, [api, channel.config.id]);
   const h = read.data;
   return (
@@ -165,10 +166,10 @@ function ChannelHealthDialog({channel, onClose}: {channel: LibraryChannel; onClo
         <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
           <Notice tone={h.healthy ? 'success' : 'warning'} compact>{h.message || (h.healthy ? t('web.libraryChannels.onAir') : t('web.libraryChannels.offAir'))}</Notice>
           <KeyValue rows={[
-            [t('web.libraryChannels.healthSchedule'), h.generatedThrough ? new Date(h.generatedThrough).toLocaleString(undefined, {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}) : t('web.libraryChannels.healthNotGenerated')],
-            [t('web.libraryChannels.healthPrograms'), h.scheduledEntries.toLocaleString()],
-            [t('web.libraryChannels.healthCandidates'), h.candidates.toLocaleString()],
-            ...(h.unresolved ? [[t('web.libraryChannels.healthUnresolved'), h.unresolved.toLocaleString()] as [React.ReactNode, React.ReactNode]] : []),
+            [t('web.libraryChannels.healthSchedule'), h.generatedThrough ? i18n.formatDate(h.generatedThrough, {weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'}) : t('web.libraryChannels.healthNotGenerated')],
+            [t('web.libraryChannels.healthPrograms'), i18n.number(h.scheduledEntries)],
+            [t('web.libraryChannels.healthCandidates'), i18n.number(h.candidates)],
+            ...(h.unresolved ? [[t('web.libraryChannels.healthUnresolved'), i18n.number(h.unresolved)] as [React.ReactNode, React.ReactNode]] : []),
             [t('web.libraryChannels.healthNewSchedule'), h.pendingGeneration ? t('web.libraryChannels.healthBeingMade') : t('web.libraryChannels.healthUpToDate')],
           ]} />
         </div>
@@ -178,8 +179,7 @@ function ChannelHealthDialog({channel, onClose}: {channel: LibraryChannel; onClo
 }
 
 /** When the templates can't be read, the menu says so and offers to try again instead of hiding them. */
-function templateStatus(templates: {data?: unknown[]; error?: string; loading: boolean}): MenuItem[] {
-  const t = currentI18n().t;
+function templateStatus(t: I18n['t'], templates: {data?: unknown[]; error?: string; loading: boolean}): MenuItem[] {
   if (templates.loading && !templates.data) return [{id: 'templates-loading', label: t('web.channelBuilder.templatesLoading'), disabled: true, group: t('web.channelBuilder.templates')}];
   if (templates.error && !templates.data) return [{id: 'templates-retry', label: t('web.channelBuilder.templatesFailed'), icon: 'refresh', group: t('web.channelBuilder.templates')}];
   return [];

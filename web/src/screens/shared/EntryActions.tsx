@@ -13,7 +13,7 @@ import {useSession} from '../../app/session';
 import {repairTargetFor, useMetadataEditor} from '../../app/metadata-editor';
 import {useDetail, requestId} from '../../app/detail';
 import {useService} from '../../app/content';
-import {captionFor, entryActions, type EntryActionId} from '@core/presentation/index.ts';
+import {canRefreshMetadata, captionFor, entryActions, type EntryActionId} from '@core/presentation/index.ts';
 import {useOpenEntry} from '../../app/open';
 import {useMoreHandOff, usePlayer} from '../../player/engine';
 import {AnchoredMenu, Button, Input, ListRow, Loading, MenuHeading, MenuRow, MenuSeparator, Notice, Text} from '../../ui';
@@ -21,7 +21,7 @@ import {useAppendedPages} from './Sections';
 import {addItemsToPlaylist, addItemsToPlaylistViaJob} from './playlist-add';
 import {runBulkJobs} from './bulk-job';
 import {containerKindFor, useContainerWatched} from './container-watched';
-import {errorText} from '../../app/errors';
+import {changedError, errorText} from '../../app/errors';
 import {announceRemoval, removeFromContinueWatching, type ContinueRemoval} from '../../app/continue-watching';
 import {recommendationViewer, startNotInterested} from '../../app/not-interested';
 import type {EntryOrigin} from '../../player/engine';
@@ -36,6 +36,7 @@ import {useViewerScope} from '../../app/viewer-scope';
  * goes through Saved.
  */
 export function EntryActionsSheet() {
+  const {t} = useI18n();
   const player = useMoreHandOff();
   const entry = player.moreEntry;
   // The sheet is anchored, so an entry handed over without a rectangle can never
@@ -45,7 +46,7 @@ export function EntryActionsSheet() {
     if (entry && !player.moreAnchor) player.clearMore();
   }, [entry, player]);
   return (
-    <AnchoredMenu open={!!entry} anchor={player.moreAnchor} onOpenChange={o => !o && player.clearMore()} label={entry ? `Actions for ${entry.title}` : undefined}>
+    <AnchoredMenu open={!!entry} anchor={player.moreAnchor} onOpenChange={o => !o && player.clearMore()} label={entry ? t('web.dvr.actionsFor', {title: entry.title}) : undefined}>
       {entry ? <Body key={entry.id} entry={entry} origin={player.moreOrigin} onDone={player.clearMore} /> : null}
     </AnchoredMenu>
   );
@@ -122,7 +123,7 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
     // No Details for the page already open (an album's own More menu).
     details: !!entry.navigation && !(entry.navigation.entityId && location.pathname.endsWith(`/${entry.navigation.view}/${entry.navigation.entityId}`)),
     editMetadata: !!(local && repair),
-    refreshMetadata: !!local,
+    refreshMetadata: !!local && canRefreshMetadata(entry.kind),
     delete: !!(owner && entry.playback),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [entry, origin, queue, together.inRoom, together.canQueue, data, downloadable, downloads.state.unavailable, local, repair, owner, loadingDetail, containerWatched.state, containerWatched.carries]);
@@ -183,6 +184,7 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
 
 /** Pick an existing playlist or create one, then add the item. */
 export function PlaylistPicker({itemId, itemIds, itemTitles, bulk, onBack, onDone}: {itemId?: string; itemIds?: readonly string[]; /** Titles alongside `itemIds`, so a partial failure can name what missed. */ itemTitles?: readonly string[]; /** Bulk picks add through one playlist-add job per 200 items, not one request per item. */ bulk?: boolean; /** Only when opened from the actions menu; otherwise the picker names itself (WEB-DETAIL-07). */ onBack?: () => void; onDone: (message: string) => void}) {
+  const {t} = useI18n();
   const ids = itemIds ?? (itemId ? [itemId] : []);
   const titleOf = (id: string) => {
     const at = ids.indexOf(id);
@@ -252,7 +254,7 @@ export function PlaylistPicker({itemId, itemIds, itemTitles, bulk, onBack, onDon
       if (rest.length && createdId) {
         await service.select({view: 'playlist', playlistId: createdId});
         const revision = service.getSnapshot().playlist?.revision;
-        if (!revision) throw new Error('The playlist changed. Reopen it to add the remaining items.');
+        if (!revision) throw changedError;
         const result = await addItemsToPlaylistViaJob(api, {playlistId: createdId, expectedRevision: revision, placement: 'end', ids: rest, operationIds: Array.from({length: Math.max(1, Math.ceil(rest.length / 200))}, () => crypto.randomUUID())});
         if (result.failed.length) throw new Error(i18nNow().t('entry.addedPartial', {ok: head.length + result.ok, count: ids.length, failed: result.failed.length}));
       }
@@ -265,17 +267,17 @@ export function PlaylistPicker({itemId, itemIds, itemTitles, bulk, onBack, onDon
   };
   return (
     <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
-      {onBack ? <div><Button variant="link" size="sm" icon="back" label={i18nNow().t('action.back')} onClick={onBack} /></div> : <MenuHeading title={i18nNow().t('entry.addToPlaylist').replace(/…$/, '')} />}
-      {error ? <Notice tone="error" action={failedIds.length && target && !busy ? {label: i18nNow().t('action.tryAgain'), onClick: () => void add(target, failedIds)} : undefined}>{[error, failedNames].filter(Boolean).join(' ')}</Notice> : null}
-      {snapshot.phase === 'loading' && !snapshot.projection ? <Loading label={i18nNow().t('entry.loadingPlaylists')} /> : null}
+      {onBack ? <div><Button variant="link" size="sm" icon="back" label={t('action.back')} onClick={onBack} /></div> : <MenuHeading title={t('entry.addToPlaylist').replace(/…$/, '')} />}
+      {error ? <Notice tone="error" action={failedIds.length && target && !busy ? {label: t('action.tryAgain'), onClick: () => void add(target, failedIds)} : undefined}>{[error, failedNames].filter(Boolean).join(' ')}</Notice> : null}
+      {snapshot.phase === 'loading' && !snapshot.projection ? <Loading label={t('entry.loadingPlaylists')} /> : null}
       <div>
         {playlists.map(p => <ListRow key={p.id} icon="queue" title={p.title} subtitle={p.subtitle} meta={p.count !== undefined ? `${p.count}` : undefined} onClick={() => void add(p)} />)}
-        {morePlaylists && snapshot.phase === 'ready' ? <div style={{display: 'flex', justifyContent: 'center', padding: '4px 0'}}><Button variant="ghost" size="sm" label={i18nNow().t('action.showMore')} disabled={busy} onClick={() => void service.next(morePlaylists.sectionId).catch(() => {})} /></div> : null}
-        {snapshot.phase === 'ready' && !playlists.length ? <Text as="p" variant="caption" tone="tertiary" style={{padding: '8px 12px'}}>{i18nNow().t('entry.noPlaylists')}</Text> : null}
+        {morePlaylists && snapshot.phase === 'ready' ? <div style={{display: 'flex', justifyContent: 'center', padding: '4px 0'}}><Button variant="ghost" size="sm" label={t('action.showMore')} disabled={busy} onClick={() => void service.next(morePlaylists.sectionId).catch(() => {})} /></div> : null}
+        {snapshot.phase === 'ready' && !playlists.length ? <Text as="p" variant="caption" tone="tertiary" style={{padding: '8px 12px'}}>{t('entry.noPlaylists')}</Text> : null}
       </div>
       <div style={{display: 'flex', gap: 8, alignItems: 'flex-end'}}>
-        <Input label={i18nNow().t('web.saved.newPlaylist')} placeholder={i18nNow().t('profile.name')} value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
-        <Button variant="primary" label={i18nNow().t('web.saved.create')} loading={busy} disabled={!name.trim()} onClick={() => void create()} />
+        <Input label={t('web.saved.newPlaylist')} placeholder={t('profile.name')} value={name} onChange={e => setName(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void create(); } }} />
+        <Button variant="primary" label={t('web.saved.create')} loading={busy} disabled={!name.trim()} onClick={() => void create()} />
       </div>
     </div>
   );
@@ -286,6 +288,7 @@ export function PlaylistPicker({itemId, itemIds, itemTitles, bulk, onBack, onDon
  * In bulk mode, picking a collection submits one collection-add job for every
  * item instead of one request per item. */
 export function CollectionPicker({itemId, itemIds, bulk, onBack, onDone}: {itemId?: string; itemIds?: readonly string[]; bulk?: boolean; onBack?: () => void; onDone: (message: string) => void}) {
+  const {t} = useI18n();
   const singleId = itemId ?? itemIds?.[0];
   const ids = itemIds ?? (itemId ? [itemId] : []);
   const {api} = useSession();
@@ -303,8 +306,8 @@ export function CollectionPicker({itemId, itemIds, bulk, onBack, onDone}: {itemI
       if (await work()) {
         const result = service.getSnapshot().result;
         const outcomes = result?.entries;
-        if (!result?.deleted && (outcomes?.added.includes(singleId!) || outcomes?.unchanged.includes(singleId!))) onDone(`Added to ${name}.`);
-        else setError(outcomes?.failed.some(item => item.itemId === singleId) ? 'This item could not be added to the collection. Check its availability and your access.' : 'The server did not confirm that this item was added. Reopen the collection to check.');
+        if (!result?.deleted && (outcomes?.added.includes(singleId!) || outcomes?.unchanged.includes(singleId!))) onDone(i18nNow().t('entry.addedTo', {name}));
+        else setError(outcomes?.failed.some(item => item.itemId === singleId) ? i18nNow().t('web.entry.collectionAddFailed') : i18nNow().t('web.entry.collectionAddUnconfirmed'));
       }
       else setError(errorText(service.getSnapshot().mutationError ?? service.getSnapshot().error ?? {code: 'unexpected'}, 'collection', 'save'));
     } catch (e) { setError(errorText(e, 'collection', 'save')); }
@@ -318,7 +321,7 @@ export function CollectionPicker({itemId, itemIds, bulk, onBack, onDone}: {itemI
     try {
       await service.select({view: 'resource', resourceId: resource.id});
       const revision = service.getSnapshot().resource?.revision;
-      if (!revision) throw new Error('The collection changed. Reopen it to continue.');
+      if (!revision) throw changedError;
       const outcome = await runBulkJobs(api, 'collection-add', {collectionId: resource.id, expectedRevision: revision}, ids, Array.from({length: Math.max(1, Math.ceil(ids.length / 200))}, () => crypto.randomUUID()));
       if (outcome.failed.length) setError(i18nNow().t('entry.addedPartial', {ok: outcome.ok, count: ids.length, failed: outcome.failed.length}));
       else onDone(ids.length === 1 ? i18nNow().t('entry.addedTo', {name: resource.name}) : i18nNow().t('entry.addedCountTo', {count: ids.length, name: resource.name}));
@@ -333,19 +336,19 @@ export function CollectionPicker({itemId, itemIds, bulk, onBack, onDone}: {itemI
   const available = snapshot.resources.filter(resource => resource.kind === 'collection' && resource.actions.includes('entries'));
   const failure = error ?? (snapshot.error ? errorText(snapshot.error, 'collection', 'load') : snapshot.mutationError ? errorText(snapshot.mutationError, 'collection', 'save') : undefined);
   return <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
-    {onBack ? <div><Button variant="link" size="sm" icon="back" label={i18nNow().t('action.back')} disabled={busy} onClick={onBack} /></div> : <MenuHeading title={i18nNow().t('entry.addToCollection').replace(/…$/, '')} />}
-    {failure ? <Notice tone="error" action={{label: i18nNow().t('action.tryAgain'), onClick: () => {
+    {onBack ? <div><Button variant="link" size="sm" icon="back" label={t('action.back')} disabled={busy} onClick={onBack} /></div> : <MenuHeading title={t('entry.addToCollection').replace(/…$/, '')} />}
+    {failure ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => {
       if (busy) return;
       if (snapshot.retryPending && selected) void run(() => service.retry(), selected.name);
       else if (selected) void add(selected);
       else void service.refresh();
     }}}>{failure}</Notice> : null}
-    {snapshot.loading || busy ? <Loading label={busy ? i18nNow().t('entry.addingToCollection') : i18nNow().t('entry.loadingCollections')} /> : null}
+    {snapshot.loading || busy ? <Loading label={busy ? t('entry.addingToCollection') : t('entry.loadingCollections')} /> : null}
     {available.map(resource => <Button key={resource.id} variant="ghost" icon="collection" label={resource.name} disabled={busy || snapshot.loading} onClick={() => void add(resource)} />)}
-    {!snapshot.loading && !busy && !failure && !available.length ? <Text as="p" variant="caption" tone="tertiary">{i18nNow().t('entry.noCollections')}</Text> : null}
+    {!snapshot.loading && !busy && !failure && !available.length ? <Text as="p" variant="caption" tone="tertiary">{t('entry.noCollections')}</Text> : null}
     <div style={{display: 'flex', gap: 8}}>
-      {snapshot.history.length ? <Button variant="ghost" label={i18nNow().t('player.previous')} disabled={busy || snapshot.loading} onClick={() => void service.previous()} /> : null}
-      {snapshot.nextCursor ? <Button variant="ghost" label={i18nNow().t('player.next')} disabled={busy || snapshot.loading} onClick={() => void service.next()} /> : null}
+      {snapshot.history.length ? <Button variant="ghost" label={t('player.previous')} disabled={busy || snapshot.loading} onClick={() => void service.previous()} /> : null}
+      {snapshot.nextCursor ? <Button variant="ghost" label={t('player.next')} disabled={busy || snapshot.loading} onClick={() => void service.next()} /> : null}
     </div>
   </div>;
 }

@@ -68,16 +68,8 @@ jobs:
       - name: Vet application and maintained SQLite driver
         working-directory: ${{ matrix.module }}
         run: |
-          if [ '${{ matrix.module }}' = server ]; then
-            # The upstream translated-memory driver uses deliberate pointer
-            # arithmetic. Retain every other analyzer there, and all analyzers
-            # for application packages.
-            mapfile -t packages < <(go list ./... | rg -v '^portico.local/server/internal/thirdparty/sqlite$')
-            go vet "${packages[@]}"
-            go vet -unsafeptr=false ./internal/thirdparty/sqlite
-          else
-            go vet ./...
-          fi
+          ../scripts/vet-go.sh
+
   clients:
     runs-on: ubuntu-latest
     steps:

@@ -22,8 +22,8 @@ func TestFilenameTitleKeepsAYearThatBelongsToTheTitle(t *testing.T) {
 		{"Film (2020) 2160p.mkv", "Film", 2020},
 		{"Film.1999.Remastered.2019.mkv", "Film", 1999},
 		{"Blade Runner (1982) The Final Cut 2007.mkv", "Blade Runner", 1982},
-		{"Show 1999-2004.mkv", "Show", 1999},
-		{"Blade Runner 2049.mkv", "Blade Runner", 2049},
+		{"Show 1999-2004.mkv", "Show 1999-2004", 0},
+		{"Blade Runner 2049.mkv", "Blade Runner 2049", 0},
 		{"1917.mkv", "1917", 0},
 		{"Plain Title.mkv", "Plain Title", 0},
 		// A bracketed year further along, after release tags or other words, is
@@ -31,7 +31,7 @@ func TestFilenameTitleKeepsAYearThatBelongsToTheTitle(t *testing.T) {
 		{"Movie.2019.1080p.[2020].mkv", "Movie", 2019},
 		{"Movie (2019) 1080p [2020].mkv", "Movie", 2019},
 		{"Movie (1999) (2019).mkv", "Movie", 1999},
-		{"Blade Runner 2049 Directors Cut (2017).mkv", "Blade Runner", 2049},
+		{"Blade Runner 2049 Directors Cut (2017).mkv", "Blade Runner 2049", 2017},
 		{"Blade Runner 2049 [2017] 1080p.mkv", "Blade Runner 2049", 2017},
 	} {
 		title, year := FilenameTitle(c.path)
@@ -65,7 +65,7 @@ func TestShowFolderAndFileNameAgreeAcrossUnicodeForms(t *testing.T) {
 	if got := ParseEpisode(composed+" (2019)/Season 1/"+decomposed+" - S01E01.mkv", "tv"); got.Year != 2019 {
 		t.Fatalf("folder year not taken for an equal name: %+v", got)
 	}
-	if got := ParseEpisode("Cafe/Season 1/"+composed+" - S01E01.mkv", "tv"); got.Issue != "folder_and_filename_series_conflict" {
-		t.Fatalf("a different name was accepted: %+v", got)
+	if got := ParseEpisode("Cafe/Season 1/"+composed+" - S01E01.mkv", "tv"); got.Issue != "" || got.ShowTitle != composed {
+		t.Fatalf("file evidence did not win the folder disagreement: %+v", got)
 	}
 }

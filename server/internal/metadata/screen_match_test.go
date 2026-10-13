@@ -51,13 +51,13 @@ func TestScreenConfidenceRequiresVerifiedDetailsSignalsAndMargin(t *testing.T) {
 	}
 	missing := scoreScreen(record, []string{"Film"}, 0, false)
 	missing.DetailsVerified = true
-	if i, _ := screenWinner([]screenCandidate{missing}); i != -1 {
-		t.Fatal("one-signal match accepted")
+	if i, _ := screenWinner([]screenCandidate{missing}); i != 0 {
+		t.Fatal("yearless exact match rejected")
 	}
 	conflict := scoreScreen(record, []string{"Film"}, 2021, false)
 	conflict.DetailsVerified = true
-	if i, _ := screenWinner([]screenCandidate{conflict}); i != -1 {
-		t.Fatal("contradicting year accepted")
+	if i, _ := screenWinner([]screenCandidate{conflict}); i != 0 {
+		t.Fatal("one-year release difference rejected")
 	}
 	exact := scoreScreen(record, nil, 0, true)
 	if i, _ := screenWinner([]screenCandidate{exact}); i != 0 {
@@ -93,7 +93,7 @@ func TestScreenNamesKeepAYearThatBelongsToTheTitle(t *testing.T) {
 		// Unchanged: one year is read as before, and a bare number is not guessed at.
 		{"Film.1999.Remastered.2019.mkv", "Film", 1999},
 		{"Blade Runner 2049.mkv", "Blade Runner", 2049},
-		{"1917.mkv", "", 1917},
+		{"1917.mkv", "1917", 0},
 		// A bracketed year after release tags is an encode or group date.
 		{"Movie.2019.1080p.[2020].mkv", "Movie", 2019},
 		{"Movie (2019) 1080p [2020].mkv", "Movie", 2019},
@@ -122,10 +122,36 @@ func TestScreenNamesKeepAYearThatBelongsToTheTitle(t *testing.T) {
 		}
 	}
 	// Without a catalogue year nothing is assumed about a bare number.
-	if names, year, _ := screenQueries(screenBase{Title: "1917", Names: []string{"1917.mkv"}}); len(names) != 0 || year != 1917 {
+	if names, year, _ := screenQueries(screenBase{Title: "1917", Names: []string{"1917.mkv"}}); len(names) != 1 || names[0] != "1917" || year != 0 {
 		t.Errorf("bare numeric name changed: %q %d", names, year)
 	}
 	if !screenLocalYearConflict(screenBase{Title: "Film", Year: 2020, Names: []string{"Film (2021).mkv"}}) {
 		t.Error("a real disagreement between file names stopped being a conflict")
+	}
+}
+
+func TestMatchingUsesNormalisedNamesAndRuntime(t *testing.T) {
+	for _, pair := range [][2]string{{"The Office", "Office, The"}, {"Fast & Furious II", "Fast and Furious 2"}, {"Amélie", "Amelie"}, {"Москва", "Moskva"}} {
+		if normalizedScreenName(pair[0]) != normalizedScreenName(pair[1]) {
+			t.Errorf("normalisation: %q", pair)
+		}
+	}
+	runtime := 120
+	r := metadataprovider.ScreenRecord{Identity: metadataprovider.ScreenID{Provider: "tmdb", Type: "movie", ID: "1"}, Title: "Interstellar", Year: 2014, AdvisoryRuntimeMinutes: &runtime}
+	c := scoreScreenEvidence(r, []string{"Interstllar"}, 0, false, screenBase{ItemKind: "movie", RuntimeMinutes: 121})
+	c.DetailsVerified = true
+	if winner, _ := screenWinner([]screenCandidate{c}); winner != 0 {
+		t.Fatal("minor misspelling did not match", c)
+	}
+	wrong := scoreScreen(r, []string{"Unrelated"}, 2014, false)
+	wrong.DetailsVerified = true
+	if winner, _ := screenWinner([]screenCandidate{wrong}); winner >= 0 {
+		t.Fatal("unrelated title accepted")
+	}
+	r.Year = 2000
+	wrong = scoreScreen(r, []string{"Interstellar"}, 2014, false)
+	wrong.DetailsVerified = true
+	if winner, _ := screenWinner([]screenCandidate{wrong}); winner >= 0 {
+		t.Fatal("distant release year accepted")
 	}
 }

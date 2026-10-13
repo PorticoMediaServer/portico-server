@@ -15,25 +15,24 @@ import (
 // for, and a count of foreign objects is how an owner finds out that is what
 // they have. Nothing is ever dropped automatically: a build that does not define
 // a table cannot know what removing it would cost.
-const knownSchemaObjects = `index access_api_keys_page
-index access_devices_account
+const knownSchemaObjects = `index access_devices_account
 index access_devices_page
 index access_invitation_page
 index access_invitation_pending
 index admin_channel_presets_page
 index admin_dvr_groups_page
 index admin_receipts_age
-index admin_trash_expiry
-index admin_trash_item
-index admin_trash_page
 index analysis_artifact_digest
 index analysis_artifact_result
 index analysis_marker_source
 index analysis_result_source
 index analysis_stage_job
+index api_credentials_account
+index api_credentials_page
 index api_events_audience
 index api_events_expiry
 index api_idempotency_expiry
+index artwork_candidates_source
 index artwork_entity_heads_entity
 index artwork_jobs_due
 index artwork_objects_compaction
@@ -49,6 +48,7 @@ index artwork_variants_digest
 index asset_subtitles_asset
 index audio_local_evidence_asset_id_fk
 index audio_local_field
+index audio_render_fact_requests_order
 index audio_source_metadata_asset
 index audio_tag_evidence_asset
 index audio_tag_evidence_genre_value
@@ -115,8 +115,10 @@ index catalog_episodes_position
 index catalog_episodes_season
 index catalog_episodes_show
 index catalog_external_ids_lookup
+index catalog_identities_public
 index catalog_item_attribute_edges_first
 index catalog_item_attribute_edges_term
+index catalog_missing_titles_library
 index catalog_movie_category_member_id
 index catalog_movie_category_poster
 index catalog_movie_category_rank
@@ -383,11 +385,14 @@ index rec_profile_signals_recent
 index rec_profile_signals_work
 index remote_inventory_check_job
 index remote_listing_retention
+index retained_title_identities_state
+index retained_title_state_profile
 index saved_pin_order_position
 index saved_resource_entries_item_id_fk
 index saved_resource_owner
 index saved_resource_shared
 index saved_resource_visibility
+index screen_metadata_attention_library
 index screen_metadata_candidate_target
 index screen_metadata_children
 index screen_metadata_due
@@ -422,7 +427,10 @@ index tvdb_publication_show
 index tvdb_publication_terminal
 index video_nfo_asset
 index video_nfo_status_asset_id_fk
-table access_api_keys
+index webhook_deliveries_coalesce
+index webhook_deliveries_due
+index webhook_deliveries_log
+index webhook_deliveries_queue
 table access_devices
 table access_invitations
 table access_limits
@@ -436,7 +444,6 @@ table admin_documents
 table admin_dvr_groups
 table admin_receipts
 table admin_revision
-table admin_trash
 table analysis_artifacts
 table analysis_heads
 table analysis_marker_history
@@ -446,6 +453,8 @@ table analysis_markers
 table analysis_probe_bindings
 table analysis_results
 table analysis_stage_runs
+table api_credential_use
+table api_credentials
 table api_events
 table api_idempotency
 table artwork_candidates
@@ -469,6 +478,7 @@ table audio_genre_projection
 table audio_local_evidence
 table audio_metadata_policies
 table audio_render_fact_failures
+table audio_render_fact_requests
 table audio_render_facts
 table audio_source_metadata
 table audio_tag_evidence
@@ -547,6 +557,7 @@ table catalog_item_availability
 table catalog_item_details
 table catalog_kinds
 table catalog_libraries
+table catalog_missing_titles
 table catalog_movie_category_cursors
 table catalog_movie_category_members
 table catalog_movie_category_summaries
@@ -694,7 +705,9 @@ table inventory_directories
 table inventory_directory_cache
 table inventory_objects
 table inventory_operation_jobs
+table inventory_path_notices
 table inventory_policy_pending
+table inventory_run_targets
 table inventory_runs
 table inventory_source_active
 table inventory_version_links
@@ -809,6 +822,7 @@ table metadata_relationship_decisions
 table metadata_repair_cascade_items
 table metadata_repair_cascades
 table metadata_repair_work_receipts
+table metadata_runtime_settings
 table metadata_stage_credits
 table metadata_stage_genres
 table metadata_stage_movies
@@ -934,6 +948,7 @@ table provider_evidence
 table queue_v1_chunks
 table queue_v1_container_counts
 table queue_v1_create_receipts
+table queue_v1_play_spans
 table queue_v1_removals
 table queue_v1_saves
 table queue_v1_segments
@@ -959,6 +974,8 @@ table remote_source_operations
 table remote_sources
 table restriction_outbox
 table restrictions
+table retained_title_identities
+table retained_title_state
 table saved_operation_fences
 table saved_pin_order
 table saved_pin_order_revisions
@@ -971,6 +988,7 @@ table saved_resources
 table scan_queue
 table schema_migrations
 table screen_anime_seasons
+table screen_metadata_attention
 table screen_metadata_candidates
 table screen_metadata_consent
 table screen_metadata_fields
@@ -1026,12 +1044,20 @@ table tvdb_series_candidates
 table video_nfo_evidence
 table video_nfo_status
 table viewer_revisions
+table webhook_deliveries
+table webhook_events
+table webhook_state
+table webhooks
 trigger admin_revision_jobs_DELETE
 trigger admin_revision_jobs_INSERT
 trigger admin_revision_jobs_UPDATE
 trigger admin_revision_libraries_DELETE
 trigger admin_revision_libraries_INSERT
 trigger admin_revision_libraries_UPDATE
+trigger api_credential_epoch
+trigger api_credential_family_guard
+trigger api_credential_member_disabled
+trigger api_credential_role
 trigger artwork_album_changed
 trigger artwork_album_insert
 trigger artwork_book_part_delete
@@ -1077,9 +1103,6 @@ trigger catalog_availability_object_update
 trigger catalog_availability_retired_delete
 trigger catalog_availability_retired_insert
 trigger catalog_availability_source_health
-trigger catalog_availability_trash_delete
-trigger catalog_availability_trash_insert
-trigger catalog_availability_trash_update
 trigger catalog_book_context_book_insert
 trigger catalog_book_context_book_update
 trigger catalog_book_context_file_delete
@@ -1607,6 +1630,8 @@ trigger saved_resources_revision_DELETE
 trigger saved_resources_revision_INSERT
 trigger saved_resources_revision_UPDATE
 trigger screen_asset_change
+trigger screen_attention_insert
+trigger screen_attention_update
 trigger screen_configuration_change
 trigger screen_episode_create
 trigger screen_episode_identity_change
@@ -1683,6 +1708,21 @@ trigger w2i01_music_artwork_identity
 trigger w2i01_screen_artwork
 trigger w2i01_screen_artwork_consent
 trigger w2i01_screen_artwork_policy
+trigger webhook_events_fan_out
+trigger webhook_member_signed_in
+trigger webhook_playback_started
+trigger webhook_playback_state
+trigger webhook_playback_stopped
+trigger webhook_recording_done
+trigger webhook_scan_finished
+trigger webhook_scan_started
+trigger webhook_storage_low
+trigger webhook_storage_lower
+trigger webhook_title_added
+trigger webhook_title_metadata_updated
+trigger webhook_title_removed
+trigger webhook_title_retired
+trigger webhook_title_updated
 view authorization_access
 view inventory_asset_availability
 view inventory_item_availability

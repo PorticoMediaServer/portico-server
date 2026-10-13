@@ -12,6 +12,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/localmetadata"
 	"portico.local/server/internal/mediasource"
+	"portico.local/server/internal/naming"
 	"portico.local/server/internal/storage"
 	"portico.local/server/internal/subtitles"
 	"strings"
@@ -46,8 +47,19 @@ func InventoryMedia(path, kind string) (bool, string) {
 	}
 	return assets.SupportedForKind(path, kind), ""
 }
+
+// ObservationRevision is the revision of one observation of a file: what the
+// catalogue compares to tell whether the file it analysed is still the file
+// on disk. The scan and the analysis that follows it both use it, so they
+// agree on what "the same file" is.
+func ObservationRevision(source LibrarySource, v storage.Snapshot) (string, string, error) {
+	return observationRevision(source, v)
+}
+
 func observationRevision(source LibrarySource, v storage.Snapshot) (string, string, error) {
-	object := v.ObjectIdentity
+	// Kept across restarts, so the device number this boot gave the
+	// filesystem is left out (storage.StableObjectIdentity).
+	object := storage.StableObjectIdentity(v.ObjectIdentity, source.RootIdentity)
 	if object == "" {
 		object = "path:" + v.Path
 	}
@@ -122,6 +134,9 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 		if v.Path != expected || !filepath.IsLocal(child) || filepath.Base(v.Name) != v.Name || v.Size < 0 {
 			return ErrAdminQuery
 		}
+		if naming.IgnorePath(filepath.ToSlash(child), v.Directory) {
+			continue
+		}
 		if v.Directory {
 			if v.ObjectIdentity == "" {
 				return storage.ErrInventoryChanged
@@ -180,17 +195,28 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 			return false, err
 		}
 	}
+	// What is kept across restarts names a file by its inode, not by the
+	// device number this boot gave its filesystem.
+	v.ObjectIdentity = storage.StableObjectIdentity(v.ObjectIdentity, source.RootIdentity)
 	revision, evidence, err := observationRevision(source, v)
 	if err != nil {
 		return false, err
 	}
 	var object, asset, previousRevision, previousSeen, previousIdentity, incarnation, previousState string
+	var previousSize, previousModified int64
 	relocated := false
-	err = tx.QueryRowContext(ctx, `SELECT id,asset_id,revision,seen_job,object_identity,root_incarnation,state FROM inventory_objects WHERE source_id=? AND relative_path=? AND retired=0`, source.ID, relative).Scan(&object, &asset, &previousRevision, &previousSeen, &previousIdentity, &incarnation, &previousState)
+	err = tx.QueryRowContext(ctx, `SELECT id,asset_id,revision,seen_job,object_identity,root_incarnation,state,size,modified_ns FROM inventory_objects WHERE source_id=? AND relative_path=? AND retired=0`, source.ID, relative).Scan(&object, &asset, &previousRevision, &previousSeen, &previousIdentity, &incarnation, &previousState, &previousSize, &previousModified)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return false, err
 	}
-	replaced := object != "" && (incarnation != source.Incarnation || previousIdentity != "" && v.ObjectIdentity != "" && previousIdentity != v.ObjectIdentity)
+	// A file at the same place with the same size and modified time is the same
+	// file, whatever its filesystem now calls it: inode and device numbers are
+	// renumbered by remounts, by filesystems that do not keep them, and when a
+	// library is copied to a new disk and its folder accepted as the same one.
+	// Only a file whose content evidence changed has been replaced.
+	sameContent := object != "" && previousSize == v.Size && previousModified == v.ModifiedNS
+	renamedByFilesystem := sameContent && (incarnation != source.Incarnation || previousIdentity != v.ObjectIdentity)
+	replaced := object != "" && !sameContent && (incarnation != source.Incarnation || previousIdentity != "" && v.ObjectIdentity != "" && previousIdentity != v.ObjectIdentity)
 	if replaced {
 		if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET retired=1,state='unavailable' WHERE id=?`, object); err != nil {
 			return false, err
@@ -204,7 +230,11 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 		// Exact storage identity plus unchanged size/mtime, never filename similarity.
 		// LIMIT 2 deliberately refuses ambiguous identity candidates.
 		if v.ObjectIdentity != "" {
-			rows, e := tx.QueryContext(ctx, `SELECT DISTINCT o.asset_id FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.object_identity=? AND o.size=? AND o.modified_ns=? AND s.kind=? AND o.root_incarnation=s.incarnation LIMIT 2`, v.ObjectIdentity, v.Size, v.ModifiedNS, source.Kind)
+			// An inode number is only unique inside one filesystem, so a match in
+			// another source must also carry the same file name.
+			base := filepath.Base(relative)
+			rows, e := tx.QueryContext(ctx, `SELECT DISTINCT o.asset_id FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.object_identity=?1 AND o.size=?2 AND o.modified_ns=?3 AND s.kind=?4 AND o.root_incarnation=s.incarnation
+ AND (o.source_id=?5 OR o.relative_path=?6 OR substr(o.relative_path,-length(?6)-1)='/'||?6) LIMIT 2`, v.ObjectIdentity, v.Size, v.ModifiedNS, source.Kind, source.ID, base)
 			if e != nil {
 				return false, e
 			}
@@ -279,7 +309,7 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 		if err = tx.QueryRowContext(ctx, `SELECT id,size,modified_ns FROM catalog_assets WHERE token=?`, asset).Scan(&assetID, &size, &modified); err != nil {
 			return false, err
 		}
-		changed := size != v.Size || modified != v.ModifiedNS || previousRevision != "" && previousRevision != revision
+		changed := size != v.Size || modified != v.ModifiedNS || previousRevision != "" && previousRevision != revision && !renamedByFilesystem
 		if changed {
 			if err = invalidateInventoryFacts(ctx, tx, asset); err != nil {
 				return false, err
@@ -299,9 +329,15 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 	if err != nil {
 		return false, err
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,seen_job,unsupported_reason,directory_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET directory_path=excluded.directory_path,relative_path=excluded.relative_path,revision=excluded.revision,evidence_json=excluded.evidence_json,size=excluded.size,modified_ns=excluded.modified_ns,object_identity=excluded.object_identity,seen_job=excluded.seen_job,state='available',missing_since='',missing_observations=0,last_missing_job='',trashed_at='',unsupported_reason=excluded.unsupported_reason`, object, source.ID, asset, source.Incarnation, relative, v.ObjectIdentity, revision, evidence, v.Size, v.ModifiedNS, job, reason, filepath.Dir(relative))
+	_, err = tx.ExecContext(ctx, `INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,object_identity,revision,evidence_json,size,modified_ns,seen_job,unsupported_reason,directory_path) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET root_incarnation=excluded.root_incarnation,directory_path=excluded.directory_path,relative_path=excluded.relative_path,revision=excluded.revision,evidence_json=excluded.evidence_json,size=excluded.size,modified_ns=excluded.modified_ns,object_identity=excluded.object_identity,seen_job=excluded.seen_job,state='available',missing_since='',missing_observations=0,last_missing_job='',unsupported_reason=excluded.unsupported_reason`, object, source.ID, asset, source.Incarnation, relative, v.ObjectIdentity, revision, evidence, v.Size, v.ModifiedNS, job, reason, filepath.Dir(relative))
 	if err != nil {
 		return false, err
+	}
+	if renamedByFilesystem && previousRevision != revision {
+		// The analysis already done describes this same content.
+		if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_revision=? WHERE id=? AND analysis_revision=?`, revision, object, previousRevision); err != nil {
+			return false, err
+		}
 	}
 	var associated int
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id JOIN catalog_entities i ON i.id=l.entity_id JOIN catalog_libraries cl ON cl.id=i.library_id WHERE a.token=? AND cl.library_id=?)`, asset, source.LibraryID).Scan(&associated); err != nil {
@@ -310,6 +346,23 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 	if associated == 0 {
 		if err = s.associateInventoryTx(ctx, tx, source, asset, v.Path); err != nil {
 			return false, err
+		}
+	} else if relocated {
+		// A renamed or moved file is read again under its new name.
+		if err = s.reinterpretInventoryTx(ctx, tx, source, asset, v.Path); err != nil {
+			return false, err
+		}
+	}
+	if !newAsset && previousState != "available" {
+		// A file that was missing is back: its titles are whole again.
+		assetID, e := compactcatalog.AssetByTokenTx(ctx, tx, asset)
+		if e != nil {
+			return false, e
+		}
+		if assetID != 0 {
+			if e = compactcatalog.SettleAssetMissingTx(ctx, tx, assetID); e != nil {
+				return false, e
+			}
 		}
 	}
 	kind := ""
@@ -377,6 +430,35 @@ func (s *Service) associateInventoryTx(ctx context.Context, tx *sql.Tx, source L
 		_, err = commitMovieItem(ctx, tx, source.LibraryID, assetID, path)
 		return err
 	}
+}
+
+// reinterpretInventoryTx reads a renamed or moved file's new name and moves
+// the file to the title that name says, unless an owner placed it by hand.
+// Tags, not names, say what an audio file is, so those stay as they are.
+func (s *Service) reinterpretInventoryTx(ctx context.Context, tx *sql.Tx, source LibrarySource, asset, path string) error {
+	var kind string
+	if err := tx.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, source.LibraryID).Scan(&kind); err != nil {
+		return err
+	}
+	if _, extra := ClassifyExtraFor(kind, source.ResolvedPath, path); extra {
+		return nil
+	}
+	switch kind {
+	case "tv", "anime":
+		relative, err := filepath.Rel(source.ResolvedPath, path)
+		if err != nil {
+			return err
+		}
+		return s.commitEpisodes(tx, source.LibraryID, asset, filepath.Base(path), ParseEpisode(relative, kind), false)
+	case "movie":
+		assetID, err := compactcatalog.AssetByTokenTx(ctx, tx, asset)
+		if err != nil || assetID == 0 {
+			return err
+		}
+		title, year := FilenameTitle(path)
+		return reinterpretMovieTx(ctx, tx, source.LibraryID, assetID, asset, path, title, year)
+	}
+	return nil
 }
 
 // CommitInventoryAnalysis never stats/reads storage while holding a DB writer.

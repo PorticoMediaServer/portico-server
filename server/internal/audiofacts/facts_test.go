@@ -120,3 +120,17 @@ func TestMeasuredFactsMatchConstruction(t *testing.T) {
 	}
 	_ = os.Remove
 }
+
+func TestPaddingAcrossPacketsAndAudioBitrate(t *testing.T) {
+	f, e := Parse(strings.NewReader("packet|size=100|side_datum/skip_samples:discard_padding=20\nframe|nb_samples=1000\npacket|size=100|side_datum/skip_samples:discard_padding=30\nframe|nb_samples=1000\nstream|codec_name=aac|profile=HE-AAC|sample_rate=48000|channels=2\nformat|format_name=mov\n"))
+	if e != nil || f.EndFrames != 50 || f.Profile != "HE-AAC" || f.BitRate != 39384 {
+		t.Fatalf("%+v %v", f, e)
+	}
+}
+
+func TestMP4SampleTableTrimsFinalAACPacket(t *testing.T) {
+	f, e := Parse(strings.NewReader("packet|side_datum/skip_samples:skip_samples=1024\nframe|nb_samples=1024\nframe|nb_samples=1024\nframe|nb_samples=1024\nstream|codec_name=aac|profile=LC|sample_rate=48000|channels=2|duration_ts=1800|time_base=1/48000\nformat|format_name=mov\n"))
+	if e != nil || f.DurationFrames != 1800 || f.EndFrames != 248 {
+		t.Fatalf("%+v %v", f, e)
+	}
+}

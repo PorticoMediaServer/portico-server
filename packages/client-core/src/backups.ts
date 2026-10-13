@@ -1,4 +1,4 @@
-import {parseBackupsDocument,parseEnvelope,parseRestoreStaged,type BackupsDocument,type RestoreSource,type RestoreStaged} from './administration.ts';
+import {parseBackupsDocument,parseEnvelope,type BackupsDocument,type RestoreSource,type RestoreStaged} from './administration.ts';
 
 /** Typed clients for the spec §4 backup routes (`Spec — Backups (Plex model).md`).
  * Parsers live in administration.ts; this module holds transport only, no stored credentials.
@@ -30,7 +30,32 @@ export async function deleteBackup(transport:BackupTransport,serverId:string,bac
  * and answers `{staged, restartRequired}`. A 4xx refusal carries one of the spec §4 codes
  * (`isRestoreRefusalCode`), which the console maps to catalogue copy. */
 export async function restoreBackup(transport:BackupTransport,serverId:string,operationId:string,source:RestoreSource,signal?:AbortSignal):Promise<RestoreStaged>{
- return parseEnvelope(await transport.request<unknown>(RESTORE_PATH,'POST',{operationId,source},signal),serverId,parseRestoreStaged).result;
+ const receipt=parseEnvelope(await transport.request<unknown>(RESTORE_PATH,'POST',{operationId,source},signal),serverId,v=>{
+  if(typeof v!=='object'||v===null||typeof (v as {jobId?:unknown}).jobId!=='string')throw new Error('Invalid restore receipt.');
+  return (v as {jobId:string}).jobId;
+ }).result;
+ const started=Date.now();
+ for(;;){
+  signal?.throwIfAborted();
+  let doc:BackupsDocument;
+  try{doc=await getBackups(transport,serverId,signal);}catch(e){
+   const status=(e as {status?:number})?.status;
+   const code=(e as {code?:string})?.code;
+   if(authenticationFailure(e)||code==='wrong_server'||code==='invalid_administration_response'||status!==undefined&&status<500&&status!==429)throw e;
+   if(Date.now()-started>600_000)throw Object.assign(new Error('The restore is still running.'),{code:'restore_progress_timeout'});
+   await delay(500,signal);continue;
+  }
+  if(doc.lastRestore?.jobId===receipt){
+   if(doc.lastRestore.outcome==='rolled_back')throw Object.assign(new Error('The restore was rolled back.'),{code:'restore_integrity_failed'});
+   return {staged:true,restartRequired:true,validation:{schemaVersion:doc.lastRestore.schemaVersion??0,integrity:'ok'}};
+  }
+  if(doc.restore?.jobId===receipt){
+   if(doc.restore.errorCode)throw Object.assign(new Error('The restore could not be staged.'),{code:doc.restore.errorCode});
+   if(doc.restore.result)return doc.restore.result;
+  }
+  if(Date.now()-started>600_000)throw Object.assign(new Error('The restore is still running.'),{code:'restore_progress_timeout'});
+  await delay(500,signal);
+ }
 }
 
 /** fixStatePermissions runs the owner-only §6.2 permissions repair. See STATE_PERMISSIONS_FIX_PATH. */
@@ -95,4 +120,9 @@ export async function waitForServerAnswer(get:()=>Promise<BackupsDocument>,optio
    await delay(intervalMs,options.signal);
   }
  }
+}
+
+/** Restart is owner-only and works for portable launches as well as services. */
+export async function restartServer(transport:BackupTransport,signal?:AbortSignal):Promise<void>{
+ await transport.request<unknown>('/v1/admin/restart','POST',{},signal);
 }

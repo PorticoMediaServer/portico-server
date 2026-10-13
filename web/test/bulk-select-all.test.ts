@@ -103,7 +103,7 @@ test('selection_changed falls back to the chunked items with fresh operation ids
 test('an unresolvable revision falls back without ever posting the whole set', async () => {
   const api = scriptApi([{polls: ['complete'], done: 1}]);
   const target = queryTarget({catalogRevision: undefined, resolveRevision: async () => undefined});
-  const outcome = await runBulkSelection(api, 'trash', {}, {visibleIds: ['a'], selectedIds: new Set(['a']), target, wholeSet: true}, () => 'op-1');
+  const outcome = await runBulkSelection(api, 'refresh', {}, {visibleIds: ['a'], selectedIds: new Set(['a']), target, wholeSet: true}, () => 'op-1');
   assert.deepEqual(outcome.ok, 1);
   const posts = api.calls.filter(c => c.method === 'POST');
   assert.equal(posts.length, 1);

@@ -26,10 +26,21 @@ type SubtitleRefreshRequest struct {
 
 func registerSubtitleRaw[Req, Resp any](registry *apikit.Registry, pattern string, handler http.HandlerFunc) error {
 	method, path, _ := strings.Cut(pattern, " ")
-	access := apikit.ViewerLibrary
+	access := apikit.Device
+	requires := apikit.ScopeRead
+	if strings.Contains(path, "/{itemId}/") {
+		access = apikit.ViewerItem
+	}
+	if method != "GET" && method != "HEAD" {
+		requires = apikit.ScopeLibrary
+	}
+	if method == "PUT" && strings.Contains(path, "/playback/") {
+		requires = apikit.ScopePlayback
+	}
 	lane := apikit.Default
 	if strings.Contains(path, "/media/") {
 		access = apikit.Public
+		requires = apikit.ScopeOpen
 		lane = apikit.Media
 	}
 	body := int64(0)
@@ -53,7 +64,7 @@ func registerSubtitleRaw[Req, Resp any](registry *apikit.Registry, pattern strin
 	}
 
 	identifier := strings.NewReplacer("/", "_", "{", "", "}", "", "-", "_", ".", "_").Replace(strings.ToLower(method) + path)
-	return apikit.RegisterRaw(registry, apikit.RawRoute[Req, Resp]{Metadata: apikit.Metadata{ID: identifier, Method: method, Path: path, Summary: "Read or change authorized subtitles", Access: access, Lane: lane, Cost: apikit.Constant, BodyLimit: body, Query: []string{"segment"}, Status: 200, ResponseContentType: contentType, Errors: subtitleRouteErrors()}, Serve: handler})
+	return apikit.RegisterRaw(registry, apikit.RawRoute[Req, Resp]{Metadata: apikit.Metadata{ID: identifier, Method: method, Path: path, Summary: "Read or change authorized subtitles", Access: access, Requires: requires, Lane: lane, Cost: apikit.Constant, BodyLimit: body, Query: []string{"segment"}, Status: 200, ResponseContentType: contentType, Errors: subtitleRouteErrors()}, Serve: handler})
 }
 func (d Dependencies) originalSubtitleRoute(w http.ResponseWriter, r *http.Request) {
 	subtitleHeaders(w)

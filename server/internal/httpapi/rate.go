@@ -2,9 +2,9 @@ package httpapi
 
 import (
 	"errors"
-	"net"
 	"net/http"
 	"net/netip"
+	"portico.local/server/internal/networkpolicy"
 	"sort"
 	"strings"
 	"sync"
@@ -192,48 +192,13 @@ func ParseTrustedProxyCIDRs(value string) ([]netip.Prefix, error) {
 	return result, nil
 }
 func clientAddress(r *http.Request, trusted []netip.Prefix) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		host = r.RemoteAddr
+	if addr, ok := networkpolicy.Client(r, trusted); ok {
+		return addr.String()
 	}
-	// A RemoteAddr of ":1000" splits cleanly into an empty host. Left as it is
-	// that becomes the empty key, which is one bucket shared by every client
-	// whose address could not be read — the opposite of what both callers want.
-	if host == "" {
-		host = r.RemoteAddr
+	// A malformed trusted chain has no local authority. Its transport peer still
+	// provides a bounded rate-limit bucket rather than an attacker-selected key.
+	if addr, ok := networkpolicy.Peer(r); ok {
+		return addr.String()
 	}
-	if host == "" {
-		return "unknown"
-	}
-	peer, err := netip.ParseAddr(host)
-	if err != nil {
-		return host
-	}
-	peer = peer.Unmap()
-	allowed := false
-	for _, prefix := range trusted {
-		if prefix.Contains(peer) {
-			allowed = true
-			break
-		}
-	}
-	if !allowed {
-		return peer.String()
-	}
-	// Inspect every header spelling to reject duplicate values, including maps
-	// constructed without the usual HTTP canonicalization.
-	var values []string
-	for name, rows := range r.Header {
-		if strings.EqualFold(name, "X-Forwarded-For") {
-			values = append(values, rows...)
-		}
-	}
-	if len(values) != 1 {
-		return peer.String()
-	}
-	forwarded, err := netip.ParseAddr(strings.TrimSpace(values[0]))
-	if err != nil || forwarded.Zone() != "" || forwarded.IsUnspecified() || forwarded.IsMulticast() {
-		return peer.String()
-	}
-	return forwarded.Unmap().String()
+	return "unknown"
 }

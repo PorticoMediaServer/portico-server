@@ -133,32 +133,32 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 			return
 		}
 		switch pattern {
-		case "GET /v1/items/{id}/subtitles":
+		case "GET /v1/items/{itemId}/subtitles":
 			registrationError = registerSubtitleRaw[struct{}, subtitles.Catalog](registry, pattern, serve)
-		case "POST /v1/items/{id}/subtitles", "PUT /v1/items/{id}/subtitles/{resource}":
+		case "POST /v1/items/{itemId}/subtitles", "PUT /v1/items/{itemId}/subtitles/{resource}":
 			registrationError = registerSubtitleRaw[subtitles.Mutation, subtitles.Receipt](registry, pattern, serve)
-		case "DELETE /v1/items/{id}/subtitles/{resource}":
+		case "DELETE /v1/items/{itemId}/subtitles/{resource}":
 			registrationError = registerSubtitleRaw[subtitles.DeleteMutation, subtitles.Receipt](registry, pattern, serve)
-		case "POST /v1/items/{id}/subtitles/import":
+		case "POST /v1/items/{itemId}/subtitles/import":
 			registrationError = registerSubtitleRaw[subtitles.ImportRequest, subtitles.Receipt](registry, pattern, serve)
-		case "POST /v1/items/{id}/subtitles/refresh":
+		case "POST /v1/items/{itemId}/subtitles/refresh":
 			registrationError = registerSubtitleRaw[SubtitleRefreshRequest, subtitles.Catalog](registry, pattern, serve)
-		case "POST /v1/items/{id}/subtitles/remote":
+		case "POST /v1/items/{itemId}/subtitles/remote":
 			registrationError = registerSubtitleRaw[subtitles.RemoteRequest, subtitles.Receipt](registry, pattern, serve)
-		case "POST /v1/items/{id}/subtitles/search":
+		case "POST /v1/items/{itemId}/subtitles/search":
 			registrationError = registerSubtitleRaw[subtitles.SearchRequest, subtitles.SearchResult](registry, pattern, serve)
-		case "POST /v1/items/{id}/subtitles/apply":
+		case "POST /v1/items/{itemId}/subtitles/apply":
 			registrationError = registerSubtitleRaw[subtitles.ApplyRequest, subtitles.Receipt](registry, pattern, serve)
-		case "GET /v1/items/{id}/playback/{session}/subtitles":
+		case "GET /v1/items/{itemId}/playback/{session}/subtitles":
 			registrationError = registerSubtitleRaw[struct{}, subtitles.PlaybackPlan](registry, pattern, serve)
-		case "PUT /v1/items/{id}/playback/{session}/subtitles":
+		case "PUT /v1/items/{itemId}/playback/{session}/subtitles":
 			registrationError = registerSubtitleRaw[subtitles.SelectRequest, subtitles.PlaybackPlan](registry, pattern, serve)
 		}
 	}
-	register("GET /v1/items/{id}/subtitles", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
-		return d.Subtitles.List(r.Context(), p, r.PathValue("id"))
+	register("GET /v1/items/{itemId}/subtitles", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+		return d.Subtitles.List(r.Context(), p, r.PathValue("itemId"))
 	})
-	register("POST /v1/items/{id}/subtitles", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	register("POST /v1/items/{itemId}/subtitles", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m subtitles.Mutation
 		if e := subtitleDecode(w, r, &m); e != nil {
 			return nil, e
@@ -166,9 +166,9 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 		if m.ResourceID != "" {
 			return nil, subtitles.ErrInput
 		}
-		return d.Subtitles.Mutate(r.Context(), p, r.PathValue("id"), m)
+		return d.Subtitles.Mutate(r.Context(), p, r.PathValue("itemId"), m)
 	})
-	register("PUT /v1/items/{id}/subtitles/{resource}", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	register("PUT /v1/items/{itemId}/subtitles/{resource}", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m subtitles.Mutation
 		if e := subtitleDecode(w, r, &m); e != nil {
 			return nil, e
@@ -177,70 +177,70 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 			return nil, subtitles.ErrInput
 		}
 		m.ResourceID = r.PathValue("resource")
-		return d.Subtitles.Mutate(r.Context(), p, r.PathValue("id"), m)
+		return d.Subtitles.Mutate(r.Context(), p, r.PathValue("itemId"), m)
 	})
-	register("DELETE /v1/items/{id}/subtitles/{resource}", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	register("DELETE /v1/items/{itemId}/subtitles/{resource}", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m subtitles.DeleteMutation
 		if e := subtitleDecode(w, r, &m); e != nil {
 			return nil, e
 		}
-		return d.Subtitles.Delete(r.Context(), p, r.PathValue("id"), r.PathValue("resource"), m)
+		return d.Subtitles.Delete(r.Context(), p, r.PathValue("itemId"), r.PathValue("resource"), m)
 	})
-	register("POST /v1/items/{id}/subtitles/import", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	register("POST /v1/items/{itemId}/subtitles/import", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m subtitles.ImportRequest
 		if e := subtitleDecode(w, r, &m); e != nil {
 			return nil, e
 		}
-		return d.Subtitles.Import(r.Context(), p, r.PathValue("id"), m)
+		return d.Subtitles.Import(r.Context(), p, r.PathValue("itemId"), m)
 	})
-	register("POST /v1/items/{id}/subtitles/refresh", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	register("POST /v1/items/{itemId}/subtitles/refresh", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m struct {
 			SourceID string `json:"sourceId"`
 		}
 		if e := subtitleDecode(w, r, &m); e != nil {
 			return nil, e
 		}
-		return d.Subtitles.Refresh(r.Context(), p, r.PathValue("id"), m.SourceID)
+		return d.Subtitles.Refresh(r.Context(), p, r.PathValue("itemId"), m.SourceID)
 	})
-	register("POST /v1/items/{id}/subtitles/remote", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	register("POST /v1/items/{itemId}/subtitles/remote", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m subtitles.RemoteRequest
 		if e := subtitleDecode(w, r, &m); e != nil {
 			return nil, e
 		}
-		return d.Subtitles.ImportRemote(r.Context(), p, r.PathValue("id"), m)
+		return d.Subtitles.ImportRemote(r.Context(), p, r.PathValue("itemId"), m)
 	})
-	register("POST /v1/items/{id}/subtitles/search", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	register("POST /v1/items/{itemId}/subtitles/search", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m subtitles.SearchRequest
 		if e := subtitleDecode(w, r, &m); e != nil {
 			return nil, e
 		}
-		return d.Subtitles.Search(r.Context(), p, r.PathValue("id"), m)
+		return d.Subtitles.Search(r.Context(), p, r.PathValue("itemId"), m)
 	})
-	register("POST /v1/items/{id}/subtitles/apply", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	register("POST /v1/items/{itemId}/subtitles/apply", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m subtitles.ApplyRequest
 		if e := subtitleDecode(w, r, &m); e != nil {
 			return nil, e
 		}
-		return d.Subtitles.Apply(r.Context(), p, r.PathValue("id"), m)
+		return d.Subtitles.Apply(r.Context(), p, r.PathValue("itemId"), m)
 	})
 	// A v1 client names its v1 session and presentation generation; the plan
 	// lives on the media session presenting it (playback_v1_presentation.go).
-	register("GET /v1/items/{id}/playback/{session}/subtitles", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	register("GET /v1/items/{itemId}/playback/{session}/subtitles", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		presentation, v1, e := d.resolveV1Presentation(r.Context(), p, r.PathValue("session"))
 		if e != nil {
 			return nil, e
 		}
 		if !v1 {
-			out, e := d.Subtitles.Plan(r.Context(), p, r.PathValue("id"), r.PathValue("session"))
+			out, e := d.Subtitles.Plan(r.Context(), p, r.PathValue("itemId"), r.PathValue("session"))
 			return out, sessionNotVisible(e)
 		}
-		out, e := d.Subtitles.Plan(r.Context(), presentation.as(p), r.PathValue("id"), presentation.media)
+		out, e := d.Subtitles.Plan(r.Context(), presentation.as(p), r.PathValue("itemId"), presentation.media)
 		if e == nil {
 			out.SessionID, out.Generation = presentation.session, presentation.generation
 		}
 		return out, sessionNotVisible(e)
 	})
-	register("PUT /v1/items/{id}/playback/{session}/subtitles", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	register("PUT /v1/items/{itemId}/playback/{session}/subtitles", func(w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var m subtitles.SelectRequest
 		if e := subtitleDecode(w, r, &m); e != nil {
 			return nil, e
@@ -259,7 +259,7 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 		}
 		current := playback.WithReplanCeilings(r.Context(), ceilings)
 		if !v1 {
-			out, e := d.Subtitles.Select(current, p, r.PathValue("id"), r.PathValue("session"), m)
+			out, e := d.Subtitles.Select(current, p, r.PathValue("itemId"), r.PathValue("session"), m)
 			return out, sessionNotVisible(e)
 		}
 		// The client fences on the generation it holds, the v1 one; the media
@@ -271,7 +271,7 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 		if e != nil {
 			return nil, e
 		}
-		out, e := d.Subtitles.Select(current, presentation.as(p), r.PathValue("id"), presentation.media, m)
+		out, e := d.Subtitles.Select(current, presentation.as(p), r.PathValue("itemId"), presentation.media, m)
 		if e == nil {
 			out.SessionID, out.Generation = presentation.session, presentation.generation
 		}

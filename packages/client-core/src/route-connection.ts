@@ -163,8 +163,10 @@ export class RouteConnection {
  mediaURL(path:string):string{const url=new URL(path,this.logicalOrigin);if(!this.acceptsOrigin(url.origin)||url.username||url.password)throw new RouteError('invalid_address','Cross-server media capability rejected.');if(this.state.phase!=='ready'||!this.state.origin)return '';return this.state.origin+url.pathname+url.search+url.hash;}
  dispose(){this.disposed=true;this.serial++;this.run?.controller.abort();if(this.retry)clearTimeout(this.retry);this.listeners.clear();}
 }
-/** A proxy's error page for an unavailable upstream; Portico's own 503s are JSON. */
-export function gatewayFailure(response:Response):boolean{return (response.status===502||response.status===503||response.status===504)&&!(response.headers.get('content-type')??'').toLowerCase().includes('json');}
+/** A proxy's answer for an unavailable upstream. Portico's own 502, 503 and 504 are plain
+ * `application/json`; anything else with those statuses came from something in front of it: an
+ * HTML or text error page, or a proxy's own JSON dialect (`application/problem+json`). */
+export function gatewayFailure(response:Response):boolean{return (response.status===502||response.status===503||response.status===504)&&(response.headers.get('content-type')??'').split(';')[0]!.trim().toLowerCase()!=='application/json';}
 // A bearer is bound in memory only after identity proof + durable credential
 // storage. New APIs for the same selected family inherit that exact connection.
 const bindings=new Map<string,RouteConnection>();

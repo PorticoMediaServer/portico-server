@@ -12,7 +12,12 @@
  * - A notification's `dedupeKey` identifies the *condition*, not the message. A
  *   producer restating a condition edits the record in place, so a client must
  *   key its list on `id` and re-render on `revision`, never append blindly.
+ *
+ * A server may be newer than this client. One notification, action, receipt or
+ * report that cannot be read is left out and the rest of its document is kept;
+ * the document's own revision, cursor, counts and size limits stay exact.
  */
+import {keepReadable,noteSkipped,oneOf,oneOfOr} from './tolerant.ts';
 
 /** The complete command allowlist. A server may publish more; see capabilities. */
 export const notificationCommands=['retry-job','open-download','dismiss-conflict','review-device','open-feedback','run-scan'] as const;
@@ -74,6 +79,8 @@ const obj=(v:unknown):v is Record<string,any>=>typeof v==='object'&&v!==null&&!A
 const text=(v:unknown,max:number):v is string=>typeof v==='string'&&v.length<=max;
 const whole=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
 const nullableWhole=(v:unknown):v is number|null=>v===null||whole(v);
+const severities:readonly NotificationSeverity[]=['info','warning','critical'];
+const outcomes:readonly NotificationOutcome[]=['applied','unchanged','not-found'];
 function invalid():never{throw new Error('Invalid notification response.');}
 
 function parseArguments(value:unknown,max:number):Record<string,string>{
@@ -112,11 +119,17 @@ export function notificationActionSupported(action:NotificationAction,views:read
  return views.includes(action.target?.view??'');
 }
 
+/**
+ * A severity this client does not know reads as `info`, the plainest one, and an
+ * action it cannot read is left out. A notification for an audience it does not
+ * know cannot be placed in an inbox, so it is refused; inside a list that leaves
+ * out only that notification.
+ */
 export function parseNotification(value:unknown):Notification{
  if(!obj(value))invalid();
  if(!text(value.id,200)||!value.id)invalid();
  if(value.audience!=='profile'&&value.audience!=='account-admin')invalid();
- if(!['info','warning','critical'].includes(value.severity))invalid();
+ if(!text(value.severity,40))invalid();
  if(!text(value.source,60)||!value.source||!text(value.category,80)||!value.category)invalid();
  if(!text(value.title,300)||!value.title||!text(value.body,2000))invalid();
  if(!text(value.dedupeKey,240))invalid();
@@ -127,8 +140,9 @@ export function parseNotification(value:unknown):Notification{
  if(!Array.isArray(value.actions)||value.actions.length>3)invalid();
  return {
   ...value,
+  severity:oneOfOr('notification','severity',value.severity,severities,'info'),
   arguments:parseArguments(value.arguments,12),
-  actions:value.actions.map(parseNotificationAction),
+  actions:keepReadable('notification','actions',value.actions,parseNotificationAction),
  } as Notification;
 }
 
@@ -143,7 +157,7 @@ export function parseNotificationInbox(value:unknown):NotificationInbox{
  if(!text(value.audience,40)||!text(value.state,20)||!text(value.nextCursor,64))invalid();
  if(!Array.isArray(value.audiences)||value.audiences.length>4)invalid();
  if(!Array.isArray(value.items)||value.items.length>100)invalid();
- return {...value,counts:parseCounts(value.counts),items:value.items.map(parseNotification)} as NotificationInbox;
+ return {...value,counts:parseCounts(value.counts),items:keepReadable('notification-inbox','items',value.items,parseNotification)} as NotificationInbox;
 }
 
 export function parseNotificationSummary(value:unknown):NotificationSummary{
@@ -158,17 +172,19 @@ export function parseNotificationSummary(value:unknown):NotificationSummary{
 export function parseNotificationDelta(value:unknown):NotificationDelta{
  if(!obj(value)||!whole(value.revision)||!whole(value.since)||typeof value.resync!=='boolean')invalid();
  if(!Array.isArray(value.items)||value.items.length>100)invalid();
- return {...value,counts:parseCounts(value.counts),items:value.items.map(parseNotification)} as NotificationDelta;
+ return {...value,counts:parseCounts(value.counts),items:keepReadable('notification-delta','items',value.items,parseNotification)} as NotificationDelta;
 }
 
 export function parseNotificationBatchResult(value:unknown):NotificationBatchResult{
  if(!obj(value)||!whole(value.revision)||!whole(value.applied)||!text(value.audience,40))invalid();
  if(!Array.isArray(value.receipts)||value.receipts.length>256)invalid();
- for(const receipt of value.receipts){
-  if(!obj(receipt)||!text(receipt.action,40)||!['applied','unchanged','not-found'].includes(receipt.outcome))invalid();
+ // A receipt with an outcome this client does not know says nothing it can act on, so it is left out.
+ const receipts=keepReadable('notification-actions','receipts',value.receipts,receipt=>{
+  if(!obj(receipt)||!text(receipt.action,40)||!oneOf(receipt.outcome,outcomes))invalid();
   if(receipt.id!==undefined&&!text(receipt.id,200))invalid();
- }
- return {...value,counts:parseCounts(value.counts)} as NotificationBatchResult;
+  return receipt as NotificationReceipt;
+ });
+ return {...value,receipts,counts:parseCounts(value.counts)} as NotificationBatchResult;
 }
 
 export function parseNotificationBroadcastResult(value:unknown):NotificationBroadcastResult{
@@ -253,21 +269,39 @@ export function parseFeedbackCapabilities(value:unknown):FeedbackCapabilities{
  if(!text(value.reporterName,200)||!text(value.reporterAuthority,40))invalid();
  for(const list of [value.statuses,value.diagnosticsDecisions])if(!Array.isArray(list)||list.length>12)invalid();
  if(!Array.isArray(value.kinds)||value.kinds.length<1||value.kinds.length>20)invalid();
- for(const kind of value.kinds){
+ // A kind or category that cannot be read is not offered; a kind left with no category is not
+ // offered either, and a form left with no kind at all cannot be shown.
+ const kinds=keepReadable('feedback-capabilities','kinds',value.kinds,kind=>{
   if(!obj(kind)||!text(kind.id,60)||!kind.id||!text(kind.label,120))invalid();
   if(!Array.isArray(kind.categories)||kind.categories.length<1||kind.categories.length>30)invalid();
-  for(const category of kind.categories){
+  const categories=keepReadable('feedback-capabilities','kind.categories',kind.categories,category=>{
    if(!obj(category)||!text(category.id,60)||!category.id||!text(category.label,120)||!text(category.description,400))invalid();
    if(typeof category.wantsPlaybackSession!=='boolean'||typeof category.wantsItem!=='boolean')invalid();
-  }
- }
- return value as FeedbackCapabilities;
+   return category as FeedbackCategoryDefinition;
+  });
+  if(!categories.length)invalid();
+  return {...kind,categories} as FeedbackKindDefinition;
+ });
+ if(!kinds.length)invalid();
+ return {...value,kinds} as FeedbackCapabilities;
 }
 
-export function parseFeedbackReport(value:unknown):FeedbackItem{
+const feedbackStatuses:readonly FeedbackItemStatus[]=['open','in-progress','resolved','closed'];
+const feedbackDecisions:readonly FeedbackDecision[]=['attached','unavailable','declined','not-requested'];
+
+/**
+ * A report whose status this client does not know is refused unless the caller names a status
+ * to read it as. A diagnostics decision it does not know reads as `unavailable`, which claims
+ * nothing about what was attached, and a thread entry it cannot read is left out.
+ */
+function feedbackReport(value:unknown,statusOtherwise?:FeedbackItemStatus):FeedbackItem{
  if(!obj(value)||!text(value.id,200)||!value.id||!text(value.cursor,64))invalid();
  if(!whole(value.revision)||!whole(value.createdAt)||!whole(value.updatedAt)||!whole(value.expiresAt))invalid();
- if(!['open','in-progress','resolved','closed'].includes(value.status))invalid();
+ let status=oneOf(value.status,feedbackStatuses);
+ if(!status){
+  if(!statusOtherwise||!text(value.status,40)||!value.status)invalid();
+  noteSkipped('feedback-report','status');status=statusOtherwise;
+ }
  if(!text(value.kind,60)||!text(value.category,60)||!text(value.message,4000))invalid();
  if(value.itemId!==undefined&&!text(value.itemId,200))invalid();
  if(value.duplicateOf!==undefined&&!text(value.duplicateOf,200))invalid();
@@ -275,21 +309,28 @@ export function parseFeedbackReport(value:unknown):FeedbackItem{
  const reporter=value.reporter;
  if(!obj(reporter)||!text(reporter.name,200)||!text(reporter.authority,40)||!text(reporter.role,40)||typeof reporter.self!=='boolean')invalid();
  const diagnostics=value.diagnostics;
- if(!obj(diagnostics)||!['attached','unavailable','declined','not-requested'].includes(diagnostics.decision))invalid();
+ if(!obj(diagnostics)||!text(diagnostics.decision,40))invalid();
  if(diagnostics.reference!==undefined&&!text(diagnostics.reference,240))invalid();
  if(diagnostics.detail!==undefined&&!text(diagnostics.detail,400))invalid();
  if(!Array.isArray(value.thread)||value.thread.length>200)invalid();
- for(const event of value.thread){
+ const thread=keepReadable('feedback-report','thread',value.thread,event=>{
   if(!obj(event)||!whole(event.sequence)||!whole(event.at)||!whole(event.revision))invalid();
   if(!text(event.status,40)||!text(event.reply,4000)||!text(event.actorClass,40))invalid();
- }
- return value as FeedbackItem;
+  return event as FeedbackThreadEvent;
+ });
+ return {...value,status,diagnostics:{...diagnostics,decision:oneOfOr('feedback-report','diagnostics.decision',diagnostics.decision,feedbackDecisions,'unavailable')},thread} as FeedbackItem;
 }
 
+export function parseFeedbackReport(value:unknown):FeedbackItem{return feedbackReport(value);}
+
+/**
+ * The answer to sending a report. The report was accepted whatever status a newer server gives
+ * it, so a status this client does not know reads as `open` here rather than failing the send.
+ */
 export function parseFeedbackSubmission(value:unknown):FeedbackSubmissionResult{
  if(!obj(value)||typeof value.duplicate!=='boolean'||typeof value.created!=='boolean')invalid();
  if(value.duplicateOf!==undefined&&!text(value.duplicateOf,200))invalid();
- return {...value,report:parseFeedbackReport(value.report)} as FeedbackSubmissionResult;
+ return {...value,report:feedbackReport(value.report,'open')} as FeedbackSubmissionResult;
 }
 
 export function parseFeedbackList(value:unknown):FeedbackList{
@@ -297,5 +338,5 @@ export function parseFeedbackList(value:unknown):FeedbackList{
  if(!text(value.nextCursor,64)||!whole(value.total)||!whole(value.observedAt))invalid();
  if(!obj(value.statusCounts)||!obj(value.filter))invalid();
  for(const key of Object.keys(value.statusCounts))if(!whole(value.statusCounts[key]))invalid();
- return {...value,items:value.items.map(parseFeedbackReport)} as FeedbackList;
+ return {...value,items:keepReadable('feedback-list','items',value.items,parseFeedbackReport)} as FeedbackList;
 }

@@ -26,6 +26,8 @@ contents:
     dst: /usr/share/doc/portico-media-server/LICENSE
   - src: ${PORTICO_PACKAGE_ROOT}/THIRD-PARTY-NOTICES.md
     dst: /usr/share/doc/portico-media-server/THIRD-PARTY-NOTICES.md
+  - src: ${PORTICO_PACKAGE_ROOT}/licenses/
+    dst: /usr/share/doc/portico-media-server/licenses/
   - src: packaging/linux/portico-media-server.service
     dst: /usr/lib/systemd/system/portico-media-server.service
 scripts:

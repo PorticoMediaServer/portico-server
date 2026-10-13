@@ -60,5 +60,6 @@ test('a partial receipt is a normal result that names exactly the targets sent',
   assert.throws(() => validateBulkReceipt({...raw, updated: 2}, edit));
   assert.throws(() => validateBulkReceipt({...raw, operationId: 'other'}, edit));
   assert.throws(() => validateBulkReceipt({...raw, results: [{kind: 'item', id: 'a', ok: true}, raw.results[1]]}, edit));
-  assert.throws(() => validateBulkReceipt({...raw, results: [{...raw.results[0], code: 'edit_failed'}, raw.results[1]]}, edit));
+  // A success that carries a field this app does not use is still a success.
+  assert.equal(validateBulkReceipt({...raw, results: [{...raw.results[0], code: 'edit_failed', note: 'x'}, raw.results[1]]}, edit).results[0]!.ok, true);
 });

@@ -3,7 +3,7 @@ import {initializeServer, resumeServerSetup} from '@core/setup-onboarding.ts';
 import {passwordStrength} from '@core/password-strength.ts';
 import type {SystemInfo} from '@core/index.ts';
 import {useSession} from '../../app/session';
-import {currentI18n} from '../../app/i18n';
+import {currentI18n, useI18n} from '../../app/i18n';
 import {errorText} from '../../app/errors';
 import {browserSetupDraft} from '../../bridge/setup-codes';
 import {Button, Checkbox, Icon, Input, Loading, Notice, PasswordInput, PasswordStrength, Text, cx} from '../../ui';
@@ -24,8 +24,8 @@ type Mode = 'hosted' | 'local';
  * (never the password) is kept so a reload resumes instead of starting over.
  */
 export function ServerSetup({system}: {system: SystemInfo}) {
+  const {t} = useI18n();
   const session = useSession();
-  const t = currentI18n().t;
   const {direct} = session;
   const [name, setName] = useState(() => defaultServerName(system.name));
   const [mode, setMode] = useState<Mode>('hosted');

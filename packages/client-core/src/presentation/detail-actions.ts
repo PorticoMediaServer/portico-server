@@ -1,4 +1,5 @@
 import {watchedWords} from './card-caption.ts';
+import {serviceText} from './service-text.ts';
 /**
  * The detail page actions (CON-25): one model for web, iPhone/iPad and TV.
  * The same title shows the same actions in the same places: Play/Resume
@@ -18,6 +19,17 @@ export type DetailViewer = Readonly<{
   local?: boolean;
   /** TV drops Download and Manage (CON-24). */
   platform?: 'web' | 'phone' | 'tv';
+  /**
+   * What the title's card menu also knows, so the page offers the same actions with the same
+   * answers (a client that leaves one out simply does not offer that action on the page):
+   * a play queue to add to; a Watch Together group this viewer may add to; whether this server
+   * and this title can be downloaded at all (`false` hides Download; absent keeps it offered);
+   * and whether this viewer may delete the title.
+   */
+  queue?: boolean;
+  group?: boolean;
+  downloads?: boolean;
+  canDelete?: boolean;
 }>;
 
 export type DetailPrimary = Readonly<{
@@ -71,7 +83,7 @@ export function detailActions(detail: DetailInput, viewer?: DetailViewer): Detai
         id: 'resume',
         label: 'entry.resume',
         icon: 'play',
-        ...(remaining ? {remaining, caption: `${remaining} left`} : {}),
+        ...(remaining ? {remaining, caption: serviceText('duration.remaining', {duration: remaining})} : {}),
         playback: play.playback,
       }
       : {id: 'play', label: 'entry.play', icon: 'play', playback: play.playback}
@@ -111,9 +123,12 @@ export function detailActions(detail: DetailInput, viewer?: DetailViewer): Detai
     rating: hasRating ? rating : undefined,
     addToPlaylist: has('add_to_playlist'),
     addToCollection: has('add_to_collection'),
-    download: !isTV && play?.playback ? 'media' : undefined,
+    queue: !!viewer?.queue,
+    group: !!viewer?.group,
+    download: !isTV && play?.playback && viewer?.downloads !== false ? 'media' : undefined,
     editMetadata: canEdit,
     refreshMetadata: canEdit,
+    delete: !isTV && !!viewer?.canDelete && !!play?.playback,
   });
   const hidden = new Set(['play', 'resume', 'watchlist', 'favorite']);
   const more = groups

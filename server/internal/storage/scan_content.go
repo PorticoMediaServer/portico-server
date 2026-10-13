@@ -116,7 +116,7 @@ func openInventoryRoot(r InventoryRequest) (*os.Root, error) {
 		return nil, err
 	}
 	info, err := root.Stat(".")
-	if err != nil || !info.IsDir() || r.RootIdentity != "" && RootIdentity(snapshot(r.Root, info)) != r.RootIdentity {
+	if err != nil || !info.IsDir() || r.RootIdentity != "" && !SameRoot(r.RootIdentity, RootIdentity(snapshot(r.Root, info))) {
 		root.Close()
 		return nil, ErrInventoryChanged
 	}

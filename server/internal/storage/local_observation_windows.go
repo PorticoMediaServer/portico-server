@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -78,16 +79,16 @@ func windowsFileBinding(file *os.File) (string, string, error) {
 }
 
 func checkLocalRoot(path string) error {
-	name, err := windows.UTF16PtrFromString(path)
+	resolved, err := filepath.EvalSymlinks(path)
 	if err != nil {
 		return err
 	}
-	attributes, err := windows.GetFileAttributes(name)
+	info, err := os.Stat(resolved)
 	if err != nil {
 		return err
 	}
-	if attributes&windows.FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-		return ErrObservedSourceUnsupported
+	if !info.IsDir() {
+		return ErrRootLease
 	}
 	return nil
 }

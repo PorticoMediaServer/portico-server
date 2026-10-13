@@ -6,7 +6,7 @@ const src = (p: string) => readFileSync(new URL('../src/' + p, import.meta.url),
 
 test('an album, artist or collection page has its own More menu: the card’s actions, without Details for the page already open', () => {
   const entity = src('screens/library/Entity.tsx');
-  assert.match(entity, /icon="more" aria-label=\{currentI18n\(\)\.t\('title\.moreActions'\)\}[^\n]*player\.more\(entityMore, anchorOf\(e\.c/);
+  assert.match(entity, /icon="more" aria-label=\{t\('title\.moreActions'\)\}[^\n]*player\.more\(entityMore, anchorOf\(e\.c/);
   assert.match(entity, /libraryId: entity\.libraryId \|\| libraryId, navigation: entity\.navigation \?\? \{view:/);
   const actions = src('screens/shared/EntryActions.tsx');
   assert.match(actions, /details: !!entry\.navigation && !\(entry\.navigation\.entityId && location\.pathname\.endsWith\(`\/\$\{entry\.navigation\.view\}\/\$\{entry\.navigation\.entityId\}`\)\)/);

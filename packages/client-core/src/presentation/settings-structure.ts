@@ -26,8 +26,13 @@ import type {ServerFormId} from '../server-admin/server-forms.ts';
 
 export type SettingsPlatform = 'web' | 'phone' | 'tv';
 export type SettingsHeadingId = 'account' | 'server';
-/** Whose the value is: the profile's on this server (it follows them), or this device's. Said on the row. */
-export type SettingsScope = 'profile' | 'device';
+/**
+ * Whose the value is, said on the row. `profile`: the profile's on this server (it follows them
+ * everywhere; the rule, so the row says nothing). `deviceClass`: the profile's for every device of
+ * this kind — the server keeps one value for all web browsers, one for all phones and tablets and
+ * one for all TVs. `device`: kept by this one device and nowhere else.
+ */
+export type SettingsScope = 'profile' | 'deviceClass' | 'device';
 
 export type SettingsCapabilities = Readonly<{
   /** Registry keys this server publishes; a `preference` row whose key is missing is left out. Absent: all are assumed. */
@@ -50,6 +55,8 @@ export type SettingsCapabilities = Readonly<{
   playbackSpeed?: boolean;
   /** This device renders audio itself: gapless, crossfade and volume leveling. Absent: it does (a Roku's player cannot). */
   audioEffects?: boolean;
+  /** This build has mpv as a second player beside the device's own, so there is a player to choose. Absent or false: there is not (the web never has). */
+  playerEngines?: boolean;
 }>;
 
 export type SettingsContext = Readonly<{owner: boolean; platform: SettingsPlatform; capabilities: SettingsCapabilities}>;
@@ -65,7 +72,7 @@ export type SettingsControl =
 
 export type CompositeId =
   | 'quality.home' | 'quality.away' | 'quality.cellular' | 'playbackMethod' | 'hdr' | 'cardSize'
-  | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices';
+  | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices' | 'playerEngine';
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
@@ -78,7 +85,7 @@ export type SettingsCustomId =
   | 'server.accounts' | 'server.invitations' | 'server.apiKeys'
   | 'server.transcodeStatus'
   | 'server.remoteStatus' | 'server.accountConnection' | 'server.certificateStatus' | 'server.addresses'
-  | 'server.diskUsage' | 'server.retention' | 'server.remoteSources' | 'server.backups' | 'server.deletedTitles'
+  | 'server.diskUsage' | 'server.retention' | 'server.remoteSources' | 'server.backups' | 'server.missingTitles'
   | 'server.windows' | 'server.jobs'
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
   | 'server.identity' | 'server.updates';
@@ -86,7 +93,7 @@ export type SettingsCustomId =
 type RowCopy = Readonly<{
   label: MessageId;
   help?: MessageId;
-  /** Shown as "This device" on the row. Profile settings say nothing: they are the rule. */
+  /** Named on the row by `settingsScopeLabel` ("All TVs", "This device"). Profile settings say nothing: they are the rule. */
   scope?: SettingsScope;
   /** Shown only while another preference has this value (the countdown, while auto-play is on). */
   when?: Readonly<{key: string; equals: PreferenceValue}>;
@@ -128,6 +135,13 @@ export type SettingsPage = Readonly<{id: string; title: MessageId; icon: IconId;
 export type SettingsHeading = Readonly<{id: SettingsHeadingId; title: MessageId; pages: readonly SettingsPage[]}>;
 export type SettingsStructure = Readonly<{headings: readonly SettingsHeading[]}>;
 
+/** The Player setting's values, in the order shown: Automatic is the default. */
+export const PLAYER_ENGINES = ['automatic', 'native', 'mpv'] as const;
+export type PlayerEngineSetting = (typeof PLAYER_ENGINES)[number];
+const PLAYER_ENGINE_CHOICES: readonly SettingsChoice[] = [
+  {value: 'automatic', label: 'settings.player.automatic'}, {value: 'native', label: 'settings.player.native'}, {value: 'mpv', label: 'settings.player.mpv'},
+];
+
 // ── Authoring helpers ────────────────────────────────────────────────────────
 
 type Only = Readonly<{platforms?: readonly SettingsPlatform[]; needs?: (c: SettingsCapabilities) => boolean}>;
@@ -138,9 +152,11 @@ type AuthoredPage = Readonly<{id: string; title: MessageId; icon: IconId; tabs?:
 const seconds = (...values: number[]): SettingsChoice[] => values.map(value => ({value, label: 'pref.unit.seconds', labelValues: {count: value}}));
 const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(value => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}}));
 const skipChoices = (key: string): SettingsChoice[] => (['ask', 'auto', 'off'] as const).map(value => ({value, label: `pref.value.${key}.${value}` as MessageId}));
+// The saved default for each network, in the player's own order: Original (the default), Automatic
+// (starts at Original and adjusts to the connection), then the fixed qualities.
 const limitChoices: SettingsChoice[] = [
-  {value: 'automatic', label: 'settings.quality.limit.automatic'},
   {value: 'original', label: 'settings.quality.limit.original'},
+  {value: 'automatic', label: 'settings.quality.limit.automatic'},
   {value: '2160', label: 'pref.unit.4k'},
   {value: '1080', label: 'pref.unit.height', labelValues: {value: '1080'}},
   {value: '720', label: 'pref.unit.height', labelValues: {value: '720'}},
@@ -214,16 +230,21 @@ const accountPages: readonly AuthoredPage[] = [
     id: 'quality', title: 'settings.page.quality', icon: 'quality', sections: [
       // One limit per network. The registry's mode and ceiling pairs stay there for API clients.
       {id: 'limits', title: 'settings.section.qualityLimits', rows: [
-        {kind: 'composite', id: 'quality.home', storage: 'registry', label: 'settings.row.qualityHome', help: 'settings.help.qualityHome', scope: 'device', control: {type: 'choice', choices: limitChoices}},
-        {kind: 'composite', id: 'quality.away', storage: 'registry', label: 'settings.row.qualityAway', help: 'settings.help.qualityAway', scope: 'device', control: {type: 'choice', choices: limitChoices}},
-        {kind: 'composite', id: 'quality.cellular', storage: 'registry', label: 'settings.row.qualityCellular', scope: 'device', control: {type: 'choice', choices: limitChoices}, platforms: ['phone']},
+        {kind: 'composite', id: 'quality.home', storage: 'registry', label: 'settings.row.qualityHome', help: 'settings.help.qualityHome', scope: 'deviceClass', control: {type: 'choice', choices: limitChoices}},
+        {kind: 'composite', id: 'quality.away', storage: 'registry', label: 'settings.row.qualityAway', help: 'settings.help.qualityAway', scope: 'deviceClass', control: {type: 'choice', choices: limitChoices}},
+        {kind: 'composite', id: 'quality.cellular', storage: 'registry', label: 'settings.row.qualityCellular', scope: 'deviceClass', control: {type: 'choice', choices: limitChoices}, platforms: ['phone']},
       ]},
       {id: 'method', rows: [
         // One choice in place of three four-way policies; it writes a combination that makes sense.
-        {kind: 'composite', id: 'playbackMethod', storage: 'registry', label: 'settings.row.playbackMethod', help: 'settings.help.playbackMethod', scope: 'device', control: {type: 'choice', choices: [
+        {kind: 'composite', id: 'playbackMethod', storage: 'registry', label: 'settings.row.playbackMethod', help: 'settings.help.playbackMethod', scope: 'deviceClass', control: {type: 'choice', choices: [
           {value: 'automatic', label: 'settings.playbackMethod.automatic'}, {value: 'original', label: 'settings.playbackMethod.original'}, {value: 'convert', label: 'settings.playbackMethod.convert'},
         ]}},
-        {kind: 'composite', id: 'hdr', storage: 'registry', label: 'settings.row.hdr', help: 'settings.help.hdr', scope: 'device', control: {type: 'choice', choices: [{value: 'automatic', label: 'settings.hdr.automatic'}, {value: 'off', label: 'settings.hdr.off'}]}},
+        {kind: 'composite', id: 'hdr', storage: 'registry', label: 'settings.row.hdr', help: 'settings.help.hdr', scope: 'deviceClass', control: {type: 'choice', choices: [{value: 'automatic', label: 'settings.hdr.automatic'}, {value: 'off', label: 'settings.hdr.off'}]}},
+        // Which player plays: Automatic (the default) uses the device's own when it can play the
+        // title as it is or with a plain repackaging, and mpv only when the alternative is
+        // converting the picture, lossy sound or burned-in subtitles. Kept by the device itself,
+        // and shown only where there is a second player to choose.
+        {kind: 'composite', id: 'playerEngine', storage: 'device', label: 'settings.row.player', help: 'settings.help.player', scope: 'device', platforms: ['phone', 'tv'], needs: c => !!c.playerEngines, control: {type: 'choice', choices: PLAYER_ENGINE_CHOICES}},
       ]},
     ],
   },
@@ -240,9 +261,9 @@ const accountPages: readonly AuthoredPage[] = [
   {
     id: 'appearance', title: 'settings.page.appearance', icon: 'sliders', sections: [
       {id: 'look', rows: [
-        {kind: 'composite', id: 'cardSize', storage: 'registry', label: 'settings.row.cardSize', scope: 'device', platforms: ['web'], control: {type: 'choice', choices: [{value: 'small', label: 'settings.cardSize.small'}, {value: 'medium', label: 'settings.cardSize.medium'}, {value: 'large', label: 'settings.cardSize.large'}]}},
-        toggle('appearance.showBackdrops', 'pref.label.appearance.showBackdrops', {scope: 'device', help: 'settings.help.backdrops', platforms: ['web']}),
-        toggle('appearance.reduceMotion', 'pref.label.appearance.reduceMotion', {scope: 'device', help: 'pref.help.appearance.reduceMotion.web', platforms: ['web']}),
+        {kind: 'composite', id: 'cardSize', storage: 'registry', label: 'settings.row.cardSize', scope: 'deviceClass', platforms: ['web'], control: {type: 'choice', choices: [{value: 'small', label: 'settings.cardSize.small'}, {value: 'medium', label: 'settings.cardSize.medium'}, {value: 'large', label: 'settings.cardSize.large'}]}},
+        toggle('appearance.showBackdrops', 'pref.label.appearance.showBackdrops', {scope: 'deviceClass', help: 'settings.help.backdrops', platforms: ['web']}),
+        toggle('appearance.reduceMotion', 'pref.label.appearance.reduceMotion', {scope: 'deviceClass', help: 'pref.help.appearance.reduceMotion.web', platforms: ['web']}),
         // Apple keeps this on the device, beside the system's own Reduce Motion.
         {kind: 'composite', id: 'reduceMotion', storage: 'device', label: 'pref.label.appearance.reduceMotion', help: 'settings.help.reduceMotionDevice', scope: 'device', platforms: ['phone', 'tv'], control: {type: 'switch'}},
         {kind: 'composite', id: 'textSize', storage: 'device', label: 'settings.row.textSize', scope: 'device', platforms: ['tv'], control: {type: 'choice', choices: [{value: 'standard', label: 'settings.textSize.standard'}, {value: 'large', label: 'settings.textSize.large'}]}},
@@ -389,12 +410,10 @@ const serverPages: readonly AuthoredPage[] = [
     ]},
     {id: 'outside', title: 'web.connectivity.outside', description: 'web.connectivity.outsideLede', rows: [
       setting('connectivity', 'remoteSignInPolicy', 'web.connectivity.whoMaySignIn', {type: 'choice', choices: choices('settings.server.signIn', ['allow', 'owner-only', 'off'])}),
-      setting('connectivity', 'secureConnectionsPolicy', 'web.connectivity.encrypted', {type: 'choice', choices: choices('settings.server.secure', ['required', 'preferred', 'lan-plain-allowed'])}, {help: 'web.connectivity.encryptedHelp'}),
     ]},
     {id: 'home', title: 'settings.server.homeNetwork', rows: [
       on('connectivity', 'lanDiscoveryEnabled', 'web.connectivity.discovery', 'settings.server.discoveryHelp'),
       setting('connectivity', 'lanNetworks', 'web.connectivity.homeNetworks', {type: 'lines', example: '192.168.2.0/24'}, {help: 'web.connectivity.homeNetworksHelp'}),
-      on('connectivity', 'treatWanAsLan', 'web.connectivity.wanAsLan', 'web.connectivity.wanAsLanHelp'),
       setting('connectivity', 'accessUrls', 'web.connectivity.extraAddresses', {type: 'lines', example: 'https://media.example.com'}, {help: 'web.connectivity.extraAddressesHelp'}),
       custom('server.addresses'),
     ]},
@@ -426,7 +445,11 @@ const serverPages: readonly AuthoredPage[] = [
     ]},
     panel('sources', 'server.remoteSources', 'settings.server.remoteSources'),
     panel('backups', 'server.backups', 'settings.server.backups'),
-    panel('deleted', 'server.deletedTitles', 'settings.server.deletedTitles'),
+    {id: 'missing', title: 'settings.server.missingTitles', description: 'settings.server.missingTitlesLede', rows: [
+      setting('runtime', 'library.missingTitles', 'settings.server.missingTitlesRule', {type: 'choice', choices: choices('settings.server.missingTitlesRule', ['immediately', 'after_days', 'never'])}, {help: 'settings.server.missingTitlesRuleHelp'}),
+      setting('runtime', 'library.missingTitlesDays', 'settings.server.missingTitlesDays', {type: 'number', min: 1, max: 3650, unit: 'settings.unit.days'}, {when: {key: 'library.missingTitles', equals: 'after_days'}}),
+      custom('server.missingTitles'),
+    ]},
   ]},
   {id: 'schedule', title: 'settings.server.schedule', icon: 'calendar', sections: [
     panel('jobs', 'server.jobs', 'settings.server.jobs'),
@@ -485,6 +508,17 @@ function resolve(pages: readonly AuthoredPage[], context: SettingsContext): Sett
     if (sections.length) out.push({id: authored.id, title: authored.title, icon: authored.icon, ...(tabs && tabs.length > 1 ? {tabs} : {}), sections});
   }
   return out;
+}
+
+/**
+ * The words a row carries for whose its value is, or undefined when it says nothing. A value the
+ * server keeps per kind of device names the kind plainly, so nobody takes it for a setting of the
+ * one device in their hand.
+ */
+export function settingsScopeLabel(scope: SettingsScope | undefined, platform: SettingsPlatform): MessageId | undefined {
+  if (scope === 'device') return 'settings.thisDevice';
+  if (scope === 'deviceClass') return platform === 'web' ? 'settings.scope.allBrowsers' : platform === 'tv' ? 'settings.scope.allTVs' : 'settings.scope.allPhones';
+  return undefined;
 }
 
 /** The Settings screen for this viewer on this device: Account for everyone, Server for owners. */

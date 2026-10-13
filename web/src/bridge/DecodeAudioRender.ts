@@ -61,7 +61,12 @@ export class DecodeAudioRender {
     this.service = service; this.url = url; this.element = element; this.sameAlbum = sameAlbum;
     this.snapshot = service.getSnapshot();
     const rate = playableAudio(this.snapshot.session?.audio) ? this.snapshot.session!.audio!.sampleRate! : undefined;
+    // On iPhone and iPad, audio from a bare AudioContext follows the silent switch and stops when
+    // the page goes to the background unless the page says it is playing media.
+    try { const session = (navigator as Navigator & {audioSession?: {type: string}}).audioSession; if (session && session.type !== 'playback') session.type = 'playback'; } catch { /* not offered here */ }
     this.context = createContext(rate);
+    this.context.addEventListener('statechange', this.interrupted);
+    document.addEventListener('visibilitychange', this.interrupted);
     this.master = this.context.createGain();
     this.master.connect(this.context.destination);
     this.volume();
@@ -71,6 +76,14 @@ export class DecodeAudioRender {
     this.timer = setInterval(() => this.tick(), 50);
   }
 
+  /** The system interrupted the context (a call, another app's audio) or suspended it in the
+   * background, and does not start it again by itself. While the listener still means it to
+   * play, it is started again once; a browser that refuses changes nothing and is not asked twice. */
+  private interrupted = () => {
+    if (this.disposed || this.starting || this.context.state === 'running' || this.context.state === 'closed') return;
+    if (document.visibilityState !== 'visible' || this.service.getSnapshot().intent !== 'playing' || this.service.getSnapshot().seekError) return;
+    void this.context.resume().catch(() => {});
+  };
   private volume = () => { this.master.gain.setTargetAtTime(this.element.muted ? 0 : this.element.volume, this.context.currentTime, 0.01); };
   private gesture = () => {
     queueMicrotask(() => {
@@ -91,7 +104,9 @@ export class DecodeAudioRender {
         open: async fromFrame => { source = new ConvertedSource({...plan, url: this.url(plan.url)}, fromFrame, {locked: !unlocked}); return source; },
       };
     }
-    const range = new RangeReader({url: this.url(plan.url), key: plan.id, size: plan.bytes, cache: audioByteCache, ...(prepared && plan.prefetchBytes ? {limit: plan.prefetchBytes} : {})});
+    // A start or seek that is still reading the file is alive, however long the link makes it take.
+    const alive = () => { if (!this.disposed && !prepared) this.service.engineProgress(this.service.getSnapshot().intentId); };
+    const range = new RangeReader({url: this.url(plan.url), key: plan.id, size: plan.bytes, cache: audioByteCache, onBytes: alive, ...(prepared && plan.prefetchBytes ? {limit: plan.prefetchBytes} : {})});
     return {unlock: () => range.unlock(), close: () => range.close(), prefetchAll: () => range.prefetchAll(), open: fromFrame => TrackStream.open(plan, range, fromFrame)};
   }
 
@@ -273,6 +288,8 @@ export class DecodeAudioRender {
     document.removeEventListener('click', this.gesture);
     document.removeEventListener('keydown', this.gesture);
     this.element.removeEventListener('volumechange', this.volume);
+    this.context.removeEventListener('statechange', this.interrupted);
+    document.removeEventListener('visibilitychange', this.interrupted);
     this.master.disconnect();
     void this.context.close();
   }

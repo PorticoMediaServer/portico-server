@@ -2,7 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {NOW_PLAYING_POLL_MS, deliveryId, driveNowPlaying, locationId, rateMbps, stateId, stopMessage, windowRange} from '../src/admin/now-playing.ts';
 import {ownerStopOf} from '../src/player/owner-stop.ts';
-import {V1PlaybackApi} from '../../packages/client-core/src/playback-v1/legacy-bridge.ts';
+import {FakePlaybackServer, fakeHttp} from '../../packages/client-core/src/playback-v1/testing/fake-server.ts';
+import {WebPlayback} from '../src/playback-v1/web-playback.ts';
 import {AdminSessionsClient, NowPlayingStore} from '../../packages/client-core/src/playback-v1/admin-sessions.ts';
 
 function fakeEnv() {
@@ -122,18 +123,21 @@ test('display helpers: delivery, state, rate, message limit, window', () => {
 });
 
 test('the server’s session.updated payload reaches core as an owner’s stop with the message', async () => {
-  const http = {send: async () => ({status: 204, headers: {}})};
-  const timers = {setTimer: () => 0, clearTimer: () => {}};
-  const api = new V1PlaybackApi(http as never, {timers});
-  await api.progressPlayback('ses_1', {generation: 1, sequence: 1, positionSeconds: 12, state: 'playing'});
+  const server = new FakePlaybackServer();
+  const web = new WebPlayback({http: fakeHttp(server), mediaUrl: p => 'https://portico.test' + p, playerTimers: {setTicker: () => 0, clearTicker: () => {}}});
   const ends: unknown[] = [];
-  api.onServerEnded((id, end) => ends.push({id, end}));
-  api.sessionUpdated('ses_2', {state: 'ended', reason: 'terminated'});
-  api.sessionUpdated('ses_1', {state: 'paused', deviceId: 'dev_1', generation: 1});
+  web.transport.onServerEnded!((id, end) => ends.push({id, end}));
+  const {session} = await web.transport.start({itemId: 'movie'}, {state: 'playing'});
+  web.controller.attach(session);
+  web.transport.sessionUpdated('ses_other', '2', {state: 'ended', reason: 'terminated'});
+  web.transport.sessionUpdated(session.id, session.revision, {state: 'paused', deviceId: 'dev_1', generation: 1});
+  await new Promise(setImmediate);
   assert.equal(ends.length, 0, 'another session, or one still going, is not an end');
-  // The shape be/playback c85d526 publishes to the device (sessionEventsTx).
-  api.sessionUpdated('ses_1', {state: 'ended', deviceId: 'dev_1', generation: 1, reason: 'terminated', message: 'The server is restarting in five minutes.'});
-  assert.deepEqual(ends, [{id: 'ses_1', end: {reason: 'terminated', message: 'The server is restarting in five minutes.'}}]);
+  // The shape the server publishes to the device (sessionEventsTx).
+  web.transport.sessionUpdated(session.id, '9', {state: 'ended', deviceId: 'dev_1', generation: 1, reason: 'terminated', message: 'The server is restarting in five minutes.'});
+  await new Promise(setImmediate);
+  assert.deepEqual(ends, [{id: session.id, end: {reason: 'terminated', message: 'The server is restarting in five minutes.'}}]);
+  web.dispose();
 });
 
 test('the player shows the owner’s stop from snapshot.ended, with or without a message', () => {
