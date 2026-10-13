@@ -23,9 +23,39 @@ func (s *Service) PruneSource(ctx context.Context, source string) (bool, error) 
 	tx := gated.Tx()
 	cutoff := time.Now().Add(-15 * time.Minute).UTC().Format(time.RFC3339Nano)
 	for _, table := range []string{"inventory_analysis_queue", "inventory_directories", "inventory_sidecar_changes", "subtitle_inventory_entries"} {
-		result, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT w.rowid FROM `+table+` w JOIN inventory_runs r ON r.job_id=w.job_id JOIN jobs j ON j.id=r.job_id WHERE r.source_id=? AND j.status NOT IN('queued','running','paused') AND j.created_at<? LIMIT ?)`, source, cutoff, scanRetentionBatch)
+		result, err := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT w.rowid FROM `+table+` w JOIN inventory_runs r ON r.job_id=w.job_id JOIN jobs j ON j.id=r.job_id WHERE r.source_id=? AND j.status NOT IN('queued','running','paused') AND COALESCE(nullif(r.finished_at,''),j.created_at)<? LIMIT ?)`, source, cutoff, scanRetentionBatch)
 		if err != nil {
 			return false, err
+		}
+		if n, _ := result.RowsAffected(); n > 0 {
+			return true, gated.Commit()
+		}
+	}
+	for _, table := range []string{"inventory_directory_cache", "inventory_sidecars"} {
+		result, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT c.rowid FROM `+table+` c JOIN library_sources s ON s.id=c.source_id WHERE c.source_id=? AND (c.incarnation<>s.incarnation OR s.enabled=0) LIMIT ?)`, source, scanRetentionBatch)
+		if e != nil {
+			return false, e
+		}
+		if n, _ := result.RowsAffected(); n > 0 {
+			return true, gated.Commit()
+		}
+	}
+	if more, e := pruneRemoteInventoryTx(ctx, tx, source, cutoff); more || e != nil {
+		if e != nil {
+			return false, e
+		}
+		return true, gated.Commit()
+	}
+	if more, e := s.pruneOrphanRemoteInventory(ctx, tx, source); more || e != nil {
+		if e != nil {
+			return false, e
+		}
+		return true, gated.Commit()
+	}
+	for _, table := range []string{"remote_scan_cursors", "remote_scan_generations"} {
+		result, e := tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE rowid IN(SELECT w.rowid FROM `+table+` w JOIN inventory_runs r ON r.job_id=w.job_id JOIN jobs j ON j.id=r.job_id WHERE r.source_id=? AND j.status NOT IN('queued','running','paused') AND COALESCE(nullif(r.finished_at,''),j.created_at)<? LIMIT ?)`, source, cutoff, scanRetentionBatch)
+		if e != nil {
+			return false, e
 		}
 		if n, _ := result.RowsAffected(); n > 0 {
 			return true, gated.Commit()

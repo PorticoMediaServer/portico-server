@@ -61,21 +61,28 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		required = append(required, assets.PlaybackAnalysisRevision)
 	}
 	requiredJSON, _ := json.Marshal(required)
-	rows, err := tx.QueryContext(ctx, `SELECT o.id,o.revision,o.analysis_revision,o.analysis_operations_json,o.relative_path,o.analysis_generation,o.analysis_algorithm FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? AND o.id>r.reconcile_cursor AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.unsupported_reason='' AND (lower(substr(o.relative_path,-5))<>'.strm' OR ?=1) AND (o.analysis_revision<>o.revision OR o.analysis_policy<>? OR o.analysis_state='pending' OR o.analysis_generation<>r.source_generation OR (o.analysis_algorithm<>? AND EXISTS(SELECT 1 FROM json_each((SELECT operations_json FROM library_scan_policies WHERE library_id=?)) WHERE value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection'))) OR
+	// Bound evidence evaluation even when the entire source is already complete.
+	// Unchanged candidates advance the cursor without creating queue rows.
+	rows, err := tx.QueryContext(ctx, `WITH batch AS MATERIALIZED (
+ SELECT o.* FROM inventory_objects o JOIN inventory_runs r ON r.source_id=o.source_id
+ WHERE r.job_id=? AND o.id>r.reconcile_cursor AND o.retired=0 AND o.state='available' AND o.root_incarnation=r.root_incarnation AND o.unsupported_reason=''
+ ORDER BY o.id LIMIT `+analysisEnqueuePageSize+`)
+ SELECT o.id,o.revision,((lower(substr(o.relative_path,-5))<>'.strm' OR ?=1) AND (o.analysis_revision<>o.revision OR o.analysis_policy<>? OR o.analysis_state='pending' OR o.analysis_generation<>r.source_generation OR (o.analysis_algorithm<>? AND EXISTS(SELECT 1 FROM json_each((SELECT operations_json FROM library_scan_policies WHERE library_id=?)) WHERE value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection'))) OR
  (lower(substr(o.relative_path,-5))<>'.strm' AND EXISTS(SELECT 1 FROM json_each(?) wanted WHERE NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=wanted.value))) OR
  EXISTS(SELECT 1 FROM json_each(?) wanted WHERE wanted.value IN('checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection') AND NOT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results a ON a.id=h.result_id WHERE h.object_id=o.id AND h.source_revision=o.revision AND h.stage=wanted.value AND a.algorithm=? AND a.root_incarnation=r.root_incarnation AND a.configuration_generation=r.source_generation AND a.retired_ms=0)) OR
- (lower(substr(o.relative_path,-5))='.strm' AND NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=?))) ORDER BY o.id LIMIT `+analysisEnqueuePageSize+``, job, strmEnabled && policy.Allows("probe"), policy.Revision, mediaanalysis.Algorithm, source.LibraryID, string(requiredJSON), string(requiredJSON), mediaanalysis.Algorithm, "strm_target:"+strconv.FormatInt(strmRevision, 10))
+ (lower(substr(o.relative_path,-5))='.strm' AND NOT EXISTS(SELECT 1 FROM json_each(o.analysis_operations_json) done WHERE done.value=?))))
+ FROM batch o JOIN inventory_runs r ON r.source_id=o.source_id WHERE r.job_id=? ORDER BY o.id`, job, strmEnabled && policy.Allows("probe"), policy.Revision, mediaanalysis.Algorithm, source.LibraryID, string(requiredJSON), string(requiredJSON), mediaanalysis.Algorithm, "strm_target:"+strconv.FormatInt(strmRevision, 10), job)
 	if err != nil {
 		return err
 	}
 	type object struct {
-		id, revision, analyzed, ops, path, algorithm string
-		generation                                   int64
+		id, revision string
+		needs        bool
 	}
 	batch := []object{}
 	for rows.Next() {
 		var o object
-		if err = rows.Scan(&o.id, &o.revision, &o.analyzed, &o.ops, &o.path, &o.generation, &o.algorithm); err != nil {
+		if err = rows.Scan(&o.id, &o.revision, &o.needs); err != nil {
 			rows.Close()
 			return err
 		}
@@ -87,60 +94,10 @@ func (s *Service) enqueueAnalysisPage(ctx context.Context, job string, source ca
 		return err
 	}
 	for _, o := range batch {
-		descriptor := strings.EqualFold(filepath.Ext(o.path), ".strm")
-		wanted := append([]string(nil), policy.Operations...)
-		if !descriptor && policy.Allows("probe") {
-			wanted = append(wanted, assets.PlaybackAnalysisRevision)
-		}
-		if descriptor {
-			wanted = []string{"probe", "strm_target:" + strconv.FormatInt(strmRevision, 10)}
-			for _, op := range catalog.DeepScanOperations {
-				if policy.Allows(op) {
-					wanted = append(wanted, op)
-				}
-			}
-		}
-		pending := o.analyzed != o.revision || o.generation != source.Generation
-		for _, op := range catalog.DeepScanOperations {
-			pending = pending || policy.Allows(op) && o.algorithm != mediaanalysis.Algorithm
-		}
-		var completed []string
-		if json.Unmarshal([]byte(o.ops), &completed) != nil {
-			pending = true
-		}
-		for _, op := range wanted {
-			found := false
-			for _, done := range completed {
-				found = found || done == op
-			}
-			for _, deep := range catalog.DeepScanOperations {
-				if op == deep && found {
-					if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results r ON r.id=h.result_id WHERE h.object_id=? AND h.source_revision=? AND h.stage=? AND r.algorithm=? AND r.root_incarnation=? AND r.configuration_generation=? AND r.retired_ms=0)`, o.id, o.revision, op, mediaanalysis.Algorithm, source.Incarnation, source.Generation).Scan(&found); err != nil {
-						return err
-					}
-				}
-			}
-			pending = pending || !found
-		}
-		if descriptor {
-			for _, op := range catalog.DeepScanOperations {
-				pending = pending || policy.Allows(op)
-			}
-		}
-		state := "done"
-		if !pending {
+		if !o.needs {
 			continue
 		}
-		if pending {
-			state = "pending"
-		}
-		if descriptor && (!strmEnabled || !policy.Allows("probe")) {
-			state = "skipped"
-			if _, err = tx.ExecContext(ctx, `UPDATE inventory_objects SET analysis_state='deferred' WHERE id=? AND analysis_revision!=revision`, o.id); err != nil {
-				return err
-			}
-		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision,state) VALUES(?,?,?,?,?) ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state=excluded.state`, job, o.id, o.revision, policy.Revision, state); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_analysis_queue(job_id,object_id,revision,policy_revision,state) VALUES(?,?,?,?,'pending') ON CONFLICT(job_id,object_id) DO UPDATE SET revision=excluded.revision,policy_revision=excluded.policy_revision,state=excluded.state`, job, o.id, o.revision, policy.Revision); err != nil {
 			return err
 		}
 	}

@@ -192,7 +192,7 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 			if page.Remote != nil {
 				childRevision = ""
 			}
-			if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_directory_cache(source_id,incarnation,relative_path,parent_path,parent_revision) VALUES(?,?,?,?,?) ON CONFLICT(source_id,incarnation,relative_path) DO UPDATE SET parent_path=excluded.parent_path,parent_revision=excluded.parent_revision`, source.ID, source.Incarnation, child, relative, page.DirectoryRevision); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_directory_cache(source_id,incarnation,relative_path,parent_path,parent_revision,seen_job) VALUES(?,?,?,?,?,?) ON CONFLICT(source_id,incarnation,relative_path) DO UPDATE SET parent_path=excluded.parent_path,parent_revision=excluded.parent_revision,seen_job=excluded.seen_job`, source.ID, source.Incarnation, child, relative, page.DirectoryRevision, job); err != nil {
 				return err
 			}
 			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_directories(job_id,relative_path,identity,revision) VALUES(?,?,?,?)`, job, child, v.ObjectIdentity, childRevision); err != nil {
@@ -223,7 +223,7 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 	state = "pending"
 	if page.Complete {
 		state = "done"
-		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_directory_cache(source_id,incarnation,relative_path,parent_path,identity,revision) VALUES(?,?,?,?,?,?) ON CONFLICT(source_id,incarnation,relative_path) DO UPDATE SET identity=excluded.identity,revision=excluded.revision`, source.ID, source.Incarnation, relative, filepath.Dir(relative), page.DirectoryIdentity, page.DirectoryRevision); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_directory_cache(source_id,incarnation,relative_path,parent_path,identity,revision,seen_job) VALUES(?,?,?,?,?,?,?) ON CONFLICT(source_id,incarnation,relative_path) DO UPDATE SET identity=excluded.identity,revision=excluded.revision,seen_job=excluded.seen_job`, source.ID, source.Incarnation, relative, filepath.Dir(relative), page.DirectoryIdentity, page.DirectoryRevision, job); err != nil {
 			return err
 		}
 	}

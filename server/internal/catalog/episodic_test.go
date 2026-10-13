@@ -46,7 +46,7 @@ func TestEpisodeNamingAcceptance(t *testing.T) {
 		{"Show S01E01 S02E02.mkv", "tv", "", "", 0, nil, true},
 		{"S01E01.mkv", "tv", "", "", 0, nil, true},
 		{"Show (2024) 1080p.mkv", "tv", "", "", 0, nil, true},
-		{"Show S01E01 Part 1.mkv", "tv", "", "", 0, nil, true},
+		{"Show S01E01 Part 1.mkv", "tv", "Show", "seasonal", 1, []int{1}, false},
 		{"News 2024-01-02.mkv", "tv", "News", "date", 2024, []int{2}, false},
 		{"Show S01E01-E99.mkv", "tv", "", "", 0, nil, true},
 		{"Show S01E02E01.mkv", "tv", "", "", 0, nil, true},

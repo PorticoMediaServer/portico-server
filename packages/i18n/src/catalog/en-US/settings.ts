@@ -394,6 +394,7 @@ export const settingsMessages = {
   'scan.issue.directory_changed': 'This folder changed during the scan. Its files were kept and will be checked again.',
   'scan.issue.directory_unreadable': 'This folder could not be read. Its existing files were kept.',
   'scan.issue.entry_unreadable': 'This file could not be read. Its existing entry was kept.',
+  'scan.issue.symlink_disabled': 'This link was skipped because following links is turned off for this folder.',
   'scan.issue.symlink_unreadable': 'This link could not be followed. Its existing entry was kept.',
   'scan.issue.symlink_outside_root': 'This link points outside the library folder and was skipped.',
   'scan.issue.directory_alias': 'This folder points to a folder already scanned and was skipped.',

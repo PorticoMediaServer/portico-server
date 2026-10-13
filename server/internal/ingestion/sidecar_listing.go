@@ -119,6 +119,7 @@ func (s *Service) noteDirectoryPage(job, relative, cursor string, page storage.I
 func (s *Service) forgetListing(job string) {
 	s.listingMu.Lock()
 	delete(s.listings, job)
+	delete(s.ignoreScopes, job)
 	s.listingMu.Unlock()
 }
 

@@ -11,7 +11,7 @@ import (
 
 type linuxInventoryWatcher struct {
 	fd          int
-	directories map[int]InventoryChange
+	directories map[int][]InventoryChange
 	roots       []WatchRoot
 }
 
@@ -20,7 +20,7 @@ func newInventoryWatcher(r WatchRequest) (inventoryWatcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	w := &linuxInventoryWatcher{fd: fd, directories: map[int]InventoryChange{}, roots: r.Roots}
+	w := &linuxInventoryWatcher{fd: fd, directories: map[int][]InventoryChange{}, roots: r.Roots}
 	for _, root := range r.Roots {
 		for _, relative := range root.Directories {
 			path, err := watchDirectory(root, relative)
@@ -31,8 +31,9 @@ func newInventoryWatcher(r WatchRequest) (inventoryWatcher, error) {
 			if err != nil {
 				continue
 			}
-			// Aliases of the same inode are one hint. Enumeration deduplicates them too.
-			w.directories[wd] = InventoryChange{SourceID: root.SourceID, RelativePath: relative}
+			// One inode may be shared by several admitted library sources. Each
+			// source must receive the hint; the request bounds the combined list.
+			w.directories[wd] = append(w.directories[wd], InventoryChange{SourceID: root.SourceID, RelativePath: relative})
 		}
 	}
 	if len(w.directories) == 0 {
@@ -79,8 +80,8 @@ func (w *linuxInventoryWatcher) Next(ctx context.Context) ([]InventoryChange, er
 				}
 				return out, nil
 			}
-			if change, ok := w.directories[wd]; ok && !seen[wd] {
-				out = append(out, change)
+			if changes, ok := w.directories[wd]; ok && !seen[wd] {
+				out = append(out, changes...)
 				seen[wd] = true
 			}
 			if mask&unix.IN_IGNORED != 0 {

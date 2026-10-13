@@ -47,6 +47,7 @@ type Service struct {
 	activeSources map[string]bool
 	listingMu     sync.Mutex
 	listings      map[string]*scanListing
+	ignoreScopes  map[string]map[string]remoteIgnoreScope
 }
 
 func New(db *sql.DB, c *catalog.Service, p assets.Probe) *Service {

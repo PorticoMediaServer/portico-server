@@ -1693,6 +1693,7 @@ inventory_directory_cache.parent_path
 inventory_directory_cache.parent_revision
 inventory_directory_cache.relative_path
 inventory_directory_cache.revision
+inventory_directory_cache.seen_job
 inventory_directory_cache.source_id
 inventory_objects.analysis_algorithm
 inventory_objects.analysis_error

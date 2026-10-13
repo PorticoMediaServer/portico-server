@@ -199,6 +199,7 @@ func LocalInventoryPage(r InventoryRequest) (InventoryPage, error) {
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
 			if !r.FollowSymlinks {
+				p.Issues = append(p.Issues, InventoryIssue{Path: filepath.Join(r.RelativePath, name), Reason: "symlink_disabled"})
 				continue
 			}
 			resolved, e := filepath.EvalSymlinks(child)

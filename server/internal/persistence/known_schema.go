@@ -390,6 +390,7 @@ index rec_profile_signals_positive_recent
 index rec_profile_signals_recent
 index rec_profile_signals_work
 index remote_inventory_check_job
+index remote_listing_directory_history
 index remote_listing_retention
 index retained_title_identities_state
 index retained_title_state_profile

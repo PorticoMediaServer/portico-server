@@ -2729,7 +2729,7 @@ CREATE TABLE content_rating_pending(value_key TEXT PRIMARY KEY,value TEXT NOT NU
 CREATE TABLE inventory_directory_cache(
  source_id TEXT NOT NULL REFERENCES library_sources(id) ON DELETE CASCADE,
  incarnation TEXT NOT NULL,relative_path TEXT NOT NULL,parent_path TEXT NOT NULL,
- parent_revision TEXT NOT NULL DEFAULT '',identity TEXT NOT NULL DEFAULT '',revision TEXT NOT NULL DEFAULT '',
+ parent_revision TEXT NOT NULL DEFAULT '',identity TEXT NOT NULL DEFAULT '',revision TEXT NOT NULL DEFAULT '',seen_job TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(source_id,incarnation,relative_path)) STRICT;
 CREATE TABLE playback_client_profiles(
  session_hash TEXT PRIMARY KEY REFERENCES authorization_family_tokens(token_hash) ON DELETE CASCADE,
@@ -3980,6 +3980,7 @@ CREATE INDEX dvr_recordings_due ON dvr_recordings(state,start_ms,id);
 CREATE INDEX dvr_recordings_rule ON dvr_recordings(rule_id,start_ms,id);
 CREATE INDEX remote_inventory_check_job ON remote_inventory_checks(check_job);
 CREATE INDEX remote_listing_retention ON remote_listing_sessions(created_at);
+CREATE INDEX remote_listing_directory_history ON remote_listing_sessions(source_id,directory,ready,created_at DESC,id DESC);
 CREATE INDEX live_logo_jobs_due ON live_logo_jobs(state,next_attempt_ms,source_id);
 CREATE INDEX profile_show_recent ON profile_show_activity(profile_id,last_activity DESC,show_id);
 CREATE INDEX progress_home_profile_recent

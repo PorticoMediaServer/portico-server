@@ -18,8 +18,7 @@ import (
 	"portico.local/server/internal/subtitles"
 )
 
-// NEW-27: a TV file whose name yields a naming issue (a genuine trailing
-// "- pt1" stack suffix) and carries an embedded text subtitle must surface the
+// A TV file whose name yields a naming issue (an over-wide episode range) and carries an embedded text subtitle must surface the
 // naming issue without recording subtitle_text_import_failed. Before the fix,
 // the item lookup returned sql.ErrNoRows and fell through to the subtitle
 // warning, hiding the real issue.
@@ -36,7 +35,7 @@ func TestSubtitleTextImportSkippedWhenFileHasNoItem(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "subs.srt"), []byte("1\n00:00:00,000 --> 00:00:02,000\nHello\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	out := filepath.Join(media, "Show", "Season 01", "Show - S01E05 - pt1.mkv")
+	out := filepath.Join(media, "Show", "Season 01", "Show - S01E01-E09.mkv")
 	if output, err := exec.Command(binary, "-v", "error", "-f", "lavfi", "-i", "color=c=blue:size=64x64:rate=1", "-i", filepath.Join(root, "subs.srt"), "-t", "2", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:s", "srt", out).CombinedOutput(); err != nil {
 		t.Fatalf("fixture %v %s", err, output)
 	}
@@ -105,7 +104,7 @@ func TestSubtitleTextImportSkippedWhenFileHasNoItem(t *testing.T) {
 	}
 	foundNaming := false
 	for _, issue := range issues {
-		if issue.Code == "multipart_episode_requires_assignment" {
+		if issue.Code == "ambiguous_episode_range" {
 			foundNaming = true
 		}
 		if issue.Code == "subtitle_text_import_failed" {

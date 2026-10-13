@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/assets"
@@ -374,5 +375,55 @@ func TestScannedEmbeddedNameReachesAttachmentAndMatchingEvidence(t *testing.T) {
 	}
 	if n := f.count(`SELECT count(*) FROM inventory_video_ids WHERE provider='tmdb' AND provider_id='949'`); n != 1 {
 		t.Fatal("embedded provider evidence lost")
+	}
+}
+
+func TestEditedIgnoreRulesRetireCachedFoldersWithoutDirectoryTimeChanges(t *testing.T) {
+	f := newLoopFixture(t, "movie", "Skip/Film (2000).mkv")
+	f.write(".plexignore", "# no exclusions\n")
+	f.finish(f.queue())
+	if n := f.count(`SELECT count(*) FROM inventory_directory_cache WHERE relative_path='Skip'`); n != 1 {
+		t.Fatal("fixture cache missing")
+	}
+	f.write(".plexignore", "Skip/\n")
+	f.finish(f.queue())
+	if n := f.count(`SELECT count(*) FROM inventory_directory_cache WHERE relative_path='Skip'`); n != 0 {
+		t.Fatal("old excluded folder stayed cached")
+	}
+	if n := f.count(`SELECT count(*) FROM inventory_objects WHERE state='missing'`); n != 1 {
+		t.Fatal("ignored old media was not reconciled")
+	}
+}
+func TestScanOnlyRequeuesMissingDeepHeads(t *testing.T) {
+	f := newLoopFixture(t, "movie", "One (2000).mkv", "Two (2001).mkv")
+	f.finish(f.queue())
+	f.exec(`UPDATE library_scan_policies SET tier='custom',operations_json='["probe","checksum"]' WHERE library_id=?`, f.library)
+	done, _ := json.Marshal([]string{"probe", "checksum", assets.PlaybackAnalysisRevision})
+	f.exec(`UPDATE inventory_objects SET analysis_revision=revision,analysis_policy=1,analysis_operations_json=?,analysis_algorithm=?,analysis_generation=(SELECT generation FROM library_sources WHERE id=source_id),analysis_state='complete'`, string(done), mediaanalysis.Algorithm)
+	f.exec(`INSERT INTO analysis_results(id,object_id,asset_id,source_revision,root_incarnation,configuration_generation,policy_revision,stage,algorithm,evidence,tool_digest,duration_us,summary_json,created_ms) SELECT 'head:'||id,id,asset_id,revision,root_incarnation,(SELECT generation FROM library_sources WHERE id=source_id),1,'checksum',?,'e','digest',1,'{}',1 FROM inventory_objects`, mediaanalysis.Algorithm)
+	f.exec(`INSERT INTO analysis_heads(object_id,source_revision,stage,result_id) SELECT id,revision,'checksum','head:'||id FROM inventory_objects`)
+	f.exec(`DELETE FROM analysis_heads WHERE object_id IN(SELECT id FROM inventory_objects WHERE relative_path='One (2000).mkv')`)
+	job := f.queue()
+	f.until(job, "basic_pending")
+	if n := f.count(`SELECT count(*) FROM inventory_analysis_queue WHERE job_id=? AND state='pending'`, job.ID); n != 1 {
+		t.Fatalf("missing head queued %d files", n)
+	}
+}
+
+func TestSelectiveEnqueueAdvancesPastAnUnchangedCandidatePage(t *testing.T) {
+	files := []string{}
+	for n := 0; n < 40; n++ {
+		files = append(files, fmt.Sprintf("Film %d (2000).mkv", n))
+	}
+	f := newLoopFixture(t, "movie", files...)
+	f.finish(f.queue())
+	f.exec(`UPDATE library_scan_policies SET tier='basic',operations_json='["probe","local_metadata","subtitles"]' WHERE library_id=?`, f.library)
+	completed, _ := json.Marshal([]string{"probe", "local_metadata", "subtitles", assets.PlaybackAnalysisRevision})
+	f.exec(`UPDATE inventory_objects SET analysis_revision=revision,analysis_policy=(SELECT revision FROM library_scan_policies WHERE library_id=?),analysis_operations_json=?,analysis_algorithm=?,analysis_state='complete',analysis_generation=(SELECT generation FROM library_sources WHERE id=source_id)`, f.library, string(completed), mediaanalysis.Algorithm)
+	f.exec(`UPDATE inventory_objects SET analysis_revision='' WHERE id=(SELECT id FROM inventory_objects ORDER BY id DESC LIMIT 1)`)
+	job := f.queue()
+	f.until(job, "basic_pending")
+	if n := f.count(`SELECT count(*) FROM inventory_analysis_queue WHERE job_id=?`, job.ID); n != 1 {
+		t.Fatalf("selective candidate pages queued %d files", n)
 	}
 }

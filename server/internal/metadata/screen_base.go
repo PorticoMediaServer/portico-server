@@ -232,6 +232,11 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 		}
 		_ = enc.Encode(embedded)
 		r := naming.ReadWithEmbedded(relative, b.LibraryKind, embedded)
+		for _, e := range r.Editions {
+			if len(b.Editions) < 64 {
+				b.Editions = append(b.Editions, screenEdition{AssetID: aid, Label: e.Value, Source: string(e.Source)})
+			}
+		}
 		for _, e := range r.Titles {
 			if len(b.Evidence) >= 16 {
 				break

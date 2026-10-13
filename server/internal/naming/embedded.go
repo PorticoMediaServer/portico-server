@@ -30,8 +30,12 @@ func ReadWithEmbedded(relative, kind string, e Embedded) Reading {
 	if e.Edition != "" {
 		r.Editions = append([]Evidence[string]{ev(clean(e.Edition), EmbeddedMetadata, relative, .99)}, r.Editions...)
 	}
-	if len(r.Seasons) == 0 && e.Season != nil {
-		r.Seasons = append(r.Seasons, ev(*e.Season, EmbeddedMetadata, relative, .99))
+	fileSeason := false
+	for _, s := range r.Seasons {
+		fileSeason = fileSeason || s.Source == FileName
+	}
+	if !fileSeason && e.Season != nil {
+		r.Seasons = append([]Evidence[int]{ev(*e.Season, EmbeddedMetadata, relative, .99)}, r.Seasons...)
 	}
 	if len(r.Episodes) == 0 && e.Number != nil {
 		r.Episodes = append(r.Episodes, ev([]int{*e.Number}, EmbeddedMetadata, relative, .99))

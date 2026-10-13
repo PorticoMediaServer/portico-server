@@ -161,6 +161,11 @@ func (s *Service) readDirectoryPage(ctx context.Context, job string, source cata
 			next = ""
 		}
 		page := storage.InventoryPage{RootIdentity: source.RootIdentity, DirectoryIdentity: storage.RemoteDirectoryIdentity(remote.SourceID, directory), DirectoryRevision: remote.ID, Entries: remote.Entries, NextCursor: next, Complete: remote.Complete, Pending: remote.Pending, Remote: &remote}
+		if err = s.applyRemoteIgnores(ctx, job, source, relative, &page, func(ctx context.Context, path string, limit int64) ([]byte, error) {
+			return s.readRemoteIgnore(ctx, job, source, path, limit)
+		}); err != nil {
+			return &directoryReadError{err}
+		}
 		return s.catalog.CommitInventoryPage(ctx, job, relative, cursor, page)
 	}
 	req := storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: relative, RootIdentity: source.RootIdentity, DirectoryRevision: revision, Cursor: cursor, Limit: s.inventoryBatch(ctx), FollowSymlinks: source.FollowSymlinks}

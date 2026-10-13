@@ -121,3 +121,36 @@ func TestInventoryHelperDistinguishesAbsentFoldersFromUnreadableOnes(t *testing.
 		}
 	}
 }
+
+func TestInventoryWatcherNotifiesSourcesSharingAnInode(t *testing.T) {
+	root := t.TempDir()
+	observed, err := LocalInventoryDirectory(InventoryRequest{Root: root, RelativePath: "."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	roots := []WatchRoot{}
+	for _, id := range []string{"one", "two"} {
+		roots = append(roots, WatchRoot{SourceID: id, Root: root, RootIdentity: RootIdentity(observed), Directories: []string{"."}})
+	}
+	w, err := newInventoryWatcher(WatchRequest{Roots: roots})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer w.Close()
+	if err = os.WriteFile(filepath.Join(root, "new.mkv"), []byte("media"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	events, err := w.Next(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]bool{}
+	for _, event := range events {
+		got[event.SourceID] = true
+	}
+	if !got["one"] || !got["two"] {
+		t.Fatalf("shared inode events: %+v", events)
+	}
+}

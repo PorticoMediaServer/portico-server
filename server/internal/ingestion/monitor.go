@@ -81,6 +81,11 @@ func (s *Service) runMonitor(ctx context.Context) {
 				current, request, err := s.monitorConfiguration(ctx)
 				if err == nil {
 					sources = current
+					for id := range fallback {
+						if _, ok := sources[id]; !ok {
+							delete(fallback, id)
+						}
+					}
 					for id := range pending {
 						if _, ok := sources[id]; !ok {
 							delete(pending, id)
