@@ -11,6 +11,11 @@
   font-size: 20px; font-weight: 700; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
 .play { position: absolute; left: 12px; bottom: 12px; width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--text-on-action); opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); box-shadow: 0 6px 20px -6px var(--color-ink); }
 .stillButton:hover .play, .stillButton:focus-visible .play { opacity: 1; }
+/* The card's actions: shown with the play button on hover or focus, and always where there is no hover. */
+.more { position: absolute; right: 8px; bottom: 8px; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: color-mix(in srgb, var(--color-ink) 70%, transparent); color: var(--text-primary); opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); }
+.still:hover .more, .card:focus-within .more { opacity: 1; }
+.more:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+@media (hover: none) { .more { opacity: 1; } }
 .watched { position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--color-ink) 70%, transparent); color: var(--status-healthy); display: grid; place-items: center; }
 .copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 2px; text-align: left; color: inherit; border-radius: 4px; }
 .copy:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }

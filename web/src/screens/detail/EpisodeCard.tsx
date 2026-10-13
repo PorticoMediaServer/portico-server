@@ -8,7 +8,7 @@ import s from './Show.module.css';
 import {useI18n, type I18n} from '../../app/i18n';
 
 /** An episode as a landscape card: the still plays, the title opens the episode panel. The synopsis runs two lines. No still → a styled placeholder with the episode code, never the show backdrop. */
-export const EpisodeCard = React.memo(function EpisodeCard({episode, onPlay, onOpen, selected}: {episode: ContentEntry; onPlay?: (episode: ContentEntry) => void; onOpen: (episode: ContentEntry) => void; selected?: boolean}) {
+export const EpisodeCard = React.memo(function EpisodeCard({episode, onPlay, onOpen, onMore, selected}: {episode: ContentEntry; onPlay?: (episode: ContentEntry) => void; onOpen: (episode: ContentEntry) => void; /** The same actions the list row's ⋯ opens. */ onMore?: (episode: ContentEntry, anchor: Element) => void; selected?: boolean}) {
   const {t} = useI18n();
   const label = [episodeCode(t, episode), episode.title].filter(Boolean).join(', ');
   const playable = !!episode.playback && !!onPlay;
@@ -28,6 +28,8 @@ export const EpisodeCard = React.memo(function EpisodeCard({episode, onPlay, onO
       openLabel={label}
       onPlay={playable ? () => onPlay!(episode) : undefined}
       onOpen={() => onOpen(episode)}
+      moreLabel={t('card.more', {title: label})}
+      onMore={onMore ? anchor => onMore(episode, anchor) : undefined}
     />
   );
 });

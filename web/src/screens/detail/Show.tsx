@@ -272,7 +272,7 @@ export function ShowScreen() {
                 className={layout === 'list' ? s.episodeList : undefined}
                 label={selectedSeason ? `${seasonName(t, selectedSeason)} · ${t('title.episodes')}` : t('title.episodes')}
                 renderItem={episode => layout === 'grid'
-                  ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} selected={episode.id === episodeId} />
+                  ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />
                   : <EpisodeRow episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />}
                 renderPlaceholder={() => layout === 'grid' ? <EpisodePlaceholder /> : <div className={s.episodeRowPlaceholderRow} aria-hidden />}
               />
