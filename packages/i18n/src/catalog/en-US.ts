@@ -25,6 +25,7 @@ export const enUS = {
   'action.close': 'Close',
   'action.done': 'Done',
   'action.seeAll': 'See all',
+  'web.shell.profileMenu': '{name}, profile menu',
   'signIn.error.notAccepted': 'That sign-in wasn’t accepted. Check your details and try again.',
   'signIn.error.detailsRequired': 'Enter your details to sign in.',
   'signIn.error.codeInvalid': 'That code didn’t work. Check it and try again.',
