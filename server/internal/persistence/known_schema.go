@@ -210,15 +210,19 @@ index direct_profile_pin_attempts_device
 index direct_profile_trust_account
 index direct_profiles_account
 index download_grants_expiry
+index download_grants_item
 index download_grants_preparation
 index download_preparation_item
 index download_preparation_live
 index download_preparation_running
 index download_preparation_viewer
 index download_preparation_work
+index download_receipts_item
 index download_receipts_preparation
 index download_receipts_revocations
 index download_receipts_viewer
+index download_request_items_item
+index download_requests_target
 index download_requests_viewer
 index download_requests_work
 index dvr_catalog_provenance_asset_id_fk
@@ -288,6 +292,7 @@ index library_sources_library
 index listening_book_series_key
 index listening_group_names
 index live_allocations_capacity
+index live_channel_choices_groups
 index live_icon_jobs_due
 index live_logo_jobs_due
 index live_programme_icons_url
@@ -697,6 +702,7 @@ table content_rating_ages
 table content_rating_pending
 table continue_dismissals
 table continue_show_dismissals
+table database_maintenance_status
 table detail_jobs
 table diagnostics_debug_window
 table direct_memberships
@@ -806,6 +812,7 @@ table listening_book_series
 table live_allocation_reconcile_cursor
 table live_allocations
 table live_channel_attributes
+table live_channel_choices
 table live_channel_logos
 table live_channel_preferences
 table live_channel_versions

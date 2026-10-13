@@ -1115,14 +1115,18 @@ catalog_retention_cursors.after_root
 catalog_retention_cursors.name
 catalog_search_documents.entity_id
 catalog_search_documents.kind
+catalog_search_documents.normalized
+catalog_search_documents.search
 catalog_search_documents.title
 catalog_search_documents_next.entity_id
 catalog_search_documents_next.kind
+catalog_search_documents_next.normalized
+catalog_search_documents_next.search
 catalog_search_documents_next.title
 catalog_search_titles.catalog_search_titles
 catalog_search_titles.kind
 catalog_search_titles.rank
-catalog_search_titles.title
+catalog_search_titles.search
 catalog_search_titles_config.k
 catalog_search_titles_config.v
 catalog_search_titles_data.block
@@ -1135,7 +1139,7 @@ catalog_search_titles_idx.term
 catalog_search_titles_next.catalog_search_titles_next
 catalog_search_titles_next.kind
 catalog_search_titles_next.rank
-catalog_search_titles_next.title
+catalog_search_titles_next.search
 catalog_search_titles_next_config.k
 catalog_search_titles_next_config.v
 catalog_search_titles_next_data.block
@@ -1435,6 +1439,9 @@ continue_show_dismissals.last_activity
 continue_show_dismissals.playback_id
 continue_show_dismissals.profile_id
 continue_show_dismissals.show_id
+database_maintenance_status.last_ran_ms
+database_maintenance_status.last_reclaimed_bytes
+database_maintenance_status.singleton
 detail_jobs.attempts
 detail_jobs.error
 detail_jobs.item_id
@@ -1515,6 +1522,7 @@ download_preparations.quality
 download_preparations.ready_ms
 download_preparations.reason
 download_preparations.revision
+download_preparations.source_asset_id
 download_preparations.source_modified_ns
 download_preparations.started_ms
 download_preparations.state
@@ -2151,6 +2159,10 @@ live_channel_attributes.catchup_source
 live_channel_attributes.channel_id
 live_channel_attributes.country
 live_channel_attributes.generation_id
+live_channel_choices.channel_key
+live_channel_choices.generation_id
+live_channel_choices.group_name
+live_channel_choices.name
 live_channel_logos.channel_id
 live_channel_logos.generation_id
 live_channel_logos.url

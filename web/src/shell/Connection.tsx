@@ -1,46 +1,38 @@
-import React, {useEffect, useRef, useState, useSyncExternalStore} from 'react';
-import {useRouterState} from '@tanstack/react-router';
+import React, {useEffect, useState, useSyncExternalStore} from 'react';
 import {friendlyHost} from '@core/presentation/index.ts';
 import {useSession} from '../app/session';
 import {useI18n} from '../app/i18n';
-import {StatusScreen} from '../ui';
+import {Notice, StatusScreen} from '../ui';
+import {useReachability} from '../app/freshness';
 import s from './Shell.module.css';
 
 /**
  * The shell's failure mode for a server it can't use. The shell always stays open (rail,
- * Settings, Account, switching profile or server). A connection lost for more than a moment
- * fails the page as a whole: one centered "Reconnecting" status covers the content area
- * (never a card-by-card wall of errors), and the page comes back by itself when the route is
- * ready again.
+ * Settings, Account, switching profile or server).
  *
- * While a working server is away the page stays mounted underneath, hidden and inert, so what
- * the person had typed or changed is still there afterwards. A page nobody had typed into or
- * changed is started afresh when the server returns, so it reloads its data; a page with edits
- * is given back exactly as it was (see `pageAfterOutage`).
- *
+ * - A server that was working stops answering (the route is offline or being found again, the
+ *   event feed is down, quiet reads keep failing): the page stays exactly as it is. What is on
+ *   screen was read while the server answered and is still the best there is; reads are tried
+ *   again in the background. Nothing is said for the first while. After a sustained failure one
+ *   small line appears above the page ("Can't reach …"), and it goes away by itself with the
+ *   first thing that succeeds. The page is never covered, emptied or started afresh: it is
+ *   brought up to date in place when the server is back.
  * - The remembered server couldn't be reached at launch (`serverProblem`): "Can't reach" with
- *   Try again while Portico keeps retrying. When something else answers at its address, the
- *   status says so and also offers Use another server; the saved sign-in is never dropped for
- *   it. A sign-in that has ended never shows here: the app goes straight to the sign-in screen
- *   (`signInHint`, app/session.tsx).
- * - A server that was working drops off (route offline, or an address answering with another
- *   identity, or a proxy answering 502/503/504 for it): "Reconnecting", after a moment so a
- *   blip never flashes one.
+ *   Try again while Portico keeps retrying. Nothing has loaded yet, so there is no page to keep.
+ *   When something else answers at its address, the status says so and also offers Use another
+ *   server; the saved sign-in is never dropped for it. A sign-in that has ended never shows
+ *   here: the app goes straight to the sign-in screen (`signInHint`, app/session.tsx).
+ * - An address that now proves another identity while the app is open: the page is covered
+ *   (and kept mounted underneath, inert), because nothing on it should be acted on against a
+ *   server that may not be the person's.
  */
-/**
- * What happens to the covered page when the server is back: `keep` it as it was when the person
- * had edited something on it (a settings form, a half-typed search), otherwise `reload` it so it
- * shows fresh data rather than whatever failed to load while the server was away.
- */
-export function pageAfterOutage(page: {edited: boolean}): 'keep' | 'reload' {
-  return page.edited ? 'keep' : 'reload';
-}
-
 export function ConnectionOverlay({children}: {children: React.ReactNode}) {
   const {api, serverProblem, retryRestore, disconnectServer, servers, system, serverUrl} = useSession();
   const i18n = useI18n();
   const route = useSyncExternalStore(api.subscribeRoute, api.getRouteSnapshot);
-  const unavailable = !serverProblem && !!route && (route.phase === 'offline' || route.phase === 'identity_mismatch' || route.phase === 'probing');
+  // Only an address answering as someone else covers the page; a server that is merely away does not.
+  const unavailable = !serverProblem && !!route && route.phase === 'identity_mismatch';
+  const away = useReachability() === 'unreachable' && !serverProblem && !unavailable;
   const [shown, setShown] = useState(false);
   useEffect(() => {
     if (!unavailable) {
@@ -50,18 +42,6 @@ export function ConnectionOverlay({children}: {children: React.ReactNode}) {
     const id = setTimeout(() => setShown(true), 2500);
     return () => clearTimeout(id);
   }, [unavailable]);
-  // Typing or changing a control anywhere on the page marks it edited until the address changes.
-  const pathname = useRouterState({select: state => state.location.pathname});
-  const edited = useRef(false);
-  useEffect(() => { edited.current = false; }, [pathname]);
-  const [fresh, setFresh] = useState(0);
-  const covered = useRef(false);
-  useEffect(() => {
-    if (shown) { covered.current = true; return; }
-    if (!covered.current) return;
-    covered.current = false;
-    if (pageAfterOutage({edited: edited.current}) === 'reload') setFresh(n => n + 1);
-  }, [shown]);
   const name = system?.name ?? servers.find(x => x.id === serverProblem?.serverId)?.name ?? friendlyHost(serverProblem?.serverUrl ?? serverUrl) ?? i18n.t('web.settings.serverFallback');
   // A live route that proves a different identity may be an impostor at the address: that reads
   // as unreachable, never as an ended sign-in.
@@ -84,9 +64,8 @@ export function ConnectionOverlay({children}: {children: React.ReactNode}) {
   return (
     <>
       {status}
-      <div className={shown ? s.connectionHeld : undefined} inert={shown} onInputCapture={() => { edited.current = true; }} onChangeCapture={() => { edited.current = true; }}>
-        <React.Fragment key={fresh}>{children}</React.Fragment>
-      </div>
+      {away && !shown ? <div className={s.connectionAway} role="status"><Notice tone="info" compact>{i18n.t('web.connection.cantReach', {server: name})}</Notice></div> : null}
+      <div className={shown ? s.connectionHeld : undefined} inert={shown}>{children}</div>
     </>
   );
 }

@@ -56,6 +56,7 @@ import (
 type Dependencies struct {
 	ConnectionUsage   func() ConnectionUsage
 	LocalArtworkUsage func() (int64, bool)
+	CacheDirectory    string
 	Restart           func()
 	ListeningPort     int
 	// SettingsApplied runs after an owner saves console settings so snapshot
@@ -1013,32 +1014,7 @@ func New(d Dependencies) http.Handler {
 		}
 		w.WriteHeader(204)
 	})
-	mux.HandleFunc("GET /v1/items", func(w http.ResponseWriter, r *http.Request) {
-		p, libraries, fence, e := d.homeScope(r)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		lib := r.URL.Query().Get("libraryId")
-		if lib != "" {
-			if e = d.allowedLibrary(r.Context(), p, lib); e != nil {
-				failure(w, e)
-				return
-			}
-		}
-		limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-		viewer, e := d.catalogViewer(r, p, libraries, fence)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		items, next, e := d.Catalog.WithContext(r.Context()).List(viewer, lib, r.URL.Query().Get("cursor"), limit)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 200, map[string]any{"items": items, "nextCursor": next})
-	})
+	d.projectedHandle(mux, "GET /v1/items", d.itemsReadHandler)
 	mux.HandleFunc("GET /v1/items/{id}/art/{kind}", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.principal(r)
 		if e == nil {
@@ -1072,25 +1048,7 @@ func New(d Dependencies) http.Handler {
 		defer f.Close()
 		serveArtwork(w, r, f, mime)
 	})
-	mux.HandleFunc("GET /v1/items/{id}", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.principal(r)
-		if e == nil {
-			e = d.itemAccess(r.Context(), p, r.PathValue("id"))
-		}
-		if e == nil {
-			e = d.restrictedItem(r, p, r.PathValue("id"))
-		}
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		item, e := d.Catalog.WithContext(r.Context()).Get(identity.PersonalKey(p.Viewer), r.PathValue("id"))
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 200, item)
-	})
+	d.projectedHandle(mux, "GET /v1/items/{id}", d.itemReadHandler)
 	d.audioDecodeRoutes(mux)
 	mux.HandleFunc("GET /v1/media/{grant}/{file}", func(w http.ResponseWriter, r *http.Request) {
 		grant := r.PathValue("grant")
@@ -1394,4 +1352,51 @@ func (f *guardedReadSeeker) Read(p []byte) (int, error) {
 		return 0, guard
 	}
 	return n, e
+}
+
+func (d Dependencies) itemsReadHandler(w http.ResponseWriter, r *http.Request) {
+	p, libraries, fence, e := d.homeScope(r)
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	lib := r.URL.Query().Get("libraryId")
+	if lib != "" {
+		if e = d.allowedLibrary(r.Context(), p, lib); e != nil {
+			failure(w, e)
+			return
+		}
+	}
+	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	viewer, e := d.catalogViewer(r, p, libraries, fence)
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	items, next, e := d.Catalog.WithContext(r.Context()).List(viewer, lib, r.URL.Query().Get("cursor"), limit)
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	write(w, 200, map[string]any{"items": items, "nextCursor": next})
+}
+
+func (d Dependencies) itemReadHandler(w http.ResponseWriter, r *http.Request) {
+	p, e := d.principal(r)
+	if e == nil {
+		e = d.itemAccess(r.Context(), p, r.PathValue("id"))
+	}
+	if e == nil {
+		e = d.restrictedItem(r, p, r.PathValue("id"))
+	}
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	item, e := d.Catalog.WithContext(r.Context()).Get(identity.PersonalKey(p.Viewer), r.PathValue("id"))
+	if e != nil {
+		failure(w, e)
+		return
+	}
+	write(w, 200, item)
 }

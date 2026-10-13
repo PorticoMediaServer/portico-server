@@ -95,7 +95,9 @@ function FinishedMore({itemId, libraryId, title, onLeave}: {itemId: string; libr
   const {snapshot, mutate} = useDetail(target);
   const data = snapshot.data;
   const related = data?.related?.rows[0]?.entries.slice(0, 3) ?? [];
-  const rating = data?.personal?.rating ?? null;
+  // A rating is kept as a whole number from 0 to 10, two to a star.
+  const stored = data?.personal?.rating ?? null;
+  const rating = stored != null ? stored / 2 : null;
   const canRate = !!data?.actions.some(a => a.enabled && a.id === 'rating');
   const [hover, setHover] = useState<number | null>(null);
   const shown = hover ?? rating ?? 0;
@@ -108,7 +110,7 @@ function FinishedMore({itemId, libraryId, title, onLeave}: {itemId: string; libr
           <Text variant="label" tone="tertiary">{rating != null ? t('player.rated', {stars: t('title.stars', {count: rating})}) : t('player.rateThis')}</Text>
           <div className={s.postStars} onMouseLeave={() => setHover(null)} role="radiogroup" aria-label={t('player.rateThis')}>
             {[1, 2, 3, 4, 5].map(star => (
-              <button key={star} type="button" role="radio" aria-checked={rating === star} aria-label={t('title.stars', {count: star})} onMouseEnter={() => setHover(star)} onClick={() => mutate({action: 'rating', value: star})} style={{color: shown >= star ? 'var(--accent)' : 'var(--text-tertiary)'}}>
+              <button key={star} type="button" role="radio" aria-checked={rating === star} aria-label={t('title.stars', {count: star})} onMouseEnter={() => setHover(star)} onClick={() => mutate({action: 'rating', value: star * 2})} style={{color: shown >= star ? 'var(--accent)' : 'var(--text-tertiary)'}}>
                 <Icon name={shown >= star ? 'starFilled' : 'star'} size={24} />
               </button>
             ))}

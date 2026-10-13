@@ -2,6 +2,7 @@ package operations
 
 import (
 	"context"
+	"portico.local/server/internal/apiwire"
 	"testing"
 )
 
@@ -26,7 +27,7 @@ func TestAuditLogReadAndExportDownloadAreAuditedOutsideTheSnapshot(t *testing.T)
 	if count("audit.read") != 1 {
 		t.Fatal("audit-log read was not audited")
 	}
-	created, e := s.CreateExport(ctx, p, a, false, ExportRequest{IdempotencyKey: "c74-export", From: s.now() - 1000, To: s.now(), Components: []string{"runtime", "audit"}})
+	created, e := s.CreateExport(ctx, p, a, false, ExportRequest{IdempotencyKey: "c74-export", From: apiwire.Instant(s.now() - 1000), To: apiwire.Instant(s.now()), Components: []string{"runtime", "audit"}})
 	if e != nil {
 		t.Fatal(e)
 	}

@@ -26,7 +26,7 @@ import {useEmptyLibraryCopy} from '../shared/NoLibraries';
 import {Button, Badge, Chip, Chips, Inset, Menu, Notice, Page, PageHeader, Row, Section, Segmented, StateView, Tabs, WindowedGrid, createStaticCollection, gridColumnMin, type MenuItem, type WindowedGridHandle} from '../../ui';
 import {Artwork, Grid, Text} from '../../ui';
 import {useOpenEntry} from '../../app/open';
-import {EntryCard, EntryListRow, LoadingGrid, LoadingShelves, SectionView, sectionHeading, useAppendedSections} from '../shared/Sections';
+import {EntryCard, EntryListRow, LoadingGrid, LoadingShelves, SectionView, sectionHeading} from '../shared/Sections';
 import {Skeleton} from '../../ui';
 import {useSelectionActions, useSelectionActive, useSelectionSection} from '../../app/selection';
 import {useSelectionQueryTarget, type SelectionTarget} from '../../app/selection';
@@ -124,7 +124,8 @@ export function LibraryScreen() {
   const projection = snapshot.projection;
   // PERF-S02: section "More" appends inside its own section; the page's other
   // sections stay rendered.
-  const appendedSections = useAppendedSections(JSON.stringify(engine ? {libraryId, view: 'discover'} : content), snapshot.pagination.cursor, snapshot.sections);
+  // Every page read so far, per section, kept with the document: Back returns to the same list, and quiet updates land in place.
+  const appendedSections = snapshot.appended;
   const {capabilities, error: capabilityError} = useBrowseCapabilities(engine ? libraryId : undefined, pivot);
   // A remembered filter the library no longer offers is not sent: a view remembered before a
   // server change opens without it instead of failing every time the library is opened.
@@ -301,7 +302,7 @@ function RowView({libraryId, rowId, snapshot, retry, refresh, next, onBack, list
   const i18n = useI18n();
   const {t} = i18n;
   const notInterested = useNotInterested();
-  const found = snapshot.sections.find(s => s.id === rowId);
+  const found = snapshot.appended.find(s => s.id === rowId) ?? snapshot.sections.find(s => s.id === rowId);
   const recommendation = !!found && isRecommendationRow(found);
   const section = found && recommendation ? withoutHidden(found, notInterested.hidden) : found;
   if (snapshot.phase === 'loading' && !snapshot.sections.length) {

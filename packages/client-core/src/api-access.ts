@@ -1,3 +1,4 @@
+import {wireDurations} from './wire-units.ts';
 /**
  * API keys, personal access tokens, outbound webhooks, and the two routes that
  * exist for tools outside Portico (the bounded title query and the "these paths
@@ -189,6 +190,7 @@ export type TitleQuery=Readonly<{library?:string;kind?:TitleKind;sort?:'title'|'
  provider?:'tmdb'|'tvdb'|'imdb'|'anilist';providerId?:string;cursor?:string;limit?:number}>;
 
 export function parseTitleRow(raw:unknown):TitleRow{
+ raw=wireDurations(raw,{durationSeconds:"durationMs"});
  if(!object(raw)||!object(raw.providerIds))return invalid('title');
  const providerIds:Record<string,string>={};
  for(const [provider,value] of Object.entries(raw.providerIds))providerIds[text(provider,32,'provider')]=filled(value,64,'provider id');

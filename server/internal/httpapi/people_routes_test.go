@@ -114,10 +114,14 @@ func TestPeopleBatchAndCollectionRoutesAreAuthorizedAndBounded(t *testing.T) {
 	if detail.PageInfo.Total != 1 || len(detail.Credits) != 1 || detail.Credits[0].Media.ID != a1 {
 		t.Fatal("credits", detail)
 	}
-	for _, path := range []string{"/v1/people/" + person + "?limit=101", "/v1/people/" + person + "?role=director", "/v1/people?q=a", "/v1/people/" + person + "?unknown=1"} {
+	for _, path := range []string{"/v1/people/" + person + "?limit=101", "/v1/people/" + person + "?role=director", "/v1/people/" + person + "?unknown=1"} {
 		if w := request("GET", path, session.AccessToken, ""); w.Code != 400 {
 			t.Fatal("unbounded person request", path, w.Code, w.Body.String())
 		}
+	}
+	// One character is a valid search; the answer is still one bounded page.
+	if w := request("GET", "/v1/people?q=a", session.AccessToken, ""); w.Code != 200 {
+		t.Fatal("one-character person search", w.Code, w.Body.String())
 	}
 	if w := request("GET", "/v1/people/"+person, "", ""); w.Code != 401 {
 		t.Fatal("anonymous person page", w.Code)

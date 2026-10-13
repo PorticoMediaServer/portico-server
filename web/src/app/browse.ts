@@ -1,6 +1,8 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {currentI18n} from './i18n';
-import {createWindowedCollection} from '@core/collections/index.ts';
+import {createWindowedCollection, type FetchPage, type WindowedCollection} from '@core/collections/index.ts';
+import {titlesWithPersonalState} from '@core/freshness-hub.ts';
+import {usePooled} from './freshness';
 import type {ContentEntry} from '@core/library-content.ts';
 import {parseBrowseCapabilities, parseBrowseFacets, type BrowseCapabilities, type BrowseFacetValue, type BrowseSortSelection} from '@core/browse.ts';
 import {appliedFilterLabel} from '@core/presentation/index.ts';
@@ -53,31 +55,49 @@ export function useBrowseCapabilities(libraryId: string | undefined, pivot: stri
  */
 export const BROWSE_PAGE = 60;
 
+type BrowseStore = {collection?: WindowedCollection<ContentEntry>; /** What a quiet read asks for: the filters and sort on screen now. */ source?: () => FetchPage<ContentEntry>; getSnapshot(): unknown; subscribe(listener: () => void): () => void; dispose(): void};
+const idleStore = (): BrowseStore => ({getSnapshot: () => undefined, subscribe: () => () => {}, dispose: () => {}});
+
 export function useBrowseCollection(input: {libraryId?: string; pivot?: string; predicates: readonly Predicate[]; sort?: BrowseSortSelection; enabled: boolean; pageSize?: number}) {
   const {api} = useSession();
   const {libraryId, pivot, predicates, sort, enabled} = input;
   const pageSize = Math.max(1, Math.min(BROWSE_PAGE, input.pageSize ?? BROWSE_PAGE));
   const query = JSON.stringify([predicates, sort]);
-  // One collection per library and pivot; a new query is a new generation of it.
-  const collection = useMemo(() => (enabled && libraryId && pivot ? createWindowedCollection<ContentEntry>({fetchPage: browsePageSource(api, {libraryId, pivot, predicates, sort}), pageSize, maxResidentPages: 10, keyOf: e => e.id}) : undefined),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [api, libraryId, pivot, enabled, pageSize]);
-  const shown = useRef({collection, query});
+  const on = enabled && !!libraryId && !!pivot;
+  // One collection per library and pivot, kept for the signed-in viewer: Back returns to the
+  // same list at the same place without a request. A new query is a new generation of it.
+  const latest = useRef<() => FetchPage<ContentEntry>>(undefined);
+  latest.current = () => browsePageSource(api, {libraryId: libraryId!, pivot: pivot!, predicates, sort});
+  const {service: store, document, memo} = usePooled<BrowseStore, unknown>(on ? `browse:${libraryId}:${pivot}:${pageSize}` : 'browse:idle', () => {
+    if (!on) return {service: idleStore(), document: {dependencies: [], revalidate: async () => {}}};
+    const collection = createWindowedCollection<ContentEntry>({fetchPage: latest.current!(), pageSize, maxResidentPages: 10, keyOf: e => e.id});
+    const service: BrowseStore = {collection, getSnapshot: collection.getSnapshot, subscribe: collection.subscribe, dispose: collection.dispose};
+    return {
+      service,
+      document: {
+        // The titles, their order, and this profile's marks on them.
+        dependencies: titlesWithPersonalState(libraryId),
+        hasContent: () => collection.getSnapshot().total !== undefined,
+        // The same list read again behind the one on screen (a new reading has a new revision), swapped in whole at the same place.
+        revalidate: context => collection.revalidate({fetchPage: service.source?.(), hold: context.settle}),
+      },
+    };
+  });
+  const collection = on ? store.collection : undefined;
+  if (on) store.source = () => latest.current!();
   useEffect(() => {
     if (!collection) return;
-    if (shown.current.collection === collection && shown.current.query !== query) collection.invalidate(browsePageSource(api, {libraryId: libraryId!, pivot: pivot!, predicates, sort}));
-    shown.current = {collection, query};
+    if (memo.query === undefined) { memo.query = query; document.markCurrent(); return; }
+    if (memo.query !== query) { memo.query = query; document.markCurrent(); collection.invalidate(latest.current!()); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collection, query]);
-  // The screen's list remembers its loaded window as it unmounts, reading this collection. React
-  // runs this owner's cleanup before the list's, so disposal waits a moment: disposing here at
-  // once would empty the pages before they could be remembered, and Back would start from the top.
-  useEffect(() => () => { if (collection) setTimeout(() => collection.dispose(), 0); }, [collection]);
   /** Reload from the top (a new revision), keeping what's on screen until it arrives. */
   const refresh = useCallback(() => {
-    if (collection && libraryId && pivot) collection.invalidate(browsePageSource(api, {libraryId, pivot, predicates, sort}));
+    if (!collection) return;
+    document.markCurrent();
+    collection.invalidate(latest.current!());
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [collection, api, libraryId, pivot, query]);
+  }, [collection, document]);
   return {collection, refresh};
 }
 

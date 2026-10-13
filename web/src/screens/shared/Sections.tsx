@@ -3,7 +3,8 @@ import type {ContentEntry, ContentSection} from '@core/library-content.ts';
 import {captionFor, continueTitle, formatDuration, iconFor, isContinueRow, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {cardCaptionOf, continueCaptionOf} from '../../app/content';
 import {useEntryHref, useOpenEntry} from '../../app/open';
-import {accumulatePage, mergeSectionPages, SECTION_WINDOW_AT, type AppendedSections, type PageStore} from './section-pages';
+import {accumulatePage, SECTION_WINDOW_AT, type PageStore} from './section-pages';
+import {arrivals} from '@core/freshness-actions.ts';
 import {selectableKind, useIsSelected, useSelectionActions, useSelectionActive, useSelectionSection} from '../../app/selection';
 import type {MenuAnchor} from '../../ui';
 import type {EntryOrigin} from '../../player/engine';
@@ -47,20 +48,18 @@ export function useAppendedPages<T>(scope: string, cursor: string | null, page: 
   return React.useMemo(() => accumulatePage(store.current, scope, cursor, page, stableKeyOf), [scope, cursor, page]);
 }
 
-export type {AppendedSections};
-
-/** PERF-S02: section "More" appends inside its own section; other sections stay. */
-export function useAppendedSections(routeKey: string, pageCursor: string | null, sections: readonly ContentSection[]): readonly ContentSection[] {
-  const previous = React.useRef<AppendedSections | null>(null);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  return React.useMemo(() => {
-    const merged = mergeSectionPages(previous.current, routeKey, pageCursor, sections);
-    previous.current = merged;
-    return merged.sections;
-  }, [routeKey, pageCursor, sections]);
-}
-
 export {SECTION_WINDOW_AT};
+
+/**
+ * The few cards that have just appeared in a row that was already on screen (a title added while
+ * the page was open). They fade in; the row's first paint, a new page of it and a new sort do not.
+ */
+function useArrivals(entries: readonly ContentEntry[]): ReadonlySet<string> {
+  const last = React.useRef<{entries: readonly ContentEntry[]; arrived: ReadonlySet<string>} | undefined>(undefined);
+  if (!last.current) last.current = {entries, arrived: new Set()};
+  else if (last.current.entries !== entries) last.current = {entries, arrived: arrivals(last.current.entries, entries, entry => entry.id)};
+  return last.current.arrived;
+}
 
 export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libraryId, noSelect, loadingMore, origin, alwaysSeeAll}: {/** See all even when the row shows everything it has (a saved view's page has more than its row). */ alwaysSeeAll?: boolean; section: ContentSection; onSeeAll?: () => void; onMore?: () => void; hideTitle?: boolean; inShow?: boolean; libraryId?: string; /** WEB-LIB-08: Home rows don't offer the selection checkbox. */ noSelect?: boolean; /** A "More" page is on its way; the button shows it instead of firing again. */ loadingMore?: boolean; /** Where the cards sit, for their actions menu (a recommendation row offers Not interested). */ origin?: EntryOrigin}) {
   const i18n = useI18n();
@@ -89,7 +88,8 @@ export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libra
   // WEB-HOME-01: one geometry per row. Square art (albums) in a row of posters sits
   // inside a poster frame instead of a shorter square card.
   const rowShape = section.entries.every(e => shapeFor(e.kind, inShow ? 'showWorkspace' : 'shelf') === 'square') ? 'square' : undefined;
-  const card = (entry: ContentEntry) => <EntryCard key={entry.id} entry={entry} siblings={siblings} inShow={inShow} libraryId={libraryId} selectable={selectable} noSelect={noSelect} rowShape={rowShape ?? (inShow ? undefined : 'poster')} origin={origin} resume={isContinueRow(section.id)} />;
+  const arrived = useArrivals(section.entries);
+  const card = (entry: ContentEntry) => <EntryCard key={entry.id} entry={entry} arrived={arrived.has(entry.id)} siblings={siblings} inShow={inShow} libraryId={libraryId} selectable={selectable} noSelect={noSelect} rowShape={rowShape ?? (inShow ? undefined : 'poster')} origin={origin} resume={isContinueRow(section.id)} />;
   if (section.type === 'list') {
     return (
       <Section title={hideTitle ? undefined : sectionHeading(i18n, section.heading)}>
@@ -259,7 +259,7 @@ export function LoadingGrid({density = 'poster'}: {density?: GridDensity}) {
  * memoised Card skips re-rendering when a neighbour is ticked. Subscribes to
  * the chosen set itself, in the smallest component that needs it.
  */
-export const EntryCard = React.memo(function EntryCard({entry, siblings, inShow, libraryId, selectable, rowShape, noSelect, origin, resume}: {entry: ContentEntry; /** A Continue Watching card: the show as the title, what is left as the caption. */ resume?: boolean; noSelect?: boolean; origin?: EntryOrigin; /** The entries around this one (for shift-click range selection), read on demand. */ siblings: () => readonly ContentEntry[]; inShow?: boolean; libraryId?: string; selectable: boolean; /** The row's shared geometry, when the row mixes kinds. */ rowShape?: 'poster' | 'square'}) {
+export const EntryCard = React.memo(function EntryCard({entry, siblings, inShow, libraryId, selectable, rowShape, noSelect, origin, resume, arrived}: {entry: ContentEntry; /** The card has just appeared in a row that was already on screen: it fades in. */ arrived?: boolean; /** A Continue Watching card: the show as the title, what is left as the caption. */ resume?: boolean; noSelect?: boolean; origin?: EntryOrigin; /** The entries around this one (for shift-click range selection), read on demand. */ siblings: () => readonly ContentEntry[]; inShow?: boolean; libraryId?: string; selectable: boolean; /** The row's shared geometry, when the row mixes kinds. */ rowShape?: 'poster' | 'square'}) {
   const natural = shapeFor(entry.kind, inShow ? 'showWorkspace' : 'shelf');
   const shape = rowShape && natural !== 'landscape' ? rowShape : natural;
   const open = useOpenEntry();
@@ -284,6 +284,7 @@ export const EntryCard = React.memo(function EntryCard({entry, siblings, inShow,
     <Card
       title={resume ? continueTitle(entry) : entry.title}
       caption={resume ? continueCaptionOf(entry) : cardCaptionOf(entry)}
+      className={arrived ? 'card-arrived' : undefined}
       path={entry.posterUrl ?? entry.backdropUrl}
       shape={shape}
       fit={shape !== natural ? 'contain' : undefined}

@@ -44,7 +44,8 @@ export function candidateLine(candidate: Pick<AttentionCandidate, 'title' | 'yea
 export type AttentionCount = Readonly<{/** Titles on this page that wait for the owner (work still in progress is not counted). */ count: number; /** There are more pages, so the true number is at least this. */ more: boolean}>;
 
 /** How many titles wait for the owner, from the first page of the list. */
-export function attentionCount(page: Pick<AttentionPage, 'entries' | 'nextCursor'>): AttentionCount {
+export function attentionCount(page: Pick<AttentionPage, 'entries' | 'nextCursor'> & {total?:number}): AttentionCount {
+  if(page.total!==undefined)return {count:page.total,more:false};
   return {count: page.entries.filter(entry => !attentionInProgress(entry.reason)).length, more: !!page.nextCursor};
 }
 

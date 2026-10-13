@@ -206,7 +206,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const drawFallbacks = subtitles.drawFallbacks;
   useEffect(() => { if (drawFallbacks) setNotice(i18n.t('player.subtitles.drawFailed')); }, [drawFallbacks]); // eslint-disable-line react-hooks/exhaustive-deps
   // Fetched with the session (one small read) so Chapters only appears when the title has them.
-  const chapters = usePlayerChapters(api, scope, item, service, !isAudio);
+  const chapters = usePlayerChapters(api, scope, item, service, !isAudio || identity.kind === 'audiobook_file', identity.kind === 'audiobook_file' ? state.positionSeconds : undefined);
   // FEAT-11: chapter starts and intro/credits on the seek bar.
   const chapterList = chapters.data?.status === 'available' ? chapters.data.chapters : undefined;
   const chapterMarks = useMemo(() => chapterList?.map(c => ({start: c.startSeconds, title: c.title})), [chapterList]);
@@ -216,7 +216,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const promptModes = upNext.offer?.marker ? {...skipModes, credits: 'off' as SkipMode, outro: 'off' as SkipMode} : skipModes;
   const segmentMarks = useMemo(() => markerList?.filter(m => m.kind === 'intro' || m.kind === 'credits' || m.kind === 'outro' || m.kind === 'recap').map(m => ({start: m.startSeconds, end: m.endSeconds})), [markerList]);
   const listening = useSyncExternalStore(queue?.listening.subscribe ?? (() => () => {}), () => queue?.listening.getSnapshot() ?? null);
-  useSystemListening(service, state, video, identity.item ?? {id: identity.itemId ?? '', libraryId: identity.libraryId ?? '', title: identity.title, kind: identity.kind ?? '', duration: state.duration, progressSeconds: state.positionSeconds, available: true, posterUrl: identity.posterUrl}, queue, api, currentAccessToken, identity.subtitle);
+  useSystemListening(service, state, video, identity.item ?? {id: identity.itemId ?? '', libraryId: identity.libraryId ?? '', title: identity.title, kind: identity.kind ?? '', duration: state.duration, progressSeconds: state.positionSeconds, available: true, posterUrl: identity.posterUrl}, queue, api, currentAccessToken, identity.subtitle, chapterList);
   useEffect(() => {
     const el = video.current;
     if (!el) return;

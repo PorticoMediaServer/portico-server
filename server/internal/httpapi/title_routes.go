@@ -10,6 +10,7 @@ import (
 
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
+	"portico.local/server/internal/administration"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
@@ -80,6 +81,52 @@ func identityRouteError(err error) error {
 }
 
 func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
+	for _, preview := range []bool{true, false} {
+		path, id, method, status := "/v1/admin/items/{id}/files/{fileId}", "delete_title_version", "DELETE", 200
+		if preview {
+			path += "/delete/preview"
+			id = "preview_delete_title_version"
+			method = "POST"
+		}
+		meta := apikit.Metadata{ID: id, Method: method, Path: path, Summary: "Delete one file version while keeping its title and personal state", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: status, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_mismatch", "confirmation_mismatch", "administration_unavailable", "internal"}}
+		if preview {
+			meta.OptionalBody = true
+			v1Route(r, meta, func(ctx context.Context, q *http.Request, _ noBody) (administration.VersionDeletePreview, error) {
+				p, e := d.owner(q)
+				if e != nil {
+					return administration.VersionDeletePreview{}, e
+				}
+				if d.Administration == nil {
+					return administration.VersionDeletePreview{}, &apierror.Error{Code: "administration_unavailable"}
+				}
+				out, e := d.Administration.PreviewDeleteVersion(ctx, d.administrationAuthority(p), q.PathValue("id"), q.PathValue("fileId"))
+				return out, versionDeletionError(e)
+			})
+		} else {
+			v1Route(r, meta, func(ctx context.Context, q *http.Request, in administration.VersionDeleteRequest) (administration.DeleteResult, error) {
+				p, e := d.owner(q)
+				if e != nil {
+					return administration.DeleteResult{}, e
+				}
+				if d.Administration == nil {
+					return administration.DeleteResult{}, &apierror.Error{Code: "administration_unavailable"}
+				}
+				out, e := d.Administration.DeleteVersion(ctx, d.administrationAuthority(p), q.PathValue("id"), q.PathValue("fileId"), in)
+				if e == nil && out.Removed > 0 && d.Catalog != nil && d.Catalog.MissingRule(ctx).Mode == "immediately" {
+					if _, err := d.Catalog.EmptyMissingDue(ctx); err != nil {
+						return out, err
+					}
+				}
+				return out, versionDeletionError(e)
+			})
+		}
+	}
+
+	registerStorageStatus(r, d)
+	registerLiveChoices(r, d)
+	registerInventoryRead(r, d)
+	registerPlaybackControls(r, d)
+	registerDownloadProfileRevoke(r, d)
 	ownerErrors := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "internal"}
 	v1Route(r, apikit.Metadata{ID: "list_missing_titles", Method: "GET", Path: "/v1/admin/missing-titles", Summary: "List titles whose files are no longer on disk, oldest first, with when each will be removed",
 		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, Status: 200, Query: []string{"libraryId", "cursor", "limit"}, Errors: ownerErrors},
@@ -142,4 +189,24 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			}
 			return removeLibraryResponse{LibraryID: id, Removing: true}, nil
 		})
+}
+
+func versionDeletionError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, administration.ErrNotFound), errors.Is(err, sql.ErrNoRows):
+		return &apierror.Error{Code: "not_found", Cause: err}
+	case errors.Is(err, administration.ErrDenied):
+		return &apierror.Error{Code: "not_permitted", Cause: err}
+	case errors.Is(err, administration.ErrCursor):
+		return &apierror.Error{Code: "invalid_cursor", Cause: err}
+	case errors.Is(err, administration.ErrInput):
+		return &apierror.Error{Code: "invalid_request", Cause: err}
+	case errors.Is(err, administration.ErrConflict), errors.Is(err, administration.ErrIdempotencyKeyReused):
+		return &apierror.Error{Code: "revision_mismatch", Cause: err}
+	case errors.Is(err, administration.ErrConfirmation):
+		return &apierror.Error{Code: "confirmation_mismatch", Cause: err}
+	}
+	return err
 }

@@ -95,7 +95,7 @@ func TestResetRecommendationsForgetsTasteButNotHistory(t *testing.T) {
 		w.watch("p", f)
 	}
 	w.personal("p", w.romance[0], "favorite", 1)
-	w.personal("p", w.romance[1], "rating", 4.5)
+	w.personal("p", w.romance[1], "rating", 9)
 	w.personal("p", w.dramas[0], "rating", 1.0)
 	w.c.Drain()
 	recBatch(t, w, "hide-2", w.scifi[5].Public, true)

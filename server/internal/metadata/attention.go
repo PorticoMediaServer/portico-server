@@ -22,6 +22,7 @@ type AttentionCandidate struct {
 	Orders     []metadataprovider.ScreenOrder `json:"orders"`
 }
 type AttentionEntry struct {
+	LibraryID  string               `json:"libraryId"`
 	ItemKind   string               `json:"itemKind"`
 	ParentID   string               `json:"parentId"`
 	Actions    []string             `json:"actions"`
@@ -34,6 +35,7 @@ type AttentionEntry struct {
 	Candidates []AttentionCandidate `json:"candidates"`
 }
 type AttentionPage struct {
+	Total      int64            `json:"total"`
 	LibraryID  string           `json:"libraryId"`
 	Entries    []AttentionEntry `json:"entries"`
 	NextCursor string           `json:"nextCursor"`
@@ -41,6 +43,10 @@ type AttentionPage struct {
 
 // Attention reads one indexed page, then at most three candidates per entry.
 func (s *Service) Attention(ctx context.Context, library, cursor string, limit int) (AttentionPage, error) {
+	return s.AttentionFiltered(ctx, library, cursor, limit, true)
+}
+
+func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string, limit int, includeInProgress bool) (AttentionPage, error) {
 	out := AttentionPage{LibraryID: library, Entries: []AttentionEntry{}}
 	var after int64
 	if cursor != "" {
@@ -66,13 +72,17 @@ func (s *Service) Attention(ctx context.Context, library, cursor string, limit i
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM libraries WHERE id=?)`, library).Scan(&exists); err != nil {
 		return out, err
 	}
-	if !exists {
+	if library != "" && !exists {
 		return out, sql.ErrNoRows
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT a.entity_id,a.target_kind,e.title,w.generation,a.reason,a.confidence,k.name,COALESCE(pid(parent.public_id),''),p.enabled,c.confirmed FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN screen_metadata_work w ON w.target_kind=a.target_kind AND w.target_id=a.entity_id
+	if err = tx.QueryRowContext(ctx, `SELECT count(*) FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0 WHERE e.retired=0 AND (?='' OR a.library_id=?) AND a.dismissed_generation<>a.generation AND a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')`, library, library).Scan(&out.Total); err != nil {
+		return out, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT a.library_id,a.entity_id,a.target_kind,e.title,w.generation,a.reason,a.confidence,k.name,COALESCE(pid(parent.public_id),''),p.enabled,c.confirmed FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN screen_metadata_work w ON w.target_kind=a.target_kind AND w.target_id=a.entity_id
  JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_entities parent ON parent.id=w.parent_id
  JOIN screen_metadata_policies p ON p.library_id=a.library_id CROSS JOIN screen_metadata_consent c
- WHERE c.singleton=1 AND a.library_id=? AND a.entity_id>? AND a.dismissed_generation<>a.generation ORDER BY a.entity_id LIMIT ?`, library, after, limit+1)
+ JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0
+ WHERE e.retired=0 AND c.singleton=1 AND (?='' OR a.library_id=?) AND a.entity_id>? AND a.dismissed_generation<>a.generation AND (? OR a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply')) ORDER BY a.entity_id LIMIT ?`, library, library, after, includeInProgress, limit+1)
 	if err != nil {
 		return out, err
 	}
@@ -81,7 +91,7 @@ func (s *Service) Attention(ctx context.Context, library, cursor string, limit i
 		var e AttentionEntry
 		var id int64
 		var enabled, confirmed bool
-		if err = rows.Scan(&id, &e.Kind, &e.Title, &e.Revision, &e.Reason, &e.Confidence, &e.ItemKind, &e.ParentID, &enabled, &confirmed); err != nil {
+		if err = rows.Scan(&e.LibraryID, &id, &e.Kind, &e.Title, &e.Revision, &e.Reason, &e.Confidence, &e.ItemKind, &e.ParentID, &enabled, &confirmed); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -320,4 +330,33 @@ func (s *Service) attentionObservedAction(ctx context.Context, library string, i
 		}
 	}
 	return ErrScreenConflict
+}
+
+// AttentionCounts reports exact waiting counts without loading titles or candidates.
+type AttentionLibraryCount struct {
+	LibraryID string `json:"libraryId"`
+	Total     int64  `json:"total"`
+}
+type AttentionCounts struct {
+	Total     int64                   `json:"total"`
+	Libraries []AttentionLibraryCount `json:"libraries"`
+}
+
+func (s *Service) AttentionCounts(ctx context.Context) (AttentionCounts, error) {
+	out := AttentionCounts{Libraries: []AttentionLibraryCount{}}
+	rows, err := s.db.QueryContext(ctx, `SELECT l.id,count(a.entity_id) FROM libraries l JOIN catalog_libraries cl ON cl.library_id=l.id AND cl.retired=0
+ LEFT JOIN (screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id AND e.retired=0) ON a.library_id=l.id AND a.dismissed_generation<>a.generation AND a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply') GROUP BY l.id ORDER BY l.id`)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v AttentionLibraryCount
+		if err = rows.Scan(&v.LibraryID, &v.Total); err != nil {
+			return out, err
+		}
+		out.Total += v.Total
+		out.Libraries = append(out.Libraries, v)
+	}
+	return out, rows.Err()
 }

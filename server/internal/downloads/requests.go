@@ -540,7 +540,7 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 		return "", "", e
 	}
 	id := identity.Token()
-	_, e = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,quality,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,'container',?,'queued',?,?,?,?)`, id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, source.Library, titleSnapshot(title), quality, batch, estimate, estimated, now, now)
+	_, e = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,source_asset_id,quality,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,'container',?,'queued',?,?,?,?)`, id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, source.Library, titleSnapshot(title), source.Asset, quality, batch, estimate, estimated, now, now)
 	if e != nil {
 		return "", "", e
 	}

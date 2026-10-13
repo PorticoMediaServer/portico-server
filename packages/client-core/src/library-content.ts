@@ -1,7 +1,9 @@
+import {wireDurations,wireDisplayDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseListeningJourney,type ListeningJourney} from './listening.ts';
 import {parseBrowseNode,type BrowseNode,type BrowseSortSelection} from './browse.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
+import {mergeRevalidatedList} from './freshness-actions.ts';
 /** Transport/state for server-authored semantic projections. No client ranking or grouping. */
 export type ContentView = 'discover' | 'browse' | 'collections' | 'categories' | 'show' | 'season' | 'artist' | 'album' | 'book' | 'collection' | 'releases' | 'songs' | 'authors' | 'series' | 'author' | 'book_series' | 'disc';
 export type ContentSurface = ContentView;
@@ -13,7 +15,7 @@ export type ContentEntryKind = 'movie' | 'show' | 'season' | 'episode' | 'artist
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
 export type ContentEntry = Readonly<{
   id: string; libraryId?: string; kind: ContentEntryKind; title: string; subtitle?: string; posterUrl?: string; backdropUrl?: string; /** An episode's own still, never inherited from the season or show (absent when it has none). */ stillUrl?: string; overview?: string;
-  available?: boolean; watched?:boolean;trackNumber?:number;episodeNumber?:number;seasonNumber?:number; duration?: number; progressSeconds?: number; addedAt?: string | null; count?: number;
+  missing?:boolean; available?: boolean; watched?:boolean;discNumber?:number;trackNumber?:number;episodeNumber?:number;seasonNumber?:number; duration?: number; progressSeconds?: number; addedAt?: string | null; count?: number;
   year?: number; contentRating?: string; genres?: readonly string[]; watchlisted?: boolean;
   /** The album artist; album entities only (M24, behind presence). Absent on older servers. */
   artist?: Readonly<{ id: string; name: string }>;
@@ -37,6 +39,7 @@ export type ContentEntry = Readonly<{
   absoluteNumber?: number;
   /** Community rating (0–10) and the best file's picture class; browse pages only (the list view's columns). */
   rating?: number;
+ userRating?: number;
   resolution?: '4k' | '1080p' | '720p' | 'sd';
   /** Where a provider biography came from ("Wikipedia") and its article; artist entities only. */
   overviewSource?: string;
@@ -74,6 +77,18 @@ export type LibraryContentSnapshot = Readonly<{
   sections: readonly ContentSection[];
   pagination: Readonly<{ cursor: string | null; canPrevious: boolean; next: readonly Readonly<{ sectionId: string; cursor: string }>[] }>;
   error: Readonly<{ code: string; message: string; retryable: boolean }> | null;
+  /**
+   * The first page as the server has it now, read again quietly while the screen was open
+   * (`revalidate`). `serial` changes with each such read. A screen that has appended later pages
+   * merges this into what it shows (`mergeRevalidatedList`) instead of starting over.
+   */
+  head?: Readonly<{ serial: number; sections: readonly ContentSection[] }>;
+  /**
+   * Everything read so far, as one list per section: the first page, each later page of a
+   * section appended to it (duplicates dropped), and quiet reads merged in place. A screen that
+   * shows "More" inside a section renders this; `sections` is only the page last read.
+   */
+  appended: readonly ContentSection[];
 }>;
 const views: readonly string[] = ['discover','browse','collections','categories','show','season','artist','album','book','collection','releases','songs','authors','series','author','book_series','disc'];
 const entityViews = new Set(['show','season','artist','album','book','collection','author','book_series','disc']);
@@ -130,6 +145,7 @@ function seeAll(v: unknown): ContentSeeAll | undefined {
  * field is optional and is left out when it cannot be read.
  */
 function entry(v: unknown): ContentEntry {
+ v=wireDisplayDurations(v,{duration:"durationMs",progressSeconds:"progressMs"},left);
   if (!record(v) || !id(v.id) || !entryKinds.includes(v.kind as string) || !string(v.title ?? '', 2048)) invalid();
   const row: { -readonly [K in keyof ContentEntry]: ContentEntry[K] } = { id: v.id, kind: v.kind as ContentEntryKind, title: (v.title ?? '') as string };
   if (v.libraryId !== undefined) { if (!id(v.libraryId)) invalid(); row.libraryId = v.libraryId; }
@@ -140,11 +156,13 @@ function entry(v: unknown): ContentEntry {
   if (v.addedAt === null || string(v.addedAt, 128)) row.addedAt = v.addedAt as string | null; else left('entry.addedAt', v.addedAt);
   if (count(v.count)) row.count = v.count; else left('entry.count', v.count);
   if(typeof v.watched==='boolean')row.watched=v.watched;else left('entry.watched',v.watched);
-  for(const field of ['trackNumber','episodeNumber','seasonNumber'] as const){if(count(v[field]))row[field]=v[field] as number;else left('entry.'+field,v[field]);}
+  for(const field of ['discNumber','trackNumber','episodeNumber','seasonNumber'] as const){if(count(v[field]))row[field]=v[field] as number;else left('entry.'+field,v[field]);}
+  if (typeof v.missing === 'boolean') row.missing=v.missing;
   if (typeof v.available === 'boolean') row.available = v.available; else left('entry.available', v.available);
   for (const field of ['duration', 'progressSeconds'] as const) {
     if (finite(v[field])) row[field] = v[field] as number; else left('entry.' + field, v[field]);
   }
+  if(v.userRating!==undefined){if(typeof v.userRating=== "number"&&Number.isInteger(v.userRating)&&v.userRating>=0&&v.userRating<=10)row.userRating=v.userRating;else left("entry.userRating",v.userRating);}
   // A year of 0 is how a server says it has none.
   if (typeof v.year === 'number' && Number.isSafeInteger(v.year) && v.year > 0) row.year = v.year; else if (v.year !== 0) left('entry.year', v.year);
   if (string(v.contentRating, 64)) row.contentRating = v.contentRating as string; else left('entry.contentRating', v.contentRating);
@@ -207,7 +225,7 @@ function entry(v: unknown): ContentEntry {
   }
   // Playback that cannot be read is left out when the entry still opens something; otherwise the entry is refused.
   if (v.playback !== undefined && v.playback !== null) {
-    const p = v.playback;
+    const p = wireDisplayDurations(v.playback,{startSeconds:"startMs"},left);
     if (record(p) && id(p.itemId)) row.playback = Object.freeze({ itemId: p.itemId, ...(finite(p.startSeconds) ? { startSeconds: p.startSeconds } : {}) });
     else if (row.navigation) left('entry.playback', p);
     else invalid();
@@ -278,6 +296,39 @@ function projection(raw: unknown, expected: ContentRoute, bound: ContentScope, p
   return Object.freeze({ ...(entity?{entity}:{}), ...(listening?{listening}:{}), heading: headingOr(raw.heading, s.view as string), scope: Object.freeze({ serverId: s.serverId as string, libraryId: s.libraryId as string, libraryKind: s.libraryKind as string, view: s.view as ContentSurface, entityId: s.entityId as string, viewerFence: s.viewerFence as string }), revision: Object.freeze({ catalog: r.catalog, viewer: r.viewer }), query: Object.freeze({ sort: q.sort, direction: q.direction, category: q.category, q: q.q, limit: q.limit, searchMode }), navigation: Object.freeze(navigation), sorts: Object.freeze(sorts), filters: Object.freeze(filters), sections: Object.freeze(sections), ...(empty ? { empty } : {}) });
 }
 type Page = { cursor: string | null; sectionId?: string };
+const seenEntries = new WeakMap<ContentSection, Set<string>>();
+const sameEntry = (a: ContentEntry, b: ContentEntry) => a === b || JSON.stringify(a) === JSON.stringify(b);
+/** One more page of one section, appended to that section; the other sections stay as they are. */
+function appendSectionPage(previous: readonly ContentSection[], page: readonly ContentSection[]): readonly ContentSection[] {
+  if (page.length !== 1 || !previous.length) return page;
+  const next = page[0], index = previous.findIndex(s => s.id === next.id);
+  if (index < 0) return page;
+  const current = previous[index];
+  // The seen set follows the merged section, so a page keys only its own entries.
+  const seen = seenEntries.get(current) ?? new Set(current.entries.map(e => e.id));
+  const added: ContentEntry[] = [];
+  for (const e of next.entries) if (!seen.has(e.id)) { seen.add(e.id); added.push(e); }
+  const merged: ContentSection = Object.freeze({ ...current, entries: added.length ? Object.freeze(current.entries.concat(added)) : current.entries, totalCount: next.totalCount, nextCursor: next.nextCursor });
+  seenEntries.set(merged, seen);
+  return Object.freeze(previous.map((s, i) => (i === index ? merged : s)));
+}
+/** A fresh first page merged into what is shown: sections follow the server, unchanged ones keep their identity, paged ones keep their tail. */
+function mergeHead(previous: readonly ContentSection[], fresh: readonly ContentSection[]): readonly ContentSection[] {
+  const before = new Map(previous.map(s => [s.id, s]));
+  let changed = previous.length !== fresh.length;
+  const sections = fresh.map((section, index) => {
+    const old = before.get(section.id);
+    if (!old) { changed = true; return section; }
+    const entries = mergeRevalidatedList(old.entries, section.entries, e => e.id, { same: sameEntry, complete: !section.nextCursor });
+    const keptTail = entries.length > section.entries.length;
+    const nextCursor = keptTail ? old.nextCursor : section.nextCursor;
+    const { entries: _a, nextCursor: _b, ...oldRest } = old, { entries: _c, nextCursor: _d, ...freshRest } = section;
+    if (entries === old.entries && nextCursor === old.nextCursor && JSON.stringify(oldRest) === JSON.stringify(freshRest)) { if (previous[index] !== old) changed = true; return old; }
+    changed = true;
+    return Object.freeze({ ...section, entries: entries === old.entries ? entries : Object.freeze([...entries]), nextCursor }) as ContentSection;
+  });
+  return changed ? Object.freeze(sections) : previous;
+}
 type Operation = { route: ContentRoute; page: Page; history: Page[]; fence: ContentProjection | null };
 export class LibraryContentService {
   private api: LibraryContentApi;
@@ -293,13 +344,15 @@ export class LibraryContentService {
   private history: Page[] = [];
   private current: Page = { cursor: null };
   private disposed = false;
+  private quiet?: AbortController;
+  private headSerial = 0;
   private snapshot: LibraryContentSnapshot;
   constructor(options: { api: LibraryContentApi; scope: ContentScope; pageSize?: number; timeoutMs?: number }) {
     this.api = options.api; this.bound = scope(options.scope); this.pageSize = options.pageSize ?? 40; this.timeoutMs = options.timeoutMs ?? 15_000;
     if (!Number.isInteger(this.pageSize) || this.pageSize < 1 || this.pageSize > 100 || !Number.isFinite(this.timeoutMs) || this.timeoutMs <= 0 || this.timeoutMs > 120_000) throw new Error('Invalid content request bounds.');
     this.snapshot = this.empty();
   }
-  private empty(): LibraryContentSnapshot { return Object.freeze({ generation: this.generation, scope: this.bound, route: null, phase: 'idle', projection: null, sections: Object.freeze([]), pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze([]) }), error: null }); }
+  private empty(): LibraryContentSnapshot { return Object.freeze({ generation: this.generation, scope: this.bound, route: null, phase: 'idle', projection: null, sections: Object.freeze([]), appended: Object.freeze([]), pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze([]) }), error: null }); }
   getSnapshot = (): LibraryContentSnapshot => this.snapshot;
   subscribe = (listener: () => void): (() => void) => { if (this.disposed) return () => {}; this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   private publish(patch: Partial<LibraryContentSnapshot>): void { if (this.disposed) return; this.snapshot = Object.freeze({ ...this.snapshot, ...patch }); for (const listener of this.listeners) listener(); }
@@ -312,11 +365,58 @@ export class LibraryContentService {
   }
   /** Explicit refresh always restarts the first page, including after stale_continuation. */
   refresh(): Promise<void> { this.assertActive(); return this.snapshot.route ? this.select(this.snapshot.route) : Promise.resolve(); }
-  retry(): Promise<void> { this.assertActive(); if (this.snapshot.phase === 'refresh-required') return Promise.resolve(); return this.operation ? this.load(this.operation) : Promise.resolve(); }
+  retry(): Promise<void> { this.assertActive(); if (this.snapshot.phase === 'refresh-required') return this.refresh(); return this.operation ? this.load(this.operation) : Promise.resolve(); }
+  /**
+   * Read the first page again without touching `phase`, and show it in place. What is on screen
+   * stays until the answer is in; a failed read rejects and changes nothing. A service that has
+   * moved on to a later page keeps that page and publishes the fresh first page as `head`.
+   */
+  async revalidate(context?: { signal?: AbortSignal; settle?: () => Promise<void> }): Promise<void> {
+    this.assertActive();
+    const route = this.snapshot.route;
+    if (!route || this.snapshot.phase !== 'ready' || !this.snapshot.projection) return;
+    this.quiet?.abort(); const controller = new AbortController(); this.quiet = controller;
+    const stop = () => controller.abort();
+    context?.signal?.addEventListener('abort', stop, { once: true });
+    const generation = this.generation, api = this.api, bound = this.bound;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const query = new URLSearchParams({ view: route.view, limit: String(this.pageSize) });
+      for (const field of ['entityId','sort','direction','category','q'] as const) if (route[field] !== undefined) query.set(field, route[field]!);
+      const raw = await Promise.race([
+        api.request<unknown>('/v1/libraries/' + encodeURIComponent(route.libraryId) + '/content?' + query, 'GET', undefined, controller.signal),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => { reject(new ContentFailure('timeout', 'The server took too long to respond. Try again.', true)); controller.abort(); }, this.timeoutMs); }),
+      ]);
+      if (this.disposed || generation !== this.generation || controller.signal.aborted) return;
+      const result = projection(raw, route, bound, this.pageSize);
+      await context?.settle?.();
+      if (this.disposed || generation !== this.generation || controller.signal.aborted || this.snapshot.phase !== 'ready') return;
+      // Nothing changed on the first page: nothing is published, so nothing re-renders.
+      if (this.current.cursor === null && JSON.stringify(result) === JSON.stringify(this.snapshot.projection)) return;
+      const head = Object.freeze({ serial: ++this.headSerial, sections: result.sections });
+      const appended = mergeHead(this.snapshot.appended, result.sections);
+      // A section that did not change is the same object as before, so a list built on it is left alone.
+      const before = new Map(this.snapshot.sections.map(s => [s.id, s]));
+      const sections = Object.freeze(result.sections.map(s => { const old = before.get(s.id); return old && JSON.stringify(old) === JSON.stringify(s) ? old : s; }));
+      if (this.current.cursor === null) this.publish({ projection: result, sections, appended, head, pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze(result.sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
+      else this.publish({ head, appended });
+    } catch (error) {
+      if (this.disposed || generation !== this.generation || controller.signal.aborted) return;
+      const e = error as { status?: unknown; code?: unknown } | null;
+      // The server answered that this is gone or not allowed: that is the screen's state now, not a failed refresh.
+      if (e?.status === 401 || e?.status === 403 || e?.status === 404) { await this.refresh(); return; }
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+      context?.signal?.removeEventListener('abort', stop);
+      if (this.quiet === controller) this.quiet = undefined;
+    }
+  }
   next(sectionId: string): Promise<void> {
     this.assertActive();
     if (this.snapshot.phase !== 'ready' || !this.snapshot.projection || !this.snapshot.route) return Promise.resolve();
-    const section = this.snapshot.sections.find(s => s.id === sectionId);
+    // The section as shown (every page of it read so far), so More works on any section of the page, not only the one paged last.
+    const section = this.snapshot.appended.find(s => s.id === sectionId) ?? this.snapshot.sections.find(s => s.id === sectionId);
     if (!section?.nextCursor) return Promise.resolve();
     return this.load({ route: this.snapshot.route, page: { cursor: section.nextCursor, sectionId }, history: [...this.history, this.current].slice(-63), fence: this.snapshot.projection });
   }
@@ -332,7 +432,7 @@ export class LibraryContentService {
     this.publish(this.empty());
   }
   cancel(): void { this.assertActive(); this.controller?.abort(); this.generation++; this.pending = undefined; this.activeKey = ''; this.publish({ ...this.empty(), route: this.snapshot.route }); }
-  dispose(): void { this.controller?.abort(); this.disposed = true; this.generation++; this.listeners.clear(); }
+  dispose(): void { this.controller?.abort(); this.quiet?.abort(); this.disposed = true; this.generation++; this.listeners.clear(); }
   private load(op: Operation): Promise<void> {
     const key = JSON.stringify([op.route, op.page]);
     if (this.snapshot.phase === 'loading' && this.activeKey === key && this.pending) return this.pending;
@@ -343,7 +443,7 @@ export class LibraryContentService {
     // setScope/cancel clear synchronously; a different library/entity/view never inherits it.
     const previous = this.snapshot.route;
     const retain = previous?.view === op.route.view && previous?.libraryId === op.route.libraryId && previous?.entityId === op.route.entityId;
-    this.publish({ generation, route: op.route, phase: 'loading', projection: retain ? this.snapshot.projection : null, sections: retain ? this.snapshot.sections : Object.freeze([]), error: null, pagination: retain ? this.snapshot.pagination : Object.freeze({ cursor: op.page.cursor, canPrevious: false, next: Object.freeze([]) }) });
+    this.publish({ generation, route: op.route, phase: 'loading', projection: retain ? this.snapshot.projection : null, sections: retain ? this.snapshot.sections : Object.freeze([]), appended: retain ? this.snapshot.appended : Object.freeze([]), error: null, pagination: retain ? this.snapshot.pagination : Object.freeze({ cursor: op.page.cursor, canPrevious: false, next: Object.freeze([]) }) });
     const task = this.fetch(op, api, bound, controller, generation);
     this.pending = task; return task;
   }
@@ -359,11 +459,14 @@ export class LibraryContentService {
       const raw = await Promise.race([api.request<unknown>(path, 'GET', undefined, controller.signal), cancelled, new Promise<never>((_, reject) => { timer = setTimeout(() => { reject(new ContentFailure('timeout', 'The server took too long to respond. Try again.', true)); controller.abort(); }, this.timeoutMs); })]);
       if (this.disposed || generation !== this.generation) return;
       const result = projection(raw, op.route, bound, this.pageSize);
-      if (op.page.cursor && op.fence && (result.scope.viewerFence !== op.fence.scope.viewerFence || result.revision.catalog !== op.fence.revision.catalog || result.revision.viewer !== op.fence.revision.viewer)) throw new ContentFailure('stale_continuation', 'The library changed. Refresh to continue.', true);
+      // A continuation read after the library moved is still a valid page (the server re-anchors it); only another viewer's answer is refused.
+      if (op.page.cursor && op.fence && result.scope.viewerFence !== op.fence.scope.viewerFence) throw new ContentFailure('stale_continuation', 'The library changed. Refresh to continue.', true);
       if (op.page.sectionId && (result.sections.length !== 1 || result.sections[0].id !== op.page.sectionId)) invalid();
-      for (const section of result.sections) if (section.nextCursor && (section.nextCursor === op.page.cursor || op.history.some(p => p.cursor === section.nextCursor))) throw new ContentFailure('stale_continuation', 'The library continuation repeated. Refresh to continue.', true);
+      // A cursor that comes back again would page for ever: that section has reached its end.
+      const repeats = (c: string) => c === op.page.cursor || op.history.some(p => p.cursor === c);
+      const sections = result.sections.some(s2 => s2.nextCursor && repeats(s2.nextCursor)) ? Object.freeze(result.sections.map(s2 => (s2.nextCursor && repeats(s2.nextCursor) ? Object.freeze({ ...s2, nextCursor: '' }) : s2))) : result.sections;
       this.history = op.history; this.current = op.page;
-      this.publish({ phase: 'ready', projection: result, sections: result.sections, pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: this.history.length > 0, next: Object.freeze(result.sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
+      this.publish({ phase: 'ready', projection: result, sections, appended: op.page.cursor === null ? sections : appendSectionPage(this.snapshot.appended, sections), pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: this.history.length > 0, next: Object.freeze(sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
       const e = error as { code?: unknown; retryable?: unknown; message?: unknown; status?: unknown } | null;
@@ -375,9 +478,11 @@ export class LibraryContentService {
       // continuation joins `stale_continuation` there; on a first page it
       // remains a plain error.
       const stale = e?.code === 'stale_continuation' || (!!op.page.cursor && e?.code === 'invalid_cursor');
+      // A continuation the server no longer honours is not the person's problem: start the list again from its first page, keeping what is shown until it arrives.
+      if (stale && op.page.cursor) { await this.load({ route: op.route, page: { cursor: null }, history: [], fence: null }); return; }
       const code = string(e?.code) && e?.code ? e.code : 'request_failed';
       const transient = !stale && code !== 'invalid_projection' && e?.status !== 401 && e?.status !== 403 && (e?.retryable === true || code === 'timeout' || error instanceof TypeError || typeof e?.status === 'number' && (e.status >= 500 || e.status === 408 || e.status === 429));
-      this.publish({ phase: stale ? 'refresh-required' : 'error', projection: transient ? this.snapshot.projection : null, sections: transient ? this.snapshot.sections : Object.freeze([]), error: Object.freeze({ code, message: stale ? 'The library changed. Refresh to continue.' : error instanceof Error ? error.message : 'Could not load this library.', retryable: stale || transient }), pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: false, next: Object.freeze([]) }) });
+      this.publish({ phase: stale ? 'refresh-required' : 'error', projection: transient ? this.snapshot.projection : null, sections: transient ? this.snapshot.sections : Object.freeze([]), appended: transient ? this.snapshot.appended : Object.freeze([]), error: Object.freeze({ code, message: stale ? 'The library changed. Refresh to continue.' : error instanceof Error ? error.message : 'Could not load this library.', retryable: stale || transient }), pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: false, next: Object.freeze([]) }) });
     } finally {
       if (timer) clearTimeout(timer);
       if (onAbort) controller.signal.removeEventListener('abort', onAbort);

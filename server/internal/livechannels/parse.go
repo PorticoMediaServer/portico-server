@@ -133,9 +133,7 @@ func parse(in SourceInput) (out parsedSource, result error) {
 				} else {
 					pending = false
 					ch.locator = line
-					if in.configuration != nil && (!filterMatch(ch.group, in.configuration.Filters.Categories) || !filterMatch(ch.country, in.configuration.Filters.Countries) || !filterMatch(ch.name, in.configuration.Filters.Keywords)) {
-						continue
-					}
+
 					if ch.key == "" {
 						u, _ := url.Parse(line)
 						ch.key = "fallback-" + id(ch.name, u.Hostname(), u.Path)
@@ -156,15 +154,21 @@ func parse(in SourceInput) (out parsedSource, result error) {
 							continue
 						}
 					}
-					if len(groups) > 0 && !groups[ch.group] || len(enabled) > 0 && !enabled[ch.key] {
-						continue
-					}
-					if len(out.channels) >= limits.Channels {
+
+					if len(out.choices) >= limits.Channels {
 						skip("live.import.channelLimit")
 						continue
 					}
 					keys[ch.key] = true
 					byKey[ch.key] = ch
+					out.choices = append(out.choices, ch)
+					if in.configuration != nil && (!filterMatch(ch.group, in.configuration.Filters.Categories) || !filterMatch(ch.country, in.configuration.Filters.Countries) || !filterMatch(ch.name, in.configuration.Filters.Keywords)) {
+						continue
+					}
+					if len(groups) > 0 && !groups[ch.group] || len(enabled) > 0 && !enabled[ch.key] {
+						continue
+					}
+
 					out.channels = append(out.channels, ch)
 				}
 			}

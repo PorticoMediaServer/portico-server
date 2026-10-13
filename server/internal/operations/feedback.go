@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/apiwire"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 	"strconv"
@@ -42,8 +43,8 @@ type SubmitReport struct {
 type Report struct {
 	ID               string            `json:"id"`
 	Sequence         int64             `json:"-"`
-	CreatedAt        int64             `json:"createdAt"`
-	UpdatedAt        int64             `json:"updatedAt"`
+	CreatedAt        apiwire.Instant   `json:"createdAt"`
+	UpdatedAt        apiwire.Instant   `json:"updatedAt"`
 	Revision         int64             `json:"revision"`
 	Status           string            `json:"status"`
 	Category         string            `json:"category"`
@@ -54,12 +55,12 @@ type Report struct {
 	Events           []ReportEvent     `json:"events,omitempty"`
 }
 type ReportEvent struct {
-	Sequence   int64  `json:"sequence"`
-	At         int64  `json:"at"`
-	Revision   int64  `json:"revision"`
-	Status     string `json:"status"`
-	Reply      string `json:"reply"`
-	ActorClass string `json:"actorClass"`
+	Sequence   int64           `json:"sequence"`
+	At         apiwire.Instant `json:"at"`
+	Revision   int64           `json:"revision"`
+	Status     string          `json:"status"`
+	Reply      string          `json:"reply"`
+	ActorClass string          `json:"actorClass"`
 }
 type Triage struct {
 	ExpectedRevision int64  `json:"expectedRevision"`
@@ -316,13 +317,13 @@ func (s *Store) Triage(ctx context.Context, p identity.Principal, auth Authorize
 }
 
 type Notification struct {
-	ID        string `json:"id"`
-	Sequence  int64  `json:"-"`
-	CreatedAt int64  `json:"createdAt"`
-	ReadAt    *int64 `json:"readAt"`
-	Code      string `json:"code"`
-	TargetID  string `json:"targetId,omitempty"`
-	Message   string `json:"message"`
+	ID        string           `json:"id"`
+	Sequence  int64            `json:"-"`
+	CreatedAt apiwire.Instant  `json:"createdAt"`
+	ReadAt    *apiwire.Instant `json:"readAt"`
+	Code      string           `json:"code"`
+	TargetID  string           `json:"targetId,omitempty"`
+	Message   string           `json:"message"`
 }
 type Inbox struct {
 	Page[Notification]

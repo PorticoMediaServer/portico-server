@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/apiwire"
 	"strconv"
 	"strings"
 	"time"
@@ -242,12 +243,12 @@ type FeedbackDiagnostics struct {
 
 // FeedbackThreadEvent is one entry of the reporter-visible status thread.
 type FeedbackThreadEvent struct {
-	Sequence   int64  `json:"sequence"`
-	At         int64  `json:"at"`
-	Revision   int64  `json:"revision"`
-	Status     string `json:"status"`
-	Reply      string `json:"reply"`
-	ActorClass string `json:"actorClass"`
+	Sequence   int64           `json:"sequence"`
+	At         apiwire.Instant `json:"at"`
+	Revision   int64           `json:"revision"`
+	Status     string          `json:"status"`
+	Reply      string          `json:"reply"`
+	ActorClass string          `json:"actorClass"`
 }
 
 // FeedbackReport is the full record on the wire.
@@ -261,9 +262,9 @@ type FeedbackReport struct {
 	Category    string                `json:"category"`
 	Message     string                `json:"message"`
 	ItemID      string                `json:"itemId,omitempty"`
-	CreatedAt   int64                 `json:"createdAt"`
-	UpdatedAt   int64                 `json:"updatedAt"`
-	ExpiresAt   int64                 `json:"expiresAt"`
+	CreatedAt   apiwire.Instant       `json:"createdAt"`
+	UpdatedAt   apiwire.Instant       `json:"updatedAt"`
+	ExpiresAt   apiwire.Instant       `json:"expiresAt"`
 	Reporter    FeedbackReporter      `json:"reporter"`
 	Diagnostics FeedbackDiagnostics   `json:"diagnostics"`
 	DuplicateOf string                `json:"duplicateOf,omitempty"`
@@ -301,7 +302,7 @@ type FeedbackList struct {
 	StatusCounts map[string]int    `json:"statusCounts"`
 	Total        int               `json:"total"`
 	Filter       map[string]string `json:"filter"`
-	ObservedAt   int64             `json:"observedAt"`
+	ObservedAt   apiwire.Instant   `json:"observedAt"`
 }
 
 // FeedbackTransition moves a report's status behind a revision fence.
@@ -611,7 +612,7 @@ func (s *Store) FeedbackReports(ctx context.Context, p identity.Principal, auth 
 	}
 	e = s.snapshot(ctx, auth, "", func(tx *sql.Tx) error {
 		now := s.now()
-		out.ObservedAt = now
+		out.ObservedAt = apiwire.Instant(now)
 		base := ` FROM console_reports r LEFT JOIN feedback_details d ON d.report_id=r.id WHERE 1=1` + where
 		page := append(append([]any{now}, args...), before, f.Limit+1)
 		rows, err := tx.Query(`SELECT `+feedbackColumns+base+` AND r.sequence<? ORDER BY r.sequence DESC LIMIT ?`, page...)

@@ -113,7 +113,7 @@ function args(command:JobCommand,v:unknown):JobArgs{
   const keys=Object.keys(v);
   if(!keys.length||keys.some(k=>k!=='watched'&&k!=='favorite'&&k!=='watchlist'&&k!=='rating'))invalid();
   if(v.watched!==undefined&&typeof v.watched!=='boolean'||v.favorite!==undefined&&typeof v.favorite!=='boolean'||v.watchlist!==undefined&&typeof v.watchlist!=='boolean')invalid();
-  if(v.rating!==undefined&&!(v.rating===null||typeof v.rating==='number'&&v.rating>=0.5&&v.rating<=5&&(v.rating*2)%1===0))invalid();
+  if(v.rating!==undefined&&!(v.rating===null||typeof v.rating==='number'&&v.rating>=0&&v.rating<=10&&Number.isInteger(v.rating)))invalid();
   return Object.freeze({...v} as JobArgs);
  }
  if(command==='playlist-add'){

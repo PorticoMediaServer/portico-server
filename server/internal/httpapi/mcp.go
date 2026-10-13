@@ -355,6 +355,13 @@ func mcpTools() []mcpTool {
 	add(mcpTool{Name: "list_unmatched_files", Title: "Files that could not be matched", Description: "List the files in a TV library that the scan could not place in a show, season and episode, so they can be fixed or renamed.", Role: identity.TierOwner, ReadOnly: true, Required: []string{"libraryId"},
 		Properties: page(map[string]any{"libraryId": text("The library id, from list_libraries."), "limit": whole("How many in a page.", 1, 100)})}, r, run)
 
+	r, run = simple("GET", "/v1/admin/metadata/attention", nil, []string{"cursor", "limit", "includeInProgress"}, nil)
+	add(mcpTool{Name: "list_needs_attention", Title: "Titles needing attention", Description: "List titles needing the owner's attention across every library. Work in progress is excluded when includeInProgress is false.", Role: identity.TierOwner, ReadOnly: true, Properties: page(map[string]any{"limit": whole("How many in a page.", 1, 50), "includeInProgress": map[string]any{"type": "boolean"}})}, r, run)
+	r, run = simple("GET", "/v1/libraries/{id}/metadata/attention", []string{"libraryId"}, []string{"cursor", "limit", "includeInProgress"}, nil)
+	add(mcpTool{Name: "library_needs_attention", Title: "Library titles needing attention", Description: "List unmatched or uncertain titles in one library, with the exact total waiting for attention.", Role: identity.TierOwner, ReadOnly: true, Required: []string{"libraryId"}, Properties: page(map[string]any{"libraryId": text("The library id."), "limit": whole("How many in a page.", 1, 50), "includeInProgress": map[string]any{"type": "boolean"}})}, r, run)
+	r, run = simple("GET", "/v1/admin/metadata/attention/counts", nil, nil, nil)
+	add(mcpTool{Name: "count_needs_attention", Title: "Count titles needing attention", Description: "Get exact counts per library and across the server without loading titles.", Role: identity.TierOwner, ReadOnly: true, Properties: map[string]any{}}, r, run)
+
 	r, run = simple("GET", "/v1/metadata/{kind}/{id}", nil, nil, nil)
 	add(mcpTool{Name: "get_match", Title: "How a title was matched", Description: "Show how one title is matched to its metadata provider: the current match, and the other candidates the server found with how confident it is in each. Call this before fix_match.", Role: identity.TierOwner, ReadOnly: true, Required: []string{"kind", "id"},
 		Properties: map[string]any{"kind": choice("What the id is.", "item", "show", "season", "album", "artist", "book"), "id": text("The title's id.")}}, r, run)
@@ -413,14 +420,32 @@ func mcpTools() []mcpTool {
 			return status, raw, err
 		})
 
-	add(mcpTool{Name: "control_playback", Title: "Pause, resume or seek your own playback", Description: "Pause, resume or seek a playback session that belongs to this member. It cannot control another member's playback; an administrator can stop one with stop_playback.", Required: []string{"sessionId", "action"},
+	add(mcpTool{Name: "control_playback", Title: "Pause, resume or seek playback", Description: "Control your own playback, or another member’s session when you may administer playback.", Required: []string{"sessionId", "action"},
 		Properties: map[string]any{"sessionId": text("The playback session's id."), "action": choice("What to do.", "pause", "resume", "seek"), "positionMs": whole("For seek: where to go, in milliseconds from the start.", 0, 1<<40)}},
-		[]mcpRoute{{"GET", "/v1/playback/sessions/{id}"}, {"PATCH", "/v1/playback/sessions/{id}"}}, func(args map[string]any, call mcpInvoker) (int, []byte, error) {
+		[]mcpRoute{{"GET", "/v1/playback/sessions/{id}"}, {"PATCH", "/v1/playback/sessions/{id}"}, {"GET", "/v1/admin/sessions/{id}/controls"}, {"POST", "/v1/admin/sessions/{id}/controls"}}, func(args map[string]any, call mcpInvoker) (int, []byte, error) {
 			path, err := pathWith("/v1/playback/sessions/{id}", args, "sessionId")
 			if err != nil {
 				return 0, nil, err
 			}
 			status, header, current, err := call(mcpCall{Method: "GET", Path: path})
+			if err == nil && status == 404 {
+				adminPath := "/v1/admin/sessions/" + str(args, "sessionId") + "/controls"
+				status, _, current, err = call(mcpCall{Method: "GET", Path: adminPath})
+				if err != nil || status != 200 {
+					return status, current, err
+				}
+				revision, ok := field(current, "revision")
+				if !ok {
+					return 0, nil, errors.New("the session revision was missing")
+				}
+				body := map[string]any{"action": str(args, "action"), "expectedRevision": revision}
+				if str(args, "action") == "seek" {
+					body["positionMs"] = args["positionMs"]
+				}
+				status, _, raw, err := call(mcpCall{Method: "POST", Path: adminPath, Body: body})
+				return status, raw, err
+			}
+
 			if err != nil || status != 200 {
 				return status, current, err
 			}

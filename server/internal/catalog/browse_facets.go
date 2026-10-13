@@ -11,6 +11,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/sorttext"
 )
 
 // Facets count the values a viewer could actually choose. Every count is taken
@@ -24,6 +25,7 @@ type FacetValue struct {
 }
 type FacetPage struct {
 	Field  string       `json:"field"`
+	Total  int          `json:"total"`
 	Values []FacetValue `json:"values"`
 }
 type FacetRequest struct {
@@ -32,6 +34,8 @@ type FacetRequest struct {
 	Field   string
 	Q       string
 	Limit   int
+	Offset  int
+	Sort    string
 	// Restrictions must match the browse request whose facets these are, or the
 	// counts would advertise titles the page itself refuses to show.
 	Restrictions identity.ContentRestrictions
@@ -115,15 +119,30 @@ func (s *Service) Facets(viewer Viewer, request FacetRequest) (FacetPage, error)
 			return out, err
 		}
 	}
-	needle := asciiLower(request.Q)
+	needle := sorttext.Fold(request.Q)
+	filtered := make([]FacetValue, 0, len(all.Values))
 	for _, value := range all.Values {
-		if len(out.Values) == request.Limit {
-			break
-		}
-		if needle == "" || strings.Contains(asciiLower(value.Label), needle) {
-			out.Values = append(out.Values, value)
+		if needle == "" || strings.Contains(sorttext.Fold(value.Label), needle) {
+			filtered = append(filtered, value)
 		}
 	}
+	if strings.HasPrefix(request.Sort, "title:") {
+		desc := request.Sort == "title:desc"
+		sort.Slice(filtered, func(i, j int) bool {
+			a, b := sorttext.Key(filtered[i].Label, "", ""), sorttext.Key(filtered[j].Label, "", "")
+			if a == b {
+				a, b = filtered[i].Value, filtered[j].Value
+			}
+			if desc {
+				return a > b
+			}
+			return a < b
+		})
+	}
+	out.Total = len(filtered)
+	start := min(max(0, request.Offset), len(filtered))
+	out.Values = filtered[start:min(start+request.Limit, len(filtered))]
+
 	return out, nil
 }
 

@@ -79,3 +79,31 @@ test('the in-tab byte cache empties on sign-out and on a profile or server switc
   const session = readFileSync(new URL('../src/app/session.tsx', import.meta.url), 'utf8');
   assert.match(session, /const viewerKey = sessionIdentity\(scope\.session\);[\s\S]{0,200}audioByteCache\.clear\(\)/, 'keyed on who is signed in (server, account, profile, sign-in)');
 });
+
+test('gapless decks share the resampler grid at a mismatched output rate', async () => {
+  const {Resampler} = await import('../src/bridge/audio/resampler.ts');
+  const rate=44100, output=48000, sizes=[10001,11003], total=sizes[0]!+sizes[1]!;
+  const pcm=Float32Array.from({length:total},(_,i)=>Math.sin(i*0.063)*0.3);
+  const make=(offset:number,frames:number)=>{let at=0;return{sampleRate:rate,channels:1,async read(max:number){if(at===frames)return;const n=Math.min(max,frames-at);const channels=[pcm.slice(offset+at,offset+at+n)];at+=n;return{channels,frames:n};},close(){}};};
+  const f=fakeContext(output);
+  const a=new Deck(f.ctx,{} as AudioNode,make(0,sizes[0]!),{frames:sizes[0]!,gain:1,holdTail:true});
+  const b=new Deck(f.ctx,{} as AudioNode,make(sizes[0]!,sizes[1]!),{frames:sizes[1]!,gain:1});
+  await a.pump(Infinity);a.start(0);assert.ok(b.continueFrom(a));await b.pump(Infinity);
+  linkDecks(f.ctx,a,b,{crossfadeSeconds:0,sameAlbum:true});
+  const actual=f.scheduled.flatMap(s=>Array.from(s.node.buffer.data[0]));
+  const whole=new Resampler(rate,output,1);
+  const expected=[...whole.process([pcm],total).channels[0]!,...whole.flush().channels[0]!];
+  assert.deepEqual(actual,expected);
+  assert.equal(a.outFrames+b.outFrames,Math.floor(total*output/rate));
+});
+
+test('cancelled resampler preparation retains the current track and a finite tail deadline',async()=>{
+ const f=fakeContext(48000),frames=44100;
+ const a=new Deck(f.ctx,{} as AudioNode,sineSource(frames,44100),{frames,gain:1,holdTail:true});
+ const b=new Deck(f.ctx,{} as AudioNode,sineSource(frames,44100),{frames,gain:1});
+ await a.pump(Infinity);a.start(3840);assert.ok(Number.isFinite(a.tailDeadlineSeconds));
+ assert.ok(b.continueFrom(a));await b.pump(Infinity);b.close();
+ a.finishTail();
+ assert.equal(f.scheduled.reduce((n,s)=>n+s.frames,0),a.outFrames,'cancelled preparation did not consume the outgoing tail');
+ assert.ok(a.complete);
+});

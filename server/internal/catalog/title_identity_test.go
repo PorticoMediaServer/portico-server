@@ -152,7 +152,7 @@ func TestRemovedTitleKeepsEachProfilesStateAndGetsItBack(t *testing.T) {
 	a, token := identityFile(t, c, "m", "/m/Stalker (1979).mkv", 1080)
 	film := attachMovie(t, c, "m", a, "/m/Stalker (1979).mkv", "Stalker", 1979)
 	c.Exec(`INSERT INTO catalog_external_ids(entity_id,provider,provider_kind,provider_id) VALUES(?,'tmdb','movie','1398')`, film)
-	c.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at,not_interested) VALUES('p',?,1,0,3.5,4,1,'2026-09-01T00:00:00Z',0)`, film)
+	c.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at,not_interested) VALUES('p',?,1,0,7,4,1,'2026-09-01T00:00:00Z',0)`, film)
 	c.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES('p',?,1,'2026-09-01T00:00:00.000000000Z')`, film)
 	c.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,completed,playback_id) VALUES('q',?,600000,0,0,'play-1')`, film)
 	c.Exec(`INSERT INTO personal_play_counts(profile_id,item_id,plays) VALUES('p',?,3)`, film)
@@ -186,7 +186,7 @@ func TestRemovedTitleKeepsEachProfilesStateAndGetsItBack(t *testing.T) {
 	})
 	var watchlisted, watched bool
 	var rating float64
-	if err = c.DB.QueryRow(`SELECT watchlisted,watched,rating FROM personal_items WHERE profile_id='p' AND item_id=?`, back).Scan(&watchlisted, &watched, &rating); err != nil || !watchlisted || !watched || rating != 3.5 {
+	if err = c.DB.QueryRow(`SELECT watchlisted,watched,rating FROM personal_items WHERE profile_id='p' AND item_id=?`, back).Scan(&watchlisted, &watched, &rating); err != nil || !watchlisted || !watched || rating != 7 {
 		t.Fatalf("state not given back: %v %v %v %v", watchlisted, watched, rating, err)
 	}
 	if n := rows(t, c, `SELECT count(*) FROM personal_watched_intents WHERE profile_id='p' AND item_id=? AND watched=1`, back); n != 1 {
@@ -589,6 +589,10 @@ func TestAFileCanBeSplitOffATitleItWasWronglyGroupedWith(t *testing.T) {
 	b, bToken := identityFile(t, c, "m", "/m/Dune 1984 fan edit.mkv", 720)
 	film := attachMovie(t, c, "m", a, "/m/Dune (1984).mkv", "Dune", 1984)
 	attachMovie(t, c, "m", b, "/m/Dune 1984 fan edit.mkv", "Dune", 1984)
+
+	if _, err := c.DB.Exec(`INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,source_asset_id,quality,origin,state,created_ms,updated_ms) VALUES('split-claim','viewer','local','account','profile',?,?,'m',?,'original','item','queued',0,0)`, film, c.Public(film), bToken); err != nil {
+		t.Fatal(err)
+	}
 	s := New(c.DB)
 	separate, err := s.SeparateInventoryVersion(context.Background(), "m", "object:"+bToken, "r", func(*sql.Tx) error { return nil })
 	if err != nil || separate == "" || separate == c.Public(film) {
@@ -599,6 +603,11 @@ func TestAFileCanBeSplitOffATitleItWasWronglyGroupedWith(t *testing.T) {
 	}
 	if n := rows(t, c, `SELECT count(*) FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, c.ID(separate), b); n != 1 {
 		t.Fatal("the split file is not on its own title")
+	}
+
+	var downloadTitle string
+	if err = c.DB.QueryRow(`SELECT item_public FROM download_preparations WHERE id='split-claim'`).Scan(&downloadTitle); err != nil || downloadTitle != separate {
+		t.Fatal("download did not follow its file", downloadTitle, err)
 	}
 	// The decision is remembered: reading the name again does not regroup it.
 	c.Write(func(ctx context.Context, tx *sql.Tx) error {

@@ -263,7 +263,7 @@ components:
       description: The shared catalog entry projection, as published by /v1/content and /v1/items/{id}/detail.
       required: [id, kind, title]
       properties:
-        userRating: {type: number, format: double, minimum: 0.5, maximum: 5, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
+        userRating: {type: integer, minimum: 0, maximum: 10, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
         plays: {type: integer, minimum: 1, description: "How many times the viewer has played a song to the end; song entries only, absent when never played."}
         id: {type: string}
         kind: {type: string, description: "movie, episode, song, audiobook_file, album, book, extra, …"}
@@ -275,8 +275,8 @@ components:
         overview: {type: string, description: "Present on episode entries, Home row entries and detail; omitted from other grid and row entries."}
         available: {type: boolean}
         watched: {type: boolean}
-        duration: {type: number}
-        progressSeconds: {type: number}
+        durationMs: {type: integer}
+        progressMs: {type: integer}
         addedAt: {type: [string, "null"]}
         year: {type: integer, description: "Release year, absent when unknown. Present on album entities and on Home entries."}
         artist:
@@ -289,7 +289,7 @@ components:
         role: {type: string, enum: [album, appearance], description: "The release's relationship to the artist; artist releases only."}
         artworkPaths: {type: array, items: {type: string}, description: "Up to 4 poster paths for a 2x2 mosaic; category rows only."}
         navigation: {type: object, properties: {view: {type: string}, entityId: {type: string}}}
-        playback: {type: object, properties: {itemId: {type: string}, startSeconds: {type: number}}}
+        playback: {type: object, properties: {itemId: {type: string}, startMs: {type: integer}}}
         contentRating: {type: string, description: "Home entries: the item's content rating (e.g. PG-13)."}
         genres: {type: array, maxItems: 2, items: {type: string}, description: "Home entries: the first two genres."}
         watchlisted: {type: boolean, description: "Home entries: whether this entry's id is on the viewer's watchlist. Present only on entries that can be watchlisted; toggle it with PUT /v1/items/personal-state:batch (or /v1/items/{id}/personal-state) on this entry's id."}

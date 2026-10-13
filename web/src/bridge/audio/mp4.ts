@@ -1,3 +1,4 @@
+import {aacConfig} from './aac-config';
 import {ascii, DemuxError, u16be, u32be, type ByteReader, type Demuxer, type Packet, type TrackConfig} from './types';
 
 /**
@@ -86,13 +87,10 @@ export async function openMp4(reader: ByteReader): Promise<Demuxer & {table: Sam
     const esds = sub.find(x => x.type === 'esds');
     const asc = esds && esdsConfig(moov, esds.start + esds.header + 4, esds.start + esds.size);
     if (!asc || asc.length < 2) throw new DemuxError('AAC configuration is missing.');
-    const objectType = asc[0]! >> 3;
-    const rateIndex = ((asc[0]! & 7) << 1) | (asc[1]! >> 7);
-    const rates = [96000, 88200, 64000, 48000, 44100, 32000, 24000, 22050, 16000, 12000, 11025, 8000, 7350];
-    if (rateIndex < rates.length) sampleRate = rates[rateIndex]!;
-    const chan = (asc[1]! >> 3) & 0xf;
-    if (chan) channels = chan;
-    config = {codec: `mp4a.40.${objectType}`, family: 'aac', sampleRate, numberOfChannels: channels, description: asc};
+    const aac = aacConfig(asc), objectType = aac.objectType;
+    sampleRate = aac.sampleRate;
+    if (aac.channels) channels = aac.channels;
+    config = {codec: `mp4a.40.${objectType}`, family: 'aac', sampleRate, numberOfChannels: channels, description: asc, framesPerPacket: aac.framesPerPacket};
   } else if (fourcc === 'alac') {
     const alac = sub.find(x => x.type === 'alac');
     if (!alac) throw new DemuxError('ALAC configuration is missing.');
@@ -124,7 +122,7 @@ export async function openMp4(reader: ByteReader): Promise<Demuxer & {table: Sam
   return {
     config: frozen, table,
     async *packets(signal?: AbortSignal): AsyncGenerator<Packet> {
-      yield* mp4Packets(reader, table, 0, scale, signal);
+      yield* mp4Packets(reader, table, 0, scale, signal, config.framesPerPacket);
     },
     // The sample table is in memory, so a seek reads only from the target on:
     // resuming hour eight of an audiobook doesn't download hours one to seven.
@@ -132,18 +130,18 @@ export async function openMp4(reader: ByteReader): Promise<Demuxer & {table: Sam
       let raw = 0, i = 0;
       const starts: number[] = [];
       for (; i < table.durations.length; i++) {
-        const frames = Math.round(table.durations[i]! * scale);
+        const frames = config.framesPerPacket ?? Math.round(table.durations[i]! * scale);
         starts.push(raw);
         if (raw + frames > target) break;
         raw += frames;
       }
       const first = Math.max(0, Math.min(i, table.durations.length) - preroll);
-      return {packets: mp4Packets(reader, table, first, scale, signal), rawStart: starts[first] ?? raw};
+      return {packets: mp4Packets(reader, table, first, scale, signal, config.framesPerPacket), rawStart: starts[first] ?? raw};
     },
   };
 }
 
-export async function* mp4Packets(reader: ByteReader, t: SampleTable, from: number, scale: number, signal?: AbortSignal): AsyncGenerator<Packet> {
+export async function* mp4Packets(reader: ByteReader, t: SampleTable, from: number, scale: number, signal?: AbortSignal, framesPerPacket?: number): AsyncGenerator<Packet> {
   // Read runs of contiguous samples in one request.
   for (let i = from; i < t.sizes.length;) {
     let j = i, bytes = 0;
@@ -152,7 +150,7 @@ export async function* mp4Packets(reader: ByteReader, t: SampleTable, from: numb
     let o = 0;
     for (let k = i; k < j; k++) {
       if (o + t.sizes[k]! > run.length) return;
-      yield {data: run.slice(o, o + t.sizes[k]!), frames: Math.round(t.durations[k]! * scale), offset: t.offsets[k]!};
+      yield {data: run.slice(o, o + t.sizes[k]!), frames: framesPerPacket ?? Math.round(t.durations[k]! * scale), offset: t.offsets[k]!};
       o += t.sizes[k]!;
     }
     i = j;

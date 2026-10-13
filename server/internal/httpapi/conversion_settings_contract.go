@@ -170,11 +170,8 @@ func registerConversionOwnerSettings(registry *apikit.Registry, d Dependencies) 
 		if err != nil {
 			return ConsoleReply[operations.SettingsDocument]{}, conversionSettingsError(err)
 		}
-		if d.connectionPolicy != nil {
-			d.connectionPolicy.set(doc)
-		}
-		if d.SettingsApplied != nil {
-			d.SettingsApplied(ctx)
+		if err := d.applyLiveSettings(ctx); err != nil {
+			return ConsoleReply[operations.SettingsDocument]{}, conversionSettingsError(err)
 		}
 		if err := d.ConsoleCheck(ctx, auth); err != nil {
 			return ConsoleReply[operations.SettingsDocument]{}, conversionSettingsError(err)

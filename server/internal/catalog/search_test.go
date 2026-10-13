@@ -90,7 +90,7 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(out.Groups) != 9 || out.Query.Q != "Harbor" || out.Groups[0].TotalCount != 43 || len(out.Groups[0].Items) != SearchPreviewLimit {
+	if len(out.Groups) != len(searchGroups) || out.Query.Q != "Harbor" || out.Groups[0].TotalCount != 43 || len(out.Groups[0].Items) != SearchPreviewLimit {
 		t.Fatalf("groups %+v", out)
 	}
 	for _, group := range out.Groups {
@@ -175,17 +175,17 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 }
 
 func TestSearchInputAndLiteralOperators(t *testing.T) {
-	for _, q := range []string{"", " ", "a", "a b", "***", "OR * NEAR() a b c d e f g", strings.Repeat("界", 129)} {
+	for _, q := range []string{"", " ", "***", "OR * NEAR() a b c d e f g", strings.Repeat("界", 129)} {
 		if _, _, err := NormalizeSearch(q); err == nil {
 			t.Fatal("accepted", q)
 		}
 	}
 	q, expr, err := NormalizeSearch("  café\u2003Moon-STAR\"  ")
-	if err != nil || q != "café Moon-STAR\"" || expr != `"café"* AND "Moon"* AND "STAR"*` {
+	if err != nil || q != "café Moon-STAR\"" || expr != `"cafe"* AND "moonstar"*` {
 		t.Fatal(q, expr, err)
 	}
 	_, expr, err = NormalizeSearch(`harbor OR "movie"* -secret`)
-	if err != nil || expr != `"harbor"* AND "OR"* AND "movie"* AND "secret"*` {
+	if err != nil || expr != `"harbor"* AND "or"* AND "movie"* AND "secret"*` {
 		t.Fatal("operator injection", expr, err)
 	}
 }
@@ -267,7 +267,7 @@ func TestSearchPersistenceLibraryMoveAndScale(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Log("steady query", time.Since(start))
-	explain, err := db.Query(`EXPLAIN QUERY PLAN SELECT rowid FROM catalog_search_titles WHERE catalog_search_titles MATCH 'kind : k1 AND title : ("beacon"* AND "harbor"*)'`)
+	explain, err := db.Query(`EXPLAIN QUERY PLAN SELECT rowid FROM catalog_search_titles WHERE catalog_search_titles MATCH 'kind : k1 AND search : ("beacon"* AND "harbor"*)'`)
 	if err != nil {
 		t.Fatal(err)
 	}

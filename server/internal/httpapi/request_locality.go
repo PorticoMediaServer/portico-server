@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"portico.local/server/internal/networkpolicy"
 	"portico.local/server/internal/operations"
-	"strings"
 )
 
 var defaultLocality = newLocalityPolicy(operations.DefaultSettings())
@@ -73,5 +72,5 @@ func (d Dependencies) sameRequestOrigin(r *http.Request, origin string) bool {
 	// forwarded header from an untrusted peer or asserting that HTTP is TLS.
 	submitted, err := url.Parse(origin)
 	target, targetErr := url.Parse(actual)
-	return r.TLS == nil && err == nil && targetErr == nil && submitted.Scheme == "https" && submitted.Host == strings.ToLower(target.Host) && submitted.Path == "" && submitted.User == nil && submitted.RawQuery == "" && !submitted.ForceQuery && submitted.Fragment == ""
+	return r.TLS == nil && err == nil && targetErr == nil && submitted.Scheme == "https" && submitted.Host == target.Host && submitted.Path == "" && submitted.User == nil && submitted.RawQuery == "" && !submitted.ForceQuery && submitted.Fragment == ""
 }

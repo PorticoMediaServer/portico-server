@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/url"
+	"portico.local/server/internal/facettext"
 	"strconv"
 	"strings"
 	"time"
@@ -358,8 +359,8 @@ func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset in
 	// boost, so "ada" surfaces Ada before Adaline without client-side ranking.
 	// The page is chosen first; credits are counted only for its people (a
 	// select-list count would run for every match before the sort).
-	relevance := `(-bm25(catalog_people_names))+(CASE WHEN people.name=? COLLATE NOCASE THEN 1000 ELSE 0 END)+(CASE WHEN people.name LIKE ? ESCAPE '\' THEN 100 ELSE 0 END)`
-	relevanceArgs := []any{q, searchPrefix(q)}
+	relevance := `(-bm25(catalog_people_names))+(CASE WHEN portico_search_fold(people.name)=? THEN 1000 ELSE 0 END)+(CASE WHEN portico_search_fold(people.name) LIKE ? ESCAPE '\' THEN 100 ELSE 0 END)`
+	relevanceArgs := []any{facettext.SearchFold(q), searchPrefix(facettext.SearchFold(q))}
 	inner, outer := `ORDER BY rel DESC,people.sort_name,people.id`, `ORDER BY page.rel DESC,page.sort_name,page.id`
 	if order == "title" {
 		relevance, relevanceArgs = `0`, nil
@@ -371,9 +372,11 @@ func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset in
 	args = append(args, relevanceArgs...)
 	args = append(args, match, viewer.librariesJSON())
 	args = append(args, bound...)
+	extra, extraArgs := searchCJKPredicate("portico_search_fold(people.name)", q)
+	args = append(args, extraArgs...)
 	args = append(args, limit, offset)
 	rows, e := s.read().Query(`SELECT page.token,page.name,page.sort_name,(SELECT count(*) FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=page.id AND `+restriction+`) credits
-	 FROM (SELECT people.id,people.token,people.name,people.sort_name,`+relevance+` AS rel FROM catalog_people_names JOIN catalog_people people ON people.id=catalog_people_names.rowid WHERE catalog_people_names MATCH ? AND EXISTS(SELECT 1 FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=people.id AND `+restriction+`) `+inner+` LIMIT ? OFFSET ?) page `+outer, args...)
+	 FROM (SELECT people.id,people.token,people.name,people.sort_name,`+relevance+` AS rel FROM catalog_people_names JOIN catalog_people people ON people.id=catalog_people_names.rowid WHERE catalog_people_names MATCH ? AND EXISTS(SELECT 1 FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=people.id AND `+restriction+`) `+extra+inner+` LIMIT ? OFFSET ?) page `+outer, args...)
 	if e != nil {
 		return nil, e
 	}

@@ -91,6 +91,17 @@ tags:
   - name: media
     description: Grant-bound byte delivery for streams, segments, subtitles and rendered audio.
 paths:
+  /receiver/cast/{asset}:
+    get:
+      summary: Fetch the bundled Cast receiver page and assets
+      security: []
+      parameters:
+        - { name: asset, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: A bundled receiver asset
+        '404':
+          description: Asset not found
   /v1/events:
     get:
       operationId: getEvents
@@ -5437,7 +5448,7 @@ components:
         popularTracks section with the viewer's top 5 songs by play count.
       required: [id, kind, title]
       properties:
-        userRating: {type: number, format: double, minimum: 0.5, maximum: 5, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
+        userRating: {type: integer, minimum: 0, maximum: 10, description: "The viewer's own rating in half steps, on item rows the viewer has rated; absent otherwise."}
         plays: {type: integer, minimum: 1, description: "How many times the viewer has played a song to the end; song entries only, absent when never played."}
         id: { type: string }
         kind: { type: string }
@@ -6370,7 +6381,7 @@ components:
       properties:
         idempotencyKey: { type: string }
         component: { type: string, enum: [scheduler] }
-        expiresAt: { type: integer, format: int64, description: Epoch milliseconds, at most one hour after server time; zero disables capture. }
+        expiresAt: { type: string, description: RFC 3339 UTC timestamp at most one hour after server time; empty disables capture. }
       additionalProperties: false
     ExportRequest:
       type: object

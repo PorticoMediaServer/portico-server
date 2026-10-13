@@ -15,7 +15,7 @@ import {useSession} from '../../app/session';
 import {useDownloads} from '../../app/downloads';
 import {containerKindFor, useContainerWatched} from '../shared/container-watched';
 import {Button, Inset, KeyValue, ListRow, Page, Section, StateView, Text, TitleHero, type MenuAnchor} from '../../ui';
-import {LoadingShelves, SectionView, useAppendedSections} from '../shared/Sections';
+import {LoadingShelves, SectionView} from '../shared/Sections';
 import body from '../detail/Detail.module.css';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
@@ -42,7 +42,7 @@ export function EntityScreen() {
   useSelectionRefresh(refresh);
   // PERF-S02: section "More" appends inside its own section; the page's other
   // sections stay rendered.
-  const appendedSections = useAppendedSections(JSON.stringify(content), snapshot.pagination.cursor, snapshot.sections);
+  const appendedSections = snapshot.appended;
   const projection = snapshot.projection;
   const entity = projection?.entity;
   const kind = entity?.kind ?? view;

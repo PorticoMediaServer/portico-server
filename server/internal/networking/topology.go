@@ -89,10 +89,6 @@ var topologyDialLocal = func(gateway string) (string, error) {
 	return c.LocalAddr().(*net.UDPAddr).IP.String(), nil
 }
 
-// devLoopbackRoute publishes the loopback address as a LAN route; only a
-// devtrust development build sets it (dev_loopback_route.go).
-var devLoopbackRoute bool
-
 func publicAddress(ip netip.Addr) bool {
 	if !ip.IsGlobalUnicast() || ip.IsPrivate() || ip.IsLoopback() || ip.Is4In6() || ip.IsLinkLocalUnicast() || ip.Zone() != "" {
 		return false

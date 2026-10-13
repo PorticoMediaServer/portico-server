@@ -8,6 +8,9 @@ import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {RECOMMENDATIONS_RESET, recommendationViewer, withoutHidden} from '../../app/not-interested';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useFreshDocument} from '../../app/freshness';
+import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
+
 import {Inset, Page, PageHeader} from '../../ui';
 import {LoadingGrid, SectionView} from '../shared/Sections';
 import {useI18n} from '../../app/i18n';
@@ -18,6 +21,8 @@ import {useI18n} from '../../app/i18n';
  * stale cursor starts again from the first page). Its cards are recommendations, so they offer
  * Not interested and leave the grid when turned down.
  */
+const rowDependencies = Object.freeze([dependsOn.libraries, ...titlesWithPersonalState()]);
+
 export function HomeRowPageScreen() {
   const {t} = useI18n();
   const {rowId} = useParams({from: '/app/home/rows/$rowId'});
@@ -28,6 +33,8 @@ export function HomeRowPageScreen() {
   const libraryName = (id: string) => libraries.items.find(l => l.id === id)?.name;
   const pager = useMemo(() => new HomeRowPager(api, rowId), [api, rowId]);
   useEffect(() => { void pager.load(); return () => pager.dispose(); }, [pager]);
+  // The row's full list follows the libraries and this profile's state while it is open; pages already scrolled into stay.
+  useFreshDocument(rowDependencies, context => pager.revalidate(context), () => pager.getSnapshot().phase === 'ready');
   useEffect(() => {
     const onReset = (event: Event) => { if ((event as CustomEvent<{viewer: string}>).detail.viewer === viewer) void pager.load(); };
     window.addEventListener(RECOMMENDATIONS_RESET, onReset);

@@ -24,6 +24,8 @@ export type DeckOptions = Readonly<{
   gain: number;
   /** Diagnostics and tests: a label. */
   label?: string;
+  /** Hold the final filter taps briefly for a gapless successor. */
+  holdTail?: boolean;
 }>;
 
 const now = (c: BaseAudioContext) => c.currentTime;
@@ -34,7 +36,7 @@ export class Deck {
   readonly norm: GainNode;
   readonly fade: GainNode;
   /** Output frames at the context rate. */
-  readonly outFrames: number;
+  outFrames: number;
   /** Integer context frame of the first output frame; undefined until scheduled. */
   startFrame?: number;
   /** Output frames decoded so far (scheduled or held). */
@@ -48,10 +50,17 @@ export class Deck {
   private chunk: Float32Array[] | undefined;
   private chunkFill = 0;
   private readonly chunkFrames: number;
-  private readonly resampler?: Resampler;
+  private resampler?: Resampler;
+  private inputOrigin = 0;
+  private readonly inputFrames: number;
+  private tailPending = false;
+  private readonly holdTail: boolean;
+  private predecessor?: Deck;
   private readonly context: BaseAudioContext;
   private readonly nodes = new Set<AudioBufferSourceNode>();
   private pumping = false;
+  private pumpWaiters: (() => void)[] = [];
+  private continuation?: {previous: Deck; tail: {channels: Float32Array[]; frames: number}};
   private exhausted = false;
   failure?: unknown;
 
@@ -59,6 +68,7 @@ export class Deck {
     this.context = context;
     this.source = source;
     this.label = o.label ?? '';
+    this.inputFrames = o.frames; this.holdTail = o.holdTail === true;
     this.norm = context.createGain();
     this.fade = context.createGain();
     this.norm.gain.value = o.gain;
@@ -87,17 +97,29 @@ export class Deck {
 
   /** Decodes until `seconds` of audio lie ahead of the playhead (or are held), then stops. */
   async pump(seconds: number): Promise<void> {
-    if (this.pumping || this.closed) return;
+    if (this.closed) return;
+    if (this.pumping) { await new Promise<void>(resolve => this.pumpWaiters.push(resolve)); return this.pump(seconds); }
     this.pumping = true;
     try {
       while (!this.closed && !this.exhausted && this.aheadSeconds < seconds) {
         const block = await this.source.read(Math.round(this.source.sampleRate / 4));
         if (this.closed) return;
         if (!block) {
-          if (this.resampler) this.append(this.resampler.flush());
           this.exhausted = true;
-          this.finishChunk();
+          this.tailPending = !!this.resampler;
+          if (!this.holdTail) this.finishTail();
+          if (!this.tailPending) this.finishChunk();
           break;
+        }
+        if (this.predecessor) {
+          const previous = this.predecessor; this.predecessor = undefined;
+          if (previous.tailPending && previous.resampler) {
+            const continuation = previous.resampler.continue(block.channels, block.frames);
+            this.continuation = {previous, tail: continuation.tail};
+            this.resampler = continuation.next; this.inputOrigin = continuation.origin;
+            this.outFrames = Resampler.outputFrames(this.inputOrigin + this.inputFrames, this.source.sampleRate, this.rate)
+              - Resampler.outputFrames(this.inputOrigin, this.source.sampleRate, this.rate);
+          }
         }
         this.append(this.resampler ? this.resampler.process(block.channels, block.frames) : block);
       }
@@ -105,7 +127,34 @@ export class Deck {
       this.failure = e;
     } finally {
       this.pumping = false;
+      const waiters = this.pumpWaiters; this.pumpWaiters = []; for (const wake of waiters) wake();
     }
+  }
+
+  /** Set before pumping a candidate. Only exhausted, compatible gapless tracks share a grid. */
+  continueFrom(previous: Deck): boolean {
+    if (this.decoded || this.chunkFill || !previous.tailPending || !this.resampler || !previous.resampler
+      || this.source.sampleRate !== previous.source.sampleRate || this.source.channels !== previous.source.channels) return false;
+    this.predecessor = previous;
+    return true;
+  }
+
+  commitContinuation(previous: Deck) {
+    if (this.continuation?.previous === previous && previous.tailPending) {
+      previous.append(this.continuation.tail); previous.tailPending = false; previous.finishChunk();
+    }
+    this.continuation = undefined;
+  }
+
+  /** Last moment to release an unscheduled terminal buffer without starving playback. */
+  get tailDeadlineSeconds() {
+    return this.tailPending && this.startFrame !== undefined ? (this.startFrame + this.decoded) / this.rate - 0.08 : Infinity;
+  }
+
+  /** Release a terminal track against silence when no successor arrived before its deadline. */
+  finishTail() {
+    if (!this.tailPending) return;
+    this.append(this.resampler!.flush()); this.tailPending = false; this.finishChunk();
   }
 
   private append(block: {channels: readonly Float32Array[]; frames: number}) {
@@ -155,7 +204,7 @@ export class Deck {
   }
 
   /** The audio is exhausted and every scheduled frame has been handed to the clock. */
-  get complete() { return this.exhausted && !this.chunk && this.held.length === 0 && this.scheduled >= this.decoded; }
+  get complete() { return this.exhausted && !this.tailPending && !this.chunk && this.held.length === 0 && this.scheduled >= this.decoded; }
 
   /** Ramps the normalization gain (20 ms, §9.6 rule 7). */
   private gainValue?: number;
@@ -171,6 +220,7 @@ export class Deck {
   close() {
     if (this.closed) return;
     this.closed = true;
+    this.continuation = undefined; this.predecessor = undefined;
     for (const n of this.nodes) { n.onended = null; try { n.stop(); } catch { /* not started */ } n.disconnect(); }
     this.nodes.clear();
     this.held = [];
@@ -214,6 +264,8 @@ export function linkDecks(context: BaseAudioContext, current: Deck, next: Deck, 
     next.fade.gain.setValueCurveAtTime(fadeIn, t, d);
     current.fade.gain.setValueCurveAtTime(fadeOut, t, d);
   }
+  next.commitContinuation(current);
+  current.finishTail();
   next.start(edge.start);
   return {...edge, late};
 }

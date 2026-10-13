@@ -1,4 +1,4 @@
-import {ascii, Cursor, DemuxError, u16be, type ByteReader, type Demuxer, type Packet, type TrackConfig} from './types';
+import {ascii, Cursor, DemuxError, u16be, u32be, type ByteReader, type Demuxer, type Packet, type SeekResult, type TrackConfig} from './types';
 
 /**
  * Native FLAC (`fLaC` stream). Frames are found by their sync code and confirmed by the header's
@@ -75,10 +75,10 @@ export async function openFlac(reader: ByteReader): Promise<Demuxer & {info: Str
       info = {minBlock: u16be(body, 0), maxBlock: u16be(body, 2), maxFrame: (body[7]! << 16) | (body[8]! << 8) | body[9]!, sampleRate: rate, channels, bits, totalFrames: total, body: body.slice(0, 34)};
     } else if (type === 3) {
       for (let i = 0; i + 18 <= length; i += 18) {
-        const hi = ((body[i]! << 24) >>> 0) * 2 ** 32 + ((body[i + 4]! << 24) >>> 0) + (body[i + 5]! << 16) + (body[i + 6]! << 8) + body[i + 7]!;
+        const hi = u32be(body, i) * 2 ** 32 + u32be(body, i + 4);
         if (body[i] === 0xff && body[i + 1] === 0xff) continue; // placeholder point
-        const off = ((body[i + 8]! << 24) >>> 0) * 2 ** 32 + ((body[i + 12]! << 24) >>> 0) + (body[i + 13]! << 16) + (body[i + 14]! << 8) + body[i + 15]!;
-        seekTable.push({sample: hi, offset: off, frames: u16be(body, i + 16)});
+        const off = u32be(body, i + 8) * 2 ** 32 + u32be(body, i + 12);
+        if (Number.isSafeInteger(hi) && Number.isSafeInteger(off) && hi < (info?.totalFrames ?? Number.MAX_SAFE_INTEGER) && (reader.size === undefined || off < reader.size) && seekTable.length < 65536) seekTable.push({sample: hi, offset: off, frames: u16be(body, i + 16)});
       }
     }
     c.skip(length);
@@ -92,10 +92,40 @@ export async function openFlac(reader: ByteReader): Promise<Demuxer & {info: Str
   description.set(info.body, 8);
   const config: TrackConfig = Object.freeze({codec: 'flac', family: 'flac', sampleRate: info.sampleRate, numberOfChannels: info.channels, description});
   const streamInfo = info;
+  const locate = async (target: number, preroll: number, signal?: AbortSignal): Promise<SeekResult> => {
+    const wanted = Math.max(0, target - preroll * streamInfo.maxBlock);
+    let point = [...seekTable].sort((a,b) => a.sample-b.sample).filter(p => p.sample<=wanted).at(-1);
+    if (point) {
+      const verified=await flacPoint(reader,firstFrame+point.offset,streamInfo,signal);
+      point=verified&&verified.sample<=wanted?{...verified,offset:verified.offset-firstFrame}:undefined;
+    }
+    if (!point && wanted>streamInfo.maxBlock && reader.size!==undefined) {
+      let low=firstFrame, high=reader.size;
+      point={sample:0,offset:0,frames:streamInfo.maxBlock};
+      for(let count=0;count<32 && low<high;count++){
+        const mid=Math.floor((low+high)/2);
+        const found=await flacPoint(reader,mid,streamInfo,signal);
+        if(!found){high=mid;continue;}
+        if(found.sample>wanted){high=mid;continue;}
+        point={...found,offset:found.offset-firstFrame};
+        if(wanted<found.sample+found.frames)break;
+        low=Math.max(mid+1,found.offset+1);
+      }
+    }
+    if(wanted-(point?.sample??0)>streamInfo.sampleRate*30)throw new DemuxError('No bounded FLAC seek point was found.');
+    return {packets: flacFrames(reader,firstFrame+(point?.offset??0),streamInfo,signal),rawStart:point?.sample??0};
+  };
   return {
-    config, info, seekTable, firstFrame,
+    config, info, seekTable, firstFrame, locate,
+    /** The seek table or a few proportional reads usually find the start. When they confirm
+     * nothing and the position is deep, the bounded CRC-confirmed search stands in for reading
+     * everything before it; near the start the caller simply walks. */
+    async seek(target: number, preroll: number, signal?: AbortSignal) {
+      const found = await flacSeek(reader, firstFrame, streamInfo, seekTable, target, preroll, signal);
+      if (found || target - preroll * (streamInfo.maxBlock || 4096) <= streamInfo.sampleRate * 30) return found;
+      return locate(target, preroll, signal);
+    },
     packets: (signal?: AbortSignal) => flacFrames(reader, firstFrame, streamInfo, signal),
-    seek: (target: number, preroll: number, signal?: AbortSignal) => flacSeek(reader, firstFrame, streamInfo, seekTable, target, preroll, signal),
   };
 }
 
@@ -151,6 +181,27 @@ export async function flacSeek(reader: ByteReader, firstFrame: number, info: Str
   if (low.offset === firstFrame) return undefined; // nothing better than the start was confirmed
   const from = low;
   return {packets: flacFrames(reader, from.offset, info, signal), rawStart: from.sample};
+}
+
+/** A CRC-confirmed frame near a byte offset. Search and allocations stay bounded. */
+async function flacPoint(reader: ByteReader, offset: number, info: StreamInfo, signal?: AbortSignal): Promise<SeekPoint | undefined> {
+  const reach=Math.min(1<<20,Math.max(1<<17,2*info.maxFrame+64));
+  const data=await reader.read(offset,Math.min(reach,(reader.size??offset+reach)-offset),signal);
+  let candidates=0;
+  for(let at=0;at+8<data.length;at++){
+    const h=flacFrameHeader(data,at,info);if(!h)continue;
+    if(++candidates>64)return undefined;
+    const sample=h.variable?h.number:h.number*info.maxBlock;
+    if(!Number.isSafeInteger(sample)||sample>=info.totalFrames)continue;
+    for(let end=at+h.length+2;end+8<data.length;end++){
+      if(data[end]!==0xff)continue;
+      const next=flacFrameHeader(data,end,info);
+      if(next&&next.variable===h.variable&&next.number===h.number+(h.variable?h.blockSize:1)
+        &&crc16(data,at,end-2)===u16be(data,end-2))return {sample,offset:offset+at,frames:h.blockSize};
+    }
+    if(offset+data.length===reader.size && crc16(data,at,data.length-2)===u16be(data,data.length-2))return {sample,offset:offset+at,frames:h.blockSize};
+  }
+  return undefined;
 }
 
 /** Frames from `from` (which must be a frame start). */

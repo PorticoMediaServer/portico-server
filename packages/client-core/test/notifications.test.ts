@@ -1,12 +1,21 @@
+import {wireFixture} from './wire-fixture.ts';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {
- parseNotification,parseNotificationInbox,parseNotificationDelta,parseNotificationBatchResult,
- parseNotificationSummary,parseNotificationBroadcastResult,notificationActionSupported,
- mergeNotifications,parseFeedbackCapabilities,parseFeedbackSubmission,parseFeedbackList,parseFeedbackReport,
+ parseNotification as read_parseNotification,parseNotificationInbox as read_parseNotificationInbox,parseNotificationDelta as read_parseNotificationDelta,parseNotificationBatchResult,
+ parseNotificationSummary as read_parseNotificationSummary,parseNotificationBroadcastResult,notificationActionSupported,
+ mergeNotifications,parseFeedbackCapabilities,parseFeedbackSubmission as read_parseFeedbackSubmission,parseFeedbackList as read_parseFeedbackList,parseFeedbackReport as read_parseFeedbackReport,
  type Notification,
 } from '../src/notifications.ts';
 import {resetSkippedParts,skippedParts} from '../src/tolerant.ts';
+
+const parseNotification=(value:unknown,...args:any[]) => (read_parseNotification as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt']),...args);
+const parseNotificationInbox=(value:unknown,...args:any[]) => (read_parseNotificationInbox as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt']),...args);
+const parseNotificationDelta=(value:unknown,...args:any[]) => (read_parseNotificationDelta as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt']),...args);
+const parseNotificationSummary=(value:unknown,...args:any[]) => (read_parseNotificationSummary as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt']),...args);
+const parseFeedbackSubmission=(value:unknown,...args:any[]) => (read_parseFeedbackSubmission as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt']),...args);
+const parseFeedbackList=(value:unknown,...args:any[]) => (read_parseFeedbackList as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt']),...args);
+const parseFeedbackReport=(value:unknown,...args:any[]) => (read_parseFeedbackReport as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt']),...args);
 
 const notification=(over:Record<string,unknown>={})=>({
  id:'n-1',audience:'profile',severity:'info',source:'downloads',category:'download.finished',

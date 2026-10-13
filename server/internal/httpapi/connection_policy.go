@@ -34,9 +34,19 @@ type connectionSettingValue struct {
 	remoteSignIn string
 }
 
+// set installs a settings document as the live policy. Receipts and
+// concurrent save completions can arrive out of order, so a document older
+// than the live one is ignored: runtime state never follows a historical
+// response.
 func (c *connectionPolicyCache) set(document operations.SettingsDocument) {
 	c.applyMu.Lock()
 	defer c.applyMu.Unlock()
+	c.setLocked(document)
+}
+
+// setLocked is set for a caller that already holds applyMu (the settings save
+// path holds it across reading the committed document and installing it).
+func (c *connectionPolicyCache) setLocked(document operations.SettingsDocument) {
 	if current := c.setting.Load(); current != nil && document.Revision < current.revision {
 		return
 	}

@@ -1,3 +1,5 @@
+import {parseFFmpegValidation,type FFmpegValidation} from './storage-status.ts';
+import {wireInstants} from './wire-units.ts';
 /** Selected-server operations wire contract. No Hosted transport is accepted. */
 import {parsePreferenceSnapshot,type DeviceClass,type PreferencePatch,type PreferenceScope} from './preferences.ts';
 import {parseTelemetryReading,parseTelemetrySample,parseTranscodeCapacity,type TelemetryWindow} from './telemetry.ts';
@@ -33,7 +35,7 @@ export type RuntimeSettings=TranscodingSettings&{
 };
 export type MissingTitlesRule='immediately'|'after_days'|'never';
 export const MISSING_TITLES_RULES:readonly MissingTitlesRule[]=Object.freeze(['immediately','after_days','never']);
-export type SettingsDocument={revision:number;digest:string;requested:RuntimeSettings;effective:RuntimeSettings;activeRevision:number;restartFields:string[];registryRevision:string};
+export type SettingsDocument={ffmpegValidation?:FFmpegValidation;revision:number;digest:string;requested:RuntimeSettings;effective:RuntimeSettings;activeRevision:number;restartFields:string[];registryRevision:string};
 export type Diagnostic={platform:'web'|'ios'|'tvos';state:'idle'|'starting'|'playing'|'paused'|'buffering'|'failed'|'unknown';online:boolean};
 export type FeedbackStatus='open'|'in-progress'|'resolved'|'closed';
 export type FeedbackReport={id:string;createdAt:number;updatedAt:number;revision:number;status:FeedbackStatus;category:string;message:string;itemId?:string;diagnostic?:Diagnostic;contextAvailable:boolean;events?:{sequence:number;at:number;revision:number;status:FeedbackStatus;reply:string;actorClass:'owner'|'admin'|'viewer'}[]};
@@ -58,7 +60,7 @@ function revision(v:Record<string,any>){if(!integer(v.revision)||v.revision<1)in
 export function parseSettings(v:unknown):SettingsDocument{
  const d=base(v);revision(d);if(!/^[a-f0-9]{64}$/.test(d.digest)||!integer(d.activeRevision)||!Array.isArray(d.restartFields))invalid();
  for(const key of ['requested','effective']){const s=base(d[key]);if(!text(s.name,100)||typeof s.transcodingEnabled!=='boolean')invalid();for(const key of ['serverCap','perAccountCap'])if(s[key]!==null&&(!integer(s[key])||s[key]<1||s[key]>1000000))invalid(); for(const key of ['diagnosticDays','notificationDays','jobDays'])if(!integer(s[key])||s[key]<1||s[key]>(key==='notificationDays'?180:30))invalid();if(!integer(s.playHistoryDays)||s.playHistoryDays>36500)invalid();checkTranscoding(s);checkOwnerDocument(s);if(typeof s['home.communityActivityEnabled']!=='boolean')invalid();}
- return d as SettingsDocument;
+ return {...d,...(d.ffmpegValidation?{ffmpegValidation:parseFFmpegValidation(d.ffmpegValidation)}:{})} as SettingsDocument;
 }
 function checkOwnerDocument(s:Record<string,any>){
  if(!integer(s.analysisStorageGiB)||s.analysisStorageGiB<1||s.analysisStorageGiB>16384||!integer(s.analysisStageStorageMiB)||s.analysisStageStorageMiB<1||s.analysisStageStorageMiB>4096||s.analysisStageStorageMiB>s.analysisStorageGiB*1024)invalid();
@@ -82,11 +84,11 @@ function checkTranscoding(s:Record<string,any>){
  for(const key of ['maxConcurrentSessions','maxHardwareSessions','maxSoftwareSessions','maxBackgroundSessions'])
   if(!integer(s[key])||s[key]>1000)invalid();
 }
-export function parseReport(v:unknown):FeedbackReport{const r=base(v);revision(r);if(!id(r.id)||!integer(r.createdAt)||!integer(r.updatedAt)||!['open','in-progress','resolved','closed'].includes(r.status)||!id(r.category)||!text(r.message,4000)||typeof r.contextAvailable!=='boolean'||r.itemId!==undefined&&!id(r.itemId))invalid();if(r.events!==undefined){if(!Array.isArray(r.events)||r.events.length>200)invalid();
+export function parseReport(v:unknown):FeedbackReport{const r=base(wireInstants(v,["createdAt","updatedAt"]));revision(r);if(!id(r.id)||!integer(r.createdAt)||!integer(r.updatedAt)||!['open','in-progress','resolved','closed'].includes(r.status)||!id(r.category)||!text(r.message,4000)||typeof r.contextAvailable!=='boolean'||r.itemId!==undefined&&!id(r.itemId))invalid();if(r.events!==undefined){if(!Array.isArray(r.events)||r.events.length>200)invalid();
  // A reply this app cannot read is left out of the thread; the report and its other replies are kept.
- return {...r,events:keepReadable('console','report.events',r.events,e=>{if(!obj(e)||!integer(e.at)||!text(e.reply,4000)||!['owner','admin','viewer'].includes(e.actorClass))invalid();return e;})} as FeedbackReport;}return r as FeedbackReport;}
+ return {...r,events:keepReadable('console','report.events',r.events,e=>{e=wireInstants(e,['at']);if(!obj(e)||!integer(e.at)||!text(e.reply,4000)||!['owner','admin','viewer'].includes(e.actorClass))invalid();return e;})} as FeedbackReport;}return r as FeedbackReport;}
 export function parseEvidenceRecord(value:unknown):EvidenceRecord {
- const record=base(value);
+ const record=base(wireInstants(value,["at"]));
  if(!integer(record.sequence)||!integer(record.at)||record.at>8640000000000000)invalid();
  for(const key of ['lane','severity','component','code','action','target','hash','previousHash'])if(record[key]!==undefined&&!text(record[key],4096))invalid();
  if(record.fields!==undefined){if(!obj(record.fields)||Object.keys(record.fields).length>64)invalid();for(const [key,value] of Object.entries(record.fields))if(!text(key,100)||typeof value!=='number'||!Number.isFinite(value))invalid();}
@@ -95,11 +97,11 @@ export function parseEvidenceRecord(value:unknown):EvidenceRecord {
 /** The page size and the cursor stay exact. A row this app cannot read is left out alone, and a repeated id keeps its first row. */
 export function parsePage<T>(v:unknown,parse:(v:unknown)=>T):Page<T>{const p=base(v);if(!Array.isArray(p.items)||p.items.length>40||typeof p.nextCursor!=='string'||p.nextCursor!==''&&!/^\d{1,19}$/.test(p.nextCursor))invalid();return {items:distinct(keepReadable('console','page.items',p.items,parse)),nextCursor:p.nextCursor};}
 function distinct<T>(rows:T[]):T[]{return rows.every(row=>obj(row)&&typeof row.id==='string')?firstOfEach('console','rows',rows,row=>(row as {id:string}).id):rows;}
-function parseInbox(v:unknown):Inbox{const p=base(v);if(!integer(p.unread))invalid();return {...parsePage(v,n=>{const v=base(n);if(!id(v.id)||!integer(v.createdAt)||v.readAt!==null&&!integer(v.readAt)||!text(v.message,300)||v.targetId!==undefined&&!id(v.targetId))invalid();return v as Notice;}),unread:p.unread};}
+function parseInbox(v:unknown):Inbox{const p=base(v);if(!integer(p.unread))invalid();return {...parsePage(v,n=>{const v=base(wireInstants(n,["createdAt","readAt"]));if(!id(v.id)||!integer(v.createdAt)||v.readAt!==null&&!integer(v.readAt)||!text(v.message,300)||v.targetId!==undefined&&!id(v.targetId))invalid();return v as Notice;}),unread:p.unread};}
 /** A job in a state this app does not know cannot be shown truthfully, so it is left out of its list. An action this app does not know is not offered. */
-function parseJob(v:unknown):Job{const j=base(v);revision(j);if(!id(j.id)||!id(j.kind)||!Array.isArray(j.actions)||!['queued','running','paused','reconciling','cancellation-requested','cancelled','failed','succeeded'].includes(j.state))invalid();const actions=j.actions.filter((v:unknown)=>v==='retry'||v==='cancel'||v==='pause'||v==='resume');if(actions.length===j.actions.length)return j as Job;noteSkipped('console','job.actions',j.actions.length-actions.length);return {...j,actions} as Job;}
+function parseJob(v:unknown):Job{const j=base(wireInstants(v,["createdAt","updatedAt","nextAt"]));revision(j);if(!id(j.id)||!id(j.kind)||!Array.isArray(j.actions)||!['queued','running','paused','reconciling','cancellation-requested','cancelled','failed','succeeded'].includes(j.state))invalid();const actions=j.actions.filter((v:unknown)=>v==='retry'||v==='cancel'||v==='pause'||v==='resume');if(actions.length===j.actions.length)return j as Job;noteSkipped('console','job.actions',j.actions.length-actions.length);return {...j,actions} as Job;}
 function list<T>(v:unknown,parse:(v:unknown)=>T,max=100):T[]{if(!Array.isArray(v)||v.length>max)invalid();return distinct(keepReadable('console','rows',v,parse));}
-function parseSchedule(v:unknown):Schedule{const s=base(v);revision(s);if(!id(s.id)||!id(s.kind)||!text(s.timezone,80)||typeof s.enabled!=='boolean'||!integer(s.startMinute)||s.startMinute>=1440||!integer(s.windowMinutes)||s.windowMinutes<1||s.windowMinutes>1440||typeof s.catchUp!=='boolean')invalid();return s as Schedule;}
+function parseSchedule(v:unknown):Schedule{const s=base(wireInstants(v,["createdAt"]));revision(s);if(!id(s.id)||!id(s.kind)||!text(s.timezone,80)||typeof s.enabled!=='boolean'||!integer(s.startMinute)||s.startMinute>=1440||!integer(s.windowMinutes)||s.windowMinutes<1||s.windowMinutes>1440||typeof s.catchUp!=='boolean')invalid();return s as Schedule;}
 let sequence=0;
 /** Operation keys are uniqueness tokens, not credentials or authorization. */
 export function consoleOperationId():string{return globalThis.crypto?.randomUUID?.()??`op-${Date.now().toString(36)}-${(++sequence).toString(36)}-${Math.random().toString(36).slice(2,16)}`;}
@@ -137,7 +139,24 @@ export class ConsoleClient {
    const out=parse(raw.data);this.fence=raw.scope.viewerFence;return out;
   }catch(e){if(obj(e)&&(e.status===401||e.status===403))this.revoke();throw e;}finally{clearTimeout(timer);this.requests.delete(c);}
  }
+ /**
+  * A change guarded by the revision that was read. When the document moved in between (another
+  * device, a job's own progress), the server says so and names its current revision. A change
+  * that only names what to alter (a PATCH of the changed values, a command on a row) still means
+  * the same thing against the newer document, so it is sent again with that revision, quietly.
+  * A PUT replaces the whole value and is never re-sent: that conflict is the person's to see.
+  */
  private async mutate<T>(path:string,method:string,body:Record<string,unknown>,parse:(v:unknown)=>T):Promise<T>{
+  for(let retries=0;;retries++){
+   try{return await this.mutateOnce(path,method,body,parse);}
+   catch(e){
+    const current=obj(e)?e.currentRevision:undefined;
+    if(retries>=2||method==='PUT'||!obj(e)||!['console_conflict','revision_mismatch'].includes(String(e.code))||typeof current!=='number'||!('expectedRevision' in body)||current===body.expectedRevision)throw e;
+    body={...body,expectedRevision:current};
+   }
+  }
+ }
+ private async mutateOnce<T>(path:string,method:string,body:Record<string,unknown>,parse:(v:unknown)=>T):Promise<T>{
   const serialized=JSON.stringify(body);let intent=this.intents.get(path);
   if(intent&&intent.body!==serialized)throw new Error('A previous action has an unconfirmed result. Confirm the pending action before submitting different values.');
   if(!intent){intent={body:serialized,key:consoleOperationId(),method,parse};this.intents.set(path,intent);}
@@ -165,12 +184,12 @@ export class ConsoleClient {
  jobCommand(job:Job,action:'cancel'|'retry'|'pause'|'resume'){return this.mutate('/v1/admin/console/jobs/'+encodeURIComponent(job.id)+'/'+action,'POST',{expectedRevision:job.revision},parseJob);}
  schedules(){return this.call('/v1/admin/console/schedules','GET',undefined,v=>list(v,parseSchedule));}
  saveSchedule(value:Schedule,expectedRevision:number){const {revision:_revision,lastSlot:_lastSlot,createdAt:_createdAt,...editable}=value;return this.mutate('/v1/admin/console/schedules','PUT',{expectedRevision,value:editable},parseSchedule);}
- measurement(name:string){return this.call('/v1/admin/console/panels/'+encodeURIComponent(name),'GET',undefined,v=>{const p=base(v);if(p.name!==name||!integer(p.observedAt)||p.freshUntil!==p.observedAt+30000||!obj(p.facts)||Object.keys(p.facts).length>30)invalid();const facts:Measurement['facts']={};for(const [key,f] of Object.entries(p.facts)){if(obj(f)&&text(f.state,40))facts[key]=f as Measurement['facts'][string];else noteSkipped('console','measurement.fact');}return {...p,facts} as Measurement;});}
+ measurement(name:string){return this.call('/v1/admin/console/panels/'+encodeURIComponent(name),'GET',undefined,v=>{const p=base(wireInstants(v,["observedAt","freshUntil"]));if(p.name!==name||!integer(p.observedAt)||p.freshUntil!==p.observedAt+30000||!obj(p.facts)||Object.keys(p.facts).length>30)invalid();const facts:Measurement['facts']={};for(const [key,f] of Object.entries(p.facts)){if(obj(f)&&text(f.state,40))facts[key]=f as Measurement['facts'][string];else noteSkipped('console','measurement.fact');}return {...p,facts} as Measurement;});}
  alerts(){return this.call('/v1/admin/console/alerts','GET',undefined,v=>list(v,a=>{const p=base(a);revision(p);if(!id(p.id)||!id(p.code))invalid();return p as Alert;}));}
  acknowledge(alert:Alert){return this.mutate('/v1/admin/console/alerts/'+encodeURIComponent(alert.id)+'/acknowledge','POST',{expectedRevision:alert.revision},base);}
  records(lane:'runtime'|'client'|'audit',cursor=''){return this.call('/v1/admin/console/diagnostics/'+lane+'?cursor='+encodeURIComponent(cursor),'GET',undefined,v=>parsePage(v,parseEvidenceRecord));}
- capture(component:string,expiresAt:number){return this.mutate('/v1/admin/console/diagnostics/capture','POST',{component,expiresAt},base);}
- createExport(from:number,to:number,components:string[]){return this.mutate('/v1/admin/console/exports','POST',{from,to,components},parseExport);}
+ capture(component:string,expiresAt:number){return this.mutate('/v1/admin/console/diagnostics/capture','POST',{component,expiresAt:new Date(expiresAt).toISOString()},base);}
+ createExport(from:number,to:number,components:string[]){return this.mutate('/v1/admin/console/exports','POST',{from:new Date(from).toISOString(),to:new Date(to).toISOString(),components},parseExport);}
  export(id:string){return this.call('/v1/admin/console/exports/'+encodeURIComponent(id),'GET',undefined,parseExport);}
  /** Transcoding capacity, probes and dependencies as this server reports them. */
  transcodeCapacity(){return this.call('/v1/admin/transcode/capacity','GET',undefined,parseTranscodeCapacity);}
@@ -184,7 +203,7 @@ export class ConsoleClient {
  /** The export is a download, so its path is handed to the browser, not fetched. */
  playbackHistoryExportPath(period:PlaybackHistoryPeriod='24h'){return '/v1/admin/playback/history.csv?period='+period;}
 }
-function parseExport(v:unknown):SupportExport{const p=base(v);if(!id(p.id)||!integer(p.expiresAt)||!obj(p.manifest)||!Array.isArray(p.manifest.included)||!Array.isArray(p.manifest.excluded)||!text(p.manifest.redaction,500))invalid();return p as SupportExport;}
+function parseExport(v:unknown):SupportExport{const p=base(wireInstants(v,["expiresAt"]));if(obj(p.manifest))p.manifest=wireInstants(p.manifest,["from","to"]);if(!id(p.id)||!integer(p.expiresAt)||!obj(p.manifest)||!Array.isArray(p.manifest.included)||!Array.isArray(p.manifest.excluded)||!text(p.manifest.redaction,500))invalid();return p as SupportExport;}
 
 
 export function parseStreamOptions(value:unknown):StreamOptions{const v=base(value);for(const field of ['libraries','viewers'])if(!Array.isArray(v[field])||v[field].length>500)invalid();const rows=(field:'libraries'|'viewers')=>distinct(keepReadable('console','stream-options.'+field,v[field] as unknown[],row=>{if(!obj(row)||!text(row.id,300)||!row.id||!text(row.label,4096))invalid();return row as {id:string;label:string};}));return {...v,libraries:rows('libraries'),viewers:rows('viewers')} as StreamOptions;}

@@ -212,6 +212,7 @@ type parsedProgramme struct {
 	start, end                                time.Time
 }
 type parsedSource struct {
+	choices     []parsedChannel
 	spool       *programmeSpool
 	diagnostics ImportDiagnostics
 	channels    []parsedChannel

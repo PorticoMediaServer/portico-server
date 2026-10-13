@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"net/http"
 	"portico.local/server/internal/catalog"
-	"strconv"
 )
 
 func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
@@ -69,51 +68,6 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 			return
 		}
 		write(w, 200, map[string]any{"scope": catalog.AdminScope{ServerID: q.ServerID, ViewerFence: q.ViewerFence}, "libraryId": l.ID, "revision": l.Revision, "sources": sources, "policy": policy})
-	})
-	mux.HandleFunc("GET /v1/admin/libraries/{id}/inventory", func(w http.ResponseWriter, r *http.Request) {
-		// Reuse owner/viewer fencing but parse this endpoint's exact query shape.
-		clone := r.Clone(r.Context())
-		u := *r.URL
-		clone.URL = &u
-		clone.URL.RawQuery = ""
-		q, e := d.adminRequest(clone, "resource")
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		source, state := "", ""
-		for k, v := range r.URL.Query() {
-			if len(v) != 1 {
-				failure(w, catalog.ErrAdminQuery)
-				return
-			}
-			switch k {
-			case "sourceId":
-				source = v[0]
-			case "state":
-				state = v[0]
-			case "cursor":
-				q.Cursor = v[0]
-			case "limit":
-				q.Limit, e = strconv.Atoi(v[0])
-			default:
-				e = catalog.ErrAdminQuery
-			}
-			if e != nil {
-				failure(w, e)
-				return
-			}
-		}
-		out, e := d.Catalog.Inventory(r.Context(), q, source, state)
-		if e != nil {
-			failure(w, e)
-			return
-		}
-		if _, e = d.owner(r); e != nil {
-			failure(w, e)
-			return
-		}
-		write(w, 200, out)
 	})
 
 	for _, pattern := range []string{"POST /v1/admin/libraries/{id}/sources", "PATCH /v1/admin/libraries/{id}/sources/{source}"} {

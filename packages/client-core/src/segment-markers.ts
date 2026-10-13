@@ -1,3 +1,4 @@
+import {wireDurations} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 /** Server-decided segment markers. The server owns skip safety; a client never
  * infers it from confidence, provenance or approval, because it is not sent any. */
@@ -16,6 +17,7 @@ export function parseSegmentMarkers(raw:unknown,duration?:number):readonly Segme
  if(!Array.isArray(raw)||raw.length>512)fail();
  const seen=new Set<string>();let previous=-1;
  const markers=raw.map(v=>{
+ v=wireDurations(v,{startSeconds:"startMs",endSeconds:"endMs"});
   if(!obj(v))fail();only(v,['id','kind','startSeconds','endSeconds','automaticSafe']);
   if(!id(v.id)||seen.has(v.id)||!kinds.includes(String(v.kind))||!seconds(v.startSeconds)||!seconds(v.endSeconds)||v.endSeconds<=v.startSeconds||typeof v.automaticSafe!=='boolean')fail();
   if(v.startSeconds<previous)fail();

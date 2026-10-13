@@ -64,8 +64,8 @@ func TestPersonalSetReceiptsIsolationAndRestart(t *testing.T) {
 	if _, e = s.SetPersonal("a", "p", item.Public, PersonalMutation{OperationID: "stale", ExpectedRevision: 1, Favorite: &no}, nil); !errors.Is(e, ErrPersonalConflict) {
 		t.Fatal("stale state overwritten", e)
 	}
-	rated, e := s.SetPersonal("a", "p", item.Public, PersonalMutation{OperationID: "rating", ExpectedRevision: 2, Rating: json.RawMessage(`4.5`)}, nil)
-	if e != nil || rated.Revision != 3 || *rated.Rating != 4.5 {
+	rated, e := s.SetPersonal("a", "p", item.Public, PersonalMutation{OperationID: "rating", ExpectedRevision: 2, Rating: json.RawMessage(`9`)}, nil)
+	if e != nil || rated.Revision != 3 || *rated.Rating != 9 {
 		t.Fatal(rated, e)
 	}
 	if _, e = s.SetPersonal("a", "p", item.Public, PersonalMutation{OperationID: "bad", ExpectedRevision: 3, Rating: json.RawMessage(`4.2`)}, nil); e == nil {
@@ -91,7 +91,7 @@ func TestPersonalSetReceiptsIsolationAndRestart(t *testing.T) {
 	defer db.Close()
 	s = New(db)
 	persisted, e := readPersonal(db, "p", item.Public)
-	if e != nil || persisted.Revision != 3 || *persisted.Rating != 4.5 {
+	if e != nil || persisted.Revision != 3 || *persisted.Rating != 9 {
 		t.Fatal("state lost on restart", persisted, e)
 	}
 	retry, e = s.SetPersonal("a", "p", item.Public, m, nil)
@@ -178,5 +178,20 @@ func TestPersonalReceiptExpiryCASAndBoundedCleanup(t *testing.T) {
 	}
 	if _, e = s.SetPersonal("a", "p", item.Public, PersonalMutation{OperationID: "capacity", ExpectedRevision: 1, Watchlisted: &yes}, nil); e != nil {
 		t.Fatal("per-item receipt history must not exhaust operation quota", e)
+	}
+}
+
+func TestPersonalRatingIntegerScale(t *testing.T) {
+	for _, value := range []string{"0", "1", "9", "10", "null"} {
+		_, _, err := mutationField(&PersonalMutation{Rating: json.RawMessage(value)})
+		if err != nil {
+			t.Errorf("rating %s: %v", value, err)
+		}
+	}
+	for _, value := range []string{"-1", "11", "4.5", "0.5", `"9"`} {
+		_, _, err := mutationField(&PersonalMutation{Rating: json.RawMessage(value)})
+		if err == nil {
+			t.Errorf("accepted rating %s", value)
+		}
 	}
 }

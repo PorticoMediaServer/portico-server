@@ -46,7 +46,7 @@ func (s *Store) PruneSupersededGeneration(ctx context.Context) (bool, error) {
 	// Children before parents: the schema's foreign keys are enforced.
 	// live_programme_icons is WITHOUT ROWID, so its batches delete by primary
 	// key rather than by rowid like the rest.
-	for _, table := range []string{"live_channel_attributes", "live_import_diagnostics", "live_programme_icons", "live_programme_metadata", "live_programmes", "live_channel_versions", "live_operations"} {
+	for _, table := range []string{"live_channel_choices", "live_channel_attributes", "live_import_diagnostics", "live_programme_icons", "live_programme_metadata", "live_programmes", "live_channel_versions", "live_operations"} {
 		for {
 			if !dbwork.Yield(ctx) {
 				return true, ctx.Err()

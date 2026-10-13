@@ -108,6 +108,9 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	}
 	stored := r.stored()
 	next := stored
+	if change.State != "" {
+		next.State = change.State
+	}
 	presentation := r.presentationView()
 	bytes := false
 	if change.VersionID != "" && change.VersionID != r.version {

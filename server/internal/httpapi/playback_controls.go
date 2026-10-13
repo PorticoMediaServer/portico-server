@@ -1,0 +1,49 @@
+package httpapi
+
+import (
+	"context"
+	"net/http"
+	"strconv"
+
+	"portico.local/apikit"
+	"portico.local/apikit/apierror"
+	"portico.local/server/internal/playbackv1"
+)
+
+func registerPlaybackControls(registry *apikit.Registry, d Dependencies) {
+	failures := []string{"unauthorized", "not_permitted", "not_found", "invalid_request", "revision_required", "revision_mismatch", "session_ended", "internal"}
+	v1Route(registry, apikit.Metadata{ID: "get_admin_session_controls", Method: "GET", Path: "/v1/admin/sessions/{id}/controls", Summary: "Read the transport controls and current revision of any administrable session", Access: apikit.Admin, Requires: apikit.ScopePlayback, AdminScope: "playback", Lane: apikit.Media, Cost: apikit.Constant, Status: 200, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (playbackv1.SessionControls, error) {
+		return d.playbackV1().AdminControls(ctx, r.PathValue("id"))
+	})
+	v1Route(registry, apikit.Metadata{ID: "control_admin_session", Method: "POST", Path: "/v1/admin/sessions/{id}/controls", Summary: "Pause, resume or seek any administrable session using its current revision", Access: apikit.Admin, Requires: apikit.ScopePlayback, AdminScope: "playback", Lane: apikit.Media, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: failures}, func(ctx context.Context, r *http.Request, in playbackv1.ControlCommand) (playbackv1.SessionControls, error) {
+		return d.playbackV1().AdminControl(ctx, r.PathValue("id"), in)
+	})
+	v1Route(registry, apikit.Metadata{ID: "get_remote_playback_controls", Method: "GET", Path: "/v1/playback/controls", Summary: "Read what this profile is playing on each device and the controls it may use", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.PageSized, Status: 200, Query: []string{"cursor", "limit"}, Errors: failures}, func(ctx context.Context, r *http.Request, _ noBody) (playbackv1.RemoteControlsDocument, error) {
+		p, err := d.foundationCaller(r)
+		if err != nil {
+			return playbackv1.RemoteControlsDocument{}, err
+		}
+		limit := 50
+		if raw := r.URL.Query().Get("limit"); raw != "" {
+			limit, err = strconv.Atoi(raw)
+			if err != nil {
+				return playbackv1.RemoteControlsDocument{}, &apierror.Error{Code: "invalid_request"}
+			}
+		}
+		out, err := d.playbackV1().RemoteControls(ctx, playbackv1.Caller{Principal: p, DeviceID: p.DeviceID}, r.URL.Query().Get("cursor"), limit)
+		if err != nil {
+			return out, err
+		}
+		// A running session is durable authority, but its title may have become
+		// hidden since it started. Hide that title and remove its remote controls.
+		for i, v := range out.Items {
+			if v.Item != nil {
+				if e := d.itemAccess(ctx, p, v.Item.ID); e != nil {
+					out.Items[i].Item = nil
+					out.Items[i].Actions = []string{}
+				}
+			}
+		}
+		return out, nil
+	})
+}

@@ -86,3 +86,11 @@ test('fake server v2: the plan comes from the item’s file, served with Range (
   assert.deepEqual([...(tail.body as Uint8Array)], [...bytes.subarray(bytes.length - 4)]);
   assert.equal((await http.send({method: 'GET', path: plan.url, headers: {Range: `bytes=${bytes.length}-`}})).status, 416);
 });
+
+test('normalization uses unity without gain and cannot boost an unknown peak',()=>{
+ assert.equal(audioGainLinear(undefined,'track'),1);
+ assert.equal(audioGainLinear({gain:{trackDb:6,source:'tag'}} as any,'track'),1);
+ assert.ok(Math.abs(audioGainLinear({gain:{trackDb:-6,source:'tag'}} as any,'track')-Math.pow(10,-6/20))<1e-12);
+ assert.equal(audioGainLinear({gain:{trackDb:6,trackPeak:0.25,source:'tag'}} as any,'track'),Math.pow(10,6/20));
+ assert.equal(audioGainLinear({gain:{trackDb:30,trackPeak:0.1,source:'tag'}} as any,'track'),10);
+});

@@ -145,12 +145,29 @@ func totalsAbove(v any, at string, bound, people int) []string {
 				bound = people
 			}
 		}
+		// A facet page's total counts its choices (one title can carry several
+		// genres), so it is not bounded by titles; each choice's own count is.
+		_, facetField := x["field"].(string)
+		choices, facetPage := x["values"].([]any)
+		facetPage = facetPage && facetField
+		if facetPage {
+			for i, choice := range choices {
+				if value, ok := choice.(map[string]any); ok {
+					if n, ok := value["count"].(float64); ok && int(n) > bound {
+						out = append(out, strings.TrimPrefix(at+".values["+itoaTest(i)+"].count", ".")+" is "+itoaTest(int(n)))
+					}
+				}
+			}
+		}
 		keys := make([]string, 0, len(x))
 		for key := range x {
 			keys = append(keys, key)
 		}
 		sort.Strings(keys)
 		for _, key := range keys {
+			if facetPage && key == "total" {
+				continue
+			}
 			if n, ok := x[key].(float64); ok && (key == "total" || key == "totalCount" || key == "itemCount") && int(n) > bound {
 				out = append(out, strings.TrimPrefix(at+"."+key, ".")+" is "+itoaTest(int(n)))
 				continue

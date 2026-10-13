@@ -1,4 +1,4 @@
-import {useEffect, useMemo} from 'react';
+import {useEffect, useMemo, useRef} from 'react';
 import {createWindowedCollection, type PageResult, type WindowedCollection} from '@core/collections/index.ts';
 import {validateContentProjection, type ContentEntry, type ContentScope, type LibraryContentApi} from '@core/library-content.ts';
 
@@ -52,11 +52,26 @@ export function episodeSource(api: LibraryContentApi, scope: ContentScope, where
 }
 
 /** One collection per show + season; disposed when either changes. */
-export function useEpisodes(api: LibraryContentApi, scope: ContentScope, where: EpisodeScope | undefined, seed: EpisodeSeed | undefined): WindowedCollection<ContentEntry> | undefined {
+export function useEpisodes(api: LibraryContentApi, scope: ContentScope, where: EpisodeScope | undefined, seed: EpisodeSeed | undefined, /** Resolves when the person's input has paused; a quiet swap waits for it. */ settle?: () => Promise<void>): WindowedCollection<ContentEntry> | undefined {
   const key = where ? JSON.stringify(where) : '';
   // The seed belongs to the scope it came with; a new scope starts from its own seed.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const collection = useMemo(() => (where && seed ? createWindowedCollection<ContentEntry>({fetchPage: episodeSource(api, scope, where, seed), pageSize: EPISODE_PAGE, maxResidentPages: 6, keyOf: e => e.id}) : undefined), [api, scope, key, !!seed]);
+  // The show was read again while its page is open (an episode watched elsewhere, a new episode):
+  // the same list takes the new first page behind what is shown and swaps to it whole, at the
+  // same place, so ticks and progress update without the list starting over.
+  const seeded = useRef<{collection: unknown; seed: EpisodeSeed | undefined}>({collection: undefined, seed: undefined});
+  useEffect(() => {
+    if (!collection || !where || !seed) return;
+    const first = seeded.current.collection !== collection;
+    if (!first && seeded.current.seed === seed) return;
+    seeded.current = {collection, seed};
+    if (first) return;
+    const fetchPage = episodeSource(api, scope, where, seed);
+    if (collection.getSnapshot().total === undefined) { collection.invalidate(fetchPage); return; }
+    void collection.revalidate({fetchPage, hold: settle}).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collection, seed]);
   useEffect(() => () => collection?.dispose(), [collection]);
   return collection;
 }

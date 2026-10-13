@@ -15,7 +15,7 @@ func (d Dependencies) playHistoryRoutes(mux *http.ServeMux) {
 	if d.Catalog == nil || d.Identity == nil {
 		return
 	}
-	mux.HandleFunc("GET /v1/admin/play-history", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/admin/play-history", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.administrator(r); e != nil {
 			accessFailure(w, e)
 			return
@@ -44,7 +44,7 @@ func (d Dependencies) playHistoryRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	// The Dashboard's viewing statistics: totals of the same plays, for a period.
-	mux.HandleFunc("GET /v1/admin/play-history/summary", func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, "GET /v1/admin/play-history/summary", func(w http.ResponseWriter, r *http.Request) {
 		if _, e := d.administrator(r); e != nil {
 			accessFailure(w, e)
 			return

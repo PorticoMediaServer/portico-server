@@ -13,6 +13,7 @@ const DefaultLocalArtworkLimitBytes int64 = 2 << 30
 // MetadataSettings exposes credential presence only. Submitted keys never return
 // in JSON or provider failures; blank keys restore Portico's application key.
 type MetadataSettings struct {
+	LocalArtworkUsedBytes    int64 `json:"localArtworkUsedBytes"`
 	Revision                 int64 `json:"revision"`
 	LocalArtworkLimitBytes   int64 `json:"localArtworkLimitBytes"`
 	IncludeAdult             bool  `json:"includeAdult"`
@@ -42,6 +43,10 @@ func (s *Service) MetadataSettings(ctx context.Context) (MetadataSettings, error
 	}
 	defer read.Rollback()
 	out, _, _, e := readMetadataSettings(ctx, read.Tx())
+	read.Rollback()
+	if e == nil && s.LocalArtworkUsage != nil {
+		out.LocalArtworkUsedBytes, e = s.LocalArtworkUsage(ctx)
+	}
 	return out, e
 }
 func LocalArtworkLimit(ctx context.Context, db *sql.DB) int64 {
@@ -110,7 +115,13 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 	if e = write.Commit(); e != nil {
 		return out, e
 	}
-	return out, s.loadProviderSettings(ctx)
+	if e = s.loadProviderSettings(ctx); e != nil {
+		return out, e
+	}
+	if s.LocalArtworkUsage != nil {
+		out.LocalArtworkUsedBytes, e = s.LocalArtworkUsage(ctx)
+	}
+	return out, e
 }
 func (s *Service) loadProviderSettings(ctx context.Context) error {
 	// Serialize key installation so an older settings read cannot undo a newer save.

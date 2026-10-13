@@ -181,3 +181,54 @@ func TestGenerationRetainsTheOriginalRowOnUpsert(t *testing.T) {
 		t.Fatal("upsert changed the serving membership")
 	}
 }
+
+// Both search generations hold the same document shape: the expanded search
+// text the index is built from and the folded text substring matches verify
+// against. The index follows its documents through the tables' triggers alone,
+// so a rebuild leaves each index consistent with its documents.
+func TestSearchGenerationsCarryTheSameDocumentsAndStayConsistent(t *testing.T) {
+	db, show := failingFixture(t, "search-generation-shape.sqlite")
+	w := NewWorker(db)
+	drain := func() {
+		t.Helper()
+		for i := 0; i < 200; i++ {
+			n, err := w.Step(context.Background(), 1)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n == 0 {
+				return
+			}
+		}
+		t.Fatal("derivation never settled")
+	}
+	drain()
+	for round, tables := range [][2]string{{"catalog_search_documents_next", "catalog_search_titles_next"}, {"catalog_search_documents", "catalog_search_titles"}} {
+		if err := w.Rebuild(context.Background(), DomainSearch); err != nil {
+			t.Fatal(err)
+		}
+		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+			_, err := tx.ExecContext(ctx, `UPDATE catalog_entities SET title=? WHERE id=?`, []string{"Señor Número", "Wall-E Returns"}[round], show)
+			return err
+		})
+		drain()
+		if slot := cc1Scalar(t, db, `SELECT active_slot FROM catalog_derivations WHERE domain=17`); slot != 1-round {
+			t.Fatalf("round %d: active slot %d", round, slot)
+		}
+		var title, search, normalized string
+		if err := db.QueryRow(`SELECT title,search,normalized FROM `+tables[0]+` WHERE entity_id=?`, show).Scan(&title, &search, &normalized); err != nil {
+			t.Fatalf("round %d: %v", round, err)
+		}
+		if title != []string{"Señor Número", "Wall-E Returns"}[round] || search == "" || normalized == "" || strings.Contains(normalized, "ñ") {
+			t.Fatalf("round %d: document %q search %q normalized %q", round, title, search, normalized)
+		}
+		if n := cc1Scalar(t, db, `SELECT count(*) FROM `+tables[1]+` WHERE `+tables[1]+` MATCH ?`, []string{"senor", "wall"}[round]); n != 1 {
+			t.Fatalf("round %d: %d index matches", round, n)
+		}
+		for _, index := range []string{"catalog_search_titles", "catalog_search_titles_next"} {
+			if _, err := db.Exec(`INSERT INTO ` + index + `(` + index + `) VALUES('integrity-check')`); err != nil {
+				t.Fatalf("round %d: %s is not consistent with its documents: %v", round, index, err)
+			}
+		}
+	}
+}

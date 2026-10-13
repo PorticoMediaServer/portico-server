@@ -1,3 +1,4 @@
+import {parseMediaItem} from './media-item.ts';
 import {parseConnectionDocument,type ConnectionDocument} from './server-administration.ts';
 import {trackName} from './presentation/language.ts';
 import {randomId} from './random-id.ts';
@@ -66,6 +67,7 @@ export type AuthRecovery = Readonly<{
   token(current: string): Promise<string>;
   /** The server refused `rejected` (401): its replacement, or undefined when the sign-in has ended. */
   recover(rejected: string): Promise<string | undefined>;
+ permissionDenied?():Promise<boolean>;
 }>;
 export type Library = { id: string; name: string; kind: string; defaultView?: import('./library-content.ts').ContentView };
 export type MediaItem = {
@@ -415,6 +417,10 @@ export class HttpLocalApi {
       try { next = await this.auth.recover(token); } catch { next = undefined; }
       if (next && next !== token) { void response.body?.cancel().catch(() => {}); response = await this.send(path, method, body, signal, next, extra); }
     }
+    if(response.status===403&&this.auth?.permissionDenied&&!exchange&&!path.startsWith('/v1/me')&&!signal?.aborted){
+      let changed=false;try{changed=await this.auth.permissionDenied();}catch{}
+      if(changed){void response.body?.cancel().catch(()=>{});response=await this.send(path,method,body,signal,this.token,extra);}
+    }
     return response;
   }
   /**
@@ -507,10 +513,10 @@ export class HttpLocalApi {
     if (cursor) q.set("cursor", cursor);
     return this.request<{ items: MediaItem[]; nextCursor?: string }>(
       "/v1/items?" + q
-    );
+    ).then(page=>({...page,items:page.items.map(parseMediaItem)}));
   }
   item(id: string) {
-    return this.request<MediaItem>("/v1/items/" + encodeURIComponent(id));
+    return this.request<unknown>("/v1/items/" + encodeURIComponent(id)).then(parseMediaItem);
   }
   mediaUrl(path: string) {
     if (this.routes) return this.routes.mediaURL(path);
@@ -562,7 +568,7 @@ export class ViewerService {
   /** The same viewer with a renewed access token: no new generation, so nothing viewer-scoped restarts. */
   rotate(session: LocalSession): boolean {
     const current = this.snapshot.session;
-    if (!current || current.sessionFamilyId !== session.sessionFamilyId || (['accountId','profileId','serverId','authority','role'] as const).some(k => current.viewer[k] !== session.viewer[k])) return false;
+    if (!current || current.sessionFamilyId !== session.sessionFamilyId || (['accountId','profileId','serverId','authority'] as const).some(k => current.viewer[k] !== session.viewer[k])) return false;
     if (BigInt(session.tokenGeneration) < BigInt(current.tokenGeneration)) return false;
     const {refreshToken: _refresh, ...checked} = parseLocalSession(session);
     this.publish({ ...this.snapshot, session: checked });
@@ -1970,4 +1976,10 @@ export * from './metadata-attention.ts';
 export * from './metadata-settings.ts';
 
 export {parseFreshnessChange, subscribeFreshness, type FreshnessCounters, type FreshnessChange, type CatalogueFailure} from './freshness.ts';
+export * from './freshness-hub.ts';
+export * from './freshness-pool.ts';
+export * from './freshness-actions.ts';
+export * from './event-feed.ts';
+export * from './home-service.ts';
 export * from './scan-issues.ts';
+export * from './playback-controls.ts';

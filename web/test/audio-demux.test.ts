@@ -84,3 +84,44 @@ test('a FLAC is started part-way from the frames’ own positions, exactly, with
   }
   assert.ok(sought >= 3);
 });
+
+test('MP3 synchronization tolerates repeated ID3 and substantial padding but remains bounded', async () => {
+  const {openMp3} = await import('../src/bridge/audio/mp3.ts');
+  const original=new Uint8Array(readFileSync(new URL('single-mp3-lame.mp3',dir)));
+  const tag=new Uint8Array([73,68,51,4,0,0,0,0,0,0]);
+  const prefix=new Uint8Array(140000);prefix.set(tag,0);prefix.set(tag,tag.length);
+  const joined=new Uint8Array(prefix.length+original.length);joined.set(prefix);joined.set(original,prefix.length);
+  const d=await openMp3(fileReader(joined));assert.equal(d.config.sampleRate,44100);
+  assert.ok(!(await d.packets().next()).done);
+  let fetched=0;
+  const junk={size:10<<20,read:async (_o:number,n:number)=>{fetched+=n;return new Uint8Array(n);}};
+  await assert.rejects(()=>openMp3(junk),/No MPEG audio/);
+  assert.ok(fetched<2<<20,'hostile junk cannot cause a whole-file synchronization search');
+});
+
+test('FLAC seek points retain all high bytes of their 64-bit sample index',async()=>{
+ const {openFlac}=await import('../src/bridge/audio/flac.ts');
+ const bytes=new Uint8Array(64),view=new DataView(bytes.buffer);
+ bytes.set([102,76,97,67,0,0,0,34],0);
+ view.setUint16(8,4096);view.setUint16(10,4096);
+ bytes[18]=10;bytes[19]=196;bytes[20]=0x40;bytes[21]=0xf2;view.setUint32(22,410065408);
+ bytes.set([0x83,0,0,18],42);view.setUint32(46,1);view.setUint32(50,17);view.setUint32(58,1234);view.setUint16(62,4096);
+ const reader={read:async(o:number,n:number)=>bytes.slice(o,o+n)};
+ const d=await openFlac(reader);
+ assert.equal(d.info.totalFrames,9000000000);
+ assert.deepEqual(d.seekTable,[{sample:2**32+17,offset:1234,frames:4096}]);
+});
+
+test('a FLAC with nothing to confirm a deep start is handed on rather than read from the beginning; near the start it is walked', async () => {
+  const {openFlac} = await import('../src/bridge/audio/flac.ts');
+  const {DemuxError} = await import('../src/bridge/audio/types.ts');
+  // STREAMINFO only: 44.1 kHz, a very long stream, no seek table, and a source of unknown size.
+  const bytes = new Uint8Array(42), view = new DataView(bytes.buffer);
+  bytes.set([102, 76, 97, 67, 0x80, 0, 0, 34], 0);
+  view.setUint16(8, 4096); view.setUint16(10, 4096);
+  bytes[18] = 10; bytes[19] = 196; bytes[20] = 0x40; bytes[21] = 0xf2; view.setUint32(22, 410065408);
+  const d = await openFlac({read: async (o: number, n: number) => bytes.slice(o, o + n)});
+  assert.equal(d.config.sampleRate, 44100);
+  assert.equal(await d.seek!(44100 * 10, 0), undefined, 'ten seconds in: the caller walks from the start');
+  await assert.rejects(async () => { await d.seek!(44100 * 3600, 0); }, DemuxError, 'an hour in: no start is confirmed, so the ordinary player takes it');
+});

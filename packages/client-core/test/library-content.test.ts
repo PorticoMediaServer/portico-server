@@ -1,3 +1,4 @@
+import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LibraryContentService, type ContentProjection, type ContentRoute, type LibraryContentApi } from '../src/library-content.ts';
@@ -10,7 +11,7 @@ function projection(path: string, changes: Record<string, unknown> = {}): any {
   return { heading: { key: 'library.title', fallback: 'Named Library' }, scope: { serverId: 'server', libraryId: decodeURIComponent(u.pathname.split('/')[3]), libraryKind: 'movie', view: u.searchParams.get('view'), entityId: u.searchParams.get('entityId') ?? '', viewerFence: 'fence' }, revision: { catalog: 3, viewer: 4 }, query: { sort: u.searchParams.get('sort') ?? 'title', direction: u.searchParams.get('direction') ?? 'asc', category: u.searchParams.get('category') ?? '', q: u.searchParams.get('q') ?? '', limit: Number(u.searchParams.get('limit')), searchMode: 'title_prefix' }, navigation: [{ id: 'discover', labelKey: 'library.discover', view: 'discover' }, { id: 'browse', labelKey: 'library.browse', view: 'browse' }], sorts: [{ id: 'title', labelKey: 'sort.title', directions: ['asc','desc'] }], filters: [{ id: 'category', labelKey: 'filter.category', options: [{ id: 'decade:1990', label: '1990s', count: 5 }] }], sections: [{ id: 'server-grid', type: 'grid', heading: { key: 'server.heading', fallback: 'Server-selected heading' }, entries: [entry()], totalCount: 1, nextCursor: '' }], ...changes };
 }
 function service(request: (path: string, signal?: AbortSignal) => Promise<unknown>, timeoutMs = 1000) {
-  return new LibraryContentService({ api: { request: <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => request(path, signal) as Promise<T> }, scope, timeoutMs });
+  return new LibraryContentService({ api: { request: <T>(path: string, _method?: string, _body?: unknown, signal?: AbortSignal) => request(path, signal).then(v=>wireFixture(v,{'duration': 'durationMs', 'progressSeconds': 'progressMs', 'startSeconds': 'startMs', 'positionSeconds': 'positionMs'})) as Promise<T> }, scope, timeoutMs });
 }
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { resolve, promise }; }
 
@@ -141,61 +142,36 @@ test('one bounded page replaces previous page and continuation addresses selecte
   assert.equal(new URL(paths.at(-1)!, 'https://server.test').searchParams.has('cursor'), false);
 });
 
-test('stale continuation requires explicit first-page refresh and cannot retry stale cursor', async () => {
-  let calls = 0; const paths: string[] = [];
-  const nav = service(async path => {
-    calls++; paths.push(path);
-    if (new URL(path, 'https://server.test').searchParams.has('cursor')) throw Object.assign(new Error('changed'), { code: 'stale_continuation', status: 409, retryable: true });
-    const data = projection(path); data.sections[0].nextCursor = 'old'; return data;
-  });
-  await nav.select(route); await nav.next('server-grid');
-  assert.equal(nav.getSnapshot().phase, 'refresh-required'); assert.equal(nav.getSnapshot().projection, null);
-  await nav.retry(); await nav.next('server-grid'); assert.equal(calls, 2);
-  await nav.refresh(); assert.equal(calls, 3); assert.ok(!paths.at(-1)!.includes('cursor='));
-  assert.equal(nav.getSnapshot().phase, 'ready');
-});
-
-test('Q5: an expired section cursor stays refresh-required (no range.start on /content)', async () => {
-  // Spec: GET /v1/content and GET /v1/libraries/{id}/content accept only
-  // cursor + limit; range.start exists only on POST browse. A section page
-  // carrying stale_continuation or invalid_cursor therefore cannot re-anchor
-  // by index — it stays an explicit first-page refresh (server need recorded
-  // in M10 Results Q5).
+test('a continuation the server no longer honours restarts the list from its first page without a refresh state', async () => {
   for (const code of ['stale_continuation', 'invalid_cursor']) {
-    const paths: string[] = [];
+    const paths: string[] = []; const phases: string[] = [];
     const nav = service(async path => {
       paths.push(path);
-      if (new URL(path, 'https://server.test').searchParams.has('cursor')) throw Object.assign(new Error('expired'), {code, status: code === 'invalid_cursor' ? 400 : 409});
+      if (new URL(path, 'https://server.test').searchParams.has('cursor')) throw Object.assign(new Error('changed'), { code, status: code === 'invalid_cursor' ? 400 : 409, retryable: true });
       const data = projection(path); data.sections[0].nextCursor = 'old'; return data;
     });
-    await nav.select(route); await nav.next('server-grid');
-    assert.equal(nav.getSnapshot().phase, 'refresh-required', code);
-    assert.equal(nav.getSnapshot().error!.code, code);
-    // No index re-anchor was attempted: the only continuation request carried
-    // the opaque cursor, never a range/start offset.
-    assert.ok(paths.at(-1)!.includes('cursor=old'));
-    assert.ok(!paths.at(-1)!.includes('range') && !paths.at(-1)!.includes('start='));
-    await nav.refresh();
-    assert.ok(!paths.at(-1)!.includes('cursor='));
-    assert.equal(nav.getSnapshot().phase, 'ready');
-    nav.dispose();
+    await nav.select(route);
+    nav.subscribe(() => phases.push(nav.getSnapshot().phase + ':' + nav.getSnapshot().sections.length));
+    await nav.next('server-grid');
+    // The person never sees "the library changed": what was shown stays until the first page is back.
+    assert.equal(nav.getSnapshot().phase, 'ready', code); assert.equal(nav.getSnapshot().error, null);
+    assert.ok(!phases.some(p => p.startsWith('refresh-required') || p.startsWith('error')), phases.join());
+    assert.ok(phases.every(p => !p.endsWith(':0')), 'the list was never emptied');
+    assert.equal(paths.length, 3); assert.ok(paths[1].includes('cursor=old')); assert.ok(!paths[2].includes('cursor='));
+    assert.equal(nav.getSnapshot().pagination.cursor, null);
   }
-  // A first-page invalid_cursor (no continuation) remains a plain error.
-  const first = service(async path => {
-    if (!new URL(path, 'https://server.test').searchParams.has('cursor')) throw Object.assign(new Error('bad'), {code: 'invalid_cursor', status: 400});
-    return projection(path);
-  });
-  await first.select(route);
-  assert.equal(first.getSnapshot().phase, 'error');
-  assert.equal(first.getSnapshot().error!.code, 'invalid_cursor');
-  first.dispose();
 });
 
-test('client rejects successful continuation with mismatched revision or viewer fence', async () => {
-  for (const mutate of [(d: any) => { d.revision.catalog++; }, (d: any) => { d.revision.viewer++; }, (d: any) => { d.scope.viewerFence = 'other-viewer'; }]) {
+test('a continuation read after the library moved is still a page; only another viewer\'s answer restarts the list', async () => {
+  for (const mutate of [(d: any) => { d.revision.catalog++; }, (d: any) => { d.revision.viewer++; }]) {
     const nav = service(async path => { const data = projection(path); data.sections[0].nextCursor = 'next'; if (path.includes('cursor=')) { mutate(data); data.sections[0].nextCursor = ''; } return data; });
-    await nav.select(route); await nav.next('server-grid'); assert.equal(nav.getSnapshot().phase, 'refresh-required');
+    await nav.select(route); await nav.next('server-grid');
+    assert.equal(nav.getSnapshot().phase, 'ready'); assert.equal(nav.getSnapshot().pagination.cursor, 'next');
   }
+  let calls = 0;
+  const nav = service(async path => { calls++; const data = projection(path); data.sections[0].nextCursor = 'next'; if (path.includes('cursor=')) data.scope.viewerFence = 'other-viewer'; return data; });
+  await nav.select(route); await nav.next('server-grid');
+  assert.equal(nav.getSnapshot().phase, 'ready'); assert.equal(nav.getSnapshot().pagination.cursor, null); assert.equal(calls, 3);
 });
 
 test('rejects wrong scope, oversized lists, a wrong revision and a wrong continuation section', async () => {
@@ -274,14 +250,16 @@ test('permission failure clears rows immediately and remains an explicit server 
   assert.equal(nav.getSnapshot().error!.code, 'permission_denied'); assert.equal(nav.getSnapshot().projection, null);
 });
 
-test('continuation history is bounded and cyclic cursors require refresh', async () => {
+test('continuation history is bounded and a cyclic cursor ends the section', async () => {
   let page = 0;
   const nav = service(async p => { const data = projection(p); data.sections[0].nextCursor = `page-${++page}`; return data; });
   await nav.select(route); for (let i = 0; i < 80; i++) await nav.next('server-grid');
   let backs = 0; while (nav.getSnapshot().pagination.canPrevious) { await nav.previous(); backs++; }
   assert.equal(backs, 63);
+  // A cursor that comes back again is the end of that section, never a loop and never a refresh state.
   const cycle = service(async p => { const d = projection(p); d.sections[0].nextCursor = 'same'; return d; });
-  await cycle.select(route); await cycle.next('server-grid'); assert.equal(cycle.getSnapshot().phase, 'refresh-required');
+  await cycle.select(route); await cycle.next('server-grid'); assert.equal(cycle.getSnapshot().phase, 'ready');
+  assert.equal(cycle.getSnapshot().sections[0].nextCursor, ''); assert.deepEqual(cycle.getSnapshot().pagination.next, []);
 });
 
 test('invalid requests fail before transport and disposal fences late results', async () => {
@@ -440,4 +418,69 @@ test('M24: album artist link, release roles and category artworkPaths parse as o
     }
     odd.dispose();
   }
+});
+
+test('a quiet read replaces the first page in place with no loading state, and leaves a failed read invisible', async () => {
+  let ids = ['one', 'two'], fail = false;
+  const nav = service(async path => { if (fail) throw Object.assign(new Error('down'), { status: 503 }); const data = projection(path); data.sections[0].entries = ids.map(entry); data.sections[0].totalCount = ids.length; return data; });
+  await nav.select(route);
+  const phases: string[] = []; nav.subscribe(() => phases.push(nav.getSnapshot().phase));
+  ids = ['new', 'one', 'two'];
+  await nav.revalidate();
+  assert.deepEqual(nav.getSnapshot().sections[0].entries.map(e => e.id), ['new', 'one', 'two']);
+  assert.deepEqual(phases, ['ready'], 'never loading, never empty');
+  assert.equal(nav.getSnapshot().head!.serial, 1);
+  const shown = nav.getSnapshot();
+  fail = true;
+  await assert.rejects(nav.revalidate(), { status: 503 });
+  assert.equal(nav.getSnapshot(), shown);
+  // The person may be mid-press: the answer waits for the pause it is given.
+  fail = false; ids = ['later'];
+  let release!: () => void; const pause = new Promise<void>(r => { release = r; });
+  const quiet = nav.revalidate({ settle: () => pause });
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(nav.getSnapshot(), shown);
+  release(); await quiet;
+  assert.deepEqual(nav.getSnapshot().sections[0].entries.map(e => e.id), ['later']);
+});
+
+test('a quiet read while on a later page keeps that page and publishes the fresh first page as head', async () => {
+  const nav = service(async path => { const data = projection(path); const later = path.includes('cursor='); data.sections[0].entries = [entry(later ? 'page-two' : 'page-one')]; data.sections[0].nextCursor = later ? '' : 'next'; return data; });
+  await nav.select(route); await nav.next('server-grid');
+  assert.equal(nav.getSnapshot().sections[0].entries[0].id, 'page-two');
+  await nav.revalidate();
+  assert.equal(nav.getSnapshot().sections[0].entries[0].id, 'page-two', 'the page the service is on is untouched');
+  assert.equal(nav.getSnapshot().pagination.cursor, 'next');
+  assert.equal(nav.getSnapshot().head!.sections[0].entries[0].id, 'page-one');
+  // A title that is gone, or access that was removed, becomes the screen's own state through an ordinary load.
+  const gone = service(async path => { if (path.includes('gone=')) throw Object.assign(new Error('gone'), { status: 404, code: 'not_found' }); return projection(path); });
+  await gone.select(route);
+  (gone as any).api = { request: async () => { throw Object.assign(new Error('gone'), { status: 404, code: 'not_found', retryable: false }); } };
+  await gone.revalidate();
+  assert.equal(gone.getSnapshot().phase, 'error'); assert.equal(gone.getSnapshot().error!.code, 'not_found');
+});
+
+test('everything read so far is one list per section: later pages append, More works on any section, and a quiet read merges in place', async () => {
+  const shelf = (id: string, ids: string[], nextCursor = '') => ({ id, type: 'rail', heading: { key: id, fallback: id }, entries: ids.map(entry), totalCount: 9, nextCursor });
+  let first = [shelf('a', ['a1', 'a2'], 'a-next'), shelf('b', ['b1', 'b2'], 'b-next')];
+  const nav = service(async path => {
+    const cursor = new URL(path, 'https://server.test').searchParams.get('cursor');
+    if (cursor === 'a-next') return projection(path, { sections: [shelf('a', ['a3', 'a2'], '')] });
+    if (cursor === 'b-next') return projection(path, { sections: [shelf('b', ['b3'], '')] });
+    return projection(path, { sections: first });
+  });
+  await nav.select({ libraryId: 'movies', view: 'discover' });
+  await nav.next('a');
+  const ids = () => nav.getSnapshot().appended.map(s => s.entries.map(e => e.id).join(','));
+  assert.deepEqual(ids(), ['a1,a2,a3', 'b1,b2'], 'the page is appended to its own section, a repeated entry is dropped, the other section stays');
+  // The service is on a page of section a; More on section b still works.
+  await nav.next('b');
+  assert.deepEqual(ids(), ['a1,a2,a3', 'b1,b2,b3']);
+  const untouched = nav.getSnapshot().appended[1];
+  // A new title arrives at the front of section a while the screen is open.
+  first = [shelf('a', ['new', 'a1'], 'a-next-2'), shelf('b', ['b1', 'b2'], 'b-next')];
+  await nav.revalidate();
+  assert.deepEqual(ids(), ['new,a1,a2,a3', 'b1,b2,b3'], 'the fresh first page leads; what was scrolled into stays');
+  assert.equal(nav.getSnapshot().appended[1], untouched, 'a section that did not change is the same object');
+  assert.equal(nav.getSnapshot().appended[0].nextCursor, '', 'the section continues from where the person was (its end)');
 });

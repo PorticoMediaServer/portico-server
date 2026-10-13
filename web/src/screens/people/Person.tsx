@@ -21,6 +21,8 @@ function lifeDate(i18n: I18n, value: string): string {
 }
 import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useFreshDocument} from '../../app/freshness';
+import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useI18n, type I18n} from '../../app/i18n';
 
 type State = {phase: 'loading' | 'ready' | 'error'; page?: PersonPage; error?: unknown};
@@ -32,6 +34,8 @@ type State = {phase: 'loading' | 'ready' | 'error'; page?: PersonPage; error?: u
  * through the windowed grid, so a prolific filmography never mounts more than
  * ~300 cards (PERF-S17).
  */
+const personDependencies = Object.freeze([...titlesWithPersonalState()]);
+
 export function PersonScreen() {
   const i18n = useI18n();
   const {t} = i18n;
@@ -56,6 +60,8 @@ export function PersonScreen() {
     [api, scope, personId, role],
   );
   useEffect(() => () => credits.dispose(), [credits]);
+  // A person's titles follow the libraries while the page is open: a title that arrives, goes or is watched updates in place.
+  useFreshDocument(personDependencies, context => credits.revalidate({fetchPage: personCreditsSource(api, scope, personId, role), hold: context.settle}), () => credits.getSnapshot().total !== undefined);
   const creditsSnapshot = useSyncExternalStore(credits.subscribe, credits.getSnapshot);
   const open = useOpenEntry();
   const homeward = useNavigate();

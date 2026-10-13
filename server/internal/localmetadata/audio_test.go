@@ -3,6 +3,7 @@ package localmetadata
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"image"
 	"image/png"
 	"testing"
@@ -34,6 +35,11 @@ func TestLocalArtworkRejectsUnboundedOrNonImageContent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	used, e := service.MeasuredArtworkUsage(context.Background())
+	if e != nil || used != int64(valid.Len()) {
+		t.Fatal("artwork ledger disagrees with stored bytes", used, e)
+	}
+
 	file, mime, err := service.Open(key)
 	if err != nil || mime != "image/png" {
 		t.Fatal(mime, err)
@@ -63,5 +69,32 @@ func TestArtworkCapacityCanBeRaisedWithoutDroppingExistingCovers(t *testing.T) {
 	limit = 1
 	if repeated, e := service.store(raw.Bytes()); e != nil || repeated != key {
 		t.Fatal("retained cover rejected", e)
+	}
+}
+
+func TestWebPCoverRetainsOriginalAndMime(t *testing.T) {
+	raw, err := base64.StdEncoding.DecodeString("UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoCAAIAAgA0JaACdLoB+AADsAD+8Oj3/yC5YXXI1/8gP+QH/ID/+PIAAAA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s, err := New(t.TempDir(), "", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, err := s.store(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, mime, err := s.Open(key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if mime != "image/webp" {
+		t.Fatal(mime)
+	}
+	got := make([]byte, len(raw))
+	if _, err = f.Read(got); err != nil || !bytes.Equal(got, raw) {
+		t.Fatal("original image changed", err)
 	}
 }

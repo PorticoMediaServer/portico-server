@@ -845,7 +845,7 @@ export class V1QueuePlayer implements QueueController {
         const expiresAtMs = Date.parse(next.expiresAt);
         const durationSeconds = audio.durationFrames / audio.sampleRate;
         this.prepared = Object.freeze({token: next.token, queueId: header.id, itemId: next.itemId, expiresAtMs, durationSeconds});
-        this.playback.prepareAudio({token: next.token, expiresAtMs, audio});
+        this.playback.prepareAudio({token: next.token, expiresAtMs, itemId: next.itemId, audio});
       } catch { /* no edge for this track: it ends and advances as usual */ }
     })();
     return true;

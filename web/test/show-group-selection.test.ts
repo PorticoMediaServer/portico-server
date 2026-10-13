@@ -8,7 +8,7 @@ async function workspace(selectGroup: (group: string) => Promise<void>) {
   const service = {select: async () => {}, selectSeason: async () => {}, selectGroup};
   const app = await componentModule(new URL('../src/app/detail.ts', import.meta.url), {
     react: h.react,
-    './content': {useService: () => ({service, snapshot: {phase: 'ready'}})},
+    './freshness': {usePooledService: () => ({service, snapshot: {phase: 'ready'}, document: {markCurrent() {}}, memo: {selected: true}})},
     './session': {useSession: () => ({api: {}})},
     './viewer-scope': {useViewerScope: () => ({viewerId: 'v', serverId: 's'})},
     './not-interested': {RECOMMENDATIONS_RESET: 'reset', recommendationViewer: () => ''},

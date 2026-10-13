@@ -1,3 +1,4 @@
+import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DetailService, parseCreditPage, type DetailApi, type PersonalState } from '../src/detail.ts';
@@ -6,7 +7,7 @@ const target = { libraryId: 'library', itemId: 'item' };
 const personal = (revision = 0): PersonalState => ({ watchlisted: false, favorite: false, rating: null, revision,watched:false,progressSeconds:0,lastPlayedAt:'',status:'current',conflicts:[] });
 function data(itemId = 'item', state = personal()): any {
   return { scope: { serverId: 'server', libraryId: 'library', itemId, viewerFence: 'fence' }, revision: { catalog: 1, viewer: state.revision }, item: { id: itemId, libraryId: 'library', title: 'Server title', kind: 'movie', duration: 100, progressSeconds: 30, available: true, overview: 'Full server description', sources: [{ id: 'source', container: 'mp4', videoCodec: 'h264', audioCodec: 'aac', width: 1920, height: 1080 }] }, personal: state,
-    actions: [{ id: 'watchlist', labelKey: 'action.watchlist', enabled: true }, { id: 'favorite', labelKey: 'action.favorite', enabled: true }, { id: 'rating', labelKey: 'action.rating', enabled: true, min: .5, max: 5, step: .5 }, { id: 'resume', labelKey: 'action.resume', enabled: true, playback: { itemId, startSeconds: 30 } }, { id: 'start_over', labelKey: 'action.start_over', enabled: true, playback: { itemId, startSeconds: 0 } }],
+    actions: [{ id: 'watchlist', labelKey: 'action.watchlist', enabled: true }, { id: 'favorite', labelKey: 'action.favorite', enabled: true }, { id: 'rating', labelKey: 'action.rating', enabled: true, min: 0, max: 10, step: 1 }, { id: 'resume', labelKey: 'action.resume', enabled: true, playback: { itemId, startSeconds: 30 } }, { id: 'start_over', labelKey: 'action.start_over', enabled: true, playback: { itemId, startSeconds: 0 } }],
     metadata: { status: 'available', ratings: [{ provider: 'tmdb', value: 7.8, max: 10, votes: 20, sourceUrl: 'https://www.themoviedb.org/movie/123', observedAt: '2026-09-04T00:00:00Z' }], genres: [{ id: '18', name: 'Drama', provider: 'tmdb' }], credits: [{ id: '1', name: 'Actor', role: 'Role', department: 'Acting', provider: 'tmdb' }] } };
 }
 function receipt(body: any, state: PersonalState, itemId = 'item'): any { return { operationId: body.operationId, serverId: 'server', libraryId: 'library', itemId, viewerFence: 'fence', personal: state }; }
@@ -14,7 +15,7 @@ function deferred<T>() { let resolve!: (v: T) => void; const promise = new Promi
 const tick = () => new Promise(resolve => setTimeout(resolve, 0));
 function setup(handler: (path: string, method?: string, body?: any, signal?: AbortSignal) => Promise<any>, timeoutMs = 1000) {
   let ids = 0;
-  const api: DetailApi = { request: <T>(p: string, m?: string, b?: unknown, s?: AbortSignal) => handler(p,m,b,s) as Promise<T> };
+  const api: DetailApi = { request: <T>(p: string, m?: string, b?: unknown, s?: AbortSignal) => handler(p,m,b,s).then(v=>wireFixture(v,{'duration': 'durationMs', 'progressSeconds': 'progressMs', 'startSeconds': 'startMs', 'positionSeconds': 'positionMs'})) as Promise<T> };
   return new DetailService({ api, scope, timeoutMs, requestId: async () => `12345678-1234-4123-8123-${String(++ids).padStart(12,'0')}` });
 }
 
@@ -79,13 +80,24 @@ test('late pre-mutation read cannot roll back confirmed personal state', async (
   assert.equal(service.getSnapshot().data!.personal.favorite,true); assert.equal(service.getSnapshot().data!.personal.revision,1);
 });
 
-test('CAS conflict refreshes state and needs explicit retry with new operation against current revision', async () => {
+test('a change that lost a race is read again and sent with the current revision, without asking the person', async () => {
   let current=personal(),writes:any[]=[];
   const service=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',current); writes.push(b); if(writes.length===1){current={...personal(5),watchlisted:true};throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true});} current={...current,favorite:true,revision:6};return receipt(b,current); });
   await service.select(target); await service.mutate({action:'favorite',value:true}); await tick();
-  assert.equal(writes.length,1);assert.equal(service.getSnapshot().pending[0].phase,'conflict');assert.equal(service.getSnapshot().data!.personal.revision,5);
-  await service.retryMutation();assert.notEqual(writes[0].operationId,writes[1].operationId);assert.equal(writes[1].expectedRevision,5);
+  assert.equal(writes.length,2);assert.notEqual(writes[0].operationId,writes[1].operationId);assert.equal(writes[1].expectedRevision,5);
+  assert.equal(service.getSnapshot().mutationError,null);assert.equal(service.getSnapshot().pending.length,0);
   assert.equal(service.getSnapshot().data!.personal.watchlisted,true);assert.equal(service.getSnapshot().data!.personal.favorite,true);
+});
+
+test('a change another device already made is simply done; one that keeps losing is shown as a conflict', async () => {
+  let current=personal(),writes:any[]=[];
+  const done=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',current); writes.push(b); current={...personal(5),favorite:true};throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true}); });
+  await done.select(target); await done.mutate({action:'favorite',value:true}); await tick();
+  assert.equal(writes.length,1);assert.equal(done.getSnapshot().mutationError,null);assert.equal(done.getSnapshot().pending.length,0);assert.equal(done.getSnapshot().data!.personal.favorite,true);
+  let revision=1;writes=[];
+  const losing=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',personal(revision)); writes.push(b); revision++;throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true}); });
+  await losing.select(target); await losing.mutate({action:'favorite',value:true}); await tick(); await tick();
+  assert.equal(writes.length,3);assert.equal(losing.getSnapshot().pending[0].phase,'conflict');assert.equal(losing.getSnapshot().mutationError!.code,'personal_state_conflict');
 });
 
 test('scope change prevents queued writes and late mutation publication in new account/profile/item', async () => {
@@ -100,7 +112,7 @@ test('scope change prevents queued writes and late mutation publication in new a
 test('rating clear is explicit null and unsupported or malformed intents do not reach transport', async()=>{
  let last:any;const service=setup(async(_p,m,b)=>{if(m==='GET')return data();last=b;return receipt(b,personal(1));});await service.select(target);
  await service.mutate({action:'rating',value:null});assert.equal(last.rating,null);assert.deepEqual(Object.keys(last).sort(),['expectedRevision','operationId','rating']);
- assert.throws(()=>service.mutate({action:'rating',value:3.7}),/Invalid/);assert.throws(()=>service.mutate({action:'rating',value:0}),/Invalid/);
+ assert.throws(()=>service.mutate({action:'rating',value:3.7}),/Invalid/);assert.throws(()=>service.mutate({action:'rating',value:11}),/Invalid/);
  assert.throws(()=>service.mutate({action:'playlist',value:true} as any),/Invalid/);
  const sparse=setup(async()=>{const d=data();d.actions=[];d.metadata={status:'unavailable',ratings:[],genres:[],credits:[]};return d;});await sparse.select(target);
  assert.throws(()=>sparse.mutate({action:'favorite',value:true}),/not currently available/);assert.deepEqual(sparse.getSnapshot().data!.metadata.credits,[]);
@@ -125,7 +137,7 @@ test('one part of a title page that cannot be read is left out and the page is k
  assert.deepEqual(metadata.metadata.credits,[{id:'2',name:'Writer',role:'',department:'',provider:'tmdb'},{id:'1',name:'Actor',role:'Role',department:'Acting',provider:'tmdb'}]);
  assert.deepEqual([metadata.metadata.ratings.length,metadata.metadata.genres.length,metadata.metadata.status,metadata.metadata.creditTotals],[1,1,'available',undefined]);
  // What the page is only drawn with reads neutrally; fields this app does not know are ignored.
- const bare=await read(d=>{d.item={id:'item',libraryId:'library',kind:'hologram',year:-1,overview:42,posterUrl:'bad\nurl',future:1};d.personal={revision:4,rating:8,status:'syncing',conflicts:[{id:'c'},{id:'c1',field:'rating',baseRevision:1,choices:[{operationId:'o',deviceId:'d',authoredAt:'t',value:1},{}]}]};delete d.metadata;d.actions=undefined;d.future={a:1};d.markers='nope';});
+ const bare=await read(d=>{d.item={id:'item',libraryId:'library',kind:'hologram',year:-1,overview:42,posterUrl:'bad\nurl',future:1};d.personal={revision:4,rating:11,status:'syncing',conflicts:[{id:'c'},{id:'c1',field:'rating',baseRevision:1,choices:[{operationId:'o',deviceId:'d',authoredAt:'t',value:1},{}]}]};delete d.metadata;d.actions=undefined;d.future={a:1};d.markers='nope';});
  assert.deepEqual(bare.item,{id:'item',libraryId:'library',title:'',kind:'hologram',duration:0,progressSeconds:0,available:false});
  assert.deepEqual(bare.personal,{watchlisted:false,favorite:false,rating:null,revision:4,watched:false,progressSeconds:0,lastPlayedAt:'',status:'current',conflicts:[{id:'c1',field:'rating',baseRevision:1,baseValue:undefined,choices:[{operationId:'o',deviceId:'d',authoredAt:'t',value:1}]}]});
  assert.deepEqual([bare.metadata,bare.actions,bare.markers,'future' in bare],[{status:'unavailable',ratings:[],genres:[],credits:[]},[],[],false]);

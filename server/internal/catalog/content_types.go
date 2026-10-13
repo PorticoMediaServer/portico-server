@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"encoding/json"
+	"portico.local/server/internal/apiwire"
 	"time"
 
 	"portico.local/server/internal/identity"
@@ -76,6 +77,8 @@ type ContentEntityRef struct {
 	Name string `json:"name"`
 }
 type ContentEntry struct {
+	DiscNumber     *int          `json:"discNumber,omitempty"`
+	Missing        bool          `json:"missing"`
 	WatchedCount   *int64        `json:"watchedCount,omitempty"`
 	UnwatchedCount *int64        `json:"unwatchedCount,omitempty"`
 	Watched        *bool         `json:"watched,omitempty"`
@@ -147,7 +150,7 @@ type ContentEntry struct {
 	ContentRating string   `json:"contentRating,omitempty"`
 	Genres        []string `json:"genres,omitempty"`
 	Watchlisted   *bool    `json:"watchlisted,omitempty"`
-	// UserRating is the viewer's own rating (0.5–5 in half steps) on an item
+	// UserRating is the viewer's own rating (integer 0–10) on an item
 	// row; absent when the viewer has not rated it (NEW-24).
 	UserRating *float64 `json:"userRating,omitempty"`
 	// Plays is how many times the viewer has played a song to the end; absent
@@ -231,7 +234,7 @@ func (e ContentEntry) MarshalJSON() ([]byte, error) {
 		}{e.ID, e.Kind, e.Hidden, e.Media})
 	}
 	type plain ContentEntry
-	return json.Marshal(plain(e))
+	return apiwire.MarshalDurations(plain(e), map[string]string{"duration": "durationMs", "progressSeconds": "progressMs"})
 }
 
 // LatestEpisode names the newest of a show's aired episodes and how many aired

@@ -1,3 +1,4 @@
+import {parseMediaItem} from './media-item.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import type {Library,MediaItem} from './index.ts';
 export interface CatalogApi {request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>;}
@@ -25,7 +26,7 @@ export class CatalogService {
    const result=await Promise.race([Promise.all([this.api.request<{items:Library[]}>('/v1/libraries','GET',undefined,controller.signal),this.api.request<{items:MediaItem[];nextCursor?:string}>('/v1/items?'+query,'GET',undefined,controller.signal)]),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{controller.abort();reject(new Error('The server took too long to respond. Try again.'));},this.timeoutMs);})]);
    if(this.disposed||generation!==this.state.generation)return;
    const [libraries,page]=result;if(!Array.isArray(libraries.items)||!Array.isArray(page.items)||page.items.length>40)throw new Error(unreadableServerResponse);
-   this.publish({libraries:libraries.items,items:[...new Map(page.items.map(item=>[item.id,item])).values()],nextCursor:page.nextCursor,pending:false});
+   this.publish({libraries:libraries.items,items:[...new Map(page.items.map(parseMediaItem).map(item=>[item.id,item])).values()],nextCursor:page.nextCursor,pending:false});
   }catch(error){if(!this.disposed&&generation===this.state.generation)this.publish({pending:false,error:error instanceof Error?error.message:'Could not load the library.'});}
   finally{if(timer)clearTimeout(timer);}
  }

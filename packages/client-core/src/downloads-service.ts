@@ -5,13 +5,13 @@ import {randomId} from './random-id.ts';
  * Forgiving by design: a failed refresh keeps the list that is on screen. While anything is
  * still being prepared it polls gently; once everything has settled it stops. */
 import {serviceProblem} from './presentation/service-text.ts';
-import {downloadReasonMessage,parseDownloadBatch,parseDownloadBundle,parseDownloadGrant,parseDownloadOptions,parseDownloadPage,parseDownloadPreparation,parseDownloadSettings,parseDownloadUsage,type DownloadAction,type DownloadBatch,type DownloadBundle,type DownloadGrant,type DownloadOptionsView,type DownloadPreparation,type DownloadQualityChoice,type DownloadUsage} from './downloads.ts';
+import {downloadReasonMessage,parseDownloadProfileRevocation,parseDownloadBatch,parseDownloadBundle,parseDownloadGrant,parseDownloadOptions,parseDownloadPage,parseDownloadPreparation,parseDownloadSettings,parseDownloadUsage,type DownloadAction,type DownloadBatch,type DownloadBundle,type DownloadGrant,type DownloadOptionsView,type DownloadPreparation,type DownloadQualityChoice,type DownloadUsage} from './downloads.ts';
 import {createDownloadRequest,getDownloadRequest,isDownloadRequestTerminal,listDownloadRequests,type DownloadEpisodes,type DownloadRequest,type DownloadRequestKind} from './download-requests.ts';
 
 export type DownloadsApi={request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>};
 /** Items for one preparation batch. A whole container (show, season, album, book, playlist) is
  * never a batch target: it goes through `requestContainer`, the durable container request. */
-export type DownloadTarget=Readonly<{mediaId?:string;mediaIds?:readonly string[];nextAfterMediaId?:string}>;
+export type DownloadTarget=Readonly<{versionId?:string;mediaId?:string;mediaIds?:readonly string[];nextAfterMediaId?:string}>;
 /** A whole-container request (show, season, album, book or playlist — never TV). */
 export type ContainerDownloadTarget=Readonly<{kind:DownloadRequestKind;id:string;title?:string}>;
 export type ContainerDownloadPolicy=Readonly<{episodes:DownloadEpisodes;keepNext?:number}>;
@@ -145,6 +145,10 @@ export class DownloadsService{
  }
  /** The qualities a whole show, season, album, book or playlist may be asked for: the original,
   * and each smaller quality this server can make. The server decides; nothing is assumed here. */
+ async revokeProfile(profileKey:string){return parseDownloadProfileRevocation(await this.api.request<unknown>('/v1/admin/downloads/revoke','POST',{profileKey,operationId:this.operationId()}));}
+
+ async serverUsage(cursor='',limit=256){return parseDownloadUsage(await this.api.request<unknown>(`/v1/downloads/usage?scope=server&cursor=${encodeURIComponent(cursor)}&limit=${limit}`));}
+
  async qualities(signal?:AbortSignal):Promise<readonly DownloadQualityChoice[]>{
   return parseDownloadSettings(await this.api.request<unknown>('/v1/downloads/settings','GET',undefined,signal)).qualities;
  }
@@ -152,7 +156,7 @@ export class DownloadsService{
   * A batch is partial by design: what could not be accepted is reported, the rest proceeds. */
  async request(target:DownloadTarget,quality:string):Promise<DownloadBatch>{
   // Only the item fields are sent, whatever else the caller's object carries (containers are durable requests).
-  const body={operationId:this.operationId(),...(target.mediaId?{mediaId:target.mediaId}:{}),...(target.mediaIds?{mediaIds:[...target.mediaIds]}:{}),...(target.nextAfterMediaId?{nextAfterMediaId:target.nextAfterMediaId}:{}),quality};
+  const body={operationId:this.operationId(),...(target.versionId?{versionId:target.versionId}:{}),...(target.mediaId?{mediaId:target.mediaId}:{}),...(target.mediaIds?{mediaIds:[...target.mediaIds]}:{}),...(target.nextAfterMediaId?{nextAfterMediaId:target.nextAfterMediaId}:{}),quality};
   const batch=parseDownloadBatch(await this.api.request<unknown>('/v1/downloads/preparations','POST',body));
   void this.refresh();return batch;
  }

@@ -172,6 +172,7 @@ type Progress struct {
 // claim was for, kept with it, so a list of downloads reads as titles even
 // after one has left the library.
 type Preparation struct {
+	VersionID string   `json:"versionId"`
 	ID        string   `json:"id"`
 	ItemID    string   `json:"itemId"`
 	LibraryID string   `json:"libraryId"`
@@ -195,6 +196,7 @@ type Preparation struct {
 // Request is one preparation request of explicit items. Exactly one target form
 // is accepted; containers are durable requests (ContainerRequest).
 type Request struct {
+	VersionID        string   `json:"versionId,omitempty"`
 	OperationID      string   `json:"operationId"`
 	MediaID          string   `json:"mediaId,omitempty"`
 	MediaIDs         []string `json:"mediaIds,omitempty"`

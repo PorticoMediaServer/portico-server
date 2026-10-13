@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/apiwire"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/diagnostics"
 	"portico.local/server/internal/identity"
@@ -15,22 +16,22 @@ import (
 type Record struct {
 	Sequence  int64            `json:"sequence"`
 	Lane      string           `json:"lane"`
-	At        int64            `json:"at"`
+	At        apiwire.Instant  `json:"at"`
 	Severity  string           `json:"severity"`
 	Component string           `json:"component"`
 	Code      string           `json:"code"`
 	Fields    map[string]int64 `json:"fields"`
 }
 type AuditRecord struct {
-	Sequence     int64  `json:"sequence"`
-	ID           string `json:"id"`
-	At           int64  `json:"at"`
-	Actor        string `json:"actor"`
-	Action       string `json:"action"`
-	Target       string `json:"target"`
-	Revision     int64  `json:"revision"`
-	PreviousHash string `json:"previousHash"`
-	Hash         string `json:"hash"`
+	Sequence     int64           `json:"sequence"`
+	ID           string          `json:"id"`
+	At           apiwire.Instant `json:"at"`
+	Actor        string          `json:"actor"`
+	Action       string          `json:"action"`
+	Target       string          `json:"target"`
+	Revision     int64           `json:"revision"`
+	PreviousHash string          `json:"previousHash"`
+	Hash         string          `json:"hash"`
 }
 
 func validComponent(v string) bool {
@@ -74,7 +75,7 @@ func (s *Store) recordTx(tx *sql.Tx, lane, severity, component, code string, fie
 			return nil
 		}
 		var c Capture
-		if decodeDocument(body, &c) != nil || c.ExpiresAt <= s.now() || c.Component != component {
+		if decodeDocument(body, &c) != nil || int64(c.ExpiresAt) <= s.now() || c.Component != component {
 			return nil
 		}
 	}
@@ -193,13 +194,13 @@ func (s *Store) auditAfterRead(ctx context.Context, auth Authorize, p identity.P
 }
 
 type Capture struct {
-	IdempotencyKey string `json:"idempotencyKey,omitempty"`
-	Component      string `json:"component"`
-	ExpiresAt      int64  `json:"expiresAt"`
+	IdempotencyKey string          `json:"idempotencyKey,omitempty"`
+	Component      string          `json:"component"`
+	ExpiresAt      apiwire.Instant `json:"expiresAt"`
 }
 
 func (s *Store) Capture(ctx context.Context, p identity.Principal, auth Authorize, c Capture) error {
-	if c.Component != "scheduler" || c.ExpiresAt < 0 || c.ExpiresAt > s.now()+int64(time.Hour/time.Millisecond) {
+	if c.Component != "scheduler" || c.ExpiresAt < 0 || int64(c.ExpiresAt) > s.now()+int64(time.Hour/time.Millisecond) {
 		return ErrInvalid
 	}
 	return s.transaction(ctx, auth, "", func(tx *sql.Tx) error {
@@ -226,14 +227,14 @@ func (s *Store) Capture(ctx context.Context, p identity.Principal, auth Authoriz
 }
 
 type ExportRequest struct {
-	IdempotencyKey string   `json:"idempotencyKey"`
-	From           int64    `json:"from"`
-	To             int64    `json:"to"`
-	Components     []string `json:"components"`
+	IdempotencyKey string          `json:"idempotencyKey"`
+	From           apiwire.Instant `json:"from"`
+	To             apiwire.Instant `json:"to"`
+	Components     []string        `json:"components"`
 }
 type Export struct {
 	ID          string              `json:"id"`
-	ExpiresAt   int64               `json:"expiresAt"`
+	ExpiresAt   apiwire.Instant     `json:"expiresAt"`
 	Manifest    ExportManifest      `json:"manifest"`
 	Snapshot    *diagnostics.Report `json:"snapshot,omitempty"`
 	Runtime     *Page[Record]       `json:"runtime,omitempty"`
@@ -242,17 +243,17 @@ type Export struct {
 	AuditAnchor *AuditAnchor        `json:"auditAnchor,omitempty"`
 }
 type ExportManifest struct {
-	Version   string   `json:"version"`
-	From      int64    `json:"from"`
-	To        int64    `json:"to"`
-	Included  []string `json:"included"`
-	Excluded  []string `json:"excluded"`
-	Redaction string   `json:"redaction"`
-	MaxBytes  int      `json:"maxBytes"`
+	Version   string          `json:"version"`
+	From      apiwire.Instant `json:"from"`
+	To        apiwire.Instant `json:"to"`
+	Included  []string        `json:"included"`
+	Excluded  []string        `json:"excluded"`
+	Redaction string          `json:"redaction"`
+	MaxBytes  int             `json:"maxBytes"`
 }
 
 func (s *Store) CreateExport(ctx context.Context, p identity.Principal, auth Authorize, hosted bool, c ExportRequest) (out Export, e error) {
-	if c.From < 0 || c.To < c.From || c.To > s.now()+60000 || c.To-c.From > days(7) || len(c.Components) == 0 || len(c.Components) > 4 {
+	if c.From < 0 || c.To < c.From || int64(c.To) > s.now()+60000 || int64(c.To-c.From) > days(7) || len(c.Components) == 0 || len(c.Components) > 4 {
 		return out, ErrInvalid
 	}
 	seen := map[string]bool{}
@@ -285,7 +286,7 @@ func (s *Store) CreateExport(ctx context.Context, p identity.Principal, auth Aut
 			if err = decodeDocument(raw, &out); err != nil {
 				return err
 			}
-			if out.ExpiresAt <= s.now() {
+			if int64(out.ExpiresAt) <= s.now() {
 				return ErrExpired
 			}
 			return nil
@@ -297,23 +298,23 @@ func (s *Store) CreateExport(ctx context.Context, p identity.Principal, auth Aut
 		if n >= 4 {
 			return ErrCapacity
 		}
-		out = Export{ID: identity.Token(), ExpiresAt: s.now() + int64(time.Hour/time.Millisecond), Manifest: ExportManifest{RegistryRevision, c.From, c.To, c.Components, []string{"secrets", "raw logs", "media", "databases", "feedback text", "routes and paths"}, "Typed allowlist before persistence and projection; no automatic upload", 1 << 20}, Snapshot: snapshot}
+		out = Export{ID: identity.Token(), ExpiresAt: apiwire.Instant(s.now() + int64(time.Hour/time.Millisecond)), Manifest: ExportManifest{RegistryRevision, c.From, c.To, c.Components, []string{"secrets", "raw logs", "media", "databases", "feedback text", "routes and paths"}, "Typed allowlist before persistence and projection; no automatic upload", 1 << 20}, Snapshot: snapshot}
 		if seen["runtime"] {
-			v, err := readRecords(tx, "runtime", 9223372036854775807, c.From, c.To, 1000)
+			v, err := readRecords(tx, "runtime", 9223372036854775807, int64(c.From), int64(c.To), 1000)
 			if err != nil {
 				return err
 			}
 			out.Runtime = &v
 		}
 		if seen["client"] {
-			v, err := readRecords(tx, "client", 9223372036854775807, c.From, c.To, 1000)
+			v, err := readRecords(tx, "client", 9223372036854775807, int64(c.From), int64(c.To), 1000)
 			if err != nil {
 				return err
 			}
 			out.Client = &v
 		}
 		if seen["audit"] {
-			v, err := readAudit(tx, 9223372036854775807, c.From, c.To, 1000)
+			v, err := readAudit(tx, 9223372036854775807, int64(c.From), int64(c.To), 1000)
 			if err != nil {
 				return err
 			}
@@ -372,14 +373,14 @@ func (s *Store) Export(ctx context.Context, p identity.Principal, auth Authorize
 }
 
 type Alert struct {
-	ID          string `json:"id"`
-	Code        string `json:"code"`
-	Severity    string `json:"severity"`
-	Status      string `json:"status"`
-	FirstAt     int64  `json:"firstAt"`
-	LastAt      int64  `json:"lastAt"`
-	Occurrences int64  `json:"occurrences"`
-	Revision    int64  `json:"revision"`
+	ID          string          `json:"id"`
+	Code        string          `json:"code"`
+	Severity    string          `json:"severity"`
+	Status      string          `json:"status"`
+	FirstAt     apiwire.Instant `json:"firstAt"`
+	LastAt      apiwire.Instant `json:"lastAt"`
+	Occurrences int64           `json:"occurrences"`
+	Revision    int64           `json:"revision"`
 }
 
 func (s *Store) Alert(ctx context.Context, code, severity string, active bool) error {

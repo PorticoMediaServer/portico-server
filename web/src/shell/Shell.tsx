@@ -13,6 +13,7 @@ import {iconFor} from '@core/presentation/index.ts';
 import {PlayerProvider, usePlayer} from '../player/engine';
 import {ServerPreferencesProvider, useServerPreferences} from '../app/server-preferences';
 import {ConnectionOverlay} from './Connection';
+import {FreshnessRuntime} from '../app/freshness';
 import {CustodyPrompt} from './CustodyPrompt';
 import {SelectionProvider, useSelectionActive} from '../app/selection';
 import {MetadataEditorProvider, useMetadataEditor} from '../app/metadata-editor';
@@ -163,6 +164,7 @@ export function Shell() {
       <I18nProvider>
       <AppearanceBridge />
       <PlayerProvider>
+      <FreshnessRuntime />
       <SelectionProvider>
       <MetadataEditorProvider>
       <DeleteMediaProvider>

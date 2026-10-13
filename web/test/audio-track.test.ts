@@ -108,3 +108,36 @@ test('a damaged MP4 sample count fails cleanly instead of allocating from it', a
   new DataView(bytes.buffer).setUint32(at + 12, 40_000_000);
   await assert.rejects(openMp4(fileReader(bytes)), /Damaged MP4 sample sizes/);
 });
+
+test('resampler carries history and fractional phase across several nonaligned track boundaries', async () => {
+  const {Resampler} = await import('../src/bridge/audio/resampler.ts');
+  for (const [from, to] of [[44100, 48000], [96000, 48000], [48000, 44100]]) {
+    const sizes = [10001, 11003, 12007];
+    const input = Float32Array.from({length: sizes.reduce((a,b) => a+b,0)}, (_,i) => 0.3*Math.sin(i*0.057)+0.1*Math.cos(i*0.137));
+    const whole = new Resampler(from!, to!, 1);
+    const expected = [...whole.process([input],input.length).channels[0]!, ...whole.flush().channels[0]!];
+    let split = new Resampler(from!, to!, 1), offset = 0;
+    const actual: number[] = [];
+    for (let i=0;i<sizes.length;i++) {
+      const n=sizes[i]!;
+      actual.push(...split.process([input.subarray(offset,offset+n)],n).channels[0]!); offset+=n;
+      if(i+1<sizes.length){const carry=split.continue([input.subarray(offset,offset+64)],64);actual.push(...carry.tail.channels[0]!);split=carry.next;}
+      else actual.push(...split.flush().channels[0]!);
+    }
+    assert.deepEqual(actual,expected,`${from} → ${to}: filtering the album equals filtering its tracks continuously`);
+  }
+});
+
+test('a decoder cannot silently discard real leading frames when its intrinsic skip exceeds the plan',async()=>{
+ const {WEBCODECS_SKIP,recordDecoderSkip}=await import('../src/bridge/audio/track.ts');
+ const globals=globalThis as any, original=globals.AudioDecoder, chunk=globals.EncodedAudioChunk, engine=browserEngine();
+ const prior={...WEBCODECS_SKIP[engine]};let closed=0;
+ try {
+  globals.AudioDecoder=class {state='configured';static async isConfigSupported(){return{supported:true};}configure(){}close(){closed++;this.state='closed';}};
+  globals.EncodedAudioChunk=class {};
+  recordDecoderSkip(engine,'mp3',529);
+  const s=sidecars.find(x=>x.codec==='mp3');
+  const stream=await TrackStream.open({...s,trim:{startFrames:0,endFrames:0}},fileReader(new Uint8Array(readFileSync(new URL(s.file,dir)))));
+  assert.equal(stream,undefined);assert.equal(closed,1);
+ }finally{globals.AudioDecoder=original;globals.EncodedAudioChunk=chunk;for(const key of Object.keys(WEBCODECS_SKIP[engine]))delete (WEBCODECS_SKIP[engine] as Record<string,unknown>)[key];Object.assign(WEBCODECS_SKIP[engine],prior);}
+});

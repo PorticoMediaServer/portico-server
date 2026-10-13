@@ -1,7 +1,11 @@
+import {wireFixture} from './wire-fixture.ts';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import {ConsoleClient,parseReport,parseSettings,parsePage,parseEvidenceRecord,type ConsoleAPI,type RuntimeSettings,type Schedule} from '../src/console.ts';
+import {ConsoleClient,parseReport as read_parseReport,parseSettings,parsePage,parseEvidenceRecord as read_parseEvidenceRecord,type ConsoleAPI,type RuntimeSettings,type Schedule} from '../src/console.ts';
 import {consoleUTF8Size,readConsoleJson,ConsoleTransportError} from '../src/console-transport.ts';
+const parseReport=(value:unknown,...args:any[]) => (read_parseReport as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']),...args);
+const parseEvidenceRecord=(value:unknown,...args:any[]) => (read_parseEvidenceRecord as any)(wireFixture(value,{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']),...args);
+
 const fence='a'.repeat(64);
 const envelope=(data:unknown,serverId='server-one',viewerFence=fence)=>({scope:{serverId,viewerFence},data});
 const values:RuntimeSettings={name:'My server',transcodingEnabled:true,perAccountCap:null,serverCap:null,diagnosticDays:30,notificationDays:180,jobDays:30,
@@ -15,7 +19,7 @@ const settings=(revision=1)=>({revision,digest:'b'.repeat(64),requested:values,e
 const report={id:'report-one',revision:1,createdAt:100,updatedAt:100,status:'open',category:'playback',message:'Playback stopped.',contextAvailable:true};
 const submission={category:'playback' as const,message:report.message,itemId:''};
 function client(handler:(path:string,method:string,body:any,signal:AbortSignal)=>Promise<unknown>){
- const api:ConsoleAPI={async request<T>(){throw new Error('unbounded fallback must not be used');},async requestConsole<T>(path,method,body,signal){return await handler(path,method,body,signal) as T;}};
+ const api:ConsoleAPI={async request<T>(){throw new Error('unbounded fallback must not be used');},async requestConsole<T>(path,method,body,signal){return wireFixture(await handler(path,method,body,signal),{},['createdAt', 'updatedAt', 'expiresAt', 'readAt', 'archivedAt', 'observedAt', 'freshUntil', 'at', 'nextAt', 'from', 'to']) as T;}};
  return new ConsoleClient(api,{serverId:'server-one',viewerId:'local:one:profile'});
 }
 test('settings preserve explicit unlimited caps and reject invalid limits',()=>{
@@ -56,6 +60,14 @@ test('known revision conflicts keep drafts but permit a deliberate revised submi
  let conflict=true;const c=client(async()=>{if(conflict)throw new ConsoleTransportError(409,'console_conflict',4,['values.serverCap']);return envelope(settings(5));});
  c.setDraft('runtime-settings',{revision:1,values});await assert.rejects(c.applySettings(1,values),/revision: 4/);assert.equal(c.hasUnconfirmed(),false);assert.ok(c.getDraft('runtime-settings'));
  conflict=false;assert.equal((await c.applySettings(4,values)).revision,5);c.dispose();
+});
+test('a patch or a row command that lost a race is sent again with the current revision, without a conflict shown',async()=>{
+ const sent:any[]=[];let current=4;
+ const c=client(async(_path:string,_method?:string,body?:any)=>{sent.push(body);if(body.expectedRevision!==current)throw new ConsoleTransportError(409,'console_conflict',current,[]);return envelope(settings(current+1));});
+ assert.equal((await c.applySettings(1,values)).revision,5);
+ assert.deepEqual(sent.map(b=>b.expectedRevision),[1,4]);
+ assert.deepEqual(sent[1].values,sent[0].values,'the same change, against the newer document');
+ assert.equal(c.hasUnconfirmed(),false);c.dispose();
 });
 test('server and viewer fences revoke the entire selected scope',async()=>{
  let foreign=false;const c=client(async()=>envelope(settings(),foreign?'server-two':'server-one'));

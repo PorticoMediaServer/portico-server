@@ -1,3 +1,4 @@
+import {wireDurations,wireDisplayDurations,durationIntent} from './wire-units.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {parseLocalBook,parseLocalAudioPolicy,type LocalAudioPolicy,type LocalBookMetadata} from "./music-metadata.ts";
 /** Server-authored detail and explicit personal-state commands; no playback or ranking owner. */
@@ -72,13 +73,13 @@ export type DetailSnapshot = Readonly<{
   mutationError: DetailError | null;
 }>;
 type Receipt = { operationId: string; serverId: string; itemId: string; libraryId: string; viewerFence: string; personal: PersonalState };
-type Command = { offline?:PersonalOfflineMutation; intent: PersonalIntent; operationId?: string; expectedRevision?: number; phase: 'queued' | 'sending' | 'retry-required' | 'conflict'; promise: Promise<void>; resolve: () => void };
+type Command = { silentRetries?: number; offline?:PersonalOfflineMutation; intent: PersonalIntent; operationId?: string; expectedRevision?: number; phase: 'queued' | 'sending' | 'retry-required' | 'conflict'; promise: Promise<void>; resolve: () => void };
 const obj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);
 const str = (v: unknown, max = 512): v is string => typeof v === 'string' && v.length <= max && !/[\x00-\x1f\x7f]/.test(v);
 const id = (v: unknown): v is string => str(v, 256) && v.length > 0;
 const integer = (v: unknown): v is number => typeof v === 'number' && Number.isSafeInteger(v) && v >= 0;
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
-const rating = (v: unknown): v is number | null => v === null || typeof v === 'number' && Number.isFinite(v) && v >= 0.5 && v <= 5 && Number.isInteger(v * 2);
+const rating = (v: unknown): v is number | null => v === null || typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 10 && Number.isInteger(v);
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 class Failure extends Error { code: string; retryable: boolean; constructor(code: string, message: string, retryable = false) { super(message); this.code = code; this.retryable = retryable; } }
 function invalid(): never { throw new Failure('invalid_detail', unreadableServerResponse); }
@@ -103,6 +104,7 @@ function array(value: unknown, max: number): unknown[] { if (!Array.isArray(valu
  * know as current, and a conflict or choice that cannot be read is left out alone.
  */
 function personal(value: unknown): PersonalState {
+ value=wireDisplayDurations(value,{progressSeconds:"progressMs"},left);
   if (!obj(value) || !integer(value.revision)) invalid();
   const conflicts=keepReadable('detail','personal.conflicts',array(value.conflicts??[],8),c=>{if(!obj(c)||!id(c.id)||!id(c.field)||!integer(c.baseRevision))invalid();const choices=keepReadable('detail','personal.choices',array(c.choices,100),v=>{if(!obj(v)||!id(v.operationId)||!id(v.deviceId)||!str(v.authoredAt,128))invalid();return Object.freeze({operationId:v.operationId,deviceId:v.deviceId,authoredAt:v.authoredAt,value:v.value});});return Object.freeze({id:c.id,field:c.field,baseRevision:c.baseRevision,baseValue:c.baseValue,choices:Object.freeze(choices)});});
   return Object.freeze({watchlisted:value.watchlisted===true,favorite:value.favorite===true,rating:rating(value.rating)?value.rating:null,revision:value.revision,watched:value.watched===true,progressSeconds:finite(value.progressSeconds)?value.progressSeconds:0,lastPlayedAt:str(value.lastPlayedAt,128)?value.lastPlayedAt:'',status:value.status==='needs-resolution'?'needs-resolution':'current',conflicts:Object.freeze(conflicts)});
@@ -116,6 +118,7 @@ function fileTrack(value: unknown): TitleFileTrack {
 }
 /** One file of a title. It needs its id; a picture or track that cannot be read is left out, and a missing size, length or container is 0 or empty. */
 function titleFile(value: unknown): TitleFile {
+ value=wireDisplayDurations(value,{duration:"durationMs"},left);
   if (!obj(value) || !id(value.id) || !str(value.container ?? '', 64)) invalid();
   const path = str(value.path, 4096) && value.path ? value.path : undefined;
   const video = part('file.video', value.video, (v): TitleFile['video'] => {
@@ -171,14 +174,16 @@ function extras(value: unknown, target: DetailTarget): readonly DetailExtra[] {
  */
 function projection(raw: unknown, scope: DetailScope, target: DetailTarget): DetailProjection {
   if (!obj(raw) || !obj(raw.scope) || !obj(raw.revision) || !obj(raw.item)) invalid();
-  const s = raw.scope, r = raw.revision, item = raw.item, m = obj(raw.metadata) ? raw.metadata : {};
+  const s = raw.scope, r = raw.revision, item = wireDisplayDurations(raw.item,{duration:"durationMs",progressSeconds:"progressMs"},left), m = obj(raw.metadata) ? raw.metadata : {};
   if (s.serverId !== scope.serverId || s.libraryId !== target.libraryId || s.itemId !== target.itemId || !id(s.viewerFence) || !integer(r.catalog) || !integer(r.viewer)) invalid();
+  if (!obj(item)) invalid();
   if (item.id !== target.itemId || item.libraryId !== target.libraryId || !str(item.title ?? '', 2048) || !id(item.kind)) invalid();
   const media: DetailItem = { id: target.itemId, libraryId: target.libraryId, title: (item.title ?? '') as string, kind: item.kind, duration: finite(item.duration) ? item.duration : 0, progressSeconds: finite(item.progressSeconds) ? item.progressSeconds : 0, available: item.available === true };
   for (const key of ['overview','posterUrl','backdropUrl','stillUrl'] as const) { const v = item[key]; if (key === 'overview' ? typeof v === 'string' && v.length <= 65536 && !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v) : str(v, 4096)) media[key] = v as string; else left('item.' + key, v); }
   if (integer(item.year)) media.year = item.year; else left('item.year', item.year);
   if (item.addedAt === null || str(item.addedAt, 128)) media.addedAt = item.addedAt as string | null; else left('item.addedAt', item.addedAt);
   if (item.sources !== undefined && item.sources !== null) media.sources = keepReadable('detail', 'item.sources', array(item.sources, 64), source => {
+    source=wireDisplayDurations(source,{duration:"durationMs"},left);
     if (!obj(source) || !id(source.id) || !str(source.container ?? '') || !str(source.videoCodec ?? '') || !str(source.audioCodec ?? '')) invalid();
     return Object.freeze({ ...(finite(source.duration) ? { duration: source.duration } : {}), id: source.id, container: (source.container ?? '') as string, videoCodec: (source.videoCodec ?? '') as string, audioCodec: (source.audioCodec ?? '') as string, width: integer(source.width) ? source.width : 0, height: integer(source.height) ? source.height : 0 });
   });
@@ -208,7 +213,7 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
     for (const field of ['min','max','step'] as const) if (finite(action[field])) result[field] = action[field] as number;
     // An action that plays says where it starts within this title; one that cannot is not offered.
     if (action.playback !== undefined && action.playback !== null) {
-      const p = action.playback;
+      const p = wireDurations(action.playback,{startSeconds:"startMs"});
       if (!obj(p) || p.itemId !== target.itemId || !finite(p.startSeconds) || p.startSeconds > media.duration) invalid();
       result.playback = Object.freeze({ itemId: target.itemId, startSeconds: p.startSeconds });
     }
@@ -286,6 +291,37 @@ export class DetailService {
     this.readPromise = task; return task;
   }
   retryRead(): Promise<void> { return this.refresh(); }
+  retry(): Promise<void> { return this.refresh(); }
+  /**
+   * Read the title again without touching `phase`, and show the answer in place. A failed read
+   * rejects and changes nothing. An answer that the title is gone or no longer allowed is the
+   * page's state from then on, exactly as a first load would have shown it.
+   */
+  async revalidate(context?: { signal?: AbortSignal; settle?: () => Promise<void> }): Promise<void> {
+    this.active(); const target = this.state.target;
+    if (!target || this.state.phase !== 'ready' || !this.state.data) return;
+    const controller = new AbortController(), stop = () => controller.abort();
+    context?.signal?.addEventListener('abort', stop, { once: true });
+    const generation = this.generation, read = this.readGeneration, bound = this.bound, api = this.api;
+    try {
+      const raw = await this.deadline(api.request<unknown>('/v1/items/' + encodeURIComponent(target.itemId) + '/detail?related=all', 'GET', undefined, controller.signal), controller);
+      if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
+      const data = projection(raw, bound, target);
+      await context?.settle?.();
+      if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted || !this.state.data) return;
+      // Another viewer's answer, or one older than what is shown (a change made here has not reached this read), is not shown.
+      if (data.scope.viewerFence !== this.state.data.scope.viewerFence) { await this.refresh(); return; }
+      if (data.revision.catalog < this.state.data.revision.catalog || data.personal.revision < this.state.data.personal.revision) return;
+      // Nothing on the page changed: nothing is published, so nothing re-renders.
+      if (JSON.stringify(data) === JSON.stringify(this.state.data)) return;
+      this.publish({ data });
+    } catch (error) {
+      if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted) return;
+      const code = errorInfo(error).code;
+      if (['unauthorized', 'forbidden', 'not_found', 'invalid_detail'].includes(code)) { await this.refresh(); return; }
+      throw error;
+    } finally { context?.signal?.removeEventListener('abort', stop); }
+  }
   mutate(input: PersonalIntent): Promise<void> {
     this.active(); const intent = checkIntent(input), data = this.state.data;
     if (!data || (intent.action==='resolution' ? !data.personal.conflicts.some(c=>c.id===intent.value.conflictId) : !data.actions.some(a => a.id === intent.action && a.enabled))) throw new Error('This personal action is not currently available.');
@@ -331,15 +367,32 @@ export class DetailService {
       }
       const field = command.intent.action === 'watchlist' ? 'watchlisted' : command.intent.action;
       const body = { operationId: command.operationId, expectedRevision: command.expectedRevision, [field]: command.intent.value, ...(command.offline?{offline:command.offline}:{}) };
-      const raw = await this.deadline(api.request<unknown>('/v1/items/' + encodeURIComponent(data.scope.itemId) + '/personal-state', 'PUT', body, controller.signal), controller);
+      const raw = await this.deadline(api.request<unknown>('/v1/items/' + encodeURIComponent(data.scope.itemId) + '/personal-state', 'PUT', durationIntent(body,{progressSeconds:'progressMs'}), controller.signal), controller);
       if (this.disposed || generation !== this.generation) return;
       const applied = receipt(raw, command.operationId, data);
       if (this.state.data && applied.personal.revision >= this.state.data.personal.revision) this.publish({ data: Object.freeze({ ...this.state.data, item:Object.freeze({...this.state.data.item,progressSeconds:applied.personal.progressSeconds}), personal: applied.personal }) });
       this.commands.shift(); command.resolve(); this.publish({ mutationError: null });
-      await this.refresh();
+      // What the change touched elsewhere on the page (Up Next, counts) is read in place, with no loading state.
+      if (this.state.phase === 'ready') await this.revalidate().catch(() => {}); else await this.refresh();
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
       const info = errorInfo(error);
+      // The state moved under this action (another device, or the person's own previous press).
+      // That is not theirs to sort out: read the title again and, when the action still makes
+      // sense, send it with what the server has now. Only a real disagreement is shown.
+      if (info.code === 'personal_state_conflict' && !command.offline && (command.silentRetries ?? 0) < 2) {
+        command.silentRetries = (command.silentRetries ?? 0) + 1;
+        await this.refresh();
+        if (this.disposed || generation !== this.generation) return;
+        const now = this.state.data;
+        if (this.state.phase === 'ready' && now) {
+          const field = command.intent.action === 'watchlist' ? 'watchlisted' : command.intent.action;
+          const settled = command.intent.action !== 'resolution' && (now.personal as unknown as Record<string, unknown>)[field] === (command.intent as { value?: unknown }).value;
+          const offered = command.intent.action === 'resolution' ? now.personal.conflicts.some(c => c.id === (command.intent as { value: { conflictId: string } }).value.conflictId) : now.actions.some(a => a.id === command.intent.action && a.enabled);
+          if (settled) { this.commands.shift(); command.resolve(); this.publish({ mutationError: null }); return; }
+          if (offered) { command.operationId = undefined; command.expectedRevision = undefined; command.phase = 'queued'; this.publish({ mutationError: null }); return; }
+        }
+      }
       command.phase = ['personal_state_conflict','personal_needs_resolution','personal_needs_review','operation_expired'].includes(info.code) ? 'conflict' : 'retry-required'; command.resolve();
       this.publish({ mutationError: info });
       if (command.phase === 'conflict') await this.refresh();

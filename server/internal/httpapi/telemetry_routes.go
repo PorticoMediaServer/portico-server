@@ -282,7 +282,7 @@ func (s *telemetryService) certificateExpiry(ctx context.Context) *telemetry.Cer
 func (s *telemetryService) register(mux *http.ServeMux, pattern string, query []string, fn func(*http.Request, operations.Authorize) (any, error)) {
 	slots := make(chan struct{}, 4)
 	d := s.d
-	mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+	d.projectedHandle(mux, pattern, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), 7*time.Second)
 		defer cancel()

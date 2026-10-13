@@ -4,6 +4,9 @@ import {jobLabel, jobStateLabel, jobTone, sentence, useAction, useConsole, useRe
 import {Badge, Button, Freshness, Notice, StateView, Surface, Table, tableCell, Text} from '../../ui';
 import s from './Server.module.css';
 import {useI18n} from '../../app/i18n';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const TASK_EVENTS = Object.freeze([dependsOn.event('operation.updated'), dependsOn.event('library.scan.updated'), dependsOn.event('job.updated')]);
 
 /** Background work: scans, analysis and the rest, with progress and what can be done about each. */
 export function JobsPanel({compact}: {compact?: boolean}) {
@@ -11,7 +14,8 @@ export function JobsPanel({compact}: {compact?: boolean}) {
   const {t} = i18n;
   const client = useConsole();
   const [cursor, setCursor] = useState('');
-  const read = useRead(() => client.jobs(cursor), [client, cursor], {every: 20000});
+  // Tasks follow the server as it works: a scan's progress and a task's change of state arrive on the event feed.
+  const read = useRead(() => client.jobs(cursor), [client, cursor], {every: 20000, on: TASK_EVENTS});
   const action = useAction();
   const items = read.data?.items ?? [];
   const command = (job: Job, a: 'cancel' | 'retry' | 'pause' | 'resume') => void action.run(() => client.jobCommand(job, a)).then(ok => ok && read.reload());

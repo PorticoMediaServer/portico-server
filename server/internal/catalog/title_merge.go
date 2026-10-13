@@ -82,6 +82,9 @@ func absorbTx(ctx context.Context, tx *sql.Tx, from, into int64, kind compactcat
 			return err
 		}
 	}
+	if err := moveDownloadClaimsTx(ctx, tx, from, into, ""); err != nil {
+		return err
+	}
 	if err := moveFilesTx(ctx, tx, from, into); err != nil {
 		return err
 	}

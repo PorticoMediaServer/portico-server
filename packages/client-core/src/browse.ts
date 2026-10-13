@@ -34,7 +34,7 @@ export type BrowseSeek=Readonly<{prefix:string}>;
 export type BrowseApplied=Readonly<{query:BrowseNode|null;sort:readonly BrowseSortSelection[];seek:BrowseSeek|null}>;
 export type BrowseResult=Readonly<{pivot:string;applied:BrowseApplied;entries:readonly ContentEntry[];pageInfo:BrowsePageInfo;positionIndex:readonly BrowsePositionAnchor[]}>;
 export type BrowseFacetValue=Readonly<{value:string;label:string;count:number}>;
-export type BrowseFacetPage=Readonly<{field:string;values:readonly BrowseFacetValue[]}>;
+export type BrowseFacetPage=Readonly<{field:string;total:number;values:readonly BrowseFacetValue[]}>;
 export type BrowseRequestBody=Readonly<{pivot?:string;query?:BrowseNode;sort?:readonly BrowseSortSelection[];limit?:number;cursor?:string;range?:BrowseRange;seek?:BrowseSeek}>;
 
 const hints:readonly string[]=['toggle','select','number-range','date-range','facet-multi-select','text'];
@@ -209,7 +209,8 @@ const shortMonths:readonly string[]=['Jan','Feb','Mar','Apr','May','Jun','Jul','
  * pass through untouched, never fatal. */
 export function formatBrowseAnchor(key:string,sortField:string,noValue=''):string{
  if(!key)return noValue;
- if(sortField==='communityRating'||sortField==='personalRating')return `${key}★`;
+ if(sortField==='personalRating'&&/^\d+$/.test(key))return `${Number(key)/2}★`;
+ if(sortField==='communityRating')return `${key}★`;
  if(sortField==='duration'){
   const minutes=Number(key);
   if(!Number.isFinite(minutes)||minutes<0)return key;
@@ -229,12 +230,13 @@ export function formatBrowseAnchor(key:string,sortField:string,noValue=''):strin
 
 /** The values of one facet. The field asked for and the bound of 200 are exact; a value that cannot be read is left out alone, a repeated one keeps its first appearance, a value without a label is labelled by itself, and a missing count is 0. */
 export function parseBrowseFacets(raw:unknown,expected?:string):BrowseFacetPage{
- if(!obj(raw)||!id(raw.field)||(expected!==undefined&&raw.field!==expected))bad();
+ if(!obj(raw)||!count(raw.total)||!id(raw.field)||(expected!==undefined&&raw.field!==expected))bad();
  const values=firstOfEach('browse','facets',keepReadable('browse','facets',rows(raw.values,200),v=>{
   if(!obj(v)||!id(v.value)||!str(v.label??'',512))bad();
   return {value:v.value,label:(v.label||v.value) as string,count:count(v.count)?v.count:0};
  }),v=>v.value);
- return freeze({field:raw.field,values});
+ if(raw.total<values.length)bad();
+ return freeze({field:raw.field,total:raw.total,values});
 }
 
 /** Validates one node against the published vocabulary, naming the first failure

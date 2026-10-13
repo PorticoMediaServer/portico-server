@@ -215,24 +215,31 @@ func (s *Service) ApplySettings(ctx context.Context, p identity.Principal, c Set
 // version each account for its bytes, because either of them removing the claim
 // must free nothing while the other still holds it.
 type Usage struct {
-	ProfileID        string      `json:"profileId"`
-	ProfileBytes     int64       `json:"profileBytes"`
-	ProfileCount     int         `json:"profileCount"`
-	ServerBytes      int64       `json:"serverBytes"`
-	ServerCount      int         `json:"serverCount"`
-	DistinctBytes    int64       `json:"distinctArtifactBytes"`
-	MaxPreparedBytes int64       `json:"maxPreparedBytes"`
-	RemainingBytes   *int64      `json:"remainingBytes"`
-	RetentionDays    int         `json:"retentionDays"`
-	Profiles         []UsageLine `json:"profiles"`
+	ProfilesNextCursor string      `json:"profilesNextCursor"`
+	ProfileID          string      `json:"profileId"`
+	ProfileBytes       int64       `json:"profileBytes"`
+	ProfileCount       int         `json:"profileCount"`
+	ServerBytes        int64       `json:"serverBytes"`
+	ServerCount        int         `json:"serverCount"`
+	DistinctBytes      int64       `json:"distinctArtifactBytes"`
+	MaxPreparedBytes   int64       `json:"maxPreparedBytes"`
+	RemainingBytes     *int64      `json:"remainingBytes"`
+	RetentionDays      int         `json:"retentionDays"`
+	Profiles           []UsageLine `json:"profiles"`
 }
 
 // UsageLine is one profile's share of the server total. Only an owner reads the
 // whole list; a viewer sees their own line.
 type UsageLine struct {
-	ProfileID string `json:"profileId"`
-	Bytes     int64  `json:"bytes"`
-	Count     int    `json:"count"`
+	ProfileKey  string `json:"profileKey"`
+	Authority   string `json:"authority"`
+	AccountID   string `json:"accountId"`
+	AccountName string `json:"accountName"`
+	ProfileName string `json:"profileName"`
+	StoredBytes int64  `json:"storedBytes"`
+	ProfileID   string `json:"profileId"`
+	Bytes       int64  `json:"bytes"`
+	Count       int    `json:"count"`
 }
 
 // committedStates are the live preparations. A queued claim counts against the
@@ -247,7 +254,13 @@ const committedStates = `('queued','running','ready','paused')`
 const storedClaims = committedStates + ` AND quality<>'original'`
 
 func (s *Service) Usage(ctx context.Context, p identity.Principal, all bool) (Usage, error) {
+	return s.UsagePage(ctx, p, all, "", 256)
+}
+func (s *Service) UsagePage(ctx context.Context, p identity.Principal, all bool, cursor string, limit int) (Usage, error) {
 	out := Usage{ProfileID: p.ProfileID, Profiles: []UsageLine{}}
+	if limit < 1 || limit > 256 || len(cursor) > 1024 {
+		return out, ErrInput
+	}
 	gated3, e := dbwork.BeginSnapshot(ctx, s.db)
 	if e != nil {
 		return out, e
@@ -271,7 +284,7 @@ func (s *Service) Usage(ctx context.Context, p identity.Principal, all bool) (Us
 	out.ServerBytes = bytes.Int64
 	// Distinct artifact bytes is what the disk actually holds: two viewers
 	// claiming one prepared version share its file.
-	if e = tx.QueryRowContext(ctx, `SELECT COALESCE(sum(bytes),0) FROM (SELECT max(bytes_total) AS bytes FROM download_preparations WHERE state='ready' AND artifact_digest!='' GROUP BY artifact_digest)`).Scan(&out.DistinctBytes); e != nil {
+	if e = tx.QueryRowContext(ctx, `SELECT COALESCE(sum(bytes),0) FROM (SELECT max(bytes_total) AS bytes FROM download_preparations WHERE state='ready' AND artifact_kind='prepared' AND artifact_digest!='' GROUP BY artifact_digest)`).Scan(&out.DistinctBytes); e != nil {
 		return out, e
 	}
 	if settings.MaxPreparedBytes > 0 {
@@ -286,15 +299,21 @@ func (s *Service) Usage(ctx context.Context, p identity.Principal, all bool) (Us
 		out.RemainingBytes = &remaining
 	}
 	if all {
-		rows, err := tx.QueryContext(ctx, `SELECT profile_id,COALESCE(sum(bytes_total),0),count(*) FROM download_preparations WHERE state IN `+committedStates+` GROUP BY profile_id ORDER BY profile_id LIMIT 256`)
+		rows, err := tx.QueryContext(ctx, `SELECT d.profile_key,d.authority,d.account_id,d.profile_id,COALESCE(a.username,d.account_id),COALESCE(p.name,d.profile_id),COALESCE(sum(d.bytes_total),0),count(*),COALESCE(sum(CASE WHEN d.quality<>'original' THEN d.bytes_total ELSE 0 END),0)
+ FROM download_preparations d LEFT JOIN accounts a ON a.id=d.account_id AND d.authority='local' LEFT JOIN direct_profiles p ON p.id=d.profile_id AND d.authority='local'
+ WHERE d.state IN `+committedStates+` AND d.profile_key>? GROUP BY d.profile_key ORDER BY d.profile_key LIMIT ?`, cursor, limit+1)
 		if err != nil {
 			return out, err
 		}
 		for rows.Next() {
 			var line UsageLine
-			if err = rows.Scan(&line.ProfileID, &line.Bytes, &line.Count); err != nil {
+			if err = rows.Scan(&line.ProfileKey, &line.Authority, &line.AccountID, &line.ProfileID, &line.AccountName, &line.ProfileName, &line.Bytes, &line.Count, &line.StoredBytes); err != nil {
 				rows.Close()
 				return out, err
+			}
+			if len(out.Profiles) == limit {
+				out.ProfilesNextCursor = out.Profiles[len(out.Profiles)-1].ProfileKey
+				break
 			}
 			out.Profiles = append(out.Profiles, line)
 		}
@@ -304,7 +323,7 @@ func (s *Service) Usage(ctx context.Context, p identity.Principal, all bool) (Us
 			return out, err
 		}
 	} else {
-		out.Profiles = append(out.Profiles, UsageLine{p.ProfileID, out.ProfileBytes, out.ProfileCount})
+		out.Profiles = append(out.Profiles, UsageLine{ProfileKey: key, Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID, Bytes: out.ProfileBytes, Count: out.ProfileCount})
 	}
 	return out, gated3.Commit()
 }
@@ -333,7 +352,7 @@ func storageRoom(tx *sql.Tx, quality string, want int64) error {
 	return nil
 }
 
-const preparationColumns = `id,item_public,library_id,profile_id,title_json,NOT (` + titleGone + `),quality,origin,batch_id,state,reason,artifact_kind,artifact_ref,artifact_digest,artifact_container,bytes_done,bytes_total,estimated,revision,created_ms,updated_ms,started_ms,ready_ms`
+const preparationColumns = `id,source_asset_id,item_public,library_id,profile_id,title_json,NOT (` + titleGone + `),quality,origin,batch_id,state,reason,artifact_kind,artifact_ref,artifact_digest,artifact_container,bytes_done,bytes_total,estimated,revision,created_ms,updated_ms,started_ms,ready_ms`
 
 type row struct {
 	Preparation
@@ -347,7 +366,7 @@ func readPreparation(scan interface{ Scan(...any) error }) (row, error) {
 	var updatedMS, readyMS int64
 	var title string
 	var onServer bool
-	e := scan.Scan(&r.ID, &r.ItemID, &r.LibraryID, &r.ProfileID, &title, &onServer, &r.Quality, &r.Origin, &r.BatchID, &r.State, &r.Reason,
+	e := scan.Scan(&r.ID, &r.VersionID, &r.ItemID, &r.LibraryID, &r.ProfileID, &title, &onServer, &r.Quality, &r.Origin, &r.BatchID, &r.State, &r.Reason,
 		&r.Artifact.Kind, &r.Artifact.Ref, &r.Artifact.SHA256, &r.Artifact.Container,
 		&r.Progress.BytesDone, &r.Progress.BytesTotal, &estimated, &r.Revision, &r.CreatedMS, &updatedMS, &r.StartedMS, &readyMS)
 	if e != nil {

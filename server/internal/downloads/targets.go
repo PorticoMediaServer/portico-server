@@ -53,13 +53,16 @@ const canonicalAudioRung = "1080p"
 // file to hand over, so the title is refused with a reason that says so. This
 // is the one place that choice is made.
 func resolveSource(ctx context.Context, tx *sql.Tx, item string) (source, error) {
+	return resolveVersionSource(ctx, tx, item, "")
+}
+func resolveVersionSource(ctx context.Context, tx *sql.Tx, item, version string) (source, error) {
 	var s source
 	var available int
 	var kindInt int
 	e := tx.QueryRowContext(ctx, `SELECT cl.library_id,e.kind,a.token,a.path,a.size,a.modified_ns,a.container,a.video_codec,a.audio_codec,a.height,a.duration,link.available,
  (SELECT count(DISTINCT p.part_index) FROM catalog_asset_links p WHERE p.entity_id=e.id)
  FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_asset_links link ON link.entity_id=e.id JOIN catalog_assets a ON a.id=link.asset_id
- WHERE e.public_id=pid_blob(?) ORDER BY `+compactcatalog.BestVersionOrder("link", "a")+` LIMIT 1`, item).Scan(&s.Library, &kindInt, &s.Asset, &s.Path, &s.Size, &s.ModifiedNS, &s.Container, &s.VideoCodec, &s.AudioCodec, &s.Height, &s.Duration, &available, &s.Parts)
+ WHERE e.public_id=pid_blob(?) AND (?='' OR a.token=?) ORDER BY `+compactcatalog.BestVersionOrder("link", "a")+` LIMIT 1`, item, version, version).Scan(&s.Library, &kindInt, &s.Asset, &s.Path, &s.Size, &s.ModifiedNS, &s.Container, &s.VideoCodec, &s.AudioCodec, &s.Height, &s.Duration, &available, &s.Parts)
 	if e != nil {
 		return s, e
 	}
@@ -103,7 +106,7 @@ func qualityReason(ctx context.Context, tx *sql.Tx, quality string, found source
 		return ""
 	}
 	versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item)
-	if e == nil && selectableVersion(versions, recipe) != nil {
+	if e == nil && selectableVersionForSource(versions, recipe, found.Asset) != nil {
 		return ""
 	}
 	return ReasonNotOptimized

@@ -14,6 +14,9 @@ import {LoadingGrid} from '../shared/Sections';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {errorText} from '../../app/errors';
 import {useViewerScope} from '../../app/viewer-scope';
+import {useFreshDocument} from '../../app/freshness';
+import {titlesWithPersonalState} from '@core/freshness-hub.ts';
+
 import {useI18n, type I18n} from '../../app/i18n';
 
 type SavedTab = 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history';
@@ -54,6 +57,9 @@ function usePersonalChanges(refresh: () => void) {
   }, [refresh]);
 }
 const requestId = () => Promise.resolve(crypto.randomUUID());
+/** Saved lists show titles from every library with this profile's marks on them. */
+const savedDependencies = Object.freeze([...titlesWithPersonalState()]);
+
 const isPlaylistCard = (e: SavedEntry): e is PlaylistCard => e.kind === 'playlist';
 const isOccurrence = (e: SavedEntry): e is PlaylistOccurrence => e.kind === 'playlist_entry';
 const isMedia = (e: SavedEntry): e is ContentEntry => !isPlaylistCard(e) && !isOccurrence(e);
@@ -69,6 +75,8 @@ export function useSaved(route: SavedRoute | null) {
     last.current = {key, service};
     try { void service.select(route).catch(() => {}); } catch {}
   }, [service, key, route]);
+  // The list on screen is read again in place when this profile's saved titles, watched state or the libraries behind them moved.
+  useFreshDocument(savedDependencies, context => service.revalidate(context), () => service.getSnapshot().phase === 'ready');
   return {service, snapshot, refresh: useCallback(() => void service.refresh().catch(() => {}), [service]), retry: useCallback(() => void service.retry().catch(() => {}), [service]), next: useCallback((id: string) => void service.next(id).catch(() => {}), [service]), previous: useCallback(() => void service.previous().catch(() => {}), [service])};
 }
 function usePersonal(route: SavedRoute | null) {
@@ -82,6 +90,7 @@ function usePersonal(route: SavedRoute | null) {
     last.current = {key, service};
     try { void service.select(route).catch(() => {}); } catch {}
   }, [service, key, route]);
+  useFreshDocument(savedDependencies, context => service.revalidate(context), () => !!service.getSnapshot().viewerFence);
   return {service, snapshot, refresh: useCallback(() => void service.refresh().catch(() => {}), [service]), next: useCallback(() => void service.next().catch(() => {}), [service]), previous: useCallback(() => void service.previous().catch(() => {}), [service])};
 }
 

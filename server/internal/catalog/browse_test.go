@@ -56,7 +56,7 @@ func browseFixture(t *testing.T) (*sql.DB, *Service, catalogtest.Names) {
 	for _, attribute := range [][3]string{{"m1", "contentRating", "PG"}, {"m2", "contentRating", "R"}, {"m1", "studio", "Example Pictures"}, {"m2", "tag", "rewatch"}} {
 		c.Attributes(names[attribute[0]].ID, attribute[1], attribute[2])
 	}
-	c.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at) VALUES('p',?,0,1,4.5,1,0,''),('p',?,0,0,NULL,1,1,'2026-09-10T00:00:00Z')`, names["m1"].ID, names["m2"].ID)
+	c.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,rating,revision,watched,last_played_at) VALUES('p',?,0,1,9,1,0,''),('p',?,0,0,NULL,1,1,'2026-09-10T00:00:00Z')`, names["m1"].ID, names["m2"].ID)
 	c.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES('p',?,1,'2026-09-10T00:00:00.000000000Z')`, names["m2"].ID)
 	c.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,completed,playback_id) VALUES('p',?,?,0,0,'pb')`, names["m3"].ID, 10000)
 	c.Drain()
@@ -109,7 +109,7 @@ func TestBrowseCompilesEveryOperator(t *testing.T) {
 		{"availability", `{"field":"availability","operator":"equals","value":"available"}`, []string{"m1", "m2", "m5"}},
 		{"unavailable", `{"field":"availability","operator":"equals","value":"unavailable"}`, []string{"m3", "m4"}},
 		{"resolution", `{"field":"resolution","operator":"equals","value":"4k"}`, []string{"m2"}},
-		{"duration", `{"field":"durationSeconds","operator":"at-least","value":200}`, []string{"m2", "m3"}},
+		{"duration", `{"field":"durationMs","operator":"at-least","value":200000}`, []string{"m2", "m3"}},
 		{"favorite", `{"field":"favorite","operator":"equals","value":true}`, []string{"m1"}},
 		{"not favorite", `{"field":"favorite","operator":"equals","value":false}`, []string{"m2", "m3", "m4", "m5"}},
 		{"played", `{"field":"playState","operator":"equals","value":"played"}`, []string{"m2"}},
