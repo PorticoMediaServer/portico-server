@@ -83,7 +83,9 @@ export class ChromeDriver {
     mkdirSync(path.dirname(file), {recursive: true}); writeFileSync(file, Buffer.from(data, 'base64')); return file;
   }
   async clickText(text, selector = 'button,a,[role="menuitem"],[role="tab"],[role="radio"]') {
-    return this.evaluate(`(() => {const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.getClientRects().length && (e.innerText.trim() === ${JSON.stringify(text)} || e.getAttribute('aria-label') === ${JSON.stringify(text)})); if (!el) throw new Error('Control not found: ' + ${JSON.stringify(text)}); el.click(); return true;})()`);
+    const point = await this.evaluate(`(() => {const el = [...document.querySelectorAll(${JSON.stringify(selector)})].find(e => e.getClientRects().length && (e.innerText.trim() === ${JSON.stringify(text)} || e.getAttribute('aria-label') === ${JSON.stringify(text)})); if (!el) throw new Error('Control not found: ' + ${JSON.stringify(text)}); el.scrollIntoView({block:'center'}); const r=el.getBoundingClientRect(); return {x:r.x+r.width/2,y:r.y+r.height/2};})()`);
+    await this.send('Input.dispatchMouseEvent', {type: 'mousePressed', ...point, button: 'left', clickCount: 1});
+    await this.send('Input.dispatchMouseEvent', {type: 'mouseReleased', ...point, button: 'left', clickCount: 1});
   }
   async fill(selector, value) {
     return this.evaluate(`(() => {const el = document.querySelector(${JSON.stringify(selector)}); if (!el) throw new Error('Input not found'); const proto = el.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(el, ${JSON.stringify(value)}); el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); return true;})()`);

@@ -1,7 +1,10 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"crypto/rand"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
@@ -10,6 +13,11 @@ import (
 	"strings"
 	"time"
 )
+
+const webContentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com/cv/js/sender/ https://www.gstatic.com/eureka/clank/ https://www.gstatic.com/cast/sdk/libs/sender/; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'"
+
+const styleNoncePlaceholder = "__PORTICO_STYLE_NONCE__"
+const maximumWebDocumentBytes = 1 << 20
 
 var apiNamespace = regexp.MustCompile(`^/(?:v[0-9]+|health)(?:/|$)`)
 
@@ -93,6 +101,30 @@ func (d Dependencies) installationRoutes(mux *http.ServeMux) {
 		w.Header().Set("Cache-Control", "no-cache")
 		if contentHashedWebAsset(name) {
 			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		}
+		if name == "index.html" {
+			// The build leaves one nonce slot for the dialog library's scroll-lock stylesheet.
+			// A fresh nonce authorizes that sheet without allowing arbitrary inline styles.
+			if info.Size() > maximumWebDocumentBytes {
+				policyError(w, "web_unavailable")
+				return
+			}
+			document, err := io.ReadAll(io.LimitReader(f, maximumWebDocumentBytes+1))
+			if err != nil || len(document) > maximumWebDocumentBytes {
+				policyError(w, "web_unavailable")
+				return
+			}
+			if bytes.Contains(document, []byte(styleNoncePlaceholder)) {
+				nonce := rand.Text()
+				document = bytes.ReplaceAll(document, []byte(styleNoncePlaceholder), []byte(nonce))
+				w.Header().Set("Content-Security-Policy", strings.Replace(webContentSecurityPolicy, "style-src 'self'", "style-src 'self' 'nonce-"+nonce+"'", 1))
+				// A 304 could combine a cached document with a different response's nonce.
+				w.Header().Set("Cache-Control", "no-store")
+				http.ServeContent(w, r, "index.html", time.Time{}, bytes.NewReader(document))
+				return
+			}
+			http.ServeContent(w, r, "index.html", info.ModTime(), bytes.NewReader(document))
+			return
 		}
 		http.ServeContent(w, r, path.Base(name), info.ModTime(), f)
 	})

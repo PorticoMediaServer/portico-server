@@ -104,3 +104,48 @@ func TestUnversionedWebAssetsAreNotNamedLikeHashedOnes(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestWebDocumentAuthorizesOnlyItsOwnScrollLockStyles(t *testing.T) {
+	root := t.TempDir()
+	document := `<html><head><meta name="portico-style-nonce" content="__PORTICO_STYLE_NONCE__"></head><body>Portico</body></html>`
+	if err := os.WriteFile(filepath.Join(root, "index.html"), []byte(document), 0600); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	Dependencies{WebDirectory: root}.installationRoutes(mux)
+	seen := make(map[string]bool)
+	for _, target := range []string{"/", "/settings/server-integrations", "/index.html"} {
+		r := httptest.NewRequest("GET", target, nil)
+		r.Header.Set("Accept", "text/html")
+		r.Header.Set("If-Modified-Since", "Tue, 13 Oct 2099 12:00:00 GMT")
+		w := httptest.NewRecorder()
+		mux.ServeHTTP(w, r)
+		if w.Code != 200 {
+			t.Fatalf("%s: %d", target, w.Code)
+		}
+		body := w.Body.String()
+		start := strings.Index(body, `content="`) + len(`content="`)
+		end := strings.Index(body[start:], `"`)
+		nonce := body[start : start+end]
+		if len(nonce) < 26 || nonce == styleNoncePlaceholder || seen[nonce] {
+			t.Fatalf("nonce is missing or reused: %q", nonce)
+		}
+		seen[nonce] = true
+		policy := w.Header().Get("Content-Security-Policy")
+		if !strings.Contains(policy, "style-src 'self' 'nonce-"+nonce+"'") || strings.Contains(policy, "'unsafe-inline'") || strings.Contains(policy, "'unsafe-eval'") {
+			t.Fatalf("unsafe or mismatched policy: %s", policy)
+		}
+		if !strings.Contains(policy, "'wasm-unsafe-eval'") || !strings.Contains(policy, "frame-ancestors 'none'") {
+			t.Fatal("lost existing protections")
+		}
+		if w.Header().Get("Cache-Control") != "no-store" || w.Header().Get("Last-Modified") != "" {
+			t.Fatal("nonce document can be reused with a different policy")
+		}
+	}
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("HEAD", "/", nil)
+	mux.ServeHTTP(w, r)
+	if w.Code != 200 || w.Body.Len() != 0 || w.Header().Get("Content-Length") == "" {
+		t.Fatal("HEAD must return headers without the document")
+	}
+}
