@@ -66,6 +66,9 @@ func TestGridValidatorSurvivesTokenRotationAndUnrelatedWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	before := d.gridTag(req, p, 24*time.Hour)
+	if before == "" {
+		t.Fatal("validator was disabled")
+	}
 	p.Hash = "renewed"
 	if _, err := d.DB.Exec(`UPDATE library_revisions SET revision=revision+1 WHERE library_id='other'`); err != nil {
 		t.Fatal(err)
@@ -78,6 +81,13 @@ func TestGridValidatorSurvivesTokenRotationAndUnrelatedWrites(t *testing.T) {
 	}
 	if after := d.gridTag(req, p, 24*time.Hour); before == after {
 		t.Fatal("affected resource kept validator")
+	}
+	before = d.gridTag(req, p, 24*time.Hour)
+	if _, err := d.DB.Exec(`INSERT INTO profile_restrictions(profile_id,maximum_age) VALUES(?,1) ON CONFLICT(profile_id) DO UPDATE SET maximum_age=1`, p.ProfileID); err != nil {
+		t.Fatal(err)
+	}
+	if after := d.gridTag(req, p, 24*time.Hour); before == after {
+		t.Fatal("changed restrictions kept validator")
 	}
 }
 

@@ -573,8 +573,8 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// A surviving anchor re-locates the viewport after a publication rather than
 	// throwing the reader back to the top of the library: the anchor's rank in a
 	// counted order is its block's running total plus a count inside the block.
-	// Shapes without blocks answer ErrStaleContinuation without ranking
-	// anything; a current revision ignores the anchor entirely.
+	// Shapes without blocks retain the requested position; a current revision
+	// ignores the anchor entirely.
 	if request.Range != nil && request.Range.AnchorID != "" && stale {
 		primary, _ := shape.primary()
 		if shape.positional() && !primary.Profile && primary.Ordering >= 0 {
@@ -724,7 +724,7 @@ func (s *Service) browseProjection(profile string, rows []browseRow) ([]ContentE
 		if isItemEntity(row.kind) {
 			item, ok := media[row.id]
 			if !ok {
-				return nil, ErrStaleContinuation
+				continue
 			}
 			entry := contentItem(item)
 			if item.Year > 0 {

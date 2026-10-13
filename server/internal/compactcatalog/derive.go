@@ -43,7 +43,8 @@ const (
 // BatchLimit is the Worker's units per transaction.
 const BatchLimit = 16
 
-// ErrBuilding is what a reader of a derived domain answers while it rebuilds.
+// ErrBuilding is an internal signal for an unpublished restriction class.
+// Browse documents consume it as an empty first generation.
 var ErrBuilding = errors.New("library visibility is unavailable")
 
 // Key is one queued unit: an entity (or asset, as the domain defines) and the

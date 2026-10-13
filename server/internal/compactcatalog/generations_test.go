@@ -76,9 +76,13 @@ func TestSearchGenerationsSwitchAndRebuildAgain(t *testing.T) {
 }
 
 func TestRetentionKeepsReferencedTerms(t *testing.T) {
-	db, _ := failingFixture(t, "retention.sqlite")
+	db, show := failingFixture(t, "retention.sqlite")
 	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
-		_, err := tx.ExecContext(ctx, `INSERT INTO catalog_terms(vocab,key,label) VALUES(1,'unused','Unused')`)
+		_, err := tx.ExecContext(ctx, `INSERT INTO catalog_terms(vocab,key,label) VALUES(1,'unused','Unused'),(1,'used','Used')`)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `INSERT INTO catalog_entity_terms(entity_id,term_id) SELECT ?,id FROM catalog_terms WHERE vocab=1 AND key='used'`, show)
 		return err
 	})
 	for i := 0; i < 50; i++ {
@@ -94,6 +98,9 @@ func TestRetentionKeepsReferencedTerms(t *testing.T) {
 	}
 	if n := cc1Scalar(t, db, `SELECT count(*) FROM catalog_terms WHERE key='unused'`); n != 0 {
 		t.Fatal("unused vocabulary retained")
+	}
+	if n := cc1Scalar(t, db, `SELECT count(*) FROM catalog_terms WHERE key='used'`); n != 1 {
+		t.Fatal("referenced vocabulary removed")
 	}
 }
 
@@ -153,5 +160,24 @@ func TestRetainedBrowseRowsKeepIndexedOrder(t *testing.T) {
 				t.Fatalf("retained generation did not use its order index: %v", plans)
 			}
 		})
+	}
+}
+
+func TestGenerationRetainsTheOriginalRowOnUpsert(t *testing.T) {
+	db, show := failingFixture(t, "generation-upsert.sqlite")
+	w := NewWorker(db)
+	if err := w.Rebuild(context.Background(), DomainBrowseRows); err != nil {
+		t.Fatal(err)
+	}
+	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		_, err := tx.ExecContext(ctx, `INSERT INTO catalog_browse_rows SELECT * FROM catalog_browse_rows WHERE entity_id=? ON CONFLICT(entity_id) DO UPDATE SET title='Updated'`, show)
+		return err
+	})
+	var title string
+	if err := db.QueryRow(`SELECT title FROM catalog_browse_rows_serving WHERE entity_id=?`, show).Scan(&title); err != nil || title != "Show" {
+		t.Fatalf("upsert hid the original row: %q %v", title, err)
+	}
+	if n := cc1Scalar(t, db, `SELECT count(*) FROM catalog_browse_rows_serving`); n != cc1Scalar(t, db, `SELECT count(*) FROM catalog_browse_rows`) {
+		t.Fatal("upsert changed the serving membership")
 	}
 }

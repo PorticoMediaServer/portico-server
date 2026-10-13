@@ -10,8 +10,7 @@ import (
 )
 
 // A queued change (a scan) doesn't fail browse: the page serves the last
-// published generation and the change appears once it publishes. Only a
-// projection rebuild answers building.
+// published generation and the change appears once it publishes.
 func TestCompactBrowseServesThePublishedGenerationWhileChangesQueue(t *testing.T) {
 	db, service, names := tl10BrowseFixture(t)
 	c := catalogtest.New(t, db)
@@ -111,6 +110,44 @@ func TestCompactBrowseStaleClassNeverListsANowHiddenTitle(t *testing.T) {
 	for _, entry := range after.Entries {
 		if entry.ID == names["kids"].Public {
 			t.Fatal("updated adult title remained visible after class refresh")
+		}
+	}
+}
+
+func TestPublishedRestrictedBrowseSurvivesAncillaryBackfill(t *testing.T) {
+	db, service, _ := tl10RestrictionFixture(t)
+	c := catalogtest.New(t, db)
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}, Restrictions: restrictionOf(ceiling(13), true)}
+	c.Drain()
+	if err := service.RebuildVisibilityClass(context.Background(), "a", viewer.EffectiveRestrictions()); err != nil {
+		t.Fatal(err)
+	}
+	c.Drain()
+	for _, table := range []string{"catalog_visibility_sort_state", "catalog_personal_sort_state", "catalog_movie_category_visible_state", "catalog_collection_visible_state"} {
+		if _, err := db.Exec(`UPDATE ` + table + ` SET backfill_done=0 WHERE id=1`); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, field := range []string{"added", "personalRating"} {
+		page, err := service.BrowseEntities(viewer, BrowseRequest{Library: "a", Pivot: "movies", Limit: 20, Sort: []BrowseSortSelection{{Field: field, Direction: "desc"}}})
+		if err != nil || len(page.Entries) == 0 {
+			t.Fatalf("%s discarded published rows: %+v %v", field, page, err)
+		}
+	}
+	for _, view := range []string{"browse", "categories"} {
+		page, err := service.Content(ContentRequest{Viewer: viewer, Library: "a", View: view, Limit: 20})
+		if err != nil || len(page.Sections) == 0 {
+			t.Fatalf("%s discarded its published document: %+v %v", view, page, err)
+		}
+	}
+}
+
+func TestContentWithoutARestrictionClassAnswersQuietly(t *testing.T) {
+	_, service, _ := tl10RestrictionFixture(t)
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}, Restrictions: restrictionOf(ceiling(1), true)}
+	for _, view := range []string{"browse", "categories", "collections"} {
+		if _, err := service.Content(ContentRequest{Viewer: viewer, Library: "a", View: view, Limit: 20}); err != nil {
+			t.Fatalf("%s returned preparation failure: %v", view, err)
 		}
 	}
 }

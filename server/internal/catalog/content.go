@@ -501,6 +501,9 @@ func (s *Service) Content(request ContentRequest) (ContentEnvelope, error) {
 		return ContentEnvelope{}, err
 	}
 	out, err := consistentRead(request.Cursor == "", func() (ContentEnvelope, error) { return s.contentOnce(request) })
+	if errors.Is(err, ErrVisibilityBuilding) {
+		return out, nil
+	}
 	if err != nil {
 		return out, err
 	}

@@ -28,12 +28,13 @@ const gridTagBucket = 5 * time.Minute
 // read. extra folds any further facts the caller's bytes depend on.
 func (d Dependencies) gridTag(r *http.Request, p identity.Principal, bucket time.Duration, extra ...string) string {
 	library := r.PathValue("id")
-	var content, personal, settings int64
+	var content, personal, settings, policy int64
+	contentFence := ""
 	// Routes naming an entity resolve its own library; a library route already
 	// has that public library id. Global surfaces include the catalogue sum.
 	if d.DB != nil {
 		var resolved string
-		if err := d.DB.QueryRowContext(r.Context(), `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE pid(e.public_id)=?`, library).Scan(&resolved); err == nil {
+		if err := d.DB.QueryRowContext(r.Context(), `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, library).Scan(&resolved); err == nil {
 			library = resolved
 		}
 		if err := d.DB.QueryRowContext(r.Context(), `SELECT COALESCE(sum(r.revision),0),COALESCE(sum(v.revision),0) FROM library_revisions r LEFT JOIN viewer_revisions v ON v.library_id=r.library_id AND v.profile_id=? WHERE r.library_id=? OR NOT EXISTS(SELECT 1 FROM library_revisions WHERE library_id=?)`, identity.PersonalKey(p.Viewer), library, library).Scan(&content, &personal); err != nil {
@@ -42,8 +43,20 @@ func (d Dependencies) gridTag(r *http.Request, p identity.Principal, bucket time
 		if err := d.DB.QueryRowContext(r.Context(), `SELECT COALESCE((SELECT revision FROM console_documents WHERE scope='server'),0)`).Scan(&settings); err != nil {
 			return ""
 		}
+		if d.Identity != nil {
+			var err error
+			_, contentFence, err = d.viewerRestrictions(r, p)
+			if err != nil {
+				return ""
+			}
+			if p.Authority != "local" {
+				if err = d.DB.QueryRowContext(r.Context(), `SELECT COALESCE((SELECT revision FROM policy WHERE server_id=?),0)`, d.Identity.ID()).Scan(&policy); err != nil {
+					return ""
+				}
+			}
+		}
 	}
-	parts := []string{"grid", gridProcessNonce, strconv.FormatInt(content, 10), strconv.FormatInt(personal, 10), strconv.FormatInt(settings, 10), r.URL.Path, canonicalQuery(r.URL.Query()), viewerScope(p), strconv.Itoa(p.Epoch), identity.PersonalKey(p.Viewer), strconv.FormatInt(time.Now().UTC().UnixNano()/int64(bucket), 10)}
+	parts := []string{"grid", gridProcessNonce, strconv.FormatInt(content, 10), strconv.FormatInt(personal, 10), strconv.FormatInt(settings, 10), strconv.FormatInt(policy, 10), contentFence, r.URL.Path, canonicalQuery(r.URL.Query()), viewerScope(p), strconv.Itoa(p.Epoch), identity.PersonalKey(p.Viewer), strconv.FormatInt(time.Now().UTC().UnixNano()/int64(bucket), 10)}
 	return responseTag(append(parts, extra...)...)
 }
 

@@ -8,8 +8,7 @@ import (
 )
 
 // compactMovieCategories reads maintained totals and title-ordered poster
-// samples. A category generation is published as a whole: stale source keys
-// make the request retry instead of mixing old and new counts.
+// samples. The serving generation stays readable while source work is queued.
 func (s *Service) compactMovieCategories(library string) ([]Category, error) {
 	if err := s.compactProjectionReady(18, 27); err != nil {
 		return nil, err
@@ -24,14 +23,6 @@ func (s *Service) compactMovieCategories(library string) ([]Category, error) {
 func (s *Service) compactMovieCategoriesForClass(library, classKey string, generation int64) ([]Category, error) {
 	if err := s.compactProjectionReady(18, 19, 20, 27); err != nil {
 		return nil, err
-	}
-	var pending bool
-	if err := s.read().QueryRow(`SELECT (SELECT backfill_done=0 FROM catalog_movie_category_visible_state WHERE id=1)
-`).Scan(&pending); err != nil {
-		return nil, err
-	}
-	if pending {
-		return nil, ErrVisibilityBuilding
 	}
 	libraryID, classID, err := s.currentCategoryClass(library, classKey, generation)
 	if err != nil {
@@ -141,7 +132,7 @@ func (s *Service) compactFilteredMovieCategories(r ContentRequest) ([]Category, 
 			return nil, err
 		}
 		if !ready {
-			return nil, ErrVisibilityBuilding
+			return []Category{}, nil
 		}
 		if _, _, err := s.currentCategoryClass(r.Library, key, generation); err != nil {
 			return nil, err

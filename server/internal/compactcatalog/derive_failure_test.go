@@ -208,7 +208,7 @@ func TestSetAsideIDsTakeTurns(t *testing.T) {
 }
 
 // A rebuild skips a failed title, finishes, and retries that title later.
-func TestStalledRebuildStaysRebuildingWhileOtherWorkContinues(t *testing.T) {
+func TestPoisonRebuildFinishesWhileOtherWorkContinues(t *testing.T) {
 	db, show := failingFixture(t, "failing-rebuild.sqlite")
 	f := registerFailingDomain(t, []int64{1, 2, 3, 4, 5}, 3)
 	clock := &steppedClock{at: time.Unix(1_800_000_000, 0)}
@@ -219,7 +219,7 @@ func TestStalledRebuildStaysRebuildingWhileOtherWorkContinues(t *testing.T) {
 		return cc1Scalar(t, db, `SELECT rebuilding FROM catalog_derivations WHERE domain=?`, failingDomain)
 	}
 	if rebuilding() != 0 || CheckReadiness(context.Background(), db, failingDomain) != nil {
-		t.Fatal("a rebuild that could not derive one of its ids was reported ready")
+		t.Fatal("a failed title prevented rebuild publication")
 	}
 	if !f.done(1) || !f.done(2) || !f.done(4) || !f.done(5) {
 		t.Fatalf("the rebuild went past the id it could not derive: %v", f.finished)
@@ -239,7 +239,7 @@ func TestStalledRebuildStaysRebuildingWhileOtherWorkContinues(t *testing.T) {
 		t.Fatal("an id queued in the rebuilding domain waited behind the stalled rebuild")
 	}
 	if rebuilding() != 0 {
-		t.Fatal("queued work finished the stalled rebuild")
+		t.Fatal("queued work restarted a completed rebuild")
 	}
 	f.recover(3)
 	for i := 0; i < 6 && !f.done(3); i++ {
