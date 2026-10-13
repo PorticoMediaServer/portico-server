@@ -14,6 +14,8 @@ function stateLabel(t: I18n['t'], state: Group['state']): string {
     case 'lobby': return t('web.together.state.lobby');
     case 'preparing': return t('web.together.state.preparing');
     case 'ready': return t('web.together.state.ready');
+    // The group is holding for someone to catch up: everything stays on screen, and Play is still the go-ahead.
+    case 'waiting': return t('web.together.state.waiting');
     case 'playing': case 'degraded': return t('web.together.state.playing');
     case 'paused': return t('web.downloads.state.paused');
     case 'host-reconnecting-playing': case 'host-reconnecting-paused': return t('web.together.state.hostReconnecting');
@@ -171,8 +173,9 @@ function Room() {
               <Badge tone={playing ? 'healthy' : 'neutral'}>{stateLabel(t, group.state)}</Badge>
               {group.timeline.itemId ? <Text variant="caption" tone="tertiary" style={{fontVariantNumeric: 'tabular-nums'}}>{now?.duration ? t('web.together.positionOf', {position: clock(position), duration: clock(now.duration)}) : clock(position)}</Text> : null}
             </div>
-            <Text variant="title" clamp={2}>{group.timeline.itemId ? (now === null ? t('web.together.hiddenTitle') : now?.title ?? t('web.together.loadingTitle')) : t('web.together.nothingChosen')}</Text>
-            <Text variant="caption" tone="tertiary">{group.timeline.itemId ? readinessLine(t, group) : can.canManageQueue ? t('web.together.pickHelp') : t('web.together.hostPicks')}</Text>
+            {/* A title this profile may not see arrives with no id, though the queue has a current entry: that is "something you can't see", not "nothing chosen". */}
+            <Text variant="title" clamp={2}>{group.timeline.itemId ? (now === null ? t('web.together.hiddenTitle') : now?.title ?? t('web.together.loadingTitle')) : group.timeline.currentEntryId ? t('web.together.hiddenTitle') : t('web.together.nothingChosen')}</Text>
+            <Text variant="caption" tone="tertiary">{group.timeline.itemId || group.timeline.currentEntryId ? readinessLine(t, group) : can.canManageQueue ? t('web.together.pickHelp') : t('web.together.hostPicks')}</Text>
           </div>
           <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
             {can.canControl && group.timeline.itemId ? <Button variant="primary" icon={playing ? 'pause' : 'play'} label={playing ? t('web.together.pauseAll') : group.readiness.aggregate === 'ready' ? t('web.together.playAll') : t('web.together.playAnyway')} disabled={state.busy} onClick={() => void service.transport(playing ? 'pause' : 'play')} /> : null}
@@ -222,9 +225,10 @@ function MemberRow({member, mine, canPromote, onPromote}: {member: GroupMember; 
   return (
     <div style={{display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderTop: '1px solid var(--line-soft)'}}>
       {/* FEAT-10: every member gets an avatar (their initial). */}
-      <div style={{width: 32, flexShrink: 0}}><Artwork shape="circle" initial={member.displayName.trim()[0]?.toUpperCase()} icon="person" alt="" /></div>
+      {/* Someone who keeps their viewing private is named as that and nothing else: no profile name, no initial. */}
+      <div style={{width: 32, flexShrink: 0}}><Artwork shape="circle" initial={member.private && !mine ? undefined : member.displayName.trim()[0]?.toUpperCase()} icon="person" alt="" /></div>
       <div style={{flex: 1, minWidth: 0}}>
-        <Text variant="bodyStrong" clamp={1}>{mine ? t('web.together.you', {name: member.displayName}) : member.displayName}</Text>
+        <Text variant="bodyStrong" clamp={1}>{mine ? t('web.together.you', {name: member.displayName}) : member.private ? t('together.privateViewer') : member.displayName}</Text>
         <Text variant="caption" tone="tertiary">{member.role === 'host' ? t('web.together.hostStatus', {status}) : status}</Text>
       </div>
       {canPromote ? <Button size="sm" variant="ghost" label={t('web.together.makeHost')} onClick={onPromote} /> : null}
