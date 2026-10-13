@@ -212,6 +212,7 @@ export class SavedService {
   /** Q7: the last failed command, kept for explicit retryMutation with the same
    * idempotency key. Failed commands are removed from `commands` so later
    * commands proceed; this slot preserves the operation for a deliberate retry. */
+  private staleRetried = false;
   private lastFailure?: {intent: SavedIntent; operationId?: string; body?: Record<string, unknown>; orderRevision?: number; kind: 'retry-required'|'conflict'};
  constructor(options: { api: SavedApi; scope: SavedScope; requestId: () => Promise<string>; timeoutMs?: number }) {
   this.api = options.api; this.bound = scope(options.scope); this.requestId = options.requestId; this.timeoutMs = options.timeoutMs ?? 15000;
@@ -234,6 +235,39 @@ export class SavedService {
  }
  refresh(): Promise<void> { this.active(); this.history = []; return this.read(null); }
  retry(): Promise<void> { this.active(); return this.state.phase === 'refresh-required' ? this.refresh() : this.read(this.retryCursor, this.retryMove); }
+ /**
+  * Read the page that is showing again without touching `phase`, and show the answer in place.
+  * A failed read rejects and changes nothing. Nothing is read while a change made here is still
+  * on its way to the server.
+  */
+ async revalidate(context?: { signal?: AbortSignal; settle?: () => Promise<void> }): Promise<void> {
+  this.active(); const selected = this.state.route, cursor = this.state.pagination.cursor;
+  if (!selected || this.state.phase !== 'ready' || !this.state.projection || this.commands.length || ['collections','views','history','resource'].includes(selected.view)) return;
+  const controller = new AbortController(), stop = () => controller.abort(); this.controllers.add(controller);
+  context?.signal?.addEventListener('abort', stop, { once: true });
+  const generation = this.generation, read = this.readGeneration, api = this.api, bound = this.bound;
+  try {
+   const params = new URLSearchParams({ limit: '40' }); if (cursor) params.set('cursor', cursor);
+   let path: string;
+   if (selected.view === 'playlist') path = '/v1/playlists/' + encodeURIComponent(selected.playlistId) + '/content';
+   else { path = '/v1/content'; params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) params.set('filter', selected.filter); }
+   const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<unknown>('/v1/playlists/' + encodeURIComponent(selected.playlistId), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
+   if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
+   const parsed = projection(raw, bound, selected), playlist = selected.view === 'playlist' ? resource(rawResource, bound, selected.playlistId) : null;
+   // Two reads that disagree with each other, or one older than a change confirmed here, are not shown; the next hint reads again.
+   if (playlist && (playlist.viewerFence !== parsed.scope.viewerFence || playlist.revision !== parsed.playlistRevision || this.state.lastReceipt?.playlistId === playlist.id && playlist.revision < this.state.lastReceipt.revision)) return;
+   await context?.settle?.();
+   if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted || this.commands.length || this.state.phase !== 'ready') return;
+   // A playlist whose order moved elsewhere: the order loaded for arranging it here no longer describes it.
+   const moved = !!playlist && !!this.state.playlist && playlist.revision !== this.state.playlist.revision;
+   this.publish({ projection: parsed, playlist, ...(moved ? { order: null, orderLoading: false, orderError: null } : {}), pagination: { ...this.state.pagination, next: parsed.sections.filter(s => s.nextCursor).map(s => ({ sectionId: s.id, cursor: s.nextCursor })) } });
+  } catch (error) {
+   if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted) return;
+   const e = errorInfo(error);
+   if (['unauthorized','forbidden','not_found','playlist_forbidden','playlist_not_found','policy_expired','stale_continuation','invalid_cursor'].includes(e.code)) { await this.refresh(); return; }
+   throw error;
+  } finally { this.controllers.delete(controller); context?.signal?.removeEventListener('abort', stop); }
+ }
  next(sectionId: string): Promise<void> { this.active(); if (this.state.phase !== 'ready') return Promise.resolve(); const next = this.state.pagination.next.find(n => n.sectionId === sectionId); if (!next) return Promise.resolve(); return this.read(next.cursor, 'next'); }
  previous(): Promise<void> { this.active(); if (this.state.phase !== 'ready' || !this.history.length) return Promise.resolve(); return this.read(this.history.at(-1)!, 'previous'); }
  /** Position for the connected collection/view/history adapter, owned by existing navigation frames. */
@@ -265,12 +299,15 @@ export class SavedService {
     const parsed = projection(raw, bound, selected), playlist = selected.view === 'playlist' ? resource(rawResource, bound, selected.playlistId) : null;
     if (playlist && this.state.lastReceipt?.playlistId === playlist.id && playlist.revision < this.state.lastReceipt.revision) throw new Failure('stale_continuation', 'The server returned a playlist older than the confirmed change. Refresh again.', true);
     if (playlist && (playlist.viewerFence !== parsed.scope.viewerFence || playlist.revision !== parsed.playlistRevision)) throw new Failure('stale_continuation', 'The playlist changed while loading. Refresh its current order.', true);
-    if (cursor && previous && (JSON.stringify(parsed.revision) !== JSON.stringify(previous.revision) || parsed.scope.viewerFence !== previous.scope.viewerFence)) throw new Failure('stale_continuation', 'Saved results changed. Refresh the first page.', true);
+    // A later page read after the list moved is still a valid page; only another viewer's answer is refused.
+    if (cursor && previous && parsed.scope.viewerFence !== previous.scope.viewerFence) throw new Failure('stale_continuation', 'Saved results changed. Refresh the first page.', true);
     if (move === 'next') { this.history.push(oldCursor); if (this.history.length > 64) this.history.shift(); } else if (move === 'previous') this.history.pop();
     this.publish({ phase: 'ready', projection: parsed, playlist, pagination: { cursor, history: [...this.history], canPrevious: this.history.length > 0, next: parsed.sections.filter(s => s.nextCursor).map(s => ({ sectionId: s.id, cursor: s.nextCursor })) } });
    } catch (error) {
     if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
     const e = errorInfo(error), denied = ['unauthorized','forbidden','not_found','playlist_forbidden','playlist_not_found','policy_expired'].includes(e.code);
+    // A page the server no longer honours, or two reads that caught the list mid-change: read the list again from its first page, keeping what is shown until it arrives.
+    if ((e.code === 'stale_continuation' || cursor !== null && e.code === 'invalid_cursor') && (cursor !== null || !this.staleRetried)) { this.staleRetried = cursor === null; this.history = []; this.requestKey = ''; await this.read(null); this.staleRetried = false; return; }
     this.publish({ phase: e.code === 'stale_continuation' || cursor !== null && e.code === 'invalid_cursor' ? 'refresh-required' : 'error', error: e, ...(denied ? { projection: null, playlist: null, candidates: null } : {}) });
    }
   })(); this.readPromise = task; return task;

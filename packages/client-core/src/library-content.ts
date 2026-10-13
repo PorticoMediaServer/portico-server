@@ -74,6 +74,12 @@ export type LibraryContentSnapshot = Readonly<{
   sections: readonly ContentSection[];
   pagination: Readonly<{ cursor: string | null; canPrevious: boolean; next: readonly Readonly<{ sectionId: string; cursor: string }>[] }>;
   error: Readonly<{ code: string; message: string; retryable: boolean }> | null;
+  /**
+   * The first page as the server has it now, read again quietly while the screen was open
+   * (`revalidate`). `serial` changes with each such read. A screen that has appended later pages
+   * merges this into what it shows (`mergeRevalidatedList`) instead of starting over.
+   */
+  head?: Readonly<{ serial: number; sections: readonly ContentSection[] }>;
 }>;
 const views: readonly string[] = ['discover','browse','collections','categories','show','season','artist','album','book','collection','releases','songs','authors','series','author','book_series','disc'];
 const entityViews = new Set(['show','season','artist','album','book','collection','author','book_series','disc']);
@@ -293,6 +299,8 @@ export class LibraryContentService {
   private history: Page[] = [];
   private current: Page = { cursor: null };
   private disposed = false;
+  private quiet?: AbortController;
+  private headSerial = 0;
   private snapshot: LibraryContentSnapshot;
   constructor(options: { api: LibraryContentApi; scope: ContentScope; pageSize?: number; timeoutMs?: number }) {
     this.api = options.api; this.bound = scope(options.scope); this.pageSize = options.pageSize ?? 40; this.timeoutMs = options.timeoutMs ?? 15_000;
@@ -312,7 +320,47 @@ export class LibraryContentService {
   }
   /** Explicit refresh always restarts the first page, including after stale_continuation. */
   refresh(): Promise<void> { this.assertActive(); return this.snapshot.route ? this.select(this.snapshot.route) : Promise.resolve(); }
-  retry(): Promise<void> { this.assertActive(); if (this.snapshot.phase === 'refresh-required') return Promise.resolve(); return this.operation ? this.load(this.operation) : Promise.resolve(); }
+  retry(): Promise<void> { this.assertActive(); if (this.snapshot.phase === 'refresh-required') return this.refresh(); return this.operation ? this.load(this.operation) : Promise.resolve(); }
+  /**
+   * Read the first page again without touching `phase`, and show it in place. What is on screen
+   * stays until the answer is in; a failed read rejects and changes nothing. A service that has
+   * moved on to a later page keeps that page and publishes the fresh first page as `head`.
+   */
+  async revalidate(context?: { signal?: AbortSignal; settle?: () => Promise<void> }): Promise<void> {
+    this.assertActive();
+    const route = this.snapshot.route;
+    if (!route || this.snapshot.phase !== 'ready' || !this.snapshot.projection) return;
+    this.quiet?.abort(); const controller = new AbortController(); this.quiet = controller;
+    const stop = () => controller.abort();
+    context?.signal?.addEventListener('abort', stop, { once: true });
+    const generation = this.generation, api = this.api, bound = this.bound;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const query = new URLSearchParams({ view: route.view, limit: String(this.pageSize) });
+      for (const field of ['entityId','sort','direction','category','q'] as const) if (route[field] !== undefined) query.set(field, route[field]!);
+      const raw = await Promise.race([
+        api.request<unknown>('/v1/libraries/' + encodeURIComponent(route.libraryId) + '/content?' + query, 'GET', undefined, controller.signal),
+        new Promise<never>((_, reject) => { timer = setTimeout(() => { reject(new ContentFailure('timeout', 'The server took too long to respond. Try again.', true)); controller.abort(); }, this.timeoutMs); }),
+      ]);
+      if (this.disposed || generation !== this.generation || controller.signal.aborted) return;
+      const result = projection(raw, route, bound, this.pageSize);
+      await context?.settle?.();
+      if (this.disposed || generation !== this.generation || controller.signal.aborted || this.snapshot.phase !== 'ready') return;
+      const head = Object.freeze({ serial: ++this.headSerial, sections: result.sections });
+      if (this.current.cursor === null) this.publish({ projection: result, sections: result.sections, head, pagination: Object.freeze({ cursor: null, canPrevious: false, next: Object.freeze(result.sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
+      else this.publish({ head });
+    } catch (error) {
+      if (this.disposed || generation !== this.generation || controller.signal.aborted) return;
+      const e = error as { status?: unknown; code?: unknown } | null;
+      // The server answered that this is gone or not allowed: that is the screen's state now, not a failed refresh.
+      if (e?.status === 401 || e?.status === 403 || e?.status === 404) { await this.refresh(); return; }
+      throw error;
+    } finally {
+      if (timer) clearTimeout(timer);
+      context?.signal?.removeEventListener('abort', stop);
+      if (this.quiet === controller) this.quiet = undefined;
+    }
+  }
   next(sectionId: string): Promise<void> {
     this.assertActive();
     if (this.snapshot.phase !== 'ready' || !this.snapshot.projection || !this.snapshot.route) return Promise.resolve();
@@ -332,7 +380,7 @@ export class LibraryContentService {
     this.publish(this.empty());
   }
   cancel(): void { this.assertActive(); this.controller?.abort(); this.generation++; this.pending = undefined; this.activeKey = ''; this.publish({ ...this.empty(), route: this.snapshot.route }); }
-  dispose(): void { this.controller?.abort(); this.disposed = true; this.generation++; this.listeners.clear(); }
+  dispose(): void { this.controller?.abort(); this.quiet?.abort(); this.disposed = true; this.generation++; this.listeners.clear(); }
   private load(op: Operation): Promise<void> {
     const key = JSON.stringify([op.route, op.page]);
     if (this.snapshot.phase === 'loading' && this.activeKey === key && this.pending) return this.pending;
@@ -359,11 +407,14 @@ export class LibraryContentService {
       const raw = await Promise.race([api.request<unknown>(path, 'GET', undefined, controller.signal), cancelled, new Promise<never>((_, reject) => { timer = setTimeout(() => { reject(new ContentFailure('timeout', 'The server took too long to respond. Try again.', true)); controller.abort(); }, this.timeoutMs); })]);
       if (this.disposed || generation !== this.generation) return;
       const result = projection(raw, op.route, bound, this.pageSize);
-      if (op.page.cursor && op.fence && (result.scope.viewerFence !== op.fence.scope.viewerFence || result.revision.catalog !== op.fence.revision.catalog || result.revision.viewer !== op.fence.revision.viewer)) throw new ContentFailure('stale_continuation', 'The library changed. Refresh to continue.', true);
+      // A continuation read after the library moved is still a valid page (the server re-anchors it); only another viewer's answer is refused.
+      if (op.page.cursor && op.fence && result.scope.viewerFence !== op.fence.scope.viewerFence) throw new ContentFailure('stale_continuation', 'The library changed. Refresh to continue.', true);
       if (op.page.sectionId && (result.sections.length !== 1 || result.sections[0].id !== op.page.sectionId)) invalid();
-      for (const section of result.sections) if (section.nextCursor && (section.nextCursor === op.page.cursor || op.history.some(p => p.cursor === section.nextCursor))) throw new ContentFailure('stale_continuation', 'The library continuation repeated. Refresh to continue.', true);
+      // A cursor that comes back again would page for ever: that section has reached its end.
+      const repeats = (c: string) => c === op.page.cursor || op.history.some(p => p.cursor === c);
+      const sections = result.sections.some(s2 => s2.nextCursor && repeats(s2.nextCursor)) ? Object.freeze(result.sections.map(s2 => (s2.nextCursor && repeats(s2.nextCursor) ? Object.freeze({ ...s2, nextCursor: '' }) : s2))) : result.sections;
       this.history = op.history; this.current = op.page;
-      this.publish({ phase: 'ready', projection: result, sections: result.sections, pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: this.history.length > 0, next: Object.freeze(result.sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
+      this.publish({ phase: 'ready', projection: result, sections, pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: this.history.length > 0, next: Object.freeze(sections.filter(s => s.nextCursor).map(s => Object.freeze({ sectionId: s.id, cursor: s.nextCursor }))) }) });
     } catch (error) {
       if (this.disposed || generation !== this.generation) return;
       const e = error as { code?: unknown; retryable?: unknown; message?: unknown; status?: unknown } | null;
@@ -375,6 +426,8 @@ export class LibraryContentService {
       // continuation joins `stale_continuation` there; on a first page it
       // remains a plain error.
       const stale = e?.code === 'stale_continuation' || (!!op.page.cursor && e?.code === 'invalid_cursor');
+      // A continuation the server no longer honours is not the person's problem: start the list again from its first page, keeping what is shown until it arrives.
+      if (stale && op.page.cursor) { await this.load({ route: op.route, page: { cursor: null }, history: [], fence: null }); return; }
       const code = string(e?.code) && e?.code ? e.code : 'request_failed';
       const transient = !stale && code !== 'invalid_projection' && e?.status !== 401 && e?.status !== 403 && (e?.retryable === true || code === 'timeout' || error instanceof TypeError || typeof e?.status === 'number' && (e.status >= 500 || e.status === 408 || e.status === 429));
       this.publish({ phase: stale ? 'refresh-required' : 'error', projection: transient ? this.snapshot.projection : null, sections: transient ? this.snapshot.sections : Object.freeze([]), error: Object.freeze({ code, message: stale ? 'The library changed. Refresh to continue.' : error instanceof Error ? error.message : 'Could not load this library.', retryable: stale || transient }), pagination: Object.freeze({ cursor: op.page.cursor, canPrevious: false, next: Object.freeze([]) }) });

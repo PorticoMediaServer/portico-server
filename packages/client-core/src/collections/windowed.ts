@@ -85,6 +85,14 @@ export type WindowedCollection<T> = {
   indexOfLetter(letter: string): number | undefined;
   /** Start a new generation (filter/sort change). The old one stays on screen until the new first page arrives. */
   invalidate(fetchPage?: FetchPage<T>): void;
+  /**
+   * Read what is on screen again, quietly: the same list, as the server has it now. Nothing
+   * changes until every visible page of the new reading has arrived; then it replaces the old one
+   * in a single step, at the same scroll position. A page that fails leaves the list exactly as
+   * it was and rejects, so the caller can try again later. `hold` is awaited just before the
+   * swap (the person may be mid-press). Resolves at once when nothing has been shown yet.
+   */
+  revalidate(options?: {fetchPage?: FetchPage<T>; hold?: () => Promise<void>}): Promise<void>;
   /** Retry failed pages in the current interest now. */
   retry(): void;
   /** Pages and items held in memory (for tests and diagnostics). */
@@ -106,6 +114,8 @@ type Generation<T> = {
   lastError: unknown;
   /** The page whose arrival makes this generation ready to show (pending generations only). */
   gate: number;
+  /** A quiet reading of what is on screen: it swaps in only when whole, and is dropped when a page fails. */
+  quiet?: {resolve: () => void; reject: (error: unknown) => void; hold?: () => Promise<void>; holding?: boolean};
 };
 
 const abortError = () => { const e = new Error('Aborted'); e.name = 'AbortError'; return e; };
@@ -153,7 +163,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
       : current.total === undefined ? (inFlight(current) > 0 ? 'loading' : 'idle')
       : pages.some(p => current.pages.get(p)?.status !== 'ready') ? 'loading' : 'ready';
     const failure = failed !== undefined ? (current.pages.get(failed) as {error: unknown}).error : undefined;
-    const next = {generation: shownGeneration, total: current.total, status, error: failure, positionIndex: current.positionIndex, refreshing: !!pending};
+    const next = {generation: shownGeneration, total: current.total, status, error: failure, positionIndex: current.positionIndex, refreshing: !!pending && !pending.quiet};
     const prev = snapshot;
     if (prev.generation === next.generation && prev.total === next.total && prev.status === next.status && prev.error === next.error && prev.positionIndex === next.positionIndex && prev.refreshing === next.refreshing) return;
     snapshot = Object.freeze(next);
@@ -218,10 +228,44 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
 
   function settled(g: Generation<T>, page: number) {
     // A pending generation swaps in once the page the viewer is looking at has an answer (items or a failure to show).
-    if (g === pending) { const gate = g.pages.get(g.gate)?.status; if (gate === 'ready' || gate === 'error') swap(); }
+    if (g === pending && g.quiet) { quietSettled(g); }
+    else if (g === pending) { const gate = g.pages.get(g.gate)?.status; if (gate === 'ready' || gate === 'error') swap(); }
     if (g === current) notifyPage(page);
     pump();
     publish();
+  }
+
+  function dropPending() {
+    if (!pending) return;
+    for (const p of pending.pages.values()) if (p.status === 'loading') p.controller.abort();
+    pending = undefined;
+  }
+
+  /** A quiet reading replaces the list only when every page in view has arrived; one failure drops it. */
+  function quietSettled(g: Generation<T>) {
+    const quiet = g.quiet!;
+    const {visible} = interest(g);
+    const pages = visible.length ? visible : [g.gate];
+    const failed = pages.find(p => g.pages.get(p)?.status === 'error');
+    if (failed !== undefined) {
+      const error = (g.pages.get(failed) as {error: unknown}).error;
+      dropPending();
+      quiet.reject(error);
+      return;
+    }
+    if (pages.some(p => g.pages.get(p)?.status !== 'ready') || quiet.holding) return;
+    const finish = () => {
+      if (disposed || pending !== g) return;
+      // The view may have moved while waiting: only swap once what is in view now is in hand.
+      const now = interest(g).visible;
+      if (now.some(p => g.pages.get(p)?.status !== 'ready')) { quiet.holding = false; pump(); return; }
+      swap();
+      publish();
+      quiet.resolve();
+    };
+    if (!quiet.hold) { finish(); return; }
+    quiet.holding = true;
+    void quiet.hold().then(finish, finish);
   }
 
   function swap() {
@@ -246,7 +290,8 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
         else if (p.status === 'error') g.pages.delete(page); // a failure out of view is forgotten; it's retried if it comes back
       }
       // The old generation only keeps what it has while a new one loads; it starts nothing new.
-      if (g === current && pending) { evict(g, wantedSet, visibleSet); continue; }
+      // (Behind a quiet reading the list on screen is still the list: it goes on loading as the person scrolls.)
+      if (g === current && pending && !pending.quiet) { evict(g, wantedSet, visibleSet); continue; }
       let active = inFlight(g);
       for (const page of wanted) {
         if (active >= maxConcurrent) break;
@@ -305,8 +350,19 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
       const upper = letter.toUpperCase();
       return Object.prototype.hasOwnProperty.call(index, upper) ? index[upper] : undefined;
     },
+    revalidate(options = {}) {
+      if (disposed || current.total === undefined || visibleFirst < 0) return Promise.resolve();
+      // A filter or sort change already on its way is newer than this reading.
+      if (pending && !pending.quiet) return Promise.resolve();
+      if (pending?.quiet) { const superseded = pending.quiet; dropPending(); superseded.resolve(); }
+      return new Promise<void>((resolve, reject) => {
+        pending = {id: nextId++, fetchPage: options.fetchPage ?? current.fetchPage, pages: new Map(), total: undefined, positionIndex: undefined, lastError: undefined, gate: pageOfIndex(visibleFirst), quiet: {resolve, reject, hold: options.hold}};
+        pump();
+      });
+    },
     invalidate(fetchPage) {
       if (disposed) return;
+      if (pending?.quiet) pending.quiet.resolve();
       if (pending) for (const p of pending.pages.values()) if (p.status === 'loading') p.controller.abort();
       pending = {id: nextId++, fetchPage: fetchPage ?? current.fetchPage, pages: new Map(), total: undefined, positionIndex: undefined, lastError: undefined, gate: visibleFirst < 0 ? 0 : pageOfIndex(visibleFirst)};
       // Nothing on screen yet: there is nothing to keep, so show the new generation's loading state at once.
@@ -329,6 +385,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
     dispose() {
       if (disposed) return;
       disposed = true;
+      pending?.quiet?.resolve();
       for (const g of pending ? [current, pending] : [current]) for (const p of g.pages.values()) if (p.status === 'loading') p.controller.abort();
       current.pages.clear(); pending = undefined;
       listeners.clear(); pageListeners.clear();

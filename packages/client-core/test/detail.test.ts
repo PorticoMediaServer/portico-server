@@ -79,13 +79,24 @@ test('late pre-mutation read cannot roll back confirmed personal state', async (
   assert.equal(service.getSnapshot().data!.personal.favorite,true); assert.equal(service.getSnapshot().data!.personal.revision,1);
 });
 
-test('CAS conflict refreshes state and needs explicit retry with new operation against current revision', async () => {
+test('a change that lost a race is read again and sent with the current revision, without asking the person', async () => {
   let current=personal(),writes:any[]=[];
   const service=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',current); writes.push(b); if(writes.length===1){current={...personal(5),watchlisted:true};throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true});} current={...current,favorite:true,revision:6};return receipt(b,current); });
   await service.select(target); await service.mutate({action:'favorite',value:true}); await tick();
-  assert.equal(writes.length,1);assert.equal(service.getSnapshot().pending[0].phase,'conflict');assert.equal(service.getSnapshot().data!.personal.revision,5);
-  await service.retryMutation();assert.notEqual(writes[0].operationId,writes[1].operationId);assert.equal(writes[1].expectedRevision,5);
+  assert.equal(writes.length,2);assert.notEqual(writes[0].operationId,writes[1].operationId);assert.equal(writes[1].expectedRevision,5);
+  assert.equal(service.getSnapshot().mutationError,null);assert.equal(service.getSnapshot().pending.length,0);
   assert.equal(service.getSnapshot().data!.personal.watchlisted,true);assert.equal(service.getSnapshot().data!.personal.favorite,true);
+});
+
+test('a change another device already made is simply done; one that keeps losing is shown as a conflict', async () => {
+  let current=personal(),writes:any[]=[];
+  const done=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',current); writes.push(b); current={...personal(5),favorite:true};throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true}); });
+  await done.select(target); await done.mutate({action:'favorite',value:true}); await tick();
+  assert.equal(writes.length,1);assert.equal(done.getSnapshot().mutationError,null);assert.equal(done.getSnapshot().pending.length,0);assert.equal(done.getSnapshot().data!.personal.favorite,true);
+  let revision=1;writes=[];
+  const losing=setup(async (_p,m,b)=>{ if(m==='GET')return data('item',personal(revision)); writes.push(b); revision++;throw Object.assign(new Error('Personal state changed'),{code:'personal_state_conflict',retryable:true}); });
+  await losing.select(target); await losing.mutate({action:'favorite',value:true}); await tick(); await tick();
+  assert.equal(writes.length,3);assert.equal(losing.getSnapshot().pending[0].phase,'conflict');assert.equal(losing.getSnapshot().mutationError!.code,'personal_state_conflict');
 });
 
 test('scope change prevents queued writes and late mutation publication in new account/profile/item', async () => {

@@ -186,6 +186,29 @@ export class SearchService{
  previous():Promise<void>{this.active();const op=this.operation;if(this.state.phase!=='ready'||!op?.history.length||!this.state.data)return Promise.resolve();return this.load({...op.history.at(-1)!,history:op.history.slice(0,-1),fence:this.state.data});}
  refresh():Promise<void>{this.active();const q=this.state.query;return q?this.load({query:q,cursor:null,history:[]}):Promise.resolve();}
  retry():Promise<void>{this.active();if(this.state.phase==='refresh-required')return this.refresh();return this.operation?this.load(this.operation):Promise.resolve();}
+ /**
+  * Run the search that is showing again without touching `phase`, and show the answer in place.
+  * A failed read rejects and changes nothing.
+  */
+ async revalidate(context?:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<void>{
+  this.active();const op=this.operation;
+  if(!op||this.state.phase!=='ready'||!this.state.data)return;
+  const generation=this.generation,controller=new AbortController(),stop=()=>controller.abort(),scope=this.scope;let timer:ReturnType<typeof setTimeout>|undefined;
+  context?.signal?.addEventListener('abort',stop,{once:true});
+  try{
+   const raw=await Promise.race([this.api.request<unknown>(searchPath(op.query,this.pageSize,op.cursor),'GET',undefined,controller.signal),new Promise<never>((_,reject)=>{timer=setTimeout(()=>{reject(new Failure('timeout','Search took too long. Try again.',true));controller.abort();},this.timeoutMs);})]);
+   if(this.disposed||generation!==this.generation)return;
+   const data=parse(raw,op,scope,this.pageSize);
+   await context?.settle?.();
+   if(this.disposed||generation!==this.generation||controller.signal.aborted||this.operation!==op||this.state.phase!=='ready')return;
+   this.publish({data,groups:data.groups});
+  }catch(error){
+   if(this.disposed||generation!==this.generation||controller.signal.aborted)return;
+   const e=error as {code?:unknown;status?:number};
+   if(e?.status===401||e?.status===403||['stale_continuation','invalid_cursor','invalid_search'].includes(String(e?.code))){await this.refresh();return;}
+   throw error;
+  }finally{if(timer)clearTimeout(timer);context?.signal?.removeEventListener('abort',stop);}
+ }
  cancel(){this.active();this.stop();this.operation=undefined;this.publish(this.empty());}
  setScope(scope:ContentScope,api:LibraryContentApi){this.active();const checked=bound(scope);this.stop();this.scope=checked;this.api=api;this.operation=undefined;this.publish(this.empty());}
  dispose(){this.stop();this.disposed=true;this.listeners.clear();}
@@ -193,10 +216,15 @@ export class SearchService{
  private load(op:Operation):Promise<void>{const key=JSON.stringify([op.query,op.cursor]);if(this.pending&&key===this.key)return this.pending;this.stop();this.key=key;this.operation=op;const generation=this.generation,controller=new AbortController();this.controller=controller;const retain=this.state.query?.q===op.query.q&&this.state.query?.group===op.query.group;this.publish({generation,query:op.query,phase:'loading',...(retain?{}:{data:null,groups:Object.freeze([])}),error:null,pagination:Object.freeze({cursor:op.cursor,canPrevious:op.history.length>0})});const task=this.fetch(op,this.api,this.scope,controller,generation);this.pending=task;return task;}
  private async fetch(op:Operation,api:LibraryContentApi,scope:ContentScope,controller:AbortController,generation:number){let timer:ReturnType<typeof setTimeout>|undefined;let abort:()=>void=()=>{};
   try{const raw=await Promise.race([api.request<unknown>(searchPath(op.query,this.pageSize,op.cursor),'GET',undefined,controller.signal),new Promise<never>((_,reject)=>{abort=()=>reject(new Failure('cancelled','Search cancelled.'));controller.signal.addEventListener('abort',abort,{once:true});timer=setTimeout(()=>{reject(new Failure('timeout','Search took too long. Try again.',true));controller.abort();},this.timeoutMs);})]);if(this.disposed||generation!==this.generation)return;const data=parse(raw,op,scope,this.pageSize);
-   if(op.fence&&(data.scope.viewerFence!==op.fence.scope.viewerFence||data.revision.catalog!==op.fence.revision.catalog||data.revision.viewer!==op.fence.revision.viewer))throw new Failure('stale_continuation','Search results changed. Refresh to continue.',true);
-   for(const group of data.groups)if(group.nextCursor&&(group.nextCursor===op.cursor||op.history.some(p=>p.cursor===group.nextCursor)))throw new Failure('stale_continuation','Search continuation repeated. Refresh to continue.',true);
-   this.publish({query:op.query,phase:'ready',data,groups:data.groups,pagination:Object.freeze({cursor:op.cursor,canPrevious:op.history.length>0})});
-  }catch(error){if(this.disposed||generation!==this.generation)return;const e=error as {code?:unknown;retryable?:unknown;status?:number};const code=e?.status===401?'unauthorized':e?.status===403?'forbidden':id(e?.code)?e.code:'request_failed';const transient=!['unauthorized','forbidden','invalid_search','stale_continuation','invalid_cursor'].includes(code)&&(error instanceof TypeError||e?.retryable===true||code==='timeout'||!!e?.status&&(e.status>=500||[408,429].includes(e.status)));this.publish({phase:['stale_continuation','invalid_cursor'].includes(code)?'refresh-required':'error',...(transient?{}:{data:null,groups:Object.freeze([])}),error:Object.freeze({code,message:['unauthorized','forbidden'].includes(code)?'Your access changed. Sign in again to search.':['stale_continuation','invalid_cursor'].includes(code)?'The library changed. Refresh these results.':'Search could not connect to this server. Try again.',retryable:transient})});}
+   // A later page read after the library moved is still a valid page; only another viewer's answer is refused.
+   if(op.fence&&data.scope.viewerFence!==op.fence.scope.viewerFence)throw new Failure('stale_continuation','Search results changed. Refresh to continue.',true);
+   // A cursor that comes back again would page for ever: that group has reached its end.
+   const repeats=(c:string)=>c===op.cursor||op.history.some(p=>p.cursor===c);
+   const groups=data.groups.some(g=>g.nextCursor&&repeats(g.nextCursor))?Object.freeze(data.groups.map(g=>g.nextCursor&&repeats(g.nextCursor)?Object.freeze({...g,nextCursor:''}):g)):data.groups;
+   this.publish({query:op.query,phase:'ready',data:groups===data.groups?data:Object.freeze({...data,groups}),groups,pagination:Object.freeze({cursor:op.cursor,canPrevious:op.history.length>0})});
+  }catch(error){if(this.disposed||generation!==this.generation)return;const e=error as {code?:unknown;retryable?:unknown;status?:number};const code=e?.status===401?'unauthorized':e?.status===403?'forbidden':id(e?.code)?e.code:'request_failed';
+   // A continuation the server no longer honours: run the search again from its first page, keeping what is shown until it arrives.
+   if(['stale_continuation','invalid_cursor'].includes(code)&&op.cursor){await this.load({query:op.query,cursor:null,history:[]});return;}const transient=!['unauthorized','forbidden','invalid_search','stale_continuation','invalid_cursor'].includes(code)&&(error instanceof TypeError||e?.retryable===true||code==='timeout'||!!e?.status&&(e.status>=500||[408,429].includes(e.status)));this.publish({phase:['stale_continuation','invalid_cursor'].includes(code)?'refresh-required':'error',...(transient?{}:{data:null,groups:Object.freeze([])}),error:Object.freeze({code,message:['unauthorized','forbidden'].includes(code)?'Your access changed. Sign in again to search.':['stale_continuation','invalid_cursor'].includes(code)?'The library changed. Refresh these results.':'Search could not connect to this server. Try again.',retryable:transient})});}
   finally{if(timer)clearTimeout(timer);controller.signal.removeEventListener('abort',abort);if(generation===this.generation){this.pending=undefined;this.key='';}}
  }
 }

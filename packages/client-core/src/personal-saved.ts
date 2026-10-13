@@ -156,10 +156,20 @@ export class PersonalSavedService{
   this.generation++;for(const c of this.controllers)c.abort();this.command=undefined;this.publish({...this.empty(),route:freeze({...route}),cursor:position.cursor??null,history:[...(position.history??[])]});return this.load(position.cursor??null,position.history??[]);
  }
  refresh=()=>this.load(null,[]);
+ /**
+  * Read the page that is showing again without a loading state, and show the answer in place.
+  * A failed read rejects and changes nothing. Nothing is read while a change made here is pending.
+  */
+ revalidate=async(context?:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<void>=>{
+  if(this.disposed||!this.state.route||this.state.loading||this.state.pending||this.command||this.state.error||!this.state.viewerFence)return;
+  await this.load(this.state.cursor,this.state.history,context??{});
+ };
+ /** Try a failed read of the page again. */
+ retryRead=()=>this.load(this.state.cursor,this.state.history);
  next=()=>this.state.nextCursor&&this.state.history.length<64?this.load(this.state.nextCursor,[...this.state.history,this.state.cursor]):Promise.resolve();
  previous=()=>this.state.history.length?this.load(this.state.history.at(-1)!,this.state.history.slice(0,-1)):Promise.resolve();
- private async load(cursor:string|null,history:readonly (string|null)[]):Promise<void>{
-  const route=this.state.route,g=this.generation,ticket=++this.readTicket;if(!route||this.disposed)return;this.publish({loading:true,error:null});
+ private async load(cursor:string|null,history:readonly (string|null)[],quiet?:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<void>{
+  const route=this.state.route,g=this.generation,ticket=++this.readTicket;if(!route||this.disposed)return;if(!quiet)this.publish({loading:true,error:null});
   try{
    const query=new URLSearchParams({limit:'40',...(cursor?{cursor}:{})});
    const path=route.view==='resource'?'/v1/saved-resources/'+encodeURIComponent(route.resourceId!)+'/content':route.view==='history'?'/v1/personal-history':'/v1/saved-resources';
@@ -183,8 +193,11 @@ export class PersonalSavedService{
     else{const listed=rows(raw.resources);for(const v of listed)if(obj(v)&&(v.serverId!==this.scope.serverId||v.viewerFence!==raw.viewerFence))bad();patch.resources=distinct(keepReadable('personal-saved','resources',listed,v=>{const r=resource(v,this.scope);if(r.kind!==(route.view==='collections'?'collection':'view'))bad();return r;}),'resources');}
    }
    if(this.state.viewerFence&&this.state.viewerFence!==patch.viewerFence)throw Object.assign(new Error('Your access changed. Reopen Saved to continue.'),{code:'scope_changed'});
+   if(quiet){await quiet.settle?.();if(!this.alive(g)||ticket!==this.readTicket||quiet.signal?.aborted||this.state.pending||this.command)return;}
    this.publish({...patch,loading:false});
-  }catch(e){if(!this.alive(g)||ticket!==this.readTicket)return;const error=info(e);this.publish({loading:false,error,...(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(error.code)?{resources:[],resource:null,entries:[],browse:null,viewerFence:''}:{})});}
+  }catch(e){if(!this.alive(g)||ticket!==this.readTicket)return;const error=info(e);
+   // A quiet read that failed leaves the page as it was; one the server answered with "gone" or "not yours" becomes the page's own state through an ordinary load.
+   if(quiet){if(quiet.signal?.aborted)return;if(['unauthorized','forbidden','not_found','scope_changed','invalid_saved','invalid_cursor','stale_continuation'].includes(error.code))return this.load(null,[]);throw e;}this.publish({loading:false,error,...(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(error.code)?{resources:[],resource:null,entries:[],browse:null,viewerFence:''}:{})});}
  }
  async loadLibraries():Promise<void>{const g=this.generation;try{const raw=await this.request<unknown>('/v1/libraries');if(!this.alive(g))return;if(!obj(raw))bad();const libraries=distinct(keepReadable('personal-saved','libraries',rows(raw.items,2048),v=>{if(!obj(v)||!id(v.id)||!str(v.name,512)||!id(v.kind))bad();return{id:v.id,name:v.name,kind:v.kind};}),'libraries');this.publish({libraries});}catch(e){if(this.alive(g))this.publish({error:info(e)});}}
  async loadCandidates(cursor=''):Promise<void>{const r=this.state.resource,g=this.generation,ticket=++this.candidateTicket;if(!r?.actions.includes('share'))return;
