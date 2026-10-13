@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -66,8 +67,8 @@ func VerifyRestored(ctx context.Context, path string) error {
 // backup, the staged copy moves into place, and verification runs the ordinary
 // migrations. On failure the pre-restore copy moves back automatically and the
 // outcome is recorded for the console. Nothing staged is a no-op. The server
-// always starts afterwards; the returned error only records that the restore
-// did not apply.
+// starts afterwards only when the journal is resolved; an unresolved restore
+// must finish before serving the database.
 //
 // The current database is never deleted and never left anywhere a cleanup
 // could remove it (O3 review of be/backups). The marker names the pre-restore
@@ -103,7 +104,24 @@ func ApplyStaged(ctx context.Context, state string, verify VerifyFunc) error {
 	if err = json.Unmarshal(raw, &marker); err != nil {
 		return err
 	}
+	// A journal can be interrupted or damaged independently of staging. Never
+	// allow it to name live database files, parent paths or recovery directories.
+	entries := make([]FileEntry, len(marker.Files))
+	for i, name := range marker.Files {
+		if name == DatabaseName || name == DatabaseName+"-wal" {
+			return ErrSourceInvalid
+		}
+		entries[i].Name = name
+	}
+	if _, ok := stateFileNames(entries); !ok {
+		return ErrSourceInvalid
+	}
+	if marker.PreRestore != "" && (checkID(marker.PreRestore) != nil || !strings.HasSuffix(marker.PreRestore, "-pre-restore")) {
+		return ErrSourceInvalid
+	}
 	switch marker.State {
+	case markerRestored, markerRolledBack:
+		return finishCompleted(state, staged, marker)
 	case markerRollingBack:
 		if err = finishRollback(state, staged, marker); err != nil {
 			return err
@@ -192,6 +210,9 @@ func applyMarker(ctx context.Context, state, staged string, marker restoreMarker
 	if err = os.MkdirAll(pre, 0700); err != nil {
 		return failPreparing(state, staged, marker, err)
 	}
+	if err = syncDirectory(dir); err != nil {
+		return failPreparing(state, staged, marker, err)
+	}
 	// 2. Move the current database and the files the source replaces into it.
 	for _, name := range preparingNames(marker) {
 		if err = applyStep("preparing:" + name); err != nil {
@@ -216,6 +237,9 @@ func applyMarker(ctx context.Context, state, staged string, marker restoreMarker
 		Kind: KindPreRestore, Files: hashed,
 	}
 	if err = writeManifest(pre, manifest); err != nil {
+		return failPreparing(state, staged, marker, err)
+	}
+	if err = syncRestoreDirectories(state, pre, marker.Files); err != nil {
 		return failPreparing(state, staged, marker, err)
 	}
 	// 3. The pre-restore backup is complete: switch.
@@ -294,10 +318,9 @@ func failPreparing(state, staged string, marker restoreMarker, cause error) erro
 func failSwitch(state, staged string, marker restoreMarker, cause error) error {
 	if marker.PreRestore != "" {
 		if _, err := os.Lstat(filepath.Join(state, BackupsDir, marker.PreRestore, DatabaseName)); err != nil {
-			// Nothing to roll back to: keep what's there rather than delete it.
-			writeResult(state, "rolled_back", cause.Error()+"; the previous database is missing, so the restored state is left in place")
-			_ = os.RemoveAll(staged)
-			return cause
+			// Verification refused this state. Without the recovery database, keep the
+			// journal unresolved instead of claiming a rollback that never happened.
+			return errors.Join(cause, fmt.Errorf("backup: previous database unavailable: %w", err))
 		}
 	}
 	marker.State, marker.Reason = markerRollingBack, cause.Error()
@@ -321,25 +344,104 @@ func finishRollback(state, staged string, marker restoreMarker) error {
 		writeResult(state, "rolled_back", marker.Reason+"; not every file moved back yet (the previous state is kept in backups/"+marker.PreRestore+"), the next start continues")
 		return err
 	}
-	if err := writeResult(state, "rolled_back", marker.Reason, marker); err != nil {
+	marker.State, marker.CompletedAt = markerRolledBack, time.Now().UTC().Format(time.RFC3339Nano)
+	if err := writeMarker(staged, marker); err != nil {
 		return err
 	}
-	_ = os.RemoveAll(staged)
-	return nil
+	return finishCompleted(state, staged, marker)
 }
 
 // finishApplied verifies the database in place. Success records "restored";
-// failure moves the pre-restore copy back, records "rolled_back", and always
-// clears the staged folder.
+// failure moves the pre-restore copy back. Completion journals the result before
+// cleanup, which can be resumed independently.
 func finishApplied(ctx context.Context, state, staged string, marker restoreMarker, verify VerifyFunc) error {
 	serverDB := filepath.Join(state, "server.sqlite")
 	if err := verify(ctx, serverDB); err != nil {
 		return failSwitch(state, staged, marker, err)
 	}
-	if err := writeResult(state, "restored", "", marker); err != nil {
+	marker.State, marker.CompletedAt = markerRestored, time.Now().UTC().Format(time.RFC3339Nano)
+	if err := writeMarker(staged, marker); err != nil {
 		return err
 	}
-	_ = os.RemoveAll(staged)
+	return finishCompleted(state, staged, marker)
+}
+
+// Completion is journaled before cleanup. Replays publish the same result and
+// never re-verify or roll back a database that has since accepted new writes.
+func finishCompleted(state, staged string, marker restoreMarker) error {
+	if _, err := time.Parse(time.RFC3339Nano, marker.CompletedAt); err != nil {
+		return err
+	}
+	if err := writeResult(state, marker.State, marker.Reason, marker); err != nil {
+		return err
+	}
+	if err := applyStep("completed:" + marker.State); err != nil {
+		return err
+	}
+	if marker.State == markerRolledBack && marker.PreRestore != "" {
+		pre := filepath.Join(state, BackupsDir, marker.PreRestore)
+		if err := os.Remove(filepath.Join(pre, ManifestName)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+		if _, err := os.Lstat(pre); err == nil {
+			if err = removeEmptyTree(pre); err != nil {
+				return err
+			}
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		if err := syncDirectory(filepath.Join(state, BackupsDir)); err != nil {
+			return err
+		}
+	}
+	if marker.State == markerRestored {
+		local := New(state, nil, "", "", 0)
+		if err := local.pruneRecoveryCopies(); err != nil {
+			return err
+		}
+		if err := syncDirectory(filepath.Join(state, BackupsDir)); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
+	if err := os.RemoveAll(staged); err != nil {
+		return err
+	}
+	return syncDirectory(state)
+}
+
+// File bytes were already flushed. Persist both rename directory entries
+// before any durable phase change can authorize removal of the recovery copy.
+func renameRestoreFile(from, to string) error {
+	if err := os.Rename(from, to); err != nil {
+		return err
+	}
+	if err := syncDirectory(filepath.Dir(to)); err != nil {
+		return err
+	}
+	return syncDirectory(filepath.Dir(from))
+}
+
+func syncRestoreDirectories(first, second string, files []string) error {
+	first, second = filepath.Clean(first), filepath.Clean(second)
+	dirs := map[string]bool{first: true, second: true}
+	for _, root := range []string{first, second} {
+		for _, name := range files {
+			dir := filepath.Dir(filepath.Join(root, filepath.FromSlash(name)))
+			for dir != root {
+				dirs[dir] = true
+				parent := filepath.Dir(dir)
+				if parent == dir {
+					return ErrSourceInvalid
+				}
+				dir = parent
+			}
+		}
+	}
+	for dir := range dirs {
+		if err := syncDirectory(dir); err != nil && !os.IsNotExist(err) {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -366,7 +468,7 @@ func rollback(state string, marker restoreMarker) error {
 		for _, name := range append([]string{"server.sqlite-wal", "server.sqlite-shm", "server.sqlite"}, marker.Files...) {
 			failed = errors.Join(failed, os.RemoveAll(filepath.Join(state, filepath.FromSlash(name))))
 		}
-		return failed
+		return errors.Join(failed, syncRestoreDirectories(state, state, marker.Files))
 	}
 	pre := filepath.Join(state, BackupsDir, marker.PreRestore)
 	manifest, err := readManifest(pre)
@@ -387,20 +489,35 @@ func rollback(state string, marker restoreMarker) error {
 				return err
 			}
 		}
+		if err = syncDirectory(state); err != nil {
+			return err
+		}
 		if err = applyStep("rollback:wal-removed"); err != nil {
 			return err
 		}
-		if err = os.Rename(filepath.Join(pre, DatabaseName), serverDB); err != nil {
+		if err = renameRestoreFile(filepath.Join(pre, DatabaseName), serverDB); err != nil {
 			return err
 		}
 		if err = applyStep("rollback:database"); err != nil {
 			return err
 		}
+	} else if !os.IsNotExist(err) {
+		return err
+	} else {
+		info, statErr := os.Lstat(serverDB)
+		if statErr != nil {
+			return statErr
+		}
+		if !info.Mode().IsRegular() {
+			return ErrSourceInvalid
+		}
 	}
 	if _, err = os.Lstat(filepath.Join(pre, DatabaseName+"-wal")); err == nil {
-		if err = os.Rename(filepath.Join(pre, DatabaseName+"-wal"), serverDB+"-wal"); err != nil {
+		if err = renameRestoreFile(filepath.Join(pre, DatabaseName+"-wal"), serverDB+"-wal"); err != nil {
 			return err
 		}
+	} else if !os.IsNotExist(err) {
+		return err
 	}
 	var failed error
 	for _, name := range marker.Files {
@@ -414,7 +531,10 @@ func rollback(state string, marker restoreMarker) error {
 				failed = errors.Join(failed, err)
 				continue
 			}
-			failed = errors.Join(failed, os.Rename(from, to))
+			failed = errors.Join(failed, renameRestoreFile(from, to))
+			continue
+		} else if !os.IsNotExist(err) {
+			failed = errors.Join(failed, err)
 			continue
 		}
 		if !listed(name) {
@@ -424,8 +544,8 @@ func rollback(state string, marker restoreMarker) error {
 	if failed != nil {
 		return failed
 	}
-	_ = os.Remove(filepath.Join(pre, ManifestName))
-	return removeEmptyTree(pre)
+	// Keep the manifest until the terminal journal and result are durable.
+	return syncRestoreDirectories(state, pre, marker.Files)
 }
 
 // moveStagedIntoPlace renames the staged database and state files over the
@@ -444,7 +564,7 @@ func moveStagedIntoPlace(staged, state string, files []string) error {
 			return err
 		}
 	}
-	return nil
+	return syncRestoreDirectories(state, staged, files)
 }
 
 // moveIfPresent renames from to to, creating to's parent; a missing from is
@@ -458,7 +578,7 @@ func moveIfPresent(from, to string) error {
 	if err := os.MkdirAll(filepath.Dir(to), 0700); err != nil {
 		return err
 	}
-	return os.Rename(from, to)
+	return renameRestoreFile(from, to)
 }
 
 // removeEmptyTree removes a folder whose files have all moved away; it refuses
@@ -536,6 +656,9 @@ func RestoreUnresolved(state string) bool {
 func writeResult(state, outcome, reason string, markers ...restoreMarker) error {
 	result := RestoreResult{At: time.Now().UTC().Format(time.RFC3339), Outcome: outcome, Reason: reason}
 	if len(markers) > 0 {
+		if markers[0].CompletedAt != "" {
+			result.At = markers[0].CompletedAt
+		}
 		result.JobID = markers[0].JobID
 		result.OperationID = markers[0].OperationID
 		result.SourceDigest = restoreSourceDigest(markers[0].Source)

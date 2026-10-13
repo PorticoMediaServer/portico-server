@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"portico.local/server/internal/supervise"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -19,6 +18,7 @@ import (
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/supervise"
 )
 
 // A supervisor's health check, a browser that was already open, and a phone
@@ -233,6 +233,9 @@ func serveStartupRecovery(ctx context.Context, listener net.Listener, reporter *
 func serveEarlyStartupFailure(err error) {
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
+	if os.Getenv(supervise.WorkerEnvironment) == "1" {
+		supervise.WatchParent(cancel, os.Stdin)
+	}
 	listener, listenErr := net.Listen("tcp", env("PORTICO_BIND", defaultBind))
 	if listenErr != nil {
 		log.Printf("The recovery page could not bind its port: %v", listenErr)
