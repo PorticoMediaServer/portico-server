@@ -77,6 +77,7 @@ func run() (runErr error) {
 	flag.DurationVar(&deriveBudget, "derive-for", 0, "stop a derive-only drain after this long (0: run to completion)")
 	flag.BoolVar(&deriveNoProbes, "no-probes", false, "drain without concurrent browse/search probes")
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile of the run to this file")
+	classes := flag.Bool("classes", false, "after a derive-only drain, build a PG-13 restriction class for each library and time it")
 	bump := flag.Bool("bump", false, "after a derive-only drain, rebuild browse rows and search as a derivation version bump does, and drain again")
 	trickle := flag.Int("trickle", 0, "after a derive-only drain, apply this many single-title metadata updates per kind, draining after each")
 	writerCache := flag.Int("writer-cache-mib", 0, "experiment: give the writer connection this page cache (0: the production policy)")
@@ -198,6 +199,9 @@ func run() (runErr error) {
 			}
 			rr, err = exerciseDrain(db, s, "derive-version-bump")
 			r.Routes = append(r.Routes, rr)
+		}
+		if err == nil && *classes {
+			err = exerciseClasses(db, s)
 		}
 		if err == nil && *trickle > 0 {
 			err = exerciseTrickle(db, *trickle)
@@ -471,4 +475,29 @@ func explainRoute(db *sql.DB, name string, read func(*catalog.Service) error, s 
 			fmt.Fprintf(os.Stderr, "EXPLAIN %s: %.300s\n  %s\n", name, strings.Join(strings.Fields(text), " "), strings.Join(lines, " | "))
 		}
 	}
+}
+
+// exerciseClasses times a first restriction-class build per library, the
+// work a restricted profile's first visit starts.
+func exerciseClasses(db *sql.DB, s *catalog.Service) error {
+	ctx := context.Background()
+	if _, err := s.ClassifyPendingRatings(ctx); err != nil {
+		return err
+	}
+	pg13 := 13
+	r := identity.ContentRestrictions{MaximumAge: &pg13, BlockUnrated: true}
+	for _, library := range []string{"movies", "tv", "music"} {
+		var rows int
+		if err := db.QueryRow(`SELECT count(*) FROM catalog_browse_rows WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)`, library).Scan(&rows); err != nil {
+			return err
+		}
+		dbwork.WriteGate().ResetPeak()
+		start := time.Now()
+		if err := s.RebuildVisibilityClass(ctx, library, r); err != nil {
+			return fmt.Errorf("build %s class: %w", library, err)
+		}
+		took := time.Since(start)
+		fmt.Fprintf(os.Stderr, "CLASS_BUILD library=%s rows=%d seconds=%.3f rows_per_s=%.0f max_gate_held_ms=%d\n", library, rows, took.Seconds(), float64(rows)/took.Seconds(), dbwork.WriteGate().Stats().MaxHeldMilli)
+	}
+	return nil
 }
