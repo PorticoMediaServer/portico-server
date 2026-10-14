@@ -2,6 +2,8 @@
 
 ## Purpose and evidence
 
+Updated for the evening implementation and owner decisions. New cases remain qualification work; known missing candidate implementation is Fail, while an unavailable test prerequisite is Blocked. Native-owner recorded 655 native/87 Vega before the mirror; the later running log confirms 655/87 again after the mirror with clean type checks and equal packages. Physical acceptance remains unrun.
+
 These are qualification instructions, not evidence that the candidate passed. Use disposable state, copied media and test accounts. Record candidate commit IDs, artifact SHA-256, OS/device/driver/browser versions, start/end times, redacted server/client logs and the numbered case result: Pass, Fail or Blocked. A missing prerequisite is Blocked, never Pass. Save raw credentials, grant URLs, cookies, private keys and unredacted evidence outside Git.
 
 The source candidates are the integrated `audit-implementation/main` checkouts at `/home/justin/projects/Portico/.worktrees/audit-implementation/main-server` and `main-native`; internal Hosted work is delivered separately. On the qualification machine use local copies of those exact integrated revisions and record `git rev-parse HEAD` plus whether the tree is dirty. Do not test an individual lane branch without its dependencies. No stable pre-release API/database compatibility is promised: fresh fixtures use the candidate baseline; upgrade fixtures must have the same baseline digest. Preserve the entire old state separately before any restore/upgrade.
@@ -92,7 +94,7 @@ Run cases 1, 2, 6, 9 first, in order. Stop a destructive case if isolation is lo
 3. Play one minute offline then sync, including per-part book/multi-episode occurrences, A→newerB→still-newerA, skewed future/backward device clock and a newer manual watched mark. Sign out/switch profiles and explicitly reclaim other-viewer bytes.
 4. Submit downloads for versions A/B; make only A unavailable and retry A. Use the existing collision regression with a pending playlist request whose ID equals a merged show ID; read target/membership/claim after merge.
 
-**Expected:** Self-contained copies survive ordinary expiry/source tidying with unavailable note; actual revocation removes/conceals online authority. Offline subtitle/media symlink escape refuses. Original watch time/one occurrence/count and newest authorized state preserved, private copies never named to another profile. Signed-out Android MKV/extras gap must be recorded if still present, never marked pass from signed-in playback. Retry stays on requested version/same-source successor; unrelated playlist target/membership survives coincident entity ID.
+**Expected:** Self-contained copies survive ordinary expiry/source tidying with unavailable note; actual revocation removes/conceals online authority. Offline subtitle/media symlink escape refuses. Original watch time/one occurrence/count and newest authorized state preserved, private copies never named to another profile. Signed-out Android now uses the common capable player; test MKV/extras directly and never substitute signed-in results. Retry stays on requested version/same-source successor; unrelated playlist target/membership survives coincident entity ID.
 
 **Failure:** Ordinary tidying deletes device copy, auth revoked yet transfer/receipt served, wrong profile art/name, per-part progress missing or skewed old evidence overrides newer state.
 
@@ -214,7 +216,7 @@ Run cases 1, 2, 6, 9 first, in order. Stop a destructive case if isolation is lo
 2. Play/Shuffle a saved view of120 without scrolling; repeat600, disconnect or leave mid-read. Set tab/sort/filter/late-letter jump, rail/See all/group link/profile switch/relaunch and delayed library capability read.
 3. Browse every genre/series/category/collection/person/tab for video/music/books using same broad options as main library, 205+ groups and restricted/private/shared fixture. Test natural/Unicode/numeric/CJK search and half-star ratings.
 
-**Expected:** Paged smooth lists/one title each with correct headings, short page still extends; view fetches all120, >500 warns/caps500, canceled read plays nothing later. Per-profile memory/link isolation and server-advertised options, no stale capability flash, exact counts/no skips/restriction leaks.
+**Expected:** Paged smooth lists/one title each with correct headings, short page still extends; view fetches all 120; a view beyond 500 must reach the whole selection through query capture once its screen is wired; current truncation is a known Fail. A canceled read plays nothing later. Per-profile memory/link isolation and server-advertised options, no stale capability flash, exact counts/no skips/restriction leaks.
 
 **Failure:** Whole-list memory climb, view first page only, wrong list after renewal, group title-only sorting or unsupported old options retained.
 
@@ -262,7 +264,7 @@ Run cases 1, 2, 6, 9 first, in order. Stop a destructive case if isolation is lo
 2. Send report via Settings > About, force a debug fatal JS error/relaunch and send again; hit1MiB daily account budget. Check redacted reports in owner console.
 3. With local downloads if supported sign out once keeping files then deleting files; compare disk sizes, server device list and second profile access.
 
-**Expected:** Code stays/no automatic attempt before Retry-After; normal outage backoff~5/10/20 then24–30s jitter. Pending owner approval correct, feedback last-fatal/footer clears after accepted report and limit useful. Sign-out choice/privacy/files/device authority correct.
+**Expected:** Code stays/no automatic attempt before Retry-After; ordinary protocol retry/backoff remains bounded, but a 120-second origin outage is never shortened to 30 seconds. Pending owner approval correct, feedback last-fatal/footer clears after accepted report and limit useful. Sign-out choice/privacy/files/device authority correct.
 
 **Failure:** Code cleared, hammer retry, wrong Apple TV name on Fire/Vega, leaked tokens/fatal log or another viewer sees retained private downloads.
 
@@ -337,3 +339,94 @@ Run cases 1, 2, 6, 9 first, in order. Stop a destructive case if isolation is lo
 **Failure:** Phone departure stops TV, old session cancels replacement, receiver browser gains library access or Cast promises unavailable platform.
 
 **Route to:** social, native-sync, accounts-security, android-native-review; fix-pass web-client-core.
+
+### 24. Wide sort/filter on every grouping
+
+1. Prepare two libraries with at least 250 genres/series/groups and 650 playable titles; include authored playlists with duplicate entries, personal collections, artist albums/songs, author books, seasons, people with cast/crew credits, categories and Home recommendation rows. Sign in as a restricted member as well as the owner.
+2. For every library tab and each named grouping, compare Sort/Filter to that scope’s server advertisement. Change Recently aired from Latest episode to Title, then duration/rating/last-played where advertised. Choose Random, page, navigate away and Back: the seed/order stays for that open selection; choosing Random again reshuffles.
+3. Combine two member filters, clear one and then all. Every request must retain the grouping membership and current library/profile fence. Follow Genres/Series past 200 and sorted lists through the final page; check counts and restricted titles. A short/empty page with a next cursor must continue.
+4. For a cross-library person/playlist/My List/Favorites, switch library chips or the native library control and test each library separately. Check own order before a filter, then the explicit server sort while filtered; removing the filter restores group scope. Cast/Crew does not pretend to be a supported person operand.
+5. Record Home See all, personal collection, book parts/discs, native History/My List/Favorites and music Playlists separately. Current missing fields/controls are known parity gaps, not waived tests. Native role controls hide during browse; web offers the toolbar under All. Check phone/tablet and remote focus without moving the hero.
+
+**Expected:** Every supported grouping offers all applicable advertised choices, membership and privacy survive sort/filter/paging and Recently aired is changeable. Authored own order is available unfiltered; filtered own-order preservation remains a recorded server gap. No grouping-wide parity pass while the named missing surfaces remain.
+
+**Failure:** Missing required toolbar, a filter leaves its group, first-200 truncation, leaked denied titles, duplicate/lost pages, title-only subgroup or a false claim of own-order preservation under a filter.
+
+**Route to:** web-viewer, native-screens, native-health-2, grouping-sorts, scale-check-2.
+
+### 25. Receipt Undo, paused start and real remote controls
+
+1. Mark a partially played show/season/album/book from the title page and from a card menu. Press the one Undo toast within 30 seconds; compare watched intent/resume on every member. Repeat after another device plays/edits membership, after expiry and with a double press.
+2. Load a title in an already-paused Watch Together room and measure its first audible frame, including same-title reload. It must stay paused before preparation/first output, not play then pause.
+3. Play on a second actual device and open Play on. Compare its reported position/duration, pause/resume, Back/Forward and Start over against the target, not the controller device. Stop elsewhere and use a retained menu; hidden actions must not be sent.
+4. On a native companion device during playback change Automatic/Native/mpv; this engine selector is not a web or Vega feature. Record session ID, queue occurrence, position, pause and track/quality choices before/after the capability publication and replan. Offline files/live channels follow their supported engine behavior rather than a forced unrelated restart.
+
+**Expected:** Undo submits its receipt and restores exactly the accepted snapshot or says why it cannot; there is one toast. Paused start is silent. Remote controls change the actual receiving player, refresh readback and use server-listed authority. Online engine changes preserve the same session/queue/position/choices.
+
+**Failure:** Inverse mark used as Undo, two notices, expired receipt clears newer intent, first-frame audio, controls affect the phone instead of target or engine setting creates a new queue/session unexpectedly.
+
+**Route to:** native-screens, web-viewer, web-owner, social, native-playback.
+
+### 26. Phone/tablet integrations and owner permissions
+
+1. Run once on a phone and once on a tablet. Owner Settings > Server has Metadata and Integrations plus the extended Libraries, People, Live TV, Storage, Troubleshooting and General. A member has no Server heading and has Profile > Personal access tokens; a secondary profile cannot gain account management.
+2. Create a Read key with 30-day expiry, share/copy the one-time secret privately, reopen and prove it cannot be read again, then revoke. Create a member token, see/revoke as owner, disallow new member tokens and verify existing tokens remain revocable.
+3. Create a webhook to an isolated receiver, inspect the one-time secret, send a test and watch pending/delivered log changes. Edit Off, save, rotate its secret, remove it. Inspect MCP’s local address/scopes; no Hosted account or enable switch should be needed.
+4. Use the API to revoke/expire a warm cached credential without another database mutation. Read/playback keys must refuse administrative session controls/listing and owner events; an admin key can perform permitted admin operations. Same-profile personal controls remain usable.
+
+**Expected:** Owner panels/one-time disclosures/scopes and member-token policy match readback on both device sizes; members see only personal token actions. Secrets do not reappear after reopening; legitimate local integrations work without Hosted.
+
+**Failure:** Missing owner panel, a member sees it, repeat secret disclosure, playback key controls another member or stale expiry accepts.
+
+**Route to:** native-owner, api-platform, security-sweep.
+
+### 27. Phone/tablet people, metadata and file tools
+
+1. Edit a member rating system and Weekdays 16:00–20:00 hours, reopen and check persistence. Try 0830/20.15/banana; invalid time changes nothing. Test next-day end. Outside-hours refusal preserves saved credentials. Change different fields concurrently then the same field: unrelated changes retry silently; genuine conflict retains the draft.
+2. Delete a disposable member via preview. Change that member on another device before confirm; require refreshed confirmation, not automatic destructive retry. Confirm and verify exact profiles/devices removed, retained owner history names blanked.
+3. Open Needs attention from a library’s exact count. Accept, manual search, provider ID and dismiss; search settles without another tap. Edit adult search/artwork limit/provider keys; secrets are never read back and invalid limits refuse. Remove a library with typed name while scanning; media files remain.
+4. Split one present film/track/book file with another version, then merge a film/show/episode by searching a second title and choosing which survives. Preview/delete one version with the server’s typed token. Check member/TV cannot reach owner file actions. Native song/book-file/extra merge remains absent, record it separately.
+
+**Expected:** Exact authorization, preview/readback, hours and rating choices; attention counts settle; typed library removal never deletes media; supported file tools preserve title/history and touch only approved files. Native merge exclusions remain documented gaps.
+
+**Failure:** Destructive stale confirmation retried, secret readback, incorrect retained history, disappeared disk files after library removal, whole title deleted when one version chosen or false complete merge parity.
+
+**Route to:** native-owner, accounts-security, identity, providers-matching.
+
+### 28. Phone/tablet source mapping, runtime and reports
+
+1. Add HDHomeRun with XMLTV URL; Check, edit the URL and require Check again. Save, refresh and compare mapped programmes by ID/number/name. Select source groups/channels using >200 choices, change 250 map rows and verify batched number/guide-ID/hidden saves.
+2. Inspect skipped-import explanations, guide-day and import limits. Show actual usage/locations/upgrade copies/download space. With more profile rows than one page, record the current download-usage paging gap rather than claiming all users are shown.
+3. Pause background work for an hour, resume, inspect FFmpeg requested/effective/restart status, restart with confirmation and wait for return. Verify playback/DVR/auth stay reachable during background pause.
+4. Open titles set aside and client reports; read/share/delete a disposable redacted report. Compare labels and footers on phone/tablet, nested sheets, VoiceOver/TalkBack and keyboard. Check native keys/tokens/reports/attention refresh from a second owner: the current pull-to-refresh-only behavior is a freshness gap.
+
+**Expected:** Mapped sources and batch readback match owner selection, stale check is invalidated; runtime rows actually render; reports share safely and supported actions recover. Missing quiet paged refresh/all-profile usage are recorded as Fail against the promised scope.
+
+**Failure:** Guide URL silently omitted, more-than-200 edits lost, inert pause/status row, restart never settles, report credentials exposed or missing pages silently accepted.
+
+**Route to:** native-owner, livetv, limits-settings, console.
+
+### 29. Whole-view Play and Shuffle beyond loaded pages
+
+1. Prepare a saved view and a genre/person/collection/playlist selection with at least 650 playable permitted items; include hidden/missing titles and a second profile. Load only the first page, choose a non-title sort/filter and press Play, then Shuffle with a recorded seed.
+2. Compare the queue with the complete authorized browse order/membership, including items after 500; advance through the boundary. Inspect POST /v1/queues: query/saved/container identity should be forwarded, not only loaded ContentEntry IDs. Repeat from phone, tablet and each TV client that exposes the page.
+3. Edit/add/remove/restrict items while capture grows, switch profile before a late answer and restart the server during capture. Unchanged source resumes; changed source that lost its snapshot preserves the accepted prefix and fails that segment. Start a new selection to capture new membership.
+4. Start two long captures and saturate the background read pool while browsing/owner controls continue. A third capture can refuse retryably; request deadlines settle, and resources release. Explicit item arrays remain capped at 500; that bound is distinct from query capture.
+
+**Expected:** A first playback window arrives promptly and later capture reaches the entire original authorized selection without duplicates/loss or 500 truncation. Already accepted occurrences stay stable under seeded shuffle. Current screen forwarding is unfinished: record a UI truncation as Fail while separately recording server-selector success.
+
+**Failure:** A first page or first 500 is treated as the whole view, a reordered/duplicate playlist starts the wrong occurrence, old profile starts playback, membership mixes after restart or control requests hang.
+
+**Route to:** queue-and-retention, web-viewer, native-screens.
+
+### 30. Common signed-out player and local subtitle companions
+
+1. Download ASS with unique attached fonts, PGS, DVB and VobSub index plus .sub. Interrupt transfer before companions complete, finish it and sign out while keeping files. Launch from the signed-out download picker using the common PlayerHost.
+2. Confirm .idx is paired with .sub, incomplete VobSub is not offered and stored script/font paths remain inside the owned download folder. Change engine, seek and use chapters. Compare actual font glyphs/styles to a reference: local fonts are currently ignored by both mpv engines and must be recorded as a gap.
+3. Switch to another profile/server and test receipt denial/revocation/expiry; then signed-out offline launch. Existing no-offline-next-episode queue and trusted-wall-clock gaps are separate results.
+
+**Expected:** The common player opens supported offline formats under the saved receipt and exact account root; complete companions render where supported. Missing local font consumption is a current Fail, not a reason to hide the stored asset.
+
+**Failure:** System-player fallback loses MKV/extras, VobSub lacks pictures, fonts wrong, wrong account files appear or receipt authority bypassed.
+
+**Route to:** native-screens, downloads, apple-mpv-review, android-native-review.

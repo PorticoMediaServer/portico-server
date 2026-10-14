@@ -2,6 +2,8 @@
 
 ## Purpose and evidence
 
+Updated for the evening implementation and owner decisions. New cases remain qualification work; known missing candidate implementation is Fail, while an unavailable test prerequisite is Blocked. Native-owner recorded 655 native/87 Vega before the mirror; the later running log confirms 655/87 again after the mirror with clean type checks and equal packages. Physical acceptance remains unrun.
+
 These are qualification instructions, not evidence that the candidate passed. Use disposable state, copied media and test accounts. Record candidate commit IDs, artifact SHA-256, OS/device/driver/browser versions, start/end times, redacted server/client logs and the numbered case result: Pass, Fail or Blocked. A missing prerequisite is Blocked, never Pass. Save raw credentials, grant URLs, cookies, private keys and unredacted evidence outside Git.
 
 The source candidates are the integrated `audit-implementation/main` checkouts at `/home/justin/projects/Portico/.worktrees/audit-implementation/main-server` and `main-native`; internal Hosted work is delivered separately. On the qualification machine use local copies of those exact integrated revisions and record `git rev-parse HEAD` plus whether the tree is dirty. Do not test an individual lane branch without its dependencies. No stable pre-release API/database compatibility is promised: fresh fixtures use the candidate baseline; upgrade fixtures must have the same baseline digest. Preserve the entire old state separately before any restore/upgrade.
@@ -343,3 +345,82 @@ Run cases 1, 2, 3, 6 first, in order. Stop a destructive case if isolation is lo
 **Failure:** Dead settings, protection every title/never, weak unapproved marker shown, next card with no queue or video protection interrupts album.
 
 **Route to:** limits-settings, web-subtitles, subtitles-text, native-playback.
+
+### 26. Wide sort/filter on every grouping
+
+1. Prepare two libraries with at least 250 genres/series/groups and 650 playable titles; include authored playlists with duplicate entries, personal collections, artist albums/songs, author books, seasons, people with cast/crew credits, categories and Home recommendation rows. Sign in as a restricted member as well as the owner.
+2. For every library tab and each named grouping, compare Sort/Filter to that scope’s server advertisement. Change Recently aired from Latest episode to Title, then duration/rating/last-played where advertised. Choose Random, page, navigate away and Back: the seed/order stays for that open selection; choosing Random again reshuffles.
+3. Combine two member filters, clear one and then all. Every request must retain the grouping membership and current library/profile fence. Follow Genres/Series past 200 and sorted lists through the final page; check counts and restricted titles. A short/empty page with a next cursor must continue.
+4. For a cross-library person/playlist/My List/Favorites, switch library chips or the native library control and test each library separately. Check own order before a filter, then the explicit server sort while filtered; removing the filter restores group scope. Cast/Crew does not pretend to be a supported person operand.
+5. Record Home See all, personal collection, book parts/discs, native History/My List/Favorites and music Playlists separately. Current missing fields/controls are known parity gaps, not waived tests. Native role controls hide during browse; web offers the toolbar under All. Check phone/tablet and remote focus without moving the hero.
+
+**Expected:** Every supported grouping offers all applicable advertised choices, membership and privacy survive sort/filter/paging and Recently aired is changeable. Authored own order is available unfiltered; filtered own-order preservation remains a recorded server gap. No grouping-wide parity pass while the named missing surfaces remain.
+
+**Failure:** Missing required toolbar, a filter leaves its group, first-200 truncation, leaked denied titles, duplicate/lost pages, title-only subgroup or a false claim of own-order preservation under a filter.
+
+**Route to:** web-viewer, native-screens, native-health-2, grouping-sorts, scale-check-2.
+
+### 27. Receipt Undo, paused start and real remote controls
+
+1. Mark a partially played show/season/album/book from the title page and from a card menu. Press the one Undo toast within 30 seconds; compare watched intent/resume on every member. Repeat after another device plays/edits membership, after expiry and with a double press.
+2. Load a title in an already-paused Watch Together room and measure its first audible frame, including same-title reload. It must stay paused before preparation/first output, not play then pause.
+3. Play on a second actual device and open Play on. Compare its reported position/duration, pause/resume, Back/Forward and Start over against the target, not the controller device. Stop elsewhere and use a retained menu; hidden actions must not be sent.
+4. On a native companion device during playback change Automatic/Native/mpv; this engine selector is not a web or Vega feature. Record session ID, queue occurrence, position, pause and track/quality choices before/after the capability publication and replan. Offline files/live channels follow their supported engine behavior rather than a forced unrelated restart.
+
+**Expected:** Undo submits its receipt and restores exactly the accepted snapshot or says why it cannot; there is one toast. Paused start is silent. Remote controls change the actual receiving player, refresh readback and use server-listed authority. Online engine changes preserve the same session/queue/position/choices.
+
+**Failure:** Inverse mark used as Undo, two notices, expired receipt clears newer intent, first-frame audio, controls affect the phone instead of target or engine setting creates a new queue/session unexpectedly.
+
+**Route to:** native-screens, web-viewer, web-owner, social, native-playback.
+
+### 28. Quiet web lists, field-safe retries and owner transport
+
+1. Use two owners A/B. In A keep keys/tokens/webhooks/devices/invitations/reports/backups/storage/source/tuner/recordings/channels and viewer downloads/guide open in turn. Mutate in B; within about 30 seconds visible lists reread without blanking. Hide A: automatic clock reads stop. Fail one read then restore; no immediate panel error. Expensive disk usage is not polled.
+2. In A edit one setting; B changes a different setting. A’s untouched value updates and its draft survives. Force one 428 revision_required or 412 revision_mismatch; read current state and retry with the original operation identity. Both owners edit the same field differently: conflict retains the draft and asks for a deliberate next Save. Repeated refusal, denied/malformed reread or abort must terminate boundedly.
+3. Play a film as a member on an actual second device. Web Dashboard > Watching now: Pause/Resume, Back/Forward 30 seconds, Start over, Details; observe target position/audio. Live sessions have no relative seek. End the target and use a retained menu. Member/read/playback credentials cannot administer another viewer.
+4. Repeat own-profile remote seek from Settings > This device. No admin scrubber/duration is invented. Record Library Channel builder and mount-command conflicts separately; these do not currently use the silent retry wrapper.
+
+**Expected:** Visible lists update calmly; drafts rebase only unchanged fields; one stale response recovers silently and real conflicting edits remain. Actual target obeys transport and dead session has a useful message. Known missing server hint events are measured clock behavior, not event delivery.
+
+**Failure:** Blank list, hidden-tab polling, draft overwritten, retry after denied/invalid reread, endless 428 loop, controls only change UI or mutation scope bypass.
+
+**Route to:** web-owner, web-viewer, review-web-logic, freshness-clients, security-sweep.
+
+### 29. Playback problems, schedules and episode/source controls
+
+1. Cause a definite disposable file/player failure. Server > Streaming shows remembered playback problems grouped by source. Forget removes that file’s failures and the next attempt retries it. With no rows the group is absent. Current rows have no title link; native has no panel.
+2. People > an account: add Weekdays viewing hours, save/reload and verify real outside-hours sign-in/playback refusal without credential retirement. Conflicting edits keep the form. Test narrow width, next-day hours and removal to Any time.
+3. Using a real provider candidate or faithful provider fixture, Edit metadata > Match selects alternate/absolute order and a signed episode offset, then verify episodes against the chosen provider coordinates. The local-only browser fixture does not establish this acceptance.
+4. HDHomeRun source add displays guide URL and useful cause-specific failures. Check actual mapping/programmes; verify confirmation patterns, phone-width group headings and indistinguishable version/subtitle labels, including Download picker.
+
+**Expected:** Controls save/read back and change actual remembered failures, admission/matching/source results; each populated state is exercised. No claim that blank browser pages or pure rules tested these rendered panels.
+
+**Failure:** Missing rows/control, failure clear does nothing, wrong episode mapping, blocked guide field, generic error replacing actual cause or duplicate version/track labels.
+
+**Route to:** web-owner, web-viewer, leftovers-server-a, livetv.
+
+### 30. Whole-view Play and Shuffle beyond loaded pages
+
+1. Prepare a saved view and a genre/person/collection/playlist selection with at least 650 playable permitted items; include hidden/missing titles and a second profile. Load only the first page, choose a non-title sort/filter and press Play, then Shuffle with a recorded seed.
+2. Compare the queue with the complete authorized browse order/membership, including items after 500; advance through the boundary. Inspect POST /v1/queues: query/saved/container identity should be forwarded, not only loaded ContentEntry IDs. Repeat from phone, tablet and each TV client that exposes the page.
+3. Edit/add/remove/restrict items while capture grows, switch profile before a late answer and restart the server during capture. Unchanged source resumes; changed source that lost its snapshot preserves the accepted prefix and fails that segment. Start a new selection to capture new membership.
+4. Start two long captures and saturate the background read pool while browsing/owner controls continue. A third capture can refuse retryably; request deadlines settle, and resources release. Explicit item arrays remain capped at 500; that bound is distinct from query capture.
+
+**Expected:** A first playback window arrives promptly and later capture reaches the entire original authorized selection without duplicates/loss or 500 truncation. Already accepted occurrences stay stable under seeded shuffle. Current screen forwarding is unfinished: record a UI truncation as Fail while separately recording server-selector success.
+
+**Failure:** A first page or first 500 is treated as the whole view, a reordered/duplicate playlist starts the wrong occurrence, old profile starts playback, membership mixes after restart or control requests hang.
+
+**Route to:** queue-and-retention, web-viewer, native-screens.
+
+### 31. Deferred Home and large mixed-library qualification
+
+1. Use an integrated candidate that includes scale-check-2’s final snapshot; record that prerequisite. Test 10k, 200k and one-million mixed video/music/books with versions, genres, credits and three restricted profiles. A full two-million fixture is not required under the recorded 8 GB scratch budget; structural tests are separate evidence.
+2. Hold one Home preview response. The row manifest arrives first; two row slots work independently, a stalled/failing row times out and other rows appear. Quiet refresh keeps cards. Switch viewer while responses are held: old hero/row/pagination cannot cross the fence.
+3. Compare every advertised sort/direction/operator, exact totals and subgroup membership on first/deep pages during empty and version-bump rebuilds; browse/search keep responding with prior content and live restrictions. Exercise broad search prefixes, group missing/personal/play-state predicates and mark/Undo 500/5,000.
+4. Record actual latency/refusals/RSS/WAL/disk, writer holds and first visibility after add/remove. Treat one observation as one sample, not p95. Monitor space and preserve logs before deleting each owned database. Test authenticated HTTP/concurrent players separately from catalogue-process benchmarks.
+
+**Expected:** No unavailable/preparing browse reply, independent visible Home rows, exact restricted results and reproducible measured resource outcomes. Capacity claims require explicit targets/sample distribution; pending 200k/one-million runs or structural two-million proof are never called mixed-scale acceptance.
+
+**Failure:** Stalled shelf blocks Home, old viewer cards publish, totals/order/privacy differ, large operation kills control reachability or disk budget exhausted without preserved evidence.
+
+**Route to:** scale-check-2, scale-check, freshness-server, queue-and-retention.

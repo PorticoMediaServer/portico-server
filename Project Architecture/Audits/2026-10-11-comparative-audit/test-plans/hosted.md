@@ -2,6 +2,8 @@
 
 ## Purpose and evidence
 
+Updated for the evening implementation and owner decisions. New cases remain qualification work; known missing candidate implementation is Fail, while an unavailable test prerequisite is Blocked. Native-owner recorded 655 native/87 Vega before the mirror; the later running log confirms 655/87 again after the mirror with clean type checks and equal packages. Physical acceptance remains unrun.
+
 These are qualification instructions, not evidence that the candidate passed. Use disposable state, copied media and test accounts. Record candidate commit IDs, artifact SHA-256, OS/device/driver/browser versions, start/end times, redacted server/client logs and the numbered case result: Pass, Fail or Blocked. A missing prerequisite is Blocked, never Pass. Save raw credentials, grant URLs, cookies, private keys and unredacted evidence outside Git.
 
 The source candidates are the integrated `audit-implementation/main` checkouts at `/home/justin/projects/Portico/.worktrees/audit-implementation/main-server` and `main-native`; internal Hosted work is delivered separately. On the qualification machine use local copies of those exact integrated revisions and record `git rev-parse HEAD` plus whether the tree is dirty. Do not test an individual lane branch without its dependencies. No stable pre-release API/database compatibility is promised: fresh fixtures use the candidate baseline; upgrade fixtures must have the same baseline digest. Preserve the entire old state separately before any restore/upgrade.
@@ -157,3 +159,16 @@ Run cases 1, 2, 8 first, in order. Stop a destructive case if isolation is lost;
 **Failure:** Private/loopback egress denial bypassed, injected wake claimed public delivery, adapter gap hidden in16-pass headline or delayed admission claimed immediate readiness.
 
 **Route to:** e2e-hosted, hosted-followups, native-sync, accounts-security.
+
+### 9. Immediate claim, shared activation gate and certified bounds
+
+1. Use separate empty format-21 PostgreSQL and the integrated actual server. Let an unclaimed server become idle, install/ack its claim, then sign in immediately. Do not reuse the older loopback driver’s three-second owner-link wait or manual injected wake as proof.
+2. Cause one Hosted feature to open an origin gate for HTTP-date/HTML 503 Retry-After 120 seconds; activation automatic poll/create recovery/cleanup sends zero at 30/60/90 seconds. Interactive review/cancel is allowed and local Quick Connect stays independent.
+3. Using fixture root keys only, issue revision 9007199254740991 and the next/uint64 maximum. Largest supported verifies/persists; oversized correctly signed artifacts refuse at trust/persistence before SQL. Verify fresh check-in delivery and revoked consent on older replicas.
+4. Compare refreshed hosted-services/apikit byte-for-byte to the final server copy, regenerate Hosted contracts, run strict generated TypeScript and contract-current test. Run database-backed PKCE/consent/signer checks with an explicit isolated test URL file, not a silently skipping invocation.
+
+**Expected:** Prompt committed owner readiness, shared long-outage floor, preserved operation receipts, exact supported revision and current same-toolkit artifacts. Loopback backend proof does not establish public endpoint/automatic wake/provider/OS callback.
+
+**Failure:** Claim succeeds but owner access initially refuses, deadline shortened, oversized revision reaches SQL, stale toolkit contracts or database tests silently skipped.
+
+**Route to:** claim-and-gate, e2e-hosted, hosted-followups, handoff-update.
