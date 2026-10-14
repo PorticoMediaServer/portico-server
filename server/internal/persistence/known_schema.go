@@ -517,6 +517,7 @@ index social_groups_owner
 index social_handoffs_open
 index subtitle_candidates_expiry
 index subtitle_inventory_entries_association
+index subtitle_inventory_entries_job
 index subtitle_provider_candidates_item_id_fk
 index subtitle_resources_item
 index subtitle_resources_source_id_fk
