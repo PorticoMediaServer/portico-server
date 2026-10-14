@@ -424,3 +424,7 @@ Run cases 1, 2, 3, 6 first, in order. Stop a destructive case if isolation is lo
 **Failure:** Stalled shelf blocks Home, old viewer cards publish, totals/order/privacy differ, large operation kills control reachability or disk budget exhausted without preserved evidence.
 
 **Route to:** scale-check-2, scale-check, freshness-server, queue-and-retention.
+
+## Known qualification limits from the final viewer pass
+
+Person/collection/saved-view toolbars, populated audiobook Series, music Favorites, sorted-group bulk selection, actual clock timing, paused Together start and live-session tab closure were not visually checked in that pass. Run their numbered cases with populated fixtures; an empty screen walk is insufficient. Drawn subtitles in PiP/casting, forced-only choice, Up next artwork/countdown, MP3/ADTS/Ogg deep resume, output-latency compensation, Saved/Search/person Back retention, Watch Together hub adoption and five refresh-required notices remain source/experience gaps. Record each relevant case independently. Shared subtitle/queue errors and metadata fallback labels still need catalogue cleanup. Later all-green unit fixtures do not remove these acceptance gaps.
