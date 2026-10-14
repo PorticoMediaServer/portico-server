@@ -309,3 +309,28 @@ func TestFileAvailabilityReachesTitleAndShow(t *testing.T) {
 		t.Fatalf("unchanged availability queued %d rows", n)
 	}
 }
+
+// An artist's overview or tags arriving must not send each of its songs back
+// to matching; a change to its identity still does.
+func TestArtistDetailsLeaveSongMatchingAlone(t *testing.T) {
+	db := cc1OpenDB(t, "artist-details.sqlite")
+	lib := cc1Library(t, db, "music", "Music", "music", "/music")
+	artist := cc1Entity(t, db, Entity{Library: lib, Kind: Artist, Key: ArtistKey("x"), Title: "X"}, map[string]any{"local_key": "x"})
+	album := cc1Entity(t, db, Entity{Library: lib, Kind: Album, Parent: artist, Key: AlbumKey("y"), Title: "Y"}, map[string]any{"local_key": "y", "artist_id": artist})
+	for i := 0; i < 3; i++ {
+		song := cc1Entity(t, db, Entity{Library: lib, Kind: Track, Parent: album, Key: fmt.Sprint("song:", i), Title: fmt.Sprint("Song ", i)}, map[string]any{"album_id": album, "track_number": i + 1})
+		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error { return SetSongArtistsTx(ctx, tx, song, []int64{artist}) })
+	}
+	jobs := func() int { return cc1Scalar(t, db, `SELECT COALESCE(sum(revision),0) FROM mb_jobs WHERE kind='song'`) }
+	before := jobs()
+	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		return SetFactsTx(ctx, tx, artist, map[string]any{"overview": "An artist.", "tags": "rock"})
+	})
+	if after := jobs(); after != before {
+		t.Fatalf("artist overview re-queued song matching: %d → %d", before, after)
+	}
+	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error { return SetFactsTx(ctx, tx, artist, map[string]any{"local_key": "x2"}) })
+	if after := jobs(); after == before {
+		t.Fatal("artist identity change did not reach song matching")
+	}
+}
