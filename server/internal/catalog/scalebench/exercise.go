@@ -90,6 +90,7 @@ func pendingByDomain(db *sql.DB) string {
 func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...string) (routeResult, error) {
 	ctx := context.Background()
 	w := compactcatalog.NewWorker(db)
+	w.PaceToHold(compactcatalog.BatchHoldTarget) // as the server's worker runs
 	dbwork.ProfileStatements(true)
 	defer dbwork.ProfileStatements(false)
 	r := routeResult{Route: name}
@@ -159,10 +160,13 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	}()
 	dbwork.WriteGate().ResetPeak()
 	var stepUnits int
+	var stepMillis []float64
 	lastUnits, lastLog := 0, time.Now()
 	for {
 		schedule.Tick(ctx)
-		n, err := w.Step(ctx, compactcatalog.BatchLimit)
+		stepStart := time.Now()
+		n, err := w.Step(ctx, compactcatalog.BatchMax)
+		stepMillis = append(stepMillis, float64(time.Since(stepStart))/float64(time.Millisecond))
 		stepUnits += n
 		if err != nil {
 			close(stop)
@@ -201,6 +205,11 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	r.P50MS = float64(time.Since(start)) / float64(time.Millisecond)
 	r.P95MS = r.P50MS
 	logMeasurement(r)
+	if len(stepMillis) > 0 {
+		sort.Float64s(stepMillis)
+		at := func(q float64) float64 { return stepMillis[min(len(stepMillis)-1, int(q*float64(len(stepMillis))))] }
+		fmt.Fprintf(os.Stderr, "STEPS %s steps=%d units=%d p50_ms=%.2f p95_ms=%.2f p99_ms=%.2f max_ms=%.2f\n", name, len(stepMillis), stepUnits, at(.5), at(.95), at(.99), stepMillis[len(stepMillis)-1])
+	}
 	fmt.Fprintf(os.Stderr, "DERIVE %s probes=%d max_browse_search_ms=%.3f max_gate_held_ms=%d failed_probes=%d\n", name, probes, float64(maxRead)/float64(time.Millisecond), dbwork.WriteGate().Stats().MaxHeldMilli, failedProbes)
 	for i, entry := range dbwork.StatementProfile() {
 		if i == 40 {

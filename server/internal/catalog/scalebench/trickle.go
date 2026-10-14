@@ -50,6 +50,7 @@ func exerciseTrickle(db *sql.DB, updates int) error {
 		}},
 	}
 	w := compactcatalog.NewWorker(db)
+	w.PaceToHold(compactcatalog.BatchHoldTarget)
 	for _, tg := range targets {
 		var count int
 		if err := db.QueryRow(`SELECT count(*) FROM catalog_entities WHERE kind=(SELECT kind FROM catalog_entities WHERE id=(`+tg.query+`))`, 0).Scan(&count); err != nil || count == 0 {
@@ -76,7 +77,7 @@ func exerciseTrickle(db *sql.DB, updates int) error {
 				return err
 			}
 			for {
-				n, err := w.Step(ctx, compactcatalog.BatchLimit)
+				n, err := w.Step(ctx, compactcatalog.BatchMax)
 				if err != nil {
 					return err
 				}
