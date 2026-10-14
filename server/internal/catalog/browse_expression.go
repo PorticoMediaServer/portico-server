@@ -631,6 +631,9 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 }
 
 func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (string, error) {
+	if clause, handled, err := c.groupMembershipPredicate(field, node); handled {
+		return clause, err
+	}
 	if field.ID == "favorite" || field.ID == "watchlisted" || field.ID == "personalRating" || field.ID == "lastPlayedAt" {
 		return c.personalTitlePredicate(field, node)
 	}
@@ -821,4 +824,32 @@ func (c *browseCompiler) personalTitlePredicate(field browseField, node BrowseNo
 		clause = "NOT " + clause
 	}
 	return clause, nil
+}
+
+// Membership filters start at the selected group's indexed members. Testing a
+// public identity once per row of the library defeats those indexes, especially
+// while selecting a deep page in a small genre, collection or series.
+func (c *browseCompiler) groupMembershipPredicate(field browseField, node BrowseNode) (string, bool, error) {
+	if field.ID != "memberOf" && field.ID != "collection" {
+		return "", false, nil
+	}
+	if node.Operator != "equals" && node.Operator != "in" && node.Operator != "contains" && node.Operator != "contains-any" {
+		return "", false, nil
+	}
+	values := []any{node.Value}
+	if list, ok := node.Value.([]any); ok {
+		values = list
+	}
+	identity := []string{}
+	for _, v := range values {
+		c.args = append(c.args, v)
+		identity = append(identity, "pid_blob(?)")
+	}
+	members := `SELECT parent.item_id FROM catalog_entities container CROSS JOIN catalog_browse_memberships parent ON parent.entity_id=container.id WHERE container.public_id IN (` + strings.Join(identity, ",") + `)`
+	if field.ID == "collection" {
+		members = `SELECT parent.item_id FROM catalog_entities container CROSS JOIN catalog_collection_members parent ON parent.collection_id=container.id WHERE container.public_id IN (` + strings.Join(identity, ",") + `)`
+	}
+	restriction, args := ItemRestrictionSQL("member.item_id", c.restrictions)
+	c.args = append(c.args, args...)
+	return `e.entity_id IN(SELECT member.entity_id FROM catalog_browse_memberships member WHERE member.item_id IN (` + members + `) AND (` + restriction + `))`, true, nil
 }

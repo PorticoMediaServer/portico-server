@@ -173,8 +173,10 @@ type traceKey struct{}
 
 // traceBox collects statement text for one traced context.
 type traceBox struct {
-	mu    sync.Mutex
-	lines []string
+	mu      sync.Mutex
+	lines   []string
+	length  int
+	maximum int
 }
 
 // TraceStatements collects the statements issued under ctx and returns a reader
@@ -186,7 +188,18 @@ type traceBox struct {
 // statement count tells you a route is expensive and only the shape tells you
 // which statement is repeated.
 func TraceStatements(ctx context.Context) (context.Context, func() []string) {
-	box := &traceBox{}
+	return traceStatements(ctx, 110, 4096)
+}
+
+// TraceQueryPlans retains complete parameterized statements for an opt-in
+// EXPLAIN harness. It never records bound values or publishes query text to
+// telemetry. Both statement size and statement count are bounded.
+func TraceQueryPlans(ctx context.Context) (context.Context, func() []string) {
+	return traceStatements(ctx, 64*1024, 1024)
+}
+
+func traceStatements(ctx context.Context, length, maximum int) (context.Context, func() []string) {
+	box := &traceBox{length: length, maximum: maximum}
 	return context.WithValue(ctx, traceKey{}, box), func() []string {
 		box.mu.Lock()
 		defer box.mu.Unlock()
@@ -203,11 +216,13 @@ func traceStatement(ctx context.Context, query string) {
 		return
 	}
 	q := strings.Join(strings.Fields(query), " ")
-	if len(q) > 110 {
-		q = q[:110]
+	if len(q) > box.length {
+		q = q[:box.length]
 	}
 	box.mu.Lock()
-	box.lines = append(box.lines, q)
+	if len(box.lines) < box.maximum {
+		box.lines = append(box.lines, q)
+	}
 	box.mu.Unlock()
 }
 

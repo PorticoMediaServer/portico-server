@@ -550,6 +550,32 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 	if len(keys) == 0 {
 		return 0, 0, backfilled, nil
 	}
+	// A first import often queues the same keys a rebuild will enumerate.
+	// When this queue batch covers the next source prefix, successful drains
+	// also satisfy that prefix. Do not derive it a second time on the next
+	// enumeration turn. Source gaps and unfinished fanouts still stop progress.
+	var covered []int64
+	if rebuilding == 1 && queueTurn && !retry {
+		var cursor int64
+		if err = tx.QueryRowContext(ctx, `SELECT rebuild_cursor FROM catalog_derivations WHERE domain=?`, domain).Scan(&cursor); err != nil {
+			return 0, 0, false, err
+		}
+		ids, sourceErr := d.Backfill(ctx, tx, cursor, batch)
+		if sourceErr != nil {
+			return 0, 0, false, sourceErr
+		}
+		sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+		queued := make(map[int64]bool, len(keys))
+		for _, key := range keys {
+			queued[key.ID] = true
+		}
+		for _, id := range ids {
+			if !queued[id] {
+				break
+			}
+			covered = append(covered, id)
+		}
+	}
 	var single int64
 	if len(keys) == 1 {
 		single = keys[0].ID
@@ -557,6 +583,24 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 	done, err := d.Drain(ctx, tx, keys, limit)
 	if err != nil {
 		return 0, single, backfilled, fmt.Errorf("catalogue domain %d: %w", domain, err)
+	}
+	if len(covered) > 0 {
+		finished := make(map[int64]bool, len(done))
+		for _, id := range done {
+			finished[id] = true
+		}
+		var through int64
+		for _, id := range covered {
+			if !finished[id] {
+				break
+			}
+			through = id
+		}
+		if through > 0 {
+			if _, err = tx.ExecContext(ctx, `UPDATE catalog_derivations SET rebuild_cursor=? WHERE domain=?`, through, domain); err != nil {
+				return 0, single, backfilled, err
+			}
+		}
 	}
 	// Acknowledge exactly the revision this batch saw; an id touched again in
 	// the meantime stays queued.

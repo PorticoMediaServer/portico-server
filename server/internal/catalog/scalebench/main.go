@@ -65,6 +65,7 @@ func run() (runErr error) {
 	explain := flag.String("explain", "", "print the scans and sorts in the plans of the routes whose name contains this")
 	scenariosOnly := flag.Bool("scenarios-only", false, "measure search and write/rebuild scenarios without the browse matrix")
 	matrixOnly := flag.Bool("matrix-only", false, "measure browse vocabulary without rebuild/write scenarios")
+	bulkFacts := flag.Bool("bulk-facts", false, "seed reference facts with set-based inserts, production triggers enabled")
 	factsOnly := flag.Bool("facts-only", false, "seed facts without deriving; use -reuse -exercise to measure the empty rebuild")
 	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
 	flag.Parse()
@@ -105,7 +106,14 @@ func run() (runErr error) {
 			r.SeedResumedFrom = startItem
 		}
 		start := time.Now()
-		r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedReference(db, *n, startItem, *n, 32, !*factsOnly)
+		if *bulkFacts {
+			if *resumeSeed || !*factsOnly {
+				return errors.New("bulk-facts requires a new facts-only fixture")
+			}
+			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedBulkFacts(db, *n)
+		} else {
+			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedReference(db, *n, startItem, *n, 32, !*factsOnly)
+		}
 		if err != nil {
 			return err
 		}
@@ -311,7 +319,7 @@ func seed(db *sql.DB, n, startItem, stopItem int) (first, last float64, err erro
 // the plan lines of each statement that scan a table or sort, with every
 // parameter NULL (a plan, not a measurement).
 func explainRoute(db *sql.DB, name string, read func(*catalog.Service) error, s *catalog.Service) {
-	ctx, statements := dbwork.TraceStatements(context.Background())
+	ctx, statements := dbwork.TraceQueryPlans(context.Background())
 	_ = dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return read(s.WithContext(ctx)) })
 	conn, err := db.Conn(context.Background())
 	if err != nil {
@@ -326,7 +334,11 @@ func explainRoute(db *sql.DB, name string, read func(*catalog.Service) error, s 
 				return err
 			}
 			defer prepared.Close()
-			args := make([]driver.NamedValue, 64)
+			count := prepared.NumInput()
+			if count < 0 {
+				count = strings.Count(text, "?")
+			}
+			args := make([]driver.NamedValue, count)
 			for i := range args {
 				args[i] = driver.NamedValue{Ordinal: i + 1}
 			}
@@ -337,7 +349,7 @@ func explainRoute(db *sql.DB, name string, read func(*catalog.Service) error, s 
 			defer rows.Close()
 			values := make([]driver.Value, len(rows.Columns()))
 			for rows.Next(values) == nil {
-				if detail, ok := values[len(values)-1].(string); ok && (strings.HasPrefix(detail, "SCAN ") || strings.Contains(detail, "TEMP B-TREE")) {
+				if detail, ok := values[len(values)-1].(string); ok {
 					lines = append(lines, detail)
 				}
 			}

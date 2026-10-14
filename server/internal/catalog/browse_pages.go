@@ -94,6 +94,9 @@ func (p pageShape) positional() bool {
 // browsePage selects the page's rows.
 func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 	primary, desc := p.primary()
+	if p.request.Query != nil && p.start > 0 && len(p.seekKeys) == 0 {
+		return s.filteredRangePage(p)
+	}
 	if primary.Ordering == -2 {
 		return s.indexedFactPage(p, primary, desc)
 	}

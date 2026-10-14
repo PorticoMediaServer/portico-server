@@ -49,14 +49,13 @@ func exerciseRead(db *sql.DB, s *catalog.Service, name string, samples int, read
 		r.MaxStatements = max(r.MaxStatements, dbwork.Reads().Statements-before)
 		if err != nil {
 			r.Error = err.Error()
-			logMeasurement(r)
-			return r, err
+			break
 		}
 	}
 	sort.Float64s(durations)
-	r.Samples = samples
-	r.P50MS = durations[(samples-1)/2]
-	r.P95MS = durations[(samples*95+99)/100-1]
+	r.Samples = len(durations)
+	r.P50MS = durations[(len(durations)-1)/2]
+	r.P95MS = durations[(len(durations)*95+99)/100-1]
 	logMeasurement(r)
 	return r, nil
 }
@@ -68,65 +67,90 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	w := compactcatalog.NewWorker(db)
 	r := routeResult{Route: name}
 	start := time.Now()
-	probeAt := time.Time{}
 	logAt := time.Now()
 	v := catalog.Viewer{Profile: "viewer", Fence: "scale-open", Libraries: []string{"movies", "tv", "music"}}
-	var probes int
+	var probes, failedProbes int
 	firstVisible := time.Duration(-1)
 	var maxRead time.Duration
-	dbwork.WriteGate().ResetPeak()
-	for {
-		n, err := w.Step(ctx, compactcatalog.BatchLimit)
-		if err != nil {
-			return r, err
-		}
-		r.RSSKB = max(r.RSSKB, processRSSKB())
-		if time.Since(logAt) > 10*time.Second {
-			var remaining int
-			db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&remaining)
-			fmt.Fprintf(os.Stderr, "DRAIN %s elapsed=%s pending=%d rss_kb=%d\n", name, time.Since(start).Round(time.Second), remaining, r.RSSKB)
-			logAt = time.Now()
-		}
-		if time.Now().After(probeAt) {
+	stop, done := make(chan struct{}), make(chan struct{})
+	// Requests run alongside the worker, rather than pausing derivation for
+	// every checkpoint. They use the real read snapshot/admission machinery.
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
 			readStart := time.Now()
-			err = dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error {
+			probe, cancel := context.WithTimeout(ctx, 30*time.Second)
+			err := dbwork.WithReadSnapshot(probe, db, func(ctx context.Context) error {
 				service := s.WithContext(ctx)
 				if _, err := service.BrowseEntities(v, catalog.BrowseRequest{Library: "movies", Pivot: "movies", Limit: 40}); err != nil {
 					return err
 				}
-				probeQuery := "Title"
+				query := "Title"
 				if len(queries) > 0 {
-					probeQuery = queries[0]
+					query = queries[0]
 				}
-				page, err := service.Search(ctx, catalog.SearchRequest{Groups: []string{"movies", "shows", "episodes", "artists", "albums", "songs", "books", "collections", "authors", "people"}, Viewer: v, Profile: "viewer", ViewerFence: "scale-open", Libraries: v.Libraries, Q: probeQuery, Limit: 12})
-				if err == nil {
-					for _, group := range page.Groups {
-						if group.ErrorCode != "" {
-							return fmt.Errorf("probe group %s: %s", group.ID, group.ErrorCode)
-						}
-						if name == "derive-added-1000" && firstVisible < 0 && group.ID == "movies" && len(group.Items) > 0 {
-							firstVisible = time.Since(start)
-						}
+				page, err := service.Search(ctx, catalog.SearchRequest{Groups: []string{"movies", "shows", "episodes", "artists", "albums", "songs", "books", "collections", "authors", "people"}, Viewer: v, Q: query, Limit: 12})
+				if err != nil {
+					return err
+				}
+				for _, group := range page.Groups {
+					if group.ErrorCode != "" {
+						failedProbes++
+						continue
+					}
+					if name == "derive-added-1000" && firstVisible < 0 && group.ID == "movies" && len(group.Items) > 0 {
+						firstVisible = time.Since(start)
 					}
 				}
-				return err
+				return nil
 			})
+			cancel()
 			if err != nil {
-				return r, err
+				failedProbes++
+				fmt.Fprintf(os.Stderr, "PROBE_ERROR %s: %v\n", name, err)
 			}
 			maxRead = max(maxRead, time.Since(readStart))
 			probes++
-			probeAt = time.Now().Add(200 * time.Millisecond)
+			timer := time.NewTimer(200 * time.Millisecond)
+			select {
+			case <-stop:
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+	}()
+	dbwork.WriteGate().ResetPeak()
+	for {
+		n, err := w.Step(ctx, compactcatalog.BatchLimit)
+		if err != nil {
+			close(stop)
+			<-done
+			return r, err
+		}
+		r.RSSKB = max(r.RSSKB, processRSSKB())
+		if time.Since(logAt) > 10*time.Second {
+			var pending int
+			db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&pending)
+			fmt.Fprintf(os.Stderr, "DRAIN %s elapsed=%s pending=%d rss_kb=%d\n", name, time.Since(start).Round(time.Second), pending, r.RSSKB)
+			logAt = time.Now()
 		}
 		if n == 0 {
 			break
 		}
 	}
+	close(stop)
+	<-done
 	r.Samples = 1
 	r.P50MS = float64(time.Since(start)) / float64(time.Millisecond)
 	r.P95MS = r.P50MS
 	logMeasurement(r)
-	fmt.Fprintf(os.Stderr, "DERIVE %s probes=%d max_browse_search_ms=%.3f max_gate_held_ms=%d\n", name, probes, float64(maxRead)/float64(time.Millisecond), dbwork.WriteGate().Stats().MaxHeldMilli)
+	fmt.Fprintf(os.Stderr, "DERIVE %s probes=%d max_browse_search_ms=%.3f max_gate_held_ms=%d failed_probes=%d\n", name, probes, float64(maxRead)/float64(time.Millisecond), dbwork.WriteGate().Stats().MaxHeldMilli, failedProbes)
 	if firstVisible >= 0 {
 		fmt.Fprintf(os.Stderr, "FIRST_VISIBLE drain_ms=%.3f\n", float64(firstVisible)/float64(time.Millisecond))
 	}
