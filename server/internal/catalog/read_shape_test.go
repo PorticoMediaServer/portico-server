@@ -328,3 +328,51 @@ func TestPersonFilterFindsItemAndContainerCredits(t *testing.T) {
 		}
 	}
 }
+
+// A restricted viewer's page of containers checks the live restriction on the
+// page's shows, not on every show the page skipped inside its block.
+func TestRestrictedContainerPageChecksOnlyItsRows(t *testing.T) {
+	c := catalogtest.Open(t)
+	tv := c.Library("tv", "TV", "tv", "/tv")
+	for i := 0; i < 60; i++ {
+		show := c.Show(tv, fmt.Sprintf("Show %02d", i), 2000)
+		season := c.Season(show, 1)
+		for n := 1; n <= 12; n++ {
+			episode := c.Episode(show, season, n, fmt.Sprintf("/tv/%d/%d.mkv", i, n))
+			c.Attributes(episode.ID, "contentRating", "TV-PG")
+		}
+	}
+	c.Drain()
+	s := New(c.DB)
+	if _, err := s.ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	c.Drain()
+	r := classesRestrictionOf(classesCeiling(13), true)
+	if err := s.RebuildVisibilityClass(context.Background(), "tv", r); err != nil {
+		t.Fatal(err)
+	}
+	read := func(viewer Viewer) (BrowseResult, int64) {
+		var out BrowseResult
+		steps := readSteps(t, c, func(s *Service) error {
+			var err error
+			out, err = s.BrowseEntities(viewer, BrowseRequest{Library: "tv", Pivot: "shows", Limit: 5, Range: &BrowseRange{Start: 50}})
+			return err
+		})
+		return out, steps
+	}
+	open, openSteps := read(Viewer{Profile: "p", Fence: "open", Libraries: []string{"tv"}})
+	restricted, restrictedSteps := read(Viewer{Profile: "p", Fence: "restricted", Libraries: []string{"tv"}, Restrictions: r})
+	if len(restricted.Entries) != 5 || restricted.PageInfo.Total != 60 {
+		t.Fatalf("restricted page %+v with %d entries", restricted.PageInfo, len(restricted.Entries))
+	}
+	for i := range open.Entries {
+		if open.Entries[i].ID != restricted.Entries[i].ID {
+			t.Fatalf("entry %d differs", i)
+		}
+	}
+	t.Logf("container page at 50: open %d steps, restricted %d steps", openSteps, restrictedSteps)
+	if restrictedSteps > openSteps*2 {
+		t.Fatalf("restricted container page took %d steps against the open page's %d", restrictedSteps, openSteps)
+	}
+}
