@@ -30,7 +30,12 @@ func profileReport(name string, units int, top int) {
 	}
 }
 
+var lastCache dbwork.StatementCacheStats
+
 func ingestResult(name string, units int, write, derive time.Duration, gate uint64) {
+	cache := dbwork.Reads().StatementCache
+	fmt.Fprintf(os.Stderr, "INGEST_STATEMENT_CACHE %s hits=%d misses=%d evictions=%d bypasses=%d\n", name, cache.Hits-lastCache.Hits, cache.Misses-lastCache.Misses, cache.Evictions-lastCache.Evictions, cache.Bypasses-lastCache.Bypasses)
+	lastCache = cache
 	per := func(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) / float64(units) }
 	fmt.Fprintf(os.Stderr, "INGEST %s units=%d write_ms_per_unit=%.3f derive_ms_per_unit=%.3f total_ms_per_unit=%.3f max_gate_ms=%d\n", name, units, per(write), per(derive), per(write+derive), gate)
 }
