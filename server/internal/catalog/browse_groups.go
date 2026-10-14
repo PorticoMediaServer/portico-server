@@ -1,12 +1,17 @@
 package catalog
 
 import (
+	"encoding/json"
 	"strconv"
 
 	"portico.local/server/internal/compactcatalog"
 
 	"time"
 )
+
+// groupMatchLimit is the most matching titles a filtered grouping groups
+// exactly; a broader filter counts each group up to browseTotalThreshold.
+var groupMatchLimit = 50000
 
 // Group lists use their own indexed keys; their predicates filter member
 // titles with exactly the same grammar as the entity pivot they open.
@@ -87,17 +92,40 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 		// music library that is the songs, not also every artist and album
 		// (each of which would re-walk all of its songs); in a show library the
 		// shows, not also every season and episode.
-		from = `(WITH matched AS MATERIALIZED (
- SELECT e.entity_id FROM catalog_browse_rows e
- WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND ` + compactcatalog.FacetHolderSQL("e") + `
- AND (` + clause + `) AND (` + restriction + `))
+		from = `(WITH matched AS MATERIALIZED (SELECT value AS entity_id FROM json_each(?))
  SELECT m.value,lower(portico_sort_title(m.value,'','')) AS name_key,count(*) AS total,max(m.recent_key) AS recent_key
  FROM matched CROSS JOIN catalog_facet_members m ON m.entity_id=matched.entity_id
  WHERE m.field=? GROUP BY m.value) g`
-		args = append([]any{request.Library}, compiler.args...)
-		args = append(args, restrictionArgs...)
-		args = append(args, pivot.Aggregate)
 		where = "1"
+		// The matching titles are selected once, at most one past
+		// groupMatchLimit. A broad filter matches too many titles to group
+		// them all: each group then counts its own matches up to one past the
+		// threshold, walking its members on the facet index, and a group
+		// beyond it shows the threshold as a lower bound.
+		probe := append(append(append([]any{request.Library}, compiler.args...), restrictionArgs...), groupMatchLimit+1)
+		ids, err := s.entityIDs(`SELECT e.entity_id FROM catalog_browse_rows e WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND `+compactcatalog.FacetHolderSQL("e")+`
+ AND (`+clause+`) AND (`+restriction+`) LIMIT ?`, probe...)
+		if err != nil {
+			return out, err
+		}
+		list, _ := json.Marshal(ids)
+		args = []any{string(list), pivot.Aggregate}
+		matched := len(ids)
+		if matched > groupMatchLimit {
+			members := `FROM catalog_facet_members m INDEXED BY catalog_facet_group_recent CROSS JOIN catalog_browse_rows e ON e.entity_id=m.entity_id
+ WHERE m.library_id=g.library_id AND m.field=g.field AND m.value=g.value AND (` + clause + `) AND (` + restriction + `)`
+			memberArgs := append(append([]any{}, compiler.args...), restrictionArgs...)
+			recent := `g.recent_key`
+			args = append([]any{}, memberArgs...)
+			if sorting.Field == "recentActivity" {
+				recent = `(SELECT m.recent_key ` + members + ` ORDER BY m.recent_key DESC LIMIT 1)`
+				args = append(args, memberArgs...)
+			}
+			from = `(SELECT value,name_key,total,recent_key FROM (SELECT g.value AS value,g.name_key AS name_key,
+ (SELECT count(*) FROM (SELECT 1 ` + members + ` LIMIT ` + strconv.Itoa(browseTotalThreshold+1) + `)) AS total,` + recent + ` AS recent_key
+ FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=?) WHERE total>0) g`
+			args = append(args, request.Library, pivot.Aggregate)
+		}
 	}
 	orderKey := map[string]string{"title": "g.name_key", "count": "g.total", "recentActivity": "g.recent_key"}[sorting.Field]
 	direction, op := "ASC", ">"
@@ -193,7 +221,14 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 			label += "s"
 		}
 		count := g.count
-		out.Entries = append(out.Entries, ContentEntry{ID: pivot.Aggregate + ":" + g.value, Kind: pivot.EntityKinds[0], Title: label, Count: &count, Navigation: &ContentNavigation{View: "browse", Category: pivot.Aggregate + ":" + g.value}})
+		entry := ContentEntry{ID: pivot.Aggregate + ":" + g.value, Kind: pivot.EntityKinds[0], Title: label, Count: &count, Navigation: &ContentNavigation{View: "browse", Category: pivot.Aggregate + ":" + g.value}}
+		if count > browseTotalThreshold {
+			// "10,000+": the count is a lower bound.
+			count = browseTotalThreshold
+			bound := browseTotalThreshold
+			entry.TotalAtLeast = &bound
+		}
+		out.Entries = append(out.Entries, entry)
 	}
 	if out.PageInfo.HasMore && request.Range == nil && len(rows) > 0 {
 		last := rows[len(rows)-1]

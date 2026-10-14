@@ -41,11 +41,15 @@ type BrowsePositionAnchor struct {
 	Index int    `json:"index"`
 }
 type BrowsePageInfo struct {
-	Start      int    `json:"start"`
-	Total      int    `json:"total"`
-	Revision   string `json:"revision"`
-	HasMore    bool   `json:"hasMore"`
-	NextCursor string `json:"nextCursor"`
+	Start int `json:"start"`
+	Total int `json:"total"`
+	// TotalIsLowerBound is set when a posted filter matched more than
+	// browseTotalThreshold titles: Total is then the threshold, a lower
+	// bound, and pages continue by their cursors.
+	TotalIsLowerBound bool   `json:"totalIsLowerBound"`
+	Revision          string `json:"revision"`
+	HasMore           bool   `json:"hasMore"`
+	NextCursor        string `json:"nextCursor"`
 }
 
 type BrowseApplied struct {
@@ -502,15 +506,21 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		}
 	}
 	if !counted {
+		// A posted filter counts at most one match past the threshold; the
+		// count, the cache and the cursor carry that capped number.
 		if cached, hit := s.cachedBrowseTotal(revision); hit {
 			total = cached
-		} else if err = s.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows e WHERE `+where, args...).Scan(&total); err != nil {
+		} else if err = s.read().QueryRow(`SELECT count(*) FROM (SELECT 1 FROM catalog_browse_rows e WHERE `+where+` LIMIT `+strconv.Itoa(browseTotalThreshold+1)+`)`, args...).Scan(&total); err != nil {
 			return out, nil, err
 		} else {
 			s.storeBrowseTotal(revision, total)
 		}
 	}
-	out.PageInfo.Total = total
+	lowerBound := request.Query != nil && !summary.exact && total > browseTotalThreshold
+	out.PageInfo.Total, out.PageInfo.TotalIsLowerBound = total, lowerBound
+	if lowerBound {
+		out.PageInfo.Total = browseTotalThreshold
+	}
 	if request.Range != nil {
 		if request.Range.Start < 0 || len(request.Range.Revision) > 128 || len(request.Range.AnchorID) > 256 {
 			return out, nil, browseIssue("range", "range identity is invalid")
@@ -596,7 +606,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		}
 	}
 
-	if start > 0 && start >= total {
+	if start > 0 && start >= total && !lowerBound {
 		start = max(0, total-1)
 	}
 	out.PageInfo.Start = start
