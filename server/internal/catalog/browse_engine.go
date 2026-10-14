@@ -426,7 +426,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
-	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions}
+	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, itemPivot: playablePivot(pivot)}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
@@ -436,9 +436,10 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	unrestricted, unrestrictedArgs := where, append([]any{}, args...)
 	// The viewer's content restriction is the last clause, after the authorized
 	// library scope and the client's own query, so neither can widen it.
-	if restriction, restrictionArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions); restriction != "1" {
-		where += " AND " + restriction
-		args = append(args, restrictionArgs...)
+	live, liveArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions)
+	if live != "1" {
+		where += " AND " + live
+		args = append(args, liveArgs...)
 	}
 	order, orderArgs := browseOrderSQL(request.Profile, sorts)
 
@@ -560,7 +561,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 		}
 	}
-	shape := pageShape{request: request, sorts: sorts, where: where, args: args, unrestricted: unrestricted, unrestrictedArgs: unrestrictedArgs, order: order, orderArgs: orderArgs,
+	shape := pageShape{request: request, sorts: sorts, where: where, args: args, unrestricted: unrestricted, unrestrictedArgs: unrestrictedArgs, live: live, liveArgs: liveArgs, order: order, orderArgs: orderArgs,
 		limit: request.Limit, total: total, summary: summary, seekKeys: seekKeys, seekAnchor: seekAnchor}
 	if members := entityKindMembers(pivot); len(members) == 1 {
 		parsed, parseErr := compactcatalog.ParseKind(members[0])
@@ -978,4 +979,27 @@ func containerView(kind string) string {
 func browseHasPositionAnchors(field string) bool {
 	definition, ok := browseSortByID(field)
 	return ok && (definition.Ordering >= 0 || field == "personalRating" || field == "lastPlayed" || field == "forYou")
+}
+
+// countRows runs one count(*) query in the read snapshot.
+func (s *Service) countRows(query string, args ...any) (int, error) {
+	var n int
+	err := s.read().QueryRow(query, args...).Scan(&n)
+	return n, err
+}
+
+// playablePivot reports whether every kind of the pivot is a playable item.
+func playablePivot(pivot browsePivot) bool {
+	members := entityKindMembers(pivot)
+	if len(members) == 0 {
+		return false
+	}
+	for _, kind := range members {
+		switch kind {
+		case "movie", "episode", "song", "audiobook_file", "extra": // catalog_kinds.playable
+		default:
+			return false
+		}
+	}
+	return true
 }

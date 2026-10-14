@@ -301,7 +301,18 @@ type browseCompiler struct {
 	profile      string
 	args         []any
 	groupSearch  bool
+	// count, when set, lets the compiler ask how many member items a value
+	// matches before choosing to select them from the value side.
+	count func(query string, args ...any) (int, error)
+	// itemPivot says every row of the pivot is a playable item, whose only
+	// membership is itself.
+	itemPivot bool
 }
+
+// drivenMaximum is the most matching member items a value-side selection
+// gathers. A broader value is tested on each title instead, where a container
+// stops at its first matching member.
+const drivenMaximum = 20000
 
 func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
 	previous := c.groupSearch
@@ -656,8 +667,10 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 	if field.ID == "genre" {
 		return c.genreExists(condition)
 	}
-	if source, ok := drivenMemberSource(field); ok {
-		return c.drivenExists(field, source, condition)
+	if source, ok := drivenMemberSource(field); ok && c.count != nil {
+		if clause, driven, err := c.drivenExists(field, source, condition); driven || err != nil {
+			return clause, err
+		}
 	}
 	prefix := "EXISTS(SELECT 1 FROM catalog_browse_memberships bei " + field.Join + " WHERE bei.entity_id=e.entity_id AND "
 	if field.ID == "personal-member" {
@@ -1001,12 +1014,18 @@ func drivenMemberSource(field browseField) (drivenSource, bool) {
 
 // drivenExists selects the matching member items once and maps them to their
 // browse entities through the membership index. The viewer's restriction
-// still applies to the exact member item that supplied the match.
-func (c *browseCompiler) drivenExists(field browseField, source drivenSource, condition func() (string, error)) (string, error) {
+// still applies to the exact member item that supplied the match. A value
+// matching more than drivenMaximum member items, and presence, which matches
+// nearly every title, are left to the per-title test (driven=false).
+func (c *browseCompiler) drivenExists(field browseField, source drivenSource, condition func() (string, error)) (clause string, driven bool, err error) {
 	before := len(c.args)
 	body, err := condition()
 	if err != nil {
-		return "", err
+		return "", false, err
+	}
+	if strings.HasSuffix(body, " IS NOT NULL") {
+		c.args = c.args[:before]
+		return "", false, nil
 	}
 	where := source.scope
 	if source.termKey && strings.Contains(body, "portico_fold_text(ca.source_value)") {
@@ -1016,8 +1035,22 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 		c.args = append(c.args[:before], append(operands, operands...)...)
 		where += " AND " + strings.ReplaceAll(body, "ca.source_value", "ca_term.value_key")
 	}
+	matching := `SELECT ` + source.item + ` AS item FROM ` + source.from + ` WHERE ` + where + ` AND (` + body + `)`
+	found, err := c.count(`SELECT count(*) FROM (`+matching+` LIMIT `+strconv.Itoa(drivenMaximum+1)+`)`, c.args[before:]...)
+	if err != nil {
+		return "", false, err
+	}
+	if found > drivenMaximum {
+		c.args = c.args[:before]
+		return "", false, nil
+	}
 	restriction, args := ItemRestrictionSQL("bei.item_id", c.restrictions)
 	c.args = append(c.args, args...)
-	return `e.entity_id IN(SELECT bei.entity_id FROM ` + source.from + ` CROSS JOIN catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=` + source.item +
-		` WHERE ` + where + ` AND (` + body + `) AND (` + restriction + `))`, nil
+	members := ``
+	if c.itemPivot {
+		// A playable item's only membership is itself.
+		members = ` AND bei.source=0`
+	}
+	return `e.entity_id IN(SELECT bei.entity_id FROM ` + source.from + ` CROSS JOIN catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=` + source.item + members +
+		` WHERE ` + where + ` AND (` + body + `) AND (` + restriction + `))`, true, nil
 }

@@ -54,15 +54,18 @@ type pageShape struct {
 	// visibility class already selected those rows.
 	unrestricted     string
 	unrestrictedArgs []any
-	order            string
-	orderArgs        []any
-	start            int
-	limit            int
-	total            int
-	kind             int
-	summary          browseSummary
-	seekKeys         []string
-	seekAnchor       string
+	// live is the viewer's restriction alone, over e.
+	live       string
+	liveArgs   []any
+	order      string
+	orderArgs  []any
+	start      int
+	limit      int
+	total      int
+	kind       int
+	summary    browseSummary
+	seekKeys   []string
+	seekAnchor string
 }
 
 func (p pageShape) primary() (browseSort, bool) {
