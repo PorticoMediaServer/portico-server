@@ -15,7 +15,11 @@ import (
 // Each physical connection owns its own bounded cache. Native SQLite storage is
 // measured after bindings clear; SQL copies and Go bookkeeping have a separate
 // conservative allowance. Drivers without this diagnostic use an estimate.
-const statementCacheEntries = 128
+// The catalogue's write path (a scan page, the derived worker's domains and
+// the triggers their statements compile in) uses a few hundred distinct
+// statements; at 128 entries they evicted one another and about one statement
+// in sixteen was parsed again. The byte budget still bounds memory.
+const statementCacheEntries = 512
 const statementCacheBudget = 512 << 10
 const statementCacheMaxBudget = 4 << 20
 const statementCacheOverhead = 8 << 10
