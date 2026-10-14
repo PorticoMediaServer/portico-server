@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -71,6 +72,42 @@ type screenClaim struct {
 	Base                 screenBase
 	Token, Digest, Until string
 	Attempts             int
+	// Fence is what screenCurrent compares to decide whether the result of
+	// this claim may still be published. For a film or an episode it is the
+	// input digest. For a show it covers only the files the show had when it
+	// was claimed (Bound is the highest file id then): a scan adding the
+	// show's episodes while its match is in flight must not throw that match
+	// away. The new episodes are picked up when the match completes (the
+	// show's dispatch walks every episode) or on their own work rows.
+	Fence string
+	Bound int64
+}
+
+// screenUnbounded reads every file of a target.
+const screenUnbounded = int64(math.MaxInt64)
+
+// screenFence is a claim's publication fence (see screenClaim.Fence). A show's
+// source and hierarchy revisions move whenever an episode is added, so they
+// are left out; what they stand for among the files the show was claimed
+// with is in the source digest, and removing or changing any of those files
+// moves the show's generation or its digest.
+func screenFence(b screenBase) string {
+	a := screenBaseAuthority(b)
+	if a.TargetKind == "show" {
+		a.SourceRevision, a.HierarchyRevision = 0, 0
+	}
+	return screenDigest(a)
+}
+
+// screenSourceHealthClass is what a source's health means to the matcher:
+// whether its files can be read. Other health changes (a scan starting or
+// finishing) are not a change of the title's inputs.
+func screenSourceHealthClass(health string) string {
+	switch health {
+	case "offline", "removing", "root_changed":
+		return health
+	}
+	return "readable"
 }
 
 // resolveEntity maps a public catalogue id to its integer entity row. An
@@ -122,9 +159,21 @@ func screenTargetAssets(kind string) string {
 	return `SELECT a.token FROM catalog_asset_links al JOIN catalog_assets a ON a.id=al.asset_id WHERE al.entity_id=?`
 }
 
+// screenTargetAssetsWithin is screenTargetAssets limited to files whose id is
+// at most a bound (the second parameter).
+func screenTargetAssetsWithin(kind string) string {
+	return screenTargetAssets(kind) + ` AND al.asset_id<=?`
+}
+
 // Reads only durable observations. The matcher never opens a source, sidecar or
 // media file. Unbounded show inventories are streamed into a bounded digest.
 func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBase, error) {
+	return readScreenBaseWithin(ctx, tx, kind, id, screenUnbounded)
+}
+
+// readScreenBaseWithin reads a target's inputs as if its files with an id
+// above bound did not exist yet (screenClaim.Bound).
+func readScreenBaseWithin(ctx context.Context, tx *sql.Tx, kind, id string, bound int64) (screenBase, error) {
 	var b screenBase
 	b.TargetKind, b.TargetID = kind, id
 	entity, err := resolveEntity(ctx, tx, id)
@@ -197,14 +246,14 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 		if enabled && health != "offline" && health != "removing" && health != "root_changed" {
 			enabledSource = true
 		}
-		_ = enc.Encode([]any{sid, sk, gen, inc, rootID, confirmed, enabled, health, configured, root, follow})
+		_ = enc.Encode([]any{sid, sk, gen, inc, rootID, confirmed, enabled, screenSourceHealthClass(health), configured, root, follow})
 	}
 	err = rows.Err()
 	rows.Close()
 	if err != nil {
 		return b, err
 	}
-	rows, err = tx.QueryContext(ctx, `SELECT a.token,a.path,a.size,a.modified_ns,a.available,COALESCE(o.id,''),COALESCE(o.revision,''),COALESCE(o.root_incarnation,''),COALESCE(o.state,''),COALESCE(o.retired,0),COALESCE(s.enabled,0),COALESCE(s.incarnation,''),COALESCE(s.health,''),COALESCE(o.relative_path,''),json_object('Title',vn.title,'ShowTitle',vn.show_title,'Year',vn.year,'Season',vn.season,'Number',vn.number,'Edition',vn.edition,'IDs',json(COALESCE((SELECT json_group_array(json_object('Provider',vi.provider,'ID',vi.provider_id)) FROM inventory_video_ids vi WHERE vi.asset_id=vn.asset_id AND vi.revision=vn.revision),'[]'))) FROM catalog_assets a LEFT JOIN inventory_objects o ON o.asset_id=a.token LEFT JOIN library_sources s ON s.id=o.source_id LEFT JOIN inventory_video_names vn ON vn.asset_id=a.token AND vn.revision=COALESCE(o.revision,'') WHERE a.token IN(`+screenTargetAssets(kind)+`) ORDER BY a.id,o.id`, entity)
+	rows, err = tx.QueryContext(ctx, `SELECT a.token,a.path,a.size,a.modified_ns,a.available,COALESCE(o.id,''),COALESCE(o.revision,''),COALESCE(o.root_incarnation,''),COALESCE(o.state,''),COALESCE(o.retired,0),COALESCE(s.enabled,0),COALESCE(s.incarnation,''),COALESCE(s.health,''),COALESCE(o.relative_path,''),json_object('Title',vn.title,'ShowTitle',vn.show_title,'Year',vn.year,'Season',vn.season,'Number',vn.number,'Edition',vn.edition,'IDs',json(COALESCE((SELECT json_group_array(json_object('Provider',vi.provider,'ID',vi.provider_id)) FROM inventory_video_ids vi WHERE vi.asset_id=vn.asset_id AND vi.revision=vn.revision),'[]'))) FROM catalog_assets a LEFT JOIN inventory_objects o ON o.asset_id=a.token LEFT JOIN library_sources s ON s.id=o.source_id LEFT JOIN inventory_video_names vn ON vn.asset_id=a.token AND vn.revision=COALESCE(o.revision,'') WHERE a.token IN(`+screenTargetAssetsWithin(kind)+`) ORDER BY a.id,o.id`, entity, bound)
 	if err != nil {
 		return b, err
 	}
@@ -217,7 +266,7 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 			rows.Close()
 			return b, err
 		}
-		_ = enc.Encode([]any{aid, path, size, modified, available, oid, rev, inc, state, retired, enabled, sinc, health})
+		_ = enc.Encode([]any{aid, path, size, modified, available, oid, rev, inc, state, retired, enabled, sinc, screenSourceHealthClass(health)})
 		good := available && (oid == "" && enabledSource || oid != "" && !retired && state == "available" && enabled && inc == sinc && health != "offline" && health != "removing" && health != "root_changed")
 		if good {
 			b.Available = true
@@ -299,7 +348,7 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 		} else if b.ItemKind == "episode" {
 			nfoKind = "episode"
 		}
-		rows, err = tx.QueryContext(ctx, `SELECT DISTINCT n.digest,n.payload FROM video_nfo_evidence n JOIN catalog_assets a ON a.token=n.asset_id WHERE n.asset_id IN(`+screenTargetAssets(kind)+`) AND n.kind=? AND n.source_size=a.size AND n.source_modified=a.modified_ns ORDER BY n.digest,n.payload`, entity, nfoKind)
+		rows, err = tx.QueryContext(ctx, `SELECT DISTINCT n.digest,n.payload FROM video_nfo_evidence n JOIN catalog_assets a ON a.token=n.asset_id WHERE n.asset_id IN(`+screenTargetAssetsWithin(kind)+`) AND n.kind=? AND n.source_size=a.size AND n.source_modified=a.modified_ns ORDER BY n.digest,n.payload`, entity, bound, nfoKind)
 		if err != nil {
 			return b, err
 		}
@@ -332,7 +381,7 @@ func readScreenBase(ctx context.Context, tx *sql.Tx, kind, id string) (screenBas
 		}
 	}
 	if b.TargetKind == "show" {
-		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(max(a.duration),0)/60 FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes e ON e.entity_id=l.entity_id WHERE e.show_id=? AND a.available=1`, entity).Scan(&b.RuntimeMinutes); err != nil {
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(max(a.duration),0)/60 FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes e ON e.entity_id=l.entity_id WHERE e.show_id=? AND a.id<=? AND a.available=1`, entity, bound).Scan(&b.RuntimeMinutes); err != nil {
 			return b, err
 		}
 	}
