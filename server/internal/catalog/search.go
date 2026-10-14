@@ -594,19 +594,24 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 			return err
 		}
 		if prefix {
+			knownTotal, knownExact := 0, false
+			if len(prefixTerms) == 1 {
+				knownTotal, knownExact, err = s.prefixSearchTotal(ctx, r, int(kind), prefixTerms[0])
+				if err != nil {
+					return err
+				}
+				if knownExact && knownTotal == 0 {
+					out.TotalCount, out.TotalCountExact = 0, true
+					return nil
+				}
+			}
 			ranked = `SELECT entity_id,entity_pid,max(ord) ord FROM (` + prefixRanked + `) GROUP BY entity_id`
 			args, tie = prefixArgs, "entity_id"
 			order = searchOrder{numeric: true}
 			countGroup = func() error {
-				if len(prefixTerms) == 1 {
-					total, exact, err := s.prefixSearchTotal(ctx, r, int(kind), prefixTerms[0])
-					if err != nil {
-						return err
-					}
-					if exact {
-						out.TotalCount, out.TotalCountExact = total, true
-						return nil
-					}
+				if knownExact {
+					out.TotalCount, out.TotalCountExact = knownTotal, true
+					return nil
 				}
 				// Multiple words and member restrictions are paged without an
 				// exhaustive intersection count. The wire explicitly marks this.

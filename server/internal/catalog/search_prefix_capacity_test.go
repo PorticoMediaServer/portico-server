@@ -109,6 +109,20 @@ func TestBroadPrefixesSelectBoundedScopedPages(t *testing.T) {
 					}
 				}
 			}
+			zeroAge := 0
+			ctx, trace := dbwork.TraceQueryPlans(context.Background())
+			started := time.Now()
+			out, err := svc.WithContext(ctx).Search(ctx, SearchRequest{Viewer: Viewer{Profile: "blocked", Fence: "blocked", Libraries: []string{"m"}, Restrictions: identity.ContentRestrictions{MaximumAge: &zeroAge, BlockUnrated: true}}, Q: "Ti", Group: "movies", Limit: 12})
+			elapsed := time.Since(started)
+			if err != nil || len(out.Groups) != 1 || out.Groups[0].Status != "success" || len(out.Groups[0].Items) != 0 || !out.Groups[0].TotalCountExact || out.Groups[0].TotalCount != 0 || elapsed > 100*time.Millisecond {
+				t.Fatalf("zero visible matches: elapsed=%s out=%+v err=%v", elapsed, out, err)
+			}
+			for _, query := range trace() {
+				if strings.Contains(query, "WITH page AS MATERIALIZED") {
+					t.Fatal("exact zero permission count still walked candidates")
+				}
+			}
+			t.Logf("rows=%d zero-visible-prefix elapsed=%s", n, elapsed)
 		})
 	}
 }
