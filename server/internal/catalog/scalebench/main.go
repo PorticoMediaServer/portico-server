@@ -66,6 +66,7 @@ func run() (runErr error) {
 	scenariosOnly := flag.Bool("scenarios-only", false, "measure search and write/rebuild scenarios without the browse matrix")
 	matrixOnly := flag.Bool("matrix-only", false, "measure browse vocabulary without rebuild/write scenarios")
 	copyFacts := flag.String("copy-facts", "", "copy only synthetic reference facts into a fresh baseline")
+	narrowFacts := flag.Bool("narrow-facts", false, "use one genre per title and sparse credits for the bounded-disk mixed fixture")
 	bulkFacts := flag.Bool("bulk-facts", false, "seed reference facts with set-based inserts, production triggers enabled")
 	factsOnly := flag.Bool("facts-only", false, "seed facts without deriving; use -reuse -exercise to measure the empty rebuild")
 	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
@@ -103,6 +104,9 @@ func run() (runErr error) {
 		}
 	}()
 	if !*reuse {
+		if err = checkScratchBudget(); err != nil {
+			return err
+		}
 		startItem := 0
 		if *resumeSeed {
 			if err = db.QueryRow(`SELECT count(*) FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1`).Scan(&startItem); err != nil {
@@ -124,7 +128,7 @@ func run() (runErr error) {
 			if *resumeSeed || !*factsOnly {
 				return errors.New("bulk-facts requires a new facts-only fixture")
 			}
-			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedBulkFacts(db, *n)
+			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedBulkFactsDensity(db, *n, *narrowFacts)
 		} else {
 			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedReference(db, *n, startItem, *n, 32, !*factsOnly)
 		}
@@ -308,7 +312,7 @@ func run() (runErr error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			before := dbwork.Reads().Statements
 			start := time.Now()
-			e := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return c.read(s.WithContext(ctx)) })
+			e := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return c.read(catalog.New(db).WithContext(ctx)) })
 			elapsed := float64(time.Since(start)) / float64(time.Millisecond)
 			cancel()
 			rr.MaxStatements = max(rr.MaxStatements, dbwork.Reads().Statements-before)

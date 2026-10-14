@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -71,12 +70,10 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	r := routeResult{Route: name}
 	start := time.Now()
 	logAt := time.Now()
-	var sequence int
-	var schemaName, path string
-	if err := db.QueryRow(`PRAGMA database_list`).Scan(&sequence, &schemaName, &path); err != nil {
+	schedule, err := dbwork.NewCheckpointSchedule(ctx, db)
+	if err != nil {
 		return r, err
 	}
-	scratchRoot := filepath.Dir(filepath.Dir(path))
 	v := catalog.Viewer{Profile: "viewer", Fence: "scale-open", Libraries: []string{"movies", "tv", "music"}}
 	var probes, failedProbes int
 	firstVisible := time.Duration(-1)
@@ -99,7 +96,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 				if _, err := service.BrowseEntities(v, catalog.BrowseRequest{Library: "movies", Pivot: "movies", Limit: 40}); err != nil {
 					return err
 				}
-				query := "Title"
+				query := "Title 000000"
 				if len(queries) > 0 {
 					query = queries[0]
 				}
@@ -137,6 +134,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	}()
 	dbwork.WriteGate().ResetPeak()
 	for {
+		schedule.Tick(ctx)
 		n, err := w.Step(ctx, compactcatalog.BatchLimit)
 		if err != nil {
 			close(stop)
@@ -149,31 +147,16 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 			db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&pending)
 			fmt.Fprintf(os.Stderr, "DRAIN %s elapsed=%s pending=%d rss_kb=%d\n", name, time.Since(start).Round(time.Second), pending, r.RSSKB)
 			logAt = time.Now()
-			var scratchBytes int64
-			err := filepath.WalkDir(scratchRoot, func(path string, entry os.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				if !entry.IsDir() {
-					info, err := entry.Info()
-					if err != nil {
-						return err
-					}
-					scratchBytes += info.Size()
-				}
-				return nil
-			})
-			if err != nil || scratchBytes > 20*1024*1024*1024 {
+			if err := checkScratchBudget(); err != nil {
 				close(stop)
 				<-done
 				r.Samples = 1
 				r.P50MS = float64(time.Since(start)) / float64(time.Millisecond)
 				r.P95MS = r.P50MS
-				r.Error = fmt.Sprintf("scratch budget exceeded or unreadable: bytes=%d error=%v", scratchBytes, err)
+				r.Error = err.Error()
 				logMeasurement(r)
-				return r, fmt.Errorf("%s", r.Error)
+				return r, err
 			}
-			fmt.Fprintf(os.Stderr, "SCRATCH bytes=%d\n", scratchBytes)
 		}
 		if n == 0 {
 			break
@@ -625,7 +608,11 @@ func exerciseRemoval(db *sql.DB, s *catalog.Service) (routeResult, error) {
 		return r, err
 	}
 	fmt.Fprintf(os.Stderr, "RECLAIM before_bytes=%d reusable_bytes=%d\n", before*size, free*size)
-	if before*size*2 > 20*1024*1024*1024 {
+	scratchBytes, budgetErr := scratchUsage()
+	if budgetErr != nil {
+		return r, budgetErr
+	}
+	if scratchBytes+before*size*2 > scratchLimit {
 		fmt.Fprintf(os.Stderr, "VACUUM_SKIPPED scratch_budget estimated_peak_bytes=%d\n", before*size*2)
 		return r, nil
 	}

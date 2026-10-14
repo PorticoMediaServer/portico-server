@@ -14,8 +14,22 @@ import (
 // All production triggers remain enabled. This measures derivation and reads,
 // not scanner throughput; incremental additions still use the write API.
 func seedBulkFacts(db *sql.DB, n int) (first, last float64, err error) {
+	return seedBulkFactsDensity(db, n, false)
+}
+
+func seedBulkFactsDensity(db *sql.DB, n int, narrow bool) (first, last float64, err error) {
 	ctx := context.Background()
+	schedule, e := dbwork.NewCheckpointSchedule(ctx, db)
+	if e != nil {
+		return 0, 0, e
+	}
 	s := shapeOf(n)
+	creditPredicate, genrePredicate := "", ""
+	if narrow {
+		s.people = max(24, n/100)
+		creditPredicate = " WHERE kind=1 OR kind=4 AND i%250=0"
+		genrePredicate = " WHERE g=0"
+	}
 	exec := func(q string, args ...any) error { _, e := db.Exec(q, args...); return e }
 	if err = exec(`INSERT INTO libraries(id,name,kind,root) VALUES('movies','Movies','movie','/fixture/movies'),('tv','TV','tv','/fixture/tv'),('music','Music','music','/fixture/music')`); err != nil {
 		return
@@ -88,6 +102,10 @@ func seedBulkFacts(db *sql.DB, n int) (first, last float64, err error) {
 		return
 	}
 	for off := 0; off < n; off += 1000 {
+		if err = checkScratchBudget(); err != nil {
+			return
+		}
+		schedule.Tick(ctx)
 		began := time.Now()
 		err = dbwork.WithWriteTx(ctx, db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 			x := func(q string, args ...any) error { _, e := tx.Exec(q, args...); return e }
@@ -114,9 +132,9 @@ func seedBulkFacts(db *sql.DB, n int) (first, last float64, err error) {
 				`INSERT INTO catalog_assets(id,token,path,size,modified_ns,container,video_codec,audio_codec,width,height,duration) SELECT (i+1)*3+v,printf('fixture-asset-%d',(i+1)*3+v),printf('/fixture/%d/item%09d.%d.mp4',library,i,v),1048576,1,'mp4','h264','aac',1920,1080,3600 FROM fixture_items CROSS JOIN (SELECT 0 v UNION ALL SELECT 1 UNION ALL SELECT 2) WHERE v=0 OR kind=1 AND v<=i%3`,
 				`INSERT INTO catalog_asset_links(entity_id,asset_id) SELECT i+1,(i+1)*3+v FROM fixture_items CROSS JOIN (SELECT 0 v UNION ALL SELECT 1 UNION ALL SELECT 2) WHERE v=0 OR kind=1 AND v<=i%3`,
 				`INSERT INTO catalog_item_attribute_edges(item_id,term_id,source_value,source_rowid) SELECT i+1,t.id,CASE WHEN i%10=0 THEN 'G' ELSE 'R' END,0 FROM fixture_items JOIN catalog_attribute_fields f ON f.field='contentRating' JOIN catalog_attribute_terms t ON t.field_id=f.id AND t.value_key=CASE WHEN i%10=0 THEN 'g' ELSE 'r' END WHERE i%10<2`,
-				fmt.Sprintf(`INSERT INTO catalog_credits(entity_id,ord,person_id,role_id,department_id,credited_name,provider,credit_id,provider_person_id,source_ordinal) SELECT i+1,c,(i*3+c)%%%d+1,(SELECT id FROM catalog_credit_labels WHERE label='Actor'),(SELECT id FROM catalog_credit_labels WHERE label='Acting'),printf('Person person%%d',(i*3+c)%%%d),'fixture',printf('person%%d',(i*3+c)%%%d),printf('person%%d',(i*3+c)%%%d),c FROM fixture_items CROSS JOIN (SELECT 0 c UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)`, s.people, s.people, s.people, s.people),
-				`INSERT INTO catalog_entity_terms(entity_id,term_id) SELECT i+1,(i+g)%5000+1 FROM fixture_items CROSS JOIN (SELECT 0 g UNION ALL SELECT 1 UNION ALL SELECT 2)`,
-				`INSERT INTO catalog_term_sources(entity_id,term_id,provider,source_id,source_name,ordinal) SELECT i+1,(i+g)%5000+1,'fixture',CAST((i+g)%5000 AS TEXT),printf('Genre %d',(i+g)%5000),g FROM fixture_items CROSS JOIN (SELECT 0 g UNION ALL SELECT 1 UNION ALL SELECT 2)`,
+				fmt.Sprintf(`INSERT INTO catalog_credits(entity_id,ord,person_id,role_id,department_id,credited_name,provider,credit_id,provider_person_id,source_ordinal) SELECT i+1,c,(i*3+c)%%%d+1,(SELECT id FROM catalog_credit_labels WHERE label='Actor'),(SELECT id FROM catalog_credit_labels WHERE label='Acting'),printf('Person person%%d',(i*3+c)%%%d),'fixture',printf('person%%d',(i*3+c)%%%d),printf('person%%d',(i*3+c)%%%d),c FROM fixture_items CROSS JOIN (SELECT 0 c UNION ALL SELECT 1 UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5)`, s.people, s.people, s.people, s.people) + creditPredicate,
+				`INSERT INTO catalog_entity_terms(entity_id,term_id) SELECT i+1,(i+g)%5000+1 FROM fixture_items CROSS JOIN (SELECT 0 g UNION ALL SELECT 1 UNION ALL SELECT 2)` + genrePredicate,
+				`INSERT INTO catalog_term_sources(entity_id,term_id,provider,source_id,source_name,ordinal) SELECT i+1,(i+g)%5000+1,'fixture',CAST((i+g)%5000 AS TEXT),printf('Genre %d',(i+g)%5000),g FROM fixture_items CROSS JOIN (SELECT 0 g UNION ALL SELECT 1 UNION ALL SELECT 2)` + genrePredicate,
 				`INSERT INTO progress(profile_id,item_id,position,unit,completed,playback_id) SELECT profile,i+1,120000,0,profile!='viewer' AND i%300=0,'fixture' FROM fixture_items CROSS JOIN (SELECT 'viewer' profile UNION ALL SELECT 'viewer-two' UNION ALL SELECT 'viewer-pg13') WHERE i%100=0`,
 				`INSERT INTO progress_activity(profile_id,library_id,item_id,updated_at,state) SELECT profile,l.library_id,i+1,'2026-09-22T12:00:00Z',CASE WHEN profile!='viewer' AND i%300=0 THEN 'ended' ELSE 'paused' END FROM fixture_items JOIN catalog_libraries l ON l.id=library CROSS JOIN (SELECT 'viewer' profile UNION ALL SELECT 'viewer-two' UNION ALL SELECT 'viewer-pg13') WHERE i%100=0`,
 				`INSERT INTO catalog_identities(root,source_key,public_id,kind) SELECT l.root,printf('fixture:%d',f.i),e.public_id,e.kind FROM fixture_items f JOIN catalog_entities e ON e.id=f.i+1 JOIN catalog_libraries l ON l.id=e.library_id`,

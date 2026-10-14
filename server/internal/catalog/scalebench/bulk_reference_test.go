@@ -87,3 +87,44 @@ func TestCopyReferenceFactsUsesFreshBaselineWithoutAuthentication(t *testing.T) 
 		t.Fatalf("copied %d items: %v", items, err)
 	}
 }
+
+func TestNarrowReferenceKeepsMixedShapeAndProductionTriggers(t *testing.T) {
+	db, err := persistence.Open(filepath.Join(t.TempDir(), "narrow.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	const n = 1000
+	if _, _, err = seedBulkFactsDensity(db, n, true); err != nil {
+		t.Fatal(err)
+	}
+	shape := shapeOf(n)
+	for _, tc := range []struct {
+		q    string
+		want int
+	}{
+		{`SELECT count(*) FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE k.playable=1`, n},
+		{`SELECT count(*) FROM catalog_term_sources`, n},
+		{`SELECT count(*) FROM progress`, 30},
+		{`SELECT count(*) FROM catalog_episodes`, shape.episodes},
+		{`SELECT count(*) FROM catalog_songs`, shape.songs},
+	} {
+		var got int
+		if err = db.QueryRow(tc.q).Scan(&got); err != nil || got != tc.want {
+			t.Fatalf("%s=%d want %d: %v", tc.q, got, tc.want, err)
+		}
+	}
+	var credits, dirty int
+	db.QueryRow(`SELECT count(*) FROM catalog_credits`).Scan(&credits)
+	db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&dirty)
+	if credits == 0 || credits >= n*6 || dirty == 0 {
+		t.Fatalf("credits=%d dirty=%d", credits, dirty)
+	}
+	if err = compactcatalog.Drain(context.Background(), db); err != nil {
+		t.Fatal(err)
+	}
+	page, err := catalog.New(db).BrowseEntities(catalog.Viewer{Profile: "viewer", Fence: "narrow", Libraries: []string{"music"}}, catalog.BrowseRequest{Library: "music", Pivot: "songs", Limit: 40})
+	if err != nil || page.PageInfo.Total != shape.songs {
+		t.Fatalf("page=%+v err=%v", page.PageInfo, err)
+	}
+}
