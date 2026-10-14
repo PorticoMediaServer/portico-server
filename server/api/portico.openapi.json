@@ -106527,6 +106527,9 @@
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "totalCountExact": {
+                  "type": "boolean"
                 }
               },
               "required": [
@@ -106538,6 +106541,7 @@
                 "errorCode",
                 "items",
                 "totalCount",
+                "totalCountExact",
                 "hasMore",
                 "nextCursor"
               ],
@@ -266992,6 +266996,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "totalCountExact": {
+                            "type": "boolean"
                           }
                         },
                         "required": [
@@ -267003,6 +267010,7 @@
                           "errorCode",
                           "items",
                           "totalCount",
+                          "totalCountExact",
                           "hasMore",
                           "nextCursor"
                         ],

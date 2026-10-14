@@ -21,6 +21,11 @@ func init() {
 		value, _ := args[0].(string)
 		return facettext.SearchDocument(value), nil
 	})
+	sqlite.MustRegisterDeterministicScalarFunction("portico_search_prefixes", 2, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+		document, _ := args[0].(string)
+		title, _ := args[1].(string)
+		return facettext.SearchPrefixes(document, title), nil
+	})
 	sqlite.MustRegisterDeterministicScalarFunction("portico_search_fold", 1, func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
 		value, _ := args[0].(string)
 		return facettext.SearchFold(value), nil

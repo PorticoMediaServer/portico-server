@@ -162,7 +162,7 @@ func TestSearchGroupsPagingAndIndexUpdates(t *testing.T) {
 	s = New(db)
 	r.Q = "movie harbor"
 	out, err = s.Search(context.Background(), r)
-	if err != nil || out.Groups[0].TotalCount != 42 {
+	if err != nil || len(out.Groups[0].Items) != 40 || !out.Groups[0].HasMore || out.Groups[0].TotalCountExact {
 		t.Fatal("AND/restart", out, err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())

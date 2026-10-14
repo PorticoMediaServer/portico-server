@@ -14,7 +14,7 @@ var ServingTables = []string{
 	"catalog_browse_counted_rows", "catalog_browse_memberships", "catalog_browse_member_metrics",
 	"catalog_movie_category_members", "catalog_movie_category_summaries",
 	"catalog_home_buckets", "catalog_item_availability", "catalog_facet_counts", "catalog_related_facets",
-	"catalog_browse_groups", "catalog_facet_members",
+	"catalog_browse_groups", "catalog_facet_members", "catalog_browse_availability_counts",
 }
 
 var servingNames = func() *strings.Replacer {
@@ -60,13 +60,13 @@ func searchTables(query string, slot int) string {
 	if slot == 0 {
 		return query
 	}
-	return strings.NewReplacer("catalog_search_documents", "catalog_search_documents_next", "catalog_search_titles", "catalog_search_titles_next").Replace(query)
+	return strings.NewReplacer("catalog_search_prefix_rows", "catalog_search_prefix_rows_next", "catalog_search_prefix_counts", "catalog_search_prefix_counts_next", "catalog_search_documents", "catalog_search_documents_next", "catalog_search_titles", "catalog_search_titles_next").Replace(query)
 }
 
 // SearchServingSQL resolves the active FTS generation in the same snapshot as
 // the search. Both generations have independent documents and inverted indexes.
 func SearchServingSQL(ctx context.Context, q ReadQuery, query string) (string, error) {
-	if !strings.Contains(query, "catalog_search_titles") && !strings.Contains(query, "catalog_search_documents") {
+	if !strings.Contains(query, "catalog_search_titles") && !strings.Contains(query, "catalog_search_documents") && !strings.Contains(query, "catalog_search_prefix_rows") && !strings.Contains(query, "catalog_search_prefix_counts") {
 		return query, nil
 	}
 	var slot int
