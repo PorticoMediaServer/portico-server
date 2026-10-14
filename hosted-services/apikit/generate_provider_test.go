@@ -28,3 +28,21 @@ func TestSchemaProviderDeclaresAnOpaqueValue(t *testing.T) {
 		t.Fatal(got)
 	}
 }
+
+type nullableLabel string
+
+func (nullableLabel) JSONSchema() map[string]any {
+	return map[string]any{"anyOf": []any{map[string]any{"type": "string"}, map[string]any{"type": "null"}}}
+}
+
+func TestSchemaProviderUnionKeepsItsTypes(t *testing.T) {
+	s, err := Schema(reflect.TypeFor[struct {
+		Label nullableLabel `json:"label"`
+	}]())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := tsType(s); got != `{ "label": string | null }` {
+		t.Fatalf("union type erased: %s", got)
+	}
+}

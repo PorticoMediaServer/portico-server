@@ -130,13 +130,22 @@ type Metadata struct {
 	Cost                Cost     `json:"cost"`
 	BodyLimit           int64    `json:"bodyLimit"`
 	Query               []string `json:"query,omitempty"`
+	Headers             []string `json:"headers,omitempty"`
+	NoResponseBody      bool     `json:"noResponseBody,omitempty"`
 	Errors              []string `json:"errors"`
 	Status              int      `json:"status"`
 	ResponseContentType string   `json:"responseContentType,omitempty"`
+	RequestContentTypes []string `json:"requestContentTypes,omitempty"`
+	SuccessStatuses     []int    `json:"successStatuses,omitempty"`
+	ResponseStatuses    []int    `json:"responseStatuses,omitempty"`
 	// OptionalBody lets a route with a body contract also accept no body at all
 	// (a DELETE whose body is optional); the handler then sees the zero Request.
 	OptionalBody bool `json:"optionalBody,omitempty"`
 	SSE          bool `json:"sse,omitempty"`
+	// HTTP marks a handler that owns access enforcement and HTTP response semantics.
+	HTTP bool `json:"http,omitempty"`
+	// Admission names the server pool; Lane describes its broad API work class.
+	Admission string `json:"admission,omitempty"`
 }
 type Route[Request, Response any] struct {
 	Metadata
@@ -168,6 +177,7 @@ type Registry struct {
 	authorizeCtx AuthorizeContext
 	scopes       ScopeGate
 	routes       []Definition
+	bound        map[string]bool
 	frozen       bool
 }
 
@@ -395,8 +405,23 @@ func matchRoute(pattern, path string) (map[string]string, int, bool) {
 }
 func (r *Registry) Freeze() { r.frozen = true }
 func validate(m Metadata) error {
-	if m.ID == "" || m.Summary == "" || !strings.HasPrefix(m.Path, "/v1/") || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 1<<30 {
+	if m.ID == "" || m.Summary == "" || !(strings.HasPrefix(m.Path, "/v1/") || strings.HasPrefix(m.Path, "/health/")) || m.Status < 200 || m.Status >= 300 || m.BodyLimit < 0 || m.BodyLimit > 1<<30 {
 		return errors.New("route metadata incomplete")
+	}
+	for _, status := range m.SuccessStatuses {
+		if status < 200 || status >= 300 {
+			return errors.New("invalid success status")
+		}
+	}
+	for _, status := range m.ResponseStatuses {
+		if status < 100 || status > 599 {
+			return errors.New("invalid response status")
+		}
+	}
+	for _, typ := range m.RequestContentTypes {
+		if _, _, err := mime.ParseMediaType(typ); err != nil {
+			return errors.New("invalid request content type")
+		}
 	}
 	if m.ResponseContentType != "" {
 		if _, _, e := mime.ParseMediaType(m.ResponseContentType); e != nil {
@@ -598,6 +623,9 @@ func marshalResponse(v any) ([]byte, error) {
 	return raw, nil
 }
 func decodeStrict(raw []byte, out any) error {
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return errors.New("a request document cannot be null")
+	}
 	// A token walk rejects duplicate keys, which encoding/json would otherwise overwrite.
 	tokens := json.NewDecoder(bytes.NewReader(raw))
 	tokens.UseNumber()

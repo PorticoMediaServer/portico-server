@@ -280,3 +280,37 @@ func TestAccessLabelsMustNameWhatTheAuthorizerChecks(t *testing.T) {
 		}
 	}
 }
+
+func TestRegistryRejectsNullRequestBeforeHandler(t *testing.T) {
+	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
+	m := testMetadata()
+	if err := Register(r, Route[testRequest, testResponse]{Metadata: m, Handler: func(context.Context, *http.Request, testRequest) (testResponse, error) {
+		t.Fatal("null request reached handler")
+		return testResponse{}, nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	q := httptest.NewRequest("POST", "/v1/test", strings.NewReader("null"))
+	q.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, q)
+	if w.Code != 400 {
+		t.Fatalf("%d %s", w.Code, w.Body.String())
+	}
+}
+func TestResponseConformancePreservesRequiredAndNullableValues(t *testing.T) {
+	type response struct {
+		Items    []string `json:"items"`
+		Optional []string `json:"optional,omitempty"`
+		Nullable *string  `json:"nullable"`
+	}
+	if _, err := marshalResponse(response{Items: []string{}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := marshalResponse(response{}); err == nil {
+		t.Fatal("required nil list accepted")
+	}
+	if _, err := marshalResponse(testResponse{Name: strings.Repeat("x", (512<<10)+1), Items: []string{}}); err == nil {
+		t.Fatal("oversized response accepted")
+	}
+}
