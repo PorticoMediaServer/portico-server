@@ -33,8 +33,12 @@ function setup() {
   return {f, requests, a, b, calls, service, set: (patch: any) => { snapshot = {...snapshot, ...patch, audioEffects: {...snapshot.audioEffects, ...(patch.audioEffects ?? {})}}; return snapshot; }, get: () => snapshot};
 }
 const settle = async () => { for (let i = 0; i < 20; i++) await new Promise(r => setTimeout(r, 0)); };
+/** The renderer keeps a 50 ms timer until it is disposed. Every test that makes one disposes it in
+ * `after`, which also runs when the test fails or times out; the timeout means a read or decode that
+ * never answers fails the test instead of keeping the process (and the whole suite) alive. */
+const bounded = {timeout: 30_000};
 
-test('(e) pause, seek or a rate change drops a prepared edge: nothing is committed, the next track never plays', async ctx => {
+test('(e) pause, seek or a rate change drops a prepared edge: nothing is committed, the next track never plays', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/bridge/DecodeAudioRender.ts');
   const t = setup();
   const render = new DecodeAudioRender(t.service, (p: string) => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
@@ -51,7 +55,7 @@ test('(e) pause, seek or a rate change drops a prepared edge: nothing is committ
   assert.equal((render as any).candidate, undefined);
 });
 
-test('(f) a commit that fails falls back: the track ends and says so, for :advance', async ctx => {
+test('(f) a commit that fails falls back: the track ends and says so, for :advance', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/bridge/DecodeAudioRender.ts');
   const t = setup();
   const render = new DecodeAudioRender(t.service, (p: string) => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
@@ -67,7 +71,7 @@ test('(f) a commit that fails falls back: the track ends and says so, for :advan
   assert.ok(t.calls.some(c => c[0] === 'fact' && c[3] === 'ended'), 'the track ends, so the queue advances with reason completion');
 });
 
-test('(b)(i) a committed edge promotes at the boundary; the engine keeps a constant number of decks however many edges pass', async ctx => {
+test('(b)(i) a committed edge promotes at the boundary; the engine keeps a constant number of decks however many edges pass', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/bridge/DecodeAudioRender.ts');
   const t = setup();
   const render = new DecodeAudioRender(t.service, (p: string) => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
