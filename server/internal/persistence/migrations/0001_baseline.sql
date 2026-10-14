@@ -4461,7 +4461,8 @@ CREATE TRIGGER inventory_availability_source AFTER UPDATE OF health,enabled,inca
  UPDATE library_revisions SET revision=revision+1 WHERE library_id=NEW.library_id;
  UPDATE admin_revision SET revision=revision+1 WHERE id=1;
 END;
-CREATE TRIGGER inventory_availability_object AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason ON inventory_objects BEGIN
+CREATE TRIGGER inventory_availability_object AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason ON inventory_objects
+ WHEN OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason BEGIN
  UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT library_id FROM library_sources WHERE id=NEW.source_id);
 END;
 CREATE TRIGGER job_observation_update AFTER UPDATE ON jobs BEGIN
@@ -4957,7 +4958,8 @@ CREATE TRIGGER catalog_availability_object_insert AFTER INSERT ON inventory_obje
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,l.entity_id,1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token=NEW.asset_id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason,source_id,asset_id ON inventory_objects BEGIN
+CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason,source_id,asset_id ON inventory_objects
+ WHEN OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,l.entity_id,1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token IN(OLD.asset_id,NEW.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
@@ -4966,7 +4968,7 @@ CREATE TRIGGER catalog_availability_object_delete AFTER DELETE ON inventory_obje
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_availability_source_health AFTER UPDATE OF health,enabled,incarnation,generation ON library_sources
- WHEN OLD.health IS NOT NEW.health OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
+ WHEN (OLD.health IN('offline','root_changed','removing')) IS NOT (NEW.health IN('offline','root_changed','removing')) OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 28,id,1 FROM catalog_libraries WHERE library_id=NEW.library_id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
