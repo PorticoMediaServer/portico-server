@@ -63,7 +63,10 @@ func (r reads) QueryRowContext(ctx context.Context, query string, args ...any) *
 	q := r.resolve(ctx)
 	serving, err := r.servingSQL(ctx, q, query)
 	if err != nil {
-		return q.QueryRowContext(ctx, `SELECT active_slot FROM catalog_derivations WHERE domain=17`)
+		// QueryRow cannot return the rewrite error directly. Return a row that
+		// always fails Scan rather than letting a scalar caller accept a slot
+		// number as its count or content.
+		return q.QueryRowContext(ctx, `SELECT 1 WHERE 0`)
 	}
 	return q.QueryRowContext(ctx, serving, args...)
 }

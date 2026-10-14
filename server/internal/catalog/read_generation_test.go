@@ -3,12 +3,34 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
 	"testing"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 )
+
+func TestReadGenerationFailureCannotBecomeScalarContent(t *testing.T) {
+	db, s, _ := browseFixture(t)
+	err := dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
+		state := &readGeneration{snapshot: dbwork.Snapshot(ctx), err: errors.New("generation lookup failed")}
+		state.once.Do(func() {})
+		service := s.WithContext(context.WithValue(ctx, readGenerationKey{}, state))
+		if rows, err := service.read().Query(`SELECT title FROM catalog_browse_rows`); err == nil {
+			rows.Close()
+			t.Fatal("generation failure returned content")
+		}
+		var count int
+		if err := service.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows`).Scan(&count); err == nil {
+			t.Fatalf("generation failure returned scalar content: %d", count)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestReadGenerationUsesIndexesAndRetainsRebuildContent(t *testing.T) {
 	db, s, names := browseFixture(t)
