@@ -41,7 +41,7 @@ const (
 )
 
 // BatchLimit is the Worker's units per transaction.
-const BatchLimit = 16
+const BatchLimit = 8
 
 // ErrBuilding is an internal signal for an unpublished restriction class.
 // Browse documents consume it as an empty first generation.
