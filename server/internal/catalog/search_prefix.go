@@ -33,16 +33,22 @@ func (s *Service) prefixSearchCandidates(ctx context.Context, r SearchRequest, k
 		}
 	}
 	ids := make([][]int64, len(terms))
-	lead, total := 0, int64(^uint64(0)>>1)
+	wide := make([]bool, len(terms))
+	lead, total := -1, int64(^uint64(0)>>1)
 	raw, _ := json.Marshal(r.Libraries)
 	for i, term := range terms {
 		var err error
 		ids[i], err = s.prefixTermIDs(ctx, term, kind, r.Libraries)
+		if errors.Is(err, errPrefixFallback) && facettext.NumericSearchTerm(term) {
+			wide[i] = true
+			continue
+		}
 		if err != nil {
 			return "", nil, "", err
 		}
 		if r.Direction == "asc" && len(ids[i]) > 1 {
-			return "", nil, "", errPrefixFallback
+			wide[i] = true
+			continue
 		}
 		list, _ := json.Marshal(ids[i])
 		var count int64
@@ -56,14 +62,25 @@ func (s *Service) prefixSearchCandidates(ctx context.Context, r SearchRequest, k
 	if frozenLead != "" {
 		for i, word := range terms {
 			if word == frozenLead {
+				if wide[i] {
+					return "", nil, "", errPrefixFallback
+				}
 				lead = i
 			}
 		}
+	}
+	if lead < 0 {
+		return "", nil, "", errPrefixFallback
 	}
 	extra := ""
 	extraArgs := []any{}
 	for i, list := range ids {
 		if i != lead {
+			if wide[i] {
+				extra += ` AND EXISTS(SELECT 1 FROM catalog_search_prefix_rows other INDEXED BY catalog_search_prefix_rows_entity JOIN catalog_search_prefix_terms word ON word.id=other.term_id WHERE other.entity_id=p.entity_id AND (word.terminal=0 AND word.prefix=? OR word.terminal=1 AND word.prefix>=? AND word.prefix<?))`
+				extraArgs = append(extraArgs, terms[i], terms[i], terms[i]+"\U0010ffff")
+				continue
+			}
 			raw, _ := json.Marshal(list)
 			extra += ` AND EXISTS(SELECT 1 FROM catalog_search_prefix_rows other INDEXED BY catalog_search_prefix_rows_entity WHERE other.entity_id=p.entity_id AND other.term_id IN(SELECT value FROM json_each(?)))`
 			extraArgs = append(extraArgs, string(raw))
