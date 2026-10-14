@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -72,7 +73,17 @@ func run() (runErr error) {
 	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
 	resumeRemoval := flag.Bool("resume-removal", false, "finish removal of the already retired synthetic Movies library")
 	focus := flag.Int("focus-samples", 0, "repeat main browse and typing reads before write scenarios")
+	only := flag.String("only", "", "measure only the routes whose name matches this regular expression")
+	skipClasses := flag.Bool("skip-class-build", false, "reuse the restricted visibility classes already published in a reused fixture")
 	flag.Parse()
+	if *only != "" {
+		pattern, err := regexp.Compile(*only)
+		if err != nil {
+			return fmt.Errorf("only: %w", err)
+		}
+		routeFilter = pattern
+	}
+	profileRoutes = *profile
 	focusedSamples = *focus
 	if focusedSamples < 0 || focusedSamples > 20 {
 		return errors.New("focus-samples must be 0..20")
@@ -234,6 +245,9 @@ func run() (runErr error) {
 	buildStart := time.Now()
 	dbwork.WriteGate().ResetPeak()
 	for _, library := range libraries {
+		if *skipClasses {
+			break
+		}
 		if err = s.RebuildVisibilityClass(context.Background(), library, viewers[1].v.EffectiveRestrictions()); err != nil {
 			return fmt.Errorf("build %s visibility class: %w", library, err)
 		}
@@ -326,6 +340,9 @@ func run() (runErr error) {
 		}
 	}
 	for _, c := range cases {
+		if !routeSelected(c.name) {
+			continue
+		}
 		if *explain != "" && strings.Contains(c.name, *explain) {
 			explainRoute(db, c.name, c.read, s)
 		}
@@ -431,3 +448,12 @@ func explainRoute(db *sql.DB, name string, read func(*catalog.Service) error, s 
 		}
 	}
 }
+
+// routeFilter limits a run to the named routes; profileRoutes prints each
+// measured route's costliest statement shapes.
+var (
+	routeFilter   *regexp.Regexp
+	profileRoutes bool
+)
+
+func routeSelected(name string) bool { return routeFilter == nil || routeFilter.MatchString(name) }
