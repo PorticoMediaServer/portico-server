@@ -28,8 +28,13 @@ import (
 // alias e: shows, and items other than episodes. It is the condition
 // deriveFacetCounts applies, so a filtered grouping tests its predicate on
 // these rows only.
+//
+// The kind set (shows and the playable kinds other than episodes, whose
+// browse rows carry their item) lets a reader seek the (library, kind)
+// indexes instead of reading every row of the library.
 func FacetHolderSQL(e string) string {
-	return `(` + e + `.kind=` + strconv.Itoa(int(Show)) + ` OR ` + e + `.item_id IS NOT NULL AND ` + e + `.kind<>` + strconv.Itoa(int(Episode)) + `)`
+	show, episode := strconv.Itoa(int(Show)), strconv.Itoa(int(Episode))
+	return `(` + e + `.kind IN(SELECT id FROM catalog_kinds WHERE id=` + show + ` OR playable=1 AND id<>` + episode + `) AND (` + e + `.kind=` + show + ` OR ` + e + `.item_id IS NOT NULL))`
 }
 
 // DomainFacetCounts keeps catalog_facet_members and catalog_facet_counts.
