@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
@@ -74,7 +75,7 @@ func (s *Service) refreshVisibilityClass(ctx context.Context, library string, r 
 		applied := 0
 		err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 			applied = 0
-			rows, err := tx.QueryContext(ctx, `SELECT entity_id FROM compact_visibility_dirty WHERE class_id=? ORDER BY entity_id LIMIT 16`, classID)
+			rows, err := tx.QueryContext(ctx, `SELECT entity_id FROM compact_visibility_dirty WHERE class_id=? ORDER BY entity_id LIMIT ?`, classID, compactcatalog.BatchLimit)
 			if err != nil {
 				return err
 			}
