@@ -43,16 +43,17 @@ var processSpawns = map[string]string{
 	"internal/storage/root_registration_windows.go:RegisterRoot":              "storage helper (server binary); transfers a retained root handle",
 	"internal/subtitles/acquisition.go:Import":                                "subtitle sidecar helper (server binary); reads text files, runs no tool",
 	// Not media.
-	"internal/mounts/service.go:reconcile":           "rclone mount guardian (server binary)",
-	"internal/mounts/native.go:NativeHelper":         "rclone, inside the native helper, for a managed network mount",
-	"internal/mounts/native.go:runOwned":             "rclone native helper (server binary)",
-	"internal/mounts/native.go:approveExecutable":    "rclone version, to approve the configured executable",
-	"internal/mounts/native.go:validateCandidate":    "rclone native helper (server binary)",
-	"internal/mounts/guardian.go:Guardian":           "rclone under the guardian",
-	"internal/networking/topology.go:defaultGateway": "/sbin/route on macOS",
-	"internal/telemetry/command.go:runCommand":       "fixed read-only platform reporters",
-	"internal/httpapi/fixture/fixture.go:cloneFile":  "test fixture copy (cp), not built into the server",
-	"internal/supervise/process.go:Process":          "the server starting itself as its own worker, so a restart stays inside the service",
+	"internal/mounts/service.go:reconcile":                       "rclone mount guardian (server binary)",
+	"internal/mounts/native.go:NativeHelper":                     "rclone, inside the native helper, for a managed network mount",
+	"internal/mounts/native.go:runOwned":                         "rclone native helper (server binary)",
+	"internal/mounts/native.go:approveExecutable":                "rclone version, to approve the configured executable",
+	"internal/mounts/native.go:validateCandidate":                "rclone native helper (server binary)",
+	"internal/mounts/guardian.go:Guardian":                       "rclone under the guardian",
+	"internal/networking/topology.go:defaultGateway":             "/sbin/route on macOS",
+	"internal/telemetry/command.go:runCommand":                   "fixed read-only platform reporters",
+	"internal/httpapi/fixture/fixture.go:cloneFile":              "test fixture copy (cp), not built into the server",
+	"internal/catalog/scalebench/scratch_budget.go:scratchUsage": "du over the capacity benchmark's own scratch folder; a development tool, not built into the server",
+	"internal/supervise/process.go:Process":                      "the server starting itself as its own worker, so a restart stays inside the service",
 }
 
 type spawn struct{ file, function string }
