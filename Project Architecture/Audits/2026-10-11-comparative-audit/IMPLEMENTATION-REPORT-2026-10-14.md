@@ -1,25 +1,131 @@
 # Portico implementation report — 14 October 2026
 
-**Updated after the evening integration and owner answers.** The final server health report passes every requested suite. Native suites passed after the owner panels, then the final running-log receipt records the same 655 native/87 Vega passes after the shared-package refresh, with type checks and package equality confirmed. Scale work continues. This reports implementation and qualification evidence, not release approval.
+This is the owner's summary of the implementation programme that followed the comparative audit. Sections 1–6 are the short version. The appendices hold the per-decision detail, every lane's record and all 588 audit bug dispositions.
 
-## 1. Summary
+## 1. Where things stand
 
-Portico now has the title/file model, more tolerant scanning and matching, one playback capability document, richer conversions, local integrations and much more complete client screens. The afternoon work added wide group controls, real Undo, owner playback controls, phone/tablet administration and a read-only TV Dashboard. Vega can sign in again under the redirect risk you accepted.
+- **Every decision you made is built in source.** Some client gaps remain; they are listed in section 4. Of the audit's 588 bugs, 359 are fixed, 173 were already fixed, 7 were not present and 11 are intentional under your decisions. 38 remain open: none High, 20 Medium and 18 Low.
+- **Independent reviews of the new work found 137 problems, and all of them are fixed.** That includes 1 blocker and 42 High.
+- **Everything passes on Ubuntu after the final pass:**
+  - **Server:** 87 Go packages.
+  - **Shared and web:** 1,947 shared-client tests, 546 web tests and 20 Cast tests.
+  - **Native:** 660 native tests and 87 Vega tests, with type checks and string lints.
+  - **Builds:** the production web build, plus Windows and macOS cross-builds.
+  - **End to end:** the real-server driver passes 18 of 18 groups, and the headless-Chrome driver passes 13 of 13 groups with 114 screens rendered.
+- **It is not ready to release.** Nothing has been compiled for Apple; the Swift and Objective-C code is unbuilt. Nothing has been built as a full Android application or run on any phone, TV, Fire TV or Vega device. Nothing has been installed on Windows, macOS or Docker. No real GPU, receiver or tuner has been used.
+- **Nothing was pushed, merged into your own branches or deployed.** All work sits on `audit-implementation/main` in each repository (section 6). Hosted was not redeployed, because it needs an empty database (section 3).
 
-**It is not ready to release.** The final server base passes 86 Go packages, 1,937 shared-client tests, 545 web tests and 20 Cast tests. The real-server driver passes 18 groups. The browser driver passes 13 groups and visits 57 screens at two widths. Native passes 655 tests and Vega 87, including the later post-refresh receipt in the running log. These checks do not establish physical playback or installation.
+## 2. Performance
 
-Six things matter most:
+You asked for per-title cost to stay roughly constant as a library grows, so that 50,000 and 5 million titles both behave well. That now holds for adding, scanning, everyday actions and the rebuild. A few reads still grow, as listed at the end of this section. The figures come from single runs of the synthetic-library benchmark on this Ubuntu host, which was busy with other work at the time.
 
-1. **The web has now run in a real browser engine.** Automated Chrome runs play Original and fixed quality, paint text/ASS/PGS subtitles, advance episodes and music, download an original and check quiet version updates. The owner-console pass inspected most owner pages at desktop and phone widths. Watching now with a live player, populated playback problems and real provider episode-order choices still need acceptance. This was no complete human browser walk.
-2. **Your native owner decision is built in source.** Phones and tablets get integrations, people, metadata/library tools, diagnostics and Live TV sources. TVs get a read-only Dashboard. Making it read-only removed Stop playback, Acknowledge and task actions previously offered to TV owners. No native screen was visually checked or run on a device.
-3. **Client parity still has specific gaps.** Home row pages, personal collections and book parts lack the required browse fields. Native My List/Favorites retain narrower controls. A group's own order cannot survive a filter. Whole-view queue selectors exist on the server, but screen handlers still play loaded entries or the first 500 in several paths. Native paged owner lists need quiet updates.
-4. **The largest playback and release bets remain unproved.** Swift/Objective-C is uncompiled. There was no complete Android application build, physical device, Windows/macOS runtime, GPU, tuner or actual installer acceptance. Apple TV mpv is SDR; Vega is SDR/stereo. Offline fonts reach native engines but are ignored for local files.
-5. **Fresh state is still required.** The server uses one pre-release baseline. Hosted needs a separate empty format-21 database. Preserve each old binary and its old database. A Hosted cutover must recreate the required accounts, claims and directory state; it is not a binary-only update.
-6. **The disk-full incident lost no repository work.** The shared Go cache reached 83 GB and scale scratch 18 GB. Clearing disposable cache/databases restored space. The running log records connectivity checks on all three repositories, untouched main checkouts and a successful server build. Scale resumed under an 8 GB scratch limit; final 200k/one-million measurements are still pending.
+| Area | Before | After |
+|---|---|---|
+| Adding one new file to a 12,000-title library | 74.8 s; re-derived 75,041 rows | 13 s; re-derives 34 rows |
+| Adding a film, 50,000 → 200,000 titles | — | 11.28 → 11.22 ms (flat) |
+| Progress updates, marking 500 watched, removing a library | grew with size | flat from 5,000 to 200,000 |
+| Background queue claim | grew with queue | constant 0.4 ms |
+| Full rebuild of 200,000 titles from empty | 44 min | about 30 min |
+| Rebuild speed, 200,000 → 1 million titles | fell 17% (198 → 165 work units/s) | flat (693 → 714 units/s) |
+| One show's metadata update | 257 ms | 11 ms |
+| Worst artist metadata update | 8.1 s | 7.8 ms |
+| Longest database write lock | about 2 s | 0.3–0.7 s |
+| Requests over 1 s at 200,000 titles | 69 | 4 |
+| Requests over 500 ms at 200,000 titles | 327 | 57 |
+| Broad search at 200,000 titles (median) | 858 ms | 14 ms |
+| Cold Home at 10,000 titles | 14.5 s | 0.1 s |
 
-My recommendation is to finish the named client/server gaps, take the completed scale result, retain the recorded final native/package checks and rerun after any later scale integration, then compile the Apple and Android applications and run private acceptance on representative devices/media. Keep conversion off on the existing demo. Land the reviewed programme branches only when you choose; Hosted remains a separate staged cutover.
+- **Large totals are exact up to 10,000 and then read "10,000+".** Grids keep loading past that point and settle on the exact count at the end. This now works on web, phone, tablet, TV and Vega.
+- **Scanning never waits on metadata providers.** New titles are matched first, metadata fills in afterwards within each provider's rate limit, and new episodes no longer re-match their show.
+- **The million-title runs were stopped early,** as you asked. The rebuild ran for 12–15 minutes (about 14% of the way) to read its rate. Reads and adds were not measured at a million, because both need a finished rebuild.
+- **Still growing with size; reported, not fixed:**
+  - Broad multi-word search prefixes (up to 258 ms at 200,000).
+  - Per-person credit counts in the People group.
+  - Songs or episodes sorted ascending by duration or rating (70 ms at 200,000).
+  - Deep pages in some sort orders. You accepted this, since real views rarely hold 200,000 titles.
+  - Home composed in one call. The apps no longer use that path; they load each row separately.
+- **The next large rebuild gain would need a separate bulk path for building from empty.** That is a redesign and was not attempted.
 
-## 2. What was built against your decisions
+## 3. Things you should know, and choices to confirm
+
+These were decided, or arose, while you were away. Each one has an alternative in Appendix 0 or E if you would rather it went the other way.
+
+- **The TV owner Dashboard is read-only, following your answer.** As a result, a TV no longer offers the owner Stop playback, Acknowledge or task actions it had before.
+- **Licences to review before distribution:**
+  - Browser subtitle rendering uses libass compiled to WebAssembly. It includes FriBidi, which is LGPL, and needs the `wasm-unsafe-eval` allowance in the web content policy.
+  - Apple's mpv engine is the LGPL MPVKit build.
+  - Android's libmpv contains LGPL version 3 FFmpeg.
+- **Apple apps allow plain HTTP to any address.** This follows "HTTP from anywhere", but it is one broad app-wide setting rather than a narrower per-address rule.
+- **Vega's sign-in works, with the redirect risk you accepted.** If a server redirects, the SDK may send credentials before Portico can detect it. Portico then rejects the response, signs out and tries to revoke the session.
+- **Hosted must start on an empty database.** Accounts, claims and the directory are recreated rather than migrated. Keep the old binary and database for rollback.
+- **Defaults I chose:**
+  - Missing titles are kept for 30 days before emptying.
+  - A requested quality the server cannot produce is refused rather than silently raised.
+  - Matching is conservative: uncertain matches go to the attention list rather than being joined.
+  - A group's own order (playlist position, episode order) gives way to a normal sort once you filter.
+  - Lists without a server change signal refresh quietly every 30 seconds.
+
+## 4. What is not finished
+
+- **Sort and filter everywhere:**
+  - Home row "See all", personal collections and a book's parts still lack the full toolbar; each needs a small server field.
+  - Native My List, Favorites, History and music Playlists have narrower controls.
+  - Cross-library lists sort one library at a time.
+- **Play all and Shuffle across a whole view:** the server supports it, but the screens still play only the entries already loaded, and saved views can stop at 500.
+- **Native owner tools:**
+  - Missing: playback problems, Watching-now pause and seek, and episode-order controls.
+  - Some owner lists refresh only when pulled.
+- **Web owner:**
+  - Channel-builder saves and mount commands can still show a conflict.
+  - Subtitle-provider credentials have no screen.
+- **Playback edges:**
+  - Offline styled-subtitle fonts are passed to mpv but ignored for local files.
+  - There is no offline next-episode queue.
+  - Apple TV mpv is SDR only; Vega is SDR and stereo.
+  - Web drawn subtitles don't follow picture-in-picture or casting.
+- **Accessibility and translation:** screen readers, remote focus and font scaling are untested. Some new native strings are still English.
+- **Audit bugs:** the 38 open entries are listed in Appendix D.
+
+## 5. Testing: done, and still to do
+
+**Done on Ubuntu:** everything in section 1, plus the performance runs above.
+- **Server driver:** runs a real server with generated media. It covers playback, conversion, subtitles, keys, webhooks, MCP, events, deletion, restore and restart.
+- **Browser driver:** runs headless Chrome. It covers Original and fixed-quality playback, painted text, ASS and PGS subtitles, downloads, quiet updates and owner pages at desktop and phone widths.
+
+**Still to do (the [test plans](test-plans/README.md) hold 250 step-by-step cases):**
+1. Compile and archive the Apple apps on the Mac, then run them on iPhone, iPad and Apple TV.
+2. Build the Android, Android TV and Fire TV apps on Ubuntu, and Vega with its SDK, then run them on devices.
+3. Install the server on Windows, macOS and Docker, and run upgrade, restart and restore.
+4. Test with real media hardware: HDR, surround receivers, GPUs and a tuner.
+5. Try Firefox, Safari and Edge, and do a human walk-through of the web app.
+6. Stage Hosted on an empty PostgreSQL database.
+
+Keep conversion disabled on the demo server, and do capacity tests on separate hardware.
+
+## 6. How to land it
+
+| Repository | Programme branch | Head |
+|---|---|---|
+| portico-server | `audit-implementation/main` (worktree `main-server`) | `f719c2a0` |
+| portico-react-native | `audit-implementation/main` (worktree `main-native`) | `8c8b973` |
+| portico-internal | `audit-implementation/main` (worktree `main-internal`) | the commit containing this report |
+
+The worktrees are under `/home/justin/projects/Portico/.worktrees/audit-implementation/`. Your own checkouts are untouched.
+
+Recommended order:
+1. Land the server first; it holds the shared packages and contracts.
+2. Land native at the matching package revision. Its shared packages are byte-identical to the server's now.
+3. Land internal (Hosted and docs) last.
+
+The server uses one fresh baseline database, so start each test server from empty state and keep old binaries with their old databases. Lane reports and the running log are in `_program/` in the same folder; archive them with the internal handoff if the worktrees move.
+
+---
+
+## Appendix 0. Detailed record from the lanes
+
+This section was written by the integration lanes before the final performance and test pass. Its test counts and scale figures are superseded by sections 1 and 2; its per-decision table, choices with alternatives and gap lists remain accurate.
+
+### What was built against your decisions
 
 The table follows your decisions. Later owning-lane receipts supersede early gap lists. “Built” means implemented source with the checks stated alongside it.
 
@@ -44,16 +150,16 @@ The table follows your decisions. Later owning-lane receipts supersede early gap
 
 Your exclusions stand: no plugins, themes, custom CSS, push notifications, email, light theme, watch-state import/export, CarPlay, Android Auto, sub-path hosting or relay. Roku is outside this programme.
 
-## 3. Choices made on your behalf
+### Choices made on your behalf
 
-### Your answers are now settled
+#### Your answers are now settled
 
 - **Phones and tablets get owner administration; TVs do not.** TVs have a read-only owner Dashboard. The removed TV Stop/Acknowledge/task actions follow that decision.
 - **Vega's redirect risk is accepted.** Credentials are tied to the exact origin; redirected responses are rejected, affected sessions/media stop, saved sign-in is retired and bounded issuer-only revocation is attempted. The SDK may disclose a password/token/grant before detection; a chain returning to the original origin may be invisible. Revocation is an attempt, not a guarantee. This is no longer an open owner question or blanket sign-in blocker.
 - **Restore does not end API keys.** Interactive sessions end. Keys absent at the backup point do not exist afterwards; an older backup can restore a subsequently revoked key. Review the restored inventory. Password-change survival was also directly instructed earlier.
 - **Every grouping must offer the same wide sorting/filtering.** Title-only exceptions are not approved. The missing fields/controls in section 4 remain work to do.
 
-### Remaining choices to confirm or overrule
+#### Remaining choices to confirm or overrule
 
 - **Missing titles default to 30 days.** Immediate, another interval and never remain available. Unreachable roots are protected. Alternative: keep everything until manually emptied.
 - **Unproducible selected quality is refused.** The server does not serve Original above a chosen ceiling. Alternative: explicitly report and offer a higher-quality fallback.
@@ -76,9 +182,9 @@ Your exclusions stand: no plugins, themes, custom CSS, push notifications, email
 
 Appendix E keeps the other implementation choices and alternatives. These choices do not waive the source/platform gaps below.
 
-## 4. What is not finished
+### What is not finished
 
-### Screens and consumers
+#### Screens and consumers
 
 - **Browse fields:** Home recommendation See all, personal collections, book parts/discs and non-season episode groups lack an appropriate field/pivot. Native My List/Favorites keep their narrower list controls; History and music Playlists lack the wide toolbar. Cross-library sorts need a cross-library surface. A group's own order cannot be combined with a filter. Person roles have no browse operand.
 - **Whole-view queues:** the server/core query/saved selectors are implemented, but web/native/TV/Vega Play and Shuffle handlers still need forwarding. Native sorted lists play loaded entries and saved views can stop at 500. Duplicate playlist entries still need an occurrence/revision anchor.
@@ -89,7 +195,7 @@ Appendix E keeps the other implementation choices and alternatives. These choice
 - **Web playback/navigation gaps:** drawn subtitles do not follow PiP/casting; no forced-only control; Up next lacks artwork/countdown; MP3/ADTS/Ogg deep resume and output-latency compensation remain. Saved lists/search/person pages are not retained after Back, Watch Together is not on the freshness hub and five refresh-required notices remain.
 - **Accessibility and strings:** remote/VoiceOver/TalkBack/IME/density/font scaling, browser floor, hook enforcement and Node build-version alignment remain. Web fallback metadata labels, shared SubtitleService/queue-player messages and native owner job/alert tables retain English. Exact native share/merge/Undo/time-help/dashboard and Vega transport keys await canonical catalogue adoption.
 
-### Server and shared contracts
+#### Server and shared contracts
 
 - Native listening still needs the Apple bitrate-limited AAC target. Rich optimized downloads, live Automatic/mpv/fMP4 publication and complete HDR mastering facts remain incomplete.
 - Standalone subtitle PUT remains for native/service/reservation/social consumers. Web is off it; complete coordinated session-PATCH conversion before deleting the duplicate route. Management/original/font/grant reads remain.
@@ -98,14 +204,14 @@ Appendix E keeps the other implementation choices and alternatives. These choice
 - Scale-check-2 continues: final 10k all-operator measurements complete, final 200k and one-million measurements pending. Its latest source has deferred Home, grouped read/search and batched state optimizations, but awaits final snapshot/integration. Arbitrary cold exact totals remain proportional to matching content. A full two-million mixed fixture exceeds the 8 GB budget; two-million structural tests are a different result.
 - Original playback/history/multipart/merge continuity, artwork pruning, container webhook coverage, guide-window extension and long-lived capacity/retention remain qualified gaps. New table ceilings are source-tested, not years of production churn.
 
-### Platform and release acceptance
+#### Platform and release acceptance
 
 - No Apple application compile/link/archive, real Android APK build/install, Vega package/device acceptance, Windows/macOS runtime, Docker lifecycle, GPU/HDR/output receiver, real tuner/NAS or physical Cast synchronization has been performed for this programme.
 - Vega is functional in source with accepted redirect risk; HDR/surround/mpv/downloads/discovery/Cast/home rows and unsupported audio effects remain hidden or absent. Apple TV and Android mpv limitations remain as described above.
 - Native suites were rerun after the last package mirror; rerun them after any subsequent scale/contracts merge. Exact dependency locks, native/WASM source/notices/relinking materials, Apple distribution rights, signing/notarization and the reported source-map-js advisory remain release work.
 - The historical Apple explicit_signout incident still has no established cause or correlated runtime trace. No speculative cause is claimed fixed.
 
-## 5. What to test, and where
+### What to test, and where
 
 The [test plans](test-plans/README.md) now include the afternoon work. They are instructions, not executed acceptance. Each platform must build/install before its functional results count.
 
@@ -124,7 +230,7 @@ The viewer pass did not visually inspect person/collection/saved-view toolbars, 
 
 Scale figures are single observations on a shared host. “Cold Home” resets the service cache; OS/SQLite pages may be warm. Old large rebuild failures and deleted databases are not final-code capacity results. The disk-full recovery preserved repository work; continue monitoring cache, scratch and free space.
 
-## 6. Bugs and independent reviews
+### Bugs and independent reviews
 
 The current Bugs sections contain evidence for every one of the audit's **588 unique IDs**. Counts below were recomputed from those sections, using owning-lane evidence and adjudicating compound entries. Out-of-area “not fixed here” does not override a delivered fix. “Already fixed” means the selected source reports an inherited base fix; different late reviewers may describe an earlier programme fix that way. This rerun also changes some fixed/already/not-present categories from the midday table; the per-ID evidence is recorded in handoff-update.md. These are reported source dispositions, not 588 runtime reproductions.
 
@@ -143,7 +249,7 @@ Two previously open High entries changed: **B-11.8** now has HDHomeRun guide set
 
 The older ledger's first-pass High list remains explicit: B-06.21/B-06.24 source fixes; B-13.3 shared seek repair awaiting actual timing; B-19.18 scene source uncompiled; B-22.6 accepted HTTP trust; B-22.19 accepted redirect risk; B-25.10/B-25.12 release/device coverage and Apple component rights remain open (Medium after review).
 
-### Completed independent review findings
+#### Completed independent review findings
 
 | Review | Blocker / High / Medium / Low | Total | Result |
 |---|---:|---:|---|
@@ -171,30 +277,6 @@ Serious repairs include symlink deletion escape, cross-disk identity collisions,
 Apple/Android native reviews used different inventories and are not forced into this severity total. The browser run's nine finding rows and server driver's three repairs are additional runtime work, not added twice to independent-review counts. Claim-and-gate closes the two Hosted runtime handoffs; the original loopback driver included an owner-link wait and injected wake, so it is not proof of immediate admission or automatic public wake delivery.
 
 Appendix D lists every open entry and all 588 dispositions. The original register and 12 October fix log stay historical.
-
-## 7. How to land it
-
-Nothing was pushed, deployed or merged into your own working branches. Programme integration occurs on **audit-implementation/main** in each repository. This lane cannot commit; its final cumulative snapshot is the integration input.
-
-| Repository | Programme worktree | Observed head at this update | Latest validation |
-|---|---|---|---|
-| portico-server | main-server | `2525be0b40bae5f18c06de86025101fd5d0161c1` | Final base-health-3: 86 tested Go packages plus 18 without tests; four apikit packages; 1,937 core, 545 web, 20 Cast; production web build; Linux/Windows/macOS cross-builds; 18 server and 13 browser groups |
-| portico-react-native | main-native | `db997c652b3007b0288725fdb7c2a80a950200a7` | native-owner: 655 native/87 Vega, app/test type checks and string lints before mirror. Later running log: 655/655 and 87/87 again, type checks clean and packages identical after mirror |
-| portico-internal | this handoff-update fork | `48a0d7a539b3471323303718037652fa72131103` | Hosted builds; refreshed apikit four-package tests; Hosted contract/httpapi/oidclogin tests; generated TS strict check; 13 selected PostgreSQL tests pass on isolated PostgreSQL 18.6 |
-
-The full final server suite and drivers ran on base-health-3's final source before its integration merge. The still-running scale lane is outside that result. Plain server vet retains known vendored SQLite unsafe-pointer warnings; the application-vet wrapper passes. Cross-builds are not Windows/macOS execution. Native suites use JavaScript/device stand-ins, not Apple/Android binaries. Touched native owner ESLint reports an existing unused client variable; string lints/type checks passed. Hosted toolkit is byte-identical to the observed server copy and generated contract tests pass.
-
-Recommended order:
-
-1. Review this report and the final cumulative handoff snapshot. Finish the named source/screen gaps; collect scale-check-2's final report/snapshot when available without treating its pending work as landed.
-2. Integrate any later scale/contracts, regenerate and mirror canonical packages, then rerun the relevant final server/browser and native/Vega checks. Verify exact package equality; a passing type check alone is insufficient.
-3. Compile/archive Apple applications on the Mac, build Google/Fire applications on Ubuntu and Vega with its SDK. Run the private environment plans. Resolve dependency/artifact notices, source/relinking rights and signing before package distribution.
-4. Preserve originals. Land server/shared contracts first, native at the matching package revision next, and internal Hosted/docs at the matching toolkit revision. Publishing remains your choice.
-5. Use fresh baseline local state. Keep old state and its matching binary for rollback; no pre-release database compatibility bridge is promised.
-6. Stage Hosted separately on empty format-21 PostgreSQL. Recreate/validate accounts, claims, providers, cookies, directory/DNS and certificates before switching traffic. Rollback must not revive a revoked signer or forget learned revocations.
-7. Keep demo conversions disabled. Use separate hardware for capacity/GPU/tuner work and release only after recorded first-party acceptance.
-
-Archive the shared programme lane reports with the internal handoff when worktree paths move. Links below currently resolve into `_program/reports/`; they are provenance, not release claims.
 
 ## Appendix A. Lane records
 
