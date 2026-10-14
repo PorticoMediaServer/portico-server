@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 )
@@ -39,13 +40,26 @@ func focusedReads(db *sql.DB, s *catalog.Service) ([]routeResult, error) {
 				return results, err
 			}
 			measure := func(name string, request catalog.BrowseRequest) error {
+				total := 0
 				for _, deep := range []bool{false, true} {
 					suffix := "first"
 					if deep {
 						suffix = "deep"
-						request.Range = &catalog.BrowseRange{Start: 50000}
+						request.Range = &catalog.BrowseRange{Start: min(50000, max(0, total-40))}
+						fmt.Fprintf(os.Stderr, "FOCUS_RANGE %s%s/%s/%s total=%d start=%d\n", prefix, scope[0], scope[1], name, total, request.Range.Start)
 					}
-					if err := add(prefix+scope[0]+"/"+scope[1]+"/"+name+"/"+suffix, func(_ context.Context, s *catalog.Service) error { _, err := s.BrowseEntities(v, request); return err }); err != nil {
+					if err := add(prefix+scope[0]+"/"+scope[1]+"/"+name+"/"+suffix, func(_ context.Context, s *catalog.Service) error {
+						out, err := s.BrowseEntities(v, request)
+						if err == nil {
+							if !deep {
+								total = out.PageInfo.Total
+							}
+							if total > 0 && len(out.Entries) == 0 {
+								return fmt.Errorf("counted %d visible entries but selected an empty page", total)
+							}
+						}
+						return err
+					}); err != nil {
 						return err
 					}
 				}
