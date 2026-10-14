@@ -308,6 +308,13 @@ func (s *Service) visibilitySmallLibrary(library string) (bool, error) {
 // explicit background operation: request paths never call it. Rows are built
 // in keyset batches and a generation stays invisible until counts and anchors
 // are complete and the library revision still matches under the gate.
+// visibilityChunkSQL bounds the next 100 rows of a library a class build
+// reads. It walks the rows in id order from the cursor, so a whole build reads
+// each row once: through a library index the planner would sort the library's
+// every row for each chunk, a class build quadratic in the library.
+const visibilityChunkSQL = `SELECT max(entity_id) FROM (SELECT entity_id FROM catalog_browse_rows NOT INDEXED
+ WHERE library_id=? AND entity_id>? ORDER BY entity_id LIMIT 100)`
+
 func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r identity.ContentRestrictions) error {
 	if s == nil || s.db == nil || library == "" {
 		return errors.New("missing visibility class scope")
@@ -356,8 +363,7 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 		}
 		var upper sql.NullInt64
 		err = dbwork.ReadHandle(ctx, s.db).QueryRowContext(ctx,
-			`SELECT max(entity_id) FROM (SELECT entity_id FROM catalog_browse_rows
-			 WHERE library_id=? AND entity_id>? ORDER BY entity_id LIMIT 100)`, libraryID, cursor).Scan(&upper)
+			visibilityChunkSQL, libraryID, cursor).Scan(&upper)
 		if err != nil {
 			return err
 		}
@@ -367,7 +373,7 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 		args := append([]any{libraryID, cursor, upper.Int64}, clauseArgs...)
 		rows, queryErr := dbwork.ReadHandle(ctx, s.db).QueryContext(ctx,
 			`SELECT e.entity_id,e.kind,e.sort_key,e.head,COALESCE((e.year/10)*10,0),e.available,`+visibleRowKeys+`
-			 FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id
+			 FROM catalog_browse_rows e NOT INDEXED JOIN catalog_entities ce ON ce.id=e.entity_id
 			 WHERE e.library_id=? AND e.entity_id>? AND e.entity_id<=? AND ce.retired=0 AND `+clause+
 				` ORDER BY e.entity_id`, args...)
 		if queryErr != nil {
