@@ -438,3 +438,39 @@ func TestTitleSortedSearchWalksTheTitleIndex(t *testing.T) {
 		t.Fatalf("title-sorted search grew from %d to %d steps", steps[0], steps[1])
 	}
 }
+
+// A shuffled library selection finds the library's newest entity with one
+// seek per kind; the work does not grow with the library's other entities.
+func TestLibraryMixFindsItsUpperBoundBySeeking(t *testing.T) {
+	steps := []int64{}
+	for _, songs := range []int{60, 240} {
+		c := catalogtest.Open(t)
+		lib := c.Library("music", "Music", "music", "/music")
+		artist := c.Artist(lib, "Someone")
+		var album catalogtest.Item
+		for i := 0; i < songs; i++ {
+			if i%20 == 0 {
+				album = c.Album(artist, fmt.Sprintf("Album %d", i/20), 2000)
+			}
+			c.Song(album, i%20+1, fmt.Sprintf("/music/%d.flac", i), fmt.Sprintf("Song %d", i))
+		}
+		c.Drain()
+		c.Exec(`ANALYZE`)
+		v := Viewer{Profile: "p", Fence: "mix", Libraries: []string{"music"}}
+		ctx, trace := dbwork.TraceQueryPlans(context.Background())
+		ctx, cost := dbwork.Measure(ctx)
+		if err := dbwork.WithReadSnapshot(ctx, c.DB, func(ctx context.Context) error {
+			_, err := New(c.DB).WithContext(ctx).ListeningSelection(ContentRequest{Viewer: v, Library: "music", Limit: 40}, ListeningTarget{Kind: "library", ID: "music", LibraryID: "music"}, "mix", "fixture", false, "")
+			return err
+		}); err != nil {
+			t.Fatal(err)
+		}
+		for _, query := range trace() {
+			if strings.Contains(query, "max(id)") && !strings.Contains(query, "catalog_kinds") {
+				t.Fatalf("library bound reads every entity: %s", query)
+			}
+		}
+		steps = append(steps, cost().VMSteps)
+	}
+	t.Logf("library mix: %d steps at 60 songs, %d at 240", steps[0], steps[1])
+}
