@@ -83,7 +83,7 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	// pageCounts: a broad filter's groups are counted for the returned page
 	// only, each up to the threshold.
 	pageCounts := false
-	var countGroup func(value string) (int, error)
+	var countGroups func(values []string) (map[string]int, error)
 	if request.Query != nil || request.Restrictions.Active() {
 		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs}
 		clause, err := compiler.compile(request.Query)
@@ -142,11 +142,26 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 				args = append([]any{request.Library, pivot.Aggregate}, memberArgs...)
 				pageCounts = true
 			}
-			countGroup = func(value string) (int, error) {
-				var n int
-				err := s.read().QueryRow(`SELECT `+capped+` FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=? AND g.value=?`,
-					append(append([]any{}, memberArgs...), request.Library, pivot.Aggregate, value)...).Scan(&n)
-				return n, err
+			// One statement for the page's groups: a filter's own sets (a
+			// full-text match, a profile's state) are then built once.
+			countGroups = func(values []string) (map[string]int, error) {
+				list, _ := json.Marshal(values)
+				rows, err := s.read().Query(`SELECT g.value,`+capped+` FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=? AND g.value IN(SELECT value FROM json_each(?))`,
+					append(append([]any{}, memberArgs...), request.Library, pivot.Aggregate, string(list))...)
+				if err != nil {
+					return nil, err
+				}
+				defer rows.Close()
+				out := map[string]int{}
+				for rows.Next() {
+					var value string
+					var n int
+					if err = rows.Scan(&value, &n); err != nil {
+						return nil, err
+					}
+					out[value] = n
+				}
+				return out, rows.Err()
 			}
 		}
 	}
@@ -229,14 +244,19 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	if err != nil {
 		return out, err
 	}
-	if pageCounts {
+	if pageCounts && len(rows) > 0 {
+		values := []string{}
 		for i := range rows {
-			if i == request.Limit {
-				break
+			if i < request.Limit {
+				values = append(values, rows[i].value)
 			}
-			if rows[i].count, err = countGroup(rows[i].value); err != nil {
-				return out, err
-			}
+		}
+		counts, err := countGroups(values)
+		if err != nil {
+			return out, err
+		}
+		for i := range rows {
+			rows[i].count = counts[rows[i].value]
 		}
 	}
 	if request.Range != nil && start >= total {
