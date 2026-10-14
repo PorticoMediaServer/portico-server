@@ -9,7 +9,7 @@ Portico additions:
 
 - `context_progress.go`: scoped cancellation progress callbacks, including later row iteration, with reusable per-connection state and closure cleanup.
 - `stmt.go`: recheck context after binding and before initial execution; preserve the query context in returned rows; expose retained VM allocations through SQLite's public `SQLITE_STMTSTATUS_MEMUSED` diagnostic.
-- `rows.go`: restore that context during each `Next` call.
+- `rows.go`: restore that context during each `Next` call; report a statement's VM steps through SQLite's public `SQLITE_STMTSTATUS_VM_STEP` diagnostic, so tests can assert how much work a read does.
 - `conn.go`: own and release progress callback state.
 - `tx.go`: scope transaction execution cancellation.
 

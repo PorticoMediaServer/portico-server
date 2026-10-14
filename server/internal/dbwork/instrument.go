@@ -43,6 +43,10 @@ type Cost struct {
 	Transactions int64 `json:"transactions"`
 	Acquisitions int64 `json:"acquisitions"`
 	ReadMillis   int64 `json:"readMillis"`
+	// VMSteps is the SQLite virtual-machine steps the reads ran: a measure of
+	// work that does not depend on the machine, so a test can assert that a
+	// read does not grow with the library.
+	VMSteps int64 `json:"vmSteps"`
 }
 
 type counters struct {
@@ -50,6 +54,7 @@ type counters struct {
 	transactions atomic.Int64
 	acquisitions atomic.Int64
 	readNanos    atomic.Int64
+	vmSteps      atomic.Int64
 }
 
 func (c *counters) cost() Cost {
@@ -61,6 +66,7 @@ func (c *counters) cost() Cost {
 		Transactions: c.transactions.Load(),
 		Acquisitions: c.acquisitions.Load(),
 		ReadMillis:   c.readNanos.Load() / int64(time.Millisecond),
+		VMSteps:      c.vmSteps.Load(),
 	}
 }
 
@@ -567,6 +573,11 @@ func (r *observedRows) Close() error {
 		return r.closeErr
 	}
 	r.closed = true
+	if counter, ok := r.inner.(interface{ VMSteps() int64 }); ok {
+		if c := costFrom(r.ctx); c != nil {
+			c.vmSteps.Add(counter.VMSteps())
+		}
+	}
 	if !r.observed {
 		r.observed = true
 		observe(r.ctx, r.query, time.Since(r.start), r.inTx)

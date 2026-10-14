@@ -44,6 +44,7 @@ type routeResult struct {
 	P50MS         float64 `json:"p50Ms"`
 	P95MS         float64 `json:"p95Ms"`
 	MaxStatements uint64  `json:"maxStatements"`
+	MaxVMSteps    int64   `json:"maxVmSteps,omitempty"`
 	Error         string  `json:"error,omitempty"`
 	RSSKB         int64   `json:"rssKb"`
 }
@@ -351,11 +352,13 @@ func run() (runErr error) {
 		var durations []float64
 		for i := 0; i < *samples; i++ {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			ctx, cost := dbwork.Measure(ctx)
 			before := dbwork.Reads().Statements
 			start := time.Now()
 			e := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return c.read(catalog.New(db).WithContext(ctx)) })
 			elapsed := float64(time.Since(start)) / float64(time.Millisecond)
 			cancel()
+			rr.MaxVMSteps = max(rr.MaxVMSteps, cost().VMSteps)
 			rr.MaxStatements = max(rr.MaxStatements, dbwork.Reads().Statements-before)
 			durations = append(durations, elapsed)
 			if e != nil {

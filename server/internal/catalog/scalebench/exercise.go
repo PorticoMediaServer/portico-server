@@ -42,10 +42,12 @@ func exerciseRead(db *sql.DB, s *catalog.Service, name string, samples int, read
 	defer printRouteProfile()
 	for i := 0; i < samples; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cost := dbwork.Measure(ctx)
 		before := dbwork.Reads().Statements
 		start := time.Now()
 		err := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return read(ctx, s.WithContext(ctx)) })
 		cancel()
+		r.MaxVMSteps = max(r.MaxVMSteps, cost().VMSteps)
 		durations = append(durations, float64(time.Since(start))/float64(time.Millisecond))
 		r.RSSKB = max(r.RSSKB, processRSSKB())
 		r.MaxStatements = max(r.MaxStatements, dbwork.Reads().Statements-before)
