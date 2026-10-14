@@ -35,11 +35,26 @@ func deriveAvailability(ctx context.Context, tx *sql.Tx, ids string) error {
 			return err
 		}
 	}
-	// A changed availability shows in the item's browse row and Home buckets.
-	_, err := tx.ExecContext(ctx, `INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT ?,value,1 FROM json_each(?) WHERE 1
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1`, DomainBrowseRows, ids)
-	return err
+	// A changed availability shows in the item's browse row and Home buckets,
+	// and (through its metrics fanout) in its containers' availability. Only
+	// an item whose published row disagrees is queued: re-deriving every row
+	// the batch touched derived each title's row twice in a rebuild.
+	for _, domain := range []int{DomainBrowseRows, DomainItemMetrics} {
+		if _, err := tx.ExecContext(ctx, availabilityStaleSQL, domain, ids); err != nil {
+			return err
+		}
+	}
+	return nil
 }
+
+// availabilityStaleSQL queues (domain ?1) the items of ?2 whose browse row's
+// availability or availability state differs from their facts.
+const availabilityStaleSQL = `INSERT INTO catalog_dirty(domain,entity_id,revision)
+ SELECT ?1,r.entity_id,1 FROM json_each(?2) j JOIN catalog_browse_rows r ON r.entity_id=j.value
+ LEFT JOIN catalog_item_availability v ON v.entity_id=r.entity_id LEFT JOIN catalog_browse_member_links ml ON ml.entity_id=r.entity_id
+ WHERE r.available IS NOT COALESCE(v.available,0)
+  OR r.availability_state IS NOT CASE WHEN COALESCE(ml.available,0)<=0 THEN 'unavailable' WHEN ml.unavailable>0 THEN 'partial' ELSE 'available' END
+ ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1`
 
 // deriveLibraryAvailability queues the availability of limit more items of a
 // library; true when the library is done.

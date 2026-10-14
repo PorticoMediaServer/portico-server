@@ -246,3 +246,66 @@ func TestEpisodeTrickleCostIndependentOfShowSize(t *testing.T) {
 		t.Logf("show of %d episodes: trickle drained %d units, %d statements, %s", n, units, len(statements), costs[len(costs)-1])
 	}
 }
+
+// A file going missing reaches its title's and its show's availability through
+// derivation alone (no other change to either), and only titles whose
+// availability actually changed are derived again.
+func TestFileAvailabilityReachesTitleAndShow(t *testing.T) {
+	db := cc1OpenDB(t, "availability-follow.sqlite")
+	lib := cc1Library(t, db, "tv", "TV", "tv", "/tv")
+	show := cc1Entity(t, db, Entity{Library: lib, Kind: Show, Key: "show:a", Title: "A"}, map[string]any{"local_key": "a"})
+	season := cc1Entity(t, db, Entity{Library: lib, Kind: Season, Parent: show, Key: "season:a", Title: "Season 1"}, map[string]any{"show_id": show, "number": 1})
+	var first, firstAsset, secondAsset int64
+	for i := 0; i < 3; i++ {
+		ep := cc1Entity(t, db, Entity{Library: lib, Kind: Episode, Parent: season, Key: fmt.Sprint("ep:", i), Title: fmt.Sprint("Episode ", i)},
+			map[string]any{"show_id": show, "season_id": season, "numbering": "seasonal", "number": i + 1})
+		cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+			for v := 0; v < 2 && (i == 0 || v == 0); v++ {
+				asset, _, err := UpsertAssetTx(ctx, tx, Asset{Path: fmt.Sprintf("/tv/a/%d-%d.mkv", i, v), Size: 100, Height: 1080, Duration: 1200})
+				if err != nil {
+					return err
+				}
+				if err = LinkAssetTx(ctx, tx, ep, asset, Link{}); err != nil {
+					return err
+				}
+				if i == 0 && v == 0 {
+					first, firstAsset = ep, asset
+				} else if i == 0 {
+					secondAsset = asset
+				}
+			}
+			return nil
+		})
+	}
+	cc1Drain(t, db)
+	state := func(id int64) string {
+		var s string
+		if err := db.QueryRow(`SELECT availability_state FROM catalog_browse_rows WHERE entity_id=?`, id).Scan(&s); err != nil {
+			t.Fatal(err)
+		}
+		return s
+	}
+	if state(first) != "available" || state(show) != "available" {
+		t.Fatalf("built: %s/%s", state(first), state(show))
+	}
+	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error { return SetAssetAvailableTx(ctx, tx, firstAsset, false) })
+	cc1Drain(t, db)
+	if state(first) != "partial" || state(show) != "partial" {
+		t.Fatalf("one version missing: title %s, show %s", state(first), state(show))
+	}
+	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error { return SetAssetAvailableTx(ctx, tx, secondAsset, false) })
+	cc1Drain(t, db)
+	if state(first) != "unavailable" || state(show) != "partial" || cc1Scalar(t, db, `SELECT available FROM catalog_browse_rows WHERE entity_id=?`, first) != 0 {
+		t.Fatalf("both versions missing: title %s, show %s", state(first), state(show))
+	}
+	checkGroupCounters(t, db, "files missing")
+	// Settled availability queues nothing more.
+	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error { return TouchTx(ctx, tx, DomainAvailability, first) })
+	cc1Write(t, db, func(ctx context.Context, tx *sql.Tx) error {
+		_, _, _, err := NewWorker(db).drainDomain(ctx, tx, DomainAvailability, 0, 8, false)
+		return err
+	})
+	if n := cc1Scalar(t, db, `SELECT count(*) FROM catalog_dirty WHERE domain IN(18,25)`); n != 0 {
+		t.Fatalf("unchanged availability queued %d rows", n)
+	}
+}
