@@ -38,8 +38,14 @@ func TestShortPrefixesAreUniqueAndRankTitles(t *testing.T) {
 	if _, ok := IndexedSearchTerms("東京"); ok {
 		t.Fatal("CJK path lost")
 	}
-	if _, ok := IndexedSearchTerms("Harbors"); ok {
+	if _, ok := IndexedSearchTerms("Harborsharbors"); ok {
 		t.Fatal("long token path lost")
+	}
+	if _, ok := IndexedSearchTerms("Longprefix"); !ok {
+		t.Fatal("ordinary long text prefix fell back")
+	}
+	if _, ok := IndexedSearchTerms("0000000"); ok {
+		t.Fatal("numeric terminal bound lost")
 	}
 	terms, ok := IndexedSearchTerms("Title 000000")
 	if !ok || !reflect.DeepEqual(terms, []string{"title", "000000"}) {

@@ -8,7 +8,8 @@ import (
 	"unicode/utf8"
 )
 
-const IndexedSearchPrefixRunes = 6
+const IndexedSearchPrefixRunes = 12
+const NumericSearchPrefixRunes = 6
 
 type SearchPrefix struct {
 	Prefix   string `json:"prefix"`
@@ -37,6 +38,7 @@ func SearchPrefixes(document, title string) string {
 		last := min(len(runes), IndexedSearchPrefixRunes)
 		first, terminal := 1, 0
 		if NumericSearchTerm(word) {
+			last = min(last, NumericSearchPrefixRunes)
 			first, terminal = last, 1
 		}
 		for n := first; n <= last; n++ {
@@ -71,7 +73,11 @@ func SearchPrefixes(document, title string) string {
 func IndexedSearchTerms(q string) ([]string, bool) {
 	words := strings.Fields(SearchFold(q))
 	for _, word := range words {
-		if utf8.RuneCountInString(word) > IndexedSearchPrefixRunes || strings.ContainsFunc(word, CJK) {
+		maximum := IndexedSearchPrefixRunes
+		if NumericSearchTerm(word) {
+			maximum = NumericSearchPrefixRunes
+		}
+		if utf8.RuneCountInString(word) > maximum || strings.ContainsFunc(word, CJK) {
 			return nil, false
 		}
 	}

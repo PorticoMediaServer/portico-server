@@ -36,21 +36,21 @@ func TestBroadPrefixesSelectBoundedScopedPages(t *testing.T) {
 			// Use real identities and permission edges, but seed only the read model
 			// under test instead of deriving the unrelated Home and recommendation tables.
 			for off := 0; off < n; off += 10000 {
-				c.Exec(`WITH RECURSIVE ids(i) AS(SELECT ? UNION ALL SELECT i+1 FROM ids WHERE i<?) INSERT INTO catalog_entities(id,public_id,library_id,kind,title,sort_key,sort_head,year) SELECT i+1000000,randomblob(16),?,1,printf('Title %012d',i),'Title','T',2000 FROM ids`, off+1, min(n, off+10000), lib)
+				c.Exec(`WITH RECURSIVE ids(i) AS(SELECT ? UNION ALL SELECT i+1 FROM ids WHERE i<?) INSERT INTO catalog_entities(id,public_id,library_id,kind,title,sort_key,sort_head,year) SELECT i+1000000,randomblob(16),?,1,printf('Title Longprefix %012d',i),'Title','T',2000 FROM ids`, off+1, min(n, off+10000), lib)
 				c.Exec(`INSERT INTO catalog_item_attribute_edges(item_id,term_id,source_value,source_rowid) SELECT id,(SELECT t.id FROM catalog_attribute_terms t JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE f.field='contentRating' AND t.value_key=CASE WHEN e.id%2=0 THEN 'pg' ELSE 'r' END),'fixture',e.id FROM catalog_entities e WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))
 				c.Exec(`INSERT INTO catalog_browse_rows(entity_id,library_id,kind,title,sort_key,head,year,item_id,rating_key,label_key,available,recent,backdrop,random_key) SELECT id,library_id,kind,title,sort_key,sort_head,year,id,CASE WHEN id%2=0 THEN 'pg' ELSE 'r' END,'',0,0,0,id FROM catalog_entities WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))
 				c.Exec(`INSERT INTO catalog_browse_memberships(entity_id,item_id,source) SELECT id,id,0 FROM catalog_entities WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))
 
 				c.Exec(`INSERT INTO catalog_search_documents(entity_id,title,title_fold,entity_pid,search,normalized,kind,library_id,entity_kind,rating_key) SELECT id,title,lower(title),pid(public_id),lower(title),lower(title),'k1 l'||library_id,library_id,kind,CASE WHEN id%2=0 THEN 'pg' ELSE 'r' END FROM catalog_entities WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))
-				c.Exec(`INSERT INTO catalog_search_prefix_terms(prefix,terminal) VALUES('ti',0),('tit',0),('title',0),('000000',1) ON CONFLICT(prefix,terminal) DO NOTHING`)
-				c.Exec(`INSERT INTO catalog_search_prefix_rows(term_id,entity_id,kind,library_id,tier,container,rating_key,label_key) SELECT p.id,d.entity_id,1,d.library_id,CASE WHEN p.prefix='000000' THEN 1 ELSE 2 END,0,d.rating_key,'' FROM catalog_search_documents d CROSS JOIN catalog_search_prefix_terms p WHERE p.prefix IN('ti','tit','title','000000') AND d.entity_id>? AND d.entity_id<=?`, 1000000+off, 1000000+min(n, off+10000))
+				c.Exec(`INSERT INTO catalog_search_prefix_terms(prefix,terminal) VALUES('ti',0),('tit',0),('title',0),('longpre',0),('longprefix',0),('000000',1) ON CONFLICT(prefix,terminal) DO NOTHING`)
+				c.Exec(`INSERT INTO catalog_search_prefix_rows(term_id,entity_id,kind,library_id,tier,container,rating_key,label_key) SELECT p.id,d.entity_id,1,d.library_id,CASE WHEN p.prefix='000000' OR p.prefix LIKE 'long%' THEN 1 ELSE 2 END,0,d.rating_key,'' FROM catalog_search_documents d CROSS JOIN catalog_search_prefix_terms p WHERE p.prefix IN('ti','tit','title','longpre','longprefix','000000') AND d.entity_id>? AND d.entity_id<=?`, 1000000+off, 1000000+min(n, off+10000))
 			}
 			// This fixture has published its narrow search model synchronously.
 			c.Exec(`DELETE FROM catalog_dirty`)
 			c.Exec(`ANALYZE`)
 			age := 13
 			for _, restricted := range []bool{false, true} {
-				for _, q := range []string{"Ti", "Tit", "Title", "Title 000000"} {
+				for _, q := range []string{"Ti", "Tit", "Title", "Title 000000", "Longpre", "Longprefix"} {
 					viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
 					if restricted {
 						viewer.Restrictions = identity.ContentRestrictions{MaximumAge: &age, BlockUnrated: true}
