@@ -24,6 +24,8 @@ func TestGroupSearchScopeRequiresPositiveConjunction(t *testing.T) {
 		{"group", BrowseNode{All: []BrowseNode{group, search}}, true},
 		{"reversed", BrowseNode{All: []BrowseNode{search, group}}, true},
 		{"nested", BrowseNode{All: []BrowseNode{{All: []BrowseNode{group}}, search}}, true},
+		{"person", BrowseNode{All: []BrowseNode{{Field: "person", Operator: "equals", Value: "person"}, search}}, true},
+		{"list", BrowseNode{All: []BrowseNode{{Field: "list", Operator: "equals", Value: "list"}, search}}, true},
 		{"alternative", BrowseNode{Any: []BrowseNode{group, search}}, false},
 		{"negative", BrowseNode{All: []BrowseNode{{Not: &group}, search}}, false},
 		{"negated-conjunction", BrowseNode{Not: &BrowseNode{All: []BrowseNode{group, search}}}, false},

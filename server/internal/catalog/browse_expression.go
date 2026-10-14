@@ -315,7 +315,7 @@ func browseRequiresGroup(node *BrowseNode) bool {
 	if node == nil {
 		return false
 	}
-	if node.Field == "genre" || node.Field == "memberOf" || node.Field == "collection" {
+	if node.Field == "genre" || node.Field == "memberOf" || node.Field == "collection" || node.Field == "person" || node.Field == "list" {
 		switch node.Operator {
 		case "equals", "in", "contains", "contains-any", "contains-all":
 			return true
