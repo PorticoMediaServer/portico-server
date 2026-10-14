@@ -36,8 +36,8 @@ func deriveSearch(ctx context.Context, tx *sql.Tx, ids string) error {
 		// The index rows follow the documents through the tables' own triggers,
 		// in whichever generation is being written.
 		`DELETE FROM catalog_search_documents WHERE entity_id IN(SELECT value FROM json_each(?))`,
-		`INSERT INTO catalog_search_documents(entity_id,title,search,normalized,kind)
- SELECT e.id,e.title,portico_search_text(` + searchContentSQL + `),portico_search_fold(substr(` + searchContentSQL + `,1,65536)),'k'||e.kind||' l'||e.library_id
+		`INSERT INTO catalog_search_documents(entity_id,title,title_fold,entity_pid,search,normalized,kind)
+ SELECT e.id,e.title,portico_search_fold(e.title),pid(e.public_id),portico_search_text(` + searchContentSQL + `),portico_search_fold(substr(` + searchContentSQL + `,1,65536)),'k'||e.kind||' l'||e.library_id
  FROM json_each(?) j JOIN catalog_entities e ON e.id=j.value
  LEFT JOIN catalog_item_details d ON d.entity_id=e.id LEFT JOIN catalog_shows sh ON sh.entity_id=e.id LEFT JOIN catalog_books b ON b.entity_id=e.id
  WHERE ` + searchLiveSQL,
@@ -60,7 +60,7 @@ func deriveSearch(ctx context.Context, tx *sql.Tx, ids string) error {
 
 func init() {
 	Register(DomainSearch, Derivation{
-		Version: 3,
+		Version: 4,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			ids := keyIDs(keys)
 			return ids, deriveSearch(ctx, tx, mustJSON(ids))

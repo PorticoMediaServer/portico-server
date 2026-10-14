@@ -27,6 +27,7 @@ func TestGenreMembershipCapacity(t *testing.T) {
 			item := c.Movie(lib, "/m/a.mkv", "A", 2000)
 			c.Genres(item.ID, "fixture", "Comédie")
 			c.Drain()
+			c.Exec(`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) VALUES('p',?,1,'2026-10-01T00:00:00Z')`, item.ID)
 			c.Exec(`INSERT INTO personal_items(profile_id,item_id,favorite,revision) VALUES('p',?,1,1)`, item.ID)
 			// Noise represents unrelated member keys; it is intentionally outside the
 			// entity fixture so this test isolates the member index from worker setup.
@@ -53,6 +54,7 @@ func TestGenreMembershipCapacity(t *testing.T) {
 			for _, node := range []*BrowseNode{
 				{Field: "genre", Operator: "contains", Value: "COMEDIE"},
 				{Field: "favorite", Operator: "equals", Value: true},
+				{Field: "playState", Operator: "equals", Value: "played"},
 			} {
 				compiler := browseCompiler{profile: "p"}
 				where, err := compiler.compile(node)

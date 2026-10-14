@@ -637,8 +637,15 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 }
 
 func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (string, error) {
+	// Presence is broad: probe the selected title rather than expanding every source.
+	if field.ID == "genre" && (node.Operator == "is-present" || node.Operator == "is-missing") {
+		field.ID = "genre-presence"
+	}
 	if clause, handled, err := c.groupMembershipPredicate(field, node); handled {
 		return clause, err
+	}
+	if field.ID == "playState" {
+		return c.playStatePredicate(node)
 	}
 	if field.ID == "favorite" || field.ID == "watchlisted" || field.ID == "personalRating" || field.ID == "lastPlayedAt" {
 		return c.personalTitlePredicate(field, node)

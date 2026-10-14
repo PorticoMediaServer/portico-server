@@ -49,7 +49,13 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
 		if latest {
 			item = ` AND pa.item_id=CAST(w.last_item_id AS INTEGER)`
 		}
-		return `(SELECT pid(i2.public_id) FROM progress_activity pa JOIN catalog_episodes e2 ON e2.entity_id=pa.item_id JOIN catalog_entities i2 ON i2.id=pa.item_id
+		source := `progress_activity pa JOIN catalog_episodes e2 ON e2.entity_id=pa.item_id JOIN catalog_entities i2 ON i2.id=pa.item_id`
+		if !latest {
+			// A denied/completed latest item must not scan the profile's whole
+			// history again for each show. Begin with this show's member index.
+			source = `catalog_episodes e2 CROSS JOIN progress_activity pa ON pa.item_id=e2.entity_id CROSS JOIN catalog_entities i2 ON i2.id=e2.entity_id`
+		}
+		return `(SELECT pid(i2.public_id) FROM ` + source + `
    CROSS JOIN progress p ON p.profile_id=pa.profile_id AND p.item_id=pa.item_id
    WHERE pa.profile_id=w.profile_id AND e2.show_id=w.show_id AND EXISTS(SELECT 1 FROM catalog_libraries cl WHERE cl.id=i2.library_id AND cl.library_id=w.library_id)
     ` + item + `

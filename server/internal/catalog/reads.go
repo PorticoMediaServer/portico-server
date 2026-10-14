@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"strings"
 	"sync"
 
@@ -67,11 +68,23 @@ func (r reads) QueryRowContext(ctx context.Context, query string, args ...any) *
 	return q.QueryRowContext(ctx, serving, args...)
 }
 
+// Empty overlays are equivalent to their indexed base table, even while a
+// different derivation rebuilds. Read all overlay presence in the same snapshot;
+// any referenced table with old rows still selects the full retained views.
+var readOverlaySQL = func() string {
+	parts := []string{}
+	for _, table := range compactcatalog.ServingTables {
+		parts = append(parts, "'"+table+"',EXISTS(SELECT 1 FROM "+table+"_previous WHERE generation=(SELECT generation FROM catalog_generations WHERE singleton=1))")
+	}
+	return "SELECT json_object(" + strings.Join(parts, ",") + ")"
+}()
+
 type readGenerationKey struct{}
 type readGeneration struct {
 	snapshot  *sql.Tx
 	once      sync.Once
 	retaining bool
+	overlays  map[string]int
 	err       error
 }
 
@@ -86,11 +99,26 @@ func (r reads) servingSQL(ctx context.Context, q reader, query string) (string, 
 			if strings.Contains(query, table) {
 				state.once.Do(func() {
 					state.err = q.QueryRowContext(ctx, `SELECT retaining FROM catalog_generations WHERE singleton=1`).Scan(&state.retaining)
+					if state.err == nil && state.retaining {
+						var raw string
+						state.err = q.QueryRowContext(ctx, readOverlaySQL).Scan(&raw)
+						if state.err == nil {
+							state.err = json.Unmarshal([]byte(raw), &state.overlays)
+						}
+					}
 				})
 				if state.err != nil {
 					return "", state.err
 				}
-				retaining = state.retaining
+				retaining = false
+				if state.retaining {
+					for _, candidate := range compactcatalog.ServingTables {
+						if state.overlays[candidate] != 0 && strings.Contains(query, candidate) {
+							retaining = true
+							break
+						}
+					}
+				}
 				break
 			}
 		}

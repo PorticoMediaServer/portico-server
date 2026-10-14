@@ -403,6 +403,8 @@ CREATE INDEX catalog_related_lookup ON catalog_related_facets(library_id,relatio
 CREATE TABLE catalog_search_documents(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  title TEXT NOT NULL,
+ title_fold TEXT NOT NULL,
+ entity_pid TEXT NOT NULL,
  search TEXT NOT NULL,
  normalized TEXT NOT NULL,
  kind TEXT NOT NULL) STRICT;
@@ -6326,7 +6328,7 @@ END;
 CREATE TRIGGER catalog_related_facets_retain_delete BEFORE DELETE ON catalog_related_facets WHEN (SELECT retaining FROM catalog_generations WHERE singleton=1)=1 BEGIN
  INSERT INTO catalog_related_facets_previous(generation,present,entity_id,library_id,relation,provider,facet_id,year) SELECT generation,1,OLD.entity_id,OLD.library_id,OLD.relation,OLD.provider,OLD.facet_id,OLD.year FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id,relation,provider,facet_id) DO NOTHING;
 END;
-CREATE TABLE catalog_search_documents_next(entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,title TEXT NOT NULL,search TEXT NOT NULL,normalized TEXT NOT NULL,kind TEXT NOT NULL) STRICT;
+CREATE TABLE catalog_search_documents_next(entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,title TEXT NOT NULL,title_fold TEXT NOT NULL,entity_pid TEXT NOT NULL,search TEXT NOT NULL,normalized TEXT NOT NULL,kind TEXT NOT NULL) STRICT;
 CREATE VIRTUAL TABLE catalog_search_titles_next USING fts5(search,kind,content='catalog_search_documents_next',content_rowid='entity_id',tokenize='unicode61 remove_diacritics 2',prefix='2 3 4');
 
 CREATE TRIGGER browse_order_insert AFTER INSERT ON catalog_browse_rows BEGIN

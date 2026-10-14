@@ -54,6 +54,7 @@ func TestReadGenerationUsesIndexesAndRetainsRebuildContent(t *testing.T) {
 	if err := w.Rebuild(context.Background(), compactcatalog.DomainBrowseRows); err != nil {
 		t.Fatal(err)
 	}
+	read(original, false) // no retained overlay exists until the first change
 	if err := dbwork.WithWriteTx(context.Background(), db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
 		_, err := tx.Exec(`UPDATE catalog_browse_rows SET title='New title' WHERE entity_id=?`, id)
 		return err

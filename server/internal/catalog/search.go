@@ -154,7 +154,7 @@ type searchOrder struct {
 // a title-prefix boost. The result is rounded so the value a cursor carries and
 // the comparison that resumes from it are the same double.
 func searchScore(title string) searchOrder {
-	return searchOrder{`round(m.relevance+(CASE WHEN portico_search_fold(d.title)=? THEN 1000.0 ELSE 0.0 END)+(CASE WHEN portico_search_fold(d.title) LIKE ? ESCAPE '\' THEN 100.0 ELSE 0.0 END),6)`, []any{facettext.SearchFold(title), searchPrefix(facettext.SearchFold(title))}, true}
+	return searchOrder{`round(m.relevance+(CASE WHEN d.title_fold=? THEN 1000.0 ELSE 0.0 END)+(CASE WHEN d.title_fold LIKE ? ESCAPE '\' THEN 100.0 ELSE 0.0 END),6)`, []any{facettext.SearchFold(title), searchPrefix(facettext.SearchFold(title))}, true}
 }
 func catalogOrder(sortID, kind, q string) searchOrder {
 	switch sortID {
@@ -565,7 +565,7 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	args := append([]any{}, order.args...)
 	args = append(args, match)
 	args = append(args, filterArgs...)
-	ranked := `SELECT d.entity_id entity_id,pid(e.public_id) entity_pid,` + order.expr + ` ord FROM ` + candidates + orderJoin + ` WHERE 1` + where
+	ranked := `SELECT d.entity_id entity_id,d.entity_pid entity_pid,` + order.expr + ` ord FROM ` + candidates + orderJoin + ` WHERE 1` + where
 	page := `WITH page AS MATERIALIZED (SELECT entity_id,entity_pid,ord FROM(` + ranked + `)`
 	scope := s.groupCursorScope(r, g, scopeHash, sortID)
 	if r.Cursor != "" {
