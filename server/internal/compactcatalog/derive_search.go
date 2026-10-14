@@ -50,11 +50,11 @@ func deriveSearch(ctx context.Context, tx *sql.Tx, ids string) error {
 		}
 	}
 	for _, query := range []string{
-		`INSERT INTO catalog_search_prefix_terms(prefix) SELECT DISTINCT json_extract(p.value,'$.prefix') FROM json_each(?) j CROSS JOIN catalog_search_documents d ON d.entity_id=j.value CROSS JOIN json_each(portico_search_prefixes(d.search,d.title_fold)) p WHERE 1 ON CONFLICT(prefix) DO NOTHING`,
+		`INSERT INTO catalog_search_prefix_terms(prefix,terminal) SELECT DISTINCT json_extract(p.value,'$.prefix'),json_extract(p.value,'$.terminal') FROM json_each(?) j CROSS JOIN catalog_search_documents d ON d.entity_id=j.value CROSS JOIN json_each(portico_search_prefixes(d.search,d.title_fold)) p WHERE 1 ON CONFLICT(prefix,terminal) DO NOTHING`,
 		`INSERT INTO catalog_search_prefix_rows(term_id,entity_id,kind,library_id,tier,container,rating_key,label_key)
  SELECT t.id,d.entity_id,d.entity_kind,d.library_id,json_extract(p.value,'$.tier'),d.container,d.rating_key,d.label_key
  FROM json_each(?) j CROSS JOIN catalog_search_documents d ON d.entity_id=j.value CROSS JOIN json_each(portico_search_prefixes(d.search,d.title_fold)) p
- CROSS JOIN catalog_search_prefix_terms t ON t.prefix=json_extract(p.value,'$.prefix')`,
+ CROSS JOIN catalog_search_prefix_terms t ON t.prefix=json_extract(p.value,'$.prefix') AND t.terminal=json_extract(p.value,'$.terminal')`,
 	} {
 		if _, err := tx.ExecContext(ctx, searchTables(query, slot), ids); err != nil {
 			return err
@@ -74,7 +74,7 @@ func deriveSearch(ctx context.Context, tx *sql.Tx, ids string) error {
 
 func init() {
 	Register(DomainSearch, Derivation{
-		Version: 5,
+		Version: 6,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			ids := keyIDs(keys)
 			return ids, deriveSearch(ctx, tx, mustJSON(ids))

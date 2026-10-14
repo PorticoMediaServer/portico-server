@@ -24,12 +24,15 @@ func TestShortPrefixesAreUniqueAndRankTitles(t *testing.T) {
 			t.Fatalf("%s tier=%d", prefix, values[prefix])
 		}
 	}
+	if _, duplicateNumber := values["0"]; duplicateNumber {
+		t.Fatal("numeric posting was duplicated")
+	}
 	if _, tooLong := values["0000000"]; tooLong {
 		t.Fatal("long prefix indexed")
 	}
 	var exact []SearchPrefix
 	json.Unmarshal([]byte(SearchPrefixes(SearchDocument("Harbor"), "harbor")), &exact)
-	if exact[len(exact)-1].Tier != 3 {
+	if exact[len(exact)-1].Tier != 2 {
 		t.Fatal(exact)
 	}
 	if _, ok := IndexedSearchTerms("東京"); ok {

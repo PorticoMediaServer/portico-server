@@ -210,6 +210,7 @@ index catalog_related_lookup
 index catalog_related_lookup_previous
 index catalog_search_document_exact
 index catalog_search_document_exact_next
+index catalog_search_numeric_prefix
 index catalog_search_prefix_rows_entity
 index catalog_search_prefix_rows_next_entity
 index catalog_shows_local_key

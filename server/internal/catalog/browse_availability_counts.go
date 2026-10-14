@@ -29,25 +29,6 @@ func (s *Service) availabilitySummary(library string, kinds []string, node *Brow
 		args = append(args, k)
 	}
 	args = append(args, compiler.args...)
-	rows, err := s.read().Query(`SELECT container,rating_key,label_key,total FROM catalog_browse_availability_counts WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND kind IN (`+placeholders(len(kinds))+`) AND `+predicate, args...)
-	if err != nil {
-		return out, err
-	}
-	buckets := []browseBucket{}
-	for rows.Next() {
-		var b browseBucket
-		if err = rows.Scan(&b.container, &b.ratingKey, &b.labelKey, &b.total); err != nil {
-			break
-		}
-		buckets = append(buckets, b)
-	}
-	if err == nil {
-		err = rows.Err()
-	}
-	rows.Close()
-	if err != nil {
-		return out, err
-	}
 	blocked := map[string]bool{}
 	for _, label := range restrictions.BlockedLabels {
 		blocked[strings.ToLower(label)] = true
@@ -59,13 +40,25 @@ func (s *Service) availabilitySummary(library string, kinds []string, node *Brow
 			return out, err
 		}
 	}
-	for _, b := range buckets {
+	rows, err := s.read().Query(`SELECT container,rating_key,label_key,total FROM catalog_browse_availability_counts WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND kind IN (`+placeholders(len(kinds))+`) AND `+predicate, args...)
+	if err != nil {
+		return out, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var b browseBucket
+		if err = rows.Scan(&b.container, &b.ratingKey, &b.labelKey, &b.total); err != nil {
+			return out, err
+		}
 		if b.container && restrictions.Active() {
 			return browseSummary{}, nil
 		}
 		if !restrictions.Active() || bucketVisible(b, ages, restrictions, blocked) {
 			out.total += b.total
 		}
+	}
+	if err = rows.Err(); err != nil {
+		return out, err
 	}
 	out.exact = true
 	return out, nil

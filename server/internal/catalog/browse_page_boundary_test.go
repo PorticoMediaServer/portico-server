@@ -47,7 +47,19 @@ func TestFilteredPagesHydrateOnlySelectedRows(t *testing.T) {
 			}
 			c.Exec(`ANALYZE`)
 			start := min(n-40, 50000)
-			shape := pageShape{request: BrowseRequest{Library: "m", Query: &BrowseNode{Field: "availability", Operator: "equals", Value: "available"}}, sorts: []BrowseSortSelection{{Field: "title", Direction: "asc"}}, where: `e.library_id=? AND e.kind=1 AND e.availability_state='available'`, args: []any{lib}, start: start, limit: 40, total: n, kind: 1}
+			shape := pageShape{request: BrowseRequest{Library: "m", Query: &BrowseNode{Field: "availability", Operator: "equals", Value: "available"}}, sorts: []BrowseSortSelection{{Field: "title", Direction: "asc"}}, where: `e.library_id=? AND e.kind=1 AND e.availability_state=?`, args: []any{lib, "available"}, start: start, limit: 40, total: n, kind: 1}
+			compiler := browseCompiler{}
+			clause, err := compiler.compile(shape.request.Query)
+			if err != nil {
+				t.Fatal(err)
+			}
+			shape.where = "e.library_id=? AND e.kind=1 AND " + clause
+			shape.args = append([]any{lib}, compiler.args...)
+			plan := seekCapacityPlan(t, c.DB, `SELECT e.entity_id FROM catalog_browse_rows e WHERE `+shape.where, shape.args...)
+			if !strings.Contains(plan, "availability_state=?") {
+				t.Fatal("availability filter lost its seek: " + plan)
+			}
+			t.Logf("availability plan=%s", plan)
 			for _, field := range []string{"title", "random", "fileSize"} {
 				shape.sorts[0].Field = field
 				shape.sorts[0].Seed = 1000000

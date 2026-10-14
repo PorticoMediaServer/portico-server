@@ -1256,6 +1256,7 @@ catalog_search_prefix_rows_next.term_id
 catalog_search_prefix_rows_next.tier
 catalog_search_prefix_terms.id
 catalog_search_prefix_terms.prefix
+catalog_search_prefix_terms.terminal
 catalog_search_titles.catalog_search_titles
 catalog_search_titles.kind
 catalog_search_titles.rank

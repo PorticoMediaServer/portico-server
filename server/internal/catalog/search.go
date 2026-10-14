@@ -577,27 +577,33 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	tie := "entity_pid"
 	if prefix {
 		var prefixArgs []any
-		ranked, prefixArgs, err = s.prefixSearchCandidates(ctx, r, int(kind), prefixTerms, where, filterArgs, pageSize+1, s.groupCursorScope(r, g, scopeHash, "relevance_prefix"), rev)
-		if err != nil {
+		var prefixRanked string
+		prefixRanked, prefixArgs, err = s.prefixSearchCandidates(ctx, r, int(kind), prefixTerms, where, filterArgs, pageSize+1, s.groupCursorScope(r, g, scopeHash, "relevance_prefix"), rev)
+		if errors.Is(err, errPrefixFallback) {
+			prefix = false
+		} else if err != nil {
 			return err
 		}
-		args, tie = prefixArgs, "entity_id"
-		order = searchOrder{numeric: true}
-		countGroup = func() error {
-			if len(prefixTerms) == 1 {
-				total, exact, err := s.prefixSearchTotal(ctx, r, int(kind), prefixTerms[0])
-				if err != nil {
-					return err
+		if prefix {
+			ranked = `SELECT entity_id,entity_pid,max(ord) ord FROM (` + prefixRanked + `) GROUP BY entity_id`
+			args, tie = prefixArgs, "entity_id"
+			order = searchOrder{numeric: true}
+			countGroup = func() error {
+				if len(prefixTerms) == 1 {
+					total, exact, err := s.prefixSearchTotal(ctx, r, int(kind), prefixTerms[0])
+					if err != nil {
+						return err
+					}
+					if exact {
+						out.TotalCount, out.TotalCountExact = total, true
+						return nil
+					}
 				}
-				if exact {
-					out.TotalCount, out.TotalCountExact = total, true
-					return nil
-				}
+				// Multiple words and member restrictions are paged without an
+				// exhaustive intersection count. The wire explicitly marks this.
+				out.TotalCount, out.TotalCountExact = len(out.Items), false
+				return nil
 			}
-			// Multiple words and member restrictions are paged without an
-			// exhaustive intersection count. The wire explicitly marks this.
-			out.TotalCount, out.TotalCountExact = len(out.Items), false
-			return nil
 		}
 	}
 	page := `WITH page AS MATERIALIZED (SELECT entity_id,entity_pid,ord FROM(` + ranked + `)`

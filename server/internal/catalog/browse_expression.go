@@ -401,6 +401,9 @@ func foldBrowseText(field browseField) bool {
 	return field.Type == valueString || field.Type == valueSet || field.Type == valueEnum
 }
 func collated(field browseField, expression string) string {
+	if field.ID == "availability" {
+		return expression
+	}
 	if foldBrowseText(field) {
 		return "portico_fold_text(" + expression + ")"
 	}
