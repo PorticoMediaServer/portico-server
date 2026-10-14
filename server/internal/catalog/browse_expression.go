@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/facettext"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/sorttext"
@@ -655,6 +656,9 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 	if field.ID == "genre" {
 		return c.genreExists(condition)
 	}
+	if source, ok := drivenMemberSource(field); ok {
+		return c.drivenExists(field, source, condition)
+	}
 	prefix := "EXISTS(SELECT 1 FROM catalog_browse_memberships bei " + field.Join + " WHERE bei.entity_id=e.entity_id AND "
 	if field.ID == "personal-member" {
 		prefix = "e.entity_id IN(SELECT bei.entity_id FROM personal_items pi CROSS JOIN catalog_browse_memberships bei ON bei.item_id=pi.item_id WHERE pi.profile_id=? AND "
@@ -948,4 +952,72 @@ func (c *browseCompiler) genreExists(condition func() (string, error)) (string, 
  UNION SELECT bei.entity_id,bei.item_id FROM owners CROSS JOIN catalog_episodes ep ON ep.show_id=owners.entity_id
  CROSS JOIN catalog_browse_memberships bei ON bei.item_id=ep.entity_id
  ) member WHERE (` + restriction + `))`, nil
+}
+
+// drivenSource enumerates a field's member items from the value side: a small
+// vocabulary (artists, albums, books, attribute terms) or an ordered index
+// (provider ratings). item is the member item it yields.
+type drivenSource struct {
+	from, scope, item string
+	// termKey is set for attribute fields: a term's key is its values' lower
+	// case trimmed text, which folds the same as the values, so a text
+	// condition is first tested once per term.
+	termKey bool
+}
+
+const attributeJoinPrefix = `JOIN catalog_item_attribute_edges ca ON ca.item_id=bei.item_id JOIN catalog_attribute_terms ca_term ON ca_term.id=ca.term_id AND ca_term.field_id=(SELECT id FROM catalog_attribute_fields WHERE field='`
+
+// drivenMemberSource names the value-side enumeration for fields that have
+// one. A predicate tested once per title would otherwise walk every title of
+// the pivot (and every member of a container) to find the few that match.
+func drivenMemberSource(field browseField) (drivenSource, bool) {
+	if field.Profile != 0 {
+		return drivenSource{}, false
+	}
+	switch field.ID {
+	case "artist":
+		// Credited artists are artist entities of the song's library.
+		return drivenSource{from: `catalog_entities art CROSS JOIN catalog_song_artists sar ON sar.artist_id=art.id`,
+			scope: `art.library_id IN(SELECT id FROM catalog_libraries) AND art.kind=` + strconv.Itoa(int(compactcatalog.Artist)), item: "sar.song_id"}, true
+	case "album":
+		return drivenSource{from: `catalog_entities alb CROSS JOIN catalog_songs sng ON sng.album_id=alb.id`,
+			scope: `alb.library_id IN(SELECT id FROM catalog_libraries) AND alb.kind=` + strconv.Itoa(int(compactcatalog.Album)), item: "sng.entity_id"}, true
+	case "author", "narrator":
+		return drivenSource{from: `catalog_books bok CROSS JOIN catalog_book_files bfl ON bfl.book_id=bok.entity_id`, scope: "1", item: "bfl.entity_id"}, true
+	case "communityRating", "criticRating":
+		providers := "'tmdb','imdb','musicbrainz','audible'"
+		if field.ID == "criticRating" {
+			providers = "'metacritic','rottentomatoes'"
+		}
+		return drivenSource{from: `metadata_ratings mr`, scope: `mr.provider IN(` + providers + `)`, item: "mr.item_id"}, true
+	}
+	if rest, ok := strings.CutPrefix(field.Join, attributeJoinPrefix); ok && strings.HasSuffix(rest, "')") && field.Value == "ca.source_value" {
+		name := strings.TrimSuffix(rest, "')")
+		return drivenSource{from: `catalog_attribute_terms ca_term CROSS JOIN catalog_item_attribute_edges ca INDEXED BY catalog_item_attribute_edges_term ON ca.term_id=ca_term.id`,
+			scope: `ca_term.field_id=(SELECT id FROM catalog_attribute_fields WHERE field='` + name + `')`, item: "ca.item_id", termKey: foldBrowseText(field)}, true
+	}
+	return drivenSource{}, false
+}
+
+// drivenExists selects the matching member items once and maps them to their
+// browse entities through the membership index. The viewer's restriction
+// still applies to the exact member item that supplied the match.
+func (c *browseCompiler) drivenExists(field browseField, source drivenSource, condition func() (string, error)) (string, error) {
+	before := len(c.args)
+	body, err := condition()
+	if err != nil {
+		return "", err
+	}
+	where := source.scope
+	if source.termKey && strings.Contains(body, "portico_fold_text(ca.source_value)") {
+		// The same condition over the term's key, with its own copy of the
+		// operands, runs once per term before the term's edges are read.
+		operands := append([]any(nil), c.args[before:]...)
+		c.args = append(c.args[:before], append(operands, operands...)...)
+		where += " AND " + strings.ReplaceAll(body, "ca.source_value", "ca_term.value_key")
+	}
+	restriction, args := ItemRestrictionSQL("bei.item_id", c.restrictions)
+	c.args = append(c.args, args...)
+	return `e.entity_id IN(SELECT bei.entity_id FROM ` + source.from + ` CROSS JOIN catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=` + source.item +
+		` WHERE ` + where + ` AND (` + body + `) AND (` + restriction + `))`, nil
 }
