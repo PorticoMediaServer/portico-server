@@ -41,7 +41,7 @@ func (s *Service) filteredRangePage(p pageShape) ([]browseRow, error) {
 		where = `v.class_id=? AND v.generation=? AND v.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND v.kind=? AND (` + where + `)`
 		scopeArgs = append([]any{p.summary.classID, p.summary.generation, p.request.Library, p.kind}, scopeArgs...)
 	}
-	query := `WITH page AS MATERIALIZED (SELECT e.entity_id,e.sort_key,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?)
+	query := `WITH page AS MATERIALIZED (SELECT e.entity_id AS entity_id,e.sort_key AS sort_key,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?)
  SELECT ` + browseRowColumns + `,page.order_key FROM page CROSS JOIN catalog_browse_rows e ON e.entity_id=page.entity_id
  CROSS JOIN catalog_entities ce ON ce.id=e.entity_id ORDER BY ` + strings.NewReplacer("order_key", "page.order_key", "entity_id", "page.entity_id", "sort_key", "page.sort_key").Replace(order)
 	args = append(args, scopeArgs...)
