@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"strings"
 	"testing"
 )
 
@@ -78,6 +80,37 @@ func TestPrefixCursorSurvivesDictionaryGrowth(t *testing.T) {
 	for _, item := range next.Groups[0].Items {
 		if seen[item.ID] {
 			t.Fatal("dictionary growth repeated a result")
+		}
+	}
+	for _, direction := range []string{"asc", "desc"} {
+		ctx, trace := dbwork.TraceQueryPlans(context.Background())
+		mixed := SearchRequest{Viewer: viewer, Q: "Title 1", Group: "movies", Limit: 3, Direction: direction}
+		page, err := s.WithContext(ctx).Search(ctx, mixed)
+		if err != nil || page.Groups[0].Status != "success" || len(page.Groups[0].Items) != 3 || !page.Groups[0].HasMore {
+			t.Fatalf("wide numeric page=%+v err=%v", page.Groups, err)
+		}
+		bounded := false
+		for _, query := range trace() {
+			if strings.Contains(query, "WITH page AS MATERIALIZED") {
+				bounded = strings.Contains(query, "catalog_search_prefix_rows") && !strings.Contains(query, "catalog_search_titles MATCH")
+			}
+		}
+		if !bounded {
+			t.Fatal("wide numeric intersection returned to full FTS ranking")
+		}
+		mixed.Cursor = page.Groups[0].NextCursor
+		continued, err := s.Search(context.Background(), mixed)
+		if err != nil || continued.Groups[0].Status != "success" || len(continued.Groups[0].Items) != 3 {
+			t.Fatalf("wide numeric continuation=%+v err=%v", continued.Groups, err)
+		}
+		seen := map[string]bool{}
+		for _, item := range page.Groups[0].Items {
+			seen[item.ID] = true
+		}
+		for _, item := range continued.Groups[0].Items {
+			if seen[item.ID] {
+				t.Fatal("wide numeric intersection repeated a result")
+			}
 		}
 	}
 }
