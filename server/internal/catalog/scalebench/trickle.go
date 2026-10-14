@@ -71,6 +71,7 @@ func exerciseTrickle(db *sql.DB, updates int) error {
 				return err
 			}
 			dbwork.WriteGate().ResetPeak()
+			dbwork.ProfileStatements(true)
 			before := dbwork.Reads().Statements
 			start := time.Now()
 			if err := dbwork.WithWriteTx(ctx, db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error { return tg.write(ctx, tx, id, i) }); err != nil {
@@ -87,9 +88,19 @@ func exerciseTrickle(db *sql.DB, updates int) error {
 				units += n
 			}
 			durations = append(durations, float64(time.Since(start))/float64(time.Millisecond))
+			if took := time.Since(start); took > 40*time.Millisecond {
+				fmt.Fprintf(os.Stderr, "TRICKLE_SLOW %s id=%d ms=%d\n", tg.name, id, took.Milliseconds())
+				for i, entry := range dbwork.StatementProfile() {
+					if i == 4 {
+						break
+					}
+					fmt.Fprintf(os.Stderr, "  %8.1f ms %5d× %.200s\n", entry.Millis(), entry.Count, entry.Shape)
+				}
+			}
 			statements += int(dbwork.Reads().Statements - before)
 			maxHold = max(maxHold, dbwork.WriteGate().Stats().MaxHeldMilli)
 		}
+		dbwork.ProfileStatements(false)
 		sort.Float64s(durations)
 		fmt.Fprintf(os.Stderr, "TRICKLE %s updates=%d p50_ms=%.2f p95_ms=%.2f max_ms=%.2f units_per_update=%.1f statements_per_update=%.1f max_gate_held_ms=%d\n",
 			tg.name, len(durations), durations[len(durations)/2], durations[len(durations)*95/100], durations[len(durations)-1], float64(units)/float64(len(durations)), float64(statements)/float64(len(durations)), maxHold)
