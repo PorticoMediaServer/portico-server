@@ -77,6 +77,7 @@ func run() (runErr error) {
 	flag.DurationVar(&deriveBudget, "derive-for", 0, "stop a derive-only drain after this long (0: run to completion)")
 	flag.BoolVar(&deriveNoProbes, "no-probes", false, "drain without concurrent browse/search probes")
 	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile of the run to this file")
+	bump := flag.Bool("bump", false, "after a derive-only drain, rebuild browse rows and search as a derivation version bump does, and drain again")
 	trickle := flag.Int("trickle", 0, "after a derive-only drain, apply this many single-title metadata updates per kind, draining after each")
 	writerCache := flag.Int("writer-cache-mib", 0, "experiment: give the writer connection this page cache (0: the production policy)")
 	flag.Parse()
@@ -191,6 +192,13 @@ func run() (runErr error) {
 	if *deriveOnly {
 		rr, err := exerciseDrain(db, s, "derive-only")
 		r.Routes = append(r.Routes, rr)
+		if err == nil && *bump {
+			if _, err = db.Exec(`UPDATE catalog_derivations SET version=version-1 WHERE domain IN(17,18)`); err != nil {
+				return err
+			}
+			rr, err = exerciseDrain(db, s, "derive-version-bump")
+			r.Routes = append(r.Routes, rr)
+		}
 		if err == nil && *trickle > 0 {
 			err = exerciseTrickle(db, *trickle)
 		}
