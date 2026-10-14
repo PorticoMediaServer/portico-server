@@ -29,7 +29,9 @@ export type BrowseLibraryScope=Readonly<{id:string;name:string;kind:string;defau
 export type BrowseSurfaceCapability=Readonly<{id:string;endpoint:string;membershipField?:string;sorts:readonly string[];filters:readonly string[];paging:'keyset'}>;
 export type BrowseCapabilities=Readonly<{surfaces?:readonly BrowseSurfaceCapability[];library:BrowseLibraryScope;pivots:readonly BrowsePivotCapability[];resolvedPivot:BrowsePivotCapability|null;fields:readonly BrowseFieldCapability[];sorts:readonly BrowseSortCapability[];quickFilters:readonly BrowseQuickFilter[];queryLimits:BrowseQueryLimits}>;
 export type BrowsePositionAnchor=Readonly<{key:string;index:number}>;
-export type BrowsePageInfo=Readonly<{start:number;total:number;revision:string;hasMore:boolean;nextCursor:string}>;
+/** `totalIsLowerBound`: a filter matched more titles than the server counts (10,000); `total` then
+ * grows as pages arrive and the count reads "10,000+". */
+export type BrowsePageInfo=Readonly<{start:number;total:number;totalIsLowerBound:boolean;revision:string;hasMore:boolean;nextCursor:string}>;
 export type BrowseRange=Readonly<{start:number;revision?:string;anchorId?:string}>;
 export type BrowseSeek=Readonly<{prefix:string}>;
 export type BrowseApplied=Readonly<{query:BrowseNode|null;sort:readonly BrowseSortSelection[];seek:BrowseSeek|null}>;
@@ -164,7 +166,12 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
  const sent=rows(raw.entries,200);
  const entries=firstOfEach('browse','entries',keepReadable('browse','entries',sent,validateContentEntry),e=>e.id);
  if(sent.length&&!entries.length)bad();
- const total=Math.max(info.total,sent.length?info.start+sent.length:0);
+ // Past a lower bound the server's own hasMore says whether the list goes on; the total then
+ // reaches one page past what has arrived, so a virtualized list keeps growing as it scrolls.
+ const lowerBound=info.totalIsLowerBound===true;
+ const end=sent.length?info.start+sent.length:0;
+ const more=lowerBound?info.hasMore===true||!!info.nextCursor:info.start+sent.length<info.total;
+ const total=lowerBound?Math.max(info.total,more?end+Math.max(sent.length,1):end):Math.max(info.total,end);
   const positionIndex=parsePositionIndex(raw.positionIndex,total);
  const applied=raw.applied;
  return freeze({
@@ -175,7 +182,7 @@ export function parseBrowseResult(raw:unknown):BrowseResult{
    seek:applied.seek===undefined||applied.seek===null?null:(obj(applied.seek)&&str(applied.seek.prefix,8)&&applied.seek.prefix?{prefix:applied.seek.prefix}:bad()),
   },
   entries,
-  pageInfo:{start:info.start,total,revision:info.revision,hasMore:info.start+sent.length<total,nextCursor:(info.nextCursor??'') as string},
+  pageInfo:{start:info.start,total,totalIsLowerBound:lowerBound&&more,revision:info.revision,hasMore:lowerBound?more:info.start+sent.length<total,nextCursor:(info.nextCursor??'') as string},
   positionIndex,
  });
 }

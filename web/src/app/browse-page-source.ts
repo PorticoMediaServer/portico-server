@@ -41,7 +41,7 @@ export function browsePageSource(api: {request<T>(path: string, method?: string,
       firstEntries.set(start, result.entries[0]!);
       while (firstEntries.size > 20) firstEntries.delete(firstEntries.keys().next().value!);
     }
-    return {items: result.entries, total: result.pageInfo.total, positionIndex: Object.fromEntries(result.positionIndex.map(a => [a.key, a.index]))};
+    return {items: result.entries, total: result.pageInfo.total, totalIsLowerBound: result.pageInfo.totalIsLowerBound, positionIndex: Object.fromEntries(result.positionIndex.map(a => [a.key, a.index]))};
   };
   return async (start, count, signal) => {
     try {

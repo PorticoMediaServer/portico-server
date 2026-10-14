@@ -48,12 +48,13 @@ export function useGroupBrowse(spec: GroupSpec | undefined, choice: GroupChoice,
   const pending = !!spec?.always && !capabilities && !error;
   const browse = useBrowseCollection({libraryId: spec?.libraryId, pivot: spec?.pivot, base: spec?.base, predicates, sort, enabled: active, pageSize: capabilities ? Math.min(BROWSE_PAGE, capabilities.queryLimits.maximumLimit) : undefined});
   const total = useSyncExternalStore(browse.collection?.subscribe ?? noSubscribe, () => browse.collection?.getSnapshot().total);
+  const totalIsLowerBound = useSyncExternalStore(browse.collection?.subscribe ?? noSubscribe, () => browse.collection?.getSnapshot().totalIsLowerBound ?? false);
   const setPredicates = useCallback((next: readonly Predicate[]) => onChoice({...choice, filters: encodePredicates(next)}), [choice, onChoice]);
   const setSort = useCallback((next: BrowseSortSelection) => onChoice({...choice, sort: next.field, direction: next.direction}), [choice, onChoice]);
   /** Back to the page's own order (filters stay as they are). */
   const ownOrder = useCallback(() => onChoice({filters: choice.filters}), [choice.filters, onChoice]);
   const clearFilters = useCallback(() => onChoice({...choice, filters: undefined}), [choice, onChoice]);
-  return {spec, capabilities, error, predicates, sort, opening, filtered, active, pending, ownSelected, collection: active ? browse.collection : undefined, refresh: browse.refresh, total: active ? total : undefined, setPredicates, setSort, ownOrder, clearFilters};
+  return {spec, capabilities, error, predicates, sort, opening, filtered, active, pending, ownSelected, collection: active ? browse.collection : undefined, refresh: browse.refresh, total: active ? total : undefined, totalIsLowerBound: active && totalIsLowerBound, setPredicates, setSort, ownOrder, clearFilters};
 }
 export type GroupBrowse = ReturnType<typeof useGroupBrowse>;
 

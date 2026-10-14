@@ -20,8 +20,9 @@ export function nounPivotFor(pivot: string | undefined, libraryKind?: string): s
 }
 
 /** "10 artists", "80 movies", "12 books" — via the shared `lib.count` catalogue. */
-export function browseCountLabel(t: T, count: number, pivot: string | undefined, libraryKind?: string): string {
-  return t('lib.count', {count, pivot: nounPivotFor(pivot, libraryKind)});
+export function browseCountLabel(t: T, count: number, pivot: string | undefined, libraryKind?: string, atLeast = false): string {
+  // A broad filter's total is counted only up to 10,000: "10,000+ movies".
+  return t(atLeast ? 'lib.countAtLeast' : 'lib.count', {count, pivot: nounPivotFor(pivot, libraryKind)});
 }
 
 /** Singular kind for "{Kind} library" eyebrows ("Movie library", "Music library"). */
@@ -79,7 +80,7 @@ export function isQuickFilterVisible(filter: QuickFilterLike, libraryKind?: stri
   return true;
 }
 
-type CaptionEntry = {kind: string; subtitle?: string; count?: number; duration?: number};
+type CaptionEntry = {kind: string; subtitle?: string; count?: number; countIsLowerBound?: boolean; duration?: number};
 /** Kinds whose caption `kindCaptionFor` owns: when it has nothing to say, the card says nothing
  * rather than the generic "1 item" / "0 items" count (M4 WEB-LIB-03). */
 export const kindOwnsCaption = (kind: string): boolean => kind === 'artist' || kind === 'album' || kind === 'book';
@@ -90,6 +91,8 @@ export const kindOwnsCaption = (kind: string): boolean => kind === 'artist' || k
  */
 export function kindCaptionFor(t: T, entry: CaptionEntry): string | undefined {
   const count = entry.count ?? 0;
+  // A grouping under a broad filter counts each group only up to 10,000.
+  if (entry.countIsLowerBound && count > 0 && !entry.subtitle) return t('lib.countAtLeast', {count, pivot: 'other'});
   if (entry.kind === 'artist') {
     // A browse entry's count is its member items (the server counts browse_entity_membership):
     // for an artist that is songs, not albums.

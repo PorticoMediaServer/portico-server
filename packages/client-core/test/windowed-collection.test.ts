@@ -300,3 +300,32 @@ test('a quiet read waits for the pause it is given, and a new filter supersedes 
   await settle();
   assert.equal(c.itemAt(0)!.id, 'f0');
 });
+
+test('an open-ended total grows as pages arrive and settles on the end', async () => {
+  // 10,000+ matches: each page reports the threshold or one page past what it has seen.
+  const actual = 260;
+  const fetchPage: FetchPage<Item> = async (start, count) => {
+    const n = Math.max(0, Math.min(count, actual - start));
+    const items: Item[] = [];
+    for (let i = 0; i < n; i++) items.push({id: `i${start + i}`, n: start + i});
+    const more = start + n < actual;
+    return {items, total: more ? Math.max(100, start + n + count) : start + n, totalIsLowerBound: more};
+  };
+  const c = createWindowedCollection({fetchPage, pageSize: 50, maxResidentPages: 8, keyOf: i => i.id});
+  c.ensureRange(0, 20);
+  await settle();
+  const first = c.getSnapshot().total!;
+  assert.ok(first >= 100);
+  assert.equal(c.getSnapshot().totalIsLowerBound, true);
+  c.ensureRange(140, 149);
+  await settle();
+  const grown = c.getSnapshot().total!;
+  assert.ok(grown > first && grown >= 200, 'the total grew past the deepest page read');
+  c.ensureRange(0, 10);
+  await settle();
+  assert.equal(c.getSnapshot().total, grown, 'an earlier page does not shrink it back');
+  c.ensureRange(240, 259);
+  await settle();
+  assert.equal(c.getSnapshot().total, 260);
+  assert.equal(c.getSnapshot().totalIsLowerBound, false, 'the last page knows the end');
+});

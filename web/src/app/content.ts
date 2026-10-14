@@ -89,8 +89,8 @@ export const isQuickFilterVisible = quickVisible;
 export const seeAllTarget = seeAll;
 
 /** "10 artists", "80 movies", "12 books" — via the shared `lib.count` catalogue. */
-export function browseCountLabel(count: number, pivot: string | undefined, libraryKind?: string): string {
-  return countLabel(wordsT(), count, pivot, libraryKind);
+export function browseCountLabel(count: number, pivot: string | undefined, libraryKind?: string, atLeast = false): string {
+  return countLabel(wordsT(), count, pivot, libraryKind, atLeast);
 }
 
 /** Consumer label for a server quick filter in this library kind (US English). */
@@ -98,7 +98,7 @@ export function quickFilterLabelForKind(labelKey: string, libraryKind?: string):
   return quickLabel(wordsT(), labelKey, libraryKind);
 }
 
-type CaptionEntry = {kind: string; subtitle?: string; count?: number; duration?: number};
+type CaptionEntry = {kind: string; subtitle?: string; count?: number; countIsLowerBound?: boolean; duration?: number};
 
 /** Kind-aware secondary caption, never "0 items" (see `./library-words`). */
 export function kindCaptionFor(entry: CaptionEntry): string | undefined {

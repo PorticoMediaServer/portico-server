@@ -15,7 +15,7 @@ import {useI18n, type I18n} from '../../app/i18n';
  * quick toggles, "+ Filter" with everything else in three groups, and the applied filters as
  * removable chips on a second line. The same shape on every grid; Apple draws the same model.
  */
-export function BrowseBar({libraryId, capabilities, predicates, onChange, sort, onSort, defaultSort: openingSort, ownOrder, total, onSave, libraryKind, pivot}: {/** The order this list opens in, when it is not the server's default for the pivot (Recently aired). */ defaultSort?: BrowseSortSelection; /** A group's own order (the playlist's, the collection's), offered first in the Sort menu. */ ownOrder?: Readonly<{label: string; selected: boolean; onSelect: () => void}>; libraryId: string; capabilities: BrowseCapabilities; predicates: readonly Predicate[]; onChange: (next: readonly Predicate[]) => void; sort: BrowseSortSelection; onSort: (next: BrowseSortSelection) => void; total?: number; onSave?: () => void; libraryKind: string; pivot?: string}) {
+export function BrowseBar({libraryId, capabilities, predicates, onChange, sort, onSort, defaultSort: openingSort, ownOrder, total, totalIsLowerBound, onSave, libraryKind, pivot}: {/** The order this list opens in, when it is not the server's default for the pivot (Recently aired). */ defaultSort?: BrowseSortSelection; /** A group's own order (the playlist's, the collection's), offered first in the Sort menu. */ ownOrder?: Readonly<{label: string; selected: boolean; onSelect: () => void}>; libraryId: string; capabilities: BrowseCapabilities; predicates: readonly Predicate[]; onChange: (next: readonly Predicate[]) => void; sort: BrowseSortSelection; onSort: (next: BrowseSortSelection) => void; total?: number; /** The total is a lower bound ("10,000+"). */ totalIsLowerBound?: boolean; onSave?: () => void; libraryKind: string; pivot?: string}) {
   const {t} = useI18n();
   const compact = useCompact();
   const {owner} = useSession();
@@ -61,7 +61,7 @@ export function BrowseBar({libraryId, capabilities, predicates, onChange, sort, 
           <AddFilterPanel libraryId={libraryId} model={model} predicates={predicates} mineOf={mineOf} quickOn={isQuickOn} toggleQuick={toggleQuick} onChange={setField} onClear={() => { onChange([]); setAdding(false); }} onDone={() => setAdding(false)} compact={compact} libraryKind={libraryKind} />
         </Popover>
         <span className={s.spacer} />
-        {typeof total === 'number' && !compact ? <span className={s.summary}>{browseCountLabel(total, pivot, libraryKind)}</span> : null}
+        {typeof total === 'number' && !compact ? <span className={s.summary}>{browseCountLabel(total, pivot, libraryKind, totalIsLowerBound)}</span> : null}
         {onSave ? <Button variant="ghost" size="sm" icon="bookmark" label={compact ? undefined : t('web.filters.saveView')} aria-label={t('web.filters.saveView')} onClick={onSave} disabled={!canSave} /> : null}
       </div>
       {model.applied.length ? (
