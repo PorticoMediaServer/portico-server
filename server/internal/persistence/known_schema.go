@@ -32,8 +32,11 @@ index api_events_audience
 index api_events_expiry
 index api_idempotency_expiry
 index artwork_candidates_source
+index artwork_discovery_due
 index artwork_entity_heads_entity
+index artwork_jobs_claim
 index artwork_jobs_due
+index artwork_jobs_storage_retry
 index artwork_objects_compaction
 index artwork_objects_created
 index artwork_previews_digest
@@ -300,6 +303,7 @@ index identity_refresh_predecessors_family
 index identity_refresh_receipts_expiry
 index identity_refresh_receipts_family
 index identity_unknown_attempts_age
+index inventory_analysis_object
 index inventory_analysis_pending
 index inventory_artwork_sources_entity
 index inventory_artwork_sources_role

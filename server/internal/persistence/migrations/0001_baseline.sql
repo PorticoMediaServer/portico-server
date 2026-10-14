@@ -4024,6 +4024,9 @@ CREATE INDEX tvdb_publication_terminal ON tvdb_publication_operations(status,cre
 CREATE INDEX tvdb_publication_show ON tvdb_publication_operations(show_id,id);
 CREATE INDEX metadata_owner_history_entity ON metadata_owner_history(kind,entity_id,id DESC);
 CREATE INDEX artwork_jobs_due ON artwork_jobs(status,next_attempt,lease_until);
+CREATE INDEX artwork_discovery_due ON artwork_discovery(status,next_attempt,kind,entity_id,lease_until);
+CREATE INDEX artwork_jobs_claim ON artwork_jobs(status,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at,id);
+CREATE INDEX artwork_jobs_storage_retry ON artwork_jobs(next_attempt) WHERE status='failed' AND error='storage_unavailable';
 CREATE INDEX asset_subtitles_asset ON asset_subtitles(asset_id,id);
 CREATE INDEX subtitle_resources_item ON subtitle_resources(item_id,source_id,deleted,scope,owner);
 CREATE INDEX subtitle_revisions_digest ON subtitle_revisions(digest);
@@ -4046,6 +4049,7 @@ CREATE INDEX inventory_objects_asset ON inventory_objects(asset_id,state,retired
 CREATE INDEX inventory_objects_analysis ON inventory_objects(source_id,seen_job,analysis_state,id);
 CREATE INDEX inventory_changes_source ON inventory_changes(source_id,sequence);
 CREATE INDEX inventory_analysis_pending ON inventory_analysis_queue(job_id,state,object_id);
+CREATE INDEX inventory_analysis_object ON inventory_analysis_queue(object_id);
 CREATE INDEX analysis_result_source ON analysis_results(object_id,source_revision,stage,retired_ms);
 CREATE INDEX analysis_artifact_result ON analysis_artifacts(result_id,ordinal);
 CREATE INDEX analysis_artifact_digest ON analysis_artifacts(digest);
@@ -4068,7 +4072,7 @@ CREATE INDEX lyric_candidates_actor ON lyric_candidates(actor,expires_at);
 CREATE INDEX lyric_candidates_expiry ON lyric_candidates(expires_at);
 CREATE INDEX lyric_fetch_runs_state ON lyric_fetch_runs(state,created_ms);
 CREATE INDEX lyric_fetch_runs_library ON lyric_fetch_runs(library_id,state);
-CREATE INDEX screen_metadata_due ON screen_metadata_work(status,next_attempt,lease_until,target_kind,target_id);
+CREATE INDEX screen_metadata_due ON screen_metadata_work(status,target_kind,next_attempt,target_id DESC,lease_until);
 CREATE INDEX screen_metadata_library ON screen_metadata_work(library_id,target_id);
 CREATE INDEX screen_metadata_children ON screen_metadata_work(parent_id,target_id);
 CREATE INDEX screen_metadata_candidate_target ON screen_metadata_candidates(target_kind,target_id,confidence DESC);
