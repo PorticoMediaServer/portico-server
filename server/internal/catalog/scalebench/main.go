@@ -94,6 +94,14 @@ func run() (runErr error) {
 	}
 	defer func() { db.Close() }()
 	r := report{Items: *n, IdleScope: "catalog service only; full-server workers not started"}
+	defer func() {
+		if runErr != nil {
+			raw, e := json.MarshalIndent(r, "", "  ")
+			if e == nil {
+				_ = os.WriteFile(filepath.Join(abs, "partial-report.json"), append(raw, '\n'), 0600)
+			}
+		}
+	}()
 	if !*reuse {
 		startItem := 0
 		if *resumeSeed {
@@ -151,10 +159,10 @@ func run() (runErr error) {
 		}
 		if rows == 0 {
 			rr, err := exerciseDrain(db, s, "derive-empty")
+			r.Routes = append(r.Routes, rr)
 			if err != nil {
 				return err
 			}
-			r.Routes = append(r.Routes, rr)
 		}
 	}
 	if _, err = s.ClassifyPendingRatings(context.Background()); err != nil {
@@ -304,11 +312,11 @@ func run() (runErr error) {
 			elapsed := float64(time.Since(start)) / float64(time.Millisecond)
 			cancel()
 			rr.MaxStatements = max(rr.MaxStatements, dbwork.Reads().Statements-before)
+			durations = append(durations, elapsed)
 			if e != nil {
 				rr.Error = e.Error()
 				break
 			}
-			durations = append(durations, elapsed)
 		}
 		sort.Float64s(durations)
 		rr.RSSKB = processRSSKB()
@@ -318,9 +326,6 @@ func run() (runErr error) {
 			rr.P95MS = durations[int(math.Ceil(.95*float64(len(durations))))-1]
 		}
 		r.Routes = append(r.Routes, rr)
-		if rr.Error != "" {
-			return fmt.Errorf("%s: %s", rr.Route, rr.Error)
-		}
 		b, _ := json.Marshal(rr)
 		fmt.Fprintln(os.Stderr, string(b))
 		if *profile {
@@ -355,7 +360,9 @@ func seed(db *sql.DB, n, startItem, stopItem int) (first, last float64, err erro
 // the plan lines of each statement that scan a table or sort, with every
 // parameter NULL (a plan, not a measurement).
 func explainRoute(db *sql.DB, name string, read func(*catalog.Service) error, s *catalog.Service) {
-	ctx, statements := dbwork.TraceQueryPlans(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ctx, statements := dbwork.TraceQueryPlans(ctx)
 	_ = dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return read(s.WithContext(ctx)) })
 	conn, err := db.Conn(context.Background())
 	if err != nil {

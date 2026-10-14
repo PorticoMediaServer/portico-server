@@ -18,17 +18,9 @@ func refreshBrowseSortFacts(ctx context.Context, tx *sql.Tx, entity int64) error
 	}
 	hash := fnv.New32a()
 	_, _ = hash.Write(public)
-	_, err := tx.ExecContext(ctx, `UPDATE catalog_browse_rows AS e SET
- release_key=COALESCE((SELECT strftime('%Y-%m-%dT%H:%M:%fZ',release_date) FROM catalog_item_details WHERE entity_id=e.entity_id),''),
- latest_aired_key=COALESCE((SELECT air_key FROM catalog_browse_member_metrics WHERE entity_id=e.entity_id ORDER BY air_key DESC LIMIT 1),''),
- critic_key=COALESCE((SELECT critic FROM catalog_browse_member_metrics WHERE entity_id=e.entity_id ORDER BY critic DESC LIMIT 1),0),
- episode_count=COALESCE((SELECT total FROM catalog_browse_episode_counts WHERE entity_id=e.entity_id),0),
- album_key=COALESCE((SELECT lower(a.sort_key) FROM catalog_songs s JOIN catalog_entities a ON a.id=s.album_id WHERE s.entity_id=e.entity_id),''),
- artist_key=COALESCE((SELECT lower(ar.sort_key) FROM catalog_songs s JOIN catalog_albums a ON a.entity_id=s.album_id JOIN catalog_entities ar ON ar.id=a.artist_id WHERE s.entity_id=e.entity_id),(SELECT lower(ar.sort_key) FROM catalog_albums a JOIN catalog_entities ar ON ar.id=a.artist_id WHERE a.entity_id=e.entity_id),''),
- track_key=COALESCE((SELECT COALESCE(disc_number,1)*1000000+COALESCE(track_number,0) FROM catalog_songs WHERE entity_id=e.entity_id),0),
- file_size=COALESCE((SELECT file_size FROM catalog_browse_member_metrics WHERE entity_id=e.entity_id ORDER BY file_size DESC LIMIT 1),0),
- resolution_key=COALESCE((SELECT resolution FROM catalog_browse_member_metrics WHERE entity_id=e.entity_id ORDER BY resolution DESC LIMIT 1),0),
- random_key=? WHERE entity_id=?`, int64(hash.Sum32()), entity)
+	_, err := tx.ExecContext(ctx, `WITH next AS MATERIALIZED (SELECT e.entity_id,COALESCE((SELECT strftime('%Y-%m-%dT%H:%M:%fZ',release_date) FROM catalog_item_details WHERE entity_id=e.entity_id),'') AS release_key,COALESCE((SELECT air_key FROM catalog_browse_member_metrics WHERE entity_id=e.entity_id ORDER BY air_key DESC LIMIT 1),'') AS latest_aired_key,COALESCE((SELECT critic FROM catalog_browse_member_metrics WHERE entity_id=e.entity_id ORDER BY critic DESC LIMIT 1),0) AS critic_key,COALESCE((SELECT total FROM catalog_browse_episode_counts WHERE entity_id=e.entity_id),0) AS episode_count,COALESCE((SELECT lower(a.sort_key) FROM catalog_songs s JOIN catalog_entities a ON a.id=s.album_id WHERE s.entity_id=e.entity_id),'') AS album_key,COALESCE((SELECT lower(ar.sort_key) FROM catalog_songs s JOIN catalog_albums a ON a.entity_id=s.album_id JOIN catalog_entities ar ON ar.id=a.artist_id WHERE s.entity_id=e.entity_id),(SELECT lower(ar.sort_key) FROM catalog_albums a JOIN catalog_entities ar ON ar.id=a.artist_id WHERE a.entity_id=e.entity_id),'') AS artist_key,COALESCE((SELECT COALESCE(disc_number,1)*1000000+COALESCE(track_number,0) FROM catalog_songs WHERE entity_id=e.entity_id),0) AS track_key,COALESCE((SELECT file_size FROM catalog_browse_member_metrics WHERE entity_id=e.entity_id ORDER BY file_size DESC LIMIT 1),0) AS file_size,COALESCE((SELECT resolution FROM catalog_browse_member_metrics WHERE entity_id=e.entity_id ORDER BY resolution DESC LIMIT 1),0) AS resolution_key,? AS random_key FROM catalog_browse_rows e WHERE e.entity_id=?)
+ UPDATE catalog_browse_rows AS current SET (release_key,latest_aired_key,critic_key,episode_count,album_key,artist_key,track_key,file_size,resolution_key,random_key)=(SELECT release_key,latest_aired_key,critic_key,episode_count,album_key,artist_key,track_key,file_size,resolution_key,random_key FROM next)
+ WHERE current.entity_id=(SELECT entity_id FROM next) AND (current.release_key,current.latest_aired_key,current.critic_key,current.episode_count,current.album_key,current.artist_key,current.track_key,current.file_size,current.resolution_key,current.random_key) IS NOT (SELECT release_key,latest_aired_key,critic_key,episode_count,album_key,artist_key,track_key,file_size,resolution_key,random_key FROM next)`, int64(hash.Sum32()), entity)
 	return err
 }
 

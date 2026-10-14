@@ -28896,6 +28896,9 @@ export const schemas = {
           },
           "rowId": {
             "type": "string"
+          },
+          "selectionKey": {
+            "type": "string"
           }
         },
         "required": [
@@ -29567,6 +29570,9 @@ export const schemas = {
                         "type": "string"
                       },
                       "rowId": {
+                        "type": "string"
+                      },
+                      "selectionKey": {
                         "type": "string"
                       }
                     },
@@ -30463,6 +30469,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "rowId": {
+                  "type": "string"
+                },
+                "selectionKey": {
                   "type": "string"
                 }
               },
@@ -31412,6 +31421,9 @@ export const schemas = {
                 },
                 "rowId": {
                   "type": "string"
+                },
+                "selectionKey": {
+                  "type": "string"
                 }
               },
               "required": [
@@ -32307,6 +32319,9 @@ export const schemas = {
             "type": "string"
           },
           "rowId": {
+            "type": "string"
+          },
+          "selectionKey": {
             "type": "string"
           }
         },
@@ -39096,6 +39111,9 @@ export const schemas = {
                       },
                       "rowId": {
                         "type": "string"
+                      },
+                      "selectionKey": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -39991,6 +40009,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "rowId": {
+                  "type": "string"
+                },
+                "selectionKey": {
                   "type": "string"
                 }
               },
@@ -62587,6 +62608,9 @@ export const schemas = {
                       },
                       "rowId": {
                         "type": "string"
+                      },
+                      "selectionKey": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -63482,6 +63506,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "rowId": {
+                  "type": "string"
+                },
+                "selectionKey": {
                   "type": "string"
                 }
               },

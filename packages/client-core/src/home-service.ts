@@ -114,8 +114,10 @@ export class HomeService {
           const rows = shown.rows.flatMap(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you' ? [] : [old]);
           const at = shown.rows.findIndex(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you');
           rows.splice(Math.max(0, at), 0, ...replacements.filter(next => next.entries.length > 0 || next.critical));
-          const hero = row.hero ?? shown.hero;
-          const validHero = hero && rows.find(next => next.id === hero.rowId)?.entries.some(entry => entry.id === hero.entryId) ? hero : undefined;
+          const validHero = rows.flatMap(next => {
+            const candidate = next.hero ?? (shown.hero?.rowId === next.id ? shown.hero : undefined);
+            return candidate && next.entries.some(entry => entry.id === candidate.entryId) ? [candidate] : [];
+          }).reduce<typeof shown.hero>((best, candidate) => !best || (candidate.selectionKey ?? '') > (best.selectionKey ?? '') ? candidate : best, undefined);
           this.publish({document: mergeHomeDocument(shown, Object.freeze({...shown, rows: Object.freeze(rows), hero: validHero})), error: undefined});
         } catch {
           // A failed shelf keeps its previous cards. Other shelves continue;
@@ -212,7 +214,7 @@ export class HomeService {
       if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
       const document = this.state.document;
       // The row moved on while this page was read (a quiet read replaced it): this page belongs to the older row.
-      if (document && document.rows.find(r => r.id === rowId)?.nextCursor === cursor) this.publish({document: Object.freeze({...document, rows: Object.freeze(document.rows.map(r => (r.id === rowId ? appendHomeRowPage(r, page) : r)))})});
+      if (document && page.viewerFence === document.viewerFence && document.rows.find(r => r.id === rowId)?.nextCursor === cursor) this.publish({document: Object.freeze({...document, rows: Object.freeze(document.rows.map(r => (r.id === rowId ? appendHomeRowPage(r, page) : r)))})});
       done();
     } catch (error) {
       if (this.disposed || mine !== this.generation || controller.signal.aborted) return;

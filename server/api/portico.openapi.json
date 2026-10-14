@@ -30359,6 +30359,9 @@
               },
               "rowId": {
                 "type": "string"
+              },
+              "selectionKey": {
+                "type": "string"
               }
             },
             "required": [
@@ -31060,6 +31063,9 @@
                             "type": "string"
                           },
                           "rowId": {
+                            "type": "string"
+                          },
+                          "selectionKey": {
                             "type": "string"
                           }
                         },
@@ -31986,6 +31992,9 @@
                       "type": "string"
                     },
                     "rowId": {
+                      "type": "string"
+                    },
+                    "selectionKey": {
                       "type": "string"
                     }
                   },
@@ -32965,6 +32974,9 @@
                     },
                     "rowId": {
                       "type": "string"
+                    },
+                    "selectionKey": {
+                      "type": "string"
                     }
                   },
                   "required": [
@@ -33890,6 +33902,9 @@
                 "type": "string"
               },
               "rowId": {
+                "type": "string"
+              },
+              "selectionKey": {
                 "type": "string"
               }
             },
@@ -40867,6 +40882,9 @@
                           },
                           "rowId": {
                             "type": "string"
+                          },
+                          "selectionKey": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -41792,6 +41810,9 @@
                       "type": "string"
                     },
                     "rowId": {
+                      "type": "string"
+                    },
+                    "selectionKey": {
                       "type": "string"
                     }
                   },
@@ -65018,6 +65039,9 @@
                           },
                           "rowId": {
                             "type": "string"
+                          },
+                          "selectionKey": {
+                            "type": "string"
                           }
                         },
                         "required": [
@@ -65943,6 +65967,9 @@
                       "type": "string"
                     },
                     "rowId": {
+                      "type": "string"
+                    },
+                    "selectionKey": {
                       "type": "string"
                     }
                   },
@@ -69298,6 +69325,9 @@
               },
               "rowId": {
                 "type": "string"
+              },
+              "selectionKey": {
+                "type": "string"
               }
             },
             "required": [
@@ -69999,6 +70029,9 @@
                             "type": "string"
                           },
                           "rowId": {
+                            "type": "string"
+                          },
+                          "selectionKey": {
                             "type": "string"
                           }
                         },
@@ -70925,6 +70958,9 @@
                       "type": "string"
                     },
                     "rowId": {
+                      "type": "string"
+                    },
+                    "selectionKey": {
                       "type": "string"
                     }
                   },
@@ -191869,6 +191905,9 @@
                         },
                         "rowId": {
                           "type": "string"
+                        },
+                        "selectionKey": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -192570,6 +192609,9 @@
                                       "type": "string"
                                     },
                                     "rowId": {
+                                      "type": "string"
+                                    },
+                                    "selectionKey": {
                                       "type": "string"
                                     }
                                   },
@@ -193496,6 +193538,9 @@
                                 "type": "string"
                               },
                               "rowId": {
+                                "type": "string"
+                              },
+                              "selectionKey": {
                                 "type": "string"
                               }
                             },
@@ -194984,6 +195029,9 @@
                               },
                               "rowId": {
                                 "type": "string"
+                              },
+                              "selectionKey": {
+                                "type": "string"
                               }
                             },
                             "required": [
@@ -195909,6 +195957,9 @@
                           "type": "string"
                         },
                         "rowId": {
+                          "type": "string"
+                        },
+                        "selectionKey": {
                           "type": "string"
                         }
                       },
@@ -210305,6 +210356,9 @@
                                     },
                                     "rowId": {
                                       "type": "string"
+                                    },
+                                    "selectionKey": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -211230,6 +211284,9 @@
                                 "type": "string"
                               },
                               "rowId": {
+                                "type": "string"
+                              },
+                              "selectionKey": {
                                 "type": "string"
                               }
                             },
@@ -270980,6 +271037,9 @@
                                     },
                                     "rowId": {
                                       "type": "string"
+                                    },
+                                    "selectionKey": {
+                                      "type": "string"
                                     }
                                   },
                                   "required": [
@@ -271905,6 +271965,9 @@
                                 "type": "string"
                               },
                               "rowId": {
+                                "type": "string"
+                              },
+                              "selectionKey": {
                                 "type": "string"
                               }
                             },

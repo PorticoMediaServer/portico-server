@@ -35,7 +35,7 @@ export type HomeLayout = Readonly<{revision: number; rowOrder: readonly string[]
 export type HomeLayoutRowView = Readonly<{id: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; libraryId?: string; required: boolean; hideable: boolean; reorderable: boolean; hidden: boolean}>;
 export type HomeLayoutView = Readonly<HomeLayout & {rows: readonly HomeLayoutRowView[]}>;
 /** The entry Home opens with: the first entry of one of its rows (the server chooses which). */
-export type HomeHeroRef = Readonly<{rowId: string; entryId: string}>;
+export type HomeHeroRef = Readonly<{rowId: string; entryId: string; selectionKey?: string}>;
 export type HomeDocument = Readonly<{
   serverId: string; viewerFence: string; rows: readonly HomeRow[]; hero?: HomeHeroRef; layout: HomeLayout; revision: HomeRevision; generatedAt: string;
 }>;
@@ -131,7 +131,7 @@ function parseHomeRow(value: unknown, allowChildren: boolean): HomeRow {
       return parsed;
     }));
   }
-  if (object(value.hero) && id(value.hero.rowId) && id(value.hero.entryId)) row.hero = Object.freeze({rowId: value.hero.rowId, entryId: value.hero.entryId});
+  if (object(value.hero) && id(value.hero.rowId) && id(value.hero.entryId)) row.hero = Object.freeze({rowId: value.hero.rowId, entryId: value.hero.entryId, ...(typeof value.hero.selectionKey === "string" ? {selectionKey: words(value.hero.selectionKey,1024)} : {})});
   if (whole(value.cacheTtlSeconds)) row.cacheTtlSeconds = value.cacheTtlSeconds;
   const titleText = titleTextOf(value.titleText);
   if (titleText) row.titleText = titleText;
@@ -217,7 +217,7 @@ export function validateHomeDocument(value: unknown): HomeDocument {
   let hero: HomeHeroRef | undefined;
   // A hero that cannot be read, or whose entry this client cannot draw (a kind it does not know), is simply absent.
   if (object(value.hero) && id(value.hero.rowId) && id(value.hero.entryId)) {
-    if (rows.find(row => row.id === (value.hero as HomeHeroRef).rowId)?.entries.some(entry => entry.id === (value.hero as HomeHeroRef).entryId)) hero = Object.freeze({rowId: value.hero.rowId, entryId: value.hero.entryId});
+    if (rows.find(row => row.id === (value.hero as HomeHeroRef).rowId)?.entries.some(entry => entry.id === (value.hero as HomeHeroRef).entryId)) hero = Object.freeze({rowId: value.hero.rowId, entryId: value.hero.entryId, ...(typeof value.hero.selectionKey === "string" ? {selectionKey: words(value.hero.selectionKey,1024)} : {})});
   } else if (value.hero !== undefined && value.hero !== null) noteSkipped('home', 'hero');
   return Object.freeze({serverId: value.serverId, viewerFence: value.viewerFence, rows: Object.freeze(rows), ...(hero ? {hero} : {}), layout, revision: revision(value.revision), generatedAt: words(value.generatedAt, 128)});
 }

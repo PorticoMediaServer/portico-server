@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,6 +71,12 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	r := routeResult{Route: name}
 	start := time.Now()
 	logAt := time.Now()
+	var sequence int
+	var schemaName, path string
+	if err := db.QueryRow(`PRAGMA database_list`).Scan(&sequence, &schemaName, &path); err != nil {
+		return r, err
+	}
+	scratchRoot := filepath.Dir(filepath.Dir(path))
 	v := catalog.Viewer{Profile: "viewer", Fence: "scale-open", Libraries: []string{"movies", "tv", "music"}}
 	var probes, failedProbes int
 	firstVisible := time.Duration(-1)
@@ -142,6 +149,31 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 			db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&pending)
 			fmt.Fprintf(os.Stderr, "DRAIN %s elapsed=%s pending=%d rss_kb=%d\n", name, time.Since(start).Round(time.Second), pending, r.RSSKB)
 			logAt = time.Now()
+			var scratchBytes int64
+			err := filepath.WalkDir(scratchRoot, func(path string, entry os.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if !entry.IsDir() {
+					info, err := entry.Info()
+					if err != nil {
+						return err
+					}
+					scratchBytes += info.Size()
+				}
+				return nil
+			})
+			if err != nil || scratchBytes > 20*1024*1024*1024 {
+				close(stop)
+				<-done
+				r.Samples = 1
+				r.P50MS = float64(time.Since(start)) / float64(time.Millisecond)
+				r.P95MS = r.P50MS
+				r.Error = fmt.Sprintf("scratch budget exceeded or unreadable: bytes=%d error=%v", scratchBytes, err)
+				logMeasurement(r)
+				return r, fmt.Errorf("%s", r.Error)
+			}
+			fmt.Fprintf(os.Stderr, "SCRATCH bytes=%d\n", scratchBytes)
 		}
 		if n == 0 {
 			break
@@ -252,6 +284,12 @@ func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes
 					}
 				}
 			}
+		}
+	}
+
+	if matrix {
+		if err := exerciseGroupedVocabulary(db, s, v, add); err != nil {
+			return results, err
 		}
 	}
 
@@ -587,6 +625,10 @@ func exerciseRemoval(db *sql.DB, s *catalog.Service) (routeResult, error) {
 		return r, err
 	}
 	fmt.Fprintf(os.Stderr, "RECLAIM before_bytes=%d reusable_bytes=%d\n", before*size, free*size)
+	if before*size*2 > 20*1024*1024*1024 {
+		fmt.Fprintf(os.Stderr, "VACUUM_SKIPPED scratch_budget estimated_peak_bytes=%d\n", before*size*2)
+		return r, nil
+	}
 	start = time.Now()
 	connCtx, conn, release, err := dbwork.ReserveWriterConn(ctx, db, dbwork.ClassMaintenance)
 	if err != nil {

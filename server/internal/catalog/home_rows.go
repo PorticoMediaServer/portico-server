@@ -89,8 +89,9 @@ type HomeRow struct {
 
 // HomeHero names the entry Home opens with: the first entry of one of its rows.
 type HomeHero struct {
-	RowID   string `json:"rowId"`
-	EntryID string `json:"entryId"`
+	RowID        string `json:"rowId"`
+	EntryID      string `json:"entryId"`
+	SelectionKey string `json:"selectionKey,omitempty"`
 }
 
 type HomeLayout struct {
@@ -923,7 +924,7 @@ func homeHero(rows []HomeRow) *HomeHero {
 			continue
 		}
 		if hero == nil || row.lead > newest {
-			hero, newest = &HomeHero{RowID: row.ID, EntryID: row.Entries[0].ID}, row.lead
+			hero, newest = &HomeHero{RowID: row.ID, EntryID: row.Entries[0].ID, SelectionKey: row.lead + fmt.Sprintf("|%03d", 999-i)}, row.lead
 		}
 	}
 	return hero
@@ -1015,24 +1016,16 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 		return row, e
 	}
 	if (id == "continue" || id == "continue_listening") && page.Cursor == "" && page.Start == 0 {
-		candidates := []HomeRow{row}
-		for _, spec := range specs {
-			if (spec.ID == "continue" || spec.ID == "continue_listening") && spec.ID != id {
-				hidden := map[string]bool{}
-				for _, name := range r.HiddenRowIDs {
-					hidden[name] = true
+		row.Hero = homeHero([]HomeRow{row})
+		if row.Hero != nil {
+			for index, spec := range homeOrdered(specs, r.RowOrder) {
+				if spec.ID == id {
+					row.Hero.SelectionKey = row.lead + fmt.Sprintf("|%03d", 999-index)
+					break
 				}
-				if spec.hiddenIn(r.RowOrder, hidden) {
-					continue
-				}
-				other, err := s.homeRowFor(r, spec, before, HomeRowPage{Limit: 1}, false)
-				if err != nil {
-					continue
-				}
-				candidates = append(candidates, other)
 			}
 		}
-		row.Hero = homeHero(candidates)
+
 	}
 	after, e := s.homeRevision(r.Libraries, r.Profile)
 	if e != nil {

@@ -63,3 +63,26 @@ func TestDeferredHomeFamilyIsBoundedAndFenced(t *testing.T) {
 		t.Fatalf("hidden family reachable: %v", err)
 	}
 }
+
+func TestContinuePreviewDoesNotReadSiblingRow(t *testing.T) {
+	db := homeFixture(t)
+	s := New(db)
+	r := homeRequestFixture("movies", "tv", "music")
+	ctx, trace := dbwork.TraceQueryPlans(context.Background())
+	row, err := s.WithContext(ctx).HomeSingleRow(r, "continue", HomeRowPage{Limit: 12})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if row.Hero != nil && (row.Hero.RowID != row.ID || row.Hero.SelectionKey == "") {
+		t.Fatalf("unranked or sibling hero: %+v", row.Hero)
+	}
+	sources := 0
+	for _, q := range trace() {
+		if strings.Contains(q, "FROM progress_activity") {
+			sources++
+		}
+	}
+	if sources > 2 {
+		t.Fatalf("preview composed its sibling: %d activity reads", sources)
+	}
+}

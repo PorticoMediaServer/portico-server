@@ -196,3 +196,27 @@ test('a row timeout releases its queue slot even if its API ignores cancellation
   assert.equal(service.getSnapshot().error, undefined);
   service.dispose();
 });
+
+test('independent Continue previews choose the server-ranked hero regardless of arrival order', async () => {
+  let finishListening!: (value: unknown) => void;
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') return document([row('continue', [], {deferred: true}), row('continue_listening', [], {deferred: true})]);
+    if (path.includes('/rows/continue_listening')) return new Promise(resolve => { finishListening = resolve; });
+    return row('continue', ['video'], {hero: {rowId: 'continue', entryId: 'video', selectionKey: '2026-10-13|999'}});
+  }));
+  await service.load();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(service.getSnapshot().document!.hero!.entryId, 'video');
+  finishListening(row('continue_listening', ['audio'], {hero: {rowId: 'continue_listening', entryId: 'audio', selectionKey: '2026-10-12|998'}}));
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(service.getSnapshot().document!.hero!.entryId, 'video', 'a later answer cannot replace a more recent hero');
+  service.dispose();
+});
+
+test('a page from a different viewer cannot be appended', async () => {
+  const service = new HomeService(api(path => path.includes('/rows/') ? row('recent', ['other'], {viewerFence: 'other-viewer'}) : document([row('recent', ['mine'])])));
+  await service.load(); await service.more('recent');
+  assert.equal(ids(service, 'recent'), 'mine');
+  assert.equal(service.getSnapshot().paging.size, 0);
+  service.dispose();
+});
