@@ -22,12 +22,17 @@ import (
 
 // The claim order: a search the owner asked for, then shows whose episodes
 // are being dispatched, then shows, then everything else. Within a class a
-// title never tried comes before a retry, and the most recently catalogued
-// comes first, so what was just added (and is on Recently Added) is matched
-// ahead of an old backlog. Each class and kind is its own indexed probe that
-// reads one row, so a claim costs the same whatever the backlog's size; the
-// claim runs in a write transaction, and a sort over every pending row there
-// held the write gate for as long as the backlog was large.
+// title never tried comes before a retry. Titles (films, episodes) are taken
+// most recently catalogued first, so what was just added, and is on Recently
+// Added, is matched ahead of an old backlog. Shows are taken oldest first:
+// every new episode sends its show back to pending, so taking the newest show
+// first would match a show again and again while a scan is still adding its
+// episodes, spending provider requests that rate limits make scarce.
+//
+// Each class, kind and order is its own indexed probe that reads one row, so
+// a claim costs the same whatever the backlog's size; the claim runs in a
+// write transaction, and a sort over every pending row there held the write
+// gate for as long as the backlog was large.
 var screenClaimSQL = screenProbes([]string{"searching", "pending_children", "pending"}, `next_attempt<=?1 AND lease_until<=?1`)
 
 // A title parked by an outage, once its cool-off has passed: the oldest
@@ -36,16 +41,20 @@ var screenRecoverSQL = screenProbes([]string{"unavailable"}, `next_attempt>'' AN
 
 func screenProbes(statuses []string, where string) string {
 	var arms []string
-	for class, status := range statuses {
-		for _, kind := range []string{"show", "item"} {
-			rank := class * 2
-			if status == "pending" && kind == "item" {
-				rank++
-			}
-			arms = append(arms, fmt.Sprintf(`SELECT * FROM (SELECT %d AS rank,target_kind,target_id,next_attempt FROM screen_metadata_work INDEXED BY screen_metadata_due WHERE status='%s' AND target_kind='%s' AND %s ORDER BY next_attempt,target_id DESC LIMIT 1)`, rank, status, kind, where))
-		}
+	arm := func(rank int, status, kind, extra, order string) {
+		arms = append(arms, fmt.Sprintf(`SELECT * FROM (SELECT %d AS rank,target_kind,target_id,next_attempt,%s AS turn FROM screen_metadata_work INDEXED BY screen_metadata_due WHERE status='%s' AND target_kind='%s' AND %s%s ORDER BY %s LIMIT 1)`,
+			rank, map[string]string{"show": "target_id", "item": "-target_id"}[kind], status, kind, where, extra, order))
 	}
-	return `SELECT target_kind,target_id FROM (` + strings.Join(arms, " UNION ALL ") + `) ORDER BY rank,next_attempt,target_id DESC LIMIT 1`
+	for class, status := range statuses {
+		rank := class * 2
+		arm(rank, status, "show", "", "next_attempt,target_id")
+		if status == "pending" {
+			rank++
+		}
+		arm(rank, status, "item", ` AND next_attempt=''`, "target_id DESC")
+		arm(rank, status, "item", ` AND next_attempt>''`, "next_attempt,target_id")
+	}
+	return `SELECT target_kind,target_id FROM (` + strings.Join(arms, " UNION ALL ") + `) ORDER BY rank,next_attempt,turn LIMIT 1`
 }
 
 func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {

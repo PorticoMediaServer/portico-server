@@ -4072,7 +4072,7 @@ CREATE INDEX lyric_candidates_actor ON lyric_candidates(actor,expires_at);
 CREATE INDEX lyric_candidates_expiry ON lyric_candidates(expires_at);
 CREATE INDEX lyric_fetch_runs_state ON lyric_fetch_runs(state,created_ms);
 CREATE INDEX lyric_fetch_runs_library ON lyric_fetch_runs(library_id,state);
-CREATE INDEX screen_metadata_due ON screen_metadata_work(status,target_kind,next_attempt,target_id DESC,lease_until);
+CREATE INDEX screen_metadata_due ON screen_metadata_work(status,target_kind,next_attempt,target_id,lease_until);
 CREATE INDEX screen_metadata_library ON screen_metadata_work(library_id,target_id);
 CREATE INDEX screen_metadata_children ON screen_metadata_work(parent_id,target_id);
 CREATE INDEX screen_metadata_candidate_target ON screen_metadata_candidates(target_kind,target_id,confidence DESC);
