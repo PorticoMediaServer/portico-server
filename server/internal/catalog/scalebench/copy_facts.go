@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -22,6 +23,17 @@ func copyReferenceFacts(db *sql.DB, path string) (float64, float64, error) {
 	}
 	if !strings.Contains(path, "/_program/scratch/scale-check-2/.scratch/") {
 		return 0, 0, fmt.Errorf("refusing a non-fixture source")
+	}
+	usage, e := scratchUsage()
+	if e != nil {
+		return 0, 0, e
+	}
+	info, e := os.Stat(path)
+	if e != nil {
+		return 0, 0, e
+	}
+	if usage+info.Size()*2 >= scratchStop {
+		return 0, 0, fmt.Errorf("copy would exceed scratch headroom: current=%d source=%d", usage, info.Size())
 	}
 	source := url.URL{Scheme: "file", Path: path, RawQuery: "mode=ro"}
 	ctx := context.Background()

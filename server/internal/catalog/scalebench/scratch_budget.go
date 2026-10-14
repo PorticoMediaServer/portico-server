@@ -7,13 +7,18 @@ import (
 	"strings"
 )
 
-const scratchDirectory = "/home/justin/projects/Portico/.worktrees/audit-implementation/_program/scratch/scale-check-2"
+// The command sets its lane root; bounded unit fixtures use t.TempDir instead.
+var scratchDirectory string
+
 const scratchLimit int64 = 8_000_000_000
 
 // Leave headroom for one bounded writer batch and SQLite housekeeping.
 const scratchStop int64 = 7_000_000_000
 
 func scratchUsage() (int64, error) {
+	if scratchDirectory == "" {
+		return 0, nil
+	}
 	out, err := exec.Command("du", "-s", "-B1", scratchDirectory).Output()
 	if err != nil {
 		return 0, err
@@ -25,8 +30,6 @@ func scratchUsage() (int64, error) {
 	return strconv.ParseInt(fields[0], 10, 64)
 }
 
-var lastScratchCheck int64
-
 func checkScratchBudget() error {
 	bytes, err := scratchUsage()
 	if err != nil {
@@ -35,6 +38,5 @@ func checkScratchBudget() error {
 	if bytes >= scratchStop {
 		return fmt.Errorf("scratch headroom exhausted: %d bytes (8 GB hard limit)", bytes)
 	}
-	lastScratchCheck = bytes
 	return nil
 }

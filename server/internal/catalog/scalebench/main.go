@@ -75,6 +75,7 @@ func run() (runErr error) {
 	if err != nil || *dir == "" || !strings.Contains(abs+string(os.PathSeparator), string(os.PathSeparator)+".scratch"+string(os.PathSeparator)) || *n < 100 || *samples < 1 || *idle <= 0 {
 		return errors.New("invalid arguments: use an explicit .scratch directory, at least 100 items and positive samples/idle")
 	}
+	scratchDirectory = strings.SplitN(abs+string(os.PathSeparator), string(os.PathSeparator)+".scratch"+string(os.PathSeparator), 2)[0]
 	if err = os.MkdirAll(abs, 0700); err != nil {
 		return err
 	}

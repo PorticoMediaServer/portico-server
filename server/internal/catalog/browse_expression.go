@@ -607,6 +607,9 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 		return c.genreExists(condition)
 	}
 	prefix := "EXISTS(SELECT 1 FROM catalog_browse_memberships bei " + field.Join + " WHERE bei.entity_id=e.entity_id AND "
+	if field.ID == "personal-member" {
+		prefix = "e.entity_id IN(SELECT bei.entity_id FROM personal_items pi CROSS JOIN catalog_browse_memberships bei ON bei.item_id=pi.item_id WHERE pi.profile_id=? AND "
+	}
 	if field.ID == "list" {
 		raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(c.profile, "viewer:"))
 		var owner []string
@@ -815,7 +818,7 @@ func (c *browseCompiler) personalTitlePredicate(field browseField, node BrowseNo
 	if err != nil {
 		return "", err
 	}
-	own = `EXISTS(SELECT 1 FROM personal_items pi WHERE pi.profile_id=? AND pi.item_id=e.entity_id AND ` + own + `)`
+	own = `e.entity_id IN(SELECT pi.item_id FROM personal_items pi WHERE pi.profile_id=? AND ` + own + `)`
 	memberField := field
 	memberField.ID = "personal-member"
 	member, err := c.itemPredicate(memberField, node)
@@ -835,6 +838,12 @@ func (c *browseCompiler) personalTitlePredicate(field browseField, node BrowseNo
 func (c *browseCompiler) groupMembershipPredicate(field browseField, node BrowseNode) (string, bool, error) {
 	if field.ID != "memberOf" && field.ID != "collection" {
 		return "", false, nil
+	}
+	if node.Operator == "not-in" || node.Operator == "not-equals" {
+		positive := node
+		positive.Operator = map[string]string{"not-in": "in", "not-equals": "equals"}[node.Operator]
+		clause, handled, err := c.groupMembershipPredicate(field, positive)
+		return "NOT (" + clause + ")", handled, err
 	}
 	if node.Operator != "equals" && node.Operator != "in" && node.Operator != "contains" && node.Operator != "contains-any" {
 		return "", false, nil
