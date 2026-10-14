@@ -71,8 +71,11 @@ func TestFilteredRangesMatchEveryAdvertisedOrderAndContinuation(t *testing.T) {
 					}
 					selects := 0
 					for _, q := range trace() {
-						if strings.Contains(q, "WITH candidates AS MATERIALIZED") {
+						if strings.Contains(q, "WITH page AS MATERIALIZED") {
 							selects++
+							if strings.Contains(q, "row_number()") || !strings.Contains(q, "LIMIT ? OFFSET ?") {
+								t.Fatalf("range ranked the whole match set: %s", q)
+							}
 						}
 					}
 					if sort.ID != "forYou" && selects != 1 {
