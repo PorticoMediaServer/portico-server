@@ -232,12 +232,14 @@ func run() (runErr error) {
 		return err
 	}
 	buildStart := time.Now()
+	dbwork.WriteGate().ResetPeak()
 	for _, library := range libraries {
 		if err = s.RebuildVisibilityClass(context.Background(), library, viewers[1].v.EffectiveRestrictions()); err != nil {
 			return fmt.Errorf("build %s visibility class: %w", library, err)
 		}
 	}
 	r.VisibilityBuildSec = time.Since(buildStart).Seconds()
+	fmt.Fprintf(os.Stderr, "VISIBILITY_BUILD seconds=%.3f max_gate_held_ms=%d\n", r.VisibilityBuildSec, dbwork.WriteGate().Stats().MaxHeldMilli)
 	if err = db.QueryRow("PRAGMA page_count").Scan(&pages); err != nil {
 		return err
 	}
