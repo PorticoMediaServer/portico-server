@@ -551,15 +551,35 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		libraryScope = ` AND kind : (` + strings.Join(ids, " OR ") + `)`
 	}
 	match = `kind : k` + strconv.Itoa(int(kind)) + libraryScope + ` AND search : (` + match + `)`
-	candidates := `(SELECT rowid AS entity_id,-rank AS relevance FROM catalog_search_titles WHERE catalog_search_titles MATCH ?) m
-	 CROSS JOIN catalog_search_documents d ON d.entity_id=m.entity_id CROSS JOIN catalog_entities e ON e.id=d.entity_id JOIN catalog_libraries l ON l.id=e.library_id`
+	sortID := resolveSearchSort(g, r.Sort)
+	// The full-text rank is computed for every match it is selected for; only
+	// relevance orders by it.
+	matches := `(SELECT rowid AS entity_id FROM catalog_search_titles WHERE catalog_search_titles MATCH ?) m`
+	joins := ` CROSS JOIN catalog_search_documents d ON d.entity_id=m.entity_id CROSS JOIN catalog_entities e ON e.id=d.entity_id JOIN catalog_libraries l ON l.id=e.library_id`
+	candidates := matches + joins
+	if sortID == "relevance" {
+		candidates = `(SELECT rowid AS entity_id,-rank AS relevance FROM catalog_search_titles WHERE catalog_search_titles MATCH ?) m` + joins
+	}
+	countTerms, countIndexed := facettext.IndexedSearchTerms(r.Q)
 	countGroup := func() error {
+		// One indexed word has a maintained count. Several words would count
+		// their whole intersection, so their total is the page's and is marked
+		// as not exact, as relevance search marks it.
+		if countIndexed && len(countTerms) == 1 {
+			total, exact, err := s.prefixSearchTotal(ctx, r, int(kind), countTerms[0])
+			if err != nil || exact {
+				out.TotalCount, out.TotalCountExact = total, exact
+				return err
+			}
+		} else if countIndexed {
+			out.TotalCount, out.TotalCountExact = len(out.Items), false
+			return nil
+		}
 		countArgs := append([]any{match}, filterArgs...)
-		err := s.read().QueryRowContext(ctx, `SELECT count(*) FROM `+candidates+` WHERE 1`+where, countArgs...).Scan(&out.TotalCount)
+		err := s.read().QueryRowContext(ctx, `SELECT count(*) FROM `+matches+joins+` WHERE 1`+where, countArgs...).Scan(&out.TotalCount)
 		out.TotalCountExact = err == nil
 		return err
 	}
-	sortID := resolveSearchSort(g, r.Sort)
 	contextJoin, subtitle := searchContext(g.kind)
 	order := catalogOrder(sortID, g.kind, r.Q)
 	// Only the columns needed to rank matches belong before the page boundary.

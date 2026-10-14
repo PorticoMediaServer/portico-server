@@ -276,6 +276,26 @@ func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes
 			return results, err
 		}
 	}
+	// Non-relevance search sorts rank every match of the typed words.
+	for _, sortID := range []string{"title", "releaseYear", "dateAdded"} {
+		for _, query := range []string{"Ti", "Title", "Title 000000"} {
+			sortID, query := sortID, query
+			if err := add("search-sort/"+sortID+"/"+query, func(ctx context.Context, s *catalog.Service) error {
+				page, err := s.Search(ctx, catalog.SearchRequest{Groups: []string{"movies", "shows", "episodes", "artists", "albums", "songs"}, Viewer: v, Profile: "viewer", ViewerFence: "scale-open", Libraries: v.Libraries, Q: query, Sort: sortID, Limit: 12})
+				if err != nil {
+					return err
+				}
+				for _, group := range page.Groups {
+					if group.ErrorCode != "" {
+						return fmt.Errorf("search group %s: %v", group.ID, group.ErrorCode)
+					}
+				}
+				return nil
+			}); err != nil {
+				return results, err
+			}
+		}
+	}
 	var rr routeResult
 	if routeSelected("missing") || routeSelected("needs-attention") {
 		if err := add("missing", func(ctx context.Context, s *catalog.Service) error {

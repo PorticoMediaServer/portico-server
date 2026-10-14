@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
@@ -242,5 +243,38 @@ func TestRestrictedDeepFactPageChecksOnlyItsPage(t *testing.T) {
 	t.Logf("deep fact page: open %d steps, restricted %d steps", openSteps, restrictedSteps)
 	if restrictedSteps > openSteps*3 {
 		t.Fatalf("restricted deep page took %d steps against the open page's %d", restrictedSteps, openSteps)
+	}
+}
+
+// A search sorted by title, year or date added takes one indexed word's total
+// from its maintained count, and marks a several-word total as the page's,
+// instead of counting every full-text match a second time.
+func TestSortedSearchCountsFromMaintainedTotals(t *testing.T) {
+	c := catalogtest.Open(t)
+	library := c.Library("films", "Films", "movie", "/films")
+	for i := 0; i < 30; i++ {
+		c.Movie(library, fmt.Sprintf("/films/%d.mkv", i), fmt.Sprintf("Harbor %d", i), 1990+i)
+	}
+	c.Drain()
+	for _, sortID := range []string{"title", "releaseYear", "dateAdded"} {
+		for _, check := range []struct {
+			q     string
+			exact bool
+		}{{"Harbor", true}, {"Harbor 1", false}} {
+			ctx, trace := dbwork.TraceQueryPlans(context.Background())
+			out, err := New(c.DB).Search(ctx, SearchRequest{Viewer: Viewer{Profile: "p", Fence: "f", Libraries: []string{"films"}}, Q: check.q, Group: "movies", Sort: sortID, Limit: 5})
+			if err != nil || len(out.Groups) != 1 || len(out.Groups[0].Items) != 5 {
+				t.Fatalf("%s %q: %+v %v", sortID, check.q, out, err)
+			}
+			group := out.Groups[0]
+			if group.TotalCountExact != check.exact || check.exact && group.TotalCount != 30 {
+				t.Fatalf("%s %q: total %d exact %v", sortID, check.q, group.TotalCount, group.TotalCountExact)
+			}
+			for _, query := range trace() {
+				if strings.Contains(query, "SELECT count(*) FROM (SELECT rowid AS entity_id FROM catalog_search_titles") {
+					t.Fatalf("%s %q counted the full-text matches again", sortID, check.q)
+				}
+			}
+		}
 	}
 }
