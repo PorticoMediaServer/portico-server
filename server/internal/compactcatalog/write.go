@@ -221,8 +221,18 @@ func upsertEntity(ctx context.Context, tx *sql.Tx, e Entity, update bool) (id in
 	return id, true, touchEntity(ctx, tx, id, e.Kind)
 }
 
-// touchEntity queues the derived work any change to an entity's facts causes.
+// touchEntity queues the derived work any change to an entity's facts causes,
+// including the members that carry its title, parentage or liveness.
 func touchEntity(ctx context.Context, tx *sql.Tx, id int64, kind Kind) error {
+	if err := touchEntityOwn(ctx, tx, id, kind); err != nil {
+		return err
+	}
+	return touchEntityDependents(ctx, tx, id, kind)
+}
+
+// touchEntityOwn queues the entity's own derived work: a change no member
+// derives anything from.
+func touchEntityOwn(ctx context.Context, tx *sql.Tx, id int64, kind Kind) error {
 	for _, domain := range []int{DomainSearch, DomainBrowseRows, DomainBrowseEdges} {
 		if err := TouchTx(ctx, tx, domain, id); err != nil {
 			return err
@@ -235,6 +245,10 @@ func touchEntity(ctx context.Context, tx *sql.Tx, id int64, kind Kind) error {
 			}
 		}
 	}
+	return nil
+}
+
+func touchEntityDependents(ctx context.Context, tx *sql.Tx, id int64, kind Kind) error {
 	// Rows derived from a parent's facts follow it (each bounded by the
 	// container): a season's row carries its show's title and year, a song's
 	// edges its album's artist, a book file's edges its book's author — and the
@@ -277,6 +291,17 @@ func TouchEntityTx(ctx context.Context, tx *sql.Tx, id int64) error {
 		return err
 	}
 	return touchEntity(ctx, tx, id, kind)
+}
+
+// touchOwnTx queues an entity's own derived work after a change to facts its
+// members never carry (its terms, credits and attributes): a show's genres
+// arriving must not re-derive every episode.
+func touchOwnTx(ctx context.Context, tx *sql.Tx, id int64) error {
+	var kind Kind
+	if err := tx.QueryRowContext(ctx, `SELECT kind FROM catalog_entities WHERE id=?`, id).Scan(&kind); err != nil {
+		return err
+	}
+	return touchEntityOwn(ctx, tx, id, kind)
 }
 
 // Where each field lives. A field is written in the kind's side table when
@@ -401,19 +426,40 @@ func setFields(ctx context.Context, tx *sql.Tx, id int64, source Source, fields 
 		text, _ := added.(string)
 		groups["catalog_entities"]["added_ms"] = addedMillis(text)
 	}
-	changed := false
+	changed, shared := false, false
 	for table, values := range groups {
 		n, err := writeFacts(ctx, tx, table, id, values)
 		if err != nil {
 			return err
 		}
-		changed = changed || n > 0
+		if n == 0 {
+			continue
+		}
+		changed = true
+		if table == "catalog_entities" {
+			shared = true
+		}
+		for name := range values {
+			shared = shared || dependentFields[name]
+		}
 	}
-	if changed {
+	switch {
+	case shared:
 		return touchEntity(ctx, tx, id, kind)
+	case changed:
+		return touchEntityOwn(ctx, tx, id, kind)
 	}
 	return nil
 }
+
+// dependentFields are the side-table facts a container's members derive from
+// (an album's artist, a book's author, where a container lives). The backbone
+// (title, sort title, language, year) is the rest: members' search documents
+// and season rows carry their parent's title and year. Any other fact of a
+// show, album, artist or book (overview, tags, label, release details…) is
+// its own, and a provider filling it in one title at a time must not
+// re-derive every episode or song of the container for each detail.
+var dependentFields = setOf("artist_id", "author", "library_id", "show_id", "album_id", "book_id")
 
 // lockedFields maps each catalogue field the owner locked on the entity to the
 // name the lock is recorded under. The metadata editor records locks under
@@ -946,7 +992,7 @@ func SetTermsTx(ctx context.Context, tx *sql.Tx, entity int64, vocab Vocab, prov
  AND NOT EXISTS(SELECT 1 FROM catalog_term_sources s INDEXED BY catalog_term_source_membership WHERE s.entity_id=?1 AND s.term_id=catalog_entity_terms.term_id)`, entity, int(vocab)); err != nil {
 		return err
 	}
-	return TouchEntityTx(ctx, tx, entity)
+	return touchOwnTx(ctx, tx, entity)
 }
 
 // Credit is one person's credit on an entity from one provider.
@@ -1002,7 +1048,7 @@ func SetCreditsTx(ctx context.Context, tx *sql.Tx, entity int64, provider string
 		}
 		next++
 	}
-	return TouchEntityTx(ctx, tx, entity)
+	return touchOwnTx(ctx, tx, entity)
 }
 
 func creditLabel(ctx context.Context, tx *sql.Tx, label string) (int64, error) {
@@ -1040,7 +1086,7 @@ func SetAttributesTx(ctx context.Context, tx *sql.Tx, item int64, field string, 
 			return err
 		}
 	}
-	return TouchEntityTx(ctx, tx, item)
+	return touchOwnTx(ctx, tx, item)
 }
 
 // SetCollectionMemberTx adds (present) or removes an item of a collection.
