@@ -172,6 +172,40 @@ func TestFilteredPagesHydrateOnlySelectedRows(t *testing.T) {
 						t.Fatal(durations)
 					}
 				}
+				if restricted {
+					p.sorts = []BrowseSortSelection{{Field: "fileSize", Direction: "asc"}}
+					p.where += ` AND e.entity_id%4=0`
+					p.start = min(50000, n/4-40)
+					ctx, trace := dbwork.TraceQueryPlans(context.Background())
+					began := time.Now()
+					var rows []browseRow
+					if err := dbwork.WithReadSnapshot(ctx, c.DB, func(ctx context.Context) error {
+						var err error
+						rows, err = New(c.DB).WithContext(ctx).filteredRangePage(p)
+						return err
+					}); err != nil {
+						t.Fatal(err)
+					}
+					elapsed := time.Since(began)
+					if len(rows) != 40 || elapsed > time.Second {
+						t.Fatalf("class fact range rows=%d elapsed=%s", len(rows), elapsed)
+					}
+					for _, row := range rows {
+						if row.entity%4 != 0 {
+							t.Fatal("class range dropped its live predicate")
+						}
+					}
+					bounded := false
+					for _, query := range trace() {
+						if strings.Contains(query, "WITH page AS MATERIALIZED") {
+							bounded = strings.Contains(query, "FROM compact_visibility_rows v CROSS JOIN catalog_browse_rows e") && strings.Contains(query, "e.entity_id%4=0") && strings.Contains(query, "LIMIT ? OFFSET ?")
+						}
+					}
+					if !bounded {
+						t.Fatal("fact range did not start from the class with its live predicate")
+					}
+					t.Logf("rows=%d class-fact-range elapsed=%s", n, elapsed)
+				}
 			}
 		})
 	}
