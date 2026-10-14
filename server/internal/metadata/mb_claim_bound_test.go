@@ -172,3 +172,25 @@ func mbClaimExec(t *testing.T, db *sql.DB, query string, args ...any) {
 		t.Fatal(query, e)
 	}
 }
+
+// While MusicBrainz asks for a pause, the claim must not walk the pending set
+// at all: every job fails the cooldown condition, so the walk read the whole
+// backlog (every song) once per step for nothing, throughout every rate-limit
+// pause.
+func TestMBClaimSkipsTheBacklogDuringACooldown(t *testing.T) {
+	db, _ := mbLaneDB(t)
+	defer db.Close()
+	seedMBClaimJobs(t, db, 500)
+	mbClaimExec(t, db, `INSERT INTO metadata_provider_cooldowns(provider,next_attempt) VALUES('musicbrainz','2999-01-01T00:00:00Z') ON CONFLICT(provider) DO UPDATE SET next_attempt=excluded.next_attempt`)
+	s := New(db, "")
+	ctx, statements := dbwork.TraceStatements(context.Background())
+	j, e := s.claimMB(ctx)
+	if e != nil || j != nil {
+		t.Fatal("a job was claimed during the cooldown", j, e)
+	}
+	for _, statement := range statements() {
+		if strings.Contains(statement, "FROM mb_jobs") {
+			t.Fatalf("the claim searched the backlog during a cooldown: %s", statement)
+		}
+	}
+}
