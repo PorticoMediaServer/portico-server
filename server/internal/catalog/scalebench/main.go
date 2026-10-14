@@ -191,11 +191,14 @@ func run() (runErr error) {
 		return os.WriteFile(filepath.Join(abs, "removal-report.json"), append(raw, '\n'), 0600)
 	}
 	if *exercise || *matrixOnly || *scenariosOnly {
-		var rows int
+		var rows, dirty int
 		if err = db.QueryRow(`SELECT count(*) FROM catalog_browse_rows`).Scan(&rows); err != nil {
 			return err
 		}
-		if rows == 0 {
+		if err = db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&dirty); err != nil {
+			return err
+		}
+		if rows == 0 || dirty > 0 {
 			rr, err := exerciseDrain(db, s, "derive-empty")
 			r.Routes = append(r.Routes, rr)
 			if err != nil {
