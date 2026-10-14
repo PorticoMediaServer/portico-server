@@ -426,7 +426,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
-	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, itemPivot: playablePivot(pivot)}
+	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot)}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
@@ -986,6 +986,24 @@ func (s *Service) countRows(query string, args ...any) (int, error) {
 	var n int
 	err := s.read().QueryRow(query, args...).Scan(&n)
 	return n, err
+}
+
+// entityIDs runs one query of integer ids in the read snapshot.
+func (s *Service) entityIDs(query string, args ...any) ([]int64, error) {
+	rows, err := s.read().Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []int64{}
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // playablePivot reports whether every kind of the pivot is a playable item.

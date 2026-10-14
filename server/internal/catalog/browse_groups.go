@@ -76,7 +76,7 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	where := `g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=?`
 	args := []any{request.Library, pivot.Aggregate}
 	if request.Query != nil || request.Restrictions.Active() {
-		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows}
+		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs}
 		clause, err := compiler.compile(request.Query)
 		if err != nil {
 			return out, err

@@ -304,6 +304,8 @@ type browseCompiler struct {
 	// count, when set, lets the compiler ask how many member items a value
 	// matches before choosing to select them from the value side.
 	count func(query string, args ...any) (int, error)
+	// ids reads the entity ids such a selection names.
+	ids func(query string, args ...any) ([]int64, error)
 	// itemPivot says every row of the pivot is a playable item, whose only
 	// membership is itself.
 	itemPivot bool
@@ -667,7 +669,7 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 	if field.ID == "genre" {
 		return c.genreExists(condition)
 	}
-	if source, ok := drivenMemberSource(field); ok && c.count != nil {
+	if source, ok := drivenMemberSource(field); ok && c.count != nil && c.ids != nil {
 		if clause, driven, err := c.drivenExists(field, source, condition); driven || err != nil {
 			return clause, err
 		}
@@ -990,10 +992,10 @@ func drivenMemberSource(field browseField) (drivenSource, bool) {
 	switch field.ID {
 	case "artist":
 		// Credited artists are artist entities of the song's library.
-		return drivenSource{from: `catalog_entities art CROSS JOIN catalog_song_artists sar ON sar.artist_id=art.id`,
+		return drivenSource{from: `catalog_entities art INDEXED BY catalog_entities_title CROSS JOIN catalog_song_artists sar ON sar.artist_id=art.id`,
 			scope: `art.library_id IN(SELECT id FROM catalog_libraries) AND art.kind=` + strconv.Itoa(int(compactcatalog.Artist)), item: "sar.song_id"}, true
 	case "album":
-		return drivenSource{from: `catalog_entities alb CROSS JOIN catalog_songs sng ON sng.album_id=alb.id`,
+		return drivenSource{from: `catalog_entities alb INDEXED BY catalog_entities_title CROSS JOIN catalog_songs sng INDEXED BY catalog_songs_album_order ON sng.album_id=alb.id`,
 			scope: `alb.library_id IN(SELECT id FROM catalog_libraries) AND alb.kind=` + strconv.Itoa(int(compactcatalog.Album)), item: "sng.entity_id"}, true
 	case "author", "narrator":
 		return drivenSource{from: `catalog_books bok CROSS JOIN catalog_book_files bfl ON bfl.book_id=bok.entity_id`, scope: "1", item: "bfl.entity_id"}, true
@@ -1044,13 +1046,29 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 		c.args = c.args[:before]
 		return "", false, nil
 	}
+	if found == 0 {
+		// No member item has the value: no title matches.
+		c.args = c.args[:before]
+		return "0", true, nil
+	}
 	restriction, args := ItemRestrictionSQL("bei.item_id", c.restrictions)
-	c.args = append(c.args, args...)
 	members := ``
 	if c.itemPivot {
 		// A playable item's only membership is itself.
 		members = ` AND bei.source=0`
 	}
-	return `e.entity_id IN(SELECT bei.entity_id FROM ` + source.from + ` CROSS JOIN catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=` + source.item + members +
-		` WHERE ` + where + ` AND (` + body + `) AND (` + restriction + `))`, true, nil
+	// The few matching titles are named in the clause itself, so the count
+	// and the page start from them rather than test every title of the pivot.
+	ids, err := c.ids(`SELECT DISTINCT bei.entity_id FROM `+source.from+` CROSS JOIN catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=`+source.item+members+
+		` WHERE `+where+` AND (`+body+`) AND (`+restriction+`)`, append(append([]any{}, c.args[before:]...), args...)...)
+	if err != nil {
+		return "", false, err
+	}
+	c.args = c.args[:before]
+	if len(ids) == 0 {
+		return "0", true, nil
+	}
+	raw, _ := json.Marshal(ids)
+	c.args = append(c.args, string(raw))
+	return `e.entity_id IN(SELECT value FROM json_each(?))`, true, nil
 }
