@@ -219,7 +219,7 @@ var browseSorts = []browseSort{
 	{ID: "trackNumber", LabelKey: "sort.trackNumber", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song"), Ordering: -2, Expression: "e.track_key"},
 	{ID: "fileSize", LabelKey: "sort.fileSize", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book"), Ordering: -2, Expression: "e.file_size"},
 	{ID: "resolution", LabelKey: "sort.resolution", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection"), Ordering: -2, Expression: "e.resolution_key"},
-	{ID: "random", LabelKey: "sort.random", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book,author"), Ordering: -2, Expression: "e.random_key"},
+	{ID: "random", LabelKey: "sort.random", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book,author"), Ordering: -2, Expression: "e.random_key", ClassKey: "v.random_key"},
 	{ID: "playCount", LabelKey: "sort.playCount", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds(playedKinds), Profile: true, Ordering: -1, Expression: "(SELECT COALESCE(play_count,0) FROM catalog_personal_sort_rows p WHERE p.profile_id=? AND p.entity_id=e.entity_id)"},
 }
 

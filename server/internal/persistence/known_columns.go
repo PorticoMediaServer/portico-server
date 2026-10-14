@@ -1412,6 +1412,7 @@ compact_visibility_rows.generation
 compact_visibility_rows.head
 compact_visibility_rows.kind
 compact_visibility_rows.library_id
+compact_visibility_rows.random_key
 compact_visibility_rows.rating
 compact_visibility_rows.recent
 compact_visibility_rows.sort_key

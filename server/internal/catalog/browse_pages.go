@@ -224,6 +224,10 @@ func (s *Service) blockRank(scope blockScope, ordering int, value any, entity in
 }
 
 func sortForOrdering(ordering int) browseSort {
+	if ordering == compactcatalog.OrderRandom {
+		d, _ := browseSortByID("random")
+		return d
+	}
 	for _, definition := range browseSorts {
 		if definition.Ordering == ordering && !definition.Profile {
 			return definition

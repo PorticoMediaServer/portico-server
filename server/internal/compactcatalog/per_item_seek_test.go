@@ -143,9 +143,12 @@ func TestPerItemDerivationStatementsSeek(t *testing.T) {
 				scanned := strings.Fields(line)[1]
 				// A CTE the statement defines is a bounded stream built by its
 				// own (checked) lines.
-				cte := regexp.MustCompile(`(?i)(WITH|,)\s*` + regexp.QuoteMeta(scanned) + `\s+AS\s*\(`).MatchString(query)
+				cte := regexp.MustCompile(`(?i)(WITH|,)\s*` + regexp.QuoteMeta(scanned) + `\s+AS\s*(?:MATERIALIZED\s+)?\(`).MatchString(query)
 				switch {
 				case cte:
+				case strings.HasPrefix(scanned, "(subquery-") && drivesFromBatch.MatchString(query):
+					// A bounded batch-derived UNION or DISTINCT result; every base-table
+					// access is still independently checked below.
 				case scanned == "k" && strings.Contains(query, "FROM (SELECT ? AS profile,? AS item) k"):
 					// Exactly one parameter-only row, with no catalogue scan.
 				case scanned == "j", scanned == "json_each", strings.HasPrefix(scanned, "CONSTANT"), strings.HasPrefix(line, "SCAN d ") && strings.Contains(query, "(VALUES"):
