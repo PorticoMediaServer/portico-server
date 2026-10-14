@@ -679,6 +679,7 @@ catalog_browse_metric_cursors.sequence
 catalog_browse_rows.added_text
 catalog_browse_rows.album_key
 catalog_browse_rows.artist_key
+catalog_browse_rows.availability_state
 catalog_browse_rows.available
 catalog_browse_rows.backdrop
 catalog_browse_rows.critic_key
@@ -706,6 +707,7 @@ catalog_browse_rows.year
 catalog_browse_rows_previous.added_text
 catalog_browse_rows_previous.album_key
 catalog_browse_rows_previous.artist_key
+catalog_browse_rows_previous.availability_state
 catalog_browse_rows_previous.available
 catalog_browse_rows_previous.backdrop
 catalog_browse_rows_previous.critic_key

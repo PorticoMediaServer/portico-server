@@ -1,5 +1,7 @@
 package catalog
 
+import "strings"
+
 // An arbitrary filtered range has no counted library positions. Resolve its
 // ordering once in SQL and hydrate just the page. Continuations keep seeking
 // their signed keys, including the personal-valued and random-rotation phase.
@@ -33,15 +35,17 @@ func (s *Service) filteredRangePage(p pageShape) ([]browseRow, error) {
 		}
 		order = `CASE WHEN order_key` + op + `? THEN 0 ELSE 1 END ASC,` + order
 	}
-	query := `WITH candidates AS MATERIALIZED (SELECT e.entity_id,e.sort_key,` + expression + ` AS order_key FROM catalog_browse_rows e WHERE ` + p.where + `),
- ranked AS MATERIALIZED (SELECT entity_id,order_key,row_number() OVER(ORDER BY ` + order + `)-1 AS position FROM candidates)
- SELECT ` + browseRowColumns + `,page.order_key FROM ranked page CROSS JOIN catalog_browse_rows e ON e.entity_id=page.entity_id
- CROSS JOIN catalog_entities ce ON ce.id=e.entity_id WHERE page.position>=? AND page.position<? ORDER BY page.position`
+	query := `WITH page AS MATERIALIZED (SELECT e.entity_id,e.sort_key,` + expression + ` AS order_key FROM catalog_browse_rows e WHERE ` + p.where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?)
+ SELECT ` + browseRowColumns + `,page.order_key FROM page CROSS JOIN catalog_browse_rows e ON e.entity_id=page.entity_id
+ CROSS JOIN catalog_entities ce ON ce.id=e.entity_id ORDER BY ` + strings.NewReplacer("order_key", "page.order_key", "entity_id", "page.entity_id", "sort_key", "page.sort_key").Replace(order)
 	args = append(args, p.args...)
 	if primary.ID == "random" {
 		args = append(args, int64(p.sorts[0].Seed))
 	}
-	args = append(args, p.start, p.start+p.limit)
+	args = append(args, p.limit, p.start)
+	if primary.ID == "random" {
+		args = append(args, int64(p.sorts[0].Seed))
+	}
 	rows, err := s.queryBrowseKeyRows(query, primary.ID, args...)
 	if err != nil {
 		return nil, err

@@ -1,0 +1,88 @@
+package catalog
+
+import (
+	"context"
+	"fmt"
+	"os"
+	"strings"
+	"testing"
+	"time"
+
+	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/dbwork"
+)
+
+func TestFilteredPagesHydrateOnlySelectedRows(t *testing.T) {
+	sizes := []int{256}
+	if os.Getenv("PORTICO_PERFORMANCE_TIER") == "release" {
+		sizes = []int{10000, 200000}
+	}
+	if os.Getenv("PORTICO_PERFORMANCE_TIER") == "deep" {
+		sizes = []int{10000, 200000, 1000000}
+	}
+	for _, n := range sizes {
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			c := catalogtest.Open(t)
+			lib := c.Library("m", "Movies", "movie", "/m")
+			item := c.Movie(lib, "/m/a.mkv", "Title", 2000)
+			c.Drain()
+			// Copies of the narrow browse row isolate selection from library seeding.
+			// Foreign keys are disabled only on this fixture's reserved writer.
+			ctx, conn, release, err := dbwork.ReserveWriterConn(context.Background(), c.DB, dbwork.ClassMaintenance)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = conn.ExecContext(ctx, `PRAGMA foreign_keys=OFF`)
+			for off := 0; err == nil && off < n; off += 10000 {
+				_, err = conn.ExecContext(ctx, `WITH RECURSIVE ids(i) AS(SELECT ? UNION ALL SELECT i+1 FROM ids WHERE i<?)
+ INSERT INTO catalog_entities(id,public_id,library_id,kind,title,sort_key,sort_head,year) SELECT i+1000000,randomblob(16),?,1,'Title','Title','T',2000 FROM ids`, off+1, min(n, off+10000), lib)
+				if err == nil {
+					_, err = conn.ExecContext(ctx, `INSERT INTO catalog_browse_rows(entity_id,library_id,kind,title,sort_key,head,year,rating_key,label_key,available,recent,backdrop,random_key,availability_state) SELECT id,library_id,kind,title,sort_key,'T',year,'','',1,0,0,id,'available' FROM catalog_entities WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))
+				}
+			}
+			_, restore := conn.ExecContext(ctx, `PRAGMA foreign_keys=ON`)
+			release()
+			if err != nil || restore != nil {
+				t.Fatalf("seed=%v restore=%v", err, restore)
+			}
+			c.Exec(`ANALYZE`)
+			start := min(n-40, 50000)
+			shape := pageShape{request: BrowseRequest{Library: "m", Query: &BrowseNode{Field: "availability", Operator: "equals", Value: "available"}}, sorts: []BrowseSortSelection{{Field: "title", Direction: "asc"}}, where: `e.library_id=? AND e.kind=1 AND e.availability_state='available'`, args: []any{lib}, start: start, limit: 40, total: n, kind: 1}
+			for _, field := range []string{"title", "random", "fileSize"} {
+				shape.sorts[0].Field = field
+				shape.sorts[0].Seed = 1000000
+				ctx, trace := dbwork.TraceQueryPlans(context.Background())
+				svc := New(c.DB).WithContext(ctx)
+				began := time.Now()
+				var rows []browseRow
+				err := dbwork.WithReadSnapshot(ctx, c.DB, func(ctx context.Context) error {
+					svc = svc.WithContext(ctx)
+					var e error
+					if field == "random" {
+						d, _ := browseSortByID(field)
+						rows, e = svc.seededRandomRange(shape, d, false)
+					} else {
+						rows, e = svc.filteredRangePage(shape)
+					}
+					return e
+				})
+				elapsed := time.Since(began)
+				if err != nil || len(rows) != 40 || rows[0].entity == item.ID {
+					t.Fatalf("%s rows=%d err=%v", field, len(rows), err)
+				}
+				for _, q := range trace() {
+					if strings.Contains(q, "WITH page AS MATERIALIZED") {
+						if strings.Contains(q, "row_number()") || !strings.Contains(q, "LIMIT ? OFFSET ?") {
+							t.Fatalf("unbounded page: %s", q)
+						}
+						t.Logf("%s query=%s", field, q)
+					}
+				}
+				t.Logf("rows=%d sort=%s deep=%d elapsed=%s", n, field, start, elapsed)
+				if elapsed > time.Second {
+					t.Fatalf("deep page took %s", elapsed)
+				}
+			}
+		})
+	}
+}

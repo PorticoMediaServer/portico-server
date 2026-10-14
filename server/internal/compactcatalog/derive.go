@@ -608,21 +608,25 @@ func (w *Worker) drainDomain(ctx context.Context, tx *sql.Tx, domain, rebuilding
 	for _, k := range keys {
 		seen[k.ID] = k.Revision
 	}
-	pairs := make([][2]int64, 0, len(done))
 	for _, id := range done {
 		if revision, ok := seen[id]; ok {
-			pairs = append(pairs, [2]int64{id, revision})
-		}
-	}
-	if len(pairs) > 0 {
-		if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_derivation_failures WHERE domain=? AND entity_id IN(SELECT json_extract(value,'$[0]') FROM json_each(?))`, domain, mustJSON(pairs)); err != nil {
-			return 0, single, backfilled, err
-		}
-		if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_dirty WHERE domain=? AND (entity_id,revision) IN(SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') FROM json_each(?))`, domain, mustJSON(pairs)); err != nil {
-			return 0, single, backfilled, err
+			if err := acknowledgeDerived(ctx, tx, domain, id, revision); err != nil {
+				return 0, single, backfilled, err
+			}
 		}
 	}
 	return len(keys), single, backfilled, nil
+}
+
+// Acknowledge one primary key at a time. A tuple IN over JSON can select only
+// the domain prefix and walk its whole queue; a batch must cost its own keys.
+// The revision guard keeps an edit queued when derivation touched it again.
+func acknowledgeDerived(ctx context.Context, tx *sql.Tx, domain int, id, revision int64) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_derivation_failures WHERE domain=? AND entity_id=?`, domain, id); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, `DELETE FROM catalog_dirty WHERE domain=? AND entity_id=? AND revision=?`, domain, id, revision)
+	return err
 }
 
 // steps are the derived workers that keep their own job tables (fed by

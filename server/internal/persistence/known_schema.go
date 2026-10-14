@@ -63,6 +63,7 @@ index catalog_albums_local_key
 index catalog_artists_local_key
 index catalog_asset_issues_asset
 index catalog_asset_links_asset
+index catalog_asset_links_available_seek
 index catalog_asset_links_order
 index catalog_book_context_author
 index catalog_book_context_series
@@ -88,6 +89,8 @@ index catalog_browse_album_key
 index catalog_browse_album_key_previous
 index catalog_browse_artist_key
 index catalog_browse_artist_key_previous
+index catalog_browse_availability
+index catalog_browse_availability_previous
 index catalog_browse_blocks_full
 index catalog_browse_blocks_full_previous
 index catalog_browse_counted_library
