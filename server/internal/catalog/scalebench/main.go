@@ -70,6 +70,7 @@ func run() (runErr error) {
 	bulkFacts := flag.Bool("bulk-facts", false, "seed reference facts with set-based inserts, production triggers enabled")
 	factsOnly := flag.Bool("facts-only", false, "seed facts without deriving; use -reuse -exercise to measure the empty rebuild")
 	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
+	resumeRemoval := flag.Bool("resume-removal", false, "finish removal of the already retired synthetic Movies library")
 	flag.Parse()
 	abs, err := filepath.Abs(*dir)
 	if err != nil || *dir == "" || !strings.Contains(abs+string(os.PathSeparator), string(os.PathSeparator)+".scratch"+string(os.PathSeparator)) || *n < 100 || *samples < 1 || *idle <= 0 {
@@ -157,6 +158,21 @@ func run() (runErr error) {
 		return os.WriteFile(filepath.Join(abs, "seed-report.json"), append(raw, '\n'), 0600)
 	}
 	s := catalog.New(db)
+	if *resumeRemoval {
+		if !*reuse {
+			return errors.New("resume-removal requires reuse")
+		}
+		removed, err := exerciseRemoval(db, s)
+		r.Routes = append(r.Routes, removed)
+		if err != nil {
+			return err
+		}
+		raw, err := json.MarshalIndent(r, "", "  ")
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(abs, "removal-report.json"), append(raw, '\n'), 0600)
+	}
 	if *exercise || *matrixOnly || *scenariosOnly {
 		var rows int
 		if err = db.QueryRow(`SELECT count(*) FROM catalog_browse_rows`).Scan(&rows); err != nil {

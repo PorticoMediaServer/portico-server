@@ -554,12 +554,19 @@ func exerciseRemoval(db *sql.DB, s *catalog.Service) (routeResult, error) {
 	if err := scheduler.Register(adapter); err != nil {
 		return r, err
 	}
-	err := s.RemoveLibrary(ctx, "movies", "Movies", revision, func(*sql.Tx) error { return nil }, func(ctx context.Context, tx *sql.Tx, kind, resource string) error {
-		_, err := scheduler.EnqueueDomainTx(ctx, tx, kind, resource, "fixture-owner")
-		return err
-	})
+	var retired bool
+	err := db.QueryRow(`SELECT retired FROM catalog_libraries WHERE library_id='movies'`).Scan(&retired)
 	if err != nil {
 		return r, err
+	}
+	if !retired {
+		err = s.RemoveLibrary(ctx, "movies", "Movies", revision, func(*sql.Tx) error { return nil }, func(ctx context.Context, tx *sql.Tx, kind, resource string) error {
+			_, err := scheduler.EnqueueDomainTx(ctx, tx, kind, resource, "fixture-owner")
+			return err
+		})
+		if err != nil {
+			return r, err
+		}
 	}
 	for {
 		step, cancel := context.WithTimeout(ctx, time.Second)
