@@ -145,12 +145,36 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 	if err = json.Unmarshal(ownerDetail.Body.Bytes(), &detail); err != nil || detail.Personal.Favorite {
 		t.Fatal("profile preference leaked", detail, err)
 	}
-	// Home is read from its one composed route; the older content view of it is gone.
-	emptyResponse := request("GET", "/v1/home?limit=12", reader.AccessToken, "")
-	var emptyHome catalog.HomeDocument
-	if err = json.Unmarshal(emptyResponse.Body.Bytes(), &emptyHome); err != nil || emptyResponse.Code != 200 {
-		t.Fatal("Home without personalized activity", emptyResponse.Code, emptyResponse.Body.String(), err)
+	// Home is read as every client reads it: the manifest from its one route (the older content
+	// view of it is gone), then each deferred shelf from its own endpoint.
+	composeHome := func(token string, manifest []byte) catalog.HomeDocument {
+		t.Helper()
+		var home catalog.HomeDocument
+		if err := json.Unmarshal(manifest, &home); err != nil {
+			t.Fatal("Home manifest", string(manifest), err)
+		}
+		for i, row := range home.Rows {
+			if !row.Deferred {
+				continue
+			}
+			w := request("GET", row.Endpoint+"?limit=12", token, "")
+			var shelf catalog.HomeRow
+			if err := json.Unmarshal(w.Body.Bytes(), &shelf); err != nil || w.Code != 200 {
+				t.Fatal("Home shelf", row.ID, w.Code, w.Body.String(), err)
+			}
+			// A family's shelf answers with its member rows; their entries are what it shows.
+			for _, child := range shelf.Children {
+				shelf.Entries = append(shelf.Entries, child.Entries...)
+			}
+			home.Rows[i] = shelf
+		}
+		return home
 	}
+	emptyResponse := request("GET", "/v1/home?limit=12", reader.AccessToken, "")
+	if emptyResponse.Code != 200 {
+		t.Fatal("Home without personalized activity", emptyResponse.Code, emptyResponse.Body.String())
+	}
+	emptyHome := composeHome(reader.AccessToken, emptyResponse.Body.Bytes())
 	// With nothing watched, the only rows with anything in them are what was
 	// added lately, and all they hold is the one film this member may see.
 	filled := 0
@@ -200,6 +224,7 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 		if err := json.Unmarshal(w.Body.Bytes(), &result); err != nil {
 			t.Fatal(err)
 		}
+		result = composeHome(token, w.Body.Bytes())
 		said := result
 		said.GeneratedAt = ""
 		wire, err := json.Marshal(said)
