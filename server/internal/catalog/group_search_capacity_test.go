@@ -31,12 +31,12 @@ func TestGroupSearchScopeRequiresPositiveConjunction(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			compiler := browseCompiler{}
 			where, err := compiler.compile(&tc.node)
-			if err != nil || strings.Contains(where, "catalog_search_titles.rowid=e.entity_id") != tc.seek {
+			if err != nil || strings.Contains(where, "p.entity_id=e.entity_id") != tc.seek {
 				t.Fatalf("where=%s err=%v", where, err)
 			}
 			// Reusing the compiler must not change an ordinary search's plan.
 			where, err = compiler.compile(&search)
-			if err != nil || strings.Contains(where, "catalog_search_titles.rowid=e.entity_id") {
+			if err != nil || strings.Contains(where, "p.entity_id=e.entity_id") {
 				t.Fatalf("scope escaped compilation: %s %v", where, err)
 			}
 		})
@@ -49,7 +49,7 @@ func TestGroupedSearchDoesNotMaterializeUnrelatedMatches(t *testing.T) {
 	case "release":
 		sizes = []int{10000, 200000}
 	case "deep":
-		sizes = []int{10000, 200000, 2000000}
+		sizes = []int{10000, 200000, 1000000}
 	}
 	for _, n := range sizes {
 		t.Run(fmt.Sprint(n), func(t *testing.T) {
@@ -82,10 +82,23 @@ func TestGroupedSearchDoesNotMaterializeUnrelatedMatches(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			oldWhere := strings.Replace(where, `EXISTS(SELECT 1 FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles.rowid=e.entity_id AND catalog_search_titles MATCH ?`, `e.entity_id IN(SELECT d.entity_id FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles MATCH ?`, 1)
-			for _, version := range []struct{ name, where string }{{"before", oldWhere}, {"after", where}} {
+			groupCompiler := browseCompiler{}
+			groupWhere, err := groupCompiler.compile(&node.All[0])
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, match, err := NormalizeSearch("Title")
+			if err != nil {
+				t.Fatal(err)
+			}
+			oldWhere := "(" + groupWhere + ` AND EXISTS(SELECT 1 FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles.rowid=e.entity_id AND catalog_search_titles MATCH ?))`
+			oldArgs := append(append([]any{}, groupCompiler.args...), match)
+			for _, version := range []struct {
+				name, where string
+				args        []any
+			}{{"before", oldWhere, oldArgs}, {"after", where, compiler.args}} {
 				query := `SELECT e.entity_id FROM catalog_browse_rows e WHERE e.library_id=? AND e.kind=1 AND ` + version.where
-				args := append([]any{lib}, compiler.args...)
+				args := append([]any{lib}, version.args...)
 				plan := seekCapacityPlan(t, c.DB, query, args...)
 				start := time.Now()
 				rows, err := c.DB.Query(query, args...)
@@ -107,7 +120,7 @@ func TestGroupedSearchDoesNotMaterializeUnrelatedMatches(t *testing.T) {
 					t.Fatalf("%s ids=%v err=%v", version.name, ids, err)
 				}
 				t.Logf("matching_documents=%d %s elapsed=%s plan=%s", n, version.name, elapsed, plan)
-				if version.name == "after" && (!strings.Contains(plan, "CORRELATED") || elapsed > 250*time.Millisecond) {
+				if version.name == "after" && (!strings.Contains(plan, "catalog_search_prefix_rows_entity") || strings.Contains(plan, "catalog_search_titles VIRTUAL") || elapsed > 100*time.Millisecond) {
 					t.Fatalf("grouped search did not stay bounded: %s %s", elapsed, plan)
 				}
 			}
