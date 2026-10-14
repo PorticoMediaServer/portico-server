@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sort"
 	"strconv"
 )
 
@@ -21,8 +22,10 @@ import (
 // Shows grid filters. A show's values are its own genres and year, and whatever
 // any of its episodes says about the file or the title (resolution, network,
 // studio…), the same facts a filter on the show reaches through its episodes.
-// An episode's change is therefore its show's change (Drain, and the episode
-// triggers of migration 0008).
+// An episode's change reaches its show through what the episode says about
+// it (catalog_show_facet_episodes): only a change to that moves the show's
+// value counts and derives the show again, and the show reads the counts,
+// never its episodes (Drain, and the episode triggers of the baseline).
 
 // DomainFacetCounts keeps catalog_facet_members and catalog_facet_counts.
 const DomainFacetCounts = 33
@@ -42,23 +45,120 @@ var facetValueSQL = map[string]string{
 // FacetAttributeFields are the attribute fields counted as facets.
 var FacetAttributeFields = []string{"contentRating", "audioLanguage", "studio", "network", "tag", "label", "series"}
 
-// showFacetValueSQL reads one show's values of each field (?1 is the show):
-// its own genres and year, and the union of its episodes' file facts.
-var showFacetValueSQL = map[string]string{
-	"genre":  facetValueSQL["genre"],
-	"decade": facetValueSQL["decade"],
-	"year":   facetValueSQL["year"],
-	"resolution": `SELECT DISTINCT CASE WHEN ast.height>=2000 THEN '4k' WHEN ast.height>=1000 THEN '1080p' WHEN ast.height>=700 THEN '720p' ELSE 'sd' END
-	 FROM catalog_episodes ep CROSS JOIN catalog_asset_links ia ON ia.entity_id=ep.entity_id CROSS JOIN catalog_assets ast ON ast.id=ia.asset_id WHERE ep.show_id=?1`,
-	"collection": `SELECT CAST(collection_id AS TEXT) FROM catalog_collection_members WHERE item_id=?1
-	 UNION SELECT CAST(cm.collection_id AS TEXT) FROM catalog_episodes ep CROSS JOIN catalog_collection_members cm ON cm.item_id=ep.entity_id WHERE ep.show_id=?1`,
+// showOwnFacetSQL reads a show's own values (?1 is the show): its genres,
+// year and collections. Everything its episodes say about it (their files'
+// resolution, their collections, their descriptive attributes) is read from
+// catalog_show_facet_values, which episodeFacetSourcesSQL keeps.
+var showOwnFacetSQL = map[string]string{
+	"genre":      facetValueSQL["genre"],
+	"decade":     facetValueSQL["decade"],
+	"year":       facetValueSQL["year"],
+	"collection": facetValueSQL["collection"],
 }
 
-const showFacetAttributeSQL = `SELECT DISTINCT ca.source_value FROM catalog_episodes ep CROSS JOIN catalog_item_attribute_edges ca ON ca.item_id=ep.entity_id
- CROSS JOIN catalog_attribute_terms t ON t.id=ca.term_id CROSS JOIN catalog_attribute_fields f ON f.id=t.field_id AND f.field=?2 WHERE ep.show_id=?1`
+// episodeFacetSourcesSQL is what one episode (?1) says about its show, as
+// (field, value) pairs; ?2 is the descriptive attribute fields.
+const episodeFacetSourcesSQL = `SELECT 'resolution',CASE WHEN ast.height>=2000 THEN '4k' WHEN ast.height>=1000 THEN '1080p' WHEN ast.height>=700 THEN '720p' ELSE 'sd' END
+ FROM catalog_asset_links ia JOIN catalog_assets ast ON ast.id=ia.asset_id WHERE ia.entity_id=?1
+ UNION SELECT 'collection',CAST(collection_id AS TEXT) FROM catalog_collection_members WHERE item_id=?1
+ UNION SELECT f.field,ca.source_value FROM catalog_item_attribute_edges ca CROSS JOIN catalog_attribute_terms t ON t.id=ca.term_id
+ CROSS JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE ca.item_id=?1 AND f.field IN(SELECT value FROM json_each(?2))`
 
-const facetAttributeSQL = `SELECT ca.source_value FROM catalog_item_attribute_edges ca JOIN catalog_attribute_terms t ON t.id=ca.term_id
- JOIN catalog_attribute_fields f ON f.id=t.field_id AND f.field=?2 WHERE ca.item_id=?1`
+// deriveEpisodeFacetSources brings what one episode says about its show up to
+// date, moving its show's value counts by the difference. It returns the
+// shows whose values changed (the old and the new one when it moved). Its
+// cost is the episode's own facts, whatever the size of the show.
+func deriveEpisodeFacetSources(ctx context.Context, tx *sql.Tx, id int64) ([]int64, error) {
+	type source struct {
+		show int64
+		k    facetKey
+	}
+	old := map[source]bool{}
+	rows, err := tx.QueryContext(ctx, `SELECT show_id,field,value FROM catalog_show_facet_episodes WHERE episode_id=?`, id)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var s source
+		if err = rows.Scan(&s.show, &s.k.field, &s.k.value); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		old[s] = true
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	next := map[source]bool{}
+	var show int64
+	err = tx.QueryRowContext(ctx, `SELECT show_id FROM catalog_episodes WHERE entity_id=?`, id).Scan(&show)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+	case err != nil:
+		return nil, err
+	default:
+		fields, _ := json.Marshal(FacetAttributeFields)
+		rows, err := tx.QueryContext(ctx, episodeFacetSourcesSQL, id, string(fields))
+		if err != nil {
+			return nil, err
+		}
+		for rows.Next() {
+			var field string
+			var value sql.NullString
+			if err = rows.Scan(&field, &value); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			if value.Valid && value.String != "" {
+				next[source{show, facetKey{field, value.String}}] = true
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+	}
+	changed := map[int64]bool{}
+	for s := range old {
+		if next[s] {
+			continue
+		}
+		changed[s.show] = true
+		if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_show_facet_episodes WHERE episode_id=? AND field=? AND value=?`, id, s.k.field, s.k.value); err != nil {
+			return nil, err
+		}
+		// The last episode saying a value removes it; otherwise one fewer says it.
+		res, err := tx.ExecContext(ctx, `DELETE FROM catalog_show_facet_values WHERE show_id=? AND field=? AND value=? AND total=1`, s.show, s.k.field, s.k.value)
+		if err != nil {
+			return nil, err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			if _, err = tx.ExecContext(ctx, `UPDATE catalog_show_facet_values SET total=total-1 WHERE show_id=? AND field=? AND value=?`, s.show, s.k.field, s.k.value); err != nil {
+				return nil, err
+			}
+		}
+	}
+	for s := range next {
+		if old[s] {
+			continue
+		}
+		changed[s.show] = true
+		if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_show_facet_episodes(episode_id,show_id,field,value) VALUES(?,?,?,?)`, id, s.show, s.k.field, s.k.value); err != nil {
+			return nil, err
+		}
+		if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_show_facet_values(show_id,field,value,total) VALUES(?,?,?,1) ON CONFLICT(show_id,field,value) DO UPDATE SET total=total+1`, s.show, s.k.field, s.k.value); err != nil {
+			return nil, err
+		}
+	}
+	out := make([]int64, 0, len(changed))
+	for show := range changed {
+		out = append(out, show)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out, nil
+}
 
 type facetKey struct{ field, value string }
 
@@ -117,18 +217,18 @@ func deriveFacetCounts(ctx context.Context, tx *sql.Tx, id int64) error {
 		}
 		values, subject := facetValueSQL, item.Int64
 		if show {
-			values, subject = showFacetValueSQL, id
+			values, subject = showOwnFacetSQL, id
 		}
 		for field, query := range values {
 			if err = read(field, query, subject); err != nil {
 				return err
 			}
 		}
-		// Resolve descriptive fields together. A show must not walk its whole
-		// episode membership separately for each of the seven attribute fields.
+		// Resolve descriptive fields together. A show reads what its episodes
+		// say from their maintained value counts, never its episodes.
 		attributeQuery := `SELECT DISTINCT f.field,ca.source_value FROM catalog_item_attribute_edges ca CROSS JOIN catalog_attribute_terms t ON t.id=ca.term_id CROSS JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE ca.item_id=?1 AND f.field IN(SELECT value FROM json_each(?2))`
 		if show {
-			attributeQuery = `SELECT DISTINCT f.field,ca.source_value FROM catalog_episodes ep CROSS JOIN catalog_item_attribute_edges ca ON ca.item_id=ep.entity_id CROSS JOIN catalog_attribute_terms t ON t.id=ca.term_id CROSS JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE ep.show_id=?1 AND f.field IN(SELECT value FROM json_each(?2))`
+			attributeQuery = `SELECT field,value FROM catalog_show_facet_values WHERE show_id=?1 AND ?2 IS NOT NULL`
 		}
 		fields, _ := json.Marshal(FacetAttributeFields)
 		rows, err := tx.QueryContext(ctx, attributeQuery, subject, string(fields))
@@ -198,25 +298,27 @@ func adjustFacetCount(ctx context.Context, tx *sql.Tx, at facetPlace, k facetKey
 
 func init() {
 	Register(DomainFacetCounts, Derivation{
-		Version: 4,
+		Version: 5,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			done := make([]int64, 0, len(keys))
 			derived := make(map[int64]bool, len(keys))
 			// An episode's facts are its show's facets: each show the batch
 			// touches is derived once, however many of its episodes changed.
 			shows := []int64{}
+			// Episodes' contributions first, so a show in the same batch reads
+			// its counts after them.
+			for _, key := range keys {
+				changed, err := deriveEpisodeFacetSources(ctx, tx, key.ID)
+				if err != nil {
+					return done, err
+				}
+				shows = append(shows, changed...)
+			}
 			for _, key := range keys {
 				if err := deriveFacetCounts(ctx, tx, key.ID); err != nil {
 					return done, err
 				}
 				derived[key.ID] = true
-				var show sql.NullInt64
-				if err := tx.QueryRowContext(ctx, `SELECT show_id FROM catalog_episodes WHERE entity_id=?`, key.ID).Scan(&show); err != nil && !errors.Is(err, sql.ErrNoRows) {
-					return done, err
-				}
-				if show.Valid {
-					shows = append(shows, show.Int64)
-				}
 				done = append(done, key.ID)
 			}
 			for _, show := range shows {

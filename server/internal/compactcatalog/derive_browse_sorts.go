@@ -7,7 +7,9 @@ import (
 )
 
 // Sort facts are published with the browse row, and refreshed by the bounded
-// item-to-container metric fanout when a member's facts change.
+// item-to-container metric fanout when a member's facts change. Every fact is
+// a seek: a container's availability reads its maintained member-link
+// counters (catalog_browse_member_links), never its members.
 func refreshBrowseSortFacts(ctx context.Context, tx *sql.Tx, entity int64) error {
 	var public []byte
 	if err := tx.QueryRowContext(ctx, `SELECT public_id FROM catalog_entities WHERE id=?`, entity).Scan(&public); err != nil {
@@ -29,8 +31,8 @@ func refreshBrowseSortFacts(ctx context.Context, tx *sql.Tx, entity int64) error
  COALESCE((SELECT file_size FROM catalog_browse_member_metrics WHERE entity_id=e.entity_id ORDER BY file_size DESC LIMIT 1),0) AS file_size,
  COALESCE((SELECT resolution FROM catalog_browse_member_metrics WHERE entity_id=e.entity_id ORDER BY resolution DESC LIMIT 1),0) AS resolution_key,
  ? AS random_key,
- CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_browse_memberships bm JOIN catalog_asset_links a INDEXED BY catalog_asset_links_available_seek ON a.entity_id=bm.item_id AND a.available=1 WHERE bm.entity_id=e.entity_id) THEN 'unavailable'
- WHEN EXISTS(SELECT 1 FROM catalog_browse_memberships bm JOIN catalog_asset_links a INDEXED BY catalog_asset_links_available_seek ON a.entity_id=bm.item_id AND a.available=0 WHERE bm.entity_id=e.entity_id) THEN 'partial' ELSE 'available' END AS availability_state FROM catalog_browse_rows e WHERE e.entity_id=?)
+ CASE WHEN COALESCE((SELECT available FROM catalog_browse_member_links WHERE entity_id=e.entity_id),0)<=0 THEN 'unavailable'
+ WHEN COALESCE((SELECT unavailable FROM catalog_browse_member_links WHERE entity_id=e.entity_id),0)>0 THEN 'partial' ELSE 'available' END AS availability_state FROM catalog_browse_rows e WHERE e.entity_id=?)
  UPDATE catalog_browse_rows AS current SET (release_key,latest_aired_key,critic_key,episode_count,album_key,artist_key,track_key,file_size,resolution_key,random_key,availability_state)=(SELECT release_key,latest_aired_key,critic_key,episode_count,album_key,artist_key,track_key,file_size,resolution_key,random_key,availability_state FROM next)
  WHERE current.entity_id=(SELECT entity_id FROM next) AND (current.release_key,current.latest_aired_key,current.critic_key,current.episode_count,current.album_key,current.artist_key,current.track_key,current.file_size,current.resolution_key,current.random_key,current.availability_state) IS NOT (SELECT release_key,latest_aired_key,critic_key,episode_count,album_key,artist_key,track_key,file_size,resolution_key,random_key,availability_state FROM next)`, int64(hash.Sum32()), entity)
 	return err

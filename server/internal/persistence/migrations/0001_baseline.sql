@@ -856,6 +856,23 @@ CREATE TABLE catalog_facet_counts(
  label_key TEXT NOT NULL,
  total INTEGER NOT NULL CHECK(total>=0),
  PRIMARY KEY(library_id,field,value,rating_key,label_key)) WITHOUT ROWID, STRICT;
+-- What each episode says about its show's facets (its files' resolution, its
+-- collections, its descriptive attributes), and per show how many episodes
+-- say each value: a show's facets are read from its value counts, so one
+-- episode's change costs that episode, never a pass over the whole show.
+-- No cascade: an episode's rows stay until its derivation takes them back.
+CREATE TABLE catalog_show_facet_episodes(
+ episode_id INTEGER NOT NULL,
+ show_id INTEGER NOT NULL,
+ field TEXT NOT NULL,
+ value TEXT NOT NULL,
+ PRIMARY KEY(episode_id,field,value)) WITHOUT ROWID, STRICT;
+CREATE TABLE catalog_show_facet_values(
+ show_id INTEGER NOT NULL,
+ field TEXT NOT NULL,
+ value TEXT NOT NULL,
+ total INTEGER NOT NULL CHECK(total>0),
+ PRIMARY KEY(show_id,field,value)) WITHOUT ROWID, STRICT;
 
 -- A show's and a season's earliest added episode, by index: one row per dated
 -- episode under its show and its season, kept by triggers (feeds.sql). A
@@ -6629,6 +6646,51 @@ CREATE TRIGGER catalog_browse_episode_move AFTER UPDATE OF entity_id,source ON c
  UPDATE catalog_browse_episode_counts SET total=max(0,total-1) WHERE entity_id=OLD.entity_id AND OLD.source IN(1,2);
  INSERT INTO catalog_browse_episode_counts(entity_id,total) SELECT NEW.entity_id,1 WHERE NEW.source IN(1,2) ON CONFLICT(entity_id) DO UPDATE SET total=total+1;
 END;
+-- Per browse row, how many (member, file link) pairs are available and how
+-- many are not, so a container's availability (none, some, all of its
+-- members' files) is two counter reads, never a pass over a show's episodes
+-- or an artist's songs. Kept by triggers on memberships and file links; a
+-- member in a container by two routes counts twice, and only zero matters.
+CREATE TABLE catalog_browse_member_links(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ available INTEGER NOT NULL,
+ unavailable INTEGER NOT NULL) STRICT;
+CREATE TRIGGER catalog_browse_member_links_join AFTER INSERT ON catalog_browse_memberships BEGIN
+ INSERT INTO catalog_browse_member_links(entity_id,available,unavailable)
+  SELECT NEW.entity_id,COALESCE(sum(l.available=1),0),COALESCE(sum(l.available=0),0) FROM catalog_asset_links l WHERE l.entity_id=NEW.item_id
+  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable;
+END;
+CREATE TRIGGER catalog_browse_member_links_leave AFTER DELETE ON catalog_browse_memberships BEGIN
+ UPDATE catalog_browse_member_links SET available=available-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=1),
+  unavailable=unavailable-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=0) WHERE entity_id=OLD.entity_id;
+END;
+CREATE TRIGGER catalog_browse_member_links_move AFTER UPDATE OF entity_id,item_id ON catalog_browse_memberships WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.item_id IS NOT NEW.item_id BEGIN
+ UPDATE catalog_browse_member_links SET available=available-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=1),
+  unavailable=unavailable-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=0) WHERE entity_id=OLD.entity_id;
+ INSERT INTO catalog_browse_member_links(entity_id,available,unavailable)
+  SELECT NEW.entity_id,COALESCE(sum(l.available=1),0),COALESCE(sum(l.available=0),0) FROM catalog_asset_links l WHERE l.entity_id=NEW.item_id
+  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable;
+END;
+CREATE TRIGGER catalog_browse_member_links_link_insert AFTER INSERT ON catalog_asset_links BEGIN
+ INSERT INTO catalog_browse_member_links(entity_id,available,unavailable)
+  SELECT m.entity_id,count(*)*(NEW.available=1),count(*)*(NEW.available=0) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=NEW.entity_id GROUP BY m.entity_id
+  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable;
+END;
+CREATE TRIGGER catalog_browse_member_links_link_delete AFTER DELETE ON catalog_asset_links BEGIN
+ UPDATE catalog_browse_member_links SET
+  available=available-(OLD.available=1)*(SELECT count(*) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=OLD.entity_id AND m.entity_id=catalog_browse_member_links.entity_id),
+  unavailable=unavailable-(OLD.available=0)*(SELECT count(*) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=OLD.entity_id AND m.entity_id=catalog_browse_member_links.entity_id)
+  WHERE entity_id IN(SELECT entity_id FROM catalog_browse_memberships INDEXED BY catalog_browse_membership_item WHERE item_id=OLD.entity_id);
+END;
+CREATE TRIGGER catalog_browse_member_links_link_update AFTER UPDATE OF entity_id,available ON catalog_asset_links WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.available IS NOT NEW.available BEGIN
+ UPDATE catalog_browse_member_links SET
+  available=available-(OLD.available=1)*(SELECT count(*) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=OLD.entity_id AND m.entity_id=catalog_browse_member_links.entity_id),
+  unavailable=unavailable-(OLD.available=0)*(SELECT count(*) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=OLD.entity_id AND m.entity_id=catalog_browse_member_links.entity_id)
+  WHERE entity_id IN(SELECT entity_id FROM catalog_browse_memberships INDEXED BY catalog_browse_membership_item WHERE item_id=OLD.entity_id);
+ INSERT INTO catalog_browse_member_links(entity_id,available,unavailable)
+  SELECT m.entity_id,count(*)*(NEW.available=1),count(*)*(NEW.available=0) FROM catalog_browse_memberships m INDEXED BY catalog_browse_membership_item WHERE m.item_id=NEW.entity_id GROUP BY m.entity_id
+  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable;
+END;
 CREATE TRIGGER catalog_browse_sort_parent_title AFTER UPDATE OF title,sort_key ON catalog_entities WHEN NEW.kind IN(5,6) AND (OLD.title IS NOT NEW.title OR OLD.sort_key IS NOT NEW.sort_key) BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(34,NEW.id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
@@ -6689,11 +6751,13 @@ END;
 
 CREATE TRIGGER catalog_facet_episode_delete AFTER DELETE ON catalog_episodes BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 
 CREATE TRIGGER catalog_facet_episode_move AFTER UPDATE OF show_id ON catalog_episodes WHEN OLD.show_id IS NOT NEW.show_id BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,OLD.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
  INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.show_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(33,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 
 CREATE INDEX rec_profile_signals_positive_recent ON rec_profile_signals(profile_id,at) WHERE weight>0;
