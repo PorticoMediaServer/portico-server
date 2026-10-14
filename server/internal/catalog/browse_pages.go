@@ -25,8 +25,8 @@ import (
 // backwards, and one block set serves both directions.
 //
 // A posted query has no position blocks: continuation pages seek to their
-// saved keys. A direct filtered range ranks the matching order once; its total
-// is counted once per revision and carried by its cursor.
+// saved keys. A direct filtered range selects narrow identities with a bounded
+// limit before hydration; its total is carried by its cursor.
 
 // browseRowColumns selects a browseRow over e (catalog_browse_rows) and ce.
 var browseRowColumns = `pid(ce.public_id),e.entity_id,` + compactBrowseKindSQL("e.kind") + `,e.title,e.year,COALESCE(e.added_text,''),e.sort_key,COALESCE(e.duration_max,0),COALESCE(e.rating_max,0)`
@@ -93,6 +93,9 @@ func (p pageShape) positional() bool {
 
 // browsePage selects the page's rows.
 func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
+	if p.summary.exact && p.total == 0 {
+		return []browseRow{}, nil
+	}
 	primary, desc := p.primary()
 	if p.request.Query != nil && p.start > 0 && len(p.seekKeys) == 0 {
 		return s.filteredRangePage(p)
@@ -126,6 +129,9 @@ func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 		return s.personalPage(p, primary, desc)
 	}
 	if p.start > 0 && len(p.seekKeys) == 0 {
+		if p.request.Restrictions.Active() && p.summary.classKey == "" && !primary.Profile {
+			return s.filteredRangePage(p)
+		}
 		return s.walkIndexedRange(p, func(p pageShape) ([]browseRow, error) { return s.browsePage(p) })
 	}
 	args := append(append(append([]any{}, p.args...), p.orderArgs...), p.limit)
@@ -224,6 +230,10 @@ func (s *Service) blockRank(scope blockScope, ordering int, value any, entity in
 }
 
 func sortForOrdering(ordering int) browseSort {
+	if ordering == compactcatalog.OrderRandom {
+		d, _ := browseSortByID("random")
+		return d
+	}
 	for _, definition := range browseSorts {
 		if definition.Ordering == ordering && !definition.Profile {
 			return definition

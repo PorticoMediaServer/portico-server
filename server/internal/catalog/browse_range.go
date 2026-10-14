@@ -1,5 +1,7 @@
 package catalog
 
+import "strings"
+
 // An arbitrary filtered range has no counted library positions. Resolve its
 // ordering once in SQL and hydrate just the page. Continuations keep seeking
 // their signed keys, including the personal-valued and random-rotation phase.
@@ -33,15 +35,23 @@ func (s *Service) filteredRangePage(p pageShape) ([]browseRow, error) {
 		}
 		order = `CASE WHEN order_key` + op + `? THEN 0 ELSE 1 END ASC,` + order
 	}
-	query := `WITH candidates AS MATERIALIZED (SELECT e.entity_id,e.sort_key,` + expression + ` AS order_key FROM catalog_browse_rows e WHERE ` + p.where + `),
- ranked AS MATERIALIZED (SELECT entity_id,order_key,row_number() OVER(ORDER BY ` + order + `)-1 AS position FROM candidates)
- SELECT ` + browseRowColumns + `,page.order_key FROM ranked page CROSS JOIN catalog_browse_rows e ON e.entity_id=page.entity_id
- CROSS JOIN catalog_entities ce ON ce.id=e.entity_id WHERE page.position>=? AND page.position<? ORDER BY page.position`
-	args = append(args, p.args...)
+	from, where, scopeArgs := "catalog_browse_rows e", p.where, p.args
+	if p.request.Query == nil && p.summary.classKey != "" && !primary.Profile {
+		from = `compact_visibility_rows v CROSS JOIN catalog_browse_rows e ON e.entity_id=v.entity_id`
+		where = `v.class_id=? AND v.generation=? AND v.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND v.kind=? AND (` + where + `)`
+		scopeArgs = append([]any{p.summary.classID, p.summary.generation, p.request.Library, p.kind}, scopeArgs...)
+	}
+	query := `WITH page AS MATERIALIZED (SELECT e.entity_id AS entity_id,e.sort_key AS sort_key,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?)
+ SELECT ` + browseRowColumns + `,page.order_key FROM page CROSS JOIN catalog_browse_rows e ON e.entity_id=page.entity_id
+ CROSS JOIN catalog_entities ce ON ce.id=e.entity_id ORDER BY ` + strings.NewReplacer("order_key", "page.order_key", "entity_id", "page.entity_id", "sort_key", "page.sort_key").Replace(order)
+	args = append(args, scopeArgs...)
 	if primary.ID == "random" {
 		args = append(args, int64(p.sorts[0].Seed))
 	}
-	args = append(args, p.start, p.start+p.limit)
+	args = append(args, p.limit, p.start)
+	if primary.ID == "random" {
+		args = append(args, int64(p.sorts[0].Seed))
+	}
 	rows, err := s.queryBrowseKeyRows(query, primary.ID, args...)
 	if err != nil {
 		return nil, err

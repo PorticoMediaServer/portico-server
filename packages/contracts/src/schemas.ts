@@ -101294,6 +101294,9 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "totalCountExact": {
+              "type": "boolean"
             }
           },
           "required": [
@@ -101305,6 +101308,7 @@ export const schemas = {
             "errorCode",
             "items",
             "totalCount",
+            "totalCountExact",
             "hasMore",
             "nextCursor"
           ],

@@ -153,8 +153,8 @@ export function SearchScreen() {
   };
   /* ArrowDown from the field moves into the first result. */
   const intoResults = () => (results.current?.querySelector<HTMLElement>('button, a[href]'))?.focus();
-  /* Per-group totals come with every response; a chip shows its count so the viewer knows where the hits are. */
-  const counts = useMemo(() => new Map(snapshot.groups.map(g => [g.id, g.totalCount] as const)), [snapshot.groups]);
+  /* Show a count when the server has an exact total for this group. */
+  const counts = useMemo(() => new Map(snapshot.groups.map(g => [g.id, g.totalCountExact ? g.totalCount : undefined] as const)), [snapshot.groups]);
   const query = snapshot.query?.q ?? '';
   const hasQuery = text.trim().length > 0;
   const sections = orderedSearchGroups(snapshot.groups);
@@ -241,7 +241,7 @@ const densityFor = (section: SearchGroupResult) => {
 function GroupShelf({section, onSeeAll}: {section: SearchGroupResult; onSeeAll?: () => void}) {
   const {t} = useI18n();
   return (
-    <Shelf title={t(searchGroupLabel(section.id))} count={section.totalCount} density={densityFor(section)} action={onSeeAll ? {label: t('web.search.seeAll'), onClick: onSeeAll} : undefined}>
+    <Shelf title={t(searchGroupLabel(section.id))} count={section.totalCountExact ? section.totalCount : undefined} density={densityFor(section)} action={onSeeAll ? {label: t('web.search.seeAll'), onClick: onSeeAll} : undefined}>
       {section.items.map(e => <ResultCard key={e.id} entry={e} />)}
     </Shelf>
   );
@@ -250,7 +250,7 @@ function GroupResults({section, canPrevious, onNext, onPrevious, busy}: {section
   const {t} = useI18n();
   return (
     <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
-      <Inset><Row style={{justifyContent: 'space-between'}}><Text variant="heading">{t(searchGroupLabel(section.id))}</Text><Text variant="caption" tone="tertiary">{section.totalCount > section.items.length ? t('web.search.someOf', {shown: section.items.length, total: section.totalCount}) : t('web.search.results', {count: section.totalCount})}</Text></Row></Inset>
+      <Inset><Row style={{justifyContent: 'space-between'}}><Text variant="heading">{t(searchGroupLabel(section.id))}</Text>{section.totalCountExact ? <Text variant="caption" tone="tertiary">{section.totalCount > section.items.length ? t('web.search.someOf', {shown: section.items.length, total: section.totalCount}) : t('web.search.results', {count: section.totalCount})}</Text> : null}</Row></Inset>
       <Grid density={densityFor(section)}>{section.items.map(e => <ResultCard key={e.id} entry={e} />)}</Grid>
       {onNext || canPrevious ? <Inset><Row style={{justifyContent: 'center'}}><Button variant="secondary" icon="back" label={t('web.live.previous')} disabled={!onPrevious || busy} onClick={onPrevious} /><Button variant="secondary" iconAfter="forward" label={t('web.search.next')} disabled={!onNext || busy} loading={busy && !!onNext} onClick={onNext} /></Row></Inset> : null}
     </div>

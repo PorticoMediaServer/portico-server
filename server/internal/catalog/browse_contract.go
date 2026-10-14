@@ -131,7 +131,7 @@ var browseFields = []browseField{
 	{ID: "criticRating", LabelKey: "browse.field.criticRating", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds),
 		Join: `JOIN metadata_ratings mr ON mr.item_id=bei.item_id AND mr.provider IN('metacritic','rottentomatoes')`, Value: "mr.value"},
 	{ID: "availability", LabelKey: "browse.field.availability", Type: valueEnum, Operators: enumOperators, ControlHint: "select", Complexity: "quick", Cost: "indexed-join", ApplicableKinds: kinds(assetedKinds), AllowedValues: []string{"available", "partial", "unavailable"},
-		Entity: `CASE WHEN NOT EXISTS(SELECT 1 FROM catalog_browse_memberships bei JOIN catalog_asset_links iav ON iav.entity_id=bei.item_id WHERE bei.entity_id=e.entity_id AND iav.available=1) THEN 'unavailable' WHEN EXISTS(SELECT 1 FROM catalog_browse_memberships bei JOIN catalog_asset_links iav ON iav.entity_id=bei.item_id WHERE bei.entity_id=e.entity_id AND iav.available=0) THEN 'partial' ELSE 'available' END`},
+		Entity: `e.availability_state`},
 	{ID: "resolution", LabelKey: "browse.field.resolution", Type: valueEnum, Operators: enumOperators, ControlHint: "facet-multi-select", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), AllowedValues: []string{"sd", "720p", "1080p", "4k"}, Facet: "resolution",
 		Join:  `JOIN catalog_asset_links ia ON ia.entity_id=bei.item_id JOIN catalog_assets ast ON ast.id=ia.asset_id`,
 		Value: `CASE WHEN ast.height>=2000 THEN '4k' WHEN ast.height>=1000 THEN '1080p' WHEN ast.height>=700 THEN '720p' ELSE 'sd' END`},
@@ -219,7 +219,7 @@ var browseSorts = []browseSort{
 	{ID: "trackNumber", LabelKey: "sort.trackNumber", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song"), Ordering: -2, Expression: "e.track_key"},
 	{ID: "fileSize", LabelKey: "sort.fileSize", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book"), Ordering: -2, Expression: "e.file_size"},
 	{ID: "resolution", LabelKey: "sort.resolution", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection"), Ordering: -2, Expression: "e.resolution_key"},
-	{ID: "random", LabelKey: "sort.random", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book,author"), Ordering: -2, Expression: "e.random_key"},
+	{ID: "random", LabelKey: "sort.random", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book,author"), Ordering: -2, Expression: "e.random_key", ClassKey: "v.random_key"},
 	{ID: "playCount", LabelKey: "sort.playCount", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds(playedKinds), Profile: true, Ordering: -1, Expression: "(SELECT COALESCE(play_count,0) FROM catalog_personal_sort_rows p WHERE p.profile_id=? AND p.entity_id=e.entity_id)"},
 }
 

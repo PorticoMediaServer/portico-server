@@ -200,3 +200,16 @@ test('searchQueryProblem says why a query would not be sent (CD-30)', () => {
   assert.equal(searchQueryProblem('ab'), undefined);
   assert.equal(searchQueryProblem('a lumen'), undefined);
 });
+
+test('preserves count accuracy while keeping unknown totals pageable',async()=>{
+ const s=service(async path=>result(path,{groups:[{...group('movies',['one'],'next'),totalCount:1,totalCountExact:false},{...group('shows'),totalCountExact:true}],query:{...result(path).query,groups:['movies','shows']}}));
+ await s.select('Title 000000');
+ assert.equal(s.getSnapshot().phase,'ready');
+ const [movies,shows]=s.getSnapshot().groups;
+ assert.equal(movies.totalCountExact,false);
+ assert.equal(movies.hasMore,true);
+ assert.equal(movies.nextCursor,'next');
+ assert.equal(shows.totalCountExact,true);
+ assert.equal(shows.totalCount,20);
+ s.dispose();
+});

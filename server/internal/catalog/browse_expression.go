@@ -315,7 +315,7 @@ func browseRequiresGroup(node *BrowseNode) bool {
 	if node == nil {
 		return false
 	}
-	if node.Field == "genre" || node.Field == "memberOf" || node.Field == "collection" {
+	if node.Field == "genre" || node.Field == "memberOf" || node.Field == "collection" || node.Field == "person" || node.Field == "list" {
 		switch node.Operator {
 		case "equals", "in", "contains", "contains-any", "contains-all":
 			return true
@@ -401,6 +401,9 @@ func foldBrowseText(field browseField) bool {
 	return field.Type == valueString || field.Type == valueSet || field.Type == valueEnum
 }
 func collated(field browseField, expression string) string {
+	if field.ID == "availability" {
+		return expression
+	}
 	if foldBrowseText(field) {
 		return "portico_fold_text(" + expression + ")"
 	}
@@ -613,6 +616,19 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 		normalized, match, err := NormalizeSearch(q)
 		if err != nil {
 			return "", browseIssue("query.value", "search requires between 1 and 128 characters")
+		}
+		if terms, indexed := facettext.IndexedSearchTerms(normalized); c.groupSearch && indexed {
+			clauses := make([]string, 0, len(terms))
+			for _, term := range terms {
+				predicate := `t.terminal=0 AND t.prefix=?`
+				c.args = append(c.args, term)
+				if facettext.NumericSearchTerm(term) {
+					predicate = `(` + predicate + ` OR t.terminal=1 AND t.prefix>=? AND t.prefix<?)`
+					c.args = append(c.args, term, term+"\U0010ffff")
+				}
+				clauses = append(clauses, `EXISTS(SELECT 1 FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity JOIN catalog_search_prefix_terms t ON t.id=p.term_id WHERE p.entity_id=e.entity_id AND `+predicate+`)`)
+			}
+			return "(" + strings.Join(clauses, " AND ") + ")", nil
 		}
 		c.args = append(c.args, match)
 		clause := `e.entity_id IN(SELECT d.entity_id FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles MATCH ?`

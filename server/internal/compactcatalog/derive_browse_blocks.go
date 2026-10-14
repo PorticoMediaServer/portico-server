@@ -21,6 +21,7 @@ const (
 	OrderYear
 	OrderDuration
 	OrderRating
+	OrderRandom
 	orderCount
 )
 
@@ -33,6 +34,7 @@ var BlockOrderKeys = [orderCount]string{
 	OrderYear:     "e.year",
 	OrderDuration: "COALESCE(e.duration_max,0)",
 	OrderRating:   "COALESCE(e.rating_max,0)",
+	OrderRandom:   "e.random_key",
 }
 
 // VisibilityOrderKeys are the same keys as a visibility class row (alias v)
@@ -43,6 +45,7 @@ var VisibilityOrderKeys = [orderCount]string{
 	OrderYear:     "v.year",
 	OrderDuration: "v.duration",
 	OrderRating:   "v.rating",
+	OrderRandom:   "v.random_key",
 }
 
 // blockKey is a row's place in one scope's ordering.

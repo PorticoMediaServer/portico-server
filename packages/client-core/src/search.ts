@@ -15,7 +15,7 @@ export type SearchGroupStatus='success'|'error';
 export type SearchGroupErrorCode=''|'search_group_timeout'|'search_group_unavailable';
 export type SearchQuery=Readonly<{q:string;group?:SearchGroup;groups?:readonly SearchGroup[];sort?:SearchSort;direction?:SearchDirection;libraryIds?:readonly string[];record?:boolean}>;
 export type SearchEntry=ContentEntry|Readonly<{id:string;kind:'person'|'channel';title:string;subtitle?:string;posterUrl?:string;count?:number;navigation:Readonly<{view:'person'|'channel';entityId:string}>}>;
-export type SearchGroupResult=Readonly<{id:SearchGroup;labelKey?:string;title:string;entityKind:string;status:SearchGroupStatus;errorCode:SearchGroupErrorCode;items:readonly SearchEntry[];totalCount:number;hasMore:boolean;nextCursor:string}>;
+export type SearchGroupResult=Readonly<{id:SearchGroup;labelKey?:string;title:string;entityKind:string;status:SearchGroupStatus;errorCode:SearchGroupErrorCode;items:readonly SearchEntry[];totalCount:number;totalCountExact:boolean;hasMore:boolean;nextCursor:string}>;
 export type SearchGroupCapability=Readonly<{id:SearchGroup;labelKey?:string;title:string;entityKind:string;available:boolean;reason:string;sorts:readonly SearchSort[]}>;
 export type SearchCapabilities=Readonly<{groups:readonly SearchGroupCapability[];sorts:readonly SearchSort[];directions:readonly SearchDirection[];maxLimit:number;groupBudgetMs:number}>;
 export type SearchData=Readonly<{scope:Readonly<{serverId:string;libraryId:'';libraryKind:'mixed';view:'search';entityId:'';viewerFence:string}>;revision:Readonly<{catalog:number;viewer:number}>;heading:ContentHeading;query:Readonly<{q:string;sort:SearchSort;direction:SearchDirection;group:SearchGroup|'';groups:readonly SearchGroup[];libraryIds:readonly string[];limit:number;searchMode:'normalized_prefix';recorded:boolean}>;groups:readonly SearchGroupResult[];capabilities:SearchCapabilities;empty?:ContentHeading}>;
@@ -127,7 +127,7 @@ function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
   const code=value.errorCode===undefined||value.errorCode===null?'':value.errorCode;
   const status:SearchGroupStatus=oneOf(value.status,statuses)??(code?'error':'success');
   // A failed group carries no partial page, and a successful one never carries a failure code.
-  if(status==='error')return Object.freeze({id:group,title:(value.title??'') as string,...(text(value.labelKey,512)?{labelKey:value.labelKey}:{}),entityKind:value.entityKind as string,status,errorCode:oneOf(code,errorCodes)||'search_group_unavailable' as const,items:Object.freeze([]),totalCount:0,hasMore:false,nextCursor:''});
+  if(status==='error')return Object.freeze({id:group,title:(value.title??'') as string,...(text(value.labelKey,512)?{labelKey:value.labelKey}:{}),entityKind:value.entityKind as string,status,errorCode:oneOf(code,errorCodes)||'search_group_unavailable' as const,items:Object.freeze([]),totalCount:0,totalCountExact:false,hasMore:false,nextCursor:''});
   const items=firstOfEach('search','items',keepReadable('search','items',array(value.items,op.query.group?limit:Math.min(limit,SEARCH_PREVIEW_LIMIT)),v=>{
    if(entityGroups.includes(group))return entityEntry(v,group);
    const media=validateContentEntry(v);
@@ -137,7 +137,7 @@ function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
   }),e=>e.id);
   const nextCursor=(value.nextCursor??'') as string;
   // The count is at least the results kept, and more are offered exactly when there is a cursor to ask with.
-  return Object.freeze({id:group,title:(value.title??'') as string,...(text(value.labelKey,512)?{labelKey:value.labelKey}:{}),entityKind:value.entityKind as string,status,errorCode:'' as const,items:Object.freeze(items),totalCount:Math.max(count(value.totalCount)?value.totalCount:0,items.length),hasMore:!!nextCursor,nextCursor});
+  return Object.freeze({id:group,title:(value.title??'') as string,...(text(value.labelKey,512)?{labelKey:value.labelKey}:{}),entityKind:value.entityKind as string,status,errorCode:'' as const,items:Object.freeze(items),totalCount:Math.max(count(value.totalCount)?value.totalCount:0,items.length),totalCountExact:value.totalCountExact===true&&count(value.totalCount)&&value.totalCount>=items.length,hasMore:!!nextCursor,nextCursor});
  }),g=>g.id);
  // An answer none of whose groups could be read is refused rather than shown as no results.
  if(!results.length&&(raw.groups as unknown[]).length)invalid();

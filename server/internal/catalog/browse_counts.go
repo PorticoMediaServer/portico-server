@@ -163,16 +163,18 @@ func (s *Service) browseSummarise(library string, kinds []string, r identity.Con
 			// row is still checked against current restrictions below.
 			return materialized, nil
 		}
-		// A newly configured class is built by the background worker. Tiny
-		// libraries retain their ordinary SQL path while that happens; at scale
-		// the request returns a retryable projection state rather than scanning
-		// the whole library to manufacture a count.
-		var small bool
-		if small, err = s.visibilitySmallLibrary(library); err != nil {
+		// Until a new class publishes, the item buckets still provide exact
+		// counts for age and labels. Every page keeps its live restriction
+		// predicate; never replace the reader's content with a preparation gap.
+
+	}
+	if r.Active() {
+		ambiguous, err := s.ambiguousRestrictionKeys()
+		if err != nil {
 			return browseSummary{}, err
 		}
-		if !small {
-			return browseSummary{}, ErrVisibilityBuilding
+		if ambiguous {
+			return browseSummary{}, nil
 		}
 	}
 	out := browseSummary{headStart: map[string]int{}, headSize: map[string]int{}}

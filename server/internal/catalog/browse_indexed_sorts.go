@@ -46,10 +46,17 @@ func indexedSortValue(field, key string) (any, error) {
 }
 
 func (s *Service) indexedFactPage(p pageShape, definition browseSort, desc bool) ([]browseRow, error) {
-	// Direct ranges on orders without counted blocks walk bounded keysets. This
-	// also keeps filtered ranges correct without an unbounded OFFSET.
+	if definition.ID == "random" && p.positional() && len(p.seekKeys) == 0 {
+		return s.positionRandomPage(p, desc)
+	}
+	if definition.ID != "random" && p.positional() && p.summary.classKey != "" && len(p.seekKeys) == 0 {
+		return s.filteredRangePage(p)
+	}
 	if p.start > 0 && len(p.seekKeys) == 0 {
-		return s.walkIndexedRange(p, func(p pageShape) ([]browseRow, error) { return s.indexedFactPage(p, definition, desc) })
+		if definition.ID == "random" {
+			return s.seededRandomRange(p, definition, desc)
+		}
+		return s.filteredRangePage(p)
 	}
 	if definition.ID == "random" {
 		return s.seededRandomPage(p, definition, desc)
@@ -95,6 +102,42 @@ func (s *Service) walkIndexedRange(p pageShape, page func(pageShape) ([]browseRo
 	}
 	p.limit = want
 	return page(p)
+}
+
+// A direct random range counts the first indexed half of the rotation and
+// skips narrow index entries in each half. Only the selected page is hydrated.
+func (s *Service) seededRandomRange(p pageShape, definition browseSort, desc bool) ([]browseRow, error) {
+	seed := int64(p.sorts[0].Seed)
+	direction, first, second := "ASC", "e.random_key>=?", "e.random_key<?"
+	if desc {
+		direction, first, second = "DESC", "e.random_key<=?", "e.random_key>?"
+	}
+	var firstCount int
+	args := append(append([]any{}, p.args...), seed)
+	if err := s.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows e WHERE `+p.where+` AND `+first, args...).Scan(&firstCount); err != nil {
+		return nil, err
+	}
+	out := []browseRow{}
+	skip := p.start
+	for phase, bound := range []string{first, second} {
+		if phase == 0 && skip >= firstCount {
+			skip -= firstCount
+			continue
+		}
+		args := append(append([]any{}, p.args...), seed, p.limit-len(out), skip)
+		query := `WITH page AS MATERIALIZED (SELECT e.entity_id,e.random_key FROM catalog_browse_rows e WHERE ` + p.where + ` AND ` + bound + ` ORDER BY e.random_key ` + direction + `,e.entity_id ` + direction + ` LIMIT ? OFFSET ?)
+ SELECT ` + browseRowColumns + `,page.random_key FROM page CROSS JOIN catalog_browse_rows e ON e.entity_id=page.entity_id CROSS JOIN catalog_entities ce ON ce.id=e.entity_id ORDER BY page.random_key ` + direction + `,page.entity_id ` + direction
+		rows, err := s.queryBrowseKeyRows(query, definition.ID, args...)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, rows...)
+		if len(out) == p.limit {
+			break
+		}
+		skip = 0
+	}
+	return out, nil
 }
 
 // A seed rotates a maintained pseudorandom index. Both halves are index walks;

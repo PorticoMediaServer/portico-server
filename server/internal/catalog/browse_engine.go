@@ -458,12 +458,17 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			return out, nil, err
 		}
 	}
+	if request.Query != nil {
+		if summary, err = s.availabilitySummary(request.Library, entityKindMembers(pivot), request.Query, request.Restrictions); err != nil {
+			return out, nil, err
+		}
+	}
 	// A posted query's total is exact: it is counted when the list opens (a pass
 	// over the query's matches, the price of an ad hoc filter) and carried in
 	// the signed cursor, so later pages don't count again.
 	var total int
 	counted := false
-	if request.Query == nil {
+	if request.Query == nil || summary.exact {
 		if summary.exact {
 			total = summary.total
 		} else if err = s.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows e WHERE `+where, args...).Scan(&total); err != nil {

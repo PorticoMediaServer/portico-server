@@ -73,6 +73,13 @@ func TestSearchCatalogPageRanksBeforeHydrating(t *testing.T) {
 				r.Sort, r.Direction = sortID, direction
 				want := names.Publics("a", "b", "d", "e", "f")
 				sort.Strings(want)
+				if sortID == "relevance" {
+					internal := map[string]int64{}
+					for _, item := range names {
+						internal[item.Public] = item.ID
+					}
+					sort.Slice(want, func(i, j int) bool { return internal[want[i]] < internal[want[j]] })
+				}
 				if direction == "desc" {
 					for left, right := 0, len(want)-1; left < right; left, right = left+1, right-1 {
 						want[left], want[right] = want[right], want[left]

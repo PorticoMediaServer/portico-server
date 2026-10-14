@@ -287,6 +287,13 @@ func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes
 	logMeasurement(rr)
 	results = append(results, rr)
 	fmt.Fprintf(os.Stderr, "ATTENTION entries=%d total=%d\n", len(page.Entries), page.Total)
+	if writes && focusedSamples > 0 {
+		focused, err := focusedReads(db, s)
+		results = append(results, focused...)
+		if err != nil {
+			return results, err
+		}
+	}
 	if !writes {
 		return results, nil
 	}

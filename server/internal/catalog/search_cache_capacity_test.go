@@ -57,7 +57,7 @@ func TestSearchUsesPublishedRankInputsAtCapacity(t *testing.T) {
 			for _, q := range trace() {
 				if strings.Contains(q, "WITH page AS MATERIALIZED") {
 					ranked++
-					if !strings.Contains(q, "d.title_fold") || !strings.Contains(q, "d.entity_pid entity_pid") || strings.Contains(q, "portico_search_fold(d.title)") {
+					if !strings.Contains(q, "d.title_fold") || !strings.Contains(q, "d.entity_pid") || strings.Contains(q, "portico_search_fold(d.title)") {
 						t.Fatalf("uncached rank inputs: %s", q)
 					}
 				}

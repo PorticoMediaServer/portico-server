@@ -656,7 +656,7 @@ func refreshEntityMetrics(ctx context.Context, tx *sql.Tx, entity int64) (errOut
 
 func init() {
 	Register(DomainBrowseRows, Derivation{
-		Version: 3,
+		Version: 4,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			ids := keyIDs(keys)
 			for _, id := range ids {

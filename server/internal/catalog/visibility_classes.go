@@ -374,20 +374,22 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 			return queryErr
 		}
 		type entity struct {
-			id               int64
-			kind             int
-			sort, head       string
-			decade           int
-			available        bool
-			added            string
-			year             int
-			duration, rating float64
-			recent           sql.NullString
+			id                int64
+			kind              int
+			sort, head        string
+			decade            int
+			available         bool
+			added             string
+			year              int
+			duration, rating  float64
+			recent            sql.NullString
+			random            int64
+			availabilityState string
 		}
 		batch := make([]entity, 0, 100)
 		for rows.Next() {
 			var e entity
-			if queryErr = rows.Scan(&e.id, &e.kind, &e.sort, &e.head, &e.decade, &e.available, &e.added, &e.year, &e.duration, &e.rating, &e.recent); queryErr != nil {
+			if queryErr = rows.Scan(&e.id, &e.kind, &e.sort, &e.head, &e.decade, &e.available, &e.added, &e.year, &e.duration, &e.rating, &e.recent, &e.random, &e.availabilityState); queryErr != nil {
 				break
 			}
 			batch = append(batch, e)
@@ -399,12 +401,13 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 		if queryErr != nil {
 			return queryErr
 		}
-		if len(batch) > 0 {
+		for off := 0; off < len(batch); off += compactcatalog.BatchLimit {
+			chunk := batch[off:min(off+compactcatalog.BatchLimit, len(batch))]
 			err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
-				for _, e := range batch {
+				for _, e := range chunk {
 					if _, writeErr := tx.ExecContext(ctx,
-						`INSERT INTO compact_visibility_rows(class_id,generation,entity_id,library_id,kind,sort_key,head,decade,added,year,duration,rating,recent) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-						classID, generation, e.id, libraryID, e.kind, e.sort, e.head, e.decade, e.added, e.year, e.duration, e.rating, e.recent); writeErr != nil {
+						`INSERT INTO compact_visibility_rows(class_id,generation,entity_id,library_id,kind,sort_key,head,decade,added,year,duration,rating,recent,random_key,availability_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+						classID, generation, e.id, libraryID, e.kind, e.sort, e.head, e.decade, e.added, e.year, e.duration, e.rating, e.recent, e.random, e.availabilityState); writeErr != nil {
 						return writeErr
 					}
 					if _, writeErr := tx.ExecContext(ctx,
@@ -456,7 +459,7 @@ func (s *Service) clearVisibilityGeneration(ctx context.Context, classID, genera
 	for {
 		result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia,
 			`DELETE FROM compact_visibility_rows WHERE class_id=? AND generation=? AND entity_id IN
-			 (SELECT entity_id FROM compact_visibility_rows WHERE class_id=? AND generation=? LIMIT 100)`,
+ (SELECT entity_id FROM compact_visibility_rows WHERE class_id=? AND generation=? LIMIT 8)`,
 			classID, generation, classID, generation)
 		if err != nil {
 			return err

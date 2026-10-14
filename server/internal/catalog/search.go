@@ -67,16 +67,17 @@ type SearchCapabilities struct {
 	GroupBudgetMs int                     `json:"groupBudgetMs"`
 }
 type SearchGroupResult struct {
-	ID         string         `json:"id"`
-	LabelKey   string         `json:"labelKey"`
-	Title      string         `json:"title"`
-	EntityKind string         `json:"entityKind"`
-	Status     string         `json:"status"`
-	ErrorCode  string         `json:"errorCode"`
-	Items      []ContentEntry `json:"items"`
-	TotalCount int            `json:"totalCount"`
-	HasMore    bool           `json:"hasMore"`
-	NextCursor string         `json:"nextCursor"`
+	ID              string         `json:"id"`
+	LabelKey        string         `json:"labelKey"`
+	Title           string         `json:"title"`
+	EntityKind      string         `json:"entityKind"`
+	Status          string         `json:"status"`
+	ErrorCode       string         `json:"errorCode"`
+	Items           []ContentEntry `json:"items"`
+	TotalCount      int            `json:"totalCount"`
+	TotalCountExact bool           `json:"totalCountExact"`
+	HasMore         bool           `json:"hasMore"`
+	NextCursor      string         `json:"nextCursor"`
 }
 type SearchQueryEcho struct {
 	Q          string   `json:"q"`
@@ -335,6 +336,9 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 					result.ErrorCode = "search_group_timeout"
 				}
 			}
+			if groupErr := failures[index]; groupErr == nil && g.source != "catalog" {
+				result.TotalCountExact = true
+			}
 			results[index] = result
 		}()
 		if ctx.Err() != nil {
@@ -551,7 +555,9 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	 CROSS JOIN catalog_search_documents d ON d.entity_id=m.entity_id CROSS JOIN catalog_entities e ON e.id=d.entity_id JOIN catalog_libraries l ON l.id=e.library_id`
 	countGroup := func() error {
 		countArgs := append([]any{match}, filterArgs...)
-		return s.read().QueryRowContext(ctx, `SELECT count(*) FROM `+candidates+` WHERE 1`+where, countArgs...).Scan(&out.TotalCount)
+		err := s.read().QueryRowContext(ctx, `SELECT count(*) FROM `+candidates+` WHERE 1`+where, countArgs...).Scan(&out.TotalCount)
+		out.TotalCountExact = err == nil
+		return err
 	}
 	sortID := resolveSearchSort(g, r.Sort)
 	contextJoin, subtitle := searchContext(g.kind)
@@ -566,8 +572,90 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	args = append(args, match)
 	args = append(args, filterArgs...)
 	ranked := `SELECT d.entity_id entity_id,d.entity_pid entity_pid,` + order.expr + ` ord FROM ` + candidates + orderJoin + ` WHERE 1` + where
+	prefixTerms, prefix := facettext.IndexedSearchTerms(r.Q)
+	prefix = prefix && sortID == "relevance"
+	var prefixCursor *cursorValue
+	if r.Cursor != "" {
+		if c, err := s.decodeRevisionCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, "relevance_prefix"), rev); err == nil {
+			prefixCursor = &c
+		} else {
+			prefix = false
+		}
+	}
+	prefixLead := ""
+	tie := "entity_pid"
+	if prefix {
+		var prefixArgs []any
+		var prefixRanked string
+		prefixRanked, prefixArgs, prefixLead, err = s.prefixSearchCandidates(ctx, r, int(kind), prefixTerms, where, filterArgs, pageSize+1, s.groupCursorScope(r, g, scopeHash, "relevance_prefix"), rev)
+		if errors.Is(err, errPrefixFallback) {
+			prefix = false
+		} else if err != nil {
+			return err
+		}
+		if prefix {
+			knownTotal, knownExact := 0, false
+			if len(prefixTerms) == 1 {
+				knownTotal, knownExact, err = s.prefixSearchTotal(ctx, r, int(kind), prefixTerms[0])
+				if err != nil {
+					return err
+				}
+				if knownExact && knownTotal == 0 {
+					out.TotalCount, out.TotalCountExact = 0, true
+					return nil
+				}
+			}
+			ranked = `SELECT entity_id,entity_pid,max(ord) ord FROM (` + prefixRanked + `) GROUP BY entity_id`
+			args, tie = prefixArgs, "entity_id"
+			order = searchOrder{numeric: true}
+			countGroup = func() error {
+				if knownExact {
+					out.TotalCount, out.TotalCountExact = knownTotal, true
+					return nil
+				}
+				// Multiple words and member restrictions are paged without an
+				// exhaustive intersection count. The wire explicitly marks this.
+				out.TotalCount, out.TotalCountExact = len(out.Items), false
+				return nil
+			}
+		}
+	}
+	if prefixCursor != nil && !prefix {
+		prefix = true
+		prefixLead = prefixTerms[0]
+		if len(prefixCursor.Keys) > 0 {
+			prefixLead = prefixCursor.Keys[0]
+			valid := false
+			for _, word := range prefixTerms {
+				if word == prefixLead {
+					valid = true
+				}
+			}
+			if !valid {
+				return ErrCursor
+			}
+		}
+		// A continuation retains its ranking model even when a growing numeric
+		// dictionary now needs the full-text selector. Its signature still binds
+		// every viewer, library, query and sort field.
+		keyPredicate := `t.terminal=0 AND t.prefix=?`
+		keyArgs := []any{prefixLead}
+		if facettext.NumericSearchTerm(prefixLead) {
+			keyPredicate = `(t.terminal=0 AND t.prefix=? OR t.terminal=1 AND t.prefix>=? AND t.prefix<?)`
+			keyArgs = []any{prefixLead, prefixLead, prefixLead + "\U0010ffff"}
+		}
+		order = searchOrder{expr: `CASE WHEN d.title_fold=? THEN 3 ELSE COALESCE((SELECT max(p.tier) FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity JOIN catalog_search_prefix_terms t ON t.id=p.term_id WHERE p.entity_id=d.entity_id AND (` + keyPredicate + `)),0) END`, numeric: true}
+		order.args = append([]any{facettext.SearchFold(r.Q)}, keyArgs...)
+		args = append(append(append([]any{}, order.args...), match), filterArgs...)
+		ranked = `SELECT d.entity_id entity_id,d.entity_pid entity_pid,` + order.expr + ` ord FROM ` + candidates + ` WHERE 1` + where
+		tie = "entity_id"
+		countGroup = func() error { out.TotalCount, out.TotalCountExact = len(out.Items), false; return nil }
+	}
 	page := `WITH page AS MATERIALIZED (SELECT entity_id,entity_pid,ord FROM(` + ranked + `)`
 	scope := s.groupCursorScope(r, g, scopeHash, sortID)
+	if prefix {
+		scope.Sort = "relevance_prefix"
+	}
 	if r.Cursor != "" {
 		c, e := s.decodeRevisionCursor(r.Cursor, scope, rev)
 		if e != nil {
@@ -580,14 +668,24 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		if e != nil {
 			return e
 		}
-		page += ` WHERE ` + cursorPredicate(r.Direction)
-		args = append(args, value, value, c.ID)
+		predicate := cursorPredicate(r.Direction)
+		var anchor any = c.ID
+		if prefix {
+			predicate = strings.ReplaceAll(predicate, "entity_pid", "entity_id")
+			id, err := strconv.ParseInt(c.ID, 10, 64)
+			if err != nil {
+				return ErrCursor
+			}
+			anchor = id
+		}
+		page += ` WHERE ` + predicate
+		args = append(args, value, value, anchor)
 	}
-	page += ` ORDER BY ord ` + r.Direction + `,entity_pid ` + r.Direction + ` LIMIT ?)`
+	page += ` ORDER BY ord ` + r.Direction + `,` + tie + ` ` + r.Direction + ` LIMIT ?)`
 	args = append(args, pageSize+1)
 	// MATERIALIZED fixes the limit boundary before the detail joins and asset
 	// subqueries. Those reads now run for at most pageSize+1 selected identities.
-	query := page + ` SELECT pid(e.public_id),l.library_id,COALESCE(e.year,0),d.title,` + subtitle + ` subtitle,COALESCE(detail.poster_url,'') poster_url,COALESCE(detail.overview,'') overview,COALESCE(detail.added_text,'') added_at,COALESCE((SELECT max(a.duration) FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id),0) duration,EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id AND link.available=1) available,page.ord FROM page JOIN catalog_entities e ON e.id=page.entity_id JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_search_documents d ON d.entity_id=e.id LEFT JOIN catalog_item_details detail ON detail.entity_id=e.id ` + contextJoin + ` ORDER BY page.ord ` + r.Direction + `,page.entity_pid ` + r.Direction
+	query := page + ` SELECT pid(e.public_id),l.library_id,COALESCE(e.year,0),d.title,` + subtitle + ` subtitle,COALESCE(detail.poster_url,'') poster_url,COALESCE(detail.overview,'') overview,COALESCE(detail.added_text,'') added_at,COALESCE((SELECT max(a.duration) FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id),0) duration,EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets a ON a.id=link.asset_id WHERE link.entity_id=e.id AND link.available=1) available,page.ord FROM page JOIN catalog_entities e ON e.id=page.entity_id JOIN catalog_libraries l ON l.id=e.library_id JOIN catalog_search_documents d ON d.entity_id=e.id LEFT JOIN catalog_item_details detail ON detail.entity_id=e.id ` + contextJoin + ` ORDER BY page.ord ` + r.Direction + `,page.` + tie + ` ` + r.Direction
 	rows, e := s.read().QueryContext(ctx, query, args...)
 	if e != nil {
 		return e
@@ -667,7 +765,20 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	if len(entries) > pageSize {
 		entries = entries[:pageSize]
 		last := entries[len(entries)-1]
-		out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: orders[pageSize-1], ID: last.ID, Fingerprint: fingerprint, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
+		anchorID := last.ID
+		if prefix {
+			var id int64
+			if e = s.read().QueryRowContext(ctx, `SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, last.ID).Scan(&id); e != nil {
+				return e
+			}
+			anchorID = strconv.FormatInt(id, 10)
+		}
+		out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: orders[pageSize-1], ID: anchorID, Keys: func() []string {
+			if prefix {
+				return []string{prefixLead}
+			}
+			return nil
+		}(), Fingerprint: fingerprint, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
 		if e != nil {
 			return e
 		}
@@ -676,13 +787,14 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		// The first page asked for one more row than it wanted and did not get
 		// it, so the group holds exactly what was read.
 		out.TotalCount = len(entries)
+		out.TotalCountExact = true
 		out.Items = entries
 		return nil
 	}
+	out.Items = entries
 	if e = countGroup(); e != nil {
 		return e
 	}
-	out.Items = entries
 	return nil
 }
 

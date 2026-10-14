@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"time"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
@@ -74,7 +75,7 @@ func (s *Service) refreshVisibilityClass(ctx context.Context, library string, r 
 		applied := 0
 		err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 			applied = 0
-			rows, err := tx.QueryContext(ctx, `SELECT entity_id FROM compact_visibility_dirty WHERE class_id=? ORDER BY entity_id LIMIT 16`, classID)
+			rows, err := tx.QueryContext(ctx, `SELECT entity_id FROM compact_visibility_dirty WHERE class_id=? ORDER BY entity_id LIMIT ?`, classID, compactcatalog.BatchLimit)
 			if err != nil {
 				return err
 			}
@@ -124,15 +125,17 @@ type visibleEntity struct {
 	kind, decade     int
 	sort, head       string
 	// The browse row's sort keys (browse_contract.go), for the class's blocks.
-	added            string
-	year             int
-	duration, rating float64
-	recent           sql.NullString
+	added             string
+	year              int
+	duration, rating  float64
+	recent            sql.NullString
+	random            int64
+	availabilityState string
 }
 
 func (a visibleEntity) sameRow(b visibleEntity) bool {
 	return a.kind == b.kind && a.sort == b.sort && a.head == b.head && a.decade == b.decade &&
-		a.added == b.added && a.year == b.year && a.duration == b.duration && a.rating == b.rating && a.recent == b.recent
+		a.added == b.added && a.year == b.year && a.duration == b.duration && a.rating == b.rating && a.recent == b.recent && a.random == b.random && a.availabilityState == b.availabilityState
 }
 
 // updateVisibleEntity re-evaluates one entity against the class: it leaves,
@@ -142,7 +145,7 @@ func (a visibleEntity) sameRow(b visibleEntity) bool {
 // RebuildVisibilityClass reads for the entity.
 func updateVisibleEntity(ctx context.Context, tx *sql.Tx, classID, generation, libraryID, id int64, clause string, clauseArgs []any) error {
 	old := visibleEntity{id: id}
-	err := tx.QueryRowContext(ctx, `SELECT kind,sort_key,head,decade,added,year,duration,rating,recent FROM compact_visibility_rows WHERE class_id=? AND generation=? AND entity_id=?`, classID, generation, id).Scan(&old.kind, &old.sort, &old.head, &old.decade, &old.added, &old.year, &old.duration, &old.rating, &old.recent)
+	err := tx.QueryRowContext(ctx, `SELECT kind,sort_key,head,decade,added,year,duration,rating,recent,random_key,availability_state FROM compact_visibility_rows WHERE class_id=? AND generation=? AND entity_id=?`, classID, generation, id).Scan(&old.kind, &old.sort, &old.head, &old.decade, &old.added, &old.year, &old.duration, &old.rating, &old.recent, &old.random, &old.availabilityState)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
@@ -158,7 +161,7 @@ func updateVisibleEntity(ctx context.Context, tx *sql.Tx, classID, generation, l
 	args := append([]any{libraryID, id}, clauseArgs...)
 	err = tx.QueryRowContext(ctx, `SELECT e.kind,e.sort_key,e.head,COALESCE((e.year/10)*10,0),e.available,`+visibleRowKeys+`
 	 FROM catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id
-	 WHERE e.library_id=? AND e.entity_id=? AND ce.retired=0 AND `+clause, args...).Scan(&next.kind, &next.sort, &next.head, &next.decade, &next.available, &next.added, &next.year, &next.duration, &next.rating, &next.recent)
+	 WHERE e.library_id=? AND e.entity_id=? AND ce.retired=0 AND `+clause, args...).Scan(&next.kind, &next.sort, &next.head, &next.decade, &next.available, &next.added, &next.year, &next.duration, &next.rating, &next.recent, &next.random, &next.availabilityState)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
@@ -190,8 +193,8 @@ func updateVisibleEntity(ctx context.Context, tx *sql.Tx, classID, generation, l
 		}
 	}
 	if next.valid {
-		if _, err = tx.ExecContext(ctx, `INSERT INTO compact_visibility_rows(class_id,generation,entity_id,library_id,kind,sort_key,head,decade,added,year,duration,rating,recent) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-			classID, generation, id, libraryID, next.kind, next.sort, next.head, next.decade, next.added, next.year, next.duration, next.rating, next.recent); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO compact_visibility_rows(class_id,generation,entity_id,library_id,kind,sort_key,head,decade,added,year,duration,rating,recent,random_key,availability_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+			classID, generation, id, libraryID, next.kind, next.sort, next.head, next.decade, next.added, next.year, next.duration, next.rating, next.recent, next.random, next.availabilityState); err != nil {
 			return err
 		}
 		if _, err = tx.ExecContext(ctx, `INSERT INTO compact_visibility_counts(class_id,generation,library_id,kind,head,decade,total) VALUES(?,?,?,?,?,?,1)
@@ -203,4 +206,4 @@ func updateVisibleEntity(ctx context.Context, tx *sql.Tx, classID, generation, l
 }
 
 // visibleRowKeys selects a browse row's sort keys as a class row stores them.
-const visibleRowKeys = `COALESCE(e.added_text,''),e.year,COALESCE(e.duration_max,0),COALESCE(e.rating_max,0),e.recent_text`
+const visibleRowKeys = `COALESCE(e.added_text,''),e.year,COALESCE(e.duration_max,0),COALESCE(e.rating_max,0),e.recent_text,e.random_key,e.availability_state`
