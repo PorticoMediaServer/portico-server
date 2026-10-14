@@ -3,6 +3,8 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"strings"
+	"sync"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -49,7 +51,7 @@ func (r reads) QueryRow(query string, args ...any) *sql.Row {
 // unchanged, while still resolving the snapshot.
 func (r reads) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	q := r.resolve(ctx)
-	query, err := compactcatalog.SearchServingSQL(ctx, q, compactcatalog.ServingSQL(query))
+	query, err := r.servingSQL(ctx, q, query)
 	if err != nil {
 		return nil, err
 	}
@@ -58,11 +60,45 @@ func (r reads) QueryContext(ctx context.Context, query string, args ...any) (*sq
 
 func (r reads) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	q := r.resolve(ctx)
-	serving, err := compactcatalog.SearchServingSQL(ctx, q, compactcatalog.ServingSQL(query))
+	serving, err := r.servingSQL(ctx, q, query)
 	if err != nil {
 		return q.QueryRowContext(ctx, `SELECT active_slot FROM catalog_derivations WHERE domain=17`)
 	}
 	return q.QueryRowContext(ctx, serving, args...)
+}
+
+type readGenerationKey struct{}
+type readGeneration struct {
+	snapshot  *sql.Tx
+	once      sync.Once
+	retaining bool
+	err       error
+}
+
+// A published generation has no old rows to merge. Resolve that fact inside
+// the request's snapshot, once, so ordinary reads keep the base tables' index
+// plans. During a rebuild the retained views still serve the previous content.
+func (r reads) servingSQL(ctx context.Context, q reader, query string) (string, error) {
+	state, _ := ctx.Value(readGenerationKey{}).(*readGeneration)
+	retaining := true
+	if state != nil && state.snapshot == dbwork.Snapshot(ctx) && !dbwork.InWriteTx(ctx) {
+		for _, table := range compactcatalog.ServingTables {
+			if strings.Contains(query, table) {
+				state.once.Do(func() {
+					state.err = q.QueryRowContext(ctx, `SELECT retaining FROM catalog_generations WHERE singleton=1`).Scan(&state.retaining)
+				})
+				if state.err != nil {
+					return "", state.err
+				}
+				retaining = state.retaining
+				break
+			}
+		}
+	}
+	if retaining {
+		query = compactcatalog.ServingSQL(query)
+	}
+	return compactcatalog.SearchServingSQL(ctx, q, query)
 }
 
 func (r reads) resolve(ctx context.Context) reader {
@@ -102,6 +138,12 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 		return s
 	}
 	clone := *s
+	if snapshot := dbwork.Snapshot(ctx); snapshot != nil && !dbwork.InWriteTx(ctx) {
+		state, _ := ctx.Value(readGenerationKey{}).(*readGeneration)
+		if state == nil || state.snapshot != snapshot {
+			ctx = context.WithValue(ctx, readGenerationKey{}, &readGeneration{snapshot: snapshot})
+		}
+	}
 	clone.rctx = ctx
 	return &clone
 }

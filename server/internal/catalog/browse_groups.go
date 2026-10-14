@@ -80,19 +80,17 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 			return out, err
 		}
 		restriction, restrictionArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions)
-		from = `(SELECT m.value,lower(portico_sort_title(m.value,'','')) AS name_key,count(*) AS total,max(m.recent_key) AS recent_key
-   FROM catalog_facet_members m JOIN catalog_browse_rows e ON e.entity_id=m.entity_id
-   WHERE m.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND m.field=? AND (` + clause + `) AND (` + restriction + `) GROUP BY m.value) g`
-		args = append(args, compiler.args...)
+		from = `(WITH matched AS MATERIALIZED (
+ SELECT e.entity_id FROM catalog_browse_rows e
+ WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND (` + clause + `) AND (` + restriction + `))
+ SELECT m.value,lower(portico_sort_title(m.value,'','')) AS name_key,count(*) AS total,max(m.recent_key) AS recent_key
+ FROM matched CROSS JOIN catalog_facet_members m ON m.entity_id=matched.entity_id
+ WHERE m.field=? GROUP BY m.value) g`
+		args = append([]any{request.Library}, compiler.args...)
 		args = append(args, restrictionArgs...)
+		args = append(args, pivot.Aggregate)
 		where = "1"
 	}
-	var total int
-	if err = s.read().QueryRow(`SELECT count(*) FROM `+from+` WHERE `+where, args...).Scan(&total); err != nil {
-		return out, err
-	}
-	out.PageInfo.Total = total
-	out.PageInfo.Start = start
 	orderKey := map[string]string{"title": "g.name_key", "count": "g.total", "recentActivity": "g.recent_key"}[sorting.Field]
 	direction, op := "ASC", ">"
 	if sorting.Direction == "desc" {
@@ -102,7 +100,7 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 		value, key string
 		count      int
 	}
-	page := func(key, id string, limit int) ([]group, error) {
+	page := func(key, id string, limit int) ([]group, int, error) {
 		bound := where
 		a := append([]any{}, args...)
 		if id != "" {
@@ -110,52 +108,73 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 			if sorting.Field == "count" {
 				n, e := strconv.Atoi(key)
 				if e != nil {
-					return nil, ErrCursor
+					return nil, 0, ErrCursor
 				}
 				typed = n
 			}
-			bound += ` AND (` + orderKey + op + `? OR ` + orderKey + `=? AND g.value` + op + `?)`
-			a = append(a, typed, typed, id)
+			bound += ` AND (` + orderKey + `,g.value)` + op + `(?,?)`
+			a = append(a, typed, id)
 		}
-		a = append(a, limit)
-		rows, err := s.read().Query(`SELECT g.value,g.total,`+orderKey+` FROM `+from+` WHERE `+bound+` ORDER BY `+orderKey+` `+direction+`,g.value `+direction+` LIMIT ?`, a...)
+		// Evaluate membership once, then rank the much smaller group vocabulary.
+		// A direct range must not re-evaluate every title for each skipped page.
+		query := `WITH groups AS MATERIALIZED (SELECT g.value,g.total,` + orderKey + ` AS order_key FROM ` + from + ` WHERE ` + where + `),
+ metadata AS (SELECT count(*) AS total FROM groups),
+ ranked AS (SELECT value,total,order_key,row_number() OVER(ORDER BY order_key ` + direction + `,value ` + direction + `)-1 AS position FROM groups)
+ SELECT metadata.total,ranked.value,ranked.total,ranked.order_key FROM metadata LEFT JOIN ranked ON ranked.position>=min(?,max(0,metadata.total-1)) AND ranked.position<min(?,max(0,metadata.total-1))+? ORDER BY ranked.position`
+		if request.Range == nil {
+			// Continuations seek indexed maintained keys when there is no filter.
+			query = `WITH metadata AS (SELECT count(*) AS total FROM ` + from + ` WHERE ` + where + `),
+ page AS (SELECT g.value,g.total,` + orderKey + ` AS order_key FROM ` + from + ` WHERE ` + bound + ` ORDER BY ` + orderKey + ` ` + direction + `,g.value ` + direction + ` LIMIT ?)
+ SELECT metadata.total,page.value,page.total,page.order_key FROM metadata LEFT JOIN page ON 1 ORDER BY page.order_key ` + direction + `,page.value ` + direction
+			if request.Query != nil || request.Restrictions.Active() {
+				query = `WITH groups AS MATERIALIZED (SELECT * FROM ` + from + ` WHERE ` + where + `),
+ metadata AS (SELECT count(*) AS total FROM groups),
+ page AS (SELECT g.value,g.total,` + orderKey + ` AS order_key FROM groups g WHERE ` + bound + ` ORDER BY ` + orderKey + ` ` + direction + `,g.value ` + direction + ` LIMIT ?)
+ SELECT metadata.total,page.value,page.total,page.order_key FROM metadata LEFT JOIN page ON 1 ORDER BY page.order_key ` + direction + `,page.value ` + direction
+				a = append(append([]any{}, args...), a[len(args):]...)
+				a = append(a, limit)
+			} else {
+				a = append(append(append([]any{}, args...), a...), limit)
+			}
+		} else {
+			a = append(append([]any{}, args...), start, start, limit)
+		}
+		rows, err := s.read().Query(query, a...)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		defer rows.Close()
 		result := []group{}
+		total := 0
 		for rows.Next() {
 			var g group
 			var k any
-			if err = rows.Scan(&g.value, &g.count, &k); err != nil {
-				return nil, err
+			var value *string
+			var count *int
+			if err = rows.Scan(&total, &value, &count, &k); err != nil {
+				return nil, 0, err
 			}
+			if value == nil {
+				continue
+			}
+			g.value, g.count = *value, *count
 			g.key = formatOrderValue(k)
 			if n, ok := k.(int64); ok {
 				g.key = strconv.FormatInt(n, 10)
 			}
 			result = append(result, g)
 		}
-		return result, rows.Err()
+		return result, total, rows.Err()
 	}
-	if request.Range != nil {
-		for skip := start; skip > 0; {
-			rows, err := page(key, id, min(skip, BrowseMaximumLimit))
-			if err != nil {
-				return out, err
-			}
-			if len(rows) == 0 {
-				break
-			}
-			skip -= len(rows)
-			last := rows[len(rows)-1]
-			key, id = last.key, last.value
-		}
-	}
-	rows, err := page(key, id, request.Limit+1)
+	rows, total, err := page(key, id, request.Limit+1)
 	if err != nil {
 		return out, err
 	}
+	if request.Range != nil && start >= total {
+		start = max(0, total-1)
+	}
+	out.PageInfo.Total = total
+	out.PageInfo.Start = start
 	out.PageInfo.HasMore = len(rows) > request.Limit
 	if out.PageInfo.HasMore {
 		rows = rows[:request.Limit]

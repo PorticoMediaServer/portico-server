@@ -69,6 +69,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	r := routeResult{Route: name}
 	start := time.Now()
 	probeAt := time.Time{}
+	logAt := time.Now()
 	v := catalog.Viewer{Profile: "viewer", Fence: "scale-open", Libraries: []string{"movies", "tv", "music"}}
 	var probes int
 	firstVisible := time.Duration(-1)
@@ -80,6 +81,12 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 			return r, err
 		}
 		r.RSSKB = max(r.RSSKB, processRSSKB())
+		if time.Since(logAt) > 10*time.Second {
+			var remaining int
+			db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&remaining)
+			fmt.Fprintf(os.Stderr, "DRAIN %s elapsed=%s pending=%d rss_kb=%d\n", name, time.Since(start).Round(time.Second), remaining, r.RSSKB)
+			logAt = time.Now()
+		}
 		if time.Now().After(probeAt) {
 			readStart := time.Now()
 			err = dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error {
@@ -141,7 +148,7 @@ func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes
 				return results, err
 			}
 			for _, pivot := range caps.Pivots {
-				if !pivot.Browsable {
+				if !pivot.Browsable && len(pivot.Sorts) == 0 {
 					continue
 				}
 				scoped, err := s.BrowseCapabilitiesFor(lib, pivot.ID)

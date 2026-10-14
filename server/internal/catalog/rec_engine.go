@@ -336,7 +336,7 @@ func (s *Service) recAbandoned(profile string, now time.Time, values map[string]
 		return err
 	}
 	facets, err := s.read().Query(`SELECT f.facet,json_extract(j.value,'$[1]') FROM json_each(?) j
- CROSS JOIN catalog_rec_facets f ON f.entity_id=json_extract(j.value,'$[0]')`, string(raw))
+ CROSS JOIN catalog_rec_facets f ON f.entity_id=CAST(json_extract(j.value,'$[0]') AS INTEGER)`, string(raw))
 	if err != nil {
 		return err
 	}
