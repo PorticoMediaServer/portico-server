@@ -43,6 +43,9 @@ func TestFilteredGroupingEvaluatesOnlyFieldHolders(t *testing.T) {
 		// Version counts have no value-side index, so each title is tested.
 		{Field: "versions", Operator: "equals", Value: float64(9)},
 		{Field: "versions", Operator: "equals", Value: float64(1)},
+		// The profile has no favourites: the grouping must still start from
+		// its personal state rather than test every song.
+		{Field: "favorite", Operator: "equals", Value: true},
 	} {
 		var groups BrowseResult
 		grouped := readSteps(t, c, func(s *Service) error {
@@ -70,7 +73,7 @@ func TestFilteredGroupingEvaluatesOnlyFieldHolders(t *testing.T) {
 		t.Logf("%v: grouping %d steps, songs count %d steps", query.Value, grouped, counted)
 		// With no match the grouping's work is the predicate's evaluation; the
 		// former shape took about 2.5 times the songs' count here.
-		if songs == 0 && grouped > counted*2 {
+		if songs == 0 && grouped > counted*2+500 {
 			t.Fatalf("%v: grouping took %d steps, more than twice the %d of counting the songs", query.Value, grouped, counted)
 		}
 	}

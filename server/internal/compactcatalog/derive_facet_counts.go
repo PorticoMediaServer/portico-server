@@ -24,6 +24,14 @@ import (
 // An episode's change is therefore its show's change (Drain, and the episode
 // triggers of migration 0008).
 
+// FacetHolderSQL is the browse rows that can hold facet values, over the
+// alias e: shows, and items other than episodes. It is the condition
+// deriveFacetCounts applies, so a filtered grouping tests its predicate on
+// these rows only.
+func FacetHolderSQL(e string) string {
+	return `(` + e + `.kind=` + strconv.Itoa(int(Show)) + ` OR ` + e + `.item_id IS NOT NULL AND ` + e + `.kind<>` + strconv.Itoa(int(Episode)) + `)`
+}
+
 // DomainFacetCounts keeps catalog_facet_members and catalog_facet_counts.
 const DomainFacetCounts = 33
 
@@ -95,7 +103,8 @@ func deriveFacetCounts(ctx context.Context, tx *sql.Tx, id int64) error {
 		return err
 	}
 	// Facets count items, and in a show library shows: an entity without a
-	// browse row, an episode, or any other container holds none.
+	// browse row, an episode, or any other container holds none
+	// (FacetHolderSQL states the same condition for readers).
 	show := err == nil && kind == int64(Show)
 	if err == nil && (show || item.Valid && kind != int64(Episode)) {
 		read := func(field, query string, args ...any) error {
