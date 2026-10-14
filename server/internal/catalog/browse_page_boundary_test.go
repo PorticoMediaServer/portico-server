@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"reflect"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -93,6 +95,82 @@ func TestFilteredPagesHydrateOnlySelectedRows(t *testing.T) {
 				t.Logf("rows=%d sort=%s deep=%d elapsed=%s", n, field, start, elapsed)
 				if elapsed > time.Second {
 					t.Fatalf("deep page took %s", elapsed)
+				}
+			}
+			// Isolate the class's random read model from its other order axes.
+			triggers, err := c.DB.Query(`SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE 'compact_visibility_blocks_%' AND name NOT LIKE '%_random_%'`)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var names []string
+			for triggers.Next() {
+				var name string
+				if err := triggers.Scan(&name); err != nil {
+					t.Fatal(err)
+				}
+				names = append(names, name)
+			}
+			triggers.Close()
+			for _, name := range names {
+				c.Exec(`DROP TRIGGER ` + name)
+			}
+			c.Exec(`INSERT INTO compact_visibility_classes(id,class_key,library_id,policy_json,active_generation,catalog_revision,requested_ms,built_ms) VALUES(1,'fixture',?,'{}',1,0,0,0)`, lib)
+			// A published visibility projection contains only these identities.
+			c.Exec(`INSERT INTO compact_visibility_rows(class_id,generation,entity_id,library_id,kind,sort_key,head,decade,random_key,availability_state) SELECT 1,1,entity_id,library_id,kind,sort_key,head,2000,random_key,availability_state FROM catalog_browse_rows WHERE entity_id>=1000000 AND entity_id%2=0`)
+			for _, restricted := range []bool{false, true} {
+				p := shape
+				p.request.Query, p.where, p.args = nil, `e.library_id=? AND e.kind=1`, []any{lib}
+				p.total = n + 1
+				p.summary = browseSummary{exact: true, total: p.total}
+				from, key, id := `catalog_browse_rows WHERE library_id=? AND kind=1`, "random_key", "entity_id"
+				if restricted {
+					p.total = n / 2
+					p.summary = browseSummary{exact: true, total: p.total, classKey: "fixture", classID: 1, generation: 1}
+					from = `compact_visibility_rows WHERE class_id=1 AND generation=1 AND library_id=? AND kind=1`
+				}
+				p.start = min(50000, p.total-40)
+				p.sorts = []BrowseSortSelection{{Field: "random", Seed: uint32(1000000 + n/2)}}
+				for _, desc := range []bool{false, true} {
+					op, direction := ">=", "ASC"
+					if desc {
+						op, direction = "<=", "DESC"
+					}
+					reference, err := c.DB.Query(`SELECT `+id+` FROM `+from+` ORDER BY CASE WHEN `+key+op+`? THEN 0 ELSE 1 END,`+key+` `+direction+`,`+id+` `+direction+` LIMIT 40 OFFSET ?`, lib, p.sorts[0].Seed, p.start)
+					if err != nil {
+						t.Fatal(err)
+					}
+					var want []int64
+					for reference.Next() {
+						var id int64
+						if err := reference.Scan(&id); err != nil {
+							t.Fatal(err)
+						}
+						want = append(want, id)
+					}
+					reference.Close()
+					var durations []time.Duration
+					for sample := 0; sample < 3; sample++ {
+						before, began := dbwork.Reads().Statements, time.Now()
+						var rows []browseRow
+						err := dbwork.WithReadSnapshot(context.Background(), c.DB, func(ctx context.Context) error {
+							var err error
+							rows, err = New(c.DB).WithContext(ctx).positionRandomPage(p, desc)
+							return err
+						})
+						durations = append(durations, time.Since(began))
+						var got []int64
+						for _, row := range rows {
+							got = append(got, row.entity)
+						}
+						if err != nil || !reflect.DeepEqual(got, want) || len(got) != 40 || dbwork.Reads().Statements-before > 20 {
+							t.Fatalf("counted random: restricted=%v desc=%v got=%v want=%v err=%v", restricted, desc, got, want, err)
+						}
+					}
+					sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
+					t.Logf("rows=%d counted-random restricted=%v desc=%v median=%s worst=%s", n, restricted, desc, durations[1], durations[2])
+					if durations[1] > 100*time.Millisecond || durations[2] > time.Second {
+						t.Fatal(durations)
+					}
 				}
 			}
 		})
