@@ -4768,12 +4768,18 @@ INSERT INTO catalog_content_eligible_state(id,after_entity_id,backfill_done,turn
 --   (SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=X)
 
 -- ===== views
+-- A file no inventory record knows (a recording, a file added outside a scan)
+-- follows the library folder that holds its path; a file in no folder of the
+-- library is unavailable only when every folder of the library is.
 CREATE VIEW inventory_item_availability AS
  SELECT l.entity_id AS item_id,a.token AS asset_id,
  CASE WHEN EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=l.entity_id) THEN 0
  WHEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id)
  THEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing') AND o.root_incarnation=s.incarnation)
- ELSE a.available=1 AND NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.id=cl.library_id AND (s.enabled=0 OR s.health IN('offline','root_changed','removing'))) END AS available
+ ELSE a.available=1 AND CASE
+  WHEN EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND (substr(a.path,1,length(rtrim(s.root,'/\'))+1) IN(rtrim(s.root,'/\')||'/',rtrim(s.root,'/\')||'\') OR substr(a.path,1,length(rtrim(s.configured_root,'/\'))+1) IN(rtrim(s.configured_root,'/\')||'/',rtrim(s.configured_root,'/\')||'\')))
+  THEN NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND (substr(a.path,1,length(rtrim(s.root,'/\'))+1) IN(rtrim(s.root,'/\')||'/',rtrim(s.root,'/\')||'\') OR substr(a.path,1,length(rtrim(s.configured_root,'/\'))+1) IN(rtrim(s.configured_root,'/\')||'/',rtrim(s.configured_root,'/\')||'\')) AND (s.enabled=0 OR s.health IN('offline','root_changed','removing')))
+  ELSE NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id) OR EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND NOT (s.enabled=0 OR s.health IN('offline','root_changed','removing'))) END END AS available
  FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_assets a ON a.id=l.asset_id;
 
 CREATE VIEW listening_book_context AS
