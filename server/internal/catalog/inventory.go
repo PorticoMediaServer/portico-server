@@ -133,7 +133,9 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 		return err
 	}
 	var alias bool
-	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_directories WHERE job_id=? AND identity=? AND relative_path<>?)`, job, page.DirectoryIdentity, relative).Scan(&alias); err != nil {
+	// identity<>'' lets the visited-identity index answer; without it the
+	// check read every directory the run had recorded, once per directory.
+	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_directories INDEXED BY inventory_directories_visited WHERE job_id=? AND identity=? AND identity<>'' AND relative_path<>?)`, job, page.DirectoryIdentity, relative).Scan(&alias); err != nil {
 		return err
 	}
 	if alias {
@@ -179,7 +181,7 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 				return storage.ErrInventoryChanged
 			}
 			var duplicate bool
-			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_directories WHERE job_id=? AND identity=? AND relative_path<>?)`, job, v.ObjectIdentity, child).Scan(&duplicate); err != nil {
+			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_directories INDEXED BY inventory_directories_visited WHERE job_id=? AND identity=? AND identity<>'' AND relative_path<>?)`, job, v.ObjectIdentity, child).Scan(&duplicate); err != nil {
 				return err
 			}
 			if duplicate {
@@ -327,7 +329,9 @@ func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string
 		// replacing its location ID. Multiple hardlink aliases stay separate.
 		if asset != "" && v.ObjectIdentity != "" {
 			var oldID, oldRev, oldSeen, oldState string
-			e := tx.QueryRowContext(ctx, `SELECT id,revision,seen_job,state FROM inventory_objects WHERE source_id=? AND root_incarnation=? AND asset_id=? AND object_identity=? AND retired=0 AND seen_job!=? AND (SELECT count(*) FROM inventory_objects x WHERE x.source_id=? AND x.asset_id=? AND x.retired=0)=1 LIMIT 1`, source.ID, source.Incarnation, asset, v.ObjectIdentity, job, source.ID, asset).Scan(&oldID, &oldRev, &oldSeen, &oldState)
+			// Both reads start from the asset: a source's own index would read
+			// every file of the source.
+			e := tx.QueryRowContext(ctx, `SELECT id,revision,seen_job,state FROM inventory_objects INDEXED BY inventory_objects_asset WHERE asset_id=?3 AND source_id=?1 AND root_incarnation=?2 AND object_identity=?4 AND retired=0 AND seen_job!=?5 AND (SELECT count(*) FROM inventory_objects x INDEXED BY inventory_objects_asset WHERE x.asset_id=?3 AND x.source_id=?1 AND x.retired=0)=1 LIMIT 1`, source.ID, source.Incarnation, asset, v.ObjectIdentity, job).Scan(&oldID, &oldRev, &oldSeen, &oldState)
 			if e == nil {
 				object, previousRevision, previousSeen, previousState = oldID, oldRev, oldSeen, oldState
 				relocated = true
