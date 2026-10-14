@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/catalogtest"
 )
@@ -82,5 +83,55 @@ func TestScreenClaimTakesTheNewestTitleFirst(t *testing.T) {
 		var title string
 		_ = db.QueryRow(`SELECT title FROM catalog_entities WHERE public_id=pid_blob(?)`, claim.Base.TargetID).Scan(&title)
 		t.Fatalf("the worker took %q before the newest title", title)
+	}
+}
+
+// The claim's cost does not grow with the backlog: timed at three backlog
+// sizes inside a write transaction, as the worker runs it.
+func TestScreenClaimCostIsFlatAcrossBacklogSizes(t *testing.T) {
+	requireScaleTier(t)
+	_, db, _, _ := integrationScreen(t)
+	var handle int64
+	if err := db.QueryRow(`SELECT id FROM catalog_libraries ORDER BY id LIMIT 1`).Scan(&handle); err != nil {
+		t.Fatal(err)
+	}
+	stamp := "2026-10-14T00:00:00Z"
+	added := 0
+	var costs []float64
+	for _, size := range []int{2_000, 20_000, 200_000} {
+		// Films and shows inserted as rows: their own triggers queue them for
+		// matching, as a scan's writes do. A third are already matched.
+		if _, err := db.Exec(`WITH RECURSIVE n(i) AS (SELECT ?1 UNION ALL SELECT i+1 FROM n WHERE i<?2)
+ INSERT INTO catalog_entities(public_id,library_id,kind,title,sort_key,sort_head) SELECT randomblob(16),?3,CASE WHEN i%250=0 THEN 2 ELSE 1 END,'Backlog '||i,'backlog '||i,'b' FROM n`, added+1, size, handle); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := db.Exec(`UPDATE screen_metadata_work SET status='accepted' WHERE target_id%3=0 AND status='pending'`); err != nil {
+			t.Fatal(err)
+		}
+		added = size
+		if _, err := db.Exec(`ANALYZE screen_metadata_work`); err != nil {
+			t.Fatal(err)
+		}
+		best := time.Duration(1 << 62)
+		for n := 0; n < 20; n++ {
+			tx, err := db.Begin()
+			if err != nil {
+				t.Fatal(err)
+			}
+			start := time.Now()
+			var kind string
+			var target int64
+			err = tx.QueryRow(screenClaimSQL, stamp).Scan(&kind, &target)
+			best = min(best, time.Since(start))
+			tx.Rollback()
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+		costs = append(costs, float64(best.Microseconds()))
+		t.Logf("backlog %d: claim %v", size, best)
+	}
+	if costs[2] > 5*costs[0]+1000 {
+		t.Fatalf("claim cost grows with the backlog: %v microseconds", costs)
 	}
 }
