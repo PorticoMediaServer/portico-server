@@ -48,6 +48,9 @@ func seedReference(db *sql.DB, n, startItem, stopItem, batch int, derive bool) (
 	}
 	worker := compactcatalog.NewWorker(db)
 	for offset := startItem; offset < stopItem; offset += batch {
+		if err = checkScratchBudget(); err != nil {
+			return
+		}
 		start := time.Now()
 		end := min(stopItem, offset+batch)
 		err = dbwork.WithWriteTx(ctx, db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {

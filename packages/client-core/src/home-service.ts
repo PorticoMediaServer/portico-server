@@ -35,9 +35,14 @@ export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): Hom
   if (shown.serverId !== fresh.serverId || shown.viewerFence !== fresh.viewerFence) return fresh;
   const before = new Map(shown.rows.map(row => [row.id, row]));
   let changed = shown.rows.length !== fresh.rows.length;
-  const rows = fresh.rows.map((row, index) => {
+  const rows = fresh.rows.flatMap((row, index) => {
+    if (row.deferred && row.id === 'for_you') {
+      const previous = shown.rows.filter(old => old.family === 'for_you');
+      if (previous.length) { changed = true; return previous; }
+    }
     const old = before.get(row.id);
-    if (!old) { changed = true; return row; }
+    if (!old) { changed = true; return [row]; }
+    if (row.deferred) { if (shown.rows[index] !== old) changed = true; return [old]; }
     const entries = mergeRevalidatedList(old.entries, row.entries, e => e.id, {same: sameJson, complete: !row.nextCursor});
     const keptTail = entries.length > row.entries.length;
     const {entries: _a, revision: _b, nextCursor: _c, hasMore: _d, ...oldRest} = old;
@@ -45,13 +50,14 @@ export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): Hom
     const nextCursor = keptTail ? old.nextCursor : row.nextCursor;
     if (entries === old.entries && nextCursor === old.nextCursor && sameJson(oldRest, freshRest)) {
       if (shown.rows[index] !== old) changed = true;
-      return old;
+      return [old];
     }
     changed = true;
-    return Object.freeze({...row, entries, nextCursor, hasMore: keptTail ? old.hasMore : row.hasMore});
+    return [Object.freeze({...row, entries, nextCursor, hasMore: keptTail ? old.hasMore : row.hasMore})];
   });
-  if (!changed && sameJson(shown.layout, fresh.layout) && sameJson(shown.hero, fresh.hero)) return shown;
-  return Object.freeze({...fresh, rows: Object.freeze(rows)});
+  const hero = fresh.hero ?? (fresh.rows.some(row => row.deferred && (row.id === 'continue' || row.id === 'continue_listening')) ? shown.hero : undefined);
+  if (!changed && sameJson(shown.layout, fresh.layout) && sameJson(shown.hero, hero)) return shown;
+  return Object.freeze({...fresh, rows: Object.freeze(rows), hero});
 }
 
 export class HomeService {
@@ -61,6 +67,8 @@ export class HomeService {
   private reading?: {controller: AbortController; promise: Promise<void>};
   private pages = new Map<string, AbortController>();
   private disposed = false;
+  private hydrationGeneration = 0;
+  private hydrations = new Set<AbortController>();
   private readonly api: () => HomeApi;
   private readonly timeoutMs: number;
 
@@ -76,6 +84,49 @@ export class HomeService {
     if (this.disposed) return;
     this.state = Object.freeze({...this.state, ...patch});
     for (const listener of [...this.listeners]) listener();
+  }
+
+  private hydrateRows(fresh: HomeDocument): void {
+    const epoch = ++this.hydrationGeneration;
+    for (const controller of this.hydrations) controller.abort();
+    this.hydrations.clear();
+    const queue = fresh.rows.filter(row => row.deferred);
+    const mine = this.generation;
+    const consume = async () => {
+      while (queue.length && !this.disposed && epoch === this.hydrationGeneration) {
+        const descriptor = queue.shift()!;
+        const controller = new AbortController();
+        this.hydrations.add(controller);
+        let abort = () => {};
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+          const row = await Promise.race([
+            fetchHomeRow(this.api(), descriptor.id, {limit: descriptor.limit || undefined}, controller.signal),
+            new Promise<never>((_, reject) => {
+              abort = () => reject(Object.assign(new Error('home_row_cancelled'), {name: 'AbortError'}));
+              controller.signal.addEventListener('abort', abort, {once: true});
+              timer = setTimeout(() => controller.abort(), this.timeoutMs);
+            }),
+          ]);
+          const shown = this.state.document;
+          if (this.disposed || mine !== this.generation || epoch !== this.hydrationGeneration || controller.signal.aborted || !shown || shown.viewerFence !== fresh.viewerFence || shown.serverId !== fresh.serverId || row.viewerFence !== fresh.viewerFence || row.children?.some(child => child.viewerFence !== fresh.viewerFence)) continue;
+          const replacements = row.children ?? [row];
+          const rows = shown.rows.flatMap(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you' ? [] : [old]);
+          const at = shown.rows.findIndex(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you');
+          rows.splice(Math.max(0, at), 0, ...replacements.filter(next => next.entries.length > 0 || next.critical));
+          const validHero = rows.flatMap(next => {
+            const candidate = next.hero ?? (shown.hero?.rowId === next.id ? shown.hero : undefined);
+            return candidate && next.entries.some(entry => entry.id === candidate.entryId) ? [candidate] : [];
+          }).reduce<typeof shown.hero>((best, candidate) => !best || (candidate.selectionKey ?? '') > (best.selectionKey ?? '') ? candidate : best, undefined);
+          this.publish({document: mergeHomeDocument(shown, Object.freeze({...shown, rows: Object.freeze(rows), hero: validHero})), error: undefined});
+        } catch {
+          // A failed shelf keeps its previous cards. Other shelves continue;
+          // the next quiet Home refresh retries the deferred endpoint.
+        } finally { if (timer) clearTimeout(timer); controller.signal.removeEventListener('abort', abort); this.hydrations.delete(controller); }
+      }
+    };
+    void consume();
+    void consume();
   }
 
   private async read(signal: AbortSignal): Promise<HomeDocument> {
@@ -112,7 +163,8 @@ export class HomeService {
       try {
         const document = await this.read(controller.signal);
         if (this.disposed || mine !== this.generation) return;
-        this.publish({phase: 'ready', document, error: undefined});
+        this.publish({phase: 'ready', document: this.state.document ? mergeHomeDocument(this.state.document, document) : document, error: undefined});
+        this.hydrateRows(document);
       } catch (error) {
         if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
         this.publish({phase: 'error', error});
@@ -137,6 +189,7 @@ export class HomeService {
       if (this.disposed || mine !== this.generation || controller.signal.aborted || !this.state.document || this.state.phase !== 'ready') return;
       const merged = mergeHomeDocument(this.state.document, fresh);
       if (merged !== this.state.document) this.publish({document: merged});
+      this.hydrateRows(fresh);
     } catch (error) {
       if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
       throw error;
@@ -161,7 +214,7 @@ export class HomeService {
       if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
       const document = this.state.document;
       // The row moved on while this page was read (a quiet read replaced it): this page belongs to the older row.
-      if (document && document.rows.find(r => r.id === rowId)?.nextCursor === cursor) this.publish({document: Object.freeze({...document, rows: Object.freeze(document.rows.map(r => (r.id === rowId ? appendHomeRowPage(r, page) : r)))})});
+      if (document && page.viewerFence === document.viewerFence && document.rows.find(r => r.id === rowId)?.nextCursor === cursor) this.publish({document: Object.freeze({...document, rows: Object.freeze(document.rows.map(r => (r.id === rowId ? appendHomeRowPage(r, page) : r)))})});
       done();
     } catch (error) {
       if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
@@ -197,7 +250,10 @@ export class HomeService {
       const mine = this.generation;
       try {
         const fresh = await this.read(new AbortController().signal);
-        if (!this.disposed && mine === this.generation && this.state.document) this.publish({document: mergeHomeDocument(this.state.document, fresh)});
+        if (!this.disposed && mine === this.generation && this.state.document) {
+          this.publish({document: mergeHomeDocument(this.state.document, fresh)});
+          this.hydrateRows(fresh);
+        }
         return;
       } catch { /* fall through to an ordinary load, which reports its own failure */ }
     }
@@ -222,6 +278,9 @@ export class HomeService {
 
   dispose(): void {
     this.disposed = true;
+    this.hydrationGeneration++;
+    for (const controller of this.hydrations) controller.abort();
+    this.hydrations.clear();
     this.generation++;
     this.reading?.controller.abort();
     for (const page of this.pages.values()) page.abort();

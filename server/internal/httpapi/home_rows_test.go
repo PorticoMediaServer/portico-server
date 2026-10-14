@@ -88,8 +88,16 @@ func TestHomeRoutesComposePageAndCustomise(t *testing.T) {
 			recent = &document.Rows[index]
 		}
 	}
-	if recent == nil || len(recent.Entries) != 2 || recent.Total != 3 || recent.Endpoint != "/v1/home/rows/recent_movies" {
+	if recent == nil || !recent.Deferred || len(recent.Entries) != 0 || recent.Endpoint != "/v1/home/rows/recent_movies" {
 		t.Fatalf("recent row: %+v", recent)
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/recent_movies?limit=2", "")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	*recent = catalog.HomeRow{}
+	if err := json.Unmarshal(w.Body.Bytes(), recent); err != nil || recent.Deferred || len(recent.Entries) != 2 || recent.Total != 3 {
+		t.Fatalf("preview %+v %v", recent, err)
 	}
 	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/recent_movies?limit=2&cursor="+recent.NextCursor, "")
 	if w.Code != 200 {
@@ -123,7 +131,7 @@ func TestHomeRoutesComposePageAndCustomise(t *testing.T) {
 	}
 	// trending_now is empty for this viewer and "watchlist" is a row Home no longer
 	// has (My List is a Saved tab): the layout saves and the server's order leads.
-	if document.Rows[0].ID != "continue" || document.Layout.Revision != 2 {
+	if document.Rows[0].ID != "trending_now" || document.Layout.Revision != 2 {
 		t.Fatalf("saved layout not applied: %+v", document.Layout)
 	}
 	for _, row := range document.Rows {
@@ -191,10 +199,15 @@ func TestHomeLayoutListsEveryArrangeableRow(t *testing.T) {
 	if !ids["recommended"].Hidden || ids["continue"].Hidden || !ids["continue"].Required || ids["recent_movies"].LibraryID != "movies" || ids["recent_movies"].Hidden {
 		t.Fatalf("row flags: %+v", ids)
 	}
-	// Home itself still omits the empty row.
+	// Home publishes the endpoint independently of its empty preview.
 	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home", "")
-	if strings.Contains(w.Body.String(), `"id":"trending_now"`) {
-		t.Fatal("home published an empty row")
+	if !strings.Contains(w.Body.String(), `"id":"trending_now"`) || !strings.Contains(w.Body.String(), `"deferred":true`) {
+		t.Fatal("home did not publish the deferred row")
+	}
+	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/trending_now", "")
+	var empty catalog.HomeRow
+	if err := json.Unmarshal(w.Body.Bytes(), &empty); err != nil || w.Code != 200 || len(empty.Entries) != 0 || empty.Deferred {
+		t.Fatal("empty preview", w.Code, w.Body.String())
 	}
 	if w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/layout?x=1", ""); w.Code != 400 {
 		t.Fatal("unknown query accepted", w.Code)

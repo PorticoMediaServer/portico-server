@@ -31,7 +31,7 @@ var ErrLibraryRemoving = errors.New("the library is being removed")
 const (
 	libraryRemovalKind = "library-removal"
 	folderRemovalKind  = "folder-removal"
-	removalBatch       = 24
+	removalBatch       = 4
 )
 
 // RemoveLibrary starts removing a library. name must be the library's current

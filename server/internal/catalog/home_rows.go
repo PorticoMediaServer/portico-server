@@ -44,6 +44,12 @@ type HomeSeeAll struct {
 }
 
 type HomeRow struct {
+	ViewerFence string `json:"viewerFence"`
+	// Deferred rows publish their policy and endpoint before their preview.
+	Deferred bool `json:"deferred,omitempty"`
+	// Children are the server-selected rows in the personal recommendation family.
+	Children           []HomeRow   `json:"children,omitempty"`
+	Hero               *HomeHero   `json:"hero,omitempty"`
 	SeeAll             *HomeSeeAll `json:"seeAll,omitempty"`
 	ID                 string      `json:"id"`
 	Title              string      `json:"title"`
@@ -83,8 +89,9 @@ type HomeRow struct {
 
 // HomeHero names the entry Home opens with: the first entry of one of its rows.
 type HomeHero struct {
-	RowID   string `json:"rowId"`
-	EntryID string `json:"entryId"`
+	RowID        string `json:"rowId"`
+	EntryID      string `json:"entryId"`
+	SelectionKey string `json:"selectionKey,omitempty"`
 }
 
 type HomeLayout struct {
@@ -659,6 +666,7 @@ func (r HomeRequest) now() time.Time {
 
 func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRevision, page HomeRowPage, enrich bool) (HomeRow, error) {
 	row := spec.descriptor()
+	row.ViewerFence = r.ViewerFence
 	row.Revision = revision
 	row.Limit = homeLimit(page.Limit)
 	src, e := s.homeSource(r, spec)
@@ -916,7 +924,7 @@ func homeHero(rows []HomeRow) *HomeHero {
 			continue
 		}
 		if hero == nil || row.lead > newest {
-			hero, newest = &HomeHero{RowID: row.ID, EntryID: row.Entries[0].ID}, row.lead
+			hero, newest = &HomeHero{RowID: row.ID, EntryID: row.Entries[0].ID, SelectionKey: row.lead + fmt.Sprintf("!%03d", 999-i)}, row.lead
 		}
 	}
 	return hero
@@ -953,6 +961,34 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 	if e != nil {
 		return HomeRow{}, e
 	}
+	if id == recFamily && !hidesFamily(r.HiddenRowIDs) {
+		r.Limit = homeLimit(page.Limit)
+		if page.Cursor != "" || page.Start != 0 || page.AnchorID != "" {
+			return HomeRow{}, ErrCursor
+		}
+		revision, err := s.homeRevision(r.Libraries, r.Profile)
+		if err != nil {
+			return HomeRow{}, err
+		}
+		children, err := s.recFamilyRows(r, revision)
+		if err != nil {
+			return HomeRow{}, err
+		}
+		if err = s.homeEnrichRows(r.Profile, children); err != nil {
+			return HomeRow{}, err
+		}
+		for _, spec := range specs {
+			if spec.ID == recFamily {
+				row := spec.descriptor()
+				row.Children = children
+				row.ViewerFence = r.ViewerFence
+				row.Revision = revision
+				row.Limit = r.Limit
+				return row, nil
+			}
+		}
+		return HomeRow{}, ErrHomeRowUnknown
+	}
 	var found *homeRowSpec
 	for index := range specs {
 		if specs[index].ID == id && id != recFamily {
@@ -978,6 +1014,18 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 	row, e := s.homeRowFor(r, *found, before, page, true)
 	if e != nil {
 		return row, e
+	}
+	if (id == "continue" || id == "continue_listening") && page.Cursor == "" && page.Start == 0 {
+		row.Hero = homeHero([]HomeRow{row})
+		if row.Hero != nil {
+			for index, spec := range homeOrdered(specs, r.RowOrder) {
+				if spec.ID == id {
+					row.Hero.SelectionKey = row.lead + fmt.Sprintf("!%03d", 999-index)
+					break
+				}
+			}
+		}
+
 	}
 	after, e := s.homeRevision(r.Libraries, r.Profile)
 	if e != nil {

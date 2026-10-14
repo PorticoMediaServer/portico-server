@@ -3,7 +3,9 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/dbwork"
@@ -61,25 +63,23 @@ func captureContainerUndo(ctx context.Context, tx *sql.Tx, profile, kind string,
 		return e
 	}
 	intentAt := intentTime.Add(time.Nanosecond).Format("2006-01-02T15:04:05.000000000Z")
-	for _, id := range ids {
-		before, e := readPersonalByID(tx, profile, id, personalstate.SQL("?", "?"))
-		if e != nil {
-			return e
-		}
-		if e = snapshotPersonalByID(tx, profile, id, before); e != nil {
-			return e
-		}
-		if _, e := tx.ExecContext(ctx, `INSERT INTO container_personal_undo_items(token,item_id,previous_watched,after_revision,position,unit,playback_id,activity_at,activity_state,book_position,previous_intent,previous_authored_at,intent_at,added_ms,show_id,season_id,album_id,book_id)
- SELECT ?,e.id,COALESCE(`+personalstate.SQL("?", "e.id")+`,0),COALESCE(pi.revision,0)+1,p.position,p.unit,p.playback_id,a.updated_at,a.state,
- (SELECT b.position FROM book_resume b WHERE b.profile_id=? AND b.item_id=e.id),
- wi.watched,wi.authored_at,?,e.added_ms,
- (SELECT show_id FROM catalog_episodes WHERE entity_id=e.id),(SELECT season_id FROM catalog_episodes WHERE entity_id=e.id),
- (SELECT album_id FROM catalog_songs WHERE entity_id=e.id),(SELECT book_id FROM catalog_book_files WHERE entity_id=e.id)
- FROM catalog_entities e LEFT JOIN personal_items pi ON pi.profile_id=? AND pi.item_id=e.id
- LEFT JOIN progress p ON p.profile_id=? AND p.item_id=e.id
- LEFT JOIN progress_activity a ON a.profile_id=? AND a.item_id=e.id LEFT JOIN personal_watched_intents wi ON wi.profile_id=? AND wi.item_id=e.id WHERE e.id=?`, out.UndoToken, profile, profile, intentAt, profile, profile, profile, profile, id); e != nil {
-			return e
-		}
+	states, err := readPersonalBatch(ctx, tx, profile, ids)
+	if err != nil {
+		return err
+	}
+	if err = snapshotPersonalBatch(ctx, tx, profile, ids, states); err != nil {
+		return err
+	}
+	raw, _ := json.Marshal(ids)
+	_, err = tx.ExecContext(ctx, `INSERT INTO container_personal_undo_items(token,item_id,previous_watched,after_revision,position,unit,playback_id,activity_at,activity_state,book_position,previous_intent,previous_authored_at,intent_at,added_ms,show_id,season_id,album_id,book_id)
+ SELECT ?,e.id,COALESCE(`+personalstate.SQL("scope.profile", "e.id")+`,0),COALESCE(pi.revision,0)+1,p.position,p.unit,p.playback_id,a.updated_at,a.state,
+ (SELECT b.position FROM book_resume b WHERE b.profile_id=scope.profile AND b.item_id=e.id),wi.watched,wi.authored_at,?,e.added_ms,
+ (SELECT show_id FROM catalog_episodes WHERE entity_id=e.id),(SELECT season_id FROM catalog_episodes WHERE entity_id=e.id),(SELECT album_id FROM catalog_songs WHERE entity_id=e.id),(SELECT book_id FROM catalog_book_files WHERE entity_id=e.id)
+ FROM json_each(?) requested CROSS JOIN catalog_entities e ON e.id=CAST(requested.value AS INTEGER) CROSS JOIN (SELECT ? profile) scope
+ LEFT JOIN personal_items pi ON pi.profile_id=scope.profile AND pi.item_id=e.id LEFT JOIN progress p ON p.profile_id=scope.profile AND p.item_id=e.id
+ LEFT JOIN progress_activity a ON a.profile_id=scope.profile AND a.item_id=e.id LEFT JOIN personal_watched_intents wi ON wi.profile_id=scope.profile AND wi.item_id=e.id`, out.UndoToken, intentAt, string(raw), profile)
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -151,63 +151,51 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 		if changed != 0 || count != len(ids) || count != memberCount {
 			return ErrPersonalConflict
 		}
-		for _, item := range ids {
-			var saved bool
-			if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM container_personal_undo_items WHERE token=? AND item_id=?)`, m.UndoToken, item).Scan(&saved); e != nil {
-				return e
-			}
-			if !saved {
-				return ErrPersonalConflict
-			}
-			// An action on an overlapping container also changes the effective state.
-			var nested int
-			if e = tx.QueryRowContext(ctx, `SELECT count(*) FROM container_personal_state c WHERE c.profile_id=? AND c.watermark>? AND ((c.kind='show' AND c.container_id=(SELECT show_id FROM catalog_episodes WHERE entity_id=?)) OR (c.kind='season' AND c.container_id=(SELECT season_id FROM catalog_episodes WHERE entity_id=?)) OR (c.kind='album' AND c.container_id=(SELECT album_id FROM catalog_songs WHERE entity_id=?)) OR (c.kind='book' AND c.container_id=(SELECT book_id FROM catalog_book_files WHERE entity_id=?)))`, profile, mark, item, item, item, item).Scan(&nested); e != nil {
-				return e
-			}
-			if nested != 0 {
-				return ErrPersonalConflict
-			}
+		rawIDs, _ := json.Marshal(ids)
+		var invalid bool
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM json_each(?) requested WHERE NOT EXISTS(SELECT 1 FROM container_personal_undo_items u WHERE u.token=? AND u.item_id=CAST(requested.value AS INTEGER)))`, string(rawIDs), m.UndoToken).Scan(&invalid); e != nil {
+			return e
 		}
-		for _, item := range ids {
-			before, e := readPersonalByID(tx, profile, item, personalstate.SQL("?", "?"))
-			if e != nil {
-				return e
-			}
-			if e = snapshotPersonalByID(tx, profile, item, before); e != nil {
-				return e
-			}
+		if invalid {
+			return ErrPersonalConflict
+		}
+		// Every overlapping default is a full primary-key probe from the captured
+		// member, rather than a scan of all defaults marked by this profile.
+		parts := []string{}
+		args := []any{string(rawIDs)}
+		for _, scope := range []struct{ kind, table, column string }{{"show", "catalog_episodes", "show_id"}, {"season", "catalog_episodes", "season_id"}, {"album", "catalog_songs", "album_id"}, {"book", "catalog_book_files", "book_id"}} {
+			parts = append(parts, `EXISTS(SELECT 1 FROM container_personal_state c WHERE c.profile_id=? AND c.kind='`+scope.kind+`' AND c.container_id=(SELECT `+scope.column+` FROM `+scope.table+` WHERE entity_id=CAST(requested.value AS INTEGER)) AND c.watermark>?)`)
+			args = append(args, profile, mark)
+		}
+		if e = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM json_each(?) requested WHERE `+strings.Join(parts, " OR ")+`)`, args...).Scan(&invalid); e != nil {
+			return e
+		}
+		if invalid {
+			return ErrPersonalConflict
+		}
+
+		beforeStates, e := readPersonalBatch(ctx, tx, profile, ids)
+		if e != nil {
+			return e
+		}
+		if e = snapshotPersonalBatch(ctx, tx, profile, ids, beforeStates); e != nil {
+			return e
 		}
 		out.Revision = revision + 1
 		out.Watermark = previousWatermark
 		if _, e = tx.ExecContext(ctx, `UPDATE container_personal_state SET watched=?,watermark=?,cleared_through=?,revision=? WHERE profile_id=? AND kind=? AND container_id=?`, out.Watched, previousWatermark, clear, out.Revision, profile, kind, container); e != nil {
 			return e
 		}
-		for _, item := range ids {
-			if _, e = tx.ExecContext(ctx, `DELETE FROM personal_watched_intents WHERE profile_id=? AND item_id=?`, profile, item); e != nil {
-				return e
-			}
-			if _, e = tx.ExecContext(ctx, `INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) SELECT ?,item_id,previous_intent,previous_authored_at FROM container_personal_undo_items WHERE token=? AND item_id=? AND previous_authored_at IS NOT NULL`, profile, m.UndoToken, item); e != nil {
-				return e
-			}
-			if _, e = tx.ExecContext(ctx, `UPDATE personal_items SET watched=(SELECT previous_watched FROM container_personal_undo_items WHERE token=? AND item_id=?),revision=revision+1 WHERE profile_id=? AND item_id=?`, m.UndoToken, item, profile, item); e != nil {
-				return e
-			}
-			if _, e = tx.ExecContext(ctx, `UPDATE progress SET position=(SELECT position FROM container_personal_undo_items WHERE token=? AND item_id=?) WHERE profile_id=? AND item_id=?`, m.UndoToken, item, profile, item); e != nil {
-				return e
-			}
-			if _, e = tx.ExecContext(ctx, `UPDATE progress_activity SET state=(SELECT activity_state FROM container_personal_undo_items WHERE token=? AND item_id=?) WHERE profile_id=? AND item_id=?`, m.UndoToken, item, profile, item); e != nil {
-				return e
-			}
-			if _, e = tx.ExecContext(ctx, `UPDATE book_resume SET position=(SELECT book_position FROM container_personal_undo_items WHERE token=? AND item_id=?) WHERE profile_id=? AND item_id=? AND EXISTS(SELECT 1 FROM container_personal_undo_items WHERE token=? AND item_id=? AND book_position IS NOT NULL)`, m.UndoToken, item, profile, item, m.UndoToken, item); e != nil {
-				return e
-			}
-			restored, e := readPersonalByID(tx, profile, item, personalstate.SQL("?", "?"))
-			if e != nil {
-				return e
-			}
-			if e = snapshotPersonalByID(tx, profile, item, restored); e != nil {
-				return e
-			}
+		if e = restoreContainerMemberStates(ctx, tx, profile, m.UndoToken); e != nil {
+			return e
+		}
+
+		restored, e := readPersonalBatch(ctx, tx, profile, ids)
+		if e != nil {
+			return e
+		}
+		if e = snapshotPersonalBatch(ctx, tx, profile, ids, restored); e != nil {
+			return e
 		}
 		if _, e = tx.ExecContext(ctx, `DELETE FROM container_personal_undo WHERE token=?`, m.UndoToken); e != nil {
 			return e

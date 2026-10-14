@@ -129,21 +129,40 @@ func rowContainer(row browseRow) int {
 	return 1
 }
 
-func adjustBrowseBuckets(ctx context.Context, tx *sql.Tx, row browseRow, delta int) error {
+func adjustBrowseBucketAxis(ctx context.Context, tx *sql.Tx, row browseRow, axis int, value string, delta int) error {
 	container := rowContainer(row)
+	if delta > 0 {
+		_, err := tx.ExecContext(ctx, `INSERT INTO catalog_browse_buckets(library_id,kind,container,axis,value,rating_key,label_key,total) VALUES(?,?,?,?,?,?,?,1) ON CONFLICT(library_id,kind,container,axis,value,rating_key,label_key) DO UPDATE SET total=total+1`, row.library, row.kind, container, axis, value, row.ratingKey, row.labelKey)
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE catalog_browse_buckets SET total=total-1 WHERE library_id=? AND kind=? AND container=? AND axis=? AND value=? AND rating_key=? AND label_key=?`, row.library, row.kind, container, axis, value, row.ratingKey, row.labelKey); err != nil {
+		return err
+	}
+	_, err := tx.ExecContext(ctx, browseBucketEmptyDelete, row.library, row.kind, container, axis, value, row.ratingKey, row.labelKey)
+	return err
+}
+func adjustBrowseBuckets(ctx context.Context, tx *sql.Tx, row browseRow, delta int) error {
 	for axis, value := range browseStaticAxes(row) {
-		if delta > 0 {
-			if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_browse_buckets(library_id,kind,container,axis,value,rating_key,label_key,total)
- VALUES(?,?,?,?,?,?,?,1) ON CONFLICT(library_id,kind,container,axis,value,rating_key,label_key) DO UPDATE SET total=total+1`, row.library, row.kind, container, axis, value, row.ratingKey, row.labelKey); err != nil {
-				return err
-			}
-			continue
-		}
-		if _, err := tx.ExecContext(ctx, `UPDATE catalog_browse_buckets SET total=total-1 WHERE library_id=? AND kind=? AND container=? AND axis=? AND value=? AND rating_key=? AND label_key=?`, row.library, row.kind, container, axis, value, row.ratingKey, row.labelKey); err != nil {
+		if err := adjustBrowseBucketAxis(ctx, tx, row, axis, value, delta); err != nil {
 			return err
 		}
-		// Only the key just decremented can have emptied: one primary-key probe.
-		if _, err := tx.ExecContext(ctx, browseBucketEmptyDelete, row.library, row.kind, container, axis, value, row.ratingKey, row.labelKey); err != nil {
+	}
+	return nil
+}
+func browseBucketScopeEqual(a, b browseRow) bool {
+	return a.library == b.library && a.kind == b.kind && rowContainer(a) == rowContainer(b) && a.ratingKey == b.ratingKey && a.labelKey == b.labelKey
+}
+func moveBrowseBuckets(ctx context.Context, tx *sql.Tx, old, next browseRow) error {
+	sameScope := browseBucketScopeEqual(old, next)
+	before, after := browseStaticAxes(old), browseStaticAxes(next)
+	for axis, value := range before {
+		if sameScope && value == after[axis] {
+			continue
+		}
+		if err := adjustBrowseBucketAxis(ctx, tx, old, axis, value, -1); err != nil {
+			return err
+		}
+		if err := adjustBrowseBucketAxis(ctx, tx, next, axis, after[axis], 1); err != nil {
 			return err
 		}
 	}
@@ -195,32 +214,33 @@ func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) (errOut error) {
 		return err
 	}
 	if counted {
-		// Metric buckets move with the row; the metric refresh below re-adds them.
+		// Retain metric buckets while changing only the static keys that moved.
 		row.durationBucket, row.ratingBucket = old.durationBucket, old.ratingBucket
-		if err = adjustBrowseBuckets(ctx, tx, old, -1); err != nil {
+		if err = moveBrowseBuckets(ctx, tx, old, row); err != nil {
 			return err
 		}
-		if _, err = tx.ExecContext(ctx, `DELETE FROM catalog_browse_counted_rows WHERE entity_id=?`, id); err != nil {
-			return err
-		}
+	} else if err = adjustBrowseBuckets(ctx, tx, row, 1); err != nil {
+		return err
 	}
+
 	var item any
 	if row.item.Valid {
 		item = row.item.Int64
 	}
 	if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_browse_rows(entity_id,library_id,kind,title,sort_key,head,year,added_text,item_id,rating_key,label_key,available,recent,backdrop)
  VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)
- ON CONFLICT(entity_id) DO UPDATE SET library_id=excluded.library_id,kind=excluded.kind,title=excluded.title,sort_key=excluded.sort_key,head=excluded.head,year=excluded.year,added_text=excluded.added_text,item_id=excluded.item_id,rating_key=excluded.rating_key,label_key=excluded.label_key,available=excluded.available,recent=excluded.recent,backdrop=excluded.backdrop`,
+ ON CONFLICT(entity_id) DO UPDATE SET library_id=excluded.library_id,kind=excluded.kind,title=excluded.title,sort_key=excluded.sort_key,head=excluded.head,year=excluded.year,added_text=excluded.added_text,item_id=excluded.item_id,rating_key=excluded.rating_key,label_key=excluded.label_key,available=excluded.available,recent=excluded.recent,backdrop=excluded.backdrop
+ WHERE (library_id,kind,title,sort_key,head,year,added_text,item_id,rating_key,label_key,available,recent,backdrop)
+ IS NOT (excluded.library_id,excluded.kind,excluded.title,excluded.sort_key,excluded.head,excluded.year,excluded.added_text,excluded.item_id,excluded.rating_key,excluded.label_key,excluded.available,excluded.recent,excluded.backdrop)`,
 		id, row.library, row.kind, row.title, row.sortKey, row.head, row.year, row.added, item, row.ratingKey, row.labelKey, row.available, row.recent, row.backdrop); err != nil {
 		return err
 	}
 	if err = deriveRecentText(ctx, tx, row); err != nil {
 		return err
 	}
-	if err = adjustBrowseBuckets(ctx, tx, row, 1); err != nil {
-		return err
-	}
-	if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_browse_counted_rows(entity_id,library_id,kind,container,head,year,added_text,rating_key,label_key,duration_bucket,rating_bucket) VALUES(?,?,?,?,?,?,?,?,?,?,?)`,
+	if _, err = tx.ExecContext(ctx, `INSERT INTO catalog_browse_counted_rows(entity_id,library_id,kind,container,head,year,added_text,rating_key,label_key,duration_bucket,rating_bucket) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+ ON CONFLICT(entity_id) DO UPDATE SET library_id=excluded.library_id,kind=excluded.kind,container=excluded.container,head=excluded.head,year=excluded.year,added_text=excluded.added_text,rating_key=excluded.rating_key,label_key=excluded.label_key,duration_bucket=excluded.duration_bucket,rating_bucket=excluded.rating_bucket
+ WHERE (library_id,kind,container,head,year,added_text,rating_key,label_key,duration_bucket,rating_bucket) IS NOT (excluded.library_id,excluded.kind,excluded.container,excluded.head,excluded.year,excluded.added_text,excluded.rating_key,excluded.label_key,excluded.duration_bucket,excluded.rating_bucket)`,
 		id, row.library, row.kind, rowContainer(row), row.head, row.year, row.added, row.ratingKey, row.labelKey, row.durationBucket, row.ratingBucket); err != nil {
 		return err
 	}
@@ -269,6 +289,12 @@ func deriveRecentText(ctx context.Context, tx *sql.Tx, row browseRow) error {
 
 // deriveHomeBuckets moves one row's Home bucket contribution.
 func deriveHomeBuckets(ctx context.Context, tx *sql.Tx, id int64) error {
+	var changed bool
+	const same = `WITH next AS (SELECT library_id,kind,available,recent,backdrop,rating_key,label_key,added_text IS NOT NULL AS dated,EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=entity_id) AS retired FROM catalog_browse_rows WHERE entity_id=?1 AND item_id IS NOT NULL),old AS(SELECT library_id,kind,available,recent,backdrop,rating_key,label_key,dated,retired FROM catalog_home_counted_rows WHERE entity_id=?1)
+ SELECT EXISTS(SELECT * FROM next EXCEPT SELECT * FROM old) OR EXISTS(SELECT * FROM old EXCEPT SELECT * FROM next)`
+	if err := tx.QueryRowContext(ctx, same, id).Scan(&changed); err != nil || !changed {
+		return err
+	}
 	const columns = `library_id,kind,available,recent,backdrop,rating_key,label_key,dated,retired`
 	for _, q := range []string{
 		`UPDATE catalog_home_buckets AS b SET total=total-1 FROM catalog_home_counted_rows old WHERE old.entity_id=?1 AND (b.library_id,b.kind,b.available,b.recent,b.backdrop,b.rating_key,b.label_key,b.dated,b.retired)=(old.library_id,old.kind,old.available,old.recent,old.backdrop,old.rating_key,old.label_key,old.dated,old.retired)`,
@@ -611,10 +637,10 @@ func refreshEntityMetrics(ctx context.Context, tx *sql.Tx, entity int64) (errOut
 			return err
 		}
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE catalog_browse_counted_rows SET duration_bucket=?,rating_bucket=? WHERE entity_id=?`, newDuration, newRating, entity); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE catalog_browse_counted_rows SET duration_bucket=?,rating_bucket=? WHERE entity_id=? AND (duration_bucket,rating_bucket) IS NOT (?,?)`, newDuration, newRating, entity, newDuration, newRating); err != nil {
 		return err
 	}
-	if _, err = tx.ExecContext(ctx, `UPDATE catalog_browse_rows SET duration_max=?,rating_max=? WHERE entity_id=?`, duration, rating, entity); err != nil {
+	if _, err = tx.ExecContext(ctx, `UPDATE catalog_browse_rows SET duration_max=?,rating_max=? WHERE entity_id=? AND (duration_max,rating_max) IS NOT (?,?)`, duration, rating, entity, duration, rating); err != nil {
 		return err
 	}
 	if !recentWorkKinds[kind] {

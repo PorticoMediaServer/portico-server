@@ -201,6 +201,7 @@ index catalog_playlist_entries_item
 index catalog_playlist_entries_page
 index catalog_playlists_owner
 index catalog_rec_facet_titles
+index catalog_rec_member_best
 index catalog_rec_postings_entity
 index catalog_related_lookup
 index catalog_related_lookup_previous
@@ -211,6 +212,7 @@ index catalog_songs_listening_order
 index catalog_term_entities
 index catalog_term_source_membership
 index catalog_term_sources_name_seek
+index catalog_term_sources_overrides
 index catalog_term_sources_provider
 index catalog_term_sources_term
 index catalog_visibility_sort_edge_entity
@@ -696,6 +698,8 @@ table catalog_playlist_entries
 table catalog_playlists
 table catalog_rec_df
 table catalog_rec_facets
+table catalog_rec_member_counts
+table catalog_rec_member_work
 table catalog_rec_postings
 table catalog_related_facets
 table catalog_related_facets_previous
@@ -1494,6 +1498,11 @@ trigger catalog_rec_facets_tags_update
 trigger catalog_rec_facets_term_sources_delete
 trigger catalog_rec_facets_term_sources_insert
 trigger catalog_rec_facets_term_sources_update
+trigger catalog_rec_member_book_move
+trigger catalog_rec_member_episode_move
+trigger catalog_rec_member_facet_delete
+trigger catalog_rec_member_facet_insert
+trigger catalog_rec_member_song_move
 trigger catalog_rec_ratings_delete
 trigger catalog_rec_ratings_insert
 trigger catalog_rec_ratings_update

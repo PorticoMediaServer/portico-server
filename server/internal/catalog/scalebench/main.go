@@ -65,13 +65,18 @@ func run() (runErr error) {
 	explain := flag.String("explain", "", "print the scans and sorts in the plans of the routes whose name contains this")
 	scenariosOnly := flag.Bool("scenarios-only", false, "measure search and write/rebuild scenarios without the browse matrix")
 	matrixOnly := flag.Bool("matrix-only", false, "measure browse vocabulary without rebuild/write scenarios")
+	copyFacts := flag.String("copy-facts", "", "copy only synthetic reference facts into a fresh baseline")
+	narrowFacts := flag.Bool("narrow-facts", false, "use one genre per title and sparse credits for the bounded-disk mixed fixture")
+	bulkFacts := flag.Bool("bulk-facts", false, "seed reference facts with set-based inserts, production triggers enabled")
 	factsOnly := flag.Bool("facts-only", false, "seed facts without deriving; use -reuse -exercise to measure the empty rebuild")
 	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
+	resumeRemoval := flag.Bool("resume-removal", false, "finish removal of the already retired synthetic Movies library")
 	flag.Parse()
 	abs, err := filepath.Abs(*dir)
 	if err != nil || *dir == "" || !strings.Contains(abs+string(os.PathSeparator), string(os.PathSeparator)+".scratch"+string(os.PathSeparator)) || *n < 100 || *samples < 1 || *idle <= 0 {
 		return errors.New("invalid arguments: use an explicit .scratch directory, at least 100 items and positive samples/idle")
 	}
+	scratchDirectory = strings.SplitN(abs+string(os.PathSeparator), string(os.PathSeparator)+".scratch"+string(os.PathSeparator), 2)[0]
 	if err = os.MkdirAll(abs, 0700); err != nil {
 		return err
 	}
@@ -92,7 +97,18 @@ func run() (runErr error) {
 	}
 	defer func() { db.Close() }()
 	r := report{Items: *n, IdleScope: "catalog service only; full-server workers not started"}
+	defer func() {
+		if runErr != nil {
+			raw, e := json.MarshalIndent(r, "", "  ")
+			if e == nil {
+				_ = os.WriteFile(filepath.Join(abs, "partial-report.json"), append(raw, '\n'), 0600)
+			}
+		}
+	}()
 	if !*reuse {
+		if err = checkScratchBudget(); err != nil {
+			return err
+		}
 		startItem := 0
 		if *resumeSeed {
 			if err = db.QueryRow(`SELECT count(*) FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1`).Scan(&startItem); err != nil {
@@ -105,7 +121,19 @@ func run() (runErr error) {
 			r.SeedResumedFrom = startItem
 		}
 		start := time.Now()
-		r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedReference(db, *n, startItem, *n, 32, !*factsOnly)
+		if *copyFacts != "" {
+			if *resumeSeed || !*factsOnly {
+				return errors.New("copy-facts requires a new facts-only fixture")
+			}
+			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = copyReferenceFacts(db, *copyFacts)
+		} else if *bulkFacts {
+			if *resumeSeed || !*factsOnly {
+				return errors.New("bulk-facts requires a new facts-only fixture")
+			}
+			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedBulkFactsDensity(db, *n, *narrowFacts)
+		} else {
+			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedReference(db, *n, startItem, *n, 32, !*factsOnly)
+		}
 		if err != nil {
 			return err
 		}
@@ -130,6 +158,21 @@ func run() (runErr error) {
 		return os.WriteFile(filepath.Join(abs, "seed-report.json"), append(raw, '\n'), 0600)
 	}
 	s := catalog.New(db)
+	if *resumeRemoval {
+		if !*reuse {
+			return errors.New("resume-removal requires reuse")
+		}
+		removed, err := exerciseRemoval(db, s)
+		r.Routes = append(r.Routes, removed)
+		if err != nil {
+			return err
+		}
+		raw, err := json.MarshalIndent(r, "", "  ")
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(abs, "removal-report.json"), append(raw, '\n'), 0600)
+	}
 	if *exercise || *matrixOnly || *scenariosOnly {
 		var rows int
 		if err = db.QueryRow(`SELECT count(*) FROM catalog_browse_rows`).Scan(&rows); err != nil {
@@ -137,10 +180,10 @@ func run() (runErr error) {
 		}
 		if rows == 0 {
 			rr, err := exerciseDrain(db, s, "derive-empty")
+			r.Routes = append(r.Routes, rr)
 			if err != nil {
 				return err
 			}
-			r.Routes = append(r.Routes, rr)
 		}
 	}
 	if _, err = s.ClassifyPendingRatings(context.Background()); err != nil {
@@ -163,6 +206,26 @@ func run() (runErr error) {
 		{"open", catalog.Viewer{Profile: "viewer", Fence: "scale-open", Libraries: libraries}},
 		{"pg13", catalog.Viewer{Profile: "viewer-pg13", Fence: "scale-pg13", Libraries: libraries, Restrictions: identity.ContentRestrictions{MaximumAge: &pg13, BlockUnrated: true}}},
 	}
+	if _, err = db.Exec("ANALYZE"); err != nil {
+		return err
+	}
+	stats, err := db.Query(`SELECT tbl,COALESCE(idx,''),stat FROM sqlite_stat1 WHERE tbl LIKE 'catalog_%' OR tbl LIKE 'compact_%' ORDER BY tbl,idx`)
+	if err != nil {
+		return err
+	}
+	for stats.Next() {
+		var table, index, stat string
+		if err = stats.Scan(&table, &index, &stat); err != nil {
+			stats.Close()
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "STAT1 %s %s %s\n", table, index, stat)
+	}
+	err = stats.Err()
+	stats.Close()
+	if err != nil {
+		return err
+	}
 	buildStart := time.Now()
 	for _, library := range libraries {
 		if err = s.RebuildVisibilityClass(context.Background(), library, viewers[1].v.EffectiveRestrictions()); err != nil {
@@ -181,6 +244,16 @@ func run() (runErr error) {
 	for _, entry := range viewers {
 		viewer := entry.v
 		prefix := entry.name + "/"
+		cases = append(cases, struct {
+			name string
+			read func(*catalog.Service) error
+		}{prefix + "home-manifest", func(s *catalog.Service) error {
+			page, err := s.HomeManifest(catalog.HomeRequest{Viewer: viewer, Limit: 12})
+			if err == nil && len(page.Rows) == 0 {
+				return errors.New("empty home manifest")
+			}
+			return err
+		}})
 		cases = append(cases,
 			struct {
 				name string
@@ -256,15 +329,15 @@ func run() (runErr error) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 			before := dbwork.Reads().Statements
 			start := time.Now()
-			e := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return c.read(s.WithContext(ctx)) })
+			e := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return c.read(catalog.New(db).WithContext(ctx)) })
 			elapsed := float64(time.Since(start)) / float64(time.Millisecond)
 			cancel()
 			rr.MaxStatements = max(rr.MaxStatements, dbwork.Reads().Statements-before)
+			durations = append(durations, elapsed)
 			if e != nil {
 				rr.Error = e.Error()
 				break
 			}
-			durations = append(durations, elapsed)
 		}
 		sort.Float64s(durations)
 		rr.RSSKB = processRSSKB()
@@ -274,9 +347,6 @@ func run() (runErr error) {
 			rr.P95MS = durations[int(math.Ceil(.95*float64(len(durations))))-1]
 		}
 		r.Routes = append(r.Routes, rr)
-		if rr.Error != "" {
-			return fmt.Errorf("%s: %s", rr.Route, rr.Error)
-		}
 		b, _ := json.Marshal(rr)
 		fmt.Fprintln(os.Stderr, string(b))
 		if *profile {
@@ -289,7 +359,7 @@ func run() (runErr error) {
 		}
 	}
 	if *exercise || *matrixOnly || *scenariosOnly {
-		measured, err := exerciseCatalog(db, s, *samples, !*scenariosOnly, !*matrixOnly)
+		measured, err := exerciseCatalog(db, s, *samples, !*scenariosOnly, !*matrixOnly, *explain)
 		r.Routes = append(r.Routes, measured...)
 		if err != nil {
 			return err
@@ -311,7 +381,9 @@ func seed(db *sql.DB, n, startItem, stopItem int) (first, last float64, err erro
 // the plan lines of each statement that scan a table or sort, with every
 // parameter NULL (a plan, not a measurement).
 func explainRoute(db *sql.DB, name string, read func(*catalog.Service) error, s *catalog.Service) {
-	ctx, statements := dbwork.TraceStatements(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	ctx, statements := dbwork.TraceQueryPlans(ctx)
 	_ = dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return read(s.WithContext(ctx)) })
 	conn, err := db.Conn(context.Background())
 	if err != nil {
@@ -326,7 +398,11 @@ func explainRoute(db *sql.DB, name string, read func(*catalog.Service) error, s 
 				return err
 			}
 			defer prepared.Close()
-			args := make([]driver.NamedValue, 64)
+			count := prepared.NumInput()
+			if count < 0 {
+				count = strings.Count(text, "?")
+			}
+			args := make([]driver.NamedValue, count)
 			for i := range args {
 				args[i] = driver.NamedValue{Ordinal: i + 1}
 			}
@@ -337,7 +413,7 @@ func explainRoute(db *sql.DB, name string, read func(*catalog.Service) error, s 
 			defer rows.Close()
 			values := make([]driver.Value, len(rows.Columns()))
 			for rows.Next(values) == nil {
-				if detail, ok := values[len(values)-1].(string); ok && (strings.HasPrefix(detail, "SCAN ") || strings.Contains(detail, "TEMP B-TREE")) {
+				if detail, ok := values[len(values)-1].(string); ok {
 					lines = append(lines, detail)
 				}
 			}

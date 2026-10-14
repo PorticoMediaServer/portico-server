@@ -295,8 +295,10 @@ const (
 func (s *Service) recAbandoned(profile string, now time.Time, values map[string]float64) error {
 	cutoff := now.AddDate(0, 0, -recAbandonAfter).UTC().Format("2006-01-02T15:04:05.000Z")
 	rows, err := s.read().Query(`SELECT a.item_id,a.updated_at,COALESCE((SELECT show_id FROM catalog_episodes WHERE entity_id=a.item_id),(SELECT album_id FROM catalog_songs WHERE entity_id=a.item_id),(SELECT book_id FROM catalog_book_files WHERE entity_id=a.item_id),a.item_id),COALESCE((SELECT weight FROM rec_profile_signals signal WHERE signal.profile_id=a.profile_id AND signal.work_id=COALESCE((SELECT show_id FROM catalog_episodes WHERE entity_id=a.item_id),(SELECT album_id FROM catalog_songs WHERE entity_id=a.item_id),(SELECT book_id FROM catalog_book_files WHERE entity_id=a.item_id),a.item_id)),0)
-	 FROM progress_activity a INDEXED BY progress_home_profile_recent CROSS JOIN progress p ON p.profile_id=a.profile_id AND p.item_id=a.item_id
-	 WHERE a.profile_id=? AND a.state!='ended' AND a.updated_at<? AND p.completed=0 AND p.position>0
+	 FROM (SELECT profile_id,item_id,updated_at,state FROM progress_activity INDEXED BY progress_home_profile_recent
+ WHERE profile_id=? AND state!='ended' AND updated_at<? ORDER BY updated_at DESC LIMIT 200) a
+ CROSS JOIN progress p ON p.profile_id=a.profile_id AND p.item_id=a.item_id
+ WHERE a.state!='ended' AND p.completed=0 AND p.position>0
 	 AND p.position<?*1000*(SELECT max(x.duration) FROM catalog_asset_links l CROSS JOIN catalog_assets x ON x.id=l.asset_id WHERE l.entity_id=a.item_id)
 	 ORDER BY a.updated_at DESC LIMIT 200`, profile, cutoff, recAbandonFraction)
 	if err != nil {
@@ -336,7 +338,7 @@ func (s *Service) recAbandoned(profile string, now time.Time, values map[string]
 		return err
 	}
 	facets, err := s.read().Query(`SELECT f.facet,json_extract(j.value,'$[1]') FROM json_each(?) j
- CROSS JOIN catalog_rec_facets f ON f.entity_id=json_extract(j.value,'$[0]')`, string(raw))
+ CROSS JOIN catalog_rec_facets f ON f.entity_id=CAST(json_extract(j.value,'$[0]') AS INTEGER)`, string(raw))
 	if err != nil {
 		return err
 	}

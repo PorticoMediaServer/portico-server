@@ -299,9 +299,37 @@ type browseCompiler struct {
 	restrictions identity.ContentRestrictions
 	profile      string
 	args         []any
+	groupSearch  bool
 }
 
 func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
+	previous := c.groupSearch
+	c.groupSearch = browseRequiresGroup(node)
+	defer func() { c.groupSearch = previous }()
+	return c.compileNode(node)
+}
+
+// A positive conjunctive group bounds text search's candidate identities.
+// A negated or alternative group does not bound the whole result set.
+func browseRequiresGroup(node *BrowseNode) bool {
+	if node == nil {
+		return false
+	}
+	if node.Field == "genre" || node.Field == "memberOf" || node.Field == "collection" {
+		switch node.Operator {
+		case "equals", "in", "contains", "contains-any", "contains-all":
+			return true
+		}
+	}
+	for i := range node.All {
+		if browseRequiresGroup(&node.All[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *browseCompiler) compileNode(node *BrowseNode) (string, error) {
 	if node == nil {
 		return "1=1", nil
 	}
@@ -311,7 +339,7 @@ func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
 	case node.Any != nil:
 		return c.group(node.Any, " OR ")
 	case node.Not != nil:
-		inner, err := c.compile(node.Not)
+		inner, err := c.compileNode(node.Not)
 		if err != nil {
 			return "", err
 		}
@@ -325,7 +353,7 @@ func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
 func (c *browseCompiler) group(children []BrowseNode, glue string) (string, error) {
 	parts := make([]string, 0, len(children))
 	for index := range children {
-		part, err := c.compile(&children[index])
+		part, err := c.compileNode(&children[index])
 		if err != nil {
 			return "", err
 		}
@@ -588,6 +616,11 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 		}
 		c.args = append(c.args, match)
 		clause := `e.entity_id IN(SELECT d.entity_id FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles MATCH ?`
+		if c.groupSearch {
+			// Row-id equality reaches only the already selected group's documents;
+			// a broad word must not materialize every library's matching identities.
+			clause = `EXISTS(SELECT 1 FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles.rowid=e.entity_id AND catalog_search_titles MATCH ?`
+		}
 		for _, word := range strings.Fields(normalized) {
 			if strings.ContainsFunc(word, facettext.CJK) {
 				clause += ` AND instr(d.normalized,?)>0`
@@ -603,7 +636,13 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 // exists wraps a member-item condition. Profile placeholders inside the join are
 // bound before the condition's own arguments so ordinal positions line up.
 func (c *browseCompiler) exists(field browseField, condition func() (string, error)) (string, error) {
+	if field.ID == "genre" {
+		return c.genreExists(condition)
+	}
 	prefix := "EXISTS(SELECT 1 FROM catalog_browse_memberships bei " + field.Join + " WHERE bei.entity_id=e.entity_id AND "
+	if field.ID == "personal-member" {
+		prefix = "e.entity_id IN(SELECT bei.entity_id FROM personal_items pi CROSS JOIN catalog_browse_memberships bei ON bei.item_id=pi.item_id WHERE pi.profile_id=? AND "
+	}
 	if field.ID == "list" {
 		raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(c.profile, "viewer:"))
 		var owner []string
@@ -631,6 +670,16 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 }
 
 func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (string, error) {
+	// Presence is broad: probe the selected title rather than expanding every source.
+	if field.ID == "genre" && (node.Operator == "is-present" || node.Operator == "is-missing") {
+		field.ID = "genre-presence"
+	}
+	if clause, handled, err := c.groupMembershipPredicate(field, node); handled {
+		return clause, err
+	}
+	if field.ID == "playState" {
+		return c.playStatePredicate(node)
+	}
 	if field.ID == "favorite" || field.ID == "watchlisted" || field.ID == "personalRating" || field.ID == "lastPlayedAt" {
 		return c.personalTitlePredicate(field, node)
 	}
@@ -809,7 +858,7 @@ func (c *browseCompiler) personalTitlePredicate(field browseField, node BrowseNo
 	if err != nil {
 		return "", err
 	}
-	own = `EXISTS(SELECT 1 FROM personal_items pi WHERE pi.profile_id=? AND pi.item_id=e.entity_id AND ` + own + `)`
+	own = `e.entity_id IN(SELECT pi.item_id FROM personal_items pi WHERE pi.profile_id=? AND ` + own + `)`
 	memberField := field
 	memberField.ID = "personal-member"
 	member, err := c.itemPredicate(memberField, node)
@@ -821,4 +870,66 @@ func (c *browseCompiler) personalTitlePredicate(field browseField, node BrowseNo
 		clause = "NOT " + clause
 	}
 	return clause, nil
+}
+
+// Membership filters start at the selected group's indexed members. Testing a
+// public identity once per row of the library defeats those indexes, especially
+// while selecting a deep page in a small genre, collection or series.
+func (c *browseCompiler) groupMembershipPredicate(field browseField, node BrowseNode) (string, bool, error) {
+	if field.ID != "memberOf" && field.ID != "collection" {
+		return "", false, nil
+	}
+	if node.Operator == "not-in" || node.Operator == "not-equals" {
+		positive := node
+		positive.Operator = map[string]string{"not-in": "in", "not-equals": "equals"}[node.Operator]
+		clause, handled, err := c.groupMembershipPredicate(field, positive)
+		return "NOT (" + clause + ")", handled, err
+	}
+	if node.Operator != "equals" && node.Operator != "in" && node.Operator != "contains" && node.Operator != "contains-any" {
+		return "", false, nil
+	}
+	values := []any{node.Value}
+	if list, ok := node.Value.([]any); ok {
+		values = list
+	}
+	identity := []string{}
+	for _, v := range values {
+		c.args = append(c.args, v)
+		identity = append(identity, "pid_blob(?)")
+	}
+	members := `SELECT parent.item_id FROM catalog_entities container CROSS JOIN catalog_browse_memberships parent ON parent.entity_id=container.id WHERE container.public_id IN (` + strings.Join(identity, ",") + `)`
+	if field.ID == "collection" {
+		members = `SELECT parent.item_id FROM catalog_entities container CROSS JOIN catalog_collection_members parent ON parent.collection_id=container.id WHERE container.public_id IN (` + strings.Join(identity, ",") + `)`
+	}
+	restriction, args := ItemRestrictionSQL("member.item_id", c.restrictions)
+	c.args = append(c.args, args...)
+	return `e.entity_id IN(SELECT member.entity_id FROM catalog_browse_memberships member WHERE member.item_id IN (` + members + `) AND (` + restriction + `))`, true, nil
+}
+
+// Evaluate genre vocabulary and explicit overrides before expanding membership.
+// Every inherited source path remains eligible, and restrictions apply to the
+// exact playable member that supplied the match.
+func (c *browseCompiler) genreExists(condition func() (string, error)) (string, error) {
+	before := len(c.args)
+	body, err := condition()
+	if err != nil {
+		return "", err
+	}
+	operands := append([]any(nil), c.args[before:]...)
+	c.args = append(c.args, operands...)
+	plain := strings.ReplaceAll(body, "COALESCE(ts.label_override,mg.label)", "mg.label")
+	override := strings.ReplaceAll(body, "COALESCE(ts.label_override,mg.label)", "ts.label_override")
+	restriction, args := ItemRestrictionSQL("member.item_id", c.restrictions)
+	c.args = append(c.args, args...)
+	return `e.entity_id IN(WITH owners AS MATERIALIZED (
+ SELECT ts.entity_id FROM catalog_terms mg CROSS JOIN catalog_term_sources ts INDEXED BY catalog_term_sources_term ON ts.term_id=mg.id
+ WHERE mg.vocab=1 AND ts.label_override IS NULL AND (` + plain + `)
+ UNION SELECT ts.entity_id FROM catalog_term_sources ts INDEXED BY catalog_term_sources_overrides JOIN catalog_terms mg ON mg.id=ts.term_id
+ WHERE mg.vocab=1 AND ts.label_override IS NOT NULL AND (` + override + `))
+ SELECT member.entity_id FROM (
+ SELECT bei.entity_id,bei.item_id FROM owners CROSS JOIN catalog_browse_memberships bei ON bei.item_id=owners.entity_id
+ UNION SELECT bei.entity_id,bei.item_id FROM owners CROSS JOIN catalog_browse_memberships bei ON bei.entity_id=owners.entity_id
+ UNION SELECT bei.entity_id,bei.item_id FROM owners CROSS JOIN catalog_episodes ep ON ep.show_id=owners.entity_id
+ CROSS JOIN catalog_browse_memberships bei ON bei.item_id=ep.entity_id
+ ) member WHERE (` + restriction + `))`, nil
 }

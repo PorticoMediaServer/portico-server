@@ -41,7 +41,7 @@ function fakeFetch(routes: Map<string, RouteBody>, log: LoggedRequest[]): typeof
 function row(id: string, entries: unknown[]) {
   return {
     id, title: `Row ${id}`, kind: 'recent', artworkShape: 'poster', endpoint: `/v1/home/rows/${id}`,
-    libraryId: 'lib-0', privacySensitivity: 'catalog', policyState: 'available', priority: 100, cacheTtlSeconds: 120,
+    libraryId: 'lib-0', viewerFence: 'fence', privacySensitivity: 'catalog', policyState: 'available', priority: 100, cacheTtlSeconds: 120,
     required: false, hideable: true, reorderable: true, critical: false, cursorCapable: true,
     entries, total: entries.length, start: 0, limit: entries.length, hasMore: false, nextCursor: '',
     revision: {catalog: 1, viewer: 1},

@@ -5,12 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"strings"
 )
 
 // homeRecentMaximum bounds a Recently Added shelf, as the owner maximum bounds
 // Continue Watching: the shelf, its total and its pages cover the newest works
 // only. The whole library, newest first, is the library's own browse view.
 const homeRecentMaximum = 100
+
+// A Home preview must also stay bounded before a visibility class has been
+// published, or while that class is catching up with changed facts. The full
+// library browse remains complete; Home samples the newest work candidates.
+const homeRecentCandidateMaximum = 4096
 
 // recentClass names a restricted viewer's published visibility class, whose
 // rows carry each visible work's newest addition (compact_visibility_recent).
@@ -136,13 +142,15 @@ func (s *Service) homeRecentWorks(r HomeRequest, library string) ([][2]string, e
 	phases, phaseArgs := homeRecentPhases(r, class)
 	type work struct{ key, entity, added string }
 	found := []work{}
+	examined := 0
 	seen := map[string]int{}
 	for phase, query := range phases {
 		restrictionArgs := phaseArgs[phase]
 		lastAdded, lastEntity := "\uffff", int64(1<<62)
-		for len(found) < homeRecentMaximum {
+		for len(found) < homeRecentMaximum && examined < homeRecentCandidateMaximum {
 			args := append(append([]any{}, restrictionArgs...), library, lastAdded, lastEntity)
-			rows, err := s.read().Query(query, args...)
+			bounded := strings.Replace(query, "LIMIT 256", fmt.Sprintf("LIMIT %d", min(256, homeRecentCandidateMaximum-examined)), 1)
+			rows, err := s.read().Query(bounded, args...)
 			if err != nil {
 				return nil, err
 			}
@@ -157,6 +165,7 @@ func (s *Service) homeRecentWorks(r HomeRequest, library string) ([][2]string, e
 					return nil, err
 				}
 				n++
+				examined++
 				lastAdded, lastEntity = added, ent
 				if !visible || key == "" || entity == nil || *entity == "" {
 					continue

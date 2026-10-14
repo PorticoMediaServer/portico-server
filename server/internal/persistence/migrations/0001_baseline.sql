@@ -382,6 +382,7 @@ CREATE TABLE catalog_term_sources(
  ordinal INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY(entity_id,provider,source_id),
  FOREIGN KEY(entity_id,term_id) REFERENCES catalog_entity_terms(entity_id,term_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_term_sources_overrides ON catalog_term_sources(label_override,entity_id,term_id) WHERE label_override IS NOT NULL;
 CREATE INDEX catalog_term_source_membership ON catalog_term_sources(entity_id,term_id);
 CREATE INDEX catalog_term_sources_provider ON catalog_term_sources(provider,source_id,entity_id);
 CREATE INDEX catalog_term_sources_name_seek ON catalog_term_sources(source_name COLLATE NOCASE,entity_id);
@@ -402,6 +403,8 @@ CREATE INDEX catalog_related_lookup ON catalog_related_facets(library_id,relatio
 CREATE TABLE catalog_search_documents(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  title TEXT NOT NULL,
+ title_fold TEXT NOT NULL,
+ entity_pid TEXT NOT NULL,
  search TEXT NOT NULL,
  normalized TEXT NOT NULL,
  kind TEXT NOT NULL) STRICT;
@@ -793,6 +796,37 @@ CREATE TABLE catalog_rec_facets(
  facet TEXT NOT NULL,
  PRIMARY KEY(entity_id,facet)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_rec_facet_titles ON catalog_rec_facets(facet,entity_id);
+
+-- Retained parent identity lets a facet cascade remove its old contribution,
+-- even after the episode/song/file side table has already gone. The worker
+-- retires this row with the member; it deliberately has no member cascade.
+CREATE TABLE catalog_rec_member_work(item_id INTEGER PRIMARY KEY,work_id INTEGER NOT NULL) STRICT;
+CREATE TABLE catalog_rec_member_counts(
+ work_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ facet TEXT NOT NULL,total INTEGER NOT NULL CHECK(total>=0),eligible INTEGER NOT NULL CHECK(eligible IN(0,1)),
+ PRIMARY KEY(work_id,facet)) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_rec_member_best ON catalog_rec_member_counts(work_id,total DESC,facet) WHERE eligible=1;
+CREATE TRIGGER catalog_rec_member_episode_move AFTER UPDATE OF show_id ON catalog_episodes WHEN OLD.show_id IS NOT NEW.show_id BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(32,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER catalog_rec_member_song_move AFTER UPDATE OF album_id ON catalog_songs WHEN OLD.album_id IS NOT NEW.album_id BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(32,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER catalog_rec_member_book_move AFTER UPDATE OF book_id ON catalog_book_files WHEN OLD.book_id IS NOT NEW.book_id BEGIN
+ INSERT INTO catalog_dirty(domain,entity_id,revision) VALUES(32,NEW.entity_id,1) ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
+END;
+CREATE TRIGGER catalog_rec_member_facet_insert AFTER INSERT ON catalog_rec_facets
+WHEN substr(NEW.facet,1,2) IN('g:','t:','s:','n:','a:','b:','p:') BEGIN
+ INSERT INTO catalog_rec_member_counts(work_id,facet,total,eligible)
+ SELECT member.work_id,NEW.facet,1,substr(NEW.facet,1,2)<>'p:' FROM catalog_rec_member_work member
+ WHERE member.item_id=NEW.entity_id AND EXISTS(SELECT 1 FROM catalog_entities parent WHERE parent.id=member.work_id)
+ ON CONFLICT(work_id,facet) DO UPDATE SET total=total+1,eligible=CASE WHEN substr(facet,1,2)='p:' THEN total+1>=3 ELSE 1 END;
+END;
+CREATE TRIGGER catalog_rec_member_facet_delete AFTER DELETE ON catalog_rec_facets BEGIN
+ UPDATE catalog_rec_member_counts SET total=max(0,total-1),eligible=CASE WHEN substr(facet,1,2)='p:' THEN total-1>=3 ELSE total>1 END
+ WHERE work_id=(SELECT work_id FROM catalog_rec_member_work WHERE item_id=OLD.entity_id) AND facet=OLD.facet;
+ DELETE FROM catalog_rec_member_counts WHERE work_id=(SELECT work_id FROM catalog_rec_member_work WHERE item_id=OLD.entity_id) AND facet=OLD.facet AND total=0;
+END;
 
 -- Facet counts (derive_facet_counts.go): each item's facet values (genre,
 -- decade, year, content rating, studio, network, tag, label, series, audio
@@ -6294,7 +6328,7 @@ END;
 CREATE TRIGGER catalog_related_facets_retain_delete BEFORE DELETE ON catalog_related_facets WHEN (SELECT retaining FROM catalog_generations WHERE singleton=1)=1 BEGIN
  INSERT INTO catalog_related_facets_previous(generation,present,entity_id,library_id,relation,provider,facet_id,year) SELECT generation,1,OLD.entity_id,OLD.library_id,OLD.relation,OLD.provider,OLD.facet_id,OLD.year FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,entity_id,relation,provider,facet_id) DO NOTHING;
 END;
-CREATE TABLE catalog_search_documents_next(entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,title TEXT NOT NULL,search TEXT NOT NULL,normalized TEXT NOT NULL,kind TEXT NOT NULL) STRICT;
+CREATE TABLE catalog_search_documents_next(entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,title TEXT NOT NULL,title_fold TEXT NOT NULL,entity_pid TEXT NOT NULL,search TEXT NOT NULL,normalized TEXT NOT NULL,kind TEXT NOT NULL) STRICT;
 CREATE VIRTUAL TABLE catalog_search_titles_next USING fts5(search,kind,content='catalog_search_documents_next',content_rowid='entity_id',tokenize='unicode61 remove_diacritics 2',prefix='2 3 4');
 
 CREATE TRIGGER browse_order_insert AFTER INSERT ON catalog_browse_rows BEGIN

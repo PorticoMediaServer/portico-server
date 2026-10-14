@@ -3,6 +3,7 @@ package compactcatalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -48,13 +49,13 @@ var showFacetValueSQL = map[string]string{
 	"decade": facetValueSQL["decade"],
 	"year":   facetValueSQL["year"],
 	"resolution": `SELECT DISTINCT CASE WHEN ast.height>=2000 THEN '4k' WHEN ast.height>=1000 THEN '1080p' WHEN ast.height>=700 THEN '720p' ELSE 'sd' END
-	 FROM catalog_episodes ep JOIN catalog_asset_links ia ON ia.entity_id=ep.entity_id JOIN catalog_assets ast ON ast.id=ia.asset_id WHERE ep.show_id=?1`,
+	 FROM catalog_episodes ep CROSS JOIN catalog_asset_links ia ON ia.entity_id=ep.entity_id CROSS JOIN catalog_assets ast ON ast.id=ia.asset_id WHERE ep.show_id=?1`,
 	"collection": `SELECT CAST(collection_id AS TEXT) FROM catalog_collection_members WHERE item_id=?1
-	 UNION SELECT CAST(cm.collection_id AS TEXT) FROM catalog_episodes ep JOIN catalog_collection_members cm ON cm.item_id=ep.entity_id WHERE ep.show_id=?1`,
+	 UNION SELECT CAST(cm.collection_id AS TEXT) FROM catalog_episodes ep CROSS JOIN catalog_collection_members cm ON cm.item_id=ep.entity_id WHERE ep.show_id=?1`,
 }
 
-const showFacetAttributeSQL = `SELECT DISTINCT ca.source_value FROM catalog_episodes ep JOIN catalog_item_attribute_edges ca ON ca.item_id=ep.entity_id
- JOIN catalog_attribute_terms t ON t.id=ca.term_id JOIN catalog_attribute_fields f ON f.id=t.field_id AND f.field=?2 WHERE ep.show_id=?1`
+const showFacetAttributeSQL = `SELECT DISTINCT ca.source_value FROM catalog_episodes ep CROSS JOIN catalog_item_attribute_edges ca ON ca.item_id=ep.entity_id
+ CROSS JOIN catalog_attribute_terms t ON t.id=ca.term_id CROSS JOIN catalog_attribute_fields f ON f.id=t.field_id AND f.field=?2 WHERE ep.show_id=?1`
 
 const facetAttributeSQL = `SELECT ca.source_value FROM catalog_item_attribute_edges ca JOIN catalog_attribute_terms t ON t.id=ca.term_id
  JOIN catalog_attribute_fields f ON f.id=t.field_id AND f.field=?2 WHERE ca.item_id=?1`
@@ -114,20 +115,43 @@ func deriveFacetCounts(ctx context.Context, tx *sql.Tx, id int64) error {
 			}
 			return values.Err()
 		}
-		values, attributes, subject := facetValueSQL, facetAttributeSQL, item.Int64
+		values, subject := facetValueSQL, item.Int64
 		if show {
-			values, attributes, subject = showFacetValueSQL, showFacetAttributeSQL, id
+			values, subject = showFacetValueSQL, id
 		}
 		for field, query := range values {
 			if err = read(field, query, subject); err != nil {
 				return err
 			}
 		}
-		for _, field := range FacetAttributeFields {
-			if err = read(field, attributes, subject, field); err != nil {
+		// Resolve descriptive fields together. A show must not walk its whole
+		// episode membership separately for each of the seven attribute fields.
+		attributeQuery := `SELECT DISTINCT f.field,ca.source_value FROM catalog_item_attribute_edges ca CROSS JOIN catalog_attribute_terms t ON t.id=ca.term_id CROSS JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE ca.item_id=?1 AND f.field IN(SELECT value FROM json_each(?2))`
+		if show {
+			attributeQuery = `SELECT DISTINCT f.field,ca.source_value FROM catalog_episodes ep CROSS JOIN catalog_item_attribute_edges ca ON ca.item_id=ep.entity_id CROSS JOIN catalog_attribute_terms t ON t.id=ca.term_id CROSS JOIN catalog_attribute_fields f ON f.id=t.field_id WHERE ep.show_id=?1 AND f.field IN(SELECT value FROM json_each(?2))`
+		}
+		fields, _ := json.Marshal(FacetAttributeFields)
+		rows, err := tx.QueryContext(ctx, attributeQuery, subject, string(fields))
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var field string
+			var value sql.NullString
+			if err = rows.Scan(&field, &value); err != nil {
+				rows.Close()
 				return err
 			}
+			if value.Valid && value.String != "" {
+				next[facetKey{field, value.String}] = true
+			}
 		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+
 	}
 	moved := len(old) > 0 && now != was
 	for k := range old {

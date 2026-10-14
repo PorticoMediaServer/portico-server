@@ -35,54 +35,59 @@ const DomainRecFacets = 32
 
 const recPeoplePerItem = "16"
 
+// A work is described by its most recurring member traits. A series with
+// hundreds of unrelated episode tags must not publish thousands of traits
+// every time one episode changes. Complete genres and credits remain facts.
+const recMemberFacetLimit = 64
+
 func fold(v string) string { return facettext.FoldFacetSQL(v) }
 
 // recFacetsSQL selects (entity, facet) for the entities in json_each(?1).
 var recFacetsSQL = `SELECT DISTINCT id,f FROM (
- SELECT e.id,'g:'||` + fold("g.source_name") + ` f FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
+ SELECT e.id,'g:'||` + fold("g.source_name") + ` f FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
   CROSS JOIN catalog_term_sources g ON g.entity_id=e.id JOIN catalog_terms gt ON gt.id=g.term_id AND gt.vocab=1 JOIN catalog_libraries cl ON cl.id=e.library_id
   WHERE trim(g.source_name)<>'' AND (e.kind NOT IN(7,9) OR g.provider<>'local'
   OR NOT EXISTS(SELECT 1 FROM audio_metadata_policies p WHERE p.library_id=cl.library_id AND p.local_mode='off')
   OR EXISTS(SELECT 1 FROM metadata_relationship_decisions d WHERE d.kind='item' AND d.entity_id=e.id AND d.relationship='genre' AND d.locked=1))
- UNION ALL SELECT e.id,'p:'||c.provider||':'||c.provider_person_id FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
+ UNION ALL SELECT e.id,'p:'||c.provider||':'||c.provider_person_id FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
   CROSS JOIN catalog_credits c ON c.entity_id=e.id WHERE c.provider_person_id<>'' AND c.source_ordinal<` + recPeoplePerItem + `
- UNION ALL SELECT e.id,'cd:'||lower(d.label)||':'||` + fold("c.credited_name") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
+ UNION ALL SELECT e.id,'cd:'||lower(d.label)||':'||` + fold("c.credited_name") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
   CROSS JOIN catalog_credits c ON c.entity_id=e.id JOIN catalog_credit_labels d ON d.id=c.department_id WHERE d.label IN('Directing','Writing','Creator') AND trim(c.credited_name)<>''
- UNION ALL SELECT e.id,'c:'||pid(co.public_id) FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
+ UNION ALL SELECT e.id,'c:'||pid(co.public_id) FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
   CROSS JOIN catalog_collection_members cm ON cm.item_id=e.id JOIN catalog_entities co ON co.id=cm.collection_id
- UNION ALL SELECT e.id,'s:'||` + fold("det.studio") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
+ UNION ALL SELECT e.id,'s:'||` + fold("det.studio") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
   CROSS JOIN catalog_item_details det ON det.entity_id=e.id WHERE trim(det.studio)<>''
- UNION ALL SELECT e.id,'n:'||` + fold("det.network") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
+ UNION ALL SELECT e.id,'n:'||` + fold("det.network") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
   CROSS JOIN catalog_item_details det ON det.entity_id=e.id WHERE trim(det.network)<>''
- UNION ALL SELECT e.id,'e:'||CAST(e.year/10 AS INTEGER) FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value
+ UNION ALL SELECT e.id,'e:'||CAST(e.year/10 AS INTEGER) FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER)
   JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11 WHERE e.year>1800
- UNION ALL SELECT e.id,'t:'||` + fold("t.name") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value
+ UNION ALL SELECT e.id,'t:'||` + fold("t.name") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER)
   JOIN catalog_kinds k ON k.id=e.kind CROSS JOIN metadata_tags t ON t.entity_kind=CASE e.kind WHEN 2 THEN 'show' ELSE 'item' END AND t.entity_id=e.id
   WHERE (k.playable=1 AND e.kind<>11 OR e.kind=2) AND trim(t.name)<>''
- UNION ALL SELECT e.id,'a:'||pid(artist.public_id) FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
+ UNION ALL SELECT e.id,'a:'||pid(artist.public_id) FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
   CROSS JOIN catalog_song_artists sa ON sa.song_id=e.id JOIN catalog_entities artist ON artist.id=sa.artist_id
- UNION ALL SELECT e.id,'g:'||` + fold("json_extract(g.value,'$.name')") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value AND e.kind=2
+ UNION ALL SELECT e.id,'g:'||` + fold("json_extract(g.value,'$.name')") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) AND e.kind=2
   CROSS JOIN screen_metadata_fields sf ON sf.target_kind='show' AND sf.target_id=e.id AND sf.field='genres',json_each(sf.value) g
- UNION ALL SELECT e.id,'cd:'||lower(json_extract(g.value,'$.department'))||':'||` + fold("json_extract(g.value,'$.name')") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value AND e.kind=2
+ UNION ALL SELECT e.id,'cd:'||lower(json_extract(g.value,'$.department'))||':'||` + fold("json_extract(g.value,'$.name')") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) AND e.kind=2
   CROSS JOIN screen_metadata_fields sf ON sf.target_kind='show' AND sf.target_id=e.id AND sf.field IN('credits','creditsOnline'),json_each(sf.value) g
- UNION ALL SELECT e.id,'a:'||pid(artist.public_id) FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value AND e.kind=6
+ UNION ALL SELECT e.id,'a:'||pid(artist.public_id) FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) AND e.kind=6
   CROSS JOIN catalog_albums a ON a.entity_id=e.id JOIN catalog_entities artist ON artist.id=a.artist_id
- UNION ALL SELECT e.id,'b:'||` + fold("b.author") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value AND e.kind=8
+ UNION ALL SELECT e.id,'b:'||` + fold("b.author") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) AND e.kind=8
   CROSS JOIN catalog_books b ON b.entity_id=e.id WHERE trim(b.author)<>''
- UNION ALL SELECT e.id,'k:'||` + fold("b.series") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value AND e.kind=8
+ UNION ALL SELECT e.id,'k:'||` + fold("b.series") + ` FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) AND e.kind=8
   CROSS JOIN catalog_books b ON b.entity_id=e.id WHERE trim(b.series)<>''
  UNION ALL SELECT e.id,'k:'||` + fold("json_extract(CASE WHEN json_valid(b.local_metadata_payload) THEN b.local_metadata_payload ELSE '{}' END,'$.series[0].name')") + `
-  FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value AND e.kind=8 CROSS JOIN catalog_books b ON b.entity_id=e.id
+  FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) AND e.kind=8 CROSS JOIN catalog_books b ON b.entity_id=e.id
   WHERE b.series='' AND NOT EXISTS(SELECT 1 FROM metadata_owner_fields ow WHERE ow.kind='book' AND ow.entity_id=e.id AND ow.field='series' AND ow.locked=1)
   AND NOT EXISTS(SELECT 1 FROM audio_metadata_policies p WHERE p.library_id=(SELECT library_id FROM catalog_libraries WHERE id=e.library_id) AND p.local_mode='off')
   AND trim(COALESCE(json_extract(CASE WHEN json_valid(b.local_metadata_payload) THEN b.local_metadata_payload ELSE '{}' END,'$.series[0].name'),''))<>''
- UNION ALL SELECT e.id,'x:'||t.tag FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value
+ UNION ALL SELECT e.id,'x:'||t.tag FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER)
   CROSS JOIN catalog_dataset_tags t ON t.entity_id=e.id WHERE t.strength>=2
- UNION ALL SELECT e.id,'x3:'||t.tag FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value
+ UNION ALL SELECT e.id,'x3:'||t.tag FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER)
   CROSS JOIN catalog_dataset_tags t ON t.entity_id=e.id WHERE t.strength=3
- UNION ALL SELECT e.id,'p5:'||c.provider||':'||c.provider_person_id FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
+ UNION ALL SELECT e.id,'p5:'||c.provider||':'||c.provider_person_id FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 AND e.kind<>11
   CROSS JOIN catalog_credits c ON c.entity_id=e.id WHERE c.provider_person_id<>'' AND c.source_ordinal<5
- UNION ALL SELECT e.id,m.facet FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=j.value AND e.kind IN(2,6,8)
+ UNION ALL SELECT e.id,m.facet FROM json_each(?1) j CROSS JOIN catalog_entities e ON e.id=CAST(j.value AS INTEGER) AND e.kind IN(2,6,8)
   CROSS JOIN (` + recMemberFacets + `) m ON m.work=e.id
 ) WHERE f IS NOT NULL AND substr(f,instr(f,':')+1)<>''`
 
@@ -91,11 +96,12 @@ var recFacetsSQL = `SELECT DISTINCT id,f FROM (
 // at least three of them (a show's recurring cast, not its guest stars). A
 // show carrying its genres only on its episodes, or an album only on its
 // songs, is still like the works that share them.
-const recMemberFacets = `SELECT work,facet FROM (
-  SELECT ep.show_id AS work,rf.facet,count(*) AS n FROM json_each(?1) jw CROSS JOIN catalog_episodes ep ON ep.show_id=jw.value CROSS JOIN catalog_rec_facets rf ON rf.entity_id=ep.entity_id GROUP BY 1,2
-  UNION ALL SELECT sg.album_id,rf.facet,count(*) FROM json_each(?1) jw CROSS JOIN catalog_songs sg ON sg.album_id=jw.value CROSS JOIN catalog_rec_facets rf ON rf.entity_id=sg.entity_id GROUP BY 1,2
-  UNION ALL SELECT bf.book_id,rf.facet,count(*) FROM json_each(?1) jw CROSS JOIN catalog_book_files bf ON bf.book_id=jw.value CROSS JOIN catalog_rec_facets rf ON rf.entity_id=bf.entity_id GROUP BY 1,2)
- WHERE facet LIKE 'g:%' OR facet LIKE 't:%' OR facet LIKE 's:%' OR facet LIKE 'n:%' OR facet LIKE 'a:%' OR facet LIKE 'b:%' OR facet LIKE 'p:%' AND n>=3`
+const recMemberFacets = `SELECT CAST(requested.value AS INTEGER) AS work,trait.value AS facet
+ FROM json_each(?1) requested CROSS JOIN json_each((
+ SELECT json_group_array(facet) FROM (
+ SELECT facet FROM catalog_rec_member_counts INDEXED BY catalog_rec_member_best
+ WHERE work_id=CAST(requested.value AS INTEGER) AND eligible=1
+ ORDER BY total DESC,facet LIMIT 64))) trait`
 
 func deriveRecFacets(ctx context.Context, tx *sql.Tx, list []int64) error {
 	// A work some profile holds a signal on moves that profile's taste when
@@ -105,12 +111,20 @@ func deriveRecFacets(ctx context.Context, tx *sql.Tx, list []int64) error {
 	// file's facets change, its work is derived again (the queue coalesces a
 	// batch of members into one pass over their work).
 	members := map[int64][]string{}
+	oldParents := map[int64]int64{}
+	newParents := map[int64]int64{}
 	for _, id := range list {
+		var old int64
+		if err := tx.QueryRowContext(ctx, `SELECT work_id FROM catalog_rec_member_work WHERE item_id=?`, id).Scan(&old); err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return err
+		}
+		oldParents[id] = old
 		var parent sql.NullInt64
 		if err := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT show_id FROM catalog_episodes WHERE entity_id=?1),(SELECT album_id FROM catalog_songs WHERE entity_id=?1),(SELECT book_id FROM catalog_book_files WHERE entity_id=?1))`, id).Scan(&parent); err != nil {
 			return err
 		}
 		if parent.Valid {
+			newParents[id] = parent.Int64
 			facets, err := RecWorkFacets(ctx, tx, id)
 			if err != nil {
 				return err
@@ -142,11 +156,33 @@ func deriveRecFacets(ctx context.Context, tx *sql.Tx, list []int64) error {
 			continue
 		}
 		batch := mustJSON(part)
-		if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_rec_facets WHERE entity_id IN(SELECT value FROM json_each(?))`, batch); err != nil {
+		if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_rec_facets WHERE entity_id IN(SELECT CAST(value AS INTEGER) FROM json_each(?))`, batch); err != nil {
 			return err
+		}
+		// Old facets were removed using the retained parent. Attach the new
+		// contribution to the member's current parent before inserting its traits.
+		for _, id := range part {
+			if parent := newParents[id]; parent != 0 {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_rec_member_work(item_id,work_id) VALUES(?,?) ON CONFLICT(item_id) DO UPDATE SET work_id=excluded.work_id`, id, parent); err != nil {
+					return err
+				}
+			} else if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_rec_member_work WHERE item_id=?`, id); err != nil {
+				return err
+			}
 		}
 		if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO catalog_rec_facets(entity_id,facet) `+recFacetsSQL, batch); err != nil {
 			return err
+		}
+	}
+	for _, id := range list {
+		if oldParents[id] != newParents[id] {
+			for _, parent := range []int64{oldParents[id], newParents[id]} {
+				if parent != 0 {
+					if err := TouchTx(ctx, tx, DomainRecFacets, parent); err != nil {
+						return err
+					}
+				}
+			}
 		}
 	}
 	for id, before := range members {
@@ -349,7 +385,7 @@ func mapKeys(m map[string]int) []string {
 
 func init() {
 	Register(DomainRecFacets, Derivation{
-		Version: 5,
+		Version: 6,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			ids := keyIDs(keys)
 			return ids, deriveRecFacets(ctx, tx, ids)

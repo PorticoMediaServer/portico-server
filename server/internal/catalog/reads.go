@@ -3,6 +3,9 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"strings"
+	"sync"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
@@ -49,7 +52,7 @@ func (r reads) QueryRow(query string, args ...any) *sql.Row {
 // unchanged, while still resolving the snapshot.
 func (r reads) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	q := r.resolve(ctx)
-	query, err := compactcatalog.SearchServingSQL(ctx, q, compactcatalog.ServingSQL(query))
+	query, err := r.servingSQL(ctx, q, query)
 	if err != nil {
 		return nil, err
 	}
@@ -58,11 +61,75 @@ func (r reads) QueryContext(ctx context.Context, query string, args ...any) (*sq
 
 func (r reads) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
 	q := r.resolve(ctx)
-	serving, err := compactcatalog.SearchServingSQL(ctx, q, compactcatalog.ServingSQL(query))
+	serving, err := r.servingSQL(ctx, q, query)
 	if err != nil {
-		return q.QueryRowContext(ctx, `SELECT active_slot FROM catalog_derivations WHERE domain=17`)
+		// QueryRow cannot return the rewrite error directly. Return a row that
+		// always fails Scan rather than letting a scalar caller accept a slot
+		// number as its count or content.
+		return q.QueryRowContext(ctx, `SELECT 1 WHERE 0`)
 	}
 	return q.QueryRowContext(ctx, serving, args...)
+}
+
+// Empty overlays are equivalent to their indexed base table, even while a
+// different derivation rebuilds. Read all overlay presence in the same snapshot;
+// any referenced table with old rows still selects the full retained views.
+var readOverlaySQL = func() string {
+	parts := []string{}
+	for _, table := range compactcatalog.ServingTables {
+		parts = append(parts, "'"+table+"',EXISTS(SELECT 1 FROM "+table+"_previous WHERE generation=(SELECT generation FROM catalog_generations WHERE singleton=1))")
+	}
+	return "SELECT json_object(" + strings.Join(parts, ",") + ")"
+}()
+
+type readGenerationKey struct{}
+type readGeneration struct {
+	snapshot  *sql.Tx
+	once      sync.Once
+	retaining bool
+	overlays  map[string]int
+	err       error
+}
+
+// A published generation has no old rows to merge. Resolve that fact inside
+// the request's snapshot, once, so ordinary reads keep the base tables' index
+// plans. During a rebuild the retained views still serve the previous content.
+func (r reads) servingSQL(ctx context.Context, q reader, query string) (string, error) {
+	state, _ := ctx.Value(readGenerationKey{}).(*readGeneration)
+	retaining := true
+	if state != nil && state.snapshot == dbwork.Snapshot(ctx) && !dbwork.InWriteTx(ctx) {
+		for _, table := range compactcatalog.ServingTables {
+			if strings.Contains(query, table) {
+				state.once.Do(func() {
+					state.err = q.QueryRowContext(ctx, `SELECT retaining FROM catalog_generations WHERE singleton=1`).Scan(&state.retaining)
+					if state.err == nil && state.retaining {
+						var raw string
+						state.err = q.QueryRowContext(ctx, readOverlaySQL).Scan(&raw)
+						if state.err == nil {
+							state.err = json.Unmarshal([]byte(raw), &state.overlays)
+						}
+					}
+				})
+				if state.err != nil {
+					return "", state.err
+				}
+				retaining = false
+				if state.retaining {
+					for _, candidate := range compactcatalog.ServingTables {
+						if state.overlays[candidate] != 0 && strings.Contains(query, candidate) {
+							retaining = true
+							break
+						}
+					}
+				}
+				break
+			}
+		}
+	}
+	if retaining {
+		query = compactcatalog.ServingSQL(query)
+	}
+	return compactcatalog.SearchServingSQL(ctx, q, query)
 }
 
 func (r reads) resolve(ctx context.Context) reader {
@@ -105,6 +172,12 @@ func (s *Service) WithContext(ctx context.Context) *Service {
 		return s
 	}
 	clone := *s
+	if snapshot := dbwork.Snapshot(ctx); snapshot != nil && !dbwork.InWriteTx(ctx) {
+		state, _ := ctx.Value(readGenerationKey{}).(*readGeneration)
+		if state == nil || state.snapshot != snapshot {
+			ctx = context.WithValue(ctx, readGenerationKey{}, &readGeneration{snapshot: snapshot})
+		}
+	}
 	clone.rctx = ctx
 	return &clone
 }

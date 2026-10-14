@@ -49,14 +49,13 @@ func exerciseRead(db *sql.DB, s *catalog.Service, name string, samples int, read
 		r.MaxStatements = max(r.MaxStatements, dbwork.Reads().Statements-before)
 		if err != nil {
 			r.Error = err.Error()
-			logMeasurement(r)
-			return r, err
+			break
 		}
 	}
 	sort.Float64s(durations)
-	r.Samples = samples
-	r.P50MS = durations[(samples-1)/2]
-	r.P95MS = durations[(samples*95+99)/100-1]
+	r.Samples = len(durations)
+	r.P50MS = durations[(len(durations)-1)/2]
+	r.P95MS = durations[(len(durations)*95+99)/100-1]
 	logMeasurement(r)
 	return r, nil
 }
@@ -66,69 +65,128 @@ func exerciseRead(db *sql.DB, s *catalog.Service, name string, samples int, read
 func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...string) (routeResult, error) {
 	ctx := context.Background()
 	w := compactcatalog.NewWorker(db)
+	dbwork.ProfileStatements(true)
+	defer dbwork.ProfileStatements(false)
 	r := routeResult{Route: name}
 	start := time.Now()
-	probeAt := time.Time{}
+	logAt := time.Now()
+	schedule, err := dbwork.NewCheckpointSchedule(ctx, db)
+	if err != nil {
+		return r, err
+	}
 	v := catalog.Viewer{Profile: "viewer", Fence: "scale-open", Libraries: []string{"movies", "tv", "music"}}
-	var probes int
+	var probes, failedProbes int
 	firstVisible := time.Duration(-1)
 	var maxRead time.Duration
-	dbwork.WriteGate().ResetPeak()
-	for {
-		n, err := w.Step(ctx, compactcatalog.BatchLimit)
-		if err != nil {
-			return r, err
-		}
-		r.RSSKB = max(r.RSSKB, processRSSKB())
-		if time.Now().After(probeAt) {
+	stop, done := make(chan struct{}), make(chan struct{})
+	// Requests run alongside the worker, rather than pausing derivation for
+	// every checkpoint. They use the real read snapshot/admission machinery.
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
 			readStart := time.Now()
-			err = dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error {
+			probe, cancel := context.WithTimeout(ctx, 30*time.Second)
+			err := dbwork.WithReadSnapshot(probe, db, func(ctx context.Context) error {
 				service := s.WithContext(ctx)
 				if _, err := service.BrowseEntities(v, catalog.BrowseRequest{Library: "movies", Pivot: "movies", Limit: 40}); err != nil {
 					return err
 				}
-				probeQuery := "Title"
+				query := "Title 000000"
 				if len(queries) > 0 {
-					probeQuery = queries[0]
+					query = queries[0]
 				}
-				page, err := service.Search(ctx, catalog.SearchRequest{Groups: []string{"movies", "shows", "episodes", "artists", "albums", "songs", "books", "collections", "authors", "people"}, Viewer: v, Profile: "viewer", ViewerFence: "scale-open", Libraries: v.Libraries, Q: probeQuery, Limit: 12})
-				if err == nil {
-					for _, group := range page.Groups {
-						if group.ErrorCode != "" {
-							return fmt.Errorf("probe group %s: %s", group.ID, group.ErrorCode)
-						}
-						if name == "derive-added-1000" && firstVisible < 0 && group.ID == "movies" && len(group.Items) > 0 {
-							firstVisible = time.Since(start)
-						}
+				page, err := service.Search(ctx, catalog.SearchRequest{Groups: []string{"movies", "shows", "episodes", "artists", "albums", "songs", "books", "collections", "authors", "people"}, Viewer: v, Q: query, Limit: 12})
+				if err != nil {
+					return err
+				}
+				for _, group := range page.Groups {
+					if group.ErrorCode != "" {
+						failedProbes++
+						fmt.Fprintf(os.Stderr, "PROBE_GROUP_ERROR %s group=%s code=%s\n", name, group.ID, group.ErrorCode)
+						continue
+					}
+					if name == "derive-added-1000" && firstVisible < 0 && group.ID == "movies" && len(group.Items) > 0 {
+						firstVisible = time.Since(start)
 					}
 				}
-				return err
+				return nil
 			})
+			cancel()
 			if err != nil {
-				return r, err
+				failedProbes++
+				fmt.Fprintf(os.Stderr, "PROBE_ERROR %s: %v\n", name, err)
 			}
 			maxRead = max(maxRead, time.Since(readStart))
 			probes++
-			probeAt = time.Now().Add(200 * time.Millisecond)
+			timer := time.NewTimer(200 * time.Millisecond)
+			select {
+			case <-stop:
+				timer.Stop()
+				return
+			case <-timer.C:
+			}
+		}
+	}()
+	dbwork.WriteGate().ResetPeak()
+	for {
+		schedule.Tick(ctx)
+		n, err := w.Step(ctx, compactcatalog.BatchLimit)
+		if err != nil {
+			close(stop)
+			<-done
+			return r, err
+		}
+		r.RSSKB = max(r.RSSKB, processRSSKB())
+		if time.Since(logAt) > 10*time.Second {
+			var pending int
+			db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&pending)
+			fmt.Fprintf(os.Stderr, "DRAIN %s elapsed=%s pending=%d rss_kb=%d\n", name, time.Since(start).Round(time.Second), pending, r.RSSKB)
+			logAt = time.Now()
+			if err := checkScratchBudget(); err != nil {
+				close(stop)
+				<-done
+				r.Samples = 1
+				r.P50MS = float64(time.Since(start)) / float64(time.Millisecond)
+				r.P95MS = r.P50MS
+				r.Error = err.Error()
+				logMeasurement(r)
+				return r, err
+			}
 		}
 		if n == 0 {
 			break
 		}
 	}
+	close(stop)
+	<-done
 	r.Samples = 1
 	r.P50MS = float64(time.Since(start)) / float64(time.Millisecond)
 	r.P95MS = r.P50MS
 	logMeasurement(r)
-	fmt.Fprintf(os.Stderr, "DERIVE %s probes=%d max_browse_search_ms=%.3f max_gate_held_ms=%d\n", name, probes, float64(maxRead)/float64(time.Millisecond), dbwork.WriteGate().Stats().MaxHeldMilli)
+	fmt.Fprintf(os.Stderr, "DERIVE %s probes=%d max_browse_search_ms=%.3f max_gate_held_ms=%d failed_probes=%d\n", name, probes, float64(maxRead)/float64(time.Millisecond), dbwork.WriteGate().Stats().MaxHeldMilli, failedProbes)
+	for i, entry := range dbwork.StatementProfile() {
+		if i == 10 {
+			break
+		}
+		fmt.Fprintf(os.Stderr, "DERIVE_COST %s ms=%.3f calls=%d %s\n", name, entry.Millis(), entry.Count, entry.Shape)
+	}
 	if firstVisible >= 0 {
 		fmt.Fprintf(os.Stderr, "FIRST_VISIBLE drain_ms=%.3f\n", float64(firstVisible)/float64(time.Millisecond))
 	}
 	return r, nil
 }
 
-func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes bool) ([]routeResult, error) {
+func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes bool, planFilter string) ([]routeResult, error) {
 	var results []routeResult
 	add := func(name string, read func(context.Context, *catalog.Service) error) error {
+		if planFilter != "" && strings.Contains(name, planFilter) {
+			explainRoute(db, name, func(service *catalog.Service) error { return read(service.Context(), service) }, s)
+		}
 		r, err := exerciseRead(db, s, name, samples, read)
 		results = append(results, r)
 		return err
@@ -141,7 +199,7 @@ func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes
 				return results, err
 			}
 			for _, pivot := range caps.Pivots {
-				if !pivot.Browsable {
+				if !pivot.Browsable && len(pivot.Sorts) == 0 {
 					continue
 				}
 				scoped, err := s.BrowseCapabilitiesFor(lib, pivot.ID)
@@ -172,43 +230,26 @@ func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes
 					}
 				}
 				for _, field := range scoped.Fields {
-					node := &catalog.BrowseNode{Field: field.ID, Operator: "equals", Value: "Title"}
-					for _, op := range field.Operators {
-						if op == "is-present" {
-							node.Operator = op
-							node.Value = nil
-							break
+					for _, node := range fieldOperands(field) {
+						raw, _ := json.Marshal(node)
+						parsed, err := catalog.ParseBrowseQuery(raw, "query")
+						if err != nil {
+							return results, fmt.Errorf("%s/%s: %w", field.ID, node.Operator, err)
 						}
-					}
-					if node.Operator == "equals" {
-						switch field.Type {
-						case "number":
-							node.Value = float64(2000)
-						case "date":
-							node.Value = "2026-01-01"
-						case "boolean":
-							node.Value = true
-						case "enum":
-							if len(field.AllowedValues) > 0 {
-								node.Value = field.AllowedValues[0]
-							}
+						request := base
+						request.Query = parsed
+						if err := measure("filter/"+field.ID+"/"+node.Operator, request); err != nil {
+							return results, err
 						}
-						if field.ID == "search" {
-							node.Operator = "contains"
-						}
-					}
-					raw, _ := json.Marshal(node)
-					parsed, err := catalog.ParseBrowseQuery(raw, "query")
-					if err != nil {
-						return results, fmt.Errorf("%s: %w", field.ID, err)
-					}
-					request := base
-					request.Query = parsed
-					if err := measure("filter/"+field.ID, request); err != nil {
-						return results, err
 					}
 				}
 			}
+		}
+	}
+
+	if matrix {
+		if err := exerciseGroupedVocabulary(db, s, v, add); err != nil {
+			return results, err
 		}
 	}
 
@@ -513,12 +554,19 @@ func exerciseRemoval(db *sql.DB, s *catalog.Service) (routeResult, error) {
 	if err := scheduler.Register(adapter); err != nil {
 		return r, err
 	}
-	err := s.RemoveLibrary(ctx, "movies", "Movies", revision, func(*sql.Tx) error { return nil }, func(ctx context.Context, tx *sql.Tx, kind, resource string) error {
-		_, err := scheduler.EnqueueDomainTx(ctx, tx, kind, resource, "fixture-owner")
-		return err
-	})
+	var retired bool
+	err := db.QueryRow(`SELECT retired FROM catalog_libraries WHERE library_id='movies'`).Scan(&retired)
 	if err != nil {
 		return r, err
+	}
+	if !retired {
+		err = s.RemoveLibrary(ctx, "movies", "Movies", revision, func(*sql.Tx) error { return nil }, func(ctx context.Context, tx *sql.Tx, kind, resource string) error {
+			_, err := scheduler.EnqueueDomainTx(ctx, tx, kind, resource, "fixture-owner")
+			return err
+		})
+		if err != nil {
+			return r, err
+		}
 	}
 	for {
 		step, cancel := context.WithTimeout(ctx, time.Second)
@@ -544,6 +592,32 @@ func exerciseRemoval(db *sql.DB, s *catalog.Service) (routeResult, error) {
 		return r, err
 	}
 	fmt.Fprintf(os.Stderr, "RECLAIM before_bytes=%d reusable_bytes=%d\n", before*size, free*size)
+	scratchBytes, budgetErr := scratchUsage()
+	if budgetErr != nil {
+		return r, budgetErr
+	}
+	if scratchBytes+before*size*2 > scratchLimit {
+		fmt.Fprintf(os.Stderr, "VACUUM_SKIPPED scratch_budget estimated_peak_bytes=%d\n", before*size*2)
+		return r, nil
+	}
+	start = time.Now()
+	connCtx, conn, release, err := dbwork.ReserveWriterConn(ctx, db, dbwork.ClassMaintenance)
+	if err != nil {
+		return r, err
+	}
+	_, err = conn.ExecContext(connCtx, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	if err == nil {
+		_, err = conn.ExecContext(connCtx, `VACUUM`)
+	}
+	release()
+	if err != nil {
+		return r, err
+	}
+	var after int64
+	if err = db.QueryRow(`PRAGMA page_count`).Scan(&after); err != nil {
+		return r, err
+	}
+	fmt.Fprintf(os.Stderr, "VACUUM elapsed_ms=%.3f after_bytes=%d reclaimed_bytes=%d rss_kb=%d\n", float64(time.Since(start))/float64(time.Millisecond), after*size, (before-after)*size, processRSSKB())
 	return r, nil
 }
 
