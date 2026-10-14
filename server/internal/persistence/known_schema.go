@@ -408,12 +408,14 @@ index notification_records_expiry
 index notification_records_live
 index notification_records_page
 index notification_records_resume
+index personal_activity_receipts_expiry
 index personal_batch_receipts_expiry
 index personal_completed_plays_item
 index personal_conflict_open
 index personal_conflicts_item_id_fk
 index personal_event_ancestor
 index personal_evidence_fences_item_id_fk
+index personal_explicit_events_expiry
 index personal_explicit_events_item_id_fk
 index personal_favorites
 index personal_history_item_id_fk
@@ -493,6 +495,7 @@ index retained_title_state_profile
 index saved_pin_order_position
 index saved_resource_entries_item_id_fk
 index saved_resource_owner
+index saved_resource_receipts_expiry
 index saved_resource_shared
 index saved_resource_visibility
 index screen_metadata_attention_active
