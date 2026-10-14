@@ -65,6 +65,14 @@ func TestBroadPrefixesSelectBoundedScopedPages(t *testing.T) {
 							t.Fatalf("q=%s restricted=%v groups=%+v err=%v", q, restricted, out.Groups, err)
 						}
 						group := out.Groups[0]
+						if numeric, ok := strings.CutPrefix(q, "Title "); ok {
+							for _, item := range group.Items {
+								words := strings.Fields(item.Title)
+								if len(words) == 0 || !strings.HasPrefix(words[len(words)-1], numeric) {
+									t.Fatalf("numeric prefix %q matched %q", numeric, item.Title)
+								}
+							}
+						}
 						if strings.Contains(q, " ") && group.TotalCountExact {
 							t.Fatal("intersection claimed an exact count")
 						}
