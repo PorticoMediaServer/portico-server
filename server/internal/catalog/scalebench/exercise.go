@@ -62,6 +62,31 @@ func exerciseRead(db *sql.DB, s *catalog.Service, name string, samples int, read
 
 // Reads are probed at frequent commit checkpoints. The worker uses the server's
 // batch size; this tool intentionally measures catalogue services, not HTTP.
+// deriveBudget stops a derive-only drain early; the rate up to then is the
+// measurement. deriveNoProbes leaves out the concurrent read probes.
+var (
+	deriveBudget   time.Duration
+	deriveNoProbes bool
+)
+
+// pendingByDomain is the queued work per derived domain and job table, for
+// the drain log: where a rebuild's remaining work is.
+func pendingByDomain(db *sql.DB) string {
+	rows, err := db.Query(`SELECT domain,count(*) FROM catalog_dirty GROUP BY domain`)
+	if err != nil {
+		return err.Error()
+	}
+	defer rows.Close()
+	var parts []string
+	for rows.Next() {
+		var domain, n int
+		if rows.Scan(&domain, &n) == nil {
+			parts = append(parts, fmt.Sprintf("%d:%d", domain, n))
+		}
+	}
+	return strings.Join(parts, ",")
+}
+
 func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...string) (routeResult, error) {
 	ctx := context.Background()
 	w := compactcatalog.NewWorker(db)
@@ -83,7 +108,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	// every checkpoint. They use the real read snapshot/admission machinery.
 	go func() {
 		defer close(done)
-		for {
+		for !deriveNoProbes {
 			select {
 			case <-stop:
 				return
@@ -133,9 +158,12 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 		}
 	}()
 	dbwork.WriteGate().ResetPeak()
+	var stepUnits int
+	lastUnits, lastLog := 0, time.Now()
 	for {
 		schedule.Tick(ctx)
 		n, err := w.Step(ctx, compactcatalog.BatchLimit)
+		stepUnits += n
 		if err != nil {
 			close(stop)
 			<-done
@@ -145,8 +173,13 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 		if time.Since(logAt) > 10*time.Second {
 			var pending int
 			db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&pending)
-			fmt.Fprintf(os.Stderr, "DRAIN %s elapsed=%s pending=%d rss_kb=%d\n", name, time.Since(start).Round(time.Second), pending, r.RSSKB)
+			cache := dbwork.Reads().StatementCache
+			fmt.Fprintf(os.Stderr, "DRAIN %s elapsed=%s pending=%d units=%d units_per_s=%.1f rss_kb=%d gate_max_ms=%d cache_hits=%d misses=%d evictions=%d domains=%s\n", name, time.Since(start).Round(time.Second), pending, stepUnits, float64(stepUnits-lastUnits)/time.Since(lastLog).Seconds(), r.RSSKB, dbwork.WriteGate().Stats().MaxHeldMilli, cache.Hits, cache.Misses, cache.Evictions, pendingByDomain(db))
+			lastUnits, lastLog = stepUnits, time.Now()
 			logAt = time.Now()
+			if deriveBudget > 0 && time.Since(start) > deriveBudget {
+				break
+			}
 			if err := checkScratchBudget(); err != nil {
 				close(stop)
 				<-done
@@ -170,7 +203,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	logMeasurement(r)
 	fmt.Fprintf(os.Stderr, "DERIVE %s probes=%d max_browse_search_ms=%.3f max_gate_held_ms=%d failed_probes=%d\n", name, probes, float64(maxRead)/float64(time.Millisecond), dbwork.WriteGate().Stats().MaxHeldMilli, failedProbes)
 	for i, entry := range dbwork.StatementProfile() {
-		if i == 10 {
+		if i == 40 {
 			break
 		}
 		fmt.Fprintf(os.Stderr, "DERIVE_COST %s ms=%.3f calls=%d %s\n", name, entry.Millis(), entry.Count, entry.Shape)

@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"runtime/pprof"
 	"sort"
 	"strings"
 	"time"
@@ -72,7 +73,21 @@ func run() (runErr error) {
 	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
 	resumeRemoval := flag.Bool("resume-removal", false, "finish removal of the already retired synthetic Movies library")
 	focus := flag.Int("focus-samples", 0, "repeat main browse and typing reads before write scenarios")
+	deriveOnly := flag.Bool("derive-only", false, "drain the derived worker from the fixture's current state, report its rate and stop")
+	flag.DurationVar(&deriveBudget, "derive-for", 0, "stop a derive-only drain after this long (0: run to completion)")
+	flag.BoolVar(&deriveNoProbes, "no-probes", false, "drain without concurrent browse/search probes")
+	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile of the run to this file")
 	flag.Parse()
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err != nil {
+			return err
+		}
+		if err = pprof.StartCPUProfile(f); err != nil {
+			return err
+		}
+		defer func() { pprof.StopCPUProfile(); f.Close() }()
+	}
 	focusedSamples = *focus
 	if focusedSamples < 0 || focusedSamples > 20 {
 		return errors.New("focus-samples must be 0..20")
@@ -163,6 +178,11 @@ func run() (runErr error) {
 		return os.WriteFile(filepath.Join(abs, "seed-report.json"), append(raw, '\n'), 0600)
 	}
 	s := catalog.New(db)
+	if *deriveOnly {
+		rr, err := exerciseDrain(db, s, "derive-only")
+		r.Routes = append(r.Routes, rr)
+		return err
+	}
 	if *resumeRemoval {
 		if !*reuse {
 			return errors.New("resume-removal requires reuse")
