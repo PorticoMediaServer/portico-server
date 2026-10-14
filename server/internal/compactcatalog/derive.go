@@ -171,6 +171,21 @@ type Worker struct {
 	// unitCost is each domain's recent cost per unit (key -1: step workers).
 	holdTarget time.Duration
 	unitCost   map[int]time.Duration
+	last       lastBatch
+}
+
+type lastBatch struct {
+	domain, units int
+	took          time.Duration
+}
+
+// LastBatch reports the latest committed batch (diagnostics and the scale
+// tool): its domain (-1 the step workers, -2 none), units and time inside
+// the transaction.
+func (w *Worker) LastBatch() (domain, units int, took time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.last.domain, w.last.units, w.last.took
 }
 
 // PaceToHold sizes each batch to hold the write gate for about target, up to
@@ -428,6 +443,9 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 	if paced > -2 {
 		w.observeBatch(paced, n, took)
 	}
+	w.mu.Lock()
+	w.last = lastBatch{paced, n, took}
+	w.mu.Unlock()
 	if domain >= 0 {
 		w.mu.Lock()
 		delete(w.isolate, domain)
