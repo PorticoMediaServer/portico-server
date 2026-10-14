@@ -56,10 +56,16 @@ func TestBlockSplitsSeekInsideEqualKeyRuns(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			anchor := max(1, n-2048)
+			anchor := max(1, n/2)
 			offset := min(1024, n-anchor)
-			query := strings.NewReplacer("b.library_id", "1", "b.kind", "1", "b.sort_value", "2000", "b.entity_id", fmt.Sprint(anchor), "LIMIT 1025", fmt.Sprintf("LIMIT %d", offset+1), "OFFSET 1024", fmt.Sprintf("OFFSET %d", offset)).Replace(selector)
-			old := fmt.Sprintf(`SELECT r.entity_id FROM catalog_browse_rows r INDEXED BY catalog_browse_year WHERE r.library_id=1 AND r.kind=1 AND (r.year>2000 OR r.year=2000 AND r.entity_id>=%d) ORDER BY r.year,r.entity_id LIMIT 1 OFFSET %d`, anchor, offset)
+			if _, err := db.Exec(`CREATE TABLE fixture_block(library_id INTEGER,kind INTEGER,sort_value INTEGER,entity_id INTEGER)`); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Exec(`INSERT INTO fixture_block VALUES(1,1,2000,?)`, anchor); err != nil {
+				t.Fatal(err)
+			}
+			query := "SELECT (" + strings.NewReplacer("LIMIT 1025", fmt.Sprintf("LIMIT %d", offset+1), "OFFSET 1024", fmt.Sprintf("OFFSET %d", offset)).Replace(selector) + ") FROM fixture_block b"
+			old := fmt.Sprintf(`SELECT (SELECT r.entity_id FROM catalog_browse_rows r INDEXED BY catalog_browse_year WHERE r.library_id=b.library_id AND r.kind=b.kind AND (r.year>b.sort_value OR r.year=b.sort_value AND r.entity_id>=b.entity_id) ORDER BY r.year,r.entity_id LIMIT 1 OFFSET %d) FROM fixture_block b`, offset)
 			for _, version := range []struct{ name, query string }{{"before", old}, {"after", query}} {
 				rows, err := db.Query("EXPLAIN QUERY PLAN " + version.query)
 				if err != nil {
