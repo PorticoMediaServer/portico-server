@@ -278,3 +278,53 @@ func TestSortedSearchCountsFromMaintainedTotals(t *testing.T) {
 		}
 	}
 }
+
+// A person filter starts from the person's credits. A credit on a show counts
+// for the show, a credit on an episode for the episode and its show.
+func TestPersonFilterFindsItemAndContainerCredits(t *testing.T) {
+	c := catalogtest.Open(t)
+	tv := c.Library("tv", "TV", "tv", "/tv")
+	show := c.Show(tv, "Harbor", 2020)
+	season := c.Season(show, 1)
+	first := c.Episode(show, season, 1, "/tv/1.mkv")
+	second := c.Episode(show, season, 2, "/tv/2.mkv")
+	movies := c.Library("m", "Movies", "movie", "/m")
+	film := c.Movie(movies, "/m/a.mkv", "Film", 2001)
+	credit := func(key string) compactcatalog.Credit {
+		return compactcatalog.Credit{PersonKey: key, PersonName: key, PersonSortName: key, CreditID: key, CreditedName: key, Role: "Actor", Department: "Acting"}
+	}
+	compactCredits(c, show.ID, credit("tmdb:lead"))
+	compactCredits(c, second.ID, credit("tmdb:guest"))
+	compactCredits(c, film.ID, credit("tmdb:lead"))
+	c.Drain()
+	lead, guest := personToken(t, c.DB, "tmdb:lead"), personToken(t, c.DB, "tmdb:guest")
+	v := Viewer{Profile: "p", Fence: "person", Libraries: []string{"tv", "m"}}
+	for _, check := range []struct {
+		library, pivot, person, operator string
+		want                             []string
+	}{
+		{"tv", "shows", lead, "equals", []string{show.Public}},
+		{"tv", "shows", guest, "equals", []string{show.Public}},
+		{"tv", "episodes", guest, "equals", []string{second.Public}},
+		{"tv", "episodes", lead, "equals", nil},
+		{"tv", "episodes", guest, "not-in", []string{first.Public}},
+		{"m", "movies", lead, "in", []string{film.Public}},
+		{"m", "movies", guest, "equals", nil},
+	} {
+		value := any(check.person)
+		if check.operator != "equals" {
+			value = []any{check.person}
+		}
+		page, err := New(c.DB).BrowseEntities(v, BrowseRequest{Library: check.library, Pivot: check.pivot, Query: &BrowseNode{Field: "person", Operator: check.operator, Value: value}, Limit: 40})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := []string{}
+		for _, entry := range page.Entries {
+			got = append(got, entry.ID)
+		}
+		if fmt.Sprint(got) != fmt.Sprint(append([]string{}, check.want...)) && !(len(got) == 0 && len(check.want) == 0) {
+			t.Fatalf("%s/%s person %s: got %v want %v", check.library, check.pivot, check.operator, got, check.want)
+		}
+	}
+}

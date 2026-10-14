@@ -974,6 +974,9 @@ func (c *browseCompiler) genreExists(condition func() (string, error)) (string, 
 // (provider ratings). item is the member item it yields.
 type drivenSource struct {
 	from, scope, item string
+	// members, when set, is the membership join condition over bei in place
+	// of bei.item_id=item.
+	members string
 	// termKey is set for attribute fields: a term's key is its values' lower
 	// case trimmed text, which folds the same as the values, so a text
 	// condition is first tested once per term.
@@ -999,6 +1002,11 @@ func drivenMemberSource(field browseField) (drivenSource, bool) {
 			scope: `alb.library_id IN(SELECT id FROM catalog_libraries) AND alb.kind=` + strconv.Itoa(int(compactcatalog.Album)), item: "sng.entity_id"}, true
 	case "author", "narrator":
 		return drivenSource{from: `catalog_books bok CROSS JOIN catalog_book_files bfl ON bfl.book_id=bok.entity_id`, scope: "1", item: "bfl.entity_id"}, true
+	case "person":
+		// A credit names an item or its container (a show's cast), so the
+		// credited entity is either the member item or the title itself.
+		return drivenSource{from: `catalog_people person CROSS JOIN catalog_credits credit INDEXED BY catalog_credits_person ON credit.person_id=person.id`, scope: "1", item: "credit.entity_id",
+			members: `(bei.item_id=credit.entity_id OR bei.entity_id=credit.entity_id)`}, true
 	case "communityRating", "criticRating":
 		providers := "'tmdb','imdb','musicbrainz','audible'"
 		if field.ID == "criticRating" {
@@ -1059,7 +1067,11 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 	}
 	// The few matching titles are named in the clause itself, so the count
 	// and the page start from them rather than test every title of the pivot.
-	ids, err := c.ids(`SELECT DISTINCT bei.entity_id FROM `+source.from+` CROSS JOIN catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=`+source.item+members+
+	join := `catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=` + source.item
+	if source.members != "" {
+		join = `catalog_browse_memberships bei ON ` + source.members
+	}
+	ids, err := c.ids(`SELECT DISTINCT bei.entity_id FROM `+source.from+` CROSS JOIN `+join+members+
 		` WHERE `+where+` AND (`+body+`) AND (`+restriction+`)`, append(append([]any{}, c.args[before:]...), args...)...)
 	if err != nil {
 		return "", false, err
