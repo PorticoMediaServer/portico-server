@@ -86,3 +86,11 @@ func TestContinuePreviewDoesNotReadSiblingRow(t *testing.T) {
 		t.Fatalf("preview composed its sibling: %d activity reads", sources)
 	}
 }
+
+func TestHomeHeroOrderingKeyKeepsUndatedActivityBeforeDated(t *testing.T) {
+	empty := homeHero([]HomeRow{{ID: "continue", Entries: []ContentEntry{{ID: "video"}}}})
+	dated := homeHero([]HomeRow{{ID: "continue_listening", Entries: []ContentEntry{{ID: "audio"}}, lead: "2026-10-13T00:00:00Z"}})
+	if empty.SelectionKey >= dated.SelectionKey {
+		t.Fatal("undated activity outranks a dated one")
+	}
+}

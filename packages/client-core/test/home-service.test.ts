@@ -202,12 +202,12 @@ test('independent Continue previews choose the server-ranked hero regardless of 
   const service = new HomeService(api(path => {
     if (path === '/v1/home') return document([row('continue', [], {deferred: true}), row('continue_listening', [], {deferred: true})]);
     if (path.includes('/rows/continue_listening')) return new Promise(resolve => { finishListening = resolve; });
-    return row('continue', ['video'], {hero: {rowId: 'continue', entryId: 'video', selectionKey: '2026-10-13|999'}});
+    return row('continue', ['video'], {hero: {rowId: 'continue', entryId: 'video', selectionKey: '2026-10-13!999'}});
   }));
   await service.load();
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(service.getSnapshot().document!.hero!.entryId, 'video');
-  finishListening(row('continue_listening', ['audio'], {hero: {rowId: 'continue_listening', entryId: 'audio', selectionKey: '2026-10-12|998'}}));
+  finishListening(row('continue_listening', ['audio'], {hero: {rowId: 'continue_listening', entryId: 'audio', selectionKey: '2026-10-12!998'}}));
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(service.getSnapshot().document!.hero!.entryId, 'video', 'a later answer cannot replace a more recent hero');
   service.dispose();

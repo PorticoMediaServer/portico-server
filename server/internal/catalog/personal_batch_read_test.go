@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/personalstate"
@@ -92,6 +93,48 @@ func TestPersonalBatchMatchesIndividualStateAndSnapshots(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+		})
+	}
+}
+
+func TestContainerActionsUseConstantStatementBatches(t *testing.T) {
+	sizes := []int{8}
+	switch os.Getenv("PORTICO_PERFORMANCE_TIER") {
+	case "release":
+		sizes = []int{8, 500}
+	case "deep":
+		sizes = []int{8, 500, 5000}
+	}
+	for _, n := range sizes {
+		t.Run(fmt.Sprint(n), func(t *testing.T) {
+			s, scheduler, p, v, access, _, names := bulkFixture(t, n)
+			ctx, trace := dbwork.TraceQueryPlans(context.Background())
+			yes := true
+			dbwork.WriteGate().ResetPeak()
+			start := time.Now()
+			marked, err := s.SetContainerPersonal(ctx, p, "show", names["show"].Public, ContainerPersonalMutation{Watched: &yes}, scheduler, access)
+			if err != nil {
+				t.Fatal(err)
+			}
+			count := len(trace())
+			if count > 32 {
+				t.Fatalf("mark issued %d statements for %d members", count, n)
+			}
+			t.Logf("members=%d mark=%s statements=%d gate_ms=%d", n, time.Since(start), count, dbwork.WriteGate().Stats().MaxHeldMilli)
+			ctx, trace = dbwork.TraceQueryPlans(context.Background())
+			start = time.Now()
+			dbwork.WriteGate().ResetPeak()
+			if _, err := s.UndoContainerPersonal(ctx, p, "show", names["show"].Public, ContainerUndoMutation{ExpectedRevision: marked.Revision, UndoToken: marked.UndoToken}, access); err != nil {
+				t.Fatal(err)
+			}
+			if count := len(trace()); count > 32 {
+				t.Fatalf("undo issued %d statements for %d members", count, n)
+			}
+			counts, err := s.ContainerPersonalCounts(v, "show", names["show"].Public)
+			if err != nil || counts.WatchedCount != 0 {
+				t.Fatal(counts, err)
+			}
+			t.Logf("members=%d undo=%s statements=%d gate_ms=%d", n, time.Since(start), len(trace()), dbwork.WriteGate().Stats().MaxHeldMilli)
 		})
 	}
 }

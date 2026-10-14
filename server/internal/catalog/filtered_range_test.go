@@ -21,6 +21,9 @@ func TestFilteredRangesMatchEveryAdvertisedOrderAndContinuation(t *testing.T) {
 	if err := compactcatalog.Drain(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := db.Exec(`UPDATE catalog_personal_sort_rows SET play_count=rating WHERE profile_id='p'`); err != nil {
+		t.Fatal(err)
+	}
 	caps, err := s.BrowseCapabilitiesFor("a", "movies")
 	if err != nil {
 		t.Fatal(err)

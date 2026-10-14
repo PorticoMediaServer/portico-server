@@ -63,3 +63,60 @@ func snapshotPersonalBatch(ctx context.Context, tx *sql.Tx, profile string, ids 
 	_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO personal_snapshots(profile_id,item_id,revision,state,created_at) SELECT ?,CAST(json_extract(value,'$[0]') AS INTEGER),CAST(json_extract(value,'$[1]') AS INTEGER),json_extract(value,'$[2]'),? FROM json_each(?)`, profile, time.Now().UTC().Format(time.RFC3339), string(raw))
 	return err
 }
+
+func writeContainerMemberStates(ctx context.Context, tx *sql.Tx, profile string, ids []int64, states map[int64]PersonalState, watched bool, at time.Time) error {
+	rawIDs, _ := json.Marshal(ids)
+	// All fences see the same accepted-intent ordinal inside this atomic action.
+	if _, err := tx.ExecContext(ctx, `INSERT INTO personal_evidence_fences(profile_id,item_id,playback_id) SELECT p.profile_id,p.item_id,p.playback_id FROM json_each(?) requested CROSS JOIN progress p ON p.profile_id=? AND p.item_id=CAST(requested.value AS INTEGER) WHERE 1 ON CONFLICT(profile_id,item_id) DO UPDATE SET playback_id=excluded.playback_id`, string(rawIDs), profile); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT INTO playback_personal_fences(profile_key,item_id,through_ordinal) SELECT ?,CAST(value AS INTEGER),(SELECT COALESCE(max(ordinal),0) FROM playback_personal_intents) FROM json_each(?) WHERE 1 ON CONFLICT(profile_key,item_id) DO UPDATE SET through_ordinal=excluded.through_ordinal`, profile, string(rawIDs)); err != nil {
+		return err
+	}
+
+	if _, err := tx.ExecContext(ctx, `INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) SELECT ?,CAST(value AS INTEGER),?,? FROM json_each(?) WHERE 1 ON CONFLICT(profile_id,item_id) DO UPDATE SET watched=excluded.watched,authored_at=excluded.authored_at`, profile, watched, at.UTC().Format("2006-01-02T15:04:05.000000000Z"), string(rawIDs)); err != nil {
+		return err
+	}
+	values := make([][8]any, 0, len(ids))
+	for _, id := range ids {
+		state, ok := states[id]
+		if !ok {
+			return sql.ErrNoRows
+		}
+		state.Watched = watched
+		state.ProgressSeconds = 0
+		state.Revision++
+		states[id] = state
+		values = append(values, [8]any{id, state.Watchlisted, state.Favorite, state.NotInterested, state.Rating, state.Revision, state.Watched, state.LastPlayedAt})
+	}
+	raw, _ := json.Marshal(values)
+	if _, err := tx.ExecContext(ctx, `INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,not_interested,rating,revision,watched,last_played_at) SELECT ?,CAST(json_extract(value,'$[0]') AS INTEGER),json_extract(value,'$[1]'),json_extract(value,'$[2]'),json_extract(value,'$[3]'),json_extract(value,'$[4]'),json_extract(value,'$[5]'),json_extract(value,'$[6]'),json_extract(value,'$[7]') FROM json_each(?) WHERE 1 ON CONFLICT(profile_id,item_id) DO UPDATE SET watchlisted=excluded.watchlisted,favorite=excluded.favorite,not_interested=excluded.not_interested,rating=excluded.rating,revision=excluded.revision,watched=excluded.watched,last_played_at=excluded.last_played_at`, profile, string(raw)); err != nil {
+		return err
+	}
+	for _, query := range []string{`UPDATE progress SET position=0 WHERE profile_id=? AND item_id IN(SELECT CAST(value AS INTEGER) FROM json_each(?))`, `UPDATE progress_activity SET state='ended' WHERE profile_id=? AND item_id IN(SELECT CAST(value AS INTEGER) FROM json_each(?))`, `UPDATE book_resume SET position=0 WHERE profile_id=? AND item_id IN(SELECT CAST(value AS INTEGER) FROM json_each(?))`} {
+		if _, err := tx.ExecContext(ctx, query, profile, string(rawIDs)); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func restoreContainerMemberStates(ctx context.Context, tx *sql.Tx, profile, token string) error {
+	commands := []struct {
+		query string
+		args  []any
+	}{
+		{`DELETE FROM personal_watched_intents WHERE profile_id=? AND item_id IN(SELECT item_id FROM container_personal_undo_items WHERE token=?)`, []any{profile, token}},
+		{`INSERT INTO personal_watched_intents(profile_id,item_id,watched,authored_at) SELECT ?,item_id,previous_intent,previous_authored_at FROM container_personal_undo_items WHERE token=? AND previous_authored_at IS NOT NULL`, []any{profile, token}},
+		{`UPDATE personal_items AS p SET watched=(SELECT previous_watched FROM container_personal_undo_items u WHERE u.token=? AND u.item_id=p.item_id),revision=revision+1 WHERE profile_id=? AND item_id IN(SELECT item_id FROM container_personal_undo_items WHERE token=?)`, []any{token, profile, token}},
+		{`UPDATE progress AS p SET position=(SELECT position FROM container_personal_undo_items u WHERE u.token=? AND u.item_id=p.item_id) WHERE profile_id=? AND item_id IN(SELECT item_id FROM container_personal_undo_items WHERE token=?)`, []any{token, profile, token}},
+		{`UPDATE progress_activity AS p SET state=(SELECT activity_state FROM container_personal_undo_items u WHERE u.token=? AND u.item_id=p.item_id) WHERE profile_id=? AND item_id IN(SELECT item_id FROM container_personal_undo_items WHERE token=?)`, []any{token, profile, token}},
+		{`UPDATE book_resume AS p SET position=(SELECT book_position FROM container_personal_undo_items u WHERE u.token=? AND u.item_id=p.item_id) WHERE profile_id=? AND item_id IN(SELECT item_id FROM container_personal_undo_items WHERE token=? AND book_position IS NOT NULL)`, []any{token, profile, token}},
+	}
+	for _, command := range commands {
+		if _, err := tx.ExecContext(ctx, command.query, command.args...); err != nil {
+			return err
+		}
+	}
+	return nil
+}

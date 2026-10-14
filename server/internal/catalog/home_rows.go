@@ -924,7 +924,7 @@ func homeHero(rows []HomeRow) *HomeHero {
 			continue
 		}
 		if hero == nil || row.lead > newest {
-			hero, newest = &HomeHero{RowID: row.ID, EntryID: row.Entries[0].ID, SelectionKey: row.lead + fmt.Sprintf("|%03d", 999-i)}, row.lead
+			hero, newest = &HomeHero{RowID: row.ID, EntryID: row.Entries[0].ID, SelectionKey: row.lead + fmt.Sprintf("!%03d", 999-i)}, row.lead
 		}
 	}
 	return hero
@@ -1020,7 +1020,7 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 		if row.Hero != nil {
 			for index, spec := range homeOrdered(specs, r.RowOrder) {
 				if spec.ID == id {
-					row.Hero.SelectionKey = row.lead + fmt.Sprintf("|%03d", 999-index)
+					row.Hero.SelectionKey = row.lead + fmt.Sprintf("!%03d", 999-index)
 					break
 				}
 			}

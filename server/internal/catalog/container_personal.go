@@ -174,37 +174,10 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 		if e != nil {
 			return e
 		}
-		for _, item := range ids {
-			before, ok := states[item]
-			if !ok {
-				return sql.ErrNoRows
-			}
-
-			if e = fenceEvidenceByID(tx, profile, item); e != nil {
-				return e
-			}
-			// The captured membership proves these titles already exist, even if
-			// their added-at metadata is unknown. The journal restores older intent.
-			if e = personalstate.WriteAt(tx, profile, item, out.Watched, intentTime); e != nil {
-				return e
-			}
-			before.Watched = out.Watched
-			before.ProgressSeconds = 0
-			before.Revision++
-			if e = storePersonalByID(tx, profile, item, before); e != nil {
-				return e
-			}
-			if _, e = tx.ExecContext(ctx, `UPDATE progress SET position=0 WHERE profile_id=? AND item_id=?`, profile, item); e != nil {
-				return e
-			}
-			if _, e = tx.ExecContext(ctx, `UPDATE progress_activity SET state='ended' WHERE profile_id=? AND item_id=?`, profile, item); e != nil {
-				return e
-			}
-			if _, e = tx.ExecContext(ctx, `UPDATE book_resume SET position=0 WHERE profile_id=? AND item_id=?`, profile, item); e != nil {
-				return e
-			}
-			states[item] = before
+		if e = writeContainerMemberStates(ctx, tx, profile, ids, states, out.Watched, intentTime); e != nil {
+			return e
 		}
+
 		if e = snapshotPersonalBatch(ctx, tx, profile, ids, states); e != nil {
 			return e
 		}
