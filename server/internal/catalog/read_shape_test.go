@@ -474,3 +474,37 @@ func TestLibraryMixFindsItsUpperBoundBySeeking(t *testing.T) {
 	}
 	t.Logf("library mix: %d steps at 60 songs, %d at 240", steps[0], steps[1])
 }
+
+// An ordered walk of a music library reads its first page from the album and
+// track indexes; it does not first read every entity of the catalogue.
+func TestOrderedLibraryListeningStaysFlat(t *testing.T) {
+	steps := []int64{}
+	for _, extra := range []int{0, 600} {
+		c := catalogtest.Open(t)
+		lib := c.Library("music", "Music", "music", "/music")
+		artist := c.Artist(lib, "Someone")
+		var album catalogtest.Item
+		for i := 0; i < 60; i++ {
+			if i%20 == 0 {
+				album = c.Album(artist, fmt.Sprintf("Album %d", i/20), 2000)
+			}
+			c.Song(album, i%20+1, fmt.Sprintf("/music/%d.flac", i), fmt.Sprintf("Song %d", i))
+		}
+		// Other titles of the catalogue: the walk must not grow with them.
+		movies := c.Library("m", "Movies", "movie", "/m")
+		for i := 0; i < extra; i++ {
+			c.Movie(movies, fmt.Sprintf("/m/%d.mkv", i), fmt.Sprintf("Film %d", i), 2000)
+		}
+		c.Drain()
+		c.Exec(`ANALYZE`)
+		v := Viewer{Profile: "p", Fence: "ordered", Libraries: []string{"music"}}
+		steps = append(steps, readSteps(t, c, func(s *Service) error {
+			_, err := s.ListeningSelection(ContentRequest{Viewer: v, Library: "music", Limit: 20}, ListeningTarget{Kind: "library", ID: "music", LibraryID: "music"}, "ordered", "fixture", false, "")
+			return err
+		}))
+	}
+	t.Logf("ordered library page: %d steps beside no other titles, %d beside 600", steps[0], steps[1])
+	if steps[1] > steps[0]*3/2 {
+		t.Fatalf("ordered library page grew from %d to %d steps with the rest of the catalogue", steps[0], steps[1])
+	}
+}
