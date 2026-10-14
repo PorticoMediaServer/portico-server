@@ -15,7 +15,12 @@ import (
 // Each physical connection owns its own bounded cache. Native SQLite storage is
 // measured after bindings clear; SQL copies and Go bookkeeping have a separate
 // conservative allowance. Drivers without this diagnostic use an estimate.
-const statementCacheEntries = 128
+// The byte budget is the memory bound; the entry bound only stops a flood of
+// tiny one-off statements. It must exceed the derived worker's working set
+// (about 225 distinct statements, 2.7 MB): below it, LRU over that cycle
+// misses almost every time and the writer re-prepares trigger-heavy
+// statements for every title.
+const statementCacheEntries = 512
 const statementCacheBudget = 512 << 10
 const statementCacheMaxBudget = 4 << 20
 const statementCacheOverhead = 8 << 10
