@@ -11,7 +11,7 @@ import (
 
 // groupMatchLimit is the most matching titles a filtered grouping groups
 // exactly; a broader filter counts each group up to browseTotalThreshold.
-var groupMatchLimit = 50000
+var groupMatchLimit = 10000
 
 // Group lists use their own indexed keys; their predicates filter member
 // titles with exactly the same grammar as the entity pivot they open.
@@ -80,6 +80,10 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	from := `catalog_browse_groups g`
 	where := `g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=?`
 	args := []any{request.Library, pivot.Aggregate}
+	// pageCounts: a broad filter's groups are counted for the returned page
+	// only, each up to the threshold.
+	pageCounts := false
+	var countGroup func(value string) (int, error)
 	if request.Query != nil || request.Restrictions.Active() {
 		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs}
 		clause, err := compiler.compile(request.Query)
@@ -115,16 +119,35 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 			members := `FROM catalog_facet_members m INDEXED BY catalog_facet_group_recent CROSS JOIN catalog_browse_rows e ON e.entity_id=m.entity_id
  WHERE m.library_id=g.library_id AND m.field=g.field AND m.value=g.value AND (` + clause + `) AND (` + restriction + `)`
 			memberArgs := append(append([]any{}, compiler.args...), restrictionArgs...)
-			recent := `g.recent_key`
-			args = append([]any{}, memberArgs...)
-			if sorting.Field == "recentActivity" {
-				recent = `(SELECT m.recent_key ` + members + ` ORDER BY m.recent_key DESC LIMIT 1)`
-				args = append(args, memberArgs...)
-			}
-			from = `(SELECT value,name_key,total,recent_key FROM (SELECT g.value AS value,g.name_key AS name_key,
- (SELECT count(*) FROM (SELECT 1 ` + members + ` LIMIT ` + strconv.Itoa(browseTotalThreshold+1) + `)) AS total,` + recent + ` AS recent_key
+			capped := `(SELECT count(*) FROM (SELECT 1 ` + members + ` LIMIT ` + strconv.Itoa(browseTotalThreshold+1) + `))`
+			switch sorting.Field {
+			case "count":
+				// Ordering by count needs every group's capped count.
+				from = `(SELECT value,name_key,total,recent_key FROM (SELECT g.value AS value,g.name_key AS name_key,` + capped + ` AS total,g.recent_key AS recent_key
  FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=?) WHERE total>0) g`
-			args = append(args, request.Library, pivot.Aggregate)
+				args = append(append([]any{}, memberArgs...), request.Library, pivot.Aggregate)
+			case "recentActivity":
+				// A group's newest matching member orders it; a group with
+				// none is left out. Counts are taken for the page alone.
+				from = `(SELECT value,name_key,0 AS total,recent_key FROM (SELECT g.value AS value,g.name_key AS name_key,(SELECT m.recent_key ` + members + ` ORDER BY m.recent_key DESC LIMIT 1) AS recent_key
+ FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=?) WHERE recent_key IS NOT NULL) g`
+				args = append(append([]any{}, memberArgs...), request.Library, pivot.Aggregate)
+				pageCounts = true
+			default:
+				// Name order needs only whether a group has a match, which a
+				// broad filter answers at the group's first members. Counts
+				// are taken for the page alone.
+				from = `(SELECT g.value AS value,g.name_key AS name_key,0 AS total,g.recent_key AS recent_key
+ FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=? AND EXISTS(SELECT 1 ` + members + `)) g`
+				args = append([]any{request.Library, pivot.Aggregate}, memberArgs...)
+				pageCounts = true
+			}
+			countGroup = func(value string) (int, error) {
+				var n int
+				err := s.read().QueryRow(`SELECT `+capped+` FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=? AND g.value=?`,
+					append(append([]any{}, memberArgs...), request.Library, pivot.Aggregate, value)...).Scan(&n)
+				return n, err
+			}
 		}
 	}
 	orderKey := map[string]string{"title": "g.name_key", "count": "g.total", "recentActivity": "g.recent_key"}[sorting.Field]
@@ -205,6 +228,16 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	rows, total, err := page(key, id, request.Limit+1)
 	if err != nil {
 		return out, err
+	}
+	if pageCounts {
+		for i := range rows {
+			if i == request.Limit {
+				break
+			}
+			if rows[i].count, err = countGroup(rows[i].value); err != nil {
+				return out, err
+			}
+		}
 	}
 	if request.Range != nil && start >= total {
 		start = max(0, total-1)

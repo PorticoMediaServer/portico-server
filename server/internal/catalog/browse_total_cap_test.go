@@ -76,8 +76,8 @@ func TestFilteredTotalsStopAtTheThreshold(t *testing.T) {
 	}
 	// Groupings: a narrow filter groups exactly, a broad one counts each
 	// group up to the threshold.
-	groups := func(query *BrowseNode) map[string]ContentEntry {
-		page, err := s.BrowseEntities(v, BrowseRequest{Library: "m", Pivot: "categories", Query: query, Limit: 40})
+	groups := func(query *BrowseNode, sort ...BrowseSortSelection) map[string]ContentEntry {
+		page, err := s.BrowseEntities(v, BrowseRequest{Library: "m", Pivot: "categories", Query: query, Sort: sort, Limit: 40})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -90,6 +90,12 @@ func TestFilteredTotalsStopAtTheThreshold(t *testing.T) {
 	narrow := groups(&BrowseNode{Field: "year", Operator: "equals", Value: float64(1990)})
 	if len(narrow) != 1 || *narrow["1990s"].Count != 4 || narrow["1990s"].TotalAtLeast != nil {
 		t.Fatalf("narrow grouping: %+v", narrow)
+	}
+	for _, order := range [][]BrowseSortSelection{nil, {{Field: "count", Direction: "desc"}}, {{Field: "recentActivity", Direction: "desc"}}} {
+		wide := groups(broad, order...)
+		if len(wide) != 2 || *wide["1990s"].Count != 20 || wide["1990s"].TotalAtLeast == nil || *wide["2000s"].Count != 20 || wide["2000s"].TotalAtLeast != nil {
+			t.Fatalf("broad grouping by %v: %+v", order, wide)
+		}
 	}
 	wide := groups(broad)
 	if len(wide) != 2 || *wide["1990s"].Count != 20 || wide["1990s"].TotalAtLeast == nil || *wide["1990s"].TotalAtLeast != 20 || *wide["2000s"].Count != 20 || wide["2000s"].TotalAtLeast != nil {
