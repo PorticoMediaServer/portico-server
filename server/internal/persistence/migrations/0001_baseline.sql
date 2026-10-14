@@ -382,6 +382,7 @@ CREATE TABLE catalog_term_sources(
  ordinal INTEGER NOT NULL DEFAULT 0,
  PRIMARY KEY(entity_id,provider,source_id),
  FOREIGN KEY(entity_id,term_id) REFERENCES catalog_entity_terms(entity_id,term_id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_term_sources_overrides ON catalog_term_sources(label_override,entity_id,term_id) WHERE label_override IS NOT NULL;
 CREATE INDEX catalog_term_source_membership ON catalog_term_sources(entity_id,term_id);
 CREATE INDEX catalog_term_sources_provider ON catalog_term_sources(provider,source_id,entity_id);
 CREATE INDEX catalog_term_sources_name_seek ON catalog_term_sources(source_name COLLATE NOCASE,entity_id);

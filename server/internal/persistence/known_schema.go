@@ -211,6 +211,7 @@ index catalog_songs_listening_order
 index catalog_term_entities
 index catalog_term_source_membership
 index catalog_term_sources_name_seek
+index catalog_term_sources_overrides
 index catalog_term_sources_provider
 index catalog_term_sources_term
 index catalog_visibility_sort_edge_entity

@@ -68,36 +68,51 @@ func exerciseGroupedVocabulary(db *sql.DB, s *catalog.Service, v catalog.Viewer,
 			}
 		}
 		for _, field := range caps.Fields {
-			node := catalog.BrowseNode{Field: field.ID, Operator: field.Operators[0], Value: "Title"}
-			switch field.Type {
-			case "number":
-				node.Value = float64(2000)
-			case "date":
-				node.Value = "2026-01-01"
-			case "boolean":
-				node.Value = true
-			case "enum":
-				if len(field.AllowedValues) > 0 {
-					node.Value = field.AllowedValues[0]
+			for _, node := range fieldOperands(field) {
+				combined := catalog.BrowseNode{All: []catalog.BrowseNode{g.query, node}}
+				raw, _ := json.Marshal(combined)
+				parsed, err := catalog.ParseBrowseQuery(raw, "query")
+				if err != nil {
+					return fmt.Errorf("grouped %s/%s/%s: %w", g.name, field.ID, node.Operator, err)
 				}
-			}
-			for _, op := range field.Operators {
-				if op == "is-present" {
-					node.Operator = op
-					node.Value = nil
-					break
+				if err := measure("filter/"+field.ID+"/"+node.Operator, parsed, nil); err != nil {
+					return err
 				}
-			}
-			combined := catalog.BrowseNode{All: []catalog.BrowseNode{g.query, node}}
-			raw, _ := json.Marshal(combined)
-			parsed, err := catalog.ParseBrowseQuery(raw, "query")
-			if err != nil {
-				return fmt.Errorf("grouped %s/%s: %w", g.name, field.ID, err)
-			}
-			if err := measure("filter/"+field.ID, parsed, nil); err != nil {
-				return err
 			}
 		}
 	}
 	return nil
+}
+
+func fieldOperands(field catalog.BrowseFieldCapability) []catalog.BrowseNode {
+	var value any = "Title"
+	switch field.Type {
+	case "number":
+		value = float64(2000)
+	case "date":
+		value = "2026-01-01"
+	case "boolean":
+		value = true
+	case "enum":
+		if len(field.AllowedValues) > 0 {
+			value = field.AllowedValues[0]
+		}
+	}
+	if field.ID == "genre" {
+		value = "Genre 0"
+	}
+	nodes := make([]catalog.BrowseNode, 0, len(field.Operators))
+	for _, op := range field.Operators {
+		operand := value
+		switch op {
+		case "is-present", "is-missing":
+			operand = nil
+		case "in", "not-in", "contains-any", "contains-all":
+			operand = []any{value}
+		case "between":
+			operand = []any{value, value}
+		}
+		nodes = append(nodes, catalog.BrowseNode{Field: field.ID, Operator: op, Value: operand})
+	}
+	return nodes
 }

@@ -603,6 +603,9 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 // exists wraps a member-item condition. Profile placeholders inside the join are
 // bound before the condition's own arguments so ordinal positions line up.
 func (c *browseCompiler) exists(field browseField, condition func() (string, error)) (string, error) {
+	if field.ID == "genre" {
+		return c.genreExists(condition)
+	}
 	prefix := "EXISTS(SELECT 1 FROM catalog_browse_memberships bei " + field.Join + " WHERE bei.entity_id=e.entity_id AND "
 	if field.ID == "list" {
 		raw, err := base64.RawURLEncoding.DecodeString(strings.TrimPrefix(c.profile, "viewer:"))
@@ -852,4 +855,32 @@ func (c *browseCompiler) groupMembershipPredicate(field browseField, node Browse
 	restriction, args := ItemRestrictionSQL("member.item_id", c.restrictions)
 	c.args = append(c.args, args...)
 	return `e.entity_id IN(SELECT member.entity_id FROM catalog_browse_memberships member WHERE member.item_id IN (` + members + `) AND (` + restriction + `))`, true, nil
+}
+
+// Evaluate genre vocabulary and explicit overrides before expanding membership.
+// Every inherited source path remains eligible, and restrictions apply to the
+// exact playable member that supplied the match.
+func (c *browseCompiler) genreExists(condition func() (string, error)) (string, error) {
+	before := len(c.args)
+	body, err := condition()
+	if err != nil {
+		return "", err
+	}
+	operands := append([]any(nil), c.args[before:]...)
+	c.args = append(c.args, operands...)
+	plain := strings.ReplaceAll(body, "COALESCE(ts.label_override,mg.label)", "mg.label")
+	override := strings.ReplaceAll(body, "COALESCE(ts.label_override,mg.label)", "ts.label_override")
+	restriction, args := ItemRestrictionSQL("member.item_id", c.restrictions)
+	c.args = append(c.args, args...)
+	return `e.entity_id IN(WITH owners AS MATERIALIZED (
+ SELECT ts.entity_id FROM catalog_terms mg CROSS JOIN catalog_term_sources ts INDEXED BY catalog_term_sources_term ON ts.term_id=mg.id
+ WHERE mg.vocab=1 AND ts.label_override IS NULL AND (` + plain + `)
+ UNION SELECT ts.entity_id FROM catalog_term_sources ts INDEXED BY catalog_term_sources_overrides JOIN catalog_terms mg ON mg.id=ts.term_id
+ WHERE mg.vocab=1 AND ts.label_override IS NOT NULL AND (` + override + `))
+ SELECT member.entity_id FROM (
+ SELECT bei.entity_id,bei.item_id FROM owners CROSS JOIN catalog_browse_memberships bei ON bei.item_id=owners.entity_id
+ UNION SELECT bei.entity_id,bei.item_id FROM owners CROSS JOIN catalog_browse_memberships bei ON bei.entity_id=owners.entity_id
+ UNION SELECT bei.entity_id,bei.item_id FROM owners CROSS JOIN catalog_episodes ep ON ep.show_id=owners.entity_id
+ CROSS JOIN catalog_browse_memberships bei ON bei.item_id=ep.entity_id
+ ) member WHERE (` + restriction + `))`, nil
 }

@@ -230,40 +230,17 @@ func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes
 					}
 				}
 				for _, field := range scoped.Fields {
-					node := &catalog.BrowseNode{Field: field.ID, Operator: "equals", Value: "Title"}
-					for _, op := range field.Operators {
-						if op == "is-present" {
-							node.Operator = op
-							node.Value = nil
-							break
+					for _, node := range fieldOperands(field) {
+						raw, _ := json.Marshal(node)
+						parsed, err := catalog.ParseBrowseQuery(raw, "query")
+						if err != nil {
+							return results, fmt.Errorf("%s/%s: %w", field.ID, node.Operator, err)
 						}
-					}
-					if node.Operator == "equals" {
-						switch field.Type {
-						case "number":
-							node.Value = float64(2000)
-						case "date":
-							node.Value = "2026-01-01"
-						case "boolean":
-							node.Value = true
-						case "enum":
-							if len(field.AllowedValues) > 0 {
-								node.Value = field.AllowedValues[0]
-							}
+						request := base
+						request.Query = parsed
+						if err := measure("filter/"+field.ID+"/"+node.Operator, request); err != nil {
+							return results, err
 						}
-						if field.ID == "search" {
-							node.Operator = "contains"
-						}
-					}
-					raw, _ := json.Marshal(node)
-					parsed, err := catalog.ParseBrowseQuery(raw, "query")
-					if err != nil {
-						return results, fmt.Errorf("%s: %w", field.ID, err)
-					}
-					request := base
-					request.Query = parsed
-					if err := measure("filter/"+field.ID, request); err != nil {
-						return results, err
 					}
 				}
 			}
