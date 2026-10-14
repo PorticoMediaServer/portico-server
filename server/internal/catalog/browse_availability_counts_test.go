@@ -9,6 +9,9 @@ import (
 
 func TestAvailabilityCountersMatchRestrictedPages(t *testing.T) {
 	db, s, _ := browseFixture(t)
+	if _, err := s.ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	age := 13
 	viewers := []Viewer{{Profile: "p", Fence: "open", Libraries: []string{"a"}}, {Profile: "p", Fence: "pg", Libraries: []string{"a"}, Restrictions: identity.ContentRestrictions{MaximumAge: &age, BlockUnrated: true}}}
 	if err := s.RebuildVisibilityClass(context.Background(), "a", viewers[1].Restrictions); err != nil {
@@ -50,13 +53,27 @@ func TestAvailabilityCountersMatchRestrictedPages(t *testing.T) {
 
 func TestColdRestrictedBrowseDoesNotBlankLargeLibraries(t *testing.T) {
 	db, s, _ := browseFixture(t)
-	// Crossing the former cold-class threshold does not require a full catalogue.
-	// Give existing titles a maintained count of a large eligible title bucket.
-	db.Exec(`UPDATE catalog_browse_buckets SET total=total+2000 WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id='a') AND kind=1 AND axis=0 AND rating_key='pg'`)
+	if _, err := s.ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	// A genuinely large cold library previously returned an empty page while
+	// its class was queued. Seed the facts and membership used by permission SQL.
+	for _, statement := range []string{
+		`WITH RECURSIVE ids(i) AS(SELECT 1000001 UNION ALL SELECT i+1 FROM ids WHERE i<1001100) INSERT INTO catalog_entities(id,public_id,library_id,kind,title,sort_key,sort_head,year) SELECT i,randomblob(16),(SELECT id FROM catalog_libraries WHERE library_id='a'),1,'Bulk Title','Bulk Title','B',2000 FROM ids`,
+		`INSERT INTO catalog_item_details(entity_id) SELECT id FROM catalog_entities WHERE id>1000000`,
+		`INSERT INTO catalog_item_attribute_edges(item_id,term_id,source_value,source_rowid) SELECT id,(SELECT id FROM catalog_attribute_terms WHERE field_id=1 AND value_key='pg'),'PG',id FROM catalog_entities WHERE id>1000000`,
+		`INSERT INTO catalog_browse_rows(entity_id,library_id,kind,title,sort_key,head,year,item_id,rating_key,label_key,available,recent,backdrop) SELECT id,library_id,kind,title,sort_key,sort_head,year,id,'pg','',0,0,0 FROM catalog_entities WHERE id>1000000`,
+		`INSERT INTO catalog_browse_memberships(entity_id,item_id,source) SELECT id,id,0 FROM catalog_entities WHERE id>1000000`,
+		`INSERT INTO catalog_browse_buckets(library_id,kind,container,axis,value,rating_key,label_key,total) SELECT id,1,0,0,'B','pg','',1100 FROM catalog_libraries WHERE library_id='a'`,
+	} {
+		if _, err := db.Exec(statement); err != nil {
+			t.Fatal(err)
+		}
+	}
 	age := 13
 	viewer := Viewer{Profile: "cold", Fence: "cold", Libraries: []string{"a"}, Restrictions: identity.ContentRestrictions{MaximumAge: &age, BlockUnrated: true}}
 	out, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Pivot: "movies", Limit: 40})
-	if err != nil || len(out.Entries) != 1 {
+	if err != nil || len(out.Entries) != 40 {
 		t.Fatalf("out=%+v err=%v", out, err)
 	}
 }

@@ -7158,3 +7158,9 @@ CREATE TRIGGER compact_visibility_availability_join AFTER INSERT ON compact_visi
 CREATE TRIGGER compact_visibility_availability_leave AFTER DELETE ON compact_visibility_rows BEGIN
  UPDATE compact_visibility_availability_counts SET total=total-1 WHERE (class_id,generation,library_id,kind,availability_state)=(OLD.class_id,OLD.generation,OLD.library_id,OLD.kind,OLD.availability_state);
  DELETE FROM compact_visibility_availability_counts WHERE (class_id,generation,library_id,kind,availability_state)=(OLD.class_id,OLD.generation,OLD.library_id,OLD.kind,OLD.availability_state) AND total=0; END;
+CREATE TRIGGER compact_visibility_availability_move AFTER UPDATE OF class_id,generation,library_id,kind,availability_state ON compact_visibility_rows
+ WHEN (OLD.class_id,OLD.generation,OLD.library_id,OLD.kind,OLD.availability_state) IS NOT (NEW.class_id,NEW.generation,NEW.library_id,NEW.kind,NEW.availability_state) BEGIN
+ UPDATE compact_visibility_availability_counts SET total=total-1 WHERE (class_id,generation,library_id,kind,availability_state)=(OLD.class_id,OLD.generation,OLD.library_id,OLD.kind,OLD.availability_state);
+ DELETE FROM compact_visibility_availability_counts WHERE (class_id,generation,library_id,kind,availability_state)=(OLD.class_id,OLD.generation,OLD.library_id,OLD.kind,OLD.availability_state) AND total=0;
+ INSERT INTO compact_visibility_availability_counts VALUES(NEW.class_id,NEW.generation,NEW.library_id,NEW.kind,NEW.availability_state,1) ON CONFLICT(class_id,generation,library_id,kind,availability_state) DO UPDATE SET total=total+1;
+END;

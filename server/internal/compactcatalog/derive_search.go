@@ -74,7 +74,7 @@ func deriveSearch(ctx context.Context, tx *sql.Tx, ids string) error {
 
 func init() {
 	Register(DomainSearch, Derivation{
-		Version: 6,
+		Version: 7,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			ids := keyIDs(keys)
 			return ids, deriveSearch(ctx, tx, mustJSON(ids))

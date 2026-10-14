@@ -47,3 +47,37 @@ func TestAmbiguousLabelsNeverClaimPermissionCounts(t *testing.T) {
 		}
 	}
 }
+
+func TestPrefixCursorSurvivesDictionaryGrowth(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("m", "Movies", "movie", "/m")
+	for i := 0; i < 10; i++ {
+		c.Movie(lib, fmt.Sprintf("/m/first-%d.mkv", i), fmt.Sprintf("Title 100000%06d", i), 2000)
+	}
+	c.Drain()
+	s := New(c.DB)
+	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
+	request := SearchRequest{Viewer: viewer, Q: "1", Group: "movies", Limit: 3}
+	first, err := s.Search(context.Background(), request)
+	if err != nil || first.Groups[0].Status != "success" || !first.Groups[0].HasMore {
+		t.Fatalf("first=%+v err=%v", first.Groups, err)
+	}
+	for i := 1; i <= 150; i++ {
+		c.Movie(lib, fmt.Sprintf("/m/new-%d.mkv", i), fmt.Sprintf("Title %06d000000", 100000+i), 2000)
+	}
+	c.Drain()
+	request.Cursor = first.Groups[0].NextCursor
+	next, err := s.Search(context.Background(), request)
+	if err != nil || next.Groups[0].Status != "success" || len(next.Groups[0].Items) != 3 {
+		t.Fatalf("next=%+v err=%v", next.Groups, err)
+	}
+	seen := map[string]bool{}
+	for _, item := range first.Groups[0].Items {
+		seen[item.ID] = true
+	}
+	for _, item := range next.Groups[0].Items {
+		if seen[item.ID] {
+			t.Fatal("dictionary growth repeated a result")
+		}
+	}
+}

@@ -71,7 +71,12 @@ func run() (runErr error) {
 	factsOnly := flag.Bool("facts-only", false, "seed facts without deriving; use -reuse -exercise to measure the empty rebuild")
 	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
 	resumeRemoval := flag.Bool("resume-removal", false, "finish removal of the already retired synthetic Movies library")
+	focus := flag.Int("focus-samples", 0, "repeat main browse and typing reads before write scenarios")
 	flag.Parse()
+	focusedSamples = *focus
+	if focusedSamples < 0 || focusedSamples > 20 {
+		return errors.New("focus-samples must be 0..20")
+	}
 	abs, err := filepath.Abs(*dir)
 	if err != nil || *dir == "" || !strings.Contains(abs+string(os.PathSeparator), string(os.PathSeparator)+".scratch"+string(os.PathSeparator)) || *n < 100 || *samples < 1 || *idle <= 0 {
 		return errors.New("invalid arguments: use an explicit .scratch directory, at least 100 items and positive samples/idle")
