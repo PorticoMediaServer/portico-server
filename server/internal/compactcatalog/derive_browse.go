@@ -180,13 +180,9 @@ func readCountedRow(ctx context.Context, tx *sql.Tx, id int64) (browseRow, error
 }
 
 // deriveBrowseRow brings one entity's browse row, its bucket and Home
-// contributions and its metrics up to date (or removes them).
-func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) (errOut error) {
-	defer func() {
-		if errOut == nil {
-			errOut = refreshBrowseSortFacts(ctx, tx, id)
-		}
-	}()
+// contributions and its metrics up to date (or removes them). Its sort facts
+// are refreshed once, by refreshEntityMetrics; a removed row has none.
+func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE catalog_entities SET sort_key=portico_sort_title(title,sort_title,metadata_language),sort_head=substr(portico_sort_title(title,sort_title,metadata_language),1,1) WHERE id=? AND sort_key IS NOT portico_sort_title(title,sort_title,metadata_language)`, id); err != nil {
 		return err
 	}
