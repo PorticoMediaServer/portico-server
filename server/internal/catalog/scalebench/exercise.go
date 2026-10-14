@@ -19,6 +19,7 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/supervise"
 )
 
 func processRSSKB() int64 {
@@ -111,7 +112,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	stop, done := make(chan struct{}), make(chan struct{})
 	// Requests run alongside the worker, rather than pausing derivation for
 	// every checkpoint. They use the real read snapshot/admission machinery.
-	go func() {
+	supervise.Go("scalebench read probes", func() {
 		defer close(done)
 		for !deriveNoProbes {
 			select {
@@ -161,7 +162,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 			case <-timer.C:
 			}
 		}
-	}()
+	})
 	dbwork.WriteGate().ResetPeak()
 	var stepUnits int
 	var stepMillis []float64

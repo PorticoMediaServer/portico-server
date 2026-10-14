@@ -23,6 +23,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/supervise"
 )
 
 type report struct {
@@ -544,7 +545,7 @@ func exerciseClasses(db *sql.DB, s *catalog.Service) error {
 		return err
 	}
 	stop, done := make(chan struct{}), make(chan struct{})
-	go func() {
+	supervise.Go("scalebench log copies", func() {
 		defer close(done)
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
@@ -556,7 +557,7 @@ func exerciseClasses(db *sql.DB, s *catalog.Service) error {
 				schedule.Tick(ctx)
 			}
 		}
-	}()
+	})
 	defer func() { close(stop); <-done }()
 	for _, library := range []string{"movies", "tv", "music"} {
 		var rows int
