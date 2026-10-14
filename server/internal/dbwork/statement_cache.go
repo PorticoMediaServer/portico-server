@@ -15,10 +15,11 @@ import (
 // Each physical connection owns its own bounded cache. Native SQLite storage is
 // measured after bindings clear; SQL copies and Go bookkeeping have a separate
 // conservative allowance. Drivers without this diagnostic use an estimate.
-// The catalogue's write path (a scan page, the derived worker's domains and
-// the triggers their statements compile in) uses a few hundred distinct
-// statements; at 128 entries they evicted one another and about one statement
-// in sixteen was parsed again. The byte budget still bounds memory.
+// The byte budget is the memory bound; the entry bound only stops a flood of
+// tiny one-off statements. It must exceed the derived worker's working set
+// (about 225 distinct statements, 2.7 MB): below it, LRU over that cycle
+// misses almost every time and the writer re-prepares trigger-heavy
+// statements for every title.
 const statementCacheEntries = 512
 const statementCacheBudget = 512 << 10
 const statementCacheMaxBudget = 4 << 20

@@ -13,7 +13,13 @@ const (
 	// ordinary scan batches to overshoot the hard allocation by hundreds of MiB.
 	CheckpointPollInterval    = time.Second
 	CheckpointRegularInterval = 30 * time.Second
-	checkpointPathDeadline    = 5 * time.Second
+	// CheckpointCopyInterval is how often new commits are copied into the
+	// database by a PASSIVE checkpoint on a read connection. The writer's own
+	// automatic checkpoint (writerWALAutocheckpoint) is then only a backstop:
+	// copying pages inside a commit holds the write gate, and at the old
+	// 1,000-page threshold a rebuild's commits held it for up to seconds.
+	CheckpointCopyInterval = 2 * time.Second
+	checkpointPathDeadline = 5 * time.Second
 )
 
 // CheckpointSchedule belongs to one maintenance goroutine. Tick is shared by
@@ -83,7 +89,8 @@ func (s *CheckpointSchedule) Tick(ctx context.Context) (CheckpointResult, bool) 
 	pressure := bytes >= CheckpointHardFileBytes
 	commits := ChangingCommits()
 	regular := now.Sub(s.lastAttempt) >= CheckpointRegularInterval && (!s.settled || commits != s.settledAt)
-	if (!pressure && !regular) || now.Before(s.nextAttempt) {
+	copying := now.Sub(s.lastAttempt) >= CheckpointCopyInterval && commits != s.settledAt
+	if (!pressure && !regular && !copying) || now.Before(s.nextAttempt) {
 		return CheckpointResult{}, false
 	}
 	out := checkpoint(ctx, s.db, s.walPath)

@@ -273,7 +273,7 @@ func TestStatementCacheBoundsAndBypass(t *testing.T) {
 	_, conn := statementCacheDB(t)
 	conn.Raw(func(raw any) error { raw.(*observedConn).statements.budget = statementCacheBudget; return nil })
 	ctx := context.Background()
-	for i := range 200 {
+	for i := range statementCacheEntries + 72 {
 		query := fmt.Sprintf("SELECT ? AS column%d", i)
 		var value int
 		if err := conn.QueryRowContext(ctx, query, i).Scan(&value); err != nil || value != i {

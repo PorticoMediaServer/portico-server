@@ -75,7 +75,11 @@ func OpenHandle(path string, policy Policy) (*sql.DB, error) {
 	if err != nil {
 		return nil, err
 	}
-	writer, err := sql.Open(DriverName, dsn)
+	writerDSN, err := policy.WriterDSN(path)
+	if err != nil {
+		return nil, err
+	}
+	writer, err := sql.Open(DriverName, writerDSN)
 	if err != nil {
 		return nil, err
 	}

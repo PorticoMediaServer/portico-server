@@ -40,8 +40,21 @@ const (
 	DomainInheritedAttributes = 31
 )
 
-// BatchLimit is the Worker's units per transaction.
+// BatchLimit is the fixed units per transaction of callers that do not pace
+// by time (and the first batch of a paced Worker).
 const BatchLimit = 8
+
+// The background Worker sizes each domain's batches to hold the write gate
+// for about BatchHoldTarget: units cost from tens of microseconds (a queue
+// entry already up to date) to milliseconds (a title with many files), and a
+// fixed count either holds the gate too long for heavy units or commits too
+// often for light ones, re-deriving every container its members share once
+// per commit. A batch stays within [batchFloor, BatchMax] units.
+const (
+	BatchHoldTarget = 20 * time.Millisecond
+	BatchMax        = 64
+	batchFloor      = 2
+)
 
 // ErrBuilding is an internal signal for an unpublished restriction class.
 // Browse documents consume it as an empty first generation.
@@ -154,6 +167,69 @@ type Worker struct {
 	domainTurns  int
 	ready        bool
 	now          func() time.Time
+	// holdTarget paces batches by time (zero: the caller's fixed limit);
+	// unitCost is each domain's recent cost per unit (key -1: step workers).
+	holdTarget time.Duration
+	unitCost   map[int]time.Duration
+	last       lastBatch
+}
+
+type lastBatch struct {
+	domain, units int
+	took          time.Duration
+}
+
+// LastBatch reports the latest committed batch (diagnostics and the scale
+// tool): its domain (-1 the step workers, -2 none), units and how long it
+// held the write gate, commit included.
+func (w *Worker) LastBatch() (domain, units int, took time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.last.domain, w.last.units, w.last.took
+}
+
+// PaceToHold sizes each batch to hold the write gate for about target, up to
+// the limit a Step is given. Run paces to BatchHoldTarget.
+func (w *Worker) PaceToHold(target time.Duration) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.holdTarget = target
+}
+
+// batchFor is the units of the next batch of a domain: the limit when not
+// paced, else what its recent cost per unit says fits the hold target.
+func (w *Worker) batchFor(domain, limit int) int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.holdTarget <= 0 {
+		return limit
+	}
+	cost, ok := w.unitCost[domain]
+	if !ok || cost <= 0 {
+		return min(limit, BatchLimit)
+	}
+	return max(min(limit, batchFloor), min(limit, BatchMax, int(w.holdTarget/cost)))
+}
+
+// observeBatch folds a committed batch's cost per unit into its domain's
+// estimate (an even blend of the last estimate and this batch).
+func (w *Worker) observeBatch(domain, units int, took time.Duration) {
+	if units <= 0 {
+		return
+	}
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	if w.holdTarget <= 0 {
+		return
+	}
+	if w.unitCost == nil {
+		w.unitCost = map[int]time.Duration{}
+	}
+	cost := took / time.Duration(units)
+	if old, ok := w.unitCost[domain]; ok {
+		cost = (old + cost) / 2
+	}
+	w.unitCost[domain] = max(cost, time.Microsecond)
 }
 
 // A set-aside id is tried again after retryFirst, then after twice as long
@@ -179,6 +255,11 @@ func (w *Worker) retryWait() time.Duration {
 // Run is supervised by the server. It is change-driven: every catalogue write
 // reaches catalog_dirty or a job table, and that commit wakes it.
 func (w *Worker) Run(ctx context.Context) {
+	w.mu.Lock()
+	if w.holdTarget == 0 {
+		w.holdTarget = BatchHoldTarget
+	}
+	w.mu.Unlock()
 	signal := worker.NewSignal()
 	unregister := dbwork.WakeOnTables(signal, "catalog_*", "compact_*")
 	defer unregister()
@@ -187,7 +268,7 @@ func (w *Worker) Run(ctx context.Context) {
 			return 0
 		}
 		batchStarted := time.Now()
-		n, err := w.Step(ctx, BatchLimit)
+		n, err := w.Step(ctx, BatchMax)
 		if ctx.Err() != nil {
 			return 0
 		}
@@ -295,13 +376,20 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 	domain, failed := -1, int64(0)
 	step := -1
 	retried, backfilled := false, false
+	paced := -2 // what the batch's cost is charged to: a domain, or -1 for the step workers
+	// The hold runs from the gate's acquisition (the transaction function
+	// starting) through the commit.
+	var began time.Time
 	err := dbwork.WithWriteTx(ctx, w.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
+		began = time.Now()
 		n, domain, failed, step, retried, backfilled = 0, -1, 0, -1, false, false
+		paced = -2
 		var rebuilding int
 		var err error
 		w.domainTurns++
 		if w.domainTurns%4 == 0 {
-			n, step, err = w.runSteps(ctx, tx, limit)
+			paced = -1
+			n, step, err = w.runSteps(ctx, tx, w.batchFor(-1, limit))
 			if err != nil || n > 0 {
 				return err
 			}
@@ -313,7 +401,8 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 		}
 		if domain < 0 {
 			var s int
-			n, s, err = w.runSteps(ctx, tx, limit)
+			paced = -1
+			n, s, err = w.runSteps(ctx, tx, w.batchFor(-1, limit))
 			step = s
 			if err != nil || n > 0 || !w.retryDue() {
 				return err
@@ -337,7 +426,8 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 			}
 			retried = true
 		}
-		n, failed, backfilled, err = w.drainDomain(ctx, tx, domain, rebuilding, limit, retried)
+		paced = domain
+		n, failed, backfilled, err = w.drainDomain(ctx, tx, domain, rebuilding, w.batchFor(domain, limit), retried)
 		if err != nil {
 			return err
 		}
@@ -351,6 +441,13 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 		w.setAside(ctx, domain, failed, step, backfilled, retried, err)
 		return 0, err
 	}
+	took := time.Since(began)
+	if paced > -2 {
+		w.observeBatch(paced, n, took)
+	}
+	w.mu.Lock()
+	w.last = lastBatch{paced, n, took}
+	w.mu.Unlock()
 	if domain >= 0 {
 		w.mu.Lock()
 		delete(w.isolate, domain)

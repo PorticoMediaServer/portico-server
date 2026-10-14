@@ -655,6 +655,9 @@ catalog_browse_item_metrics.added
 catalog_browse_item_metrics.duration
 catalog_browse_item_metrics.item_id
 catalog_browse_item_metrics.rating
+catalog_browse_member_links.available
+catalog_browse_member_links.entity_id
+catalog_browse_member_links.unavailable
 catalog_browse_member_metrics.added
 catalog_browse_member_metrics.air_key
 catalog_browse_member_metrics.critic
@@ -1288,6 +1291,14 @@ catalog_seasons.number
 catalog_seasons.overview
 catalog_seasons.show_id
 catalog_seasons.title
+catalog_show_facet_episodes.episode_id
+catalog_show_facet_episodes.field
+catalog_show_facet_episodes.show_id
+catalog_show_facet_episodes.value
+catalog_show_facet_values.field
+catalog_show_facet_values.show_id
+catalog_show_facet_values.total
+catalog_show_facet_values.value
 catalog_show_settings.absolute_numbering
 catalog_show_settings.entity_id
 catalog_show_settings.hide_seasons

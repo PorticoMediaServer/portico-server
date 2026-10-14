@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -122,6 +123,22 @@ func (p Policy) DSN(path string) (string, error) {
 	values.Add("_pragma", fmt.Sprintf("cache_size(-%d)", p.CacheSizeKiB))
 	values.Add("_pragma", fmt.Sprintf("mmap_size(%d)", p.MmapSizeBytes))
 	return "file:" + path + "?" + values.Encode(), nil
+}
+
+// writerWALAutocheckpoint is the writer connection's automatic checkpoint, in
+// pages (about 64 MiB): a backstop only. The maintenance schedule copies new
+// commits every CheckpointCopyInterval on a read connection, outside the
+// write gate; an automatic checkpoint runs inside the committing writer's
+// transaction and holds the gate while it copies.
+const writerWALAutocheckpoint = CheckpointTruncateFrames
+
+// WriterDSN is DSN for the one writer connection.
+func (p Policy) WriterDSN(path string) (string, error) {
+	dsn, err := p.DSN(path)
+	if err != nil {
+		return "", err
+	}
+	return strings.Replace(dsn, url.QueryEscape(fmt.Sprintf("wal_autocheckpoint(%d)", p.WALAutocheckpoint)), url.QueryEscape(fmt.Sprintf("wal_autocheckpoint(%d)", writerWALAutocheckpoint)), 1), nil
 }
 
 // RuntimePragmas is the same set as statements. It is executed once after open

@@ -40,10 +40,12 @@ func browseAttributeKeySQL(field string) string {
 }
 
 // Each returns title, sort_key, year, added, item, rating_key, label_key,
-// available, recent, backdrop for entity ?1, or no row when it has none.
+// available, recent, backdrop for entity ?1, or no row when it has none. An
+// item not yet through availability derivation reads its links' flags, so a
+// first build need not derive its row again when availability arrives.
 const (
 	playableRowSQL = `SELECT e.title,e.sort_key,e.year,d.added_text,e.id,` + "%s" + `,
- COALESCE((SELECT v.available FROM catalog_item_availability v WHERE v.entity_id=e.id),0),d.added_text IS NOT NULL AND e.kind<>11,COALESCE(d.backdrop_url,'')<>''
+ COALESCE((SELECT v.available FROM catalog_item_availability v WHERE v.entity_id=e.id),EXISTS(SELECT 1 FROM catalog_asset_links l WHERE l.entity_id=e.id AND l.available=1)),d.added_text IS NOT NULL AND e.kind<>11,COALESCE(d.backdrop_url,'')<>''
  FROM catalog_entities e LEFT JOIN catalog_item_details d ON d.entity_id=e.id
  WHERE e.id=?1 AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id)`
 	containerRowSQL = `SELECT e.title,e.sort_key,e.year,NULL,NULL,'','',0,0,0 FROM catalog_entities e WHERE e.id=?1 AND e.retired=0`
@@ -180,13 +182,9 @@ func readCountedRow(ctx context.Context, tx *sql.Tx, id int64) (browseRow, error
 }
 
 // deriveBrowseRow brings one entity's browse row, its bucket and Home
-// contributions and its metrics up to date (or removes them).
-func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) (errOut error) {
-	defer func() {
-		if errOut == nil {
-			errOut = refreshBrowseSortFacts(ctx, tx, id)
-		}
-	}()
+// contributions and its metrics up to date (or removes them). Its sort facts
+// are refreshed once, by refreshEntityMetrics; a removed row has none.
+func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) error {
 	if _, err := tx.ExecContext(ctx, `UPDATE catalog_entities SET sort_key=portico_sort_title(title,sort_title,metadata_language),sort_head=substr(portico_sort_title(title,sort_title,metadata_language),1,1) WHERE id=? AND sort_key IS NOT portico_sort_title(title,sort_title,metadata_language)`, id); err != nil {
 		return err
 	}
