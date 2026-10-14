@@ -299,9 +299,37 @@ type browseCompiler struct {
 	restrictions identity.ContentRestrictions
 	profile      string
 	args         []any
+	groupSearch  bool
 }
 
 func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
+	previous := c.groupSearch
+	c.groupSearch = browseRequiresGroup(node)
+	defer func() { c.groupSearch = previous }()
+	return c.compileNode(node)
+}
+
+// A positive conjunctive group bounds text search's candidate identities.
+// A negated or alternative group does not bound the whole result set.
+func browseRequiresGroup(node *BrowseNode) bool {
+	if node == nil {
+		return false
+	}
+	if node.Field == "genre" || node.Field == "memberOf" || node.Field == "collection" {
+		switch node.Operator {
+		case "equals", "in", "contains", "contains-any", "contains-all":
+			return true
+		}
+	}
+	for i := range node.All {
+		if browseRequiresGroup(&node.All[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *browseCompiler) compileNode(node *BrowseNode) (string, error) {
 	if node == nil {
 		return "1=1", nil
 	}
@@ -311,7 +339,7 @@ func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
 	case node.Any != nil:
 		return c.group(node.Any, " OR ")
 	case node.Not != nil:
-		inner, err := c.compile(node.Not)
+		inner, err := c.compileNode(node.Not)
 		if err != nil {
 			return "", err
 		}
@@ -325,7 +353,7 @@ func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
 func (c *browseCompiler) group(children []BrowseNode, glue string) (string, error) {
 	parts := make([]string, 0, len(children))
 	for index := range children {
-		part, err := c.compile(&children[index])
+		part, err := c.compileNode(&children[index])
 		if err != nil {
 			return "", err
 		}
@@ -588,6 +616,11 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 		}
 		c.args = append(c.args, match)
 		clause := `e.entity_id IN(SELECT d.entity_id FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles MATCH ?`
+		if c.groupSearch {
+			// Row-id equality reaches only the already selected group's documents;
+			// a broad word must not materialize every library's matching identities.
+			clause = `EXISTS(SELECT 1 FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles.rowid=e.entity_id AND catalog_search_titles MATCH ?`
+		}
 		for _, word := range strings.Fields(normalized) {
 			if strings.ContainsFunc(word, facettext.CJK) {
 				clause += ` AND instr(d.normalized,?)>0`
