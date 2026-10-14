@@ -501,13 +501,18 @@ func exerciseContainer(db *sql.DB, s *catalog.Service) ([]routeResult, error) {
 	// This isolated owner's grant is the synthetic TV library. HTTP principal
 	// resolution is outside this catalogue-service measurement.
 	access := func(_ context.Context, _ *sql.Tx, _ identity.Principal, column string) (string, []any, error) {
-		return column + ` IN(SELECT id FROM catalog_entities WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id='tv'))`, nil, nil
+		// Per item, as the server's own predicate is: a list of every entity of
+		// the library would make the action's cost follow the library's size.
+		return `EXISTS(SELECT 1 FROM catalog_entities granted JOIN catalog_libraries granted_library ON granted_library.id=granted.library_id WHERE granted.id=` + column + ` AND granted_library.library_id='tv')`, nil, nil
 	}
 	var public string
 	if err = db.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE id=?`, show).Scan(&public); err != nil {
 		return nil, err
 	}
 	yes := true
+	if containerProfile {
+		dbwork.ProfileStatements(true)
+	}
 	start := time.Now()
 	dbwork.WriteGate().ResetPeak()
 	marked, err := s.SetContainerPersonal(ctx, p, "show", public, catalog.ContainerPersonalMutation{Watched: &yes}, nil, access)
@@ -518,10 +523,16 @@ func exerciseContainer(db *sql.DB, s *catalog.Service) ([]routeResult, error) {
 	r.P95MS = r.P50MS
 	logMeasurement(r)
 	fmt.Fprintf(os.Stderr, "CONTAINER mark_gate_ms=%d\n", dbwork.WriteGate().Stats().MaxHeldMilli)
+	if containerProfile {
+		profileReport("mark-500", 1, 8)
+	}
 	viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: "scale-500", Libraries: []string{"tv"}}
 	counts, err := s.ContainerPersonalCounts(viewer, "show", public)
 	if err != nil || counts.WatchedCount != 500 {
 		return []routeResult{r}, fmt.Errorf("marked counts=%+v: %v", counts, err)
+	}
+	if containerProfile {
+		dbwork.ProfileStatements(true)
 	}
 	start = time.Now()
 	dbwork.WriteGate().ResetPeak()
@@ -532,6 +543,9 @@ func exerciseContainer(db *sql.DB, s *catalog.Service) ([]routeResult, error) {
 	undo.P95MS = undo.P50MS
 	logMeasurement(undo)
 	fmt.Fprintf(os.Stderr, "CONTAINER undo_gate_ms=%d\n", dbwork.WriteGate().Stats().MaxHeldMilli)
+	if containerProfile {
+		profileReport("undo-500", 1, 8)
+	}
 	counts, err = s.ContainerPersonalCounts(viewer, "show", public)
 	if err != nil || counts.WatchedCount != 0 {
 		return []routeResult{r, undo}, fmt.Errorf("undo counts=%+v: %v", counts, err)

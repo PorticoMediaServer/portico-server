@@ -32,6 +32,10 @@ func profileReport(name string, units int, top int) {
 
 var lastCache dbwork.StatementCacheStats
 
+// containerProfile reports the statements of the watched action and its undo
+// alone, without the fixture show's creation.
+var containerProfile bool
+
 func ingestResult(name string, units int, write, derive time.Duration, gate uint64) {
 	cache := dbwork.Reads().StatementCache
 	fmt.Fprintf(os.Stderr, "INGEST_STATEMENT_CACHE %s hits=%d misses=%d evictions=%d bypasses=%d\n", name, cache.Hits-lastCache.Hits, cache.Misses-lastCache.Misses, cache.Evictions-lastCache.Evictions, cache.Bypasses-lastCache.Bypasses)
@@ -199,7 +203,7 @@ func ingestScenarios(db *sql.DB, s *catalog.Service, removal bool) error {
 	ingestResult("progress-tick", ticks, write, derive, dbwork.WriteGate().Stats().MaxHeldMilli)
 	profileReport("progress-tick", ticks, 8)
 	// 6. Marking a 500-episode show watched, and undoing it.
-	dbwork.ProfileStatements(true)
+	containerProfile = true
 	marked, err := exerciseContainer(db, s)
 	if err != nil {
 		return err
@@ -207,7 +211,6 @@ func ingestScenarios(db *sql.DB, s *catalog.Service, removal bool) error {
 	for _, r := range marked {
 		fmt.Fprintf(os.Stderr, "INGEST %s ms=%.3f\n", r.Route, r.P50MS)
 	}
-	profileReport("mark-undo-500", 2, 8)
 	if !removal {
 		return nil
 	}
