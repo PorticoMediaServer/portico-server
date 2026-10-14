@@ -36,19 +36,27 @@ func (s *Service) filteredRangePage(p pageShape) ([]browseRow, error) {
 		order = `CASE WHEN order_key` + op + `? THEN 0 ELSE 1 END ASC,` + order
 	}
 	from, where, scopeArgs := "catalog_browse_rows e", p.where, p.args
-	if p.request.Query == nil && p.summary.classKey != "" && !primary.Profile {
+	live, liveArgs := "1", []any(nil)
+	if p.request.Query == nil && p.summary.classKey != "" && !primary.Profile && p.unrestricted != "" {
+		// The published class is the restricted viewer's row set and its
+		// positions; the class count is the total. The live restriction is
+		// checked on the selected page only, so a deep position does not test
+		// every row before it. A row restricted since the class published is
+		// left out of its page until the class refreshes.
 		from = `compact_visibility_rows v CROSS JOIN catalog_browse_rows e ON e.entity_id=v.entity_id`
-		where = `v.class_id=? AND v.generation=? AND v.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND v.kind=? AND (` + where + `)`
-		scopeArgs = append([]any{p.summary.classID, p.summary.generation, p.request.Library, p.kind}, scopeArgs...)
+		where = `v.class_id=? AND v.generation=? AND v.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND v.kind=? AND (` + p.unrestricted + `)`
+		scopeArgs = append([]any{p.summary.classID, p.summary.generation, p.request.Library, p.kind}, p.unrestrictedArgs...)
+		live, liveArgs = EntityRestrictionSQL("page.entity_id", p.request.Restrictions)
 	}
 	query := `WITH page AS MATERIALIZED (SELECT e.entity_id AS entity_id,e.sort_key AS sort_key,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?)
  SELECT ` + browseRowColumns + `,page.order_key FROM page CROSS JOIN catalog_browse_rows e ON e.entity_id=page.entity_id
- CROSS JOIN catalog_entities ce ON ce.id=e.entity_id ORDER BY ` + strings.NewReplacer("order_key", "page.order_key", "entity_id", "page.entity_id", "sort_key", "page.sort_key").Replace(order)
+ CROSS JOIN catalog_entities ce ON ce.id=e.entity_id WHERE ` + live + ` ORDER BY ` + strings.NewReplacer("order_key", "page.order_key", "entity_id", "page.entity_id", "sort_key", "page.sort_key").Replace(order)
 	args = append(args, scopeArgs...)
 	if primary.ID == "random" {
 		args = append(args, int64(p.sorts[0].Seed))
 	}
 	args = append(args, p.limit, p.start)
+	args = append(args, liveArgs...)
 	if primary.ID == "random" {
 		args = append(args, int64(p.sorts[0].Seed))
 	}

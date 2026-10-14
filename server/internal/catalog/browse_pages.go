@@ -46,19 +46,23 @@ func scanBrowseRows(rows *sql.Rows) ([]browseRow, error) {
 
 // pageShape is everything browseSelect resolved that choosing a page needs.
 type pageShape struct {
-	request    BrowseRequest
-	sorts      []BrowseSortSelection
-	where      string
-	args       []any
-	order      string
-	orderArgs  []any
-	start      int
-	limit      int
-	total      int
-	kind       int
-	summary    browseSummary
-	seekKeys   []string
-	seekAnchor string
+	request BrowseRequest
+	sorts   []BrowseSortSelection
+	where   string
+	args    []any
+	// unrestricted is where without the viewer's restriction: a published
+	// visibility class already selected those rows.
+	unrestricted     string
+	unrestrictedArgs []any
+	order            string
+	orderArgs        []any
+	start            int
+	limit            int
+	total            int
+	kind             int
+	summary          browseSummary
+	seekKeys         []string
+	seekAnchor       string
 }
 
 func (p pageShape) primary() (browseSort, bool) {

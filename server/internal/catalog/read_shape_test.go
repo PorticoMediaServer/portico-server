@@ -193,3 +193,51 @@ func TestAttributeTermKeysFoldLikeTheirValues(t *testing.T) {
 		}
 	}
 }
+
+// A restricted viewer's deep page in a fact order (file size here) takes its
+// positions from the published class and checks the live restriction on the
+// selected page, not on every row before it.
+func TestRestrictedDeepFactPageChecksOnlyItsPage(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("m", "Movies", "movie", "/m")
+	for i := 0; i < 400; i++ {
+		item := c.Movie(lib, fmt.Sprintf("/m/%03d.mkv", i), fmt.Sprintf("Movie %03d", i), 2020)
+		c.Attributes(item.ID, "contentRating", "PG")
+	}
+	c.Drain()
+	s := New(c.DB)
+	if _, err := s.ClassifyPendingRatings(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	c.Drain()
+	r := classesRestrictionOf(classesCeiling(13), true)
+	if err := s.RebuildVisibilityClass(context.Background(), "m", r); err != nil {
+		t.Fatal(err)
+	}
+	c.Exec(`ANALYZE`)
+	page := func(viewer Viewer, start int) (BrowseResult, int64) {
+		var out BrowseResult
+		steps := readSteps(t, c, func(s *Service) error {
+			var err error
+			out, err = s.BrowseEntities(viewer, BrowseRequest{Library: "m", Pivot: "movies", Sort: []BrowseSortSelection{{Field: "fileSize", Direction: "desc"}}, Limit: 20, Range: &BrowseRange{Start: start}})
+			return err
+		})
+		return out, steps
+	}
+	open := Viewer{Profile: "p", Fence: "open", Libraries: []string{"m"}}
+	restricted := Viewer{Profile: "p", Fence: "restricted", Libraries: []string{"m"}, Restrictions: r}
+	openPage, openSteps := page(open, 360)
+	restrictedPage, restrictedSteps := page(restricted, 360)
+	if restrictedPage.PageInfo.Total != 400 || len(restrictedPage.Entries) != 20 {
+		t.Fatalf("restricted deep page: %+v with %d entries", restrictedPage.PageInfo, len(restrictedPage.Entries))
+	}
+	for i := range openPage.Entries {
+		if openPage.Entries[i].ID != restrictedPage.Entries[i].ID {
+			t.Fatalf("entry %d differs between the open and the restricted page", i)
+		}
+	}
+	t.Logf("deep fact page: open %d steps, restricted %d steps", openSteps, restrictedSteps)
+	if restrictedSteps > openSteps*3 {
+		t.Fatalf("restricted deep page took %d steps against the open page's %d", restrictedSteps, openSteps)
+	}
+}

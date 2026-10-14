@@ -433,6 +433,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 	where += " AND " + clause
 	args = append(args, compiler.args...)
+	unrestricted, unrestrictedArgs := where, append([]any{}, args...)
 	// The viewer's content restriction is the last clause, after the authorized
 	// library scope and the client's own query, so neither can widen it.
 	if restriction, restrictionArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions); restriction != "1" {
@@ -559,7 +560,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 		}
 	}
-	shape := pageShape{request: request, sorts: sorts, where: where, args: args, order: order, orderArgs: orderArgs,
+	shape := pageShape{request: request, sorts: sorts, where: where, args: args, unrestricted: unrestricted, unrestrictedArgs: unrestrictedArgs, order: order, orderArgs: orderArgs,
 		limit: request.Limit, total: total, summary: summary, seekKeys: seekKeys, seekAnchor: seekAnchor}
 	if members := entityKindMembers(pivot); len(members) == 1 {
 		parsed, parseErr := compactcatalog.ParseKind(members[0])
