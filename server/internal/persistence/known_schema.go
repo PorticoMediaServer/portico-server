@@ -32,8 +32,11 @@ index api_events_audience
 index api_events_expiry
 index api_idempotency_expiry
 index artwork_candidates_source
+index artwork_discovery_due
 index artwork_entity_heads_entity
+index artwork_jobs_claim
 index artwork_jobs_due
+index artwork_jobs_storage_retry
 index artwork_objects_compaction
 index artwork_objects_created
 index artwork_previews_digest
@@ -300,6 +303,7 @@ index identity_refresh_predecessors_family
 index identity_refresh_receipts_expiry
 index identity_refresh_receipts_family
 index identity_unknown_attempts_age
+index inventory_analysis_object
 index inventory_analysis_pending
 index inventory_artwork_sources_entity
 index inventory_artwork_sources_role
@@ -404,12 +408,14 @@ index notification_records_expiry
 index notification_records_live
 index notification_records_page
 index notification_records_resume
+index personal_activity_receipts_expiry
 index personal_batch_receipts_expiry
 index personal_completed_plays_item
 index personal_conflict_open
 index personal_conflicts_item_id_fk
 index personal_event_ancestor
 index personal_evidence_fences_item_id_fk
+index personal_explicit_events_expiry
 index personal_explicit_events_item_id_fk
 index personal_favorites
 index personal_history_item_id_fk
@@ -489,6 +495,7 @@ index retained_title_state_profile
 index saved_pin_order_position
 index saved_resource_entries_item_id_fk
 index saved_resource_owner
+index saved_resource_receipts_expiry
 index saved_resource_shared
 index saved_resource_visibility
 index screen_metadata_attention_active
@@ -513,6 +520,7 @@ index social_groups_owner
 index social_handoffs_open
 index subtitle_candidates_expiry
 index subtitle_inventory_entries_association
+index subtitle_inventory_entries_job
 index subtitle_provider_candidates_item_id_fk
 index subtitle_resources_item
 index subtitle_resources_source_id_fk

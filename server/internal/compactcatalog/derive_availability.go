@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"sort"
 )
 
 // Availability (domain 20): whether an item can be played now, and which of
@@ -19,26 +20,51 @@ const (
 )
 
 func deriveAvailability(ctx context.Context, tx *sql.Tx, ids string) error {
+	// Each statement returns the items whose stored availability it changed;
+	// only those re-derive their browse rows. A rescan, or a source's health
+	// changing and back, re-checks every item of a library, and re-deriving
+	// the browse rows of all of them made the work of one scan grow with the
+	// library even when nothing could be played any differently.
+	changed := map[int64]bool{}
 	for _, q := range []string{
 		// Only a changed flag is written: an unchanged row is not a link change.
 		`UPDATE catalog_asset_links SET available=COALESCE((SELECT av.available FROM inventory_item_availability av JOIN catalog_assets a ON a.token=av.asset_id WHERE av.item_id=catalog_asset_links.entity_id AND a.id=catalog_asset_links.asset_id),0)
  WHERE entity_id IN(SELECT value FROM json_each(?1))
- AND available IS NOT COALESCE((SELECT av.available FROM inventory_item_availability av JOIN catalog_assets a ON a.token=av.asset_id WHERE av.item_id=catalog_asset_links.entity_id AND a.id=catalog_asset_links.asset_id),0)`,
-		`DELETE FROM catalog_item_availability WHERE entity_id IN(SELECT value FROM json_each(?1)) AND NOT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=catalog_item_availability.entity_id)`,
+ AND available IS NOT COALESCE((SELECT av.available FROM inventory_item_availability av JOIN catalog_assets a ON a.token=av.asset_id WHERE av.item_id=catalog_asset_links.entity_id AND a.id=catalog_asset_links.asset_id),0)
+ RETURNING entity_id`,
+		`DELETE FROM catalog_item_availability WHERE entity_id IN(SELECT value FROM json_each(?1)) AND NOT EXISTS(SELECT 1 FROM catalog_entities e WHERE e.id=catalog_item_availability.entity_id) RETURNING entity_id`,
 		`INSERT INTO catalog_item_availability(entity_id,available,retired)
  SELECT e.id,EXISTS(SELECT 1 FROM catalog_asset_links l WHERE l.entity_id=e.id AND l.available=1),EXISTS(SELECT 1 FROM dvr_catalog_retirements g WHERE g.item_id=e.id)
  FROM json_each(?1) j JOIN catalog_entities e ON e.id=j.value
  ON CONFLICT(entity_id) DO UPDATE SET available=excluded.available,retired=excluded.retired
- WHERE catalog_item_availability.available IS NOT excluded.available OR catalog_item_availability.retired IS NOT excluded.retired`,
+ WHERE catalog_item_availability.available IS NOT excluded.available OR catalog_item_availability.retired IS NOT excluded.retired
+ RETURNING entity_id`,
 	} {
-		if _, err := tx.ExecContext(ctx, q, ids); err != nil {
+		rows, err := tx.QueryContext(ctx, q, ids)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var id int64
+			if err = rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			changed[id] = true
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
 			return err
 		}
 	}
 	// A changed availability shows in the item's browse row and Home buckets.
-	_, err := tx.ExecContext(ctx, `INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT ?,value,1 FROM json_each(?) WHERE 1
- ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1`, DomainBrowseRows, ids)
-	return err
+	touched := make([]int64, 0, len(changed))
+	for id := range changed {
+		touched = append(touched, id)
+	}
+	sort.Slice(touched, func(i, j int) bool { return touched[i] < touched[j] })
+	return TouchTx(ctx, tx, DomainBrowseRows, touched...)
 }
 
 // deriveLibraryAvailability queues the availability of limit more items of a

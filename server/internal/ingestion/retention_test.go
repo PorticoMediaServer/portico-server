@@ -3,6 +3,8 @@ package ingestion
 import (
 	"context"
 	"fmt"
+	"os"
+	"strings"
 	"testing"
 	"time"
 )
@@ -145,4 +147,71 @@ func TestManagedListingRetentionKeepsOneCurrentSnapshotAndLiveWork(t *testing.T)
 	if f.count(`SELECT count(*) FROM remote_listing_sessions WHERE id='live-list'`) != 0 {
 		t.Fatal("retired directory listing kept")
 	}
+}
+
+// Scan history pruning runs every minute for every source, in a write
+// transaction. Its per-job deletes (and the foreign-key check when a job row
+// goes) must find a job's subtitle listing rows by index: there is one row per
+// listed file per retained scan, and a scan of that table for each completed
+// run held the write gate for a time that grew with the library.
+func TestScanHistoryPruningFindsSubtitleListingRowsByJob(t *testing.T) {
+	f := newLoopFixture(t, "movie", "Film (2000).mkv")
+	rows, err := f.db.Query(`EXPLAIN QUERY PLAN SELECT w.rowid FROM subtitle_inventory_entries w JOIN inventory_runs r ON r.job_id=w.job_id WHERE r.source_id=?`, f.source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, parent, unused int
+		var detail string
+		if err = rows.Scan(&id, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		if strings.HasPrefix(detail, "SCAN w") {
+			t.Fatalf("pruning reads every subtitle listing row: %s", detail)
+		}
+	}
+}
+
+// Timed: an idle prune pass beside a large current listing stays small.
+func TestScanHistoryPruningCostIsFlat(t *testing.T) {
+	if !scaleTierOn() {
+		t.Skip("scale proof: runs with PORTICO_PERFORMANCE_TIER=release or deep")
+	}
+	f := newLoopFixture(t, "movie", "Film (2000).mkv")
+	for n := 0; n < 3; n++ {
+		f.finish(f.queue())
+	}
+	// The finished runs ended an hour ago, past the quarter hour after which a
+	// run's working rows are pruned, as retained runs are in steady state. The
+	// listing rows belong to the scan in progress, which pruning must leave.
+	f.exec(`UPDATE inventory_runs SET finished_at=? WHERE source_id=?`, time.Now().Add(-time.Hour).UTC().Format(time.RFC3339Nano), f.source)
+	job := f.queue().ID
+	var costs []time.Duration
+	added := 0
+	for _, size := range []int{2_000, 200_000} {
+		f.exec(`WITH RECURSIVE n(x) AS(SELECT ?1 UNION ALL SELECT x+1 FROM n WHERE x<?2) INSERT INTO subtitle_inventory_entries(source_id,incarnation,job_id,directory,directory_key,path,name,snapshot) SELECT ?3,'i',?4,'d','d','/many/'||x,'f'||x,'' FROM n`, added+1, size, f.source, job)
+		added = size
+		best := time.Duration(1 << 62)
+		for n := 0; n < 5; n++ {
+			start := time.Now()
+			if _, err := f.s.PruneSource(context.Background(), f.source); err != nil {
+				t.Fatal(err)
+			}
+			best = min(best, time.Since(start))
+		}
+		costs = append(costs, best)
+		t.Logf("listing rows %d: prune pass %v", size, best)
+	}
+	if costs[1] > 10*costs[0]+5*time.Millisecond {
+		t.Fatalf("an idle prune pass grows with the listing: %v", costs)
+	}
+}
+
+func scaleTierOn() bool {
+	switch os.Getenv("PORTICO_PERFORMANCE_TIER") {
+	case "release", "deep":
+		return true
+	}
+	return false
 }

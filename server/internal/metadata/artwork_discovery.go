@@ -264,7 +264,10 @@ func (s *Service) ArtworkDiscoveryStep(ctx context.Context) error {
 	var provider, id, fence string
 	var attempts int
 	stamp := s.publicationTime().Format(time.RFC3339Nano)
-	err = tx.QueryRowContext(ctx, `SELECT kind,entity_id,provider,identity,source_fence,attempts FROM artwork_discovery WHERE ((status IN('pending','retry') AND next_attempt<=?) OR(status='running' AND lease_until<=?)) ORDER BY next_attempt,kind,entity_id LIMIT 1`, stamp, stamp).Scan(&t.Kind, &entity, &provider, &id, &fence, &attempts)
+	// One indexed probe per state, each reading one row: the claim runs in a
+	// write transaction, and an unindexed sort of the whole table held the
+	// write gate for as long as the table was large.
+	err = tx.QueryRowContext(ctx, artworkDiscoveryClaimSQL, stamp).Scan(&t.Kind, &entity, &provider, &id, &fence, &attempts)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil
 	}
@@ -624,3 +627,9 @@ func artworkLanguageRank(language, preferred string) int {
 	}
 	return 3
 }
+
+var artworkDiscoveryClaimSQL = `SELECT kind,entity_id,provider,identity,source_fence,attempts FROM (
+ SELECT * FROM (SELECT kind,entity_id,provider,identity,source_fence,attempts,next_attempt FROM artwork_discovery INDEXED BY artwork_discovery_due WHERE status='pending' AND next_attempt<=?1 ORDER BY next_attempt,kind,entity_id LIMIT 1)
+ UNION ALL SELECT * FROM (SELECT kind,entity_id,provider,identity,source_fence,attempts,next_attempt FROM artwork_discovery INDEXED BY artwork_discovery_due WHERE status='retry' AND next_attempt<=?1 ORDER BY next_attempt,kind,entity_id LIMIT 1)
+ UNION ALL SELECT * FROM (SELECT kind,entity_id,provider,identity,source_fence,attempts,next_attempt FROM artwork_discovery INDEXED BY artwork_discovery_due WHERE status='running' AND lease_until<=?1 ORDER BY next_attempt,kind,entity_id LIMIT 1)
+) ORDER BY next_attempt,kind,entity_id LIMIT 1`

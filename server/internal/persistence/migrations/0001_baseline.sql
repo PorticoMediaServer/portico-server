@@ -2211,6 +2211,7 @@ CREATE TABLE playback_legacy_replacement_requests(account_id TEXT NOT NULL,profi
 CREATE TABLE playback_physical_source_pins(session_id TEXT PRIMARY KEY REFERENCES playback_sessions(id) ON DELETE CASCADE,source_id TEXT NOT NULL,incarnation TEXT NOT NULL,configuration_generation INTEGER NOT NULL) STRICT;
 CREATE TABLE subtitle_inventory_entries(source_id TEXT NOT NULL,incarnation TEXT NOT NULL,job_id TEXT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,directory TEXT NOT NULL,directory_key TEXT NOT NULL,path TEXT NOT NULL,name TEXT NOT NULL,snapshot TEXT NOT NULL,PRIMARY KEY(source_id,job_id,path)) STRICT;
 CREATE INDEX subtitle_inventory_entries_association ON subtitle_inventory_entries(source_id,incarnation,job_id,directory_key,name COLLATE NOCASE);
+CREATE INDEX subtitle_inventory_entries_job ON subtitle_inventory_entries(job_id);
 CREATE TABLE playback_vod_retries(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),request_id TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending') STRICT;
 CREATE TABLE playback_vod_subtitle_intents(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),request_id TEXT NOT NULL,ownership_revision INTEGER NOT NULL,command_sequence INTEGER NOT NULL) STRICT;
 CREATE TABLE playback_vod_observations(playback_id TEXT PRIMARY KEY REFERENCES playback_occurrences(id),acknowledged_seek_id TEXT) STRICT;
@@ -4024,6 +4025,9 @@ CREATE INDEX tvdb_publication_terminal ON tvdb_publication_operations(status,cre
 CREATE INDEX tvdb_publication_show ON tvdb_publication_operations(show_id,id);
 CREATE INDEX metadata_owner_history_entity ON metadata_owner_history(kind,entity_id,id DESC);
 CREATE INDEX artwork_jobs_due ON artwork_jobs(status,next_attempt,lease_until);
+CREATE INDEX artwork_discovery_due ON artwork_discovery(status,next_attempt,kind,entity_id,lease_until);
+CREATE INDEX artwork_jobs_claim ON artwork_jobs(status,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at,id);
+CREATE INDEX artwork_jobs_storage_retry ON artwork_jobs(next_attempt) WHERE status='failed' AND error='storage_unavailable';
 CREATE INDEX asset_subtitles_asset ON asset_subtitles(asset_id,id);
 CREATE INDEX subtitle_resources_item ON subtitle_resources(item_id,source_id,deleted,scope,owner);
 CREATE INDEX subtitle_revisions_digest ON subtitle_revisions(digest);
@@ -4046,6 +4050,7 @@ CREATE INDEX inventory_objects_asset ON inventory_objects(asset_id,state,retired
 CREATE INDEX inventory_objects_analysis ON inventory_objects(source_id,seen_job,analysis_state,id);
 CREATE INDEX inventory_changes_source ON inventory_changes(source_id,sequence);
 CREATE INDEX inventory_analysis_pending ON inventory_analysis_queue(job_id,state,object_id);
+CREATE INDEX inventory_analysis_object ON inventory_analysis_queue(object_id);
 CREATE INDEX analysis_result_source ON analysis_results(object_id,source_revision,stage,retired_ms);
 CREATE INDEX analysis_artifact_result ON analysis_artifacts(result_id,ordinal);
 CREATE INDEX analysis_artifact_digest ON analysis_artifacts(digest);
@@ -4058,6 +4063,9 @@ CREATE INDEX console_inbox_page ON console_notifications(scope,sequence DESC);
 CREATE UNIQUE INDEX console_active_work ON console_operations(kind,resource) WHERE state IN ('queued','running','cancellation-requested','reconciling','paused');
 CREATE INDEX personal_history_page ON personal_history(profile_id,updated_at DESC,id DESC);
 CREATE INDEX personal_snapshots_expiry ON personal_snapshots(created_at);
+CREATE INDEX personal_activity_receipts_expiry ON personal_activity_receipts(created_at);
+CREATE INDEX saved_resource_receipts_expiry ON saved_resource_receipts(created_at);
+CREATE INDEX personal_explicit_events_expiry ON personal_explicit_events(created_at);
 CREATE INDEX personal_event_ancestor ON personal_explicit_events(profile_id,item_id,field,base_revision);
 CREATE UNIQUE INDEX personal_conflict_open ON personal_conflicts(profile_id,item_id,field) WHERE resolved=0;
 CREATE INDEX saved_resource_owner ON saved_resources(owner_key,kind,deleted,name COLLATE NOCASE,id);
@@ -4068,7 +4076,7 @@ CREATE INDEX lyric_candidates_actor ON lyric_candidates(actor,expires_at);
 CREATE INDEX lyric_candidates_expiry ON lyric_candidates(expires_at);
 CREATE INDEX lyric_fetch_runs_state ON lyric_fetch_runs(state,created_ms);
 CREATE INDEX lyric_fetch_runs_library ON lyric_fetch_runs(library_id,state);
-CREATE INDEX screen_metadata_due ON screen_metadata_work(status,next_attempt,lease_until,target_kind,target_id);
+CREATE INDEX screen_metadata_due ON screen_metadata_work(status,target_kind,next_attempt,target_id,lease_until);
 CREATE INDEX screen_metadata_library ON screen_metadata_work(library_id,target_id);
 CREATE INDEX screen_metadata_children ON screen_metadata_work(parent_id,target_id);
 CREATE INDEX screen_metadata_candidate_target ON screen_metadata_candidates(target_kind,target_id,confidence DESC);
@@ -4457,7 +4465,8 @@ CREATE TRIGGER inventory_availability_source AFTER UPDATE OF health,enabled,inca
  UPDATE library_revisions SET revision=revision+1 WHERE library_id=NEW.library_id;
  UPDATE admin_revision SET revision=revision+1 WHERE id=1;
 END;
-CREATE TRIGGER inventory_availability_object AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason ON inventory_objects BEGIN
+CREATE TRIGGER inventory_availability_object AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason ON inventory_objects
+ WHEN OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason BEGIN
  UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT library_id FROM library_sources WHERE id=NEW.source_id);
 END;
 CREATE TRIGGER job_observation_update AFTER UPDATE ON jobs BEGIN
@@ -4953,7 +4962,8 @@ CREATE TRIGGER catalog_availability_object_insert AFTER INSERT ON inventory_obje
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,l.entity_id,1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token=NEW.asset_id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
-CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason,source_id,asset_id ON inventory_objects BEGIN
+CREATE TRIGGER catalog_availability_object_update AFTER UPDATE OF state,retired,root_incarnation,unsupported_reason,source_id,asset_id ON inventory_objects
+ WHEN OLD.state IS NOT NEW.state OR OLD.retired IS NOT NEW.retired OR OLD.root_incarnation IS NOT NEW.root_incarnation OR OLD.unsupported_reason IS NOT NEW.unsupported_reason OR OLD.source_id IS NOT NEW.source_id OR OLD.asset_id IS NOT NEW.asset_id BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 20,l.entity_id,1 FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token IN(OLD.asset_id,NEW.asset_id)
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
@@ -4962,7 +4972,7 @@ CREATE TRIGGER catalog_availability_object_delete AFTER DELETE ON inventory_obje
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;
 CREATE TRIGGER catalog_availability_source_health AFTER UPDATE OF health,enabled,incarnation,generation ON library_sources
- WHEN OLD.health IS NOT NEW.health OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
+ WHEN (OLD.health IN('offline','root_changed','removing')) IS NOT (NEW.health IN('offline','root_changed','removing')) OR OLD.enabled IS NOT NEW.enabled OR OLD.incarnation IS NOT NEW.incarnation OR OLD.generation IS NOT NEW.generation BEGIN
  INSERT INTO catalog_dirty(domain,entity_id,revision) SELECT 28,id,1 FROM catalog_libraries WHERE library_id=NEW.library_id
  ON CONFLICT(domain,entity_id) DO UPDATE SET revision=revision+1;
 END;

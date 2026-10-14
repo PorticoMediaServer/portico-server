@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"sort"
 	"strconv"
@@ -19,6 +20,43 @@ import (
 	"portico.local/server/internal/supervise"
 )
 
+// The claim order: a search the owner asked for, then shows whose episodes
+// are being dispatched, then shows, then everything else. Within a class a
+// title never tried comes before a retry. Titles (films, episodes) are taken
+// most recently catalogued first, so what was just added, and is on Recently
+// Added, is matched ahead of an old backlog. Shows are taken oldest first:
+// every new episode sends its show back to pending, so taking the newest show
+// first would match a show again and again while a scan is still adding its
+// episodes, spending provider requests that rate limits make scarce.
+//
+// Each class, kind and order is its own indexed probe that reads one row, so
+// a claim costs the same whatever the backlog's size; the claim runs in a
+// write transaction, and a sort over every pending row there held the write
+// gate for as long as the backlog was large.
+var screenClaimSQL = screenProbes([]string{"searching", "pending_children", "pending"}, `next_attempt<=?1 AND lease_until<=?1`)
+
+// A title parked by an outage, once its cool-off has passed: the oldest
+// retry time first.
+var screenRecoverSQL = screenProbes([]string{"unavailable"}, `next_attempt>'' AND next_attempt<=?1 AND lease_until<=?1 AND error IN('unavailable','provider_unavailable','provider_backoff')`)
+
+func screenProbes(statuses []string, where string) string {
+	var arms []string
+	arm := func(rank int, status, kind, extra, order string) {
+		arms = append(arms, fmt.Sprintf(`SELECT * FROM (SELECT %d AS rank,target_kind,target_id,next_attempt,%s AS turn FROM screen_metadata_work INDEXED BY screen_metadata_due WHERE status='%s' AND target_kind='%s' AND %s%s ORDER BY %s LIMIT 1)`,
+			rank, map[string]string{"show": "target_id", "item": "-target_id"}[kind], status, kind, where, extra, order))
+	}
+	for class, status := range statuses {
+		rank := class * 2
+		arm(rank, status, "show", "", "next_attempt,target_id")
+		if status == "pending" {
+			rank++
+		}
+		arm(rank, status, "item", ` AND next_attempt=''`, "target_id DESC")
+		arm(rank, status, "item", ` AND next_attempt>''`, "next_attempt,target_id")
+	}
+	return `SELECT target_kind,target_id FROM (` + strings.Join(arms, " UNION ALL ") + `) ORDER BY rank,next_attempt,turn LIMIT 1`
+}
+
 func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if err != nil {
@@ -32,14 +70,14 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 	// A search the owner asked for goes first: it is one deliberate request with
 	// somebody waiting on it, and a search that fails rejoins the queue as an
 	// ordinary pending row, so it cannot hold the front.
-	err = tx.QueryRowContext(ctx, `SELECT target_kind,target_id FROM screen_metadata_work WHERE status IN('pending','searching','pending_children') AND next_attempt<=? AND lease_until<=? ORDER BY CASE WHEN status='searching' THEN 0 WHEN status='pending_children' THEN 1 WHEN target_kind='show' THEN 2 ELSE 3 END,next_attempt,target_id LIMIT 1`, stamp, stamp).Scan(&kind, &target)
+	err = tx.QueryRowContext(ctx, screenClaimSQL, stamp).Scan(&kind, &target)
 	if errors.Is(err, sql.ErrNoRows) {
 		// Nothing else is due, so a title parked by an outage whose cool-off
 		// has passed gets another try. Both marks are required: a retry time,
 		// and one of the reasons only an outage records (screenRecoverable). A
 		// retry time alone proves nothing, because rows parked before this rule
 		// were all given one, whatever had parked them.
-		err = tx.QueryRowContext(ctx, `SELECT target_kind,target_id FROM screen_metadata_work WHERE status='unavailable' AND next_attempt>'' AND next_attempt<=? AND lease_until<=? AND error IN('unavailable','provider_unavailable','provider_backoff') ORDER BY next_attempt,target_id LIMIT 1`, stamp, stamp).Scan(&kind, &target)
+		err = tx.QueryRowContext(ctx, screenRecoverSQL, stamp).Scan(&kind, &target)
 	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, gated.Commit()

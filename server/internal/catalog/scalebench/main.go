@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime/pprof"
 	"sort"
 	"strings"
 	"time"
@@ -73,10 +74,27 @@ func run() (runErr error) {
 	factsOnly := flag.Bool("facts-only", false, "seed facts without deriving; use -reuse -exercise to measure the empty rebuild")
 	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
 	resumeRemoval := flag.Bool("resume-removal", false, "finish removal of the already retired synthetic Movies library")
+	ingest := flag.Bool("ingest", false, "with -reuse: measure adding, changing and removing items on the fixture")
+	ingestRemove := flag.Bool("ingest-removal", false, "with -ingest: also remove the Movies library")
 	focus := flag.Int("focus-samples", 0, "repeat main browse and typing reads before write scenarios")
 	only := flag.String("only", "", "measure only the routes whose name matches this regular expression")
 	skipClasses := flag.Bool("skip-class-build", false, "reuse the restricted visibility classes already published in a reused fixture")
+	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile of the run to this file")
+	flag.IntVar(&curveWindow, "curve-window", 0, "report seeding cost per item for every window of this many items")
+	flag.IntVar(&curveShapes, "curve-shapes", 0, "with -curve-window, also report this many costliest statement shapes per window")
+	flag.BoolVar(&interleaving, "interleave", false, "seed films, episodes and songs in a scattered order")
+	seedStop := flag.Int("seed-stop", 0, "stop seeding after this many items (the shape stays that of -items); implies -seed-only")
 	flag.Parse()
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err != nil {
+			return err
+		}
+		if err = pprof.StartCPUProfile(f); err != nil {
+			return err
+		}
+		defer func() { pprof.StopCPUProfile(); f.Close() }()
+	}
 	if *only != "" {
 		pattern, err := regexp.Compile(*only)
 		if err != nil {
@@ -99,6 +117,9 @@ func run() (runErr error) {
 	}
 	path := filepath.Join(abs, "catalog.sqlite")
 	_, statErr := os.Stat(path)
+	if interleaving && *resumeSeed {
+		return errors.New("interleave cannot resume a seed")
+	}
 	if *reuse && *resumeSeed {
 		return errors.New("reuse and resume-seed are mutually exclusive")
 	}
@@ -149,7 +170,12 @@ func run() (runErr error) {
 			}
 			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedBulkFactsDensity(db, *n, *narrowFacts)
 		} else {
-			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedReference(db, *n, startItem, *n, 32, !*factsOnly)
+			stop := *n
+			if *seedStop > 0 {
+				stop = min(*n, *seedStop)
+				*seedOnly = true
+			}
+			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = seedReference(db, *n, startItem, stop, 32, !*factsOnly)
 		}
 		if err != nil {
 			return err
@@ -175,6 +201,12 @@ func run() (runErr error) {
 		return os.WriteFile(filepath.Join(abs, "seed-report.json"), append(raw, '\n'), 0600)
 	}
 	s := catalog.New(db)
+	if *ingest {
+		if !*reuse {
+			return errors.New("ingest requires reuse")
+		}
+		return ingestScenarios(db, s, *ingestRemove)
+	}
 	if *resumeRemoval {
 		if !*reuse {
 			return errors.New("resume-removal requires reuse")

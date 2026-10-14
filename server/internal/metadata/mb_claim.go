@@ -272,6 +272,16 @@ func (s *Service) claimMB(ctx context.Context) (*mbJob, error) {
 	if active >= 8 {
 		return nil, nil
 	}
+	// While MusicBrainz asks us to wait, no row can be claimed; asking the
+	// claim query anyway would read the whole pending backlog (every song of
+	// the library) once per step only to find that out.
+	var cooldown string
+	if e := read.QueryRowContext(ctx, `SELECT COALESCE((SELECT next_attempt FROM metadata_provider_cooldowns WHERE provider='musicbrainz'),'')`).Scan(&cooldown); e != nil {
+		return nil, e
+	}
+	if cooldown > stamp {
+		return nil, nil
+	}
 	var kind, entity string
 	// j.id stays the public id (it flows into RepairTarget and cross-lane
 	// readers); the integer entity_id never leaves SQL here.

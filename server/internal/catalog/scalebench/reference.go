@@ -47,6 +47,8 @@ func seedReference(db *sql.DB, n, startItem, stopItem, batch int, derive bool) (
 		}
 	}
 	worker := compactcatalog.NewWorker(db)
+	var window seedWindow
+	window.begin(ctx, db, startItem)
 	for offset := startItem; offset < stopItem; offset += batch {
 		if err = checkScratchBudget(); err != nil {
 			return
@@ -54,7 +56,8 @@ func seedReference(db *sql.DB, n, startItem, stopItem, batch int, derive bool) (
 		start := time.Now()
 		end := min(stopItem, offset+batch)
 		err = dbwork.WithWriteTx(ctx, db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
-			for i := offset; i < end; i++ {
+			for j := offset; j < end; j++ {
+				i := seedOrder(j, n)
 				if e := seedItem(ctx, tx, shape, i); e != nil {
 					return fmt.Errorf("item %d: %w", i, e)
 				}
@@ -64,6 +67,8 @@ func seedReference(db *sql.DB, n, startItem, stopItem, batch int, derive bool) (
 		if err != nil {
 			return
 		}
+		window.write += time.Since(start)
+		deriveStart := time.Now()
 		for derive {
 			var done int
 			if done, err = worker.Step(ctx, 500); err != nil {
@@ -73,15 +78,70 @@ func seedReference(db *sql.DB, n, startItem, stopItem, batch int, derive bool) (
 				break
 			}
 		}
+		window.derive += time.Since(deriveStart)
 		last = float64(time.Since(start)) / float64(time.Millisecond) / float64(end-offset)
 		if offset == startItem {
 			first = last
 		}
-		if end%10000 < batch || end == n {
+		if curveWindow > 0 && (end-window.from >= curveWindow || end == stopItem) {
+			window.report(ctx, db, end)
+			window.begin(ctx, db, end)
+		} else if curveWindow == 0 && (end%10000 < batch || end == n) {
 			fmt.Fprintf(os.Stderr, "seed %d/%d latest %.3f ms/item\n", end, n, last)
 		}
 	}
 	return
+}
+
+// Curve instrumentation: -curve-window reports, for every window of seeded
+// items, the write and derivation milliseconds per item, the writer's row
+// changes per item and (with -curve-shapes) the statement shapes whose cost
+// per item grew. -interleave seeds the reference shape in a scattered order so
+// films, episodes and songs arrive throughout, as a growing library's would,
+// and each window measures the same mix at a larger size.
+var (
+	curveWindow  int
+	curveShapes  int
+	interleaving bool
+)
+
+// seedOrder maps the j-th seeded position to a reference item. Interleaving
+// multiplies by a prime larger than any fixture, a bijection on [0,n).
+func seedOrder(j, n int) int {
+	if !interleaving {
+		return j
+	}
+	return int((int64(j) * 1000003) % int64(n))
+}
+
+type seedWindow struct {
+	from          int
+	write, derive time.Duration
+	changes       int64
+}
+
+func (w *seedWindow) begin(ctx context.Context, db *sql.DB, from int) {
+	*w = seedWindow{from: from}
+	if curveWindow == 0 {
+		return
+	}
+	w.changes, _ = writerChangeCount(ctx, db)
+	dbwork.ProfileStatements(curveShapes > 0)
+}
+
+func (w *seedWindow) report(ctx context.Context, db *sql.DB, end int) {
+	items := float64(end - w.from)
+	changes, _ := writerChangeCount(ctx, db)
+	ms := func(d time.Duration) float64 { return float64(d) / float64(time.Millisecond) / items }
+	fmt.Fprintf(os.Stderr, "CURVE items=%d write_ms_per_item=%.3f derive_ms_per_item=%.3f total_ms_per_item=%.3f changes_per_item=%.1f rss_kb=%d\n",
+		end, ms(w.write), ms(w.derive), ms(w.write+w.derive), float64(changes-w.changes)/items, processRSSKB())
+	for i, entry := range dbwork.StatementProfile() {
+		if i == curveShapes {
+			break
+		}
+		fmt.Fprintf(os.Stderr, "CURVE_SHAPE items=%d us_per_item=%.1f calls_per_item=%.2f mean_us=%.1f %s\n",
+			end, float64(entry.Nanos)/1000/items, float64(entry.Count)/items, entry.MeanMicros(), entry.Shape)
+	}
 }
 
 // seedItem writes item i and, the first time one is needed, its container.
