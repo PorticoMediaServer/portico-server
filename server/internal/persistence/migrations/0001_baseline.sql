@@ -4768,12 +4768,18 @@ INSERT INTO catalog_content_eligible_state(id,after_entity_id,backfill_done,turn
 --   (SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=X)
 
 -- ===== views
+-- A file no inventory record knows (a recording, a file added outside a scan)
+-- follows the library folder that holds its path; a file in no folder of the
+-- library is unavailable only when every folder of the library is.
 CREATE VIEW inventory_item_availability AS
  SELECT l.entity_id AS item_id,a.token AS asset_id,
  CASE WHEN EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=l.entity_id) THEN 0
  WHEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id)
  THEN EXISTS(SELECT 1 FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.asset_id=a.token AND s.library_id=cl.library_id AND o.retired=0 AND o.state='available' AND o.unsupported_reason='' AND s.enabled=1 AND s.health NOT IN('offline','root_changed','removing') AND o.root_incarnation=s.incarnation)
- ELSE a.available=1 AND NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.id=cl.library_id AND (s.enabled=0 OR s.health IN('offline','root_changed','removing'))) END AS available
+ ELSE a.available=1 AND CASE
+  WHEN EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND (substr(a.path,1,length(rtrim(s.root,'/\'))+1) IN(rtrim(s.root,'/\')||'/',rtrim(s.root,'/\')||'\') OR substr(a.path,1,length(rtrim(s.configured_root,'/\'))+1) IN(rtrim(s.configured_root,'/\')||'/',rtrim(s.configured_root,'/\')||'\')))
+  THEN NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND (substr(a.path,1,length(rtrim(s.root,'/\'))+1) IN(rtrim(s.root,'/\')||'/',rtrim(s.root,'/\')||'\') OR substr(a.path,1,length(rtrim(s.configured_root,'/\'))+1) IN(rtrim(s.configured_root,'/\')||'/',rtrim(s.configured_root,'/\')||'\')) AND (s.enabled=0 OR s.health IN('offline','root_changed','removing')))
+  ELSE NOT EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id) OR EXISTS(SELECT 1 FROM library_sources s WHERE s.library_id=cl.library_id AND NOT (s.enabled=0 OR s.health IN('offline','root_changed','removing'))) END END AS available
  FROM catalog_asset_links l JOIN catalog_entities e ON e.id=l.entity_id JOIN catalog_libraries cl ON cl.id=e.library_id JOIN catalog_assets a ON a.id=l.asset_id;
 
 CREATE VIEW listening_book_context AS
@@ -4846,16 +4852,22 @@ CREATE TRIGGER artwork_source_changed AFTER UPDATE OF source_revision,identity_r
  INSERT INTO artwork_dirty VALUES('item',NEW.item_id) ON CONFLICT(kind,entity_id) DO NOTHING;END;
 CREATE TRIGGER screen_wake_video_names_INSERT AFTER INSERT ON inventory_video_names BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
- WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id
-  UNION SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id);END;
+ WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id);
+ UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
+ WHERE target_kind='show' AND target_id IN(SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id) AND lease='' AND NOT(accepted_publication<>'' AND status IN('matched','pending_children'));END;
 CREATE TRIGGER screen_wake_video_names_UPDATE AFTER UPDATE ON inventory_video_names BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
  WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id
   UNION SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id);END;
+-- A new file's show-level NFO wakes a matched or claimed show only when it says
+-- something none of the show's other files' NFOs say.
 CREATE TRIGGER screen_wake_video_nfo_evidence_INSERT AFTER INSERT ON video_nfo_evidence BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
- WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id
-  UNION SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id);END;
+ WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id);
+ UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
+ WHERE target_kind='show' AND target_id IN(SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id)
+ AND (lease='' AND NOT(accepted_publication<>'' AND status IN('matched','pending_children')) OR NEW.kind='show' AND NOT EXISTS(SELECT 1 FROM catalog_episodes e2 JOIN catalog_asset_links l2 ON l2.entity_id=e2.entity_id JOIN catalog_assets a2 ON a2.id=l2.asset_id JOIN video_nfo_evidence n2 ON n2.asset_id=a2.token
+  WHERE e2.show_id=screen_metadata_work.target_id AND a2.token<>NEW.asset_id AND n2.kind='show' AND n2.digest=NEW.digest));END;
 CREATE TRIGGER screen_wake_video_nfo_evidence_UPDATE AFTER UPDATE ON video_nfo_evidence BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
  WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id
@@ -5886,10 +5898,14 @@ CREATE TRIGGER revision_asset_links_UPDATE AFTER UPDATE OF entity_id,asset_id,pa
 CREATE TRIGGER screen_asset_change AFTER UPDATE OF size,modified_ns,path ON catalog_assets WHEN NEW.size IS NOT OLD.size OR NEW.modified_ns IS NOT OLD.modified_ns OR NEW.path IS NOT OLD.path BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
  WHERE (target_kind='item' AND target_id IN(SELECT entity_id FROM catalog_asset_links WHERE asset_id=NEW.id)) OR (target_kind='show' AND target_id IN(SELECT e.show_id FROM catalog_episodes e JOIN catalog_asset_links a ON a.entity_id=e.entity_id WHERE a.asset_id=NEW.id));END;
+-- A new episode or file wakes its show only while the show is not matched and
+-- not claimed. A matched show is not matched again: the new episode's own row
+-- fetches its details. A claimed show keeps its in-flight work; when it
+-- completes, its dispatch walks every episode, the new ones included.
 CREATE TRIGGER screen_episode_create AFTER INSERT ON catalog_episodes BEGIN
  INSERT OR IGNORE INTO screen_metadata_work(target_kind,target_id,library_id,title_seed,year_seed,parent_id)
  SELECT 'item',ce.id,cl.library_id,ce.title,ce.year,NEW.show_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.entity_id;
- UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='show' AND target_id=NEW.show_id;
+ UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='show' AND target_id=NEW.show_id AND lease='' AND NOT(accepted_publication<>'' AND status IN('matched','pending_children'));
 END;
 CREATE TRIGGER screen_episode_identity_change AFTER UPDATE OF show_id,season_id,numbering,number,local_identity_status ON catalog_episodes WHEN OLD.show_id IS NOT NEW.show_id OR OLD.season_id IS NOT NEW.season_id OR OLD.numbering IS NOT NEW.numbering OR OLD.number IS NOT NEW.number OR OLD.local_identity_status IS NOT NEW.local_identity_status BEGIN
  UPDATE screen_metadata_work SET parent_id=NEW.show_id,status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='item' AND target_id=NEW.entity_id;
@@ -5907,8 +5923,9 @@ CREATE TRIGGER screen_wake_item_assets_DELETE AFTER DELETE ON catalog_asset_link
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
  WHERE (target_kind='item' AND target_id IN(OLD.entity_id)) OR (target_kind='show' AND target_id IN(SELECT show_id FROM catalog_episodes WHERE entity_id IN(OLD.entity_id)));END;
 CREATE TRIGGER screen_wake_item_assets_INSERT AFTER INSERT ON catalog_asset_links BEGIN
+ UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='item' AND target_id=NEW.entity_id;
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
- WHERE (target_kind='item' AND target_id IN(NEW.entity_id)) OR (target_kind='show' AND target_id IN(SELECT show_id FROM catalog_episodes WHERE entity_id IN(NEW.entity_id)));END;
+ WHERE target_kind='show' AND target_id IN(SELECT show_id FROM catalog_episodes WHERE entity_id=NEW.entity_id) AND lease='' AND NOT(accepted_publication<>'' AND status IN('matched','pending_children'));END;
 CREATE TRIGGER screen_wake_item_assets_UPDATE AFTER UPDATE OF entity_id,asset_id,part_index,start_seconds,end_seconds ON catalog_asset_links BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
  WHERE (target_kind='item' AND target_id IN(OLD.entity_id,NEW.entity_id)) OR (target_kind='show' AND target_id IN(SELECT show_id FROM catalog_episodes WHERE entity_id IN(OLD.entity_id,NEW.entity_id)));END;

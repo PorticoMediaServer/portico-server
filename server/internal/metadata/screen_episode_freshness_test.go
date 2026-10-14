@@ -80,9 +80,8 @@ func episodeFreshnessFixture(t *testing.T) (*Service, *sql.DB, *episodeFixturePr
 	return s, db, p, now, add, settle
 }
 
-// Adding an episode wakes its show, and the show fans out to every episode.
-// An episode whose provider document is still inside its freshness window is
-// republished from what is already held; only the new episode is asked for.
+// Adding an episode to a matched show asks for the new episode only: the show
+// is not matched again, and no other episode is republished.
 func TestAddingAnEpisodeDoesNotRefetchTheOthers(t *testing.T) {
 	_, db, p, now, add, settle := episodeFreshnessFixture(t)
 	settle()

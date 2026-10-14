@@ -24,10 +24,10 @@ import (
 // are being dispatched, then shows, then everything else. Within a class a
 // title never tried comes before a retry. Titles (films, episodes) are taken
 // most recently catalogued first, so what was just added, and is on Recently
-// Added, is matched ahead of an old backlog. Shows are taken oldest first:
-// every new episode sends its show back to pending, so taking the newest show
-// first would match a show again and again while a scan is still adding its
-// episodes, spending provider requests that rate limits make scarce.
+// Added, is matched ahead of an old backlog. Shows are taken oldest first, so
+// a show a scan is still filling is reached after the shows it found before.
+// A new episode does not send a matched or claimed show back to be matched
+// (the episode is fetched on its own row); a show not yet matched is woken.
 //
 // Each class, kind and order is its own indexed probe that reads one row, so
 // a claim costs the same whatever the backlog's size; the claim runs in a
@@ -172,6 +172,13 @@ func (s *Service) claimScreen(ctx context.Context) (*screenClaim, error) {
 		return nil, err
 	}
 	p.Digest = screenInputDigest(b)
+	p.Bound = screenUnbounded
+	if kind == "show" {
+		if err = tx.QueryRowContext(ctx, `SELECT COALESCE(max(id),0) FROM catalog_assets`).Scan(&p.Bound); err != nil {
+			return nil, err
+		}
+	}
+	p.Fence = screenFence(b)
 	return p, gated.Commit()
 }
 func (s *Service) screenCurrent(ctx context.Context, tx *sql.Tx, p *screenClaim) (bool, error) {
@@ -187,14 +194,14 @@ func (s *Service) screenCurrent(ctx context.Context, tx *sql.Tx, p *screenClaim)
 	if token != p.Token || until <= tvdbStamp(s.publicationTime()) || generation != p.Base.Generation {
 		return false, nil
 	}
-	b, err := readScreenBase(ctx, tx, p.Base.TargetKind, p.Base.TargetID)
+	b, err := readScreenBaseWithin(ctx, tx, p.Base.TargetKind, p.Base.TargetID, p.Bound)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, err
 	}
-	return screenInputDigest(b) == p.Digest, nil
+	return screenFence(b) == p.Fence, nil
 }
 func (s *Service) screenStale(ctx context.Context, tx *sql.Tx, p *screenClaim) error {
 	_, err := tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt=?,error='stale_result_discarded' WHERE target_kind=? AND target_id=? AND lease=?`, tvdbStamp(s.publicationTime().Add(time.Second)), p.Base.TargetKind, p.Base.Entity, p.Token)
