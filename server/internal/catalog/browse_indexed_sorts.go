@@ -49,6 +49,9 @@ func (s *Service) indexedFactPage(p pageShape, definition browseSort, desc bool)
 	if definition.ID == "random" && p.positional() && len(p.seekKeys) == 0 {
 		return s.positionRandomPage(p, desc)
 	}
+	if definition.ID != "random" && p.positional() && p.summary.classKey != "" && len(p.seekKeys) == 0 {
+		return s.filteredRangePage(p)
+	}
 	if p.start > 0 && len(p.seekKeys) == 0 {
 		if definition.ID == "random" {
 			return s.seededRandomRange(p, definition, desc)
