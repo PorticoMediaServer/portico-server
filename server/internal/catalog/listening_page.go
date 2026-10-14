@@ -51,11 +51,17 @@ func (s *Service) orderedListeningPage(t ListeningTarget, where string, args []a
 		// CROSS JOIN preserves the index walk: album sort key, album ID, then
 		// disc, track and song ID. Restriction and availability checks happen
 		// on each candidate before LIMIT, without sorting the whole library.
+		//
+		// The song's entity is a LEFT JOIN whose conditions sit inside
+		// COALESCE: with a plain join and conditions on it, SQLite builds a
+		// Bloom filter over every entity of every library before the walk's
+		// first row, which made each page cost the whole catalogue. A missing
+		// entity fails the COALESCE exactly as the join would.
 		from = ` FROM catalog_browse_rows ar INDEXED BY catalog_browse_title
 			CROSS JOIN catalog_albums a ON a.entity_id=ar.entity_id
 			CROSS JOIN catalog_songs s INDEXED BY catalog_songs_listening_order ON s.album_id=a.entity_id
-			CROSS JOIN catalog_entities i ON i.id=s.entity_id
-			WHERE ar.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND ar.kind=6 AND i.library_id=ar.library_id AND ` + where
+			LEFT JOIN catalog_entities i ON i.id=s.entity_id
+			WHERE ar.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND ar.kind=6 AND COALESCE(i.library_id=ar.library_id AND (` + where + `),0)`
 		params = append([]any{t.LibraryID}, args...)
 		leadBound = ` AND ar.sort_key COLLATE NOCASE>=?`
 		leadArgs = func(k listeningOrderKey) []any { return []any{k.Title} }
@@ -157,7 +163,10 @@ func (s *Service) orderedListeningPage(t ListeningTarget, where string, args []a
 		from += ` AND (` + seek + `)>(` + placeholders(len(values)) + `)` + leadBound
 		params = append(append(params, values...), leadArgs(*after)...)
 	}
-	rows, e := s.read().Query(`SELECT pid(i.public_id),`+pageFields+`,i.id`+from+` AND `+available+` ORDER BY `+order+` LIMIT ?`, append(append([]any{}, params...), limit)...)
+	// CASE keeps the availability test a per-row check: as a bare EXISTS
+	// SQLite turns it into a join and first builds a Bloom filter over every
+	// row of the availability table.
+	rows, e := s.read().Query(`SELECT pid(i.public_id),`+pageFields+`,i.id`+from+` AND CASE WHEN `+available+` THEN 1 ELSE 0 END ORDER BY `+order+` LIMIT ?`, append(append([]any{}, params...), limit)...)
 	if e != nil {
 		return nil, 0, 0, e
 	}

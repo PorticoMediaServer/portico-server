@@ -174,6 +174,11 @@ func TestFilteredPagesHydrateOnlySelectedRows(t *testing.T) {
 				}
 				if restricted {
 					p.sorts = []BrowseSortSelection{{Field: "fileSize", Direction: "asc"}}
+					// The class selects positions; a restriction newer than the
+					// class (simulated here) is checked on the selected rows and
+					// the page is refilled from the rows after them.
+					p.unrestricted, p.unrestrictedArgs = p.where, p.args
+					p.live, p.liveArgs = `e.entity_id%4=0`, nil
 					p.where += ` AND e.entity_id%4=0`
 					p.start = min(50000, n/4-40)
 					ctx, trace := dbwork.TraceQueryPlans(context.Background())

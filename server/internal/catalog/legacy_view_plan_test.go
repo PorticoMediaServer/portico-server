@@ -77,8 +77,9 @@ func TestHomeStatementsNeverMaterialiseLegacyViews(t *testing.T) {
 		query, args := homeShowContinuation(r, cutoffs, premieres, 8, "", &showActivityKey{lastActivity: "2026-09-01", showID: 1})
 		// w is the profile's started-shows window (LIMIT window), chosen its
 		// result; wp and defaults are personalstate's one-row profile and its
-		// at most four container defaults, each a primary-key seek.
-		bounded := []string{"w", "chosen", "wp", "defaults"}
+		// at most four container defaults, each a primary-key seek; next is one
+		// show's later episodes in number order, reached through the show index.
+		bounded := []string{"w", "chosen", "wp", "defaults", "next"}
 		seekOnlyPlan(t, db, label+" continue watching", query, args, bounded...)
 		query, args = homeShowContinuation(r, cutoffs, premieres, 1, "s", nil)
 		seekOnlyPlan(t, db, label+" show workspace next", query, args, bounded...)

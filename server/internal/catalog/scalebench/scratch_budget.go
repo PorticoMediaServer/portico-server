@@ -20,7 +20,9 @@ func scratchUsage() (int64, error) {
 		return 0, nil
 	}
 	out, err := exec.Command("du", "-s", "-B1", scratchDirectory).Output()
-	if err != nil {
+	if err != nil && len(out) == 0 {
+		// du also fails when another process removes a file while it walks;
+		// it still prints the total of what it saw.
 		return 0, err
 	}
 	fields := strings.Fields(string(out))

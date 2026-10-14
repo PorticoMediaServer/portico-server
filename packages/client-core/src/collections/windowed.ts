@@ -25,6 +25,9 @@ export type PageResult<T> = Readonly<{
   items: readonly T[];
   /** Total items in the collection (all pages). */
   total: number;
+  /** `total` is a lower bound: the list goes on past it (a broad filter the server counts only up to
+   * a threshold). The collection's total then only grows, page by page, until a page knows the end. */
+  totalIsLowerBound?: boolean;
   /** Letter (or any bucket label) → first offset, when the server provides it. */
   positionIndex?: Readonly<Record<string, number>>;
 }>;
@@ -59,6 +62,8 @@ export type CollectionSnapshot = Readonly<{
   generation: number;
   /** Unknown until the first page of the generation has arrived. */
   total: number | undefined;
+  /** The total is a lower bound and grows as pages arrive ("10,000+"). */
+  totalIsLowerBound: boolean;
   status: CollectionStatus;
   /** The last page failure, when the visible range couldn't load. */
   error: unknown;
@@ -110,6 +115,7 @@ type Generation<T> = {
   fetchPage: FetchPage<T>;
   pages: Map<number, PageState<T>>;
   total: number | undefined;
+  totalIsLowerBound: boolean;
   positionIndex: Record<string, number> | undefined;
   lastError: unknown;
   /** The page whose arrival makes this generation ready to show (pending generations only). */
@@ -139,7 +145,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
   const keyOf = options.keyOf;
 
   let nextId = 0;
-  let current: Generation<T> = {id: nextId++, fetchPage: options.fetchPage, pages: new Map(), total: undefined, positionIndex: undefined, lastError: undefined, gate: 0};
+  let current: Generation<T> = {id: nextId++, fetchPage: options.fetchPage, pages: new Map(), total: undefined, totalIsLowerBound: false, positionIndex: undefined, lastError: undefined, gate: 0};
   let pending: Generation<T> | undefined;
   let visibleFirst = -1, visibleLast = -1, lastFirst = -1, direction = 0;
   let tick = 0, disposed = false;
@@ -149,7 +155,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
   let waitUntil = 0;
   const pageListeners = new Map<number, Set<() => void>>();
   const listeners = new Set<() => void>();
-  let snapshot: CollectionSnapshot = Object.freeze({generation: 0, total: undefined, status: 'idle', error: undefined, positionIndex: undefined, refreshing: false});
+  let snapshot: CollectionSnapshot = Object.freeze({generation: 0, total: undefined, totalIsLowerBound: false, status: 'idle', error: undefined, positionIndex: undefined, refreshing: false});
 
   const inFlight = (g: Generation<T>) => { let n = 0; for (const p of g.pages.values()) if (p.status === 'loading') n++; return n; };
   const pageCount = (g: Generation<T>) => (g.total === undefined ? undefined : Math.ceil(g.total / pageSize));
@@ -163,9 +169,9 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
       : current.total === undefined ? (inFlight(current) > 0 ? 'loading' : 'idle')
       : pages.some(p => current.pages.get(p)?.status !== 'ready') ? 'loading' : 'ready';
     const failure = failed !== undefined ? (current.pages.get(failed) as {error: unknown}).error : undefined;
-    const next = {generation: shownGeneration, total: current.total, status, error: failure, positionIndex: current.positionIndex, refreshing: !!pending && !pending.quiet};
+    const next = {generation: shownGeneration, total: current.total, totalIsLowerBound: current.totalIsLowerBound, status, error: failure, positionIndex: current.positionIndex, refreshing: !!pending && !pending.quiet};
     const prev = snapshot;
-    if (prev.generation === next.generation && prev.total === next.total && prev.status === next.status && prev.error === next.error && prev.positionIndex === next.positionIndex && prev.refreshing === next.refreshing) return;
+    if (prev.generation === next.generation && prev.total === next.total && prev.totalIsLowerBound === next.totalIsLowerBound && prev.status === next.status && prev.error === next.error && prev.positionIndex === next.positionIndex && prev.refreshing === next.refreshing) return;
     snapshot = Object.freeze(next);
     for (const l of [...listeners]) l();
   }
@@ -212,7 +218,13 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
     request.then(result => {
       if (disposed || controller.signal.aborted || g.pages.get(page)?.status !== 'loading') return;
       if (!result || !Array.isArray(result.items) || !Number.isFinite(result.total) || result.total < 0) throw new Error('invalid_page');
-      g.total = Math.floor(result.total);
+      if (result.totalIsLowerBound) {
+        // An open-ended total only grows; a total some page already knows exactly is kept.
+        if (g.total === undefined || g.totalIsLowerBound) { g.total = Math.max(g.total ?? 0, Math.floor(result.total)); g.totalIsLowerBound = true; }
+      } else {
+        g.total = Math.floor(result.total);
+        g.totalIsLowerBound = false;
+      }
       if (result.positionIndex) g.positionIndex = {...(g.positionIndex ?? {}), ...result.positionIndex};
       g.pages.set(page, {status: 'ready', items: result.items.slice(0, pageSize), version: version + 1, used: ++tick});
       settled(g, page);
@@ -356,7 +368,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
       if (pending && !pending.quiet) return Promise.resolve();
       if (pending?.quiet) { const superseded = pending.quiet; dropPending(); superseded.resolve(); }
       return new Promise<void>((resolve, reject) => {
-        pending = {id: nextId++, fetchPage: options.fetchPage ?? current.fetchPage, pages: new Map(), total: undefined, positionIndex: undefined, lastError: undefined, gate: pageOfIndex(visibleFirst), quiet: {resolve, reject, hold: options.hold}};
+        pending = {id: nextId++, fetchPage: options.fetchPage ?? current.fetchPage, pages: new Map(), total: undefined, totalIsLowerBound: false, positionIndex: undefined, lastError: undefined, gate: pageOfIndex(visibleFirst), quiet: {resolve, reject, hold: options.hold}};
         pump();
       });
     },
@@ -364,7 +376,7 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
       if (disposed) return;
       if (pending?.quiet) pending.quiet.resolve();
       if (pending) for (const p of pending.pages.values()) if (p.status === 'loading') p.controller.abort();
-      pending = {id: nextId++, fetchPage: fetchPage ?? current.fetchPage, pages: new Map(), total: undefined, positionIndex: undefined, lastError: undefined, gate: visibleFirst < 0 ? 0 : pageOfIndex(visibleFirst)};
+      pending = {id: nextId++, fetchPage: fetchPage ?? current.fetchPage, pages: new Map(), total: undefined, totalIsLowerBound: false, positionIndex: undefined, lastError: undefined, gate: visibleFirst < 0 ? 0 : pageOfIndex(visibleFirst)};
       // Nothing on screen yet: there is nothing to keep, so show the new generation's loading state at once.
       if (current.pages.size === 0) { current = pending; pending = undefined; shownGeneration++; notifyAllPages(); }
       pump();

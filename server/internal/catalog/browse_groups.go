@@ -1,10 +1,17 @@
 package catalog
 
 import (
+	"encoding/json"
 	"strconv"
+
+	"portico.local/server/internal/compactcatalog"
 
 	"time"
 )
+
+// groupMatchLimit is the most matching titles a filtered grouping groups
+// exactly; a broader filter counts each group up to browseTotalThreshold.
+var groupMatchLimit = 10000
 
 // Group lists use their own indexed keys; their predicates filter member
 // titles with exactly the same grammar as the entity pivot they open.
@@ -73,23 +80,90 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	from := `catalog_browse_groups g`
 	where := `g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=?`
 	args := []any{request.Library, pivot.Aggregate}
+	// pageCounts: a broad filter's groups are counted for the returned page
+	// only, each up to the threshold.
+	pageCounts := false
+	var countGroups func(values []string) (map[string]int, error)
 	if request.Query != nil || request.Restrictions.Active() {
-		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions}
+		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs}
 		clause, err := compiler.compile(request.Query)
 		if err != nil {
 			return out, err
 		}
 		restriction, restrictionArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions)
-		from = `(WITH matched AS MATERIALIZED (
- SELECT e.entity_id FROM catalog_browse_rows e
- WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND (` + clause + `) AND (` + restriction + `))
+		// Only an entity that holds a value of the grouped field can be counted,
+		// so the predicate is evaluated for the possible holders alone. In a
+		// music library that is the songs, not also every artist and album
+		// (each of which would re-walk all of its songs); in a show library the
+		// shows, not also every season and episode.
+		from = `(WITH matched AS MATERIALIZED (SELECT value AS entity_id FROM json_each(?))
  SELECT m.value,lower(portico_sort_title(m.value,'','')) AS name_key,count(*) AS total,max(m.recent_key) AS recent_key
  FROM matched CROSS JOIN catalog_facet_members m ON m.entity_id=matched.entity_id
  WHERE m.field=? GROUP BY m.value) g`
-		args = append([]any{request.Library}, compiler.args...)
-		args = append(args, restrictionArgs...)
-		args = append(args, pivot.Aggregate)
 		where = "1"
+		// The matching titles are selected once, at most one past
+		// groupMatchLimit. A broad filter matches too many titles to group
+		// them all: each group then counts its own matches up to one past the
+		// threshold, walking its members on the facet index, and a group
+		// beyond it shows the threshold as a lower bound.
+		probe := append(append(append([]any{request.Library}, compiler.args...), restrictionArgs...), groupMatchLimit+1)
+		ids, err := s.entityIDs(`SELECT e.entity_id FROM catalog_browse_rows e WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND `+compactcatalog.FacetHolderSQL("e")+`
+ AND (`+clause+`) AND (`+restriction+`) LIMIT ?`, probe...)
+		if err != nil {
+			return out, err
+		}
+		list, _ := json.Marshal(ids)
+		args = []any{string(list), pivot.Aggregate}
+		matched := len(ids)
+		if matched > groupMatchLimit {
+			members := `FROM catalog_facet_members m INDEXED BY catalog_facet_group_recent CROSS JOIN catalog_browse_rows e ON e.entity_id=m.entity_id
+ WHERE m.library_id=g.library_id AND m.field=g.field AND m.value=g.value AND (` + clause + `) AND (` + restriction + `)`
+			memberArgs := append(append([]any{}, compiler.args...), restrictionArgs...)
+			capped := `(SELECT count(*) FROM (SELECT 1 ` + members + ` LIMIT ` + strconv.Itoa(browseTotalThreshold+1) + `))`
+			switch sorting.Field {
+			case "count":
+				// Ordering by count needs every group's capped count.
+				from = `(SELECT value,name_key,total,recent_key FROM (SELECT g.value AS value,g.name_key AS name_key,` + capped + ` AS total,g.recent_key AS recent_key
+ FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=?) WHERE total>0) g`
+				args = append(append([]any{}, memberArgs...), request.Library, pivot.Aggregate)
+			case "recentActivity":
+				// A group's newest matching member orders it; a group with
+				// none is left out. Counts are taken for the page alone.
+				from = `(SELECT value,name_key,0 AS total,recent_key FROM (SELECT g.value AS value,g.name_key AS name_key,(SELECT m.recent_key ` + members + ` ORDER BY m.recent_key DESC LIMIT 1) AS recent_key
+ FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=?) WHERE recent_key IS NOT NULL) g`
+				args = append(append([]any{}, memberArgs...), request.Library, pivot.Aggregate)
+				pageCounts = true
+			default:
+				// Name order needs only whether a group has a match, which a
+				// broad filter answers at the group's first members. Counts
+				// are taken for the page alone.
+				from = `(SELECT g.value AS value,g.name_key AS name_key,0 AS total,g.recent_key AS recent_key
+ FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=? AND EXISTS(SELECT 1 ` + members + `)) g`
+				args = append([]any{request.Library, pivot.Aggregate}, memberArgs...)
+				pageCounts = true
+			}
+			// One statement for the page's groups: a filter's own sets (a
+			// full-text match, a profile's state) are then built once.
+			countGroups = func(values []string) (map[string]int, error) {
+				list, _ := json.Marshal(values)
+				rows, err := s.read().Query(`SELECT g.value,`+capped+` FROM catalog_browse_groups g WHERE g.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND g.field=? AND g.value IN(SELECT value FROM json_each(?))`,
+					append(append([]any{}, memberArgs...), request.Library, pivot.Aggregate, string(list))...)
+				if err != nil {
+					return nil, err
+				}
+				defer rows.Close()
+				out := map[string]int{}
+				for rows.Next() {
+					var value string
+					var n int
+					if err = rows.Scan(&value, &n); err != nil {
+						return nil, err
+					}
+					out[value] = n
+				}
+				return out, rows.Err()
+			}
+		}
 	}
 	orderKey := map[string]string{"title": "g.name_key", "count": "g.total", "recentActivity": "g.recent_key"}[sorting.Field]
 	direction, op := "ASC", ">"
@@ -170,6 +244,21 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	if err != nil {
 		return out, err
 	}
+	if pageCounts && len(rows) > 0 {
+		values := []string{}
+		for i := range rows {
+			if i < request.Limit {
+				values = append(values, rows[i].value)
+			}
+		}
+		counts, err := countGroups(values)
+		if err != nil {
+			return out, err
+		}
+		for i := range rows {
+			rows[i].count = counts[rows[i].value]
+		}
+	}
 	if request.Range != nil && start >= total {
 		start = max(0, total-1)
 	}
@@ -185,7 +274,14 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 			label += "s"
 		}
 		count := g.count
-		out.Entries = append(out.Entries, ContentEntry{ID: pivot.Aggregate + ":" + g.value, Kind: pivot.EntityKinds[0], Title: label, Count: &count, Navigation: &ContentNavigation{View: "browse", Category: pivot.Aggregate + ":" + g.value}})
+		entry := ContentEntry{ID: pivot.Aggregate + ":" + g.value, Kind: pivot.EntityKinds[0], Title: label, Count: &count, Navigation: &ContentNavigation{View: "browse", Category: pivot.Aggregate + ":" + g.value}}
+		if count > browseTotalThreshold {
+			// "10,000+": the count is a lower bound.
+			count = browseTotalThreshold
+			bound := browseTotalThreshold
+			entry.TotalAtLeast = &bound
+		}
+		out.Entries = append(out.Entries, entry)
 	}
 	if out.PageInfo.HasMore && request.Range == nil && len(rows) > 0 {
 		last := rows[len(rows)-1]

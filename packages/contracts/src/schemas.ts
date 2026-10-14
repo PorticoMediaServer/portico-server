@@ -2642,11 +2642,15 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "type": "boolean"
           }
         },
         "required": [
           "start",
           "total",
+          "totalIsLowerBound",
           "revision",
           "hasMore",
           "nextCursor"
@@ -59705,11 +59709,15 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "totalIsLowerBound": {
+                "type": "boolean"
               }
             },
             "required": [
               "start",
               "total",
+              "totalIsLowerBound",
               "revision",
               "hasMore",
               "nextCursor"

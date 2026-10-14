@@ -25,6 +25,11 @@ const (
 	browseFacetLimit      = 200
 )
 
+// browseTotalThreshold is the most matches a posted filter counts. Above it
+// the total is a lower bound ("10,000+"): counting further cost every match,
+// and pages keep following their cursors without it. Tests lower it.
+var browseTotalThreshold = 10000
+
 type browseValueType string
 
 const (

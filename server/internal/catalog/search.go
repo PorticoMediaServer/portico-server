@@ -551,15 +551,35 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		libraryScope = ` AND kind : (` + strings.Join(ids, " OR ") + `)`
 	}
 	match = `kind : k` + strconv.Itoa(int(kind)) + libraryScope + ` AND search : (` + match + `)`
-	candidates := `(SELECT rowid AS entity_id,-rank AS relevance FROM catalog_search_titles WHERE catalog_search_titles MATCH ?) m
-	 CROSS JOIN catalog_search_documents d ON d.entity_id=m.entity_id CROSS JOIN catalog_entities e ON e.id=d.entity_id JOIN catalog_libraries l ON l.id=e.library_id`
+	sortID := resolveSearchSort(g, r.Sort)
+	// The full-text rank is computed for every match it is selected for; only
+	// relevance orders by it.
+	matches := `(SELECT rowid AS entity_id FROM catalog_search_titles WHERE catalog_search_titles MATCH ?) m`
+	joins := ` CROSS JOIN catalog_search_documents d ON d.entity_id=m.entity_id CROSS JOIN catalog_entities e ON e.id=d.entity_id JOIN catalog_libraries l ON l.id=e.library_id`
+	candidates := matches + joins
+	if sortID == "relevance" {
+		candidates = `(SELECT rowid AS entity_id,-rank AS relevance FROM catalog_search_titles WHERE catalog_search_titles MATCH ?) m` + joins
+	}
+	countTerms, countIndexed := facettext.IndexedSearchTerms(r.Q)
 	countGroup := func() error {
+		// One indexed word has a maintained count. Several words would count
+		// their whole intersection, so their total is the page's and is marked
+		// as not exact, as relevance search marks it.
+		if countIndexed && len(countTerms) == 1 {
+			total, exact, err := s.prefixSearchTotal(ctx, r, int(kind), countTerms[0])
+			if err != nil || exact {
+				out.TotalCount, out.TotalCountExact = total, exact
+				return err
+			}
+		} else if countIndexed {
+			out.TotalCount, out.TotalCountExact = len(out.Items), false
+			return nil
+		}
 		countArgs := append([]any{match}, filterArgs...)
-		err := s.read().QueryRowContext(ctx, `SELECT count(*) FROM `+candidates+` WHERE 1`+where, countArgs...).Scan(&out.TotalCount)
+		err := s.read().QueryRowContext(ctx, `SELECT count(*) FROM `+matches+joins+` WHERE 1`+where, countArgs...).Scan(&out.TotalCount)
 		out.TotalCountExact = err == nil
 		return err
 	}
-	sortID := resolveSearchSort(g, r.Sort)
 	contextJoin, subtitle := searchContext(g.kind)
 	order := catalogOrder(sortID, g.kind, r.Q)
 	// Only the columns needed to rank matches belong before the page boundary.
@@ -651,6 +671,18 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		tie = "entity_id"
 		countGroup = func() error { out.TotalCount, out.TotalCountExact = len(out.Items), false; return nil }
 	}
+	// Title order breaks ties by the internal identity, so a page taken
+	// from the title index and one ranked from the full-text matches continue
+	// each other.
+	internal := prefix
+	if sortID == "title" && !prefix {
+		internal, tie = true, "entity_id"
+		if walked, ok, err := s.searchTitleWalk(ctx, r, int(kind), where, filterArgs, pageSize+1, scopeHash, g, rev); err != nil {
+			return err
+		} else if ok {
+			ranked, args = `SELECT json_extract(value,'$[0]') entity_id,json_extract(value,'$[1]') entity_pid,json_extract(value,'$[2]') ord FROM json_each(?)`, []any{walked}
+		}
+	}
 	page := `WITH page AS MATERIALIZED (SELECT entity_id,entity_pid,ord FROM(` + ranked + `)`
 	scope := s.groupCursorScope(r, g, scopeHash, sortID)
 	if prefix {
@@ -670,7 +702,7 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		}
 		predicate := cursorPredicate(r.Direction)
 		var anchor any = c.ID
-		if prefix {
+		if internal {
 			predicate = strings.ReplaceAll(predicate, "entity_pid", "entity_id")
 			id, err := strconv.ParseInt(c.ID, 10, 64)
 			if err != nil {
@@ -766,7 +798,7 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		entries = entries[:pageSize]
 		last := entries[len(entries)-1]
 		anchorID := last.ID
-		if prefix {
+		if internal {
 			var id int64
 			if e = s.read().QueryRowContext(ctx, `SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, last.ID).Scan(&id); e != nil {
 				return e

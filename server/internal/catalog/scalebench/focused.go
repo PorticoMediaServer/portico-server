@@ -20,6 +20,9 @@ func focusedReads(db *sql.DB, s *catalog.Service) ([]routeResult, error) {
 	}
 	var results []routeResult
 	add := func(name string, read func(context.Context, *catalog.Service) error) error {
+		if !routeSelected("focus/" + name) {
+			return nil
+		}
 		r, err := exerciseRead(db, s, "focus/"+name, focusedSamples, read)
 		results = append(results, r)
 		return err

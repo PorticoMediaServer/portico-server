@@ -30,6 +30,8 @@ export type ContentEntry = Readonly<{
   /** The release's relationship to the artist; artist releases only. Unknown values are dropped. */
   role?: 'album' | 'ep' | 'single' | 'compilation' | 'appearance';
   /** Up to 4 poster paths for a 2x2 mosaic; category rows only. Absent when there is nothing to show. */
+  /** `count` is a lower bound: a grouping under a broad filter counts each group up to 10,000 ("10,000+"). */
+  countIsLowerBound?: boolean;
   artworkPaths?: readonly string[];
   navigation?: Readonly<{ view: ContentView | 'item'; entityId?: string; category?: string }>;
   playback?: Readonly<{ itemId: string; startSeconds?: number }>;
@@ -157,6 +159,7 @@ function entry(v: unknown): ContentEntry {
   }
   if (v.addedAt === null || string(v.addedAt, 128)) row.addedAt = v.addedAt as string | null; else left('entry.addedAt', v.addedAt);
   if (count(v.count)) row.count = v.count; else left('entry.count', v.count);
+  if (count(v.totalAtLeast) && row.count !== undefined) row.countIsLowerBound = true; else left('entry.totalAtLeast', v.totalAtLeast);
   if(typeof v.watched==='boolean')row.watched=v.watched;else left('entry.watched',v.watched);
   for(const field of ['discNumber','trackNumber','episodeNumber','seasonNumber'] as const){if(count(v[field]))row[field]=v[field] as number;else left('entry.'+field,v[field]);}
   if (typeof v.missing === 'boolean') row.missing=v.missing;

@@ -70,23 +70,34 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
 	// season tables by integer id: SQLite cannot flatten a LEFT JOIN onto a
 	// view that is itself a join, and would materialise every episode of
 	// every library once per statement (NEW-47).
+	//
+	// The next episode is found in two steps: the later episodes are put in
+	// order by their numbers alone, then tested for availability, watched
+	// state and the viewer's restriction in that order, stopping at the first
+	// that passes. Testing every later episode before ordering them cost a
+	// whole show for each started show, mostly for a restricted viewer whose
+	// next allowed episode is near. The ordered list keeps its LIMIT so SQLite
+	// neither flattens it nor drops its order.
 	base := `SELECT chosen.id,chosen.ord FROM (SELECT COALESCE(
   ` + partial(true) + `,
   ` + partial(false) + `,
-  (SELECT pid(i2.public_id) FROM catalog_entities pe JOIN catalog_episodes previous ON previous.entity_id=pe.id
+  (SELECT pid(i2.public_id) FROM (SELECT e2.entity_id AS id FROM catalog_entities pe JOIN catalog_episodes previous ON previous.entity_id=pe.id
    LEFT JOIN catalog_seasons ps ON ps.entity_id=previous.season_id AND (SELECT retired FROM catalog_entities WHERE id=previous.season_id)=0
    JOIN catalog_entities sh ON sh.id=w.show_id JOIN catalog_episodes e2 ON e2.show_id=sh.id
-   JOIN catalog_entities i2 ON i2.id=e2.entity_id LEFT JOIN catalog_seasons s2 ON s2.entity_id=e2.season_id AND (SELECT retired FROM catalog_entities WHERE id=e2.season_id)=0
-	   WHERE pe.id=CAST(w.last_item_id AS INTEGER) AND EXISTS(SELECT 1 FROM catalog_libraries cl WHERE cl.id=i2.library_id AND cl.library_id=w.library_id) AND ` + homeVisible("i2.id") + `
-    AND (i2.id=previous.entity_id OR e2.numbering='absolute' AND previous.numbering='absolute' AND e2.number>previous.number
+   LEFT JOIN catalog_seasons s2 ON s2.entity_id=e2.season_id AND (SELECT retired FROM catalog_entities WHERE id=e2.season_id)=0
+	   WHERE pe.id=CAST(w.last_item_id AS INTEGER)
+    AND (e2.entity_id=previous.entity_id OR e2.numbering='absolute' AND previous.numbering='absolute' AND e2.number>previous.number
       OR e2.numbering!='absolute' AND previous.numbering!='absolute' AND
        (COALESCE(s2.number,0)>COALESCE(ps.number,0) OR COALESCE(s2.number,0)=COALESCE(ps.number,0) AND e2.number>previous.number))
     AND (COALESCE(s2.number,0)>0 OR COALESCE(ps.number,0)=0)
+   ORDER BY COALESCE(s2.number,0),e2.number,e2.entity_id LIMIT 9223372036854775807) next
+   CROSS JOIN catalog_entities i2 ON i2.id=next.id
+   WHERE EXISTS(SELECT 1 FROM catalog_libraries cl WHERE cl.id=i2.library_id AND cl.library_id=w.library_id) AND ` + homeVisible("i2.id") + `
     AND ` + personalstate.CompactSQL("w.profile_id", "i2.id") + `=0
     AND COALESCE((SELECT p.position FROM progress p WHERE p.profile_id=w.profile_id AND p.item_id=i2.id),0)=0
     ` + nextDismissal + `
     AND ` + nextVisibility + `
-   ORDER BY COALESCE(s2.number,0),e2.number,i2.id LIMIT 1)
+   LIMIT 1)
 	 ) AS id,w.last_activity AS ord,w.library_id AS library_id,w.last_item_id AS last_item_id FROM
 	 (SELECT * FROM profile_show_activity WHERE profile_id=? AND library_id IN(SELECT value FROM json_each(?))` + showFilter + ` ORDER BY last_activity DESC,show_id LIMIT ` + strconv.Itoa(window) + `) w
 	 WHERE w.profile_id=? AND w.library_id IN(SELECT value FROM json_each(?))

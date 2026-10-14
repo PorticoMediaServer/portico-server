@@ -149,6 +149,7 @@ export function LibraryScreen() {
   const sort = useShuffled(chosenSort);
   const browse = useBrowseCollection({libraryId, pivot, predicates, sort, enabled: engine && !!capabilities, pageSize: capabilities ? Math.min(BROWSE_PAGE, capabilities.queryLimits.maximumLimit) : undefined});
   const browseTotal = useSyncExternalStore(browse.collection?.subscribe ?? noSubscribe, () => browse.collection?.getSnapshot().total);
+  const browseTotalIsLowerBound = useSyncExternalStore(browse.collection?.subscribe ?? noSubscribe, () => browse.collection?.getSnapshot().totalIsLowerBound ?? false);
   useSelectionRefresh(engine ? browse.refresh : refresh);
   // PERF-S09: the engine grid names its whole set (browse query + total) so
   // Select-all with nothing deselected bulk-acts in one fenced job.
@@ -257,7 +258,7 @@ export function LibraryScreen() {
       <>
       {engine && capabilities ? (
         <Inset>
-          <BrowseBar libraryId={libraryId} libraryKind={library?.kind ?? ''} pivot={pivot} capabilities={capabilities} predicates={chosenPredicates} onChange={next => { filtersFromMemory.current = false; memory.rememberTab(libraryId, tab); memory.rememberFilters(libraryId, tab, next); setSearch({filters: encodePredicates(next)}); }} sort={sort} onSort={chooseSort} defaultSort={tabSort} total={browseTotal} onSave={active.fixedFilter || groups ? undefined : () => setSavingView(true)} />
+          <BrowseBar libraryId={libraryId} libraryKind={library?.kind ?? ''} pivot={pivot} capabilities={capabilities} predicates={chosenPredicates} onChange={next => { filtersFromMemory.current = false; memory.rememberTab(libraryId, tab); memory.rememberFilters(libraryId, tab, next); setSearch({filters: encodePredicates(next)}); }} sort={sort} onSort={chooseSort} defaultSort={tabSort} total={browseTotal} totalIsLowerBound={browseTotalIsLowerBound} onSave={active.fixedFilter || groups ? undefined : () => setSavingView(true)} />
           <SaveViewDialog open={savingView} onClose={() => setSavingView(false)} onSave={async name => { const service = new PersonalSavedService(api, viewerScope(session, api), () => Promise.resolve(crypto.randomUUID())); try { await service.select({view: 'views'}); await service.mutate({action: 'create', kind: 'view', name, definition: {libraryId, pivot: pivot!, query: predicates.length ? {all: predicates} : null, sort: [chosenSort], presentation: view}}); } finally { service.dispose?.(); } }} />
         </Inset>
       ) : null}

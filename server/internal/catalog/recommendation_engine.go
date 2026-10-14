@@ -513,6 +513,15 @@ func (s *Service) homeEngineEntries(profile string, ids []string) ([]ContentEntr
 		artwork[target.ID] = art.PosterURL
 	}
 
+	// Only a container without its own artwork borrows a child's poster; the
+	// walk below can read a whole season's or show's members to find one.
+	bare := make([]string, 0, len(containerIDs))
+	for _, id := range containerIDs {
+		if artwork[id] == "" {
+			bare = append(bare, id)
+		}
+	}
+	containerIDs = bare
 	if len(containerIDs) > 0 {
 		clause, args := ItemRestrictionSQL("i.id", s.recRestrictions)
 		// Each container's first qualifying child (lowest id, so scan order)

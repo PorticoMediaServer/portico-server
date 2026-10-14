@@ -13,6 +13,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -43,6 +44,7 @@ type routeResult struct {
 	P50MS         float64 `json:"p50Ms"`
 	P95MS         float64 `json:"p95Ms"`
 	MaxStatements uint64  `json:"maxStatements"`
+	MaxVMSteps    int64   `json:"maxVmSteps,omitempty"`
 	Error         string  `json:"error,omitempty"`
 	RSSKB         int64   `json:"rssKb"`
 }
@@ -72,7 +74,17 @@ func run() (runErr error) {
 	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
 	resumeRemoval := flag.Bool("resume-removal", false, "finish removal of the already retired synthetic Movies library")
 	focus := flag.Int("focus-samples", 0, "repeat main browse and typing reads before write scenarios")
+	only := flag.String("only", "", "measure only the routes whose name matches this regular expression")
+	skipClasses := flag.Bool("skip-class-build", false, "reuse the restricted visibility classes already published in a reused fixture")
 	flag.Parse()
+	if *only != "" {
+		pattern, err := regexp.Compile(*only)
+		if err != nil {
+			return fmt.Errorf("only: %w", err)
+		}
+		routeFilter = pattern
+	}
+	profileRoutes = *profile
 	focusedSamples = *focus
 	if focusedSamples < 0 || focusedSamples > 20 {
 		return errors.New("focus-samples must be 0..20")
@@ -179,11 +191,14 @@ func run() (runErr error) {
 		return os.WriteFile(filepath.Join(abs, "removal-report.json"), append(raw, '\n'), 0600)
 	}
 	if *exercise || *matrixOnly || *scenariosOnly {
-		var rows int
+		var rows, dirty int
 		if err = db.QueryRow(`SELECT count(*) FROM catalog_browse_rows`).Scan(&rows); err != nil {
 			return err
 		}
-		if rows == 0 {
+		if err = db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&dirty); err != nil {
+			return err
+		}
+		if rows == 0 || dirty > 0 {
 			rr, err := exerciseDrain(db, s, "derive-empty")
 			r.Routes = append(r.Routes, rr)
 			if err != nil {
@@ -234,6 +249,9 @@ func run() (runErr error) {
 	buildStart := time.Now()
 	dbwork.WriteGate().ResetPeak()
 	for _, library := range libraries {
+		if *skipClasses {
+			break
+		}
 		if err = s.RebuildVisibilityClass(context.Background(), library, viewers[1].v.EffectiveRestrictions()); err != nil {
 			return fmt.Errorf("build %s visibility class: %w", library, err)
 		}
@@ -326,6 +344,9 @@ func run() (runErr error) {
 		}
 	}
 	for _, c := range cases {
+		if !routeSelected(c.name) {
+			continue
+		}
 		if *explain != "" && strings.Contains(c.name, *explain) {
 			explainRoute(db, c.name, c.read, s)
 		}
@@ -334,11 +355,13 @@ func run() (runErr error) {
 		var durations []float64
 		for i := 0; i < *samples; i++ {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+			ctx, cost := dbwork.Measure(ctx)
 			before := dbwork.Reads().Statements
 			start := time.Now()
 			e := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return c.read(catalog.New(db).WithContext(ctx)) })
 			elapsed := float64(time.Since(start)) / float64(time.Millisecond)
 			cancel()
+			rr.MaxVMSteps = max(rr.MaxVMSteps, cost().VMSteps)
 			rr.MaxStatements = max(rr.MaxStatements, dbwork.Reads().Statements-before)
 			durations = append(durations, elapsed)
 			if e != nil {
@@ -431,3 +454,12 @@ func explainRoute(db *sql.DB, name string, read func(*catalog.Service) error, s 
 		}
 	}
 }
+
+// routeFilter limits a run to the named routes; profileRoutes prints each
+// measured route's costliest statement shapes.
+var (
+	routeFilter   *regexp.Regexp
+	profileRoutes bool
+)
+
+func routeSelected(name string) bool { return routeFilter == nil || routeFilter.MatchString(name) }

@@ -49,6 +49,17 @@ type rows struct {
 	reuseStmt bool // If true, Close() resets instead of finalizing
 }
 
+// VMSteps reports and resets the virtual-machine steps this statement has
+// run since the last report, through SQLite's public
+// SQLITE_STMTSTATUS_VM_STEP diagnostic. It measures how much work a read did,
+// independently of the machine's speed.
+func (r *rows) VMSteps() int64 {
+	if r.pstmt == 0 {
+		return 0
+	}
+	return int64(sqlite3.Xsqlite3_stmt_status(r.c.tls, r.pstmt, sqlite3.SQLITE_STMTSTATUS_VM_STEP, 1))
+}
+
 func newRows(c *conn, pstmt uintptr, allocs *[]uintptr, empty bool, ctx context.Context) (r *rows, err error) {
 	var a []uintptr
 	if allocs != nil {

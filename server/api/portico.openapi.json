@@ -2770,11 +2770,15 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "totalIsLowerBound": {
+                "type": "boolean"
               }
             },
             "required": [
               "start",
               "total",
+              "totalIsLowerBound",
               "revision",
               "hasMore",
               "nextCursor"
@@ -62046,11 +62050,15 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "totalIsLowerBound": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
                   "start",
                   "total",
+                  "totalIsLowerBound",
                   "revision",
                   "hasMore",
                   "nextCursor"
@@ -219139,11 +219147,15 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "totalIsLowerBound": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
                         "start",
                         "total",
+                        "totalIsLowerBound",
                         "revision",
                         "hasMore",
                         "nextCursor"
@@ -264149,11 +264161,15 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "totalIsLowerBound": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
                             "start",
                             "total",
+                            "totalIsLowerBound",
                             "revision",
                             "hasMore",
                             "nextCursor"

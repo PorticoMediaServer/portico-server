@@ -274,3 +274,24 @@ test('a container scope keeps the full sort set and adds its membership to filte
  assert.deepEqual(body.sort,[{field:'year',direction:'desc'}]);
  assert.throws(()=>browseWithin(parsed,'person-titles','person'),BrowseQueryError);
 });
+
+test('a total counted only to the threshold is open-ended until the last page', () => {
+  const entries = (start: number, n: number) => Array.from({length: n}, (_, i) => ({id: `m${start + i}`, kind: 'movie', title: `Film ${start + i}`, navigation: {view: 'item', entityId: `m${start + i}`}}));
+  const first = parseBrowseResult(resultPayload({entries: entries(0, 2), pageInfo: {start: 0, total: 10000, totalIsLowerBound: true, revision: 'browse_abc', hasMore: true, nextCursor: 'c'}, positionIndex: []}));
+  assert.equal(first.pageInfo.total, 10000);
+  assert.equal(first.pageInfo.totalIsLowerBound, true);
+  assert.equal(first.pageInfo.hasMore, true);
+  // A range read past the threshold: more follows, so the total reaches a page beyond it.
+  const deep = parseBrowseResult(resultPayload({entries: entries(10040, 2), pageInfo: {start: 10040, total: 10000, totalIsLowerBound: true, revision: 'browse_abc', hasMore: true, nextCursor: ''}, positionIndex: []}));
+  assert.equal(deep.pageInfo.total, 10044);
+  assert.equal(deep.pageInfo.hasMore, true);
+  // The last page knows the end and the exact count.
+  const last = parseBrowseResult(resultPayload({entries: entries(12000, 2), pageInfo: {start: 12000, total: 10000, totalIsLowerBound: true, revision: 'browse_abc', hasMore: false, nextCursor: ''}, positionIndex: []}));
+  assert.equal(last.pageInfo.total, 12002);
+  assert.equal(last.pageInfo.totalIsLowerBound, false);
+  assert.equal(last.pageInfo.hasMore, false);
+  // An exact total is unchanged.
+  const exact = parseBrowseResult(resultPayload());
+  assert.equal(exact.pageInfo.totalIsLowerBound, false);
+  assert.equal(exact.pageInfo.total, 3);
+});

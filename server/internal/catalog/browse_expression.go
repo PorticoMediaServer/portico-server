@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/facettext"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/sorttext"
@@ -300,7 +301,20 @@ type browseCompiler struct {
 	profile      string
 	args         []any
 	groupSearch  bool
+	// count, when set, lets the compiler ask how many member items a value
+	// matches before choosing to select them from the value side.
+	count func(query string, args ...any) (int, error)
+	// ids reads the entity ids such a selection names.
+	ids func(query string, args ...any) ([]int64, error)
+	// itemPivot says every row of the pivot is a playable item, whose only
+	// membership is itself.
+	itemPivot bool
 }
+
+// drivenMaximum is the most matching member items a value-side selection
+// gathers. A broader value is tested on each title instead, where a container
+// stops at its first matching member.
+const drivenMaximum = 20000
 
 func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
 	previous := c.groupSearch
@@ -655,6 +669,11 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 	if field.ID == "genre" {
 		return c.genreExists(condition)
 	}
+	if source, ok := drivenMemberSource(field); ok && c.count != nil && c.ids != nil {
+		if clause, driven, err := c.drivenExists(field, source, condition); driven || err != nil {
+			return clause, err
+		}
+	}
 	prefix := "EXISTS(SELECT 1 FROM catalog_browse_memberships bei " + field.Join + " WHERE bei.entity_id=e.entity_id AND "
 	if field.ID == "personal-member" {
 		prefix = "e.entity_id IN(SELECT bei.entity_id FROM personal_items pi CROSS JOIN catalog_browse_memberships bei ON bei.item_id=pi.item_id WHERE pi.profile_id=? AND "
@@ -948,4 +967,120 @@ func (c *browseCompiler) genreExists(condition func() (string, error)) (string, 
  UNION SELECT bei.entity_id,bei.item_id FROM owners CROSS JOIN catalog_episodes ep ON ep.show_id=owners.entity_id
  CROSS JOIN catalog_browse_memberships bei ON bei.item_id=ep.entity_id
  ) member WHERE (` + restriction + `))`, nil
+}
+
+// drivenSource enumerates a field's member items from the value side: a small
+// vocabulary (artists, albums, books, attribute terms) or an ordered index
+// (provider ratings). item is the member item it yields.
+type drivenSource struct {
+	from, scope, item string
+	// members, when set, is the membership join condition over bei in place
+	// of bei.item_id=item.
+	members string
+	// termKey is set for attribute fields: a term's key is its values' lower
+	// case trimmed text, which folds the same as the values, so a text
+	// condition is first tested once per term.
+	termKey bool
+}
+
+const attributeJoinPrefix = `JOIN catalog_item_attribute_edges ca ON ca.item_id=bei.item_id JOIN catalog_attribute_terms ca_term ON ca_term.id=ca.term_id AND ca_term.field_id=(SELECT id FROM catalog_attribute_fields WHERE field='`
+
+// drivenMemberSource names the value-side enumeration for fields that have
+// one. A predicate tested once per title would otherwise walk every title of
+// the pivot (and every member of a container) to find the few that match.
+func drivenMemberSource(field browseField) (drivenSource, bool) {
+	if field.Profile != 0 {
+		return drivenSource{}, false
+	}
+	switch field.ID {
+	case "artist":
+		// Credited artists are artist entities of the song's library.
+		return drivenSource{from: `catalog_entities art INDEXED BY catalog_entities_title CROSS JOIN catalog_song_artists sar ON sar.artist_id=art.id`,
+			scope: `art.library_id IN(SELECT id FROM catalog_libraries) AND art.kind=` + strconv.Itoa(int(compactcatalog.Artist)), item: "sar.song_id"}, true
+	case "album":
+		return drivenSource{from: `catalog_entities alb INDEXED BY catalog_entities_title CROSS JOIN catalog_songs sng INDEXED BY catalog_songs_album_order ON sng.album_id=alb.id`,
+			scope: `alb.library_id IN(SELECT id FROM catalog_libraries) AND alb.kind=` + strconv.Itoa(int(compactcatalog.Album)), item: "sng.entity_id"}, true
+	case "author", "narrator":
+		return drivenSource{from: `catalog_books bok CROSS JOIN catalog_book_files bfl ON bfl.book_id=bok.entity_id`, scope: "1", item: "bfl.entity_id"}, true
+	case "person":
+		// A credit names an item or its container (a show's cast), so the
+		// credited entity is either the member item or the title itself.
+		return drivenSource{from: `catalog_people person CROSS JOIN catalog_credits credit INDEXED BY catalog_credits_person ON credit.person_id=person.id`, scope: "1", item: "credit.entity_id",
+			members: `(bei.item_id=credit.entity_id OR bei.entity_id=credit.entity_id)`}, true
+	case "communityRating", "criticRating":
+		providers := "'tmdb','imdb','musicbrainz','audible'"
+		if field.ID == "criticRating" {
+			providers = "'metacritic','rottentomatoes'"
+		}
+		return drivenSource{from: `metadata_ratings mr`, scope: `mr.provider IN(` + providers + `)`, item: "mr.item_id"}, true
+	}
+	if rest, ok := strings.CutPrefix(field.Join, attributeJoinPrefix); ok && strings.HasSuffix(rest, "')") && field.Value == "ca.source_value" {
+		name := strings.TrimSuffix(rest, "')")
+		return drivenSource{from: `catalog_attribute_terms ca_term CROSS JOIN catalog_item_attribute_edges ca INDEXED BY catalog_item_attribute_edges_term ON ca.term_id=ca_term.id`,
+			scope: `ca_term.field_id=(SELECT id FROM catalog_attribute_fields WHERE field='` + name + `')`, item: "ca.item_id", termKey: foldBrowseText(field)}, true
+	}
+	return drivenSource{}, false
+}
+
+// drivenExists selects the matching member items once and maps them to their
+// browse entities through the membership index. The viewer's restriction
+// still applies to the exact member item that supplied the match. A value
+// matching more than drivenMaximum member items, and presence, which matches
+// nearly every title, are left to the per-title test (driven=false).
+func (c *browseCompiler) drivenExists(field browseField, source drivenSource, condition func() (string, error)) (clause string, driven bool, err error) {
+	before := len(c.args)
+	body, err := condition()
+	if err != nil {
+		return "", false, err
+	}
+	if strings.HasSuffix(body, " IS NOT NULL") {
+		c.args = c.args[:before]
+		return "", false, nil
+	}
+	where := source.scope
+	if source.termKey && strings.Contains(body, "portico_fold_text(ca.source_value)") {
+		// The same condition over the term's key, with its own copy of the
+		// operands, runs once per term before the term's edges are read.
+		operands := append([]any(nil), c.args[before:]...)
+		c.args = append(c.args[:before], append(operands, operands...)...)
+		where += " AND " + strings.ReplaceAll(body, "ca.source_value", "ca_term.value_key")
+	}
+	matching := `SELECT ` + source.item + ` AS item FROM ` + source.from + ` WHERE ` + where + ` AND (` + body + `)`
+	found, err := c.count(`SELECT count(*) FROM (`+matching+` LIMIT `+strconv.Itoa(drivenMaximum+1)+`)`, c.args[before:]...)
+	if err != nil {
+		return "", false, err
+	}
+	if found > drivenMaximum {
+		c.args = c.args[:before]
+		return "", false, nil
+	}
+	if found == 0 {
+		// No member item has the value: no title matches.
+		c.args = c.args[:before]
+		return "0", true, nil
+	}
+	restriction, args := ItemRestrictionSQL("bei.item_id", c.restrictions)
+	members := ``
+	if c.itemPivot {
+		// A playable item's only membership is itself.
+		members = ` AND bei.source=0`
+	}
+	// The few matching titles are named in the clause itself, so the count
+	// and the page start from them rather than test every title of the pivot.
+	join := `catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=` + source.item
+	if source.members != "" {
+		join = `catalog_browse_memberships bei ON ` + source.members
+	}
+	ids, err := c.ids(`SELECT DISTINCT bei.entity_id FROM `+source.from+` CROSS JOIN `+join+members+
+		` WHERE `+where+` AND (`+body+`) AND (`+restriction+`)`, append(append([]any{}, c.args[before:]...), args...)...)
+	if err != nil {
+		return "", false, err
+	}
+	c.args = c.args[:before]
+	if len(ids) == 0 {
+		return "0", true, nil
+	}
+	raw, _ := json.Marshal(ids)
+	c.args = append(c.args, string(raw))
+	return `e.entity_id IN(SELECT value FROM json_each(?))`, true, nil
 }

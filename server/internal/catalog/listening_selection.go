@@ -232,7 +232,9 @@ func (s *Service) ListeningSelection(r ContentRequest, t ListeningTarget, mode, 
 		candidates := []listeningCandidate{}
 		params := append([]any{t.LibraryID}, args...)
 		var upper int64
-		if e = s.read().QueryRow(`SELECT COALESCE(max(id),0) FROM catalog_entities WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)`, t.LibraryID).Scan(&upper); e != nil {
+		// The library's newest entity: the greatest of each kind's newest, each
+		// one seek on (library_id,kind,id). A plain max(id) read every entity.
+		if e = s.read().QueryRow(`SELECT COALESCE(max((SELECT max(x.id) FROM catalog_entities x WHERE x.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND x.kind=k.id)),0) FROM catalog_kinds k`, t.LibraryID).Scan(&upper); e != nil {
 			return out, e
 		}
 		hash := sha256.Sum256([]byte(seed))

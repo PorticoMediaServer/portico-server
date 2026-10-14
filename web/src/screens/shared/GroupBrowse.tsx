@@ -30,7 +30,7 @@ export function GroupBar({group, total}: {group: GroupBrowse; /** The page's own
   if (!spec || !capabilities) return null;
   // The page's own order cannot be kept through a filter (the server orders what it filters), so it is offered only while nothing is filtered.
   const ownOrder = spec.own && !spec.always && !group.filtered ? {label: t('web.group.ownOrder', {group: spec.own}), selected: group.ownSelected, onSelect: group.ownOrder} : undefined;
-  return <BrowseBar libraryId={spec.libraryId} libraryKind={spec.libraryKind} pivot={spec.pivot} capabilities={capabilities} predicates={group.predicates} onChange={group.setPredicates} sort={group.sort} onSort={group.setSort} defaultSort={group.opening} ownOrder={ownOrder} total={group.total ?? total} />;
+  return <BrowseBar libraryId={spec.libraryId} libraryKind={spec.libraryKind} pivot={spec.pivot} capabilities={capabilities} predicates={group.predicates} onChange={group.setPredicates} sort={group.sort} onSort={group.setSort} defaultSort={group.opening} ownOrder={ownOrder} total={group.total ?? total} totalIsLowerBound={group.total !== undefined && group.totalIsLowerBound} />;
 }
 
 /** A group's sorted or filtered titles as cards: the library's own windowed grid, kept to the group. */

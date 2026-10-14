@@ -38,12 +38,16 @@ func logMeasurement(r routeResult) { raw, _ := json.Marshal(r); fmt.Fprintln(os.
 func exerciseRead(db *sql.DB, s *catalog.Service, name string, samples int, read func(context.Context, *catalog.Service) error) (routeResult, error) {
 	r := routeResult{Route: name}
 	durations := make([]float64, 0, samples)
+	dbwork.ProfileStatements(profileRoutes)
+	defer printRouteProfile()
 	for i := 0; i < samples; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cost := dbwork.Measure(ctx)
 		before := dbwork.Reads().Statements
 		start := time.Now()
 		err := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error { return read(ctx, s.WithContext(ctx)) })
 		cancel()
+		r.MaxVMSteps = max(r.MaxVMSteps, cost().VMSteps)
 		durations = append(durations, float64(time.Since(start))/float64(time.Millisecond))
 		r.RSSKB = max(r.RSSKB, processRSSKB())
 		r.MaxStatements = max(r.MaxStatements, dbwork.Reads().Statements-before)
@@ -184,6 +188,9 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes bool, planFilter string) ([]routeResult, error) {
 	var results []routeResult
 	add := func(name string, read func(context.Context, *catalog.Service) error) error {
+		if !routeSelected(name) {
+			return nil
+		}
 		if planFilter != "" && strings.Contains(name, planFilter) {
 			explainRoute(db, name, func(service *catalog.Service) error { return read(service.Context(), service) }, s)
 		}
@@ -269,25 +276,48 @@ func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes
 			return results, err
 		}
 	}
-	if err := add("missing", func(ctx context.Context, s *catalog.Service) error {
-		_, err := s.MissingTitles(ctx, "", "", 40)
-		return err
-	}); err != nil {
-		return results, err
+	// Non-relevance search sorts rank every match of the typed words.
+	for _, sortID := range []string{"title", "releaseYear", "dateAdded"} {
+		for _, query := range []string{"Ti", "Title", "Title 000000"} {
+			sortID, query := sortID, query
+			if err := add("search-sort/"+sortID+"/"+query, func(ctx context.Context, s *catalog.Service) error {
+				page, err := s.Search(ctx, catalog.SearchRequest{Groups: []string{"movies", "shows", "episodes", "artists", "albums", "songs"}, Viewer: v, Profile: "viewer", ViewerFence: "scale-open", Libraries: v.Libraries, Q: query, Sort: sortID, Limit: 12})
+				if err != nil {
+					return err
+				}
+				for _, group := range page.Groups {
+					if group.ErrorCode != "" {
+						return fmt.Errorf("search group %s: %v", group.ID, group.ErrorCode)
+					}
+				}
+				return nil
+			}); err != nil {
+				return results, err
+			}
+		}
 	}
-	m := metadata.New(db, "")
-	// Attention owns its own read snapshot; do not nest it in the measured one.
-	start := time.Now()
-	page, err := m.Attention(context.Background(), "", "", 50)
-	if err != nil {
-		return results, err
+	var rr routeResult
+	if routeSelected("missing") || routeSelected("needs-attention") {
+		if err := add("missing", func(ctx context.Context, s *catalog.Service) error {
+			_, err := s.MissingTitles(ctx, "", "", 40)
+			return err
+		}); err != nil {
+			return results, err
+		}
+		m := metadata.New(db, "")
+		// Attention owns its own read snapshot; do not nest it in the measured one.
+		start := time.Now()
+		page, err := m.Attention(context.Background(), "", "", 50)
+		if err != nil {
+			return results, err
+		}
+		rr = routeResult{Route: "needs-attention", Samples: 1, P50MS: float64(time.Since(start)) / float64(time.Millisecond), RSSKB: processRSSKB()}
+		rr.P95MS = rr.P50MS
+		logMeasurement(rr)
+		results = append(results, rr)
+		fmt.Fprintf(os.Stderr, "ATTENTION entries=%d total=%d\n", len(page.Entries), page.Total)
 	}
-	rr := routeResult{Route: "needs-attention", Samples: 1, P50MS: float64(time.Since(start)) / float64(time.Millisecond), RSSKB: processRSSKB()}
-	rr.P95MS = rr.P50MS
-	logMeasurement(rr)
-	results = append(results, rr)
-	fmt.Fprintf(os.Stderr, "ATTENTION entries=%d total=%d\n", len(page.Entries), page.Total)
-	if writes && focusedSamples > 0 {
+	if focusedSamples > 0 {
 		focused, err := focusedReads(db, s)
 		results = append(results, focused...)
 		if err != nil {
@@ -300,7 +330,7 @@ func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes
 	if _, err := db.Exec(`UPDATE catalog_derivations SET version=version-1 WHERE domain IN(17,18)`); err != nil {
 		return results, err
 	}
-	rr, err = exerciseDrain(db, s, "derive-version-bump")
+	rr, err := exerciseDrain(db, s, "derive-version-bump")
 	results = append(results, rr)
 	if err != nil {
 		return results, err
@@ -634,4 +664,17 @@ func writerChangeCount(ctx context.Context, db *sql.DB) (int64, error) {
 	var count int64
 	err := dbwork.WithWriteTx(ctx, db, dbwork.ClassMaintenance, func(tx *sql.Tx) error { return tx.QueryRowContext(ctx, `SELECT total_changes()`).Scan(&count) })
 	return count, err
+}
+
+func printRouteProfile() {
+	if !profileRoutes {
+		return
+	}
+	for i, entry := range dbwork.StatementProfile() {
+		if i == 3 {
+			break
+		}
+		fmt.Fprintf(os.Stderr, "  %8.1f ms %5d× %s\n", entry.Millis(), entry.Count, entry.Shape)
+	}
+	dbwork.ProfileStatements(false)
 }

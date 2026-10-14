@@ -46,10 +46,17 @@ func scanBrowseRows(rows *sql.Rows) ([]browseRow, error) {
 
 // pageShape is everything browseSelect resolved that choosing a page needs.
 type pageShape struct {
-	request    BrowseRequest
-	sorts      []BrowseSortSelection
-	where      string
-	args       []any
+	request BrowseRequest
+	sorts   []BrowseSortSelection
+	where   string
+	args    []any
+	// unrestricted is where without the viewer's restriction: a published
+	// visibility class already selected those rows.
+	unrestricted     string
+	unrestrictedArgs []any
+	// live is the viewer's restriction alone, over e.
+	live       string
+	liveArgs   []any
 	order      string
 	orderArgs  []any
 	start      int
@@ -180,7 +187,7 @@ func (s *Service) ascendingFrom(p pageShape, ordering, low, count int) ([]browse
 	}
 	definition := sortForOrdering(ordering)
 	if p.summary.classKey != "" {
-		return s.classBoundedRows(p, definition, false, true, value, entity, count, low-before)
+		return s.classPositionRows(p, definition, value, entity, count, low-before)
 	}
 	query, args := browseBoundedSQL(browseRowColumns, "catalog_browse_rows e JOIN catalog_entities ce ON ce.id=e.entity_id", p.where, p.args, definition.Expression, "e.entity_id", false, true, value, entity, count, low-before)
 	return s.queryBrowseRows(query, args...)
@@ -248,13 +255,35 @@ func (s *Service) classKeysetPage(p pageShape, definition browseSort, desc bool,
 }
 
 func (s *Service) classBoundedRows(p pageShape, definition browseSort, desc, inclusive bool, key any, anchor int64, limit, offset int) ([]browseRow, error) {
-	restriction, restrictionArgs := EntityRestrictionSQL("e.entity_id", p.request.Restrictions)
+	// The class is the restricted viewer's row set and positions. The live
+	// restriction is checked on the selected rows only: for a container it
+	// walks the members, and testing every row skipped inside a block cost
+	// as much as the block. A row restricted since the class published is
+	// left out (classPositionRows refills a positional page).
 	args := []any{p.summary.classID, p.summary.generation, p.request.Library, p.kind}
-	args = append(args, restrictionArgs...)
-	where := `v.class_id=? AND v.generation=? AND v.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND v.kind=? AND ` + restriction
+	where := `v.class_id=? AND v.generation=? AND v.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND v.kind=?`
 	from := `compact_visibility_rows v CROSS JOIN catalog_browse_rows e ON e.entity_id=v.entity_id CROSS JOIN catalog_entities ce ON ce.id=e.entity_id`
 	query, args := browseBoundedSQL(browseRowColumns, from, where, args, definition.ClassKey, "v.entity_id", desc, inclusive, key, anchor, limit, offset)
+	live, liveArgs := EntityRestrictionSQL("selected.entity_id", p.request.Restrictions)
+	if live != "1" {
+		query = `SELECT * FROM (` + query + `) selected WHERE ` + live
+		args = append(args, liveArgs...)
+	}
 	return s.queryBrowseRows(query, args...)
+}
+
+// classPositionRows reads count rows of a class ordering from inside a block.
+// The class holds them all, so a short read means newer restrictions dropped
+// rows; the page is refilled from the rows after it.
+func (s *Service) classPositionRows(p pageShape, definition browseSort, key any, anchor int64, count, offset int) ([]browseRow, error) {
+	rows, err := s.classBoundedRows(p, definition, false, true, key, anchor, count, offset)
+	for want := count * 2; err == nil && len(rows) < count && want <= count*16; want *= 2 {
+		rows, err = s.classBoundedRows(p, definition, false, true, key, anchor, want, offset)
+	}
+	if len(rows) > count {
+		rows = rows[:count]
+	}
+	return rows, err
 }
 
 // asciiLower folds ASCII letters only, as SQLite's lower() and NOCASE do, so a

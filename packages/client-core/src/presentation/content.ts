@@ -41,9 +41,10 @@ export function iconFor(kind: ContentEntryKind | string): IconId {
 }
 
 /** Secondary caption line for a card. */
-export function captionFor(entry: Pick<ContentEntry, 'kind' | 'subtitle' | 'seasonNumber' | 'episodeNumber' | 'count'>): string | undefined {
+export function captionFor(entry: Pick<ContentEntry, 'kind' | 'subtitle' | 'seasonNumber' | 'episodeNumber' | 'count'> & {countIsLowerBound?: boolean}): string | undefined {
   if (entry.subtitle) return entry.subtitle;
   if (entry.kind === 'episode' && entry.seasonNumber != null && entry.episodeNumber != null) return `S${entry.seasonNumber} · E${entry.episodeNumber}`;
+  if (entry.count != null && entry.countIsLowerBound) return `${entry.count.toLocaleString('en-US')}+ items`;
   if (entry.count != null) return `${entry.count} ${entry.count === 1 ? 'item' : 'items'}`;
   return undefined;
 }

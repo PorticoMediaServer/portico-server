@@ -41,11 +41,15 @@ type BrowsePositionAnchor struct {
 	Index int    `json:"index"`
 }
 type BrowsePageInfo struct {
-	Start      int    `json:"start"`
-	Total      int    `json:"total"`
-	Revision   string `json:"revision"`
-	HasMore    bool   `json:"hasMore"`
-	NextCursor string `json:"nextCursor"`
+	Start int `json:"start"`
+	Total int `json:"total"`
+	// TotalIsLowerBound is set when a posted filter matched more than
+	// browseTotalThreshold titles: Total is then the threshold, a lower
+	// bound, and pages continue by their cursors.
+	TotalIsLowerBound bool   `json:"totalIsLowerBound"`
+	Revision          string `json:"revision"`
+	HasMore           bool   `json:"hasMore"`
+	NextCursor        string `json:"nextCursor"`
 }
 
 type BrowseApplied struct {
@@ -426,18 +430,20 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
-	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions}
+	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot)}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
 	}
 	where += " AND " + clause
 	args = append(args, compiler.args...)
+	unrestricted, unrestrictedArgs := where, append([]any{}, args...)
 	// The viewer's content restriction is the last clause, after the authorized
 	// library scope and the client's own query, so neither can widen it.
-	if restriction, restrictionArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions); restriction != "1" {
-		where += " AND " + restriction
-		args = append(args, restrictionArgs...)
+	live, liveArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions)
+	if live != "1" {
+		where += " AND " + live
+		args = append(args, liveArgs...)
 	}
 	order, orderArgs := browseOrderSQL(request.Profile, sorts)
 
@@ -500,15 +506,21 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		}
 	}
 	if !counted {
+		// A posted filter counts at most one match past the threshold; the
+		// count, the cache and the cursor carry that capped number.
 		if cached, hit := s.cachedBrowseTotal(revision); hit {
 			total = cached
-		} else if err = s.read().QueryRow(`SELECT count(*) FROM catalog_browse_rows e WHERE `+where, args...).Scan(&total); err != nil {
+		} else if err = s.read().QueryRow(`SELECT count(*) FROM (SELECT 1 FROM catalog_browse_rows e WHERE `+where+` LIMIT `+strconv.Itoa(browseTotalThreshold+1)+`)`, args...).Scan(&total); err != nil {
 			return out, nil, err
 		} else {
 			s.storeBrowseTotal(revision, total)
 		}
 	}
-	out.PageInfo.Total = total
+	lowerBound := request.Query != nil && !summary.exact && total > browseTotalThreshold
+	out.PageInfo.Total, out.PageInfo.TotalIsLowerBound = total, lowerBound
+	if lowerBound {
+		out.PageInfo.Total = browseTotalThreshold
+	}
 	if request.Range != nil {
 		if request.Range.Start < 0 || len(request.Range.Revision) > 128 || len(request.Range.AnchorID) > 256 {
 			return out, nil, browseIssue("range", "range identity is invalid")
@@ -559,7 +571,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 		}
 	}
-	shape := pageShape{request: request, sorts: sorts, where: where, args: args, order: order, orderArgs: orderArgs,
+	shape := pageShape{request: request, sorts: sorts, where: where, args: args, unrestricted: unrestricted, unrestrictedArgs: unrestrictedArgs, live: live, liveArgs: liveArgs, order: order, orderArgs: orderArgs,
 		limit: request.Limit, total: total, summary: summary, seekKeys: seekKeys, seekAnchor: seekAnchor}
 	if members := entityKindMembers(pivot); len(members) == 1 {
 		parsed, parseErr := compactcatalog.ParseKind(members[0])
@@ -594,7 +606,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 		}
 	}
 
-	if start > 0 && start >= total {
+	if start > 0 && start >= total && !lowerBound {
 		start = max(0, total-1)
 	}
 	out.PageInfo.Start = start
@@ -977,4 +989,45 @@ func containerView(kind string) string {
 func browseHasPositionAnchors(field string) bool {
 	definition, ok := browseSortByID(field)
 	return ok && (definition.Ordering >= 0 || field == "personalRating" || field == "lastPlayed" || field == "forYou")
+}
+
+// countRows runs one count(*) query in the read snapshot.
+func (s *Service) countRows(query string, args ...any) (int, error) {
+	var n int
+	err := s.read().QueryRow(query, args...).Scan(&n)
+	return n, err
+}
+
+// entityIDs runs one query of integer ids in the read snapshot.
+func (s *Service) entityIDs(query string, args ...any) ([]int64, error) {
+	rows, err := s.read().Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []int64{}
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}
+
+// playablePivot reports whether every kind of the pivot is a playable item.
+func playablePivot(pivot browsePivot) bool {
+	members := entityKindMembers(pivot)
+	if len(members) == 0 {
+		return false
+	}
+	for _, kind := range members {
+		switch kind {
+		case "movie", "episode", "song", "audiobook_file", "extra": // catalog_kinds.playable
+		default:
+			return false
+		}
+	}
+	return true
 }
