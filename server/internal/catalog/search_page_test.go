@@ -73,7 +73,9 @@ func TestSearchCatalogPageRanksBeforeHydrating(t *testing.T) {
 				r.Sort, r.Direction = sortID, direction
 				want := names.Publics("a", "b", "d", "e", "f")
 				sort.Strings(want)
-				if sortID == "relevance" {
+				// Relevance and title break ties by the internal identity, so a
+				// title page from the title index continues a ranked one.
+				if sortID == "relevance" || sortID == "title" {
 					internal := map[string]int64{}
 					for _, item := range names {
 						internal[item.Public] = item.ID

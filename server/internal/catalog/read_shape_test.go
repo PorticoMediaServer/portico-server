@@ -376,3 +376,65 @@ func TestRestrictedContainerPageChecksOnlyItsRows(t *testing.T) {
 		t.Fatalf("restricted container page took %d steps against the open page's %d", restrictedSteps, openSteps)
 	}
 }
+
+// A broad title-sorted search reads its page from the title index: the same
+// pages as ranking every match, at a cost that does not grow with the matches.
+func TestTitleSortedSearchWalksTheTitleIndex(t *testing.T) {
+	defer func(window int) { titleWalkWindow = window }(titleWalkWindow)
+	search := func(c *catalogtest.Catalog, q, direction string) ([]string, int64) {
+		got := []string{}
+		var steps int64
+		r := SearchRequest{Viewer: Viewer{Profile: "p", Fence: "f", Libraries: []string{"films", "more"}}, Q: q, Group: "movies", Sort: "title", Direction: direction, Limit: 5}
+		for page := 0; page < 3; page++ {
+			var out SearchEnvelope
+			steps += readSteps(t, c, func(s *Service) error {
+				var err error
+				out, err = s.Search(s.Context(), r)
+				return err
+			})
+			for _, entry := range out.Groups[0].Items {
+				got = append(got, entry.ID)
+			}
+			r.Cursor = out.Groups[0].NextCursor
+		}
+		return got, steps
+	}
+	steps := []int64{}
+	for _, n := range []int{100, 400} {
+		c := catalogtest.Open(t)
+		films := c.Library("films", "Films", "movie", "/films")
+		more := c.Library("more", "More", "movie", "/more")
+		for i := 0; i < n; i++ {
+			library, root := films, "/films"
+			if i%3 == 0 {
+				library, root = more, "/more"
+			}
+			c.Movie(library, fmt.Sprintf("%s/h%d.mkv", root, i), fmt.Sprintf("Harbor %03d", i), 2000)
+			// Rare matches sort after every broad one: the walk's window holds
+			// none of them and the search falls back to ranking the matches.
+			if i%5 == 0 {
+				c.Movie(library, fmt.Sprintf("%s/z%d.mkv", root, i), fmt.Sprintf("Zulu Pier %03d", i), 2000)
+			}
+		}
+		c.Drain()
+		c.Exec(`ANALYZE`)
+		for _, q := range []string{"Harbor", "pier"} {
+			for _, direction := range []string{"asc", "desc"} {
+				titleWalkWindow = 1 << 30 // every word is rare: rank the matches
+				ranked, _ := search(c, q, direction)
+				titleWalkWindow = 64
+				walked, n := search(c, q, direction)
+				if fmt.Sprint(ranked) != fmt.Sprint(walked) || len(walked) != 15 && q == "Harbor" {
+					t.Fatalf("%q %s: walked %v, ranked %v", q, direction, walked, ranked)
+				}
+				if q == "Harbor" && direction == "asc" {
+					steps = append(steps, n)
+				}
+			}
+		}
+	}
+	t.Logf("three title-sorted pages of a broad word: %d steps at 100 titles, %d at 400", steps[0], steps[1])
+	if steps[1] > steps[0]*3/2 {
+		t.Fatalf("title-sorted search grew from %d to %d steps", steps[0], steps[1])
+	}
+}
