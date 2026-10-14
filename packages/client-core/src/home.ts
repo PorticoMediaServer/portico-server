@@ -17,9 +17,10 @@ export type HomeSeeAll = Readonly<
  {type:'row';rowId:string} | {type:'saved_view';resourceId:string}
 >;
 export type HomeRow = Readonly<{
-  id: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; explanation?: string; endpoint: string;
+  id: string; viewerFence: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; explanation?: string; endpoint: string;
   /** `for_you` on the personal rows: the layout arranges and hides them together as the row `for_you`. */
   family?: string;
+  deferred?: boolean; children?: readonly HomeRow[]; hero?: HomeHeroRef;
   seeAll?: HomeSeeAll;
   libraryId?: string; privacySensitivity: string; policyState: string;
   relation?: string; provider?: string; evidenceId?: string;
@@ -100,14 +101,18 @@ export function validateHomeSeeAll(value:unknown):HomeSeeAll {
  * missing flag is off, a missing count is 0, and an entry that cannot be read is left out alone.
  */
 export function validateHomeRow(value: unknown): HomeRow {
-  if (!object(value) || !id(value.id)) invalid();
+  return parseHomeRow(value, true);
+}
+
+function parseHomeRow(value: unknown, allowChildren: boolean): HomeRow {
+  if (!object(value) || !id(value.id) || !id(value.viewerFence)) invalid();
   if (!Array.isArray(value.entries) || value.entries.length > 200 || !text(value.nextCursor ?? '', 4096)) invalid();
   const entries = firstOfEach('home', 'entries', keepReadable('home', 'entries', value.entries, entry => validateContentEntry(entry)), entry => entry.id);
   const flag = (name: string) => value[name] === true;
   const amount = (name: string) => (whole(value[name]) ? value[name] as number : 0);
   const required = flag('required');
   const row: Record<string, unknown> = {
-    id: value.id, title: words(value.title, 1024), kind: words(value.kind, 256),
+    id: value.id, viewerFence: value.viewerFence, title: words(value.title, 1024), kind: words(value.kind, 256),
     artworkShape: oneOfOr('home', 'row.artworkShape', value.artworkShape, shapes, 'poster'), endpoint: words(value.endpoint, 256),
     privacySensitivity: words(value.privacySensitivity, 256), policyState: words(value.policyState, 256), priority: amount('priority'),
     // A required row is never hideable, whatever the two flags say together.
@@ -117,6 +122,16 @@ export function validateHomeRow(value: unknown): HomeRow {
     entries: Object.freeze(entries), total: Math.max(amount('total'), entries.length), start: amount('start'), limit: amount('limit'),
     hasMore: flag('hasMore'), nextCursor: value.nextCursor ?? '', revision: revision(value.revision),
   };
+  if (value.deferred === true) row.deferred = true;
+  if (value.children !== undefined) {
+    if (!allowChildren || value.id !== 'for_you' || !Array.isArray(value.children) || value.children.length > 5) invalid();
+    row.children = Object.freeze(value.children.map(child => {
+      const parsed = parseHomeRow(child, false);
+      if (parsed.family !== 'for_you' || !parsed.id.startsWith('for_you:') || parsed.deferred) invalid();
+      return parsed;
+    }));
+  }
+  if (object(value.hero) && id(value.hero.rowId) && id(value.hero.entryId)) row.hero = Object.freeze({rowId: value.hero.rowId, entryId: value.hero.entryId});
   if (whole(value.cacheTtlSeconds)) row.cacheTtlSeconds = value.cacheTtlSeconds;
   const titleText = titleTextOf(value.titleText);
   if (titleText) row.titleText = titleText;
@@ -194,7 +209,7 @@ export function validateHomeDocument(value: unknown): HomeDocument {
   const readable = keepReadable('home', 'rows', value.rows, raw => {
     const row = validateHomeRow(raw);
     // An entry of a kind this app does not know leaves its row in place; a row the server sent empty is kept only when critical.
-    return {row, shown: !layout.hiddenRowIds.includes(row.id) && ((raw as {entries: unknown[]}).entries.length > 0 || row.critical)};
+    return {row, shown: !layout.hiddenRowIds.includes(row.id) && ((raw as {entries: unknown[]}).entries.length > 0 || row.critical || row.deferred)};
   });
   // A Home none of whose rows could be read is refused rather than shown as empty.
   if (!readable.length && value.rows.length) invalid();

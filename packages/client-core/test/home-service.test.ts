@@ -8,7 +8,7 @@ function entry(id: string, extra: Record<string, unknown> = {}) {
 }
 function row(id: string, ids: string[], changes: Record<string, unknown> = {}): any {
   return {
-    id, title: id, kind: 'recent', artworkShape: 'poster', endpoint: '/v1/home/rows/' + id, libraryId: 'movies', privacySensitivity: 'catalog', policyState: 'available', priority: 100,
+    id, title: id, kind: 'recent', artworkShape: 'poster', endpoint: '/v1/home/rows/' + id, libraryId: 'movies', viewerFence: 'fence', privacySensitivity: 'catalog', policyState: 'available', priority: 100,
     required: false, hideable: true, reorderable: true, critical: false, cursorCapable: true,
     entries: ids.map(i => entry(i)), total: 50, start: 0, limit: ids.length, hasMore: true, nextCursor: 'first.' + id, revision: {catalog: 3, viewer: 1}, ...changes,
   };
@@ -129,4 +129,70 @@ test('another viewer or server is never merged into what is shown', () => {
   const shown = validateHomeDocument(document([row('recent', ['m1'])]));
   const other = validateHomeDocument(document([row('recent', ['x'])], {viewerFence: 'someone-else'}));
   assert.equal(mergeHomeDocument(shown, other), other);
+});
+
+test('Home publishes fast shelves while another shelf is still loading', async () => {
+  let finishSlow!: (value: unknown) => void;
+  const slow = new Promise(resolve => { finishSlow = resolve; });
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') return document([row('slow', [], {deferred: true, limit: 12}), row('fast', [], {deferred: true, limit: 12}), row('tail', [], {deferred: true, limit: 12})]);
+    if (path.includes('/rows/slow')) return slow;
+    if (path.includes('/rows/fast')) return row('fast', ['fast-card']);
+    if (path.includes('/rows/tail')) return row('tail', ['tail-card']);
+    throw new Error(path);
+  }));
+  await service.load();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ids(service, 'fast'), 'fast-card');
+  assert.equal(ids(service, 'tail'), 'tail-card');
+  assert.equal(ids(service, 'slow'), '');
+  assert.equal(service.getSnapshot().phase, 'ready');
+  finishSlow(row('slow', ['slow-card']));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(ids(service, 'slow'), 'slow-card');
+  service.dispose();
+});
+
+test('a deferred quiet refresh keeps previous cards and rejects a row from another viewer', async () => {
+  let deferred = false;
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') return document([row('recent', deferred ? [] : ['old'], deferred ? {deferred: true, limit: 12} : {})]);
+    return row('recent', ['private'], {viewerFence: 'another-viewer'});
+  }));
+  await service.load();
+  const before = service.getSnapshot().document!.rows[0];
+  deferred = true;
+  await service.revalidate();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(service.getSnapshot().document!.rows[0], before);
+  assert.equal(ids(service, 'recent'), 'old');
+  assert.equal(service.getSnapshot().error, undefined);
+  service.dispose();
+});
+
+test('the server expands the personal family in its published position', async () => {
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') return document([row('first', [], {deferred: true, limit: 12}), row('for_you', [], {deferred: true, kind: 'family', limit: 12}), row('last', [], {deferred: true, limit: 12})]);
+    if (path.includes('/rows/for_you')) return row('for_you', [], {children: [row('for_you:one', ['one'], {family: 'for_you'}), row('for_you:two', ['two'], {family: 'for_you'})]});
+    if (path.includes('/rows/first')) return row('first', ['first']);
+    return row('last', ['last']);
+  }));
+  await service.load();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(service.getSnapshot().document!.rows.map(row => row.id), ['first', 'for_you:one', 'for_you:two', 'last']);
+  service.dispose();
+});
+
+test('a row timeout releases its queue slot even if its API ignores cancellation', async () => {
+  const never = new Promise(() => {});
+  const service = new HomeService(api(path => {
+    if (path === '/v1/home') return document([row('one', [], {deferred: true, limit: 12}), row('two', [], {deferred: true, limit: 12}), row('ready', [], {deferred: true, limit: 12})]);
+    if (path.includes('/rows/ready')) return row('ready', ['card']);
+    return never;
+  }), {timeoutMs: 20});
+  await service.load();
+  await new Promise(resolve => setTimeout(resolve, 50));
+  assert.equal(ids(service, 'ready'), 'card');
+  assert.equal(service.getSnapshot().error, undefined);
+  service.dispose();
 });

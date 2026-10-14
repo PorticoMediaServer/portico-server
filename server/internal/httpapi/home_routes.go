@@ -302,7 +302,7 @@ func (d Dependencies) serveHomeDocument(w http.ResponseWriter, r *http.Request) 
 			}
 		}
 		var composeErr error
-		out, composeErr = cat.HomeRows(request)
+		out, composeErr = cat.HomeManifest(request)
 		return composeErr
 	})
 	if e != nil {

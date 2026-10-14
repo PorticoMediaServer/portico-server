@@ -10,7 +10,7 @@ function entry(id = 'm1', kind = 'movie') {
 function row(changes: Record<string, unknown> = {}): any {
   return {
     id: 'recent_movies', title: 'Recently Added in Movies', kind: 'recent', artworkShape: 'poster', endpoint: '/v1/home/rows/recent_movies',
-    libraryId: 'movies', privacySensitivity: 'catalog', policyState: 'available', priority: 100, cacheTtlSeconds: 120,
+    libraryId: 'movies', viewerFence: 'fence', privacySensitivity: 'catalog', policyState: 'available', priority: 100, cacheTtlSeconds: 120,
     required: false, hideable: true, reorderable: true, critical: false, cursorCapable: true,
     entries: [entry('m1'), entry('m2')], total: 5, start: 0, limit: 2, hasMore: true, nextCursor: 'opaque.signature',
     revision: {catalog: 3, viewer: 1}, ...changes,

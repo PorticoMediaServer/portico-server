@@ -189,6 +189,16 @@ func run() (runErr error) {
 	for _, entry := range viewers {
 		viewer := entry.v
 		prefix := entry.name + "/"
+		cases = append(cases, struct {
+			name string
+			read func(*catalog.Service) error
+		}{prefix + "home-manifest", func(s *catalog.Service) error {
+			page, err := s.HomeManifest(catalog.HomeRequest{Viewer: viewer, Limit: 12})
+			if err == nil && len(page.Rows) == 0 {
+				return errors.New("empty home manifest")
+			}
+			return err
+		}})
 		cases = append(cases,
 			struct {
 				name string

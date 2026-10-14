@@ -1,5 +1,10 @@
 package catalog
 
+import (
+	"portico.local/apikit"
+	"reflect"
+)
+
 // The destination is one tagged choice. Query uses the same bounded browse
 // expression vocabulary as saved views; its recursive contents are validated
 // by the browse parser, rather than expanding an unbounded reflected schema.
@@ -32,4 +37,36 @@ func (ContentSeeAll) JSONSchema() map[string]any {
 		"query": map[string]any{"type": "object", "additionalProperties": map[string]any{}},
 		"sort":  map[string]any{"type": "array", "maxItems": BrowseMaximumSorts, "items": map[string]any{"type": "object", "required": []string{"field", "direction"}, "properties": map[string]any{"field": map[string]any{"type": "string"}, "direction": map[string]any{"type": "string", "enum": []string{"asc", "desc"}}}}},
 	}}
+}
+
+// A personal family expands once. Its children are ordinary row previews,
+// never another family, so the wire contract has a finite depth and row bound.
+func (HomeRow) JSONSchema() map[string]any {
+	fields := []reflect.StructField{}
+	t := reflect.TypeFor[HomeRow]()
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.IsExported() && field.Name != "Children" {
+			fields = append(fields, field)
+		}
+	}
+	child, err := apikit.Schema(reflect.StructOf(fields))
+	if err != nil {
+		panic(err)
+	}
+	childProperties := child["properties"].(map[string]any)
+	childProperties["entries"].(map[string]any)["maxItems"] = 200
+	childProperties["deferred"] = map[string]any{"type": "boolean", "enum": []bool{false}}
+	properties := map[string]any{}
+	for key, value := range childProperties {
+		properties[key] = value
+	}
+	properties["deferred"] = map[string]any{"type": "boolean"}
+	properties["children"] = map[string]any{"type": "array", "maxItems": recPersonalRows, "items": child}
+	out := map[string]any{}
+	for key, value := range child {
+		out[key] = value
+	}
+	out["properties"] = properties
+	return out
 }
