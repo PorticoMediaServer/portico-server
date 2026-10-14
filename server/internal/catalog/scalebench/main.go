@@ -486,6 +486,26 @@ func exerciseClasses(db *sql.DB, s *catalog.Service) error {
 	}
 	pg13 := 13
 	r := identity.ContentRestrictions{MaximumAge: &pg13, BlockUnrated: true}
+	// The server's maintenance loop keeps copying the log while a build writes.
+	schedule, err := dbwork.NewCheckpointSchedule(ctx, db)
+	if err != nil {
+		return err
+	}
+	stop, done := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				schedule.Tick(ctx)
+			}
+		}
+	}()
+	defer func() { close(stop); <-done }()
 	for _, library := range []string{"movies", "tv", "music"} {
 		var rows int
 		if err := db.QueryRow(`SELECT count(*) FROM catalog_browse_rows WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)`, library).Scan(&rows); err != nil {
