@@ -574,11 +574,20 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	ranked := `SELECT d.entity_id entity_id,d.entity_pid entity_pid,` + order.expr + ` ord FROM ` + candidates + orderJoin + ` WHERE 1` + where
 	prefixTerms, prefix := facettext.IndexedSearchTerms(r.Q)
 	prefix = prefix && sortID == "relevance"
+	var prefixCursor *cursorValue
+	if r.Cursor != "" {
+		if c, err := s.decodeRevisionCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, "relevance_prefix"), rev); err == nil {
+			prefixCursor = &c
+		} else {
+			prefix = false
+		}
+	}
+	prefixLead := ""
 	tie := "entity_pid"
 	if prefix {
 		var prefixArgs []any
 		var prefixRanked string
-		prefixRanked, prefixArgs, err = s.prefixSearchCandidates(ctx, r, int(kind), prefixTerms, where, filterArgs, pageSize+1, s.groupCursorScope(r, g, scopeHash, "relevance_prefix"), rev)
+		prefixRanked, prefixArgs, prefixLead, err = s.prefixSearchCandidates(ctx, r, int(kind), prefixTerms, where, filterArgs, pageSize+1, s.groupCursorScope(r, g, scopeHash, "relevance_prefix"), rev)
 		if errors.Is(err, errPrefixFallback) {
 			prefix = false
 		} else if err != nil {
@@ -605,6 +614,37 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 				return nil
 			}
 		}
+	}
+	if prefixCursor != nil && !prefix {
+		prefix = true
+		prefixLead = prefixTerms[0]
+		if len(prefixCursor.Keys) > 0 {
+			prefixLead = prefixCursor.Keys[0]
+			valid := false
+			for _, word := range prefixTerms {
+				if word == prefixLead {
+					valid = true
+				}
+			}
+			if !valid {
+				return ErrCursor
+			}
+		}
+		// A continuation retains its ranking model even when a growing numeric
+		// dictionary now needs the full-text selector. Its signature still binds
+		// every viewer, library, query and sort field.
+		keyPredicate := `t.terminal=0 AND t.prefix=?`
+		keyArgs := []any{prefixLead}
+		if facettext.NumericSearchTerm(prefixLead) {
+			keyPredicate = `(t.terminal=0 AND t.prefix=? OR t.terminal=1 AND t.prefix>=? AND t.prefix<?)`
+			keyArgs = []any{prefixLead, prefixLead, prefixLead + "\U0010ffff"}
+		}
+		order = searchOrder{expr: `CASE WHEN d.title_fold=? THEN 3 ELSE COALESCE((SELECT max(p.tier) FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity JOIN catalog_search_prefix_terms t ON t.id=p.term_id WHERE p.entity_id=d.entity_id AND (` + keyPredicate + `)),0) END`, numeric: true}
+		order.args = append([]any{facettext.SearchFold(r.Q)}, keyArgs...)
+		args = append(append(append([]any{}, order.args...), match), filterArgs...)
+		ranked = `SELECT d.entity_id entity_id,d.entity_pid entity_pid,` + order.expr + ` ord FROM ` + candidates + ` WHERE 1` + where
+		tie = "entity_id"
+		countGroup = func() error { out.TotalCount, out.TotalCountExact = len(out.Items), false; return nil }
 	}
 	page := `WITH page AS MATERIALIZED (SELECT entity_id,entity_pid,ord FROM(` + ranked + `)`
 	scope := s.groupCursorScope(r, g, scopeHash, sortID)
@@ -728,7 +768,12 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 			}
 			anchorID = strconv.FormatInt(id, 10)
 		}
-		out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: orders[pageSize-1], ID: anchorID, Fingerprint: fingerprint, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
+		out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: orders[pageSize-1], ID: anchorID, Keys: func() []string {
+			if prefix {
+				return []string{prefixLead}
+			}
+			return nil
+		}(), Fingerprint: fingerprint, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
 		if e != nil {
 			return e
 		}

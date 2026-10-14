@@ -93,6 +93,9 @@ func (p pageShape) positional() bool {
 
 // browsePage selects the page's rows.
 func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
+	if p.summary.exact && p.total == 0 {
+		return []browseRow{}, nil
+	}
 	primary, desc := p.primary()
 	if p.request.Query != nil && p.start > 0 && len(p.seekKeys) == 0 {
 		return s.filteredRangePage(p)
@@ -126,6 +129,9 @@ func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 		return s.personalPage(p, primary, desc)
 	}
 	if p.start > 0 && len(p.seekKeys) == 0 {
+		if p.request.Restrictions.Active() && p.summary.classKey == "" && !primary.Profile {
+			return s.filteredRangePage(p)
+		}
 		return s.walkIndexedRange(p, func(p pageShape) ([]browseRow, error) { return s.browsePage(p) })
 	}
 	args := append(append(append([]any{}, p.args...), p.orderArgs...), p.limit)

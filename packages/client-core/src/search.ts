@@ -137,7 +137,7 @@ function parse(raw:unknown,op:Operation,s:ContentScope,limit:number):SearchData{
   }),e=>e.id);
   const nextCursor=(value.nextCursor??'') as string;
   // The count is at least the results kept, and more are offered exactly when there is a cursor to ask with.
-  return Object.freeze({id:group,title:(value.title??'') as string,...(text(value.labelKey,512)?{labelKey:value.labelKey}:{}),entityKind:value.entityKind as string,status,errorCode:'' as const,items:Object.freeze(items),totalCount:Math.max(count(value.totalCount)?value.totalCount:0,items.length),totalCountExact:value.totalCountExact===true,hasMore:!!nextCursor,nextCursor});
+  return Object.freeze({id:group,title:(value.title??'') as string,...(text(value.labelKey,512)?{labelKey:value.labelKey}:{}),entityKind:value.entityKind as string,status,errorCode:'' as const,items:Object.freeze(items),totalCount:Math.max(count(value.totalCount)?value.totalCount:0,items.length),totalCountExact:value.totalCountExact===true&&count(value.totalCount)&&value.totalCount>=items.length,hasMore:!!nextCursor,nextCursor});
  }),g=>g.id);
  // An answer none of whose groups could be read is refused rather than shown as no results.
  if(!results.length&&(raw.groups as unknown[]).length)invalid();

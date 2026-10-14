@@ -374,21 +374,22 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 			return queryErr
 		}
 		type entity struct {
-			id               int64
-			kind             int
-			sort, head       string
-			decade           int
-			available        bool
-			added            string
-			year             int
-			duration, rating float64
-			recent           sql.NullString
-			random           int64
+			id                int64
+			kind              int
+			sort, head        string
+			decade            int
+			available         bool
+			added             string
+			year              int
+			duration, rating  float64
+			recent            sql.NullString
+			random            int64
+			availabilityState string
 		}
 		batch := make([]entity, 0, 100)
 		for rows.Next() {
 			var e entity
-			if queryErr = rows.Scan(&e.id, &e.kind, &e.sort, &e.head, &e.decade, &e.available, &e.added, &e.year, &e.duration, &e.rating, &e.recent, &e.random); queryErr != nil {
+			if queryErr = rows.Scan(&e.id, &e.kind, &e.sort, &e.head, &e.decade, &e.available, &e.added, &e.year, &e.duration, &e.rating, &e.recent, &e.random, &e.availabilityState); queryErr != nil {
 				break
 			}
 			batch = append(batch, e)
@@ -404,8 +405,8 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 			err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 				for _, e := range batch {
 					if _, writeErr := tx.ExecContext(ctx,
-						`INSERT INTO compact_visibility_rows(class_id,generation,entity_id,library_id,kind,sort_key,head,decade,added,year,duration,rating,recent,random_key) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-						classID, generation, e.id, libraryID, e.kind, e.sort, e.head, e.decade, e.added, e.year, e.duration, e.rating, e.recent, e.random); writeErr != nil {
+						`INSERT INTO compact_visibility_rows(class_id,generation,entity_id,library_id,kind,sort_key,head,decade,added,year,duration,rating,recent,random_key,availability_state) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+						classID, generation, e.id, libraryID, e.kind, e.sort, e.head, e.decade, e.added, e.year, e.duration, e.rating, e.recent, e.random, e.availabilityState); writeErr != nil {
 						return writeErr
 					}
 					if _, writeErr := tx.ExecContext(ctx,
