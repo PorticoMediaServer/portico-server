@@ -80,13 +80,21 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 			return out, err
 		}
 		restriction, restrictionArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions)
+		// Only an entity that holds a value of the grouped field can be counted,
+		// so the predicate is evaluated for those entities alone. In a music
+		// library that is the songs, not also every artist and album (each of
+		// which would re-walk all of its songs); in a show library the shows,
+		// not also every season and episode. CASE keeps the cheap holder probe
+		// first: SQLite would otherwise run it as a join after the predicate.
 		from = `(WITH matched AS MATERIALIZED (
  SELECT e.entity_id FROM catalog_browse_rows e
- WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND (` + clause + `) AND (` + restriction + `))
+ WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?)
+ AND CASE WHEN EXISTS(SELECT 1 FROM catalog_facet_members holder WHERE holder.entity_id=e.entity_id AND holder.field=?)
+ THEN (` + clause + `) AND (` + restriction + `) ELSE 0 END)
  SELECT m.value,lower(portico_sort_title(m.value,'','')) AS name_key,count(*) AS total,max(m.recent_key) AS recent_key
  FROM matched CROSS JOIN catalog_facet_members m ON m.entity_id=matched.entity_id
  WHERE m.field=? GROUP BY m.value) g`
-		args = append([]any{request.Library}, compiler.args...)
+		args = append([]any{request.Library, pivot.Aggregate}, compiler.args...)
 		args = append(args, restrictionArgs...)
 		args = append(args, pivot.Aggregate)
 		where = "1"

@@ -67,7 +67,7 @@ func TestFilteredGroupRangeCapacity(t *testing.T) {
 					for _, q := range trace() {
 						if strings.Contains(q, "WITH groups AS MATERIALIZED") {
 							selects++
-							plan := seekCapacityPlan(t, c.DB, q, "m", float64(1990), "genre", 50000, 50000, 2)
+							plan := seekCapacityPlan(t, c.DB, q, "m", "genre", float64(1990), "genre", 50000, 50000, 2)
 							if !strings.Contains(plan, "SEARCH m") {
 								t.Fatalf("facet join not a seek: %s", plan)
 							}
