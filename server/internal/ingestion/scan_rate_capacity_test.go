@@ -88,6 +88,37 @@ func TestScanAddRateStaysFlatAsTheLibraryGrows(t *testing.T) {
 		}
 		last = perNew
 	}
+	// One more file: how much derived work stands between scanning it and
+	// seeing it in browse. The worker drains in id order, so anything the scan
+	// queued for older titles is done first.
+	f.write("Late Show (2001)/Season 01/Late Show - S01E01.mkv", "media")
+	job := f.queue()
+	start := time.Now()
+	units, visibleAfter := 0, -1
+	for {
+		f.s.processQuantum(ctx, job.ID, f.library)
+		for {
+			n, err := worker.Step(ctx, compactcatalog.BatchLimit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n == 0 {
+				break
+			}
+			units += n
+			if visibleAfter < 0 && f.count(`SELECT count(*) FROM catalog_browse_rows r JOIN catalog_entities e ON e.id=r.entity_id WHERE e.title='Late Show'`) > 0 {
+				visibleAfter = units
+			}
+		}
+		state, err := f.s.Get(job.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if state.Status == "complete" || state.Status == "complete_with_warnings" {
+			break
+		}
+	}
+	t.Logf("SCAN_ONE_MORE library_files=%d derived_units=%d units_before_visible=%d ms=%.1f", rounds*per, units, visibleAfter, float64(time.Since(start))/float64(time.Millisecond))
 	// The pass lists every existing file, so the per-new-file cost may rise
 	// by the listing share; it must not rise like the library does.
 	if rounds > 2 && last > 3*first {
