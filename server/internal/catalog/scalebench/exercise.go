@@ -169,7 +169,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 		stepMillis = append(stepMillis, float64(time.Since(stepStart))/float64(time.Millisecond))
 		if since := time.Since(stepStart); since > 250*time.Millisecond {
 			domain, units, took := w.LastBatch()
-			fmt.Fprintf(os.Stderr, "SLOW_STEP %s ms=%d domain=%d units=%d in_tx_ms=%d\n", name, since.Milliseconds(), domain, units, took.Milliseconds())
+			fmt.Fprintf(os.Stderr, "SLOW_STEP %s ms=%d domain=%d units=%d held_ms=%d\n", name, since.Milliseconds(), domain, units, took.Milliseconds())
 		}
 		stepUnits += n
 		if err != nil {

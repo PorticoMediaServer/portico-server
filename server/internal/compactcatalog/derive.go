@@ -180,8 +180,8 @@ type lastBatch struct {
 }
 
 // LastBatch reports the latest committed batch (diagnostics and the scale
-// tool): its domain (-1 the step workers, -2 none), units and time inside
-// the transaction.
+// tool): its domain (-1 the step workers, -2 none), units and how long it
+// held the write gate, commit included.
 func (w *Worker) LastBatch() (domain, units int, took time.Duration) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
@@ -377,10 +377,11 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 	step := -1
 	retried, backfilled := false, false
 	paced := -2 // what the batch's cost is charged to: a domain, or -1 for the step workers
-	var took time.Duration
+	// The hold runs from the gate's acquisition (the transaction function
+	// starting) through the commit.
+	var began time.Time
 	err := dbwork.WithWriteTx(ctx, w.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-		began := time.Now()
-		defer func() { took = time.Since(began) }()
+		began = time.Now()
 		n, domain, failed, step, retried, backfilled = 0, -1, 0, -1, false, false
 		paced = -2
 		var rebuilding int
@@ -440,6 +441,7 @@ func (w *Worker) Step(ctx context.Context, limit int) (int, error) {
 		w.setAside(ctx, domain, failed, step, backfilled, retried, err)
 		return 0, err
 	}
+	took := time.Since(began)
 	if paced > -2 {
 		w.observeBatch(paced, n, took)
 	}
