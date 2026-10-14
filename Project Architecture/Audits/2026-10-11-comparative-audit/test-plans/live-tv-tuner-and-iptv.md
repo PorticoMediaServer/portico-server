@@ -2,6 +2,8 @@
 
 ## Purpose and evidence
 
+Updated for the evening implementation and owner decisions. New cases remain qualification work; known missing candidate implementation is Fail, while an unavailable test prerequisite is Blocked. Native-owner recorded 655 native/87 Vega before the mirror; the later running log confirms 655/87 again after the mirror with clean type checks and equal packages. Physical acceptance remains unrun.
+
 These are qualification instructions, not evidence that the candidate passed. Use disposable state, copied media and test accounts. Record candidate commit IDs, artifact SHA-256, OS/device/driver/browser versions, start/end times, redacted server/client logs and the numbered case result: Pass, Fail or Blocked. A missing prerequisite is Blocked, never Pass. Save raw credentials, grant URLs, cookies, private keys and unredacted evidence outside Git.
 
 The source candidates are the integrated `audit-implementation/main` checkouts at `/home/justin/projects/Portico/.worktrees/audit-implementation/main-server` and `main-native`; internal Hosted work is delivered separately. On the qualification machine use local copies of those exact integrated revisions and record `git rev-parse HEAD` plus whether the tree is dirty. Do not test an individual lane branch without its dependencies. No stable pre-release API/database compatibility is promised: fresh fixtures use the candidate baseline; upgrade fixtures must have the same baseline digest. Preserve the entire old state separately before any restore/upgrade.
@@ -119,3 +121,16 @@ Run cases 1, 2, 4 first, in order. Stop a destructive case if isolation is lost;
 **Failure:** Input dropped by maintenance, unbounded spool/heap, console inaccessible, temporary files/helpers left or purported native success from build only.
 
 **Route to:** livetv, review-livetv, limits-settings, ops-packaging, leftovers-server-b.
+
+### 8. Late source screens, paging, countdown and viewer updates
+
+1. On web and native phone/tablet add HDHomeRun with XMLTV, edit guide address after Check, save and inspect actual programmes. Batch-map >200 channels with number/guide-ID/hidden and group/channel filters; skipped rows are explained.
+2. Restricted DVR picker traverses an empty excluded prefix with nextCursor without disclosing excluded IDs; follow until true exhaustion. Native/web guide/DVR refresh stays visible; web clock refresh is about 30 seconds where events are missing.
+3. Reserve/preempt a channel while multiple viewers watch; observe reservationRequiredAtMs and private channel.reservation-required feed at each player. A visible truthful countdown is required; backend event alone is not UI acceptance. Test owner playback controls against one viewer without affecting shared input.
+4. TV owner Dashboard remains read-only; administer sources from phone/tablet/web. Two recording owners keep private records and one capture; cancel/recover one without deleting the other’s bytes.
+
+**Expected:** Correct source/mapping/pages and genuine viewer countdown/transport privacy, one input/private capture ownership. Missing player countdown remains an explicit Fail; current clock update is not falsely called a server event.
+
+**Failure:** Guide omitted, partial map save, premature short-page exhaustion, excluded identity in cursor, no promised countdown or TV admin writes.
+
+**Route to:** native-owner, web-owner, web-viewer, review-server-late, livetv.

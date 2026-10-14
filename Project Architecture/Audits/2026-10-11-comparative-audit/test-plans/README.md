@@ -10,21 +10,21 @@ Get one end-to-end path working before expanding variants. Build/launch gates an
 
 | Order | Environment | Smoke cases | Full cases |
 | --- | --- | --- | --- |
-| 1 | [Linux packages](linux-packages.md) | 1, 2, 3, 4, 5 | 14 |
-| 2 | [Web browsers](web-browsers.md) | 1, 2, 3, 6 | 25 |
+| 1 | [Linux packages](linux-packages.md) | 1, 2, 3, 4, 5 | 17 |
+| 2 | [Web browsers](web-browsers.md) | 1, 2, 3, 6 | 31 |
 | 3 | [Reverse proxy and networks](reverse-proxy-and-networks.md) | 1, 2, 4 | 8 |
-| 4 | [Third-party API](third-party-api.md) | 1, 2, 4, 6, 7 | 12 |
+| 4 | [Third-party API](third-party-api.md) | 1, 2, 4, 6, 7 | 15 |
 | 5 | [GPU conversion](gpu-conversion.md) | 1, 2, 7, 8, 9, 10 | 10 |
-| 6 | [Live TV, tuner and IPTV](live-tv-tuner-and-iptv.md) | 1, 2, 4 | 7 |
-| 7 | [iPhone and iPad](iphone-ipad.md) | 1, 2, 7, 10 | 22 |
-| 8 | [Apple TV](apple-tv.md) | 1, 5, 6, 10 | 21 |
-| 9 | [Android phone and tablet](android-phone-tablet.md) | 1, 2, 6, 9 | 23 |
-| 10 | [Android TV and Fire TV](android-tv-fire-tv.md) | 1, 4, 5, 8 | 20 |
-| 11 | [Windows server](windows-server.md) | 1, 2, 3, 4 | 10 |
-| 12 | [macOS server](macos-server.md) | 1, 2, 3, 4 | 9 |
-| 13 | [Docker](docker.md) | 1, 2, 3, 4, 5 | 9 |
-| 14 | [Hosted services](hosted.md) | 1, 2, 8 | 8 |
-| 15 | [Vega](vega.md) | 1 | 5 |
+| 6 | [Live TV, tuner and IPTV](live-tv-tuner-and-iptv.md) | 1, 2, 4 | 8 |
+| 7 | [iPhone and iPad](iphone-ipad.md) | 1, 2, 7, 10 | 29 |
+| 8 | [Apple TV](apple-tv.md) | 1, 5, 6, 10 | 26 |
+| 9 | [Android phone and tablet](android-phone-tablet.md) | 1, 2, 6, 9 | 30 |
+| 10 | [Android TV and Fire TV](android-tv-fire-tv.md) | 1, 4, 5, 8 | 25 |
+| 11 | [Windows server](windows-server.md) | 1, 2, 3, 4 | 12 |
+| 12 | [macOS server](macos-server.md) | 1, 2, 3, 4 | 11 |
+| 13 | [Docker](docker.md) | 1, 2, 3, 4, 5 | 11 |
+| 14 | [Hosted services](hosted.md) | 1, 2, 8 | 9 |
+| 15 | [Vega](vega.md) | 1 | 8 |
 
 ## Smallest end-to-end set
 
@@ -39,7 +39,7 @@ This is the smallest practical **core product** proof, not release coverage. Use
 
 Run the appropriate GPU vendor case as well. Substitute the Android handset plan for the Apple handset only for this initial core proof. Hosted-assisted sign-in adds Hosted schema/consent/signing-rollout and third-party code-flow cases. Native first-build gates can run before any functional acceptance; compile failure is a failing gate, never a reason to skip that platform.
 
-To prove **the whole promised product**, extend to every plan’s smoke subset on actual Windows/macOS/Linux/Docker targets, each available GPU vendor, every browser, iPhone/iPad/Apple TV/Android/Fire TV, real tuner/provider, Hosted and third-party callback receiver. Features must then pass all non-smoke cases on their supported platforms. Current Vega credential transport is deliberately unavailable; its conditional cases are blocked and whole-client parity cannot be declared complete. TV downloads are hidden because current native downloader excludes TV. Actual fMP4-only live publication and qualified compressed Apple audio are checked honestly, including refusal/gaps. No small run can establish those missing boundaries or the 200-browser/100-stream goal.
+To prove **the whole promised product**, extend to every plan’s smoke subset on actual Windows/macOS/Linux/Docker targets, each available GPU vendor, every browser, iPhone/iPad/Apple TV/Android/Fire TV, real tuner/provider, Hosted and third-party callback receiver. Features must then pass all non-smoke cases on their supported platforms. Vega authenticated transport is restored with the owner-accepted SDK redirect risk. Its sign-in/containment cases are required; full-client parity still cannot be declared complete before the remaining scopes and devices pass. TV downloads are hidden because current native downloader excludes TV. Actual fMP4-only live publication and qualified compressed Apple audio are checked honestly, including refusal/gaps. No small run can establish those missing boundaries or the 200-browser/100-stream goal.
 
 ## Run record and routing
 
@@ -49,7 +49,7 @@ Some deterministic tests require a qualification-only hook: storage/Keystore los
 
 ## Source-note coverage
 
-Coverage intake was frozen during final documentation verification on 13 October 2026. Source reports were read from `_program/reports/` (shared programme directory) and the ten dated fix-pass reports from the read-only canonical `portico-internal/Project Architecture/Audits/2026-10-11-comparative-audit/fix-pass/lane-reports/`. That fix-pass folder is absent in this documentation worktree. Source hashes and unresolved notes are recorded in the test-plans lane report. Reports may finish later; new notes after this intake need a further documentation pass.
+The initial intake was frozen at the midday handoff. This update reconciles the later running log and final review/screen/health reports available at the evening checkpoint. Source reports were read from `_program/reports/` (shared programme directory) and the ten dated fix-pass reports from the read-only canonical `portico-internal/Project Architecture/Audits/2026-10-11-comparative-audit/fix-pass/lane-reports/`. That fix-pass folder is absent in this documentation worktree. Source hashes and unresolved notes are recorded in the test-plans lane report. Scale-check-2 is still running; its final larger results and source snapshot will require candidate integration and recorded acceptance. These plans already include its deferred Home and mixed-matrix checks.
 
 The table maps source notes to merged cases; duplicate notes are variants of one case, not separate test obligations. Historical compile/unit results are background evidence, not missing environment cases. Programme decisions override old private-only HTTP, scheduled-task Windows service, outdated Hosted format and title-only grouping expectations. Those superseded expectations are intentionally replaced by current source behavior.
 
@@ -115,7 +115,7 @@ The table maps source notes to merged cases; duplicate notes are variants of one
 | review-scan.md | [linux-packages.md](linux-packages.md), cases 5, 8, 11, 13 |
 | review-server-late.md | [windows-server.md](windows-server.md), cases 3; [third-party-api.md](third-party-api.md), cases 10; [live-tv-tuner-and-iptv.md](live-tv-tuner-and-iptv.md), cases 4 |
 | review-web-logic.md | [web-browsers.md](web-browsers.md), cases 3, 7, 9, 19, 22 |
-| scale-check.md | No finalized concrete environment note at cutoff; generic scope retained in [linux-packages.md](linux-packages.md), cases 13 and [web-browsers.md](web-browsers.md), cases 3 |
+| scale-check.md | [linux-packages.md](linux-packages.md), cases 13, 17; [web-browsers.md](web-browsers.md), case 31 |
 | scan-loop.md | [linux-packages.md](linux-packages.md), cases 8, 11, 13; [macos-server.md](macos-server.md), cases 9; [windows-server.md](windows-server.md), cases 9 |
 | search-sort.md | [web-browsers.md](web-browsers.md), cases 11; [iphone-ipad.md](iphone-ipad.md), cases 14 |
 | security-sweep.md | [windows-server.md](windows-server.md), cases 3; [reverse-proxy-and-networks.md](reverse-proxy-and-networks.md), cases 1; [third-party-api.md](third-party-api.md), cases 9, 12; [hosted.md](hosted.md), cases 4 |
@@ -137,3 +137,23 @@ The table maps source notes to merged cases; duplicate notes are variants of one
 | fix-pass/report-scanning-metadata.md | [linux-packages.md](linux-packages.md), cases 11, 12, 13; [macos-server.md](macos-server.md), cases 9 |
 | fix-pass/report-social-downloads.md | [iphone-ipad.md](iphone-ipad.md), cases 3, 17; [web-browsers.md](web-browsers.md), cases 21, 23 |
 | fix-pass/report-web-client-core.md | [web-browsers.md](web-browsers.md), cases 5, 12, 13, 23, 24; [iphone-ipad.md](iphone-ipad.md), cases 18 |
+
+## Evening additions and known gaps
+
+The numbered cases above include group scope on every client, one receipt Undo, real Play on/owner control, 428/412 rebasing, phone/tablet owner panels, TV read-only behavior, whole-view queues, Vega authentication/redirect containment, origin-wide 120-second activation backoff, table retention, final-baseline restore and deferred Home. Run these alongside the original smoke cases. The known screen/server gaps must be reported individually; passing server query capture does not pass a UI that enrolls only 500. A group’s own order under filters, missing Home/personal/book surfaces, native paged quiet updates and local fonts remain open.
+
+| Later source | Added acceptance coverage |
+|---|---|
+| base-health-3.md | linux-packages.md cases 15–17; Windows/macOS/Docker final-baseline cases |
+| native-owner.md | iphone-ipad.md cases 25–27; android-phone-tablet.md cases 26–28; every TV Dashboard case |
+| native-health-2.md | native grouping and revision cases; post-mirror suites passed per the later running log; repeat after any later scale merge |
+| native-screens.md | each native grouping/Undo/Play on/common offline/queue case |
+| web-owner.md | web-browsers.md cases 28–29 |
+| web-viewer.md | web-browsers.md cases 26–27, 30 |
+| queue-and-retention.md | third-party-api.md cases 13, 15; Linux case 16; all client whole-view queue cases |
+| claim-and-gate.md | hosted.md case 9; Apple/Android TV origin-gate cases; Vega case 2 |
+| vega-transport.md | vega.md cases 1–5, including accepted fallback capture/retirement |
+| scale-check-2.md | linux-packages.md case 17; web-browsers.md case 31; integration prerequisite explicit |
+| handoff-update.md | updated source/toolkit and owner-decision coverage in all plans |
+
+There are **250 numbered cases across 15 environment plans** at this checkpoint. None of this update executes physical qualification.

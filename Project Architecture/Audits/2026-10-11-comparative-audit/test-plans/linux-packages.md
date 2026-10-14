@@ -2,6 +2,8 @@
 
 ## Purpose and evidence
 
+Updated for the evening implementation and owner decisions. New cases remain qualification work; known missing candidate implementation is Fail, while an unavailable test prerequisite is Blocked. Native-owner recorded 655 native/87 Vega before the mirror; the later running log confirms 655/87 again after the mirror with clean type checks and equal packages. Physical acceptance remains unrun.
+
 These are qualification instructions, not evidence that the candidate passed. Use disposable state, copied media and test accounts. Record candidate commit IDs, artifact SHA-256, OS/device/driver/browser versions, start/end times, redacted server/client logs and the numbered case result: Pass, Fail or Blocked. A missing prerequisite is Blocked, never Pass. Save raw credentials, grant URLs, cookies, private keys and unredacted evidence outside Git.
 
 The source candidates are the integrated `audit-implementation/main` checkouts at `/home/justin/projects/Portico/.worktrees/audit-implementation/main-server` and `main-native`; internal Hosted work is delivered separately. On the qualification machine use local copies of those exact integrated revisions and record `git rev-parse HEAD` plus whether the tree is dirty. Do not test an individual lane branch without its dependencies. No stable pre-release API/database compatibility is promised: fresh fixtures use the candidate baseline; upgrade fixtures must have the same baseline digest. Preserve the entire old state separately before any restore/upgrade.
@@ -213,3 +215,41 @@ Run cases 1, 2, 3, 4, 5 first, in order. Stop a destructive case if isolation is
 **Failure:** Duplicate broadcast on restart, continuing after authority lost, runaway watchdog logging/panic or unrelated process halt treated as measured write-gate problem.
 
 **Route to:** leftovers-server-b, leftovers-server-a, ops-packaging, console.
+
+### 15. Final baseline startup and restore key inventory
+
+1. Start a new empty candidate state. Identity-bound triggers and counters are accepted and setup completes. In separate copied states remove/alter an identity trigger/accounting row: recovery must refuse the damaged schema; do not weaken the verifier.
+2. Create key A; take backup; create key B and revoke A; change server name. Restore the backup with its confirmation and wait for supervised restart. The backed-up name/catalogue return, old interactive sessions are refused and a fresh sign-in works.
+3. Key A exists again as it did at backup time; B does not exist. Both INSERT VALUES and INSERT SELECT baseline seed tables restore correctly, with no lost bounds/accounting seeds. Validate request expiry and narrower permission grants survive transactional authentication; forged wider grants refuse.
+
+**Expected:** Fresh exact baseline starts, altered baseline refuses, restore keeps backup-time keys while ending interactive sessions and reconstructing all required seeds. This is the owner’s chosen key policy.
+
+**Failure:** Fresh install recovery loop, weakened schema comparison, keys all revoked despite backup policy, post-backup key survives or transaction drops expiry/grant restrictions.
+
+**Route to:** base-health-3, accounts-security, queue-and-retention.
+
+### 16. Bounded housekeeping and preserved owner history
+
+1. On a copied disposable baseline create expired receipts/cache/reference rows plus active playback/job/artifact pins. Use Gentle then Fast; observe bounded quanta, shorter/larger budgets and owner pause checked between quanta.
+2. In a throwaway database lower one compiled-table ceiling using the qualification fixture. A new key refuses at the bound, exact retry/update succeeds and deleting an eligible row releases capacity. Check child-before-parent cleanup and foreign keys; never modify production ceilings/state to run this.
+3. Set play history forever and missing-title cleanup never. Run maintenance repeatedly; both choices and retained watch identity survive. Erase a profile then replay an old command/credential: permanent replay/deletion guards must still refuse resurrection.
+4. Retire analysis data that remains referenced; files/summary rows survive until custody permits cleanup, then prune summaries in 32-row batches. Verify actual filesystem readers on this OS and record disk/cache use.
+
+**Expected:** Bounded reclaim without active/reference loss, no orphan keys, exact replay at a ceiling, reusable capacity and preserved forever/never choices. These checks do not establish multiyear churn or universal throughput.
+
+**Failure:** Unbounded writer hold, deleting active bytes/history, replay resurrects authority, ceiling prevents exact retry/update or rows/fence capacity never settles.
+
+**Route to:** queue-and-retention, limits-settings, ops-packaging, base-health-3.
+
+### 17. Deferred Home and large mixed-library qualification
+
+1. Use an integrated candidate that includes scale-check-2’s final snapshot; record that prerequisite. Test 10k, 200k and one-million mixed video/music/books with versions, genres, credits and three restricted profiles. A full two-million fixture is not required under the recorded 8 GB scratch budget; structural tests are separate evidence.
+2. Hold one Home preview response. The row manifest arrives first; two row slots work independently, a stalled/failing row times out and other rows appear. Quiet refresh keeps cards. Switch viewer while responses are held: old hero/row/pagination cannot cross the fence.
+3. Compare every advertised sort/direction/operator, exact totals and subgroup membership on first/deep pages during empty and version-bump rebuilds; browse/search keep responding with prior content and live restrictions. Exercise broad search prefixes, group missing/personal/play-state predicates and mark/Undo 500/5,000.
+4. Record actual latency/refusals/RSS/WAL/disk, writer holds and first visibility after add/remove. Treat one observation as one sample, not p95. Monitor space and preserve logs before deleting each owned database. Test authenticated HTTP/concurrent players separately from catalogue-process benchmarks.
+
+**Expected:** No unavailable/preparing browse reply, independent visible Home rows, exact restricted results and reproducible measured resource outcomes. Capacity claims require explicit targets/sample distribution; pending 200k/one-million runs or structural two-million proof are never called mixed-scale acceptance.
+
+**Failure:** Stalled shelf blocks Home, old viewer cards publish, totals/order/privacy differ, large operation kills control reachability or disk budget exhausted without preserved evidence.
+
+**Route to:** scale-check-2, scale-check, freshness-server, queue-and-retention.

@@ -2,6 +2,8 @@
 
 ## Purpose and evidence
 
+Updated for the evening implementation and owner decisions. New cases remain qualification work; known missing candidate implementation is Fail, while an unavailable test prerequisite is Blocked. Native-owner recorded 655 native/87 Vega before the mirror; the later running log confirms 655/87 again after the mirror with clean type checks and equal packages. Physical acceptance remains unrun.
+
 These are qualification instructions, not evidence that the candidate passed. Use disposable state, copied media and test accounts. Record candidate commit IDs, artifact SHA-256, OS/device/driver/browser versions, start/end times, redacted server/client logs and the numbered case result: Pass, Fail or Blocked. A missing prerequisite is Blocked, never Pass. Save raw credentials, grant URLs, cookies, private keys and unredacted evidence outside Git.
 
 The source candidates are the integrated `audit-implementation/main` checkouts at `/home/justin/projects/Portico/.worktrees/audit-implementation/main-server` and `main-native`; internal Hosted work is delivered separately. On the qualification machine use local copies of those exact integrated revisions and record `git rev-parse HEAD` plus whether the tree is dirty. Do not test an individual lane branch without its dependencies. No stable pre-release API/database compatibility is promised: fresh fixtures use the candidate baseline; upgrade fixtures must have the same baseline digest. Preserve the entire old state separately before any restore/upgrade.
@@ -182,3 +184,41 @@ Run cases 1, 2, 4, 6, 7 first, in order. Stop a destructive case if isolation is
 **Failure:** Cache survives expiry, playback/read gains admin access, image URL leaks forbidden programme or short secret survives downloaded/stderr log.
 
 **Route to:** security-sweep, api-platform, accounts-security, livetv, console.
+
+### 13. Whole-view Play and Shuffle beyond loaded pages
+
+1. Prepare a saved view and a genre/person/collection/playlist selection with at least 650 playable permitted items; include hidden/missing titles and a second profile. Load only the first page, choose a non-title sort/filter and press Play, then Shuffle with a recorded seed.
+2. Compare the queue with the complete authorized browse order/membership, including items after 500; advance through the boundary. Inspect POST /v1/queues: query/saved/container identity should be forwarded, not only loaded ContentEntry IDs. Repeat from phone, tablet and each TV client that exposes the page.
+3. Edit/add/remove/restrict items while capture grows, switch profile before a late answer and restart the server during capture. Unchanged source resumes; changed source that lost its snapshot preserves the accepted prefix and fails that segment. Start a new selection to capture new membership.
+4. Start two long captures and saturate the background read pool while browsing/owner controls continue. A third capture can refuse retryably; request deadlines settle, and resources release. Explicit item arrays remain capped at 500; that bound is distinct from query capture.
+
+**Expected:** A first playback window arrives promptly and later capture reaches the entire original authorized selection without duplicates/loss or 500 truncation. Already accepted occurrences stay stable under seeded shuffle. Current screen forwarding is unfinished: record a UI truncation as Fail while separately recording server-selector success.
+
+**Failure:** A first page or first 500 is treated as the whole view, a reordered/duplicate playlist starts the wrong occurrence, old profile starts playback, membership mixes after restart or control requests hang.
+
+**Route to:** queue-and-retention, web-viewer, native-screens.
+
+### 14. Scopes, generated path safety and programme images
+
+1. With Read/Playback/Admin keys and a restricted member token, test admin session list/controls/terminate and MCP control_member_playback. Playback key still controls its own profile. Expire a warmed key without another mutation and verify refusal at its deadline; read feed never carries owner-only events.
+2. Use a allowed programme-bound image, then deny its rating/source and change guide generation: known URL must refuse. Retired /v1/guide/images/{digest} is absent; cache is private/no-store.
+3. Exercise generated raw/encoded builders with ordinary opaque IDs, literal/encoded dot segments, slash/query/fragment delimiters and explicit string-or-null union alternatives. Invalid destinations/values refuse locally; valid encoding happens once. Host response registry parameters/statuses must match actual analysis/lyrics/readiness calls.
+
+**Expected:** Existing route authority, expiry and current guide visibility enforced; generated contracts accurately constrain paths/unions without a legacy fallback.
+
+**Failure:** Cross-member playback with playback scope, immutable hidden image still readable, expired cache accepts, destination changes or arbitrary union values admitted.
+
+**Route to:** security-sweep, review-registry.
+
+### 15. Bounded housekeeping and preserved owner history
+
+1. On a copied disposable baseline create expired receipts/cache/reference rows plus active playback/job/artifact pins. Use Gentle then Fast; observe bounded quanta, shorter/larger budgets and owner pause checked between quanta.
+2. In a throwaway database lower one compiled-table ceiling using the qualification fixture. A new key refuses at the bound, exact retry/update succeeds and deleting an eligible row releases capacity. Check child-before-parent cleanup and foreign keys; never modify production ceilings/state to run this.
+3. Set play history forever and missing-title cleanup never. Run maintenance repeatedly; both choices and retained watch identity survive. Erase a profile then replay an old command/credential: permanent replay/deletion guards must still refuse resurrection.
+4. Retire analysis data that remains referenced; files/summary rows survive until custody permits cleanup, then prune summaries in 32-row batches. Verify actual filesystem readers on this OS and record disk/cache use.
+
+**Expected:** Bounded reclaim without active/reference loss, no orphan keys, exact replay at a ceiling, reusable capacity and preserved forever/never choices. These checks do not establish multiyear churn or universal throughput.
+
+**Failure:** Unbounded writer hold, deleting active bytes/history, replay resurrects authority, ceiling prevents exact retry/update or rows/fence capacity never settles.
+
+**Route to:** queue-and-retention, limits-settings, ops-packaging, base-health-3.

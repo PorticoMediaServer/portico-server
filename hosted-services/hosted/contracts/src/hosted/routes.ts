@@ -1301,3 +1301,148 @@ export const routes = [
     "status": 200
   }
 ] as const;
+export const routePaths = {
+  "account_create": "/v1/accounts",
+  "account_deletion_accept": "/v1/account/deletion",
+  "account_deletion_preview": "/v1/account/deletion/preview",
+  "account_deletion_status": "/v1/account/deletion/status",
+  "account_devices_list": "/v1/account/devices",
+  "account_export_download": "/v1/account/exports/{export}/download",
+  "account_export_get": "/v1/account/exports/{export}",
+  "account_export_request": "/v1/account/export",
+  "account_get": "/v1/account",
+  "account_name_set": "/v1/account/name",
+  "account_notification_get": "/v1/account/notifications/{id}",
+  "account_notification_preferences_get": "/v1/account/notification-preferences",
+  "account_notification_preferences_set": "/v1/account/notification-preferences",
+  "account_notifications_list": "/v1/account/notifications",
+  "account_notifications_read": "/v1/account/notifications/read",
+  "account_password_change": "/v1/account/password",
+  "account_preferences_get": "/v1/account/preferences",
+  "account_preferences_set": "/v1/account/preferences",
+  "account_recovery_complete": "/v1/account/recovery/complete",
+  "account_recovery_request": "/v1/account/recovery/request",
+  "account_security_action": "/v1/account/security/actions",
+  "account_security_email_confirm": "/v1/account/security/email/confirm",
+  "account_security_get": "/v1/account/security",
+  "account_security_mfa_confirm": "/v1/account/security/mfa/confirm",
+  "account_security_proof": "/v1/account/security/proof",
+  "account_session_delete": "/v1/account/sessions/{family}",
+  "account_sessions_list": "/v1/account/sessions",
+  "app_authorization_decide": "/v1/app-authorizations/{id}/decision",
+  "app_authorization_exchange": "/v1/app-authorizations/token",
+  "app_authorization_review": "/v1/app-authorizations",
+  "appstore_notification": "/v1/appstore/notifications",
+  "device_authorization_cancel": "/v1/device-authorizations/cancel",
+  "device_authorization_create": "/v1/device-authorizations",
+  "device_authorization_decide": "/v1/device-authorizations/decision",
+  "device_authorization_review": "/v1/device-authorizations/review",
+  "device_authorization_token": "/v1/device-authorizations/token",
+  "dns_addresses_list": "/v1/dns/addresses",
+  "email_link_confirm": "/v1/email-links/confirm",
+  "identity_apple_notification": "/v1/identity/apple/notifications",
+  "identity_cancel": "/v1/identity/cancel",
+  "identity_current": "/v1/identity/current",
+  "identity_mfa_complete": "/v1/identity/mfa/complete",
+  "identity_options_get": "/v1/identity/options",
+  "identity_start": "/v1/identity/{provider}/start",
+  "identity_transaction_complete": "/v1/identity/transactions/{id}/complete",
+  "identity_transaction_contact": "/v1/identity/transactions/{id}/contact",
+  "identity_transaction_contact_verify": "/v1/identity/transactions/{id}/contact/verify",
+  "identity_transaction_get": "/v1/identity/transactions/{id}",
+  "identity_transaction_native_apple": "/v1/identity/transactions/{id}/native-apple",
+  "keys_get": "/v1/keys",
+  "me_get": "/v1/me",
+  "registration_cancel": "/v1/registrations/cancel",
+  "registration_create": "/v1/registrations",
+  "registration_current": "/v1/registrations/current",
+  "registration_get": "/v1/registrations/{id}",
+  "registration_resend": "/v1/registrations/{id}/resend",
+  "registration_verify": "/v1/registrations/{id}/verify",
+  "server_certificate_chain_get": "/v1/servers/{id}/certificates/orders/{order}/chain",
+  "server_certificate_namespace": "/v1/servers/{id}/certificates/namespace",
+  "server_certificate_order_cancel": "/v1/servers/{id}/certificates/orders/{order}/cancel",
+  "server_certificate_order_create": "/v1/servers/{id}/certificates/orders",
+  "server_certificate_order_get": "/v1/servers/{id}/certificates/orders/{order}",
+  "server_certificate_order_lookup": "/v1/servers/{id}/certificates/orders/lookup",
+  "server_claim_ack": "/v1/server-claims/ack",
+  "server_claim_approve": "/v1/server-claims/approve",
+  "server_claim_approve_code": "/v1/server-claims/approve-code",
+  "server_claim_cancel": "/v1/server-claims/cancel",
+  "server_claim_cleanup": "/v1/server-claims/cleanup",
+  "server_claim_deny": "/v1/server-claims/deny",
+  "server_claim_events": "/v1/server-claims/events",
+  "server_claim_finalize": "/v1/server-claims/finalize",
+  "server_claim_lookup": "/v1/server-claims/lookup",
+  "server_claim_nonce": "/v1/server-claims/nonce",
+  "server_claim_pending": "/v1/server-claims/pending",
+  "server_claim_result": "/v1/server-claims/result",
+  "server_direct_route_issue": "/v1/servers/{id}/direct-route",
+  "server_direct_route_withdraw": "/v1/servers/{id}/direct-route/withdraw",
+  "server_endpoint_register": "/v1/servers/{id}/endpoint",
+  "server_erasure_ack": "/v1/servers/{id}/erasures/{erasure}/ack",
+  "server_erasures_list": "/v1/servers/{id}/erasures",
+  "server_event": "/v1/servers/{id}/events",
+  "server_heartbeat": "/v1/servers/{id}/heartbeat",
+  "server_identity_issue": "/v1/servers/{id}/identity",
+  "server_leave": "/v1/servers/{id}/leave",
+  "server_list_version": "/v1/server-list/{watch}/{version}",
+  "server_members_push": "/v1/servers/{id}/members",
+  "server_remove": "/v1/servers/{server}",
+  "server_routes_get": "/v1/servers/{id}/routes",
+  "server_routes_observe": "/v1/servers/{id}/routes",
+  "server_routes_prove": "/v1/servers/{id}/routes/prove",
+  "server_storage_warning": "/v1/servers/{id}/notifications/storage-nearly-full",
+  "servers_list": "/v1/servers",
+  "session_create": "/v1/sessions",
+  "session_current_delete": "/v1/sessions/current",
+  "session_logout_all": "/v1/sessions/logout-all",
+  "session_refresh": "/v1/sessions/refresh",
+  "session_revoke": "/v1/sessions/revoke",
+  "system_get": "/v1/system",
+  "tv_authorization_token": "/v1/tv-authorizations/token"
+} as const;
+
+import type { RouteContracts } from './types.ts';
+
+export type RouteId = typeof routes[number]['id'];
+type RouteFor<I extends RouteId> = Extract<typeof routes[number], {readonly id: I}>;
+type ParameterNames<P extends string> = P extends `${string}{${infer K}}${infer Rest}` ? K | ParameterNames<Rest> : never;
+export type RouteParameters<I extends RouteId> = { readonly [K in ParameterNames<RouteFor<I>['path']>]: string | number };
+export type RouteRequest<I extends RouteId> = RouteContracts[I]['request'];
+export type RouteResponse<I extends RouteId> = RouteContracts[I]['response'];
+declare const routeContract: unique symbol;
+/** A generated path retains the operation's request and response contract. */
+export type RoutePath<I extends RouteId = RouteId> = string & {readonly [routeContract]: I};
+const byId: ReadonlyMap<string, string> = new Map(Object.entries(routePaths));
+/** Parameters are supplied unescaped. Query strings stay with the caller. */
+export function routePath<I extends RouteId>(id: I, ...args: keyof RouteParameters<I> extends never ? [parameters?: RouteParameters<I>] : [parameters: RouteParameters<I>]): RoutePath<I> {
+  return buildPath(id, args[0], false);
+}
+/** Retains an existing caller's parameter encoding during a migration. */
+export function encodedRoutePath<I extends RouteId>(id: I, ...args: keyof RouteParameters<I> extends never ? [parameters?: RouteParameters<I>] : [parameters: RouteParameters<I>]): RoutePath<I> {
+  return buildPath(id, args[0], true);
+}
+function buildPath<I extends RouteId>(id: I, supplied: RouteParameters<I> | undefined, encoded: boolean): RoutePath<I> {
+  const route = byId.get(id);
+  if (!route) throw new Error('Unknown API operation');
+  const parameters = supplied as Record<string, string | number> | undefined;
+  const expected = new Set(Array.from(route.matchAll(/\{([^}]+)\}/g), match => match[1]));
+  if (Object.keys(parameters ?? {}).some(key => !expected.has(key))) throw new Error('Unknown route parameter');
+  return route.replace(/\{([^}]+)\}/g, (_, key: string) => {
+    const value = parameters?.[key];
+    if (value === undefined || value === null || String(value).length === 0) throw new Error('Missing route parameter');
+    const supplied = String(value);
+    if (encoded && /[/?#\\\x00-\x20\x7f]/.test(supplied)) throw new Error('Invalid encoded route parameter');
+    const segment = encoded ? decodeURIComponent(supplied) : supplied;
+    if (segment === '.' || segment === '..') throw new Error('Invalid route parameter');
+    return encoded ? supplied : encodeURIComponent(supplied);
+  }) as RoutePath<I>;
+}
+/** Typed payloads are still parsed by the service's existing tolerant boundary. */
+type WireInput<T> = T extends readonly unknown[] ? readonly WireInput<T[number]>[] : T extends object ? {readonly [K in keyof T]?: WireInput<T[K]>} : T;
+export function routeBody<I extends RouteId>(_operation: I, body: Partial<WireInput<RouteRequest<I>>>): Partial<WireInput<RouteRequest<I>>> { return body; }
+
+export const apiRoot = '/v1/';
+export function routePattern<I extends RouteId>(id: I): RouteFor<I>['path'] {const route=byId.get(id);if(!route)throw new Error('Unknown API operation');return route as RouteFor<I>['path'];}
+export function routePrefix<I extends RouteId>(id: I, segments: number): string {return routePattern(id).split('/').slice(0, segments + 1).join('/') + '/';}
