@@ -7,7 +7,7 @@ import type {MessageId, MessageValues} from '../../../i18n/src/index.ts';
  * "0 items". Continue Watching says what is left ("S1 E3 · 24 min left").
  */
 type Translate = (id: MessageId, values?: MessageValues) => string;
-export type CaptionEntry = Pick<ContentEntry, 'kind' | 'subtitle' | 'seasonNumber' | 'episodeNumber' | 'absoluteNumber' | 'count' | 'duration' | 'artist' | 'author' | 'year' | 'airDate' | 'latestEpisode' | 'progressSeconds'>;
+export type CaptionEntry = Pick<ContentEntry, 'kind' | 'subtitle' | 'seasonNumber' | 'episodeNumber' | 'absoluteNumber' | 'count' | 'duration' | 'artist' | 'author' | 'year' | 'airDate' | 'latestEpisode' | 'progressSeconds' | 'countIsLowerBound'>;
 
 const YEAR = /^(18|19|20)\d{2}$/;
 const parts = (subtitle?: string) => (subtitle ? subtitle.split(' · ').map(p => p.trim()).filter(Boolean) : []);
@@ -34,6 +34,8 @@ export function shortDate(day: string, locale?: string, now: Date = new Date()):
 export function cardCaption(entry: CaptionEntry, t: Translate, options: Readonly<{locale?: string}> = {}): string | undefined {
   const count = entry.count ?? 0;
   const sub = parts(entry.subtitle);
+  // A grouping under a broad filter counts each group only up to 10,000: "10,000+ titles".
+  if (entry.countIsLowerBound && count > 0 && !entry.subtitle) return t('lib.countAtLeast', {count, pivot: 'other'});
   switch (entry.kind) {
     case 'artist': return count > 0 ? t('title.songCount', {count}) : undefined;
     case 'album': {

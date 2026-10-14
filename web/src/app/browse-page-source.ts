@@ -58,7 +58,8 @@ export function browsePageSource(api: {request<T>(path: string, method?: string,
           revision = freshFirst.pageInfo.revision || undefined;
           const freshTotal = freshFirst.pageInfo.total;
           const bucket = bucketIndexFor(freshFirst.positionIndex, sortField, sortValueFor(before, sortField));
-          const target = bucket !== undefined ? bucket : Math.min(start, Math.max(0, freshTotal - 1));
+          // An open-ended total ("10,000+") is not the end of the list: the position stays where it was.
+          const target = bucket !== undefined ? bucket : freshFirst.pageInfo.totalIsLowerBound ? start : Math.min(start, Math.max(0, freshTotal - 1));
           if (target === 0) {
             if (freshFirst.entries.length) firstEntries.set(0, freshFirst.entries[0]!);
             return toPage(freshFirst, 0);

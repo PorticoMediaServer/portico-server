@@ -73,3 +73,31 @@ test('W1: a stale non-title sort re-navigates through the buckets after reload',
   assert.ok(bucketCall, 'jumped to the 1995 bucket');
   assert.ok(!calls.some(c => (c as {anchorId?: string}).anchorId !== undefined));
 });
+
+test('a broad filter past 10,000: pages say the total is a lower bound, and a reload past it keeps the position', async () => {
+  let revision = 'rev-one';
+  const calls: Array<{start?: number; revision?: string}> = [];
+  const lowerBound = (start: number, rev: string) => {
+    const page = browsePage({start, total: 10000, hasMore: true, revision: rev, entries: Array.from({length: 60}, (_, i) => entry(`${rev}-${start + i}`, {year: 1990}))});
+    page.pageInfo.totalIsLowerBound = true;
+    return page;
+  };
+  const api = {
+    request: async (_path: string, _method?: string, body?: unknown) => {
+      const b = body as {range?: {start?: number; revision?: string}};
+      const start = b.range?.start ?? 0;
+      calls.push({start, revision: b.range?.revision});
+      if (b.range?.revision === 'rev-one' && revision === 'rev-two' && start !== 0) throw Object.assign(new Error('expired'), {code: 'stale_continuation', status: 409});
+      return lowerBound(start, start === 0 && b.range?.revision === undefined && calls.length > 2 ? (revision = 'rev-two') : revision);
+    },
+  };
+  const source = browsePageSource(api, {libraryId: 'lib', pivot: 'movies', predicates: [{field: 'title', operator: 'contains', value: 'a'}], sort: {field: 'year', direction: 'desc'}});
+  const first = await source(0, 60, signal);
+  assert.equal(first.totalIsLowerBound, true);
+  const deep = await source(15000, 60, signal);
+  assert.equal(deep.items[0]!.id, 'rev-one-15000');
+  assert.ok(deep.total >= 15060, 'the open-ended total reaches past what has arrived');
+  revision = 'rev-two';
+  const after = await source(15000, 60, signal);
+  assert.equal(after.items[0]!.id, 'rev-two-15000', 'no bucket for the value: the reload stays at 15,000 instead of jumping back to 9,999');
+});

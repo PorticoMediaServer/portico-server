@@ -150,3 +150,14 @@ test('homeHero: the server\'s entry, worded once for every client', async () => 
   assert.equal(homeHero(doc({rowId: 'continue', entryId: 'e1'}, [row('continue', [episode])]), t, {duration, hidden: new Set(['e1'])}), undefined);
   assert.equal(homeHero(doc({rowId: 'continue', entryId: 'e1'}, []), t, {duration}), undefined);
 });
+
+test('cardCaption: a group counted only up to a threshold reads "10,000+ titles"; an exact count is unchanged', async () => {
+  const {cardCaption} = await import('../src/presentation/card-caption.ts');
+  const {createI18n} = await import('../../i18n/src/index.ts');
+  const {t} = createI18n();
+  assert.equal(cardCaption({kind: 'category', count: 10000, countIsLowerBound: true}, t), '10,000+ titles');
+  assert.equal(cardCaption({kind: 'category', count: 10000}, t), t('title.itemCount', {count: 10000}));
+  assert.equal(cardCaption({kind: 'collection', count: 12}, t), t('title.itemCount', {count: 12}));
+  // A lower bound of nothing says nothing, as an exact zero does.
+  assert.equal(cardCaption({kind: 'category', count: 0, countIsLowerBound: true}, t), undefined);
+});
