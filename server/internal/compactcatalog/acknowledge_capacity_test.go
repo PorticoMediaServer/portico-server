@@ -32,9 +32,12 @@ func TestDerivedAcknowledgmentSeeksOnlyItsBatch(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-			for _, q := range []string{`DELETE FROM catalog_dirty WHERE domain=? AND entity_id=? AND revision=?`, `DELETE FROM catalog_derivation_failures WHERE domain=? AND entity_id=?`} {
+			for _, q := range []string{`DELETE FROM catalog_dirty WHERE domain=? AND (entity_id,revision) IN(SELECT json_extract(value,'$[0]'),json_extract(value,'$[1]') FROM json_each(?))`, `DELETE FROM catalog_dirty WHERE domain=? AND entity_id=? AND revision=?`, `DELETE FROM catalog_derivation_failures WHERE domain=? AND entity_id=?`} {
 				args := []any{17, n}
-				if strings.Contains(q, "revision=?") {
+				before := strings.Contains(q, "json_each")
+				if before {
+					args[1] = fmt.Sprintf("[[%d,1]]", n)
+				} else if strings.Contains(q, "revision=?") {
 					args = append(args, 1)
 				}
 				rows, err := db.Query("EXPLAIN QUERY PLAN "+q, args...)
@@ -51,8 +54,8 @@ func TestDerivedAcknowledgmentSeeksOnlyItsBatch(t *testing.T) {
 					plan.WriteString(d)
 				}
 				rows.Close()
-				t.Logf("rows=%d plan=%s", n, plan.String())
-				if !strings.Contains(plan.String(), "domain=? AND entity_id=?") {
+				t.Logf("rows=%d before=%v plan=%s", n, before, plan.String())
+				if !before && !strings.Contains(plan.String(), "domain=? AND entity_id=?") {
 					t.Fatal(plan.String())
 				}
 			}
