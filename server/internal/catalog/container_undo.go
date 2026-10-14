@@ -3,6 +3,7 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -61,25 +62,23 @@ func captureContainerUndo(ctx context.Context, tx *sql.Tx, profile, kind string,
 		return e
 	}
 	intentAt := intentTime.Add(time.Nanosecond).Format("2006-01-02T15:04:05.000000000Z")
-	for _, id := range ids {
-		before, e := readPersonalByID(tx, profile, id, personalstate.SQL("?", "?"))
-		if e != nil {
-			return e
-		}
-		if e = snapshotPersonalByID(tx, profile, id, before); e != nil {
-			return e
-		}
-		if _, e := tx.ExecContext(ctx, `INSERT INTO container_personal_undo_items(token,item_id,previous_watched,after_revision,position,unit,playback_id,activity_at,activity_state,book_position,previous_intent,previous_authored_at,intent_at,added_ms,show_id,season_id,album_id,book_id)
- SELECT ?,e.id,COALESCE(`+personalstate.SQL("?", "e.id")+`,0),COALESCE(pi.revision,0)+1,p.position,p.unit,p.playback_id,a.updated_at,a.state,
- (SELECT b.position FROM book_resume b WHERE b.profile_id=? AND b.item_id=e.id),
- wi.watched,wi.authored_at,?,e.added_ms,
- (SELECT show_id FROM catalog_episodes WHERE entity_id=e.id),(SELECT season_id FROM catalog_episodes WHERE entity_id=e.id),
- (SELECT album_id FROM catalog_songs WHERE entity_id=e.id),(SELECT book_id FROM catalog_book_files WHERE entity_id=e.id)
- FROM catalog_entities e LEFT JOIN personal_items pi ON pi.profile_id=? AND pi.item_id=e.id
- LEFT JOIN progress p ON p.profile_id=? AND p.item_id=e.id
- LEFT JOIN progress_activity a ON a.profile_id=? AND a.item_id=e.id LEFT JOIN personal_watched_intents wi ON wi.profile_id=? AND wi.item_id=e.id WHERE e.id=?`, out.UndoToken, profile, profile, intentAt, profile, profile, profile, profile, id); e != nil {
-			return e
-		}
+	states, err := readPersonalBatch(ctx, tx, profile, ids)
+	if err != nil {
+		return err
+	}
+	if err = snapshotPersonalBatch(ctx, tx, profile, ids, states); err != nil {
+		return err
+	}
+	raw, _ := json.Marshal(ids)
+	_, err = tx.ExecContext(ctx, `INSERT INTO container_personal_undo_items(token,item_id,previous_watched,after_revision,position,unit,playback_id,activity_at,activity_state,book_position,previous_intent,previous_authored_at,intent_at,added_ms,show_id,season_id,album_id,book_id)
+ SELECT ?,e.id,COALESCE(`+personalstate.SQL("scope.profile", "e.id")+`,0),COALESCE(pi.revision,0)+1,p.position,p.unit,p.playback_id,a.updated_at,a.state,
+ (SELECT b.position FROM book_resume b WHERE b.profile_id=scope.profile AND b.item_id=e.id),wi.watched,wi.authored_at,?,e.added_ms,
+ (SELECT show_id FROM catalog_episodes WHERE entity_id=e.id),(SELECT season_id FROM catalog_episodes WHERE entity_id=e.id),(SELECT album_id FROM catalog_songs WHERE entity_id=e.id),(SELECT book_id FROM catalog_book_files WHERE entity_id=e.id)
+ FROM json_each(?) requested CROSS JOIN catalog_entities e ON e.id=CAST(requested.value AS INTEGER) CROSS JOIN (SELECT ? profile) scope
+ LEFT JOIN personal_items pi ON pi.profile_id=scope.profile AND pi.item_id=e.id LEFT JOIN progress p ON p.profile_id=scope.profile AND p.item_id=e.id
+ LEFT JOIN progress_activity a ON a.profile_id=scope.profile AND a.item_id=e.id LEFT JOIN personal_watched_intents wi ON wi.profile_id=scope.profile AND wi.item_id=e.id`, out.UndoToken, intentAt, string(raw), profile)
+	if err != nil {
+		return err
 	}
 	return nil
 }
@@ -168,14 +167,12 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 				return ErrPersonalConflict
 			}
 		}
-		for _, item := range ids {
-			before, e := readPersonalByID(tx, profile, item, personalstate.SQL("?", "?"))
-			if e != nil {
-				return e
-			}
-			if e = snapshotPersonalByID(tx, profile, item, before); e != nil {
-				return e
-			}
+		beforeStates, e := readPersonalBatch(ctx, tx, profile, ids)
+		if e != nil {
+			return e
+		}
+		if e = snapshotPersonalBatch(ctx, tx, profile, ids, beforeStates); e != nil {
+			return e
 		}
 		out.Revision = revision + 1
 		out.Watermark = previousWatermark
@@ -201,13 +198,14 @@ func (s *Service) UndoContainerPersonal(ctx context.Context, p identity.Principa
 			if _, e = tx.ExecContext(ctx, `UPDATE book_resume SET position=(SELECT book_position FROM container_personal_undo_items WHERE token=? AND item_id=?) WHERE profile_id=? AND item_id=? AND EXISTS(SELECT 1 FROM container_personal_undo_items WHERE token=? AND item_id=? AND book_position IS NOT NULL)`, m.UndoToken, item, profile, item, m.UndoToken, item); e != nil {
 				return e
 			}
-			restored, e := readPersonalByID(tx, profile, item, personalstate.SQL("?", "?"))
-			if e != nil {
-				return e
-			}
-			if e = snapshotPersonalByID(tx, profile, item, restored); e != nil {
-				return e
-			}
+
+		}
+		restored, e := readPersonalBatch(ctx, tx, profile, ids)
+		if e != nil {
+			return e
+		}
+		if e = snapshotPersonalBatch(ctx, tx, profile, ids, restored); e != nil {
+			return e
 		}
 		if _, e = tx.ExecContext(ctx, `DELETE FROM container_personal_undo WHERE token=?`, m.UndoToken); e != nil {
 			return e

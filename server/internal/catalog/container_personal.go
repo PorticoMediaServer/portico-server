@@ -170,10 +170,14 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 			return e
 		}
 		intentTime = intentTime.Add(time.Nanosecond)
+		states, e := readPersonalBatch(ctx, tx, profile, ids)
+		if e != nil {
+			return e
+		}
 		for _, item := range ids {
-			before, e := readPersonalByID(tx, profile, item, personalstate.SQL("?", "?"))
-			if e != nil {
-				return e
+			before, ok := states[item]
+			if !ok {
+				return sql.ErrNoRows
 			}
 
 			if e = fenceEvidenceByID(tx, profile, item); e != nil {
@@ -199,9 +203,10 @@ func (s *Service) SetContainerPersonal(ctx context.Context, p identity.Principal
 			if _, e = tx.ExecContext(ctx, `UPDATE book_resume SET position=0 WHERE profile_id=? AND item_id=?`, profile, item); e != nil {
 				return e
 			}
-			if e = snapshotPersonalByID(tx, profile, item, before); e != nil {
-				return e
-			}
+			states[item] = before
+		}
+		if e = snapshotPersonalBatch(ctx, tx, profile, ids, states); e != nil {
+			return e
 		}
 		if e = invalidateContainer(ctx, tx, profile, containerID); e != nil {
 			return e

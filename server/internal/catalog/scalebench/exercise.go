@@ -65,6 +65,8 @@ func exerciseRead(db *sql.DB, s *catalog.Service, name string, samples int, read
 func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...string) (routeResult, error) {
 	ctx := context.Background()
 	w := compactcatalog.NewWorker(db)
+	dbwork.ProfileStatements(true)
+	defer dbwork.ProfileStatements(false)
 	r := routeResult{Route: name}
 	start := time.Now()
 	logAt := time.Now()
@@ -101,6 +103,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 				for _, group := range page.Groups {
 					if group.ErrorCode != "" {
 						failedProbes++
+						fmt.Fprintf(os.Stderr, "PROBE_GROUP_ERROR %s group=%s code=%s\n", name, group.ID, group.ErrorCode)
 						continue
 					}
 					if name == "derive-added-1000" && firstVisible < 0 && group.ID == "movies" && len(group.Items) > 0 {
@@ -151,15 +154,24 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	r.P95MS = r.P50MS
 	logMeasurement(r)
 	fmt.Fprintf(os.Stderr, "DERIVE %s probes=%d max_browse_search_ms=%.3f max_gate_held_ms=%d failed_probes=%d\n", name, probes, float64(maxRead)/float64(time.Millisecond), dbwork.WriteGate().Stats().MaxHeldMilli, failedProbes)
+	for i, entry := range dbwork.StatementProfile() {
+		if i == 10 {
+			break
+		}
+		fmt.Fprintf(os.Stderr, "DERIVE_COST %s ms=%.3f calls=%d %s\n", name, entry.Millis(), entry.Count, entry.Shape)
+	}
 	if firstVisible >= 0 {
 		fmt.Fprintf(os.Stderr, "FIRST_VISIBLE drain_ms=%.3f\n", float64(firstVisible)/float64(time.Millisecond))
 	}
 	return r, nil
 }
 
-func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes bool) ([]routeResult, error) {
+func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes bool, planFilter string) ([]routeResult, error) {
 	var results []routeResult
 	add := func(name string, read func(context.Context, *catalog.Service) error) error {
+		if planFilter != "" && strings.Contains(name, planFilter) {
+			explainRoute(db, name, func(service *catalog.Service) error { return read(service.Context(), service) }, s)
+		}
 		r, err := exerciseRead(db, s, name, samples, read)
 		results = append(results, r)
 		return err
@@ -575,6 +587,24 @@ func exerciseRemoval(db *sql.DB, s *catalog.Service) (routeResult, error) {
 		return r, err
 	}
 	fmt.Fprintf(os.Stderr, "RECLAIM before_bytes=%d reusable_bytes=%d\n", before*size, free*size)
+	start = time.Now()
+	connCtx, conn, release, err := dbwork.ReserveWriterConn(ctx, db, dbwork.ClassMaintenance)
+	if err != nil {
+		return r, err
+	}
+	_, err = conn.ExecContext(connCtx, `PRAGMA wal_checkpoint(TRUNCATE)`)
+	if err == nil {
+		_, err = conn.ExecContext(connCtx, `VACUUM`)
+	}
+	release()
+	if err != nil {
+		return r, err
+	}
+	var after int64
+	if err = db.QueryRow(`PRAGMA page_count`).Scan(&after); err != nil {
+		return r, err
+	}
+	fmt.Fprintf(os.Stderr, "VACUUM elapsed_ms=%.3f after_bytes=%d reclaimed_bytes=%d rss_kb=%d\n", float64(time.Since(start))/float64(time.Millisecond), after*size, (before-after)*size, processRSSKB())
 	return r, nil
 }
 

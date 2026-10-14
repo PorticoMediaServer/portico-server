@@ -48,13 +48,13 @@ var showFacetValueSQL = map[string]string{
 	"decade": facetValueSQL["decade"],
 	"year":   facetValueSQL["year"],
 	"resolution": `SELECT DISTINCT CASE WHEN ast.height>=2000 THEN '4k' WHEN ast.height>=1000 THEN '1080p' WHEN ast.height>=700 THEN '720p' ELSE 'sd' END
-	 FROM catalog_episodes ep JOIN catalog_asset_links ia ON ia.entity_id=ep.entity_id JOIN catalog_assets ast ON ast.id=ia.asset_id WHERE ep.show_id=?1`,
+	 FROM catalog_episodes ep CROSS JOIN catalog_asset_links ia ON ia.entity_id=ep.entity_id CROSS JOIN catalog_assets ast ON ast.id=ia.asset_id WHERE ep.show_id=?1`,
 	"collection": `SELECT CAST(collection_id AS TEXT) FROM catalog_collection_members WHERE item_id=?1
-	 UNION SELECT CAST(cm.collection_id AS TEXT) FROM catalog_episodes ep JOIN catalog_collection_members cm ON cm.item_id=ep.entity_id WHERE ep.show_id=?1`,
+	 UNION SELECT CAST(cm.collection_id AS TEXT) FROM catalog_episodes ep CROSS JOIN catalog_collection_members cm ON cm.item_id=ep.entity_id WHERE ep.show_id=?1`,
 }
 
-const showFacetAttributeSQL = `SELECT DISTINCT ca.source_value FROM catalog_episodes ep JOIN catalog_item_attribute_edges ca ON ca.item_id=ep.entity_id
- JOIN catalog_attribute_terms t ON t.id=ca.term_id JOIN catalog_attribute_fields f ON f.id=t.field_id AND f.field=?2 WHERE ep.show_id=?1`
+const showFacetAttributeSQL = `SELECT DISTINCT ca.source_value FROM catalog_episodes ep CROSS JOIN catalog_item_attribute_edges ca ON ca.item_id=ep.entity_id
+ CROSS JOIN catalog_attribute_terms t ON t.id=ca.term_id CROSS JOIN catalog_attribute_fields f ON f.id=t.field_id AND f.field=?2 WHERE ep.show_id=?1`
 
 const facetAttributeSQL = `SELECT ca.source_value FROM catalog_item_attribute_edges ca JOIN catalog_attribute_terms t ON t.id=ca.term_id
  JOIN catalog_attribute_fields f ON f.id=t.field_id AND f.field=?2 WHERE ca.item_id=?1`

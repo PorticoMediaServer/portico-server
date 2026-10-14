@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -54,5 +55,35 @@ func TestBulkReferenceFactsDeriveIntoPlayableMixedLibraries(t *testing.T) {
 	}
 	if _, err := service.HomeRows(catalog.HomeRequest{Viewer: v, Limit: 12}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCopyReferenceFactsUsesFreshBaselineWithoutAuthentication(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "_program/scratch/scale-check-2/.scratch/source")
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		t.Fatal(err)
+	}
+	source, err := persistence.Open(filepath.Join(dir, "catalog.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err = seedBulkFacts(source, 100); err != nil {
+		t.Fatal(err)
+	}
+	source.Close()
+	dest, err := persistence.Open(filepath.Join(t.TempDir(), "copied.sqlite"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer dest.Close()
+	if _, _, err = copyReferenceFacts(dest, filepath.Join(dir, "catalog.sqlite")); err != nil {
+		t.Fatal(err)
+	}
+	if err = compactcatalog.Drain(context.Background(), dest); err != nil {
+		t.Fatal(err)
+	}
+	var items int
+	if err = dest.QueryRow(`SELECT count(*) FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind WHERE k.playable=1`).Scan(&items); err != nil || items != 100 {
+		t.Fatalf("copied %d items: %v", items, err)
 	}
 }

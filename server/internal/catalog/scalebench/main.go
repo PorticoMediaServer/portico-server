@@ -65,6 +65,7 @@ func run() (runErr error) {
 	explain := flag.String("explain", "", "print the scans and sorts in the plans of the routes whose name contains this")
 	scenariosOnly := flag.Bool("scenarios-only", false, "measure search and write/rebuild scenarios without the browse matrix")
 	matrixOnly := flag.Bool("matrix-only", false, "measure browse vocabulary without rebuild/write scenarios")
+	copyFacts := flag.String("copy-facts", "", "copy only synthetic reference facts into a fresh baseline")
 	bulkFacts := flag.Bool("bulk-facts", false, "seed reference facts with set-based inserts, production triggers enabled")
 	factsOnly := flag.Bool("facts-only", false, "seed facts without deriving; use -reuse -exercise to measure the empty rebuild")
 	exercise := flag.Bool("exercise", false, "measure browse vocabulary and isolated write/rebuild scenarios")
@@ -106,7 +107,12 @@ func run() (runErr error) {
 			r.SeedResumedFrom = startItem
 		}
 		start := time.Now()
-		if *bulkFacts {
+		if *copyFacts != "" {
+			if *resumeSeed || !*factsOnly {
+				return errors.New("copy-facts requires a new facts-only fixture")
+			}
+			r.FirstBatchMSPerItem, r.LastBatchMSPerItem, err = copyReferenceFacts(db, *copyFacts)
+		} else if *bulkFacts {
 			if *resumeSeed || !*factsOnly {
 				return errors.New("bulk-facts requires a new facts-only fixture")
 			}
@@ -170,6 +176,26 @@ func run() (runErr error) {
 	}{
 		{"open", catalog.Viewer{Profile: "viewer", Fence: "scale-open", Libraries: libraries}},
 		{"pg13", catalog.Viewer{Profile: "viewer-pg13", Fence: "scale-pg13", Libraries: libraries, Restrictions: identity.ContentRestrictions{MaximumAge: &pg13, BlockUnrated: true}}},
+	}
+	if _, err = db.Exec("ANALYZE"); err != nil {
+		return err
+	}
+	stats, err := db.Query(`SELECT tbl,COALESCE(idx,''),stat FROM sqlite_stat1 WHERE tbl LIKE 'catalog_%' OR tbl LIKE 'compact_%' ORDER BY tbl,idx`)
+	if err != nil {
+		return err
+	}
+	for stats.Next() {
+		var table, index, stat string
+		if err = stats.Scan(&table, &index, &stat); err != nil {
+			stats.Close()
+			return err
+		}
+		fmt.Fprintf(os.Stderr, "STAT1 %s %s %s\n", table, index, stat)
+	}
+	err = stats.Err()
+	stats.Close()
+	if err != nil {
+		return err
 	}
 	buildStart := time.Now()
 	for _, library := range libraries {
@@ -307,7 +333,7 @@ func run() (runErr error) {
 		}
 	}
 	if *exercise || *matrixOnly || *scenariosOnly {
-		measured, err := exerciseCatalog(db, s, *samples, !*scenariosOnly, !*matrixOnly)
+		measured, err := exerciseCatalog(db, s, *samples, !*scenariosOnly, !*matrixOnly, *explain)
 		r.Routes = append(r.Routes, measured...)
 		if err != nil {
 			return err

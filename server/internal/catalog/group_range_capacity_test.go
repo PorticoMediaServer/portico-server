@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 )
 
@@ -38,6 +39,10 @@ func TestFilteredGroupRangeCapacity(t *testing.T) {
 				c.Exec(`WITH RECURSIVE ids(i) AS(SELECT ? UNION ALL SELECT i+1 FROM ids WHERE i<?) INSERT INTO catalog_facet_members(entity_id,field,value,library_id,rating_key,label_key) SELECT i+1000000000,'genre','Noise',?,'','' FROM ids`, after+1, min(n, after+10000), lib)
 			}
 			c.Exec(`ANALYZE`)
+			// This is the previous implementation's count query, through the same
+			// serving-view rewrite it always used, captured on this identical fixture.
+			beforeSQL := compactcatalog.ServingSQL(`SELECT count(*) FROM (SELECT m.value,lower(portico_sort_title(m.value,'','')) AS name_key,count(*) AS total,max(m.recent_key) AS recent_key FROM catalog_facet_members m JOIN catalog_browse_rows e ON e.entity_id=m.entity_id WHERE m.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND m.field=? AND e.year>=? GROUP BY m.value) g WHERE 1`)
+			t.Logf("rows=%d BEFORE count plan=%s", n, seekCapacityPlan(t, c.DB, beforeSQL, "m", "genre", float64(1990)))
 			s := New(c.DB)
 			v := Viewer{Profile: "p", Fence: "capacity", Libraries: []string{"m"}}
 			for _, field := range []string{"title", "count", "recentActivity"} {

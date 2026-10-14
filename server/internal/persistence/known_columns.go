@@ -1154,6 +1154,12 @@ catalog_rec_df.facet
 catalog_rec_df.works
 catalog_rec_facets.entity_id
 catalog_rec_facets.facet
+catalog_rec_member_counts.eligible
+catalog_rec_member_counts.facet
+catalog_rec_member_counts.total
+catalog_rec_member_counts.work_id
+catalog_rec_member_work.item_id
+catalog_rec_member_work.work_id
 catalog_rec_postings.entity_id
 catalog_rec_postings.facet
 catalog_rec_postings.library_id

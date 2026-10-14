@@ -37,6 +37,17 @@ func TestMeasureDerivationStatements(t *testing.T) {
 		}
 	}
 	t.Logf("200 steps in %s gate=%+v", time.Since(start), dbwork.WriteGate().Stats())
+	if os.Getenv("PORTICO_SCALE_PROFILE_PLANS") == "1" {
+		ctx, trace := dbwork.TraceQueryPlans(context.Background())
+		if _, err = w.Step(ctx, compactcatalog.BatchLimit); err != nil {
+			t.Fatal(err)
+		}
+		for _, q := range trace() {
+			if strings.HasPrefix(q, "INSERT OR IGNORE INTO catalog_rec_facets") || strings.HasPrefix(q, "DELETE FROM catalog_rec_facets") {
+				t.Logf("query: %s", q)
+			}
+		}
+	}
 	for i, entry := range dbwork.StatementProfile() {
 		if i == 20 {
 			break
