@@ -34,8 +34,6 @@ export const ownerParityMessages = {
   // ── Profiles: forgetting the devices that remember one ──
   'profile.devicesForgotten': 'Devices that remembered {name} will ask for its PIN again.',
   // ── Merging titles from a phone ──
-  'title.merge.action': 'Merge with another title…',
   'title.merge.find': 'Title to merge with',
   'title.merge.none': 'No other title matches.',
-  'title.merge.siblings': 'From the same {container}',
 } as const;
