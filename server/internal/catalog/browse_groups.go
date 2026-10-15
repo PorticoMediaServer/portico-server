@@ -85,7 +85,7 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	pageCounts := false
 	var countGroups func(values []string) (map[string]int, error)
 	if request.Query != nil || request.Restrictions.Active() {
-		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs}
+		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, rows: request.Rows}
 		clause, err := compiler.compile(request.Query)
 		if err != nil {
 			return out, err

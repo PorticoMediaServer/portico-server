@@ -80,6 +80,26 @@ export const routes = [
     "admission": "playback"
   },
   {
+    "id": "browse_across",
+    "method": "POST",
+    "path": "/v1/browse",
+    "summary": "Read a window of a group of titles across the viewer's libraries",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
     "id": "browse_library",
     "method": "POST",
     "path": "/v1/libraries/{id}/browse",
@@ -2765,6 +2785,54 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_browse_capabilities",
+    "method": "GET",
+    "path": "/v1/browse-capabilities",
+    "summary": "Read the vocabulary of lists across libraries",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "pivot"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "get_browse_facets",
+    "method": "GET",
+    "path": "/v1/browse/facets",
+    "summary": "Read counted facet choices across the viewer's libraries",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "field",
+      "q",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
       "internal"
     ],
     "status": 200,
@@ -15582,6 +15650,7 @@ export const routePaths = {
   "act_on_download_preparation": "/v1/downloads/preparations/{id}/actions",
   "add_queue_segment": "/v1/queues/{id}/segments",
   "advance_queue": "/v1/queues/{id}:advance",
+  "browse_across": "/v1/browse",
   "browse_library": "/v1/libraries/{id}/browse",
   "change_connectivity_policy": "/v1/admin/connectivity/policy",
   "change_console_settings": "/v1/admin/console/settings",
@@ -15705,6 +15774,8 @@ export const routePaths = {
   "get_books_id_chapters": "/v1/books/{id}/chapters",
   "get_books_id_files": "/v1/books/{id}/files",
   "get_bootstrap": "/v1/bootstrap",
+  "get_browse_capabilities": "/v1/browse-capabilities",
+  "get_browse_facets": "/v1/browse/facets",
   "get_capabilities": "/v1/capabilities",
   "get_capability_report": "/v1/admin/diagnostics/capabilities",
   "get_catalogue_failures": "/v1/admin/catalogue/failures",

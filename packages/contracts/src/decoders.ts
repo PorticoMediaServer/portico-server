@@ -4,6 +4,7 @@ import type * as types from './types.ts';
 export function decodeActOnDownloadPreparationResponse(input: unknown): types.ActOnDownloadPreparationResponse { return decode("ActOnDownloadPreparationResponse", input) as types.ActOnDownloadPreparationResponse; }
 export function decodeAddQueueSegmentResponse(input: unknown): types.AddQueueSegmentResponse { return decode("AddQueueSegmentResponse", input) as types.AddQueueSegmentResponse; }
 export function decodeAdvanceQueueResponse(input: unknown): types.AdvanceQueueResponse { return decode("AdvanceQueueResponse", input) as types.AdvanceQueueResponse; }
+export function decodeBrowseAcrossResponse(input: unknown): types.BrowseAcrossResponse { return decode("BrowseAcrossResponse", input) as types.BrowseAcrossResponse; }
 export function decodeBrowseLibraryResponse(input: unknown): types.BrowseLibraryResponse { return decode("BrowseLibraryResponse", input) as types.BrowseLibraryResponse; }
 export function decodeChangeConnectivityPolicyResponse(input: unknown): types.ChangeConnectivityPolicyResponse { return decode("ChangeConnectivityPolicyResponse", input) as types.ChangeConnectivityPolicyResponse; }
 export function decodeChangeConsoleSettingsResponse(input: unknown): types.ChangeConsoleSettingsResponse { return decode("ChangeConsoleSettingsResponse", input) as types.ChangeConsoleSettingsResponse; }
@@ -127,6 +128,8 @@ export function decodeGetAuthCapabilitiesResponse(input: unknown): types.GetAuth
 export function decodeGetBooksIdChaptersResponse(input: unknown): types.GetBooksIdChaptersResponse { return decode("GetBooksIdChaptersResponse", input) as types.GetBooksIdChaptersResponse; }
 export function decodeGetBooksIdFilesResponse(input: unknown): types.GetBooksIdFilesResponse { return decode("GetBooksIdFilesResponse", input) as types.GetBooksIdFilesResponse; }
 export function decodeGetBootstrapResponse(input: unknown): types.GetBootstrapResponse { return decode("GetBootstrapResponse", input) as types.GetBootstrapResponse; }
+export function decodeGetBrowseCapabilitiesResponse(input: unknown): types.GetBrowseCapabilitiesResponse { return decode("GetBrowseCapabilitiesResponse", input) as types.GetBrowseCapabilitiesResponse; }
+export function decodeGetBrowseFacetsResponse(input: unknown): types.GetBrowseFacetsResponse { return decode("GetBrowseFacetsResponse", input) as types.GetBrowseFacetsResponse; }
 export function decodeGetCapabilitiesResponse(input: unknown): types.GetCapabilitiesResponse { return decode("GetCapabilitiesResponse", input) as types.GetCapabilitiesResponse; }
 export function decodeGetCapabilityReportResponse(input: unknown): types.GetCapabilityReportResponse { return decode("GetCapabilityReportResponse", input) as types.GetCapabilityReportResponse; }
 export function decodeGetCatalogueFailuresResponse(input: unknown): types.GetCatalogueFailuresResponse { return decode("GetCatalogueFailuresResponse", input) as types.GetCatalogueFailuresResponse; }

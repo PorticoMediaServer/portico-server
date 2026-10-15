@@ -84,7 +84,10 @@ type BrowseRequest struct {
 	// Restrictions is the viewer's content restriction. The browse engine applies
 	// it in browseSelect; see restrictions.go for the predicate it compiles.
 	Restrictions identity.ContentRestrictions
-	viewer       Viewer
+	// Rows are the Home rows the query names, resolved by the caller to their
+	// titles in order (ResolveHomeRows); a homeRow condition reads nothing else.
+	Rows   map[string][]int64
+	viewer Viewer
 	// scope overrides the cursor scope so the legacy GET surface keeps its
 	// existing continuation fencing.
 	scope *cursorScope
@@ -312,13 +315,18 @@ func (s *Service) browseRevision(request BrowseRequest, pivot browsePivot, sorts
 	if err != nil {
 		return "", err
 	}
-	extra := ""
+	extra, err := s.browseGroupFence(request.Query, request.Rows)
+	if err != nil {
+		return "", err
+	}
 	if len(sorts) > 0 && sorts[0].Field == "forYou" {
 		// For you also reads the profile's taste, the recommendation data and
 		// the day (rotation): a page from another of any of them is another list.
-		if extra, err = s.recBrowseFence(request.Profile); err != nil {
+		fence, err := s.recBrowseFence(request.Profile)
+		if err != nil {
 			return "", err
 		}
+		extra += "\x00" + fence
 	}
 	digest := sha256.Sum256([]byte(fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%s\x00%d\x00%d\x00%s", request.Library, pivot.ID, request.ViewerFence, queryFingerprint(request.Query), canonicalSort(sorts), revision.Catalog, revision.Viewer, extra)))
 	return "browse_" + hex.EncodeToString(digest[:]), nil
@@ -430,7 +438,7 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	}
 
 	where, args := browseScopeSQL(request.Library, pivot)
-	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot)}
+	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
@@ -571,7 +579,13 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			}
 		}
 	}
-	shape := pageShape{request: request, sorts: sorts, where: where, args: args, unrestricted: unrestricted, unrestrictedArgs: unrestrictedArgs, live: live, liveArgs: liveArgs, order: order, orderArgs: orderArgs,
+	group, groupArgs := "", []any(nil)
+	if sorts[0].Field == "groupOrder" {
+		if group, groupArgs, err = s.groupOrderSource(groupOrderTarget(request.Query), request.Rows); err != nil {
+			return out, nil, err
+		}
+	}
+	shape := pageShape{group: group, groupArgs: groupArgs, request: request, sorts: sorts, where: where, args: args, unrestricted: unrestricted, unrestrictedArgs: unrestrictedArgs, live: live, liveArgs: liveArgs, order: order, orderArgs: orderArgs,
 		limit: request.Limit, total: total, summary: summary, seekKeys: seekKeys, seekAnchor: seekAnchor}
 	if members := entityKindMembers(pivot); len(members) == 1 {
 		parsed, parseErr := compactcatalog.ParseKind(members[0])
@@ -748,6 +762,7 @@ func (s *Service) browseProjection(profile string, rows []browseRow) ([]ContentE
 				continue
 			}
 			entry := contentItem(item)
+			entry.SortLetter = sorttext.Letter(row.sortKey)
 			if item.Year > 0 {
 				year := item.Year
 				entry.Year = &year
@@ -766,7 +781,7 @@ func (s *Service) browseProjection(profile string, rows []browseRow) ([]ContentE
 		}
 		count := counts[row.entity]
 		art := artwork[artworkTarget{row.kind, row.id}]
-		entry := ContentEntry{PosterURL: art.PosterURL, BackdropURL: art.BackdropURL, ID: row.id, Kind: row.kind, Title: row.title, Count: &count, AddedAt: nullableString(row.added), Navigation: &ContentNavigation{View: containerView(row.kind), EntityID: row.id}}
+		entry := ContentEntry{SortLetter: sorttext.Letter(row.sortKey), PosterURL: art.PosterURL, BackdropURL: art.BackdropURL, ID: row.id, Kind: row.kind, Title: row.title, Count: &count, AddedAt: nullableString(row.added), Navigation: &ContentNavigation{View: containerView(row.kind), EntityID: row.id}}
 		if row.year > 0 {
 			entry.Subtitle = strconv.Itoa(row.year)
 			year := row.year

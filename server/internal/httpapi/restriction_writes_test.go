@@ -549,6 +549,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"PUT /v1/me/library-navigation":               perHidden("PUT", "/v1/me/library-navigation", `{"expectedRevision":0,"pinnedLibraryIds":["ID"]}`, "library"),
 		"POST /v1/libraries":                          writeExempt("owner-only library creation (library_routes tests); names no existing catalogue id"),
 		"POST /v1/libraries/{id}/browse":              perHidden("POST", "/v1/libraries/ID/browse", `{"pivot":"movies","limit":20}`, "library"),
+		"POST /v1/browse":                             perHidden("POST", "/v1/browse", `{"pivot":"titles","query":{"field":"savedCollection","operator":"equals","value":"ID"},"limit":20}`, "item"),
 		"POST /v1/libraries/{id}/collections":         perHidden("POST", "/v1/libraries/ID/collections", `{"name":"x"}`, "library"),
 		"POST /v1/libraries/{id}/episode-assignments": perHidden("POST", "/v1/libraries/ID/episode-assignments", `{}`, "library"),
 		"POST /v1/libraries/{id}/lyrics/fetch":        perHidden("POST", "/v1/libraries/ID/lyrics/fetch", `{}`, "library"),

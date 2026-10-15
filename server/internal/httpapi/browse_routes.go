@@ -98,6 +98,9 @@ func (d Dependencies) browseRoutes(mux *http.ServeMux) {
 	}
 	if d.registry == nil {
 		mux.HandleFunc("GET /v1/libraries/{id}/facets", d.facetsHandler)
+		mux.HandleFunc("POST /v1/browse", d.browseAcrossHandler)
+		mux.HandleFunc("GET /v1/browse-capabilities", d.browseAcrossCapabilitiesHandler)
+		mux.HandleFunc("GET /v1/browse/facets", d.browseAcrossFacetsHandler)
 	}
 	d.httpHandle(mux, "PUT /v1/saved-pins/order", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
@@ -208,9 +211,12 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 	// browseSelect existed to detect.
 	var out catalog.BrowseResult
 	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
-		var composeErr error
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
-		out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: restrictions})
+		rows, composeErr := d.resolveHomeRows(r, p, viewer, query, cat)
+		if composeErr != nil {
+			return composeErr
+		}
+		out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: restrictions, Rows: rows})
 		return composeErr
 	})
 	if e != nil {

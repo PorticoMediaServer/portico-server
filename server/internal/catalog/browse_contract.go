@@ -170,8 +170,38 @@ var browseFields = []browseField{
 	{ID: "versions", LabelKey: "browse.field.versions", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(assetedKinds), Join: `JOIN (SELECT 1) version_scope`, Value: `(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=bei.item_id AND l.part_index=0)`},
 	{ID: "memberOf", LabelKey: "browse.field.memberOf", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(commonKinds), Join: `JOIN catalog_browse_memberships parent ON parent.item_id=bei.item_id JOIN catalog_entities container ON container.id=parent.entity_id`, Value: "pid(container.public_id)"},
 	{ID: "person", LabelKey: "browse.field.person", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Join: `JOIN catalog_credits credit ON credit.entity_id IN(bei.item_id,bei.entity_id) JOIN catalog_people person ON person.id=credit.person_id`, Value: "person.token"},
+	// A person's credits in one role: cast (acting) or crew (everything else), as the person page splits them.
+	{ID: "cast", LabelKey: "browse.field.cast", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Join: `JOIN catalog_credits credit ON credit.entity_id IN(bei.item_id,bei.entity_id) JOIN catalog_people person ON person.id=credit.person_id JOIN catalog_credit_labels dept ON dept.id=credit.department_id AND ` + castDepartment, Value: "person.token"},
+	{ID: "crew", LabelKey: "browse.field.crew", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(videoKinds), Join: `JOIN catalog_credits credit ON credit.entity_id IN(bei.item_id,bei.entity_id) JOIN catalog_people person ON person.id=credit.person_id JOIN catalog_credit_labels dept ON dept.id=credit.department_id AND NOT ` + castDepartment, Value: "person.token"},
+	// A personal collection (saved resource of kind collection) the viewer owns, was given, or that is shared with everyone.
+	{ID: "savedCollection", LabelKey: "browse.field.savedCollection", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(playedKinds), Profile: 1},
+	// One of a show's episode groups (Spec — Title Pages §4): "<show id>/<group>", the group as the show workspace names it.
+	{ID: "episodeGroup", LabelKey: "browse.field.episodeGroup", Type: valueString, Operators: []string{"equals"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds("episode")},
+	{ID: "discNumber", LabelKey: "browse.field.discNumber", Type: valueNumber, Operators: numberOperators, ControlHint: "number-range", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds("song,audiobook_file"), Join: `JOIN (SELECT 1) disc_scope`,
+		Value: `COALESCE((SELECT s.disc_number FROM catalog_songs s WHERE s.entity_id=bei.item_id),(SELECT f.disc_number FROM catalog_book_files f WHERE f.entity_id=bei.item_id),1)`},
+	// A Home row's titles (Recommended, Trending now, a Picks for you row): the row as the viewer's Home has it now.
+	{ID: "homeRow", LabelKey: "browse.field.homeRow", Type: valueString, Operators: []string{"equals"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(commonKinds), Profile: 1},
 	{ID: "list", LabelKey: "browse.field.list", Type: valueSet, Operators: []string{"equals", "in", "not-in"}, ControlHint: "text", Complexity: "standard", Cost: "indexed-join", ApplicableKinds: kinds(playedKinds),
 		Join: `JOIN catalog_playlist_entries entry ON entry.item_id=bei.item_id JOIN catalog_playlists list ON list.id=entry.playlist_id AND list.deleted=0 AND (list.owner_authority=? AND list.owner_account=? AND list.owner_profile=? OR EXISTS(SELECT 1 FROM playlist_shares share WHERE share.playlist_id=list.token AND share.authority=? AND share.account_id=? AND share.profile_id=?))`, Value: "list.token", Profile: 6},
+}
+
+// castDepartment is a credit whose department is acting, as the person page counts cast.
+const castDepartment = `lower(dept.label) IN('acting','cast')`
+
+// browseIdentityField reports a field whose values are opaque identities,
+// compared exactly rather than folded as text.
+func browseIdentityField(id string) bool {
+	switch id {
+	case "collection", "memberOf", "person", "cast", "crew", "list", "savedCollection", "episodeGroup", "homeRow":
+		return true
+	}
+	return false
+}
+
+// browseGroupField reports a field that names a group of titles (a membership)
+// rather than a fact of one.
+func browseGroupField(id string) bool {
+	return browseIdentityField(id)
 }
 
 func browseFieldByID(id string) (browseField, bool) {
@@ -225,6 +255,11 @@ var browseSorts = []browseSort{
 	{ID: "fileSize", LabelKey: "sort.fileSize", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book"), Ordering: -2, Expression: "e.file_size"},
 	{ID: "resolution", LabelKey: "sort.resolution", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection"), Ordering: -2, Expression: "e.resolution_key"},
 	{ID: "random", LabelKey: "sort.random", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book,author"), Ordering: -2, Expression: "e.random_key", ClassKey: "v.random_key"},
+	// A group's own order: a playlist's positions, a collection's order, a show's
+	// episode order, an album's track order, an artist's releases by type, a
+	// book's parts. It needs a group condition in the query (groupOrderTarget)
+	// and reads the group's members, never the library.
+	{ID: "groupOrder", LabelKey: "sort.groupOrder", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds(commonKinds), Ordering: -3, Expression: "ord.pos"},
 	{ID: "playCount", LabelKey: "sort.playCount", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds(playedKinds), Profile: true, Ordering: -1, Expression: "(SELECT COALESCE(play_count,0) FROM catalog_personal_sort_rows p WHERE p.profile_id=? AND p.entity_id=e.entity_id)"},
 }
 
@@ -247,6 +282,9 @@ type browsePivot struct {
 	// Aggregate pivots project a facet (decade, genre, series) instead of entities.
 	Aggregate string
 	Browsable bool
+	// Members marks a pivot that is read within a group (memberOf) rather than
+	// as a library tab.
+	Members bool
 }
 
 var browsePivots = map[string][]browsePivot{
@@ -276,6 +314,8 @@ var browsePivots = map[string][]browsePivot{
 		{ID: "books", LabelKey: "library.books", EntityKinds: []string{"book"}, SupportedViews: []string{"grid", "list"}, DefaultSort: titleAscending(), Browsable: true},
 		{ID: "series", LabelKey: "library.series", EntityKinds: []string{"book_series"}, SupportedViews: []string{"grid"}, DefaultSort: titleAscending(), Aggregate: "series"},
 		{ID: "collections", LabelKey: "library.collections", EntityKinds: []string{"collection"}, SupportedViews: []string{"grid", "list"}, DefaultSort: titleAscending(), Browsable: true},
+		// A book's parts (its files), read within one book (memberOf); no library tab lists them.
+		{ID: "parts", LabelKey: "library.parts", EntityKinds: []string{"audiobook_file"}, SupportedViews: []string{"list"}, DefaultSort: titleAscending(), Browsable: true, Members: true},
 	},
 }
 
@@ -352,7 +392,10 @@ type BrowseSortCapability struct {
 	DefaultDirection string   `json:"defaultDirection"`
 	Expensive        bool     `json:"expensive"`
 	Seeded           bool     `json:"seeded"`
-	ApplicableKinds  []string `json:"applicableKinds"`
+	// RequiresGroup marks the group's own order: offered on a group's page,
+	// refused without a group condition.
+	RequiresGroup   bool     `json:"requiresGroup"`
+	ApplicableKinds []string `json:"applicableKinds"`
 }
 type BrowsePivotCapability struct {
 	ID             string                `json:"id"`
@@ -362,6 +405,7 @@ type BrowsePivotCapability struct {
 	SupportedViews []string              `json:"supportedViews"`
 	Browsable      bool                  `json:"browsable"`
 	Aggregate      string                `json:"aggregate,omitempty"`
+	Members        bool                  `json:"members,omitempty"`
 	Sorts          []string              `json:"sorts"`
 	Filters        []string              `json:"filters"`
 	Paging         string                `json:"paging"`
@@ -435,12 +479,12 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		return out, requestinput.New("this library kind publishes no browse pivots")
 	}
 	for _, entry := range available {
-		out.Pivots = append(out.Pivots, BrowsePivotCapability{ID: entry.ID, LabelKey: entry.LabelKey, EntityKinds: entry.EntityKinds, DefaultSort: entry.DefaultSort, SupportedViews: entry.SupportedViews, Browsable: entry.Browsable || entry.Aggregate != "", Aggregate: entry.Aggregate, Sorts: pivotSortIDs(lib.Kind, entry), Filters: pivotFieldIDs(lib.Kind, entry), Paging: "keyset"})
+		out.Pivots = append(out.Pivots, BrowsePivotCapability{ID: entry.ID, LabelKey: entry.LabelKey, EntityKinds: entry.EntityKinds, DefaultSort: entry.DefaultSort, SupportedViews: entry.SupportedViews, Browsable: entry.Browsable || entry.Aggregate != "", Aggregate: entry.Aggregate, Members: entry.Members, Sorts: pivotSortIDs(lib.Kind, entry), Filters: pivotFieldIDs(lib.Kind, entry), Paging: "keyset"})
 	}
 	kindFilter := map[string]bool{}
 	if pivot == "" {
 		for _, entry := range available {
-			if entry.Browsable {
+			if entry.Browsable && !entry.Members {
 				for _, kind := range entityKindMembers(entry) {
 					kindFilter[kind] = true
 				}
@@ -479,7 +523,7 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 		if len(kindFilter) > 0 && !anyKind(entry.ApplicableKinds, kindFilter) {
 			continue
 		}
-		out.Sorts = append(out.Sorts, BrowseSortCapability{ID: entry.ID, LabelKey: entry.LabelKey, Directions: entry.Directions, DefaultDirection: entry.DefaultDirection, Expensive: entry.ID == "forYou", Seeded: entry.ID == "random", ApplicableKinds: entry.ApplicableKinds})
+		out.Sorts = append(out.Sorts, BrowseSortCapability{ID: entry.ID, LabelKey: entry.LabelKey, Directions: entry.Directions, DefaultDirection: entry.DefaultDirection, Expensive: entry.ID == "forYou", Seeded: entry.ID == "random", RequiresGroup: entry.Ordering == -3, ApplicableKinds: entry.ApplicableKinds})
 	}
 	if out.ResolvedPivot == nil || out.ResolvedPivot.Aggregate != "" {
 		groupSorts := []string{"count", "recentActivity"}
@@ -511,7 +555,7 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 	for _, field := range out.Fields {
 		filters = append(filters, field.ID)
 	}
-	for _, surface := range []struct{ id, field string }{{"library", ""}, {"group-titles", ""}, {"collection-titles", "collection"}, {"container-titles", "memberOf"}, {"person-titles", "person"}, {"list-titles", "list"}, {"search-results", "search"}, {"saved-view", ""}} {
+	for _, surface := range browseSurfaces {
 		if out.ResolvedPivot != nil && out.ResolvedPivot.Aggregate != "" && surface.id != "library" {
 			continue
 		}
@@ -522,6 +566,10 @@ func (s *Service) BrowseCapabilitiesFor(library, pivot string) (BrowseCapabiliti
 	}
 	return out, nil
 }
+
+// browseSurfaces are the kinds of list the common route serves, each with the
+// membership field that enters it.
+var browseSurfaces = []struct{ id, field string }{{"library", ""}, {"group-titles", ""}, {"collection-titles", "collection"}, {"container-titles", "memberOf"}, {"person-titles", "person"}, {"cast-titles", "cast"}, {"crew-titles", "crew"}, {"list-titles", "list"}, {"saved-collection-titles", "savedCollection"}, {"episode-group", "episodeGroup"}, {"row-titles", "homeRow"}, {"search-results", "search"}, {"saved-view", ""}}
 
 func pivotFilterKinds(libraryKind string, pivot browsePivot) []string {
 	if pivot.Aggregate != "" {

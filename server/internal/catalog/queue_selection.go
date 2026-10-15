@@ -183,6 +183,33 @@ func (s *Service) queueBrowseOrder(viewer Viewer, query *QueueQuery, sorts []Bro
 		}
 		return `COALESCE((SELECT CAST(key AS INTEGER) FROM json_each(?) rank WHERE rank.value=e.entity_id),2147483647),e.sort_key COLLATE NOCASE,e.entity_id`, []any{idsJSON64(ids)}, nil
 	}
+	if first.Field == "groupOrder" {
+		// The group's own order (a playlist's, a season's, an album's): its
+		// members' places, read from the group and bounded by it.
+		source, sourceArgs, err := s.groupOrderSource(groupOrderTarget(query.Query), nil)
+		if err != nil {
+			return "", nil, err
+		}
+		rows, err := s.read().Query(`SELECT id FROM (`+source+`) ORDER BY pos `+direction+`,id `+direction, sourceArgs...)
+		if err != nil {
+			return "", nil, err
+		}
+		ids := []int64{}
+		for rows.Next() {
+			var id int64
+			if err = rows.Scan(&id); err != nil {
+				rows.Close()
+				return "", nil, err
+			}
+			ids = append(ids, id)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return "", nil, err
+		}
+		return `COALESCE((SELECT CAST(key AS INTEGER) FROM json_each(?) rank WHERE rank.value=e.entity_id),2147483647),e.entity_id`, []any{idsJSON64(ids)}, nil
+	}
 	definition, _ := browseSortByID(first.Field)
 	if definition.Profile {
 		column, zero, _ := personalSortColumn(first.Field)

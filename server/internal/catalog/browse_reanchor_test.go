@@ -78,7 +78,7 @@ func TestBrowseReanchorNonTitleSortsRelocate(t *testing.T) {
 	for _, sc := range caps.Sorts {
 		// For you has no position anchors (a taste order has no letter or year
 		// to return to): a stale reader restarts from the first page.
-		if sc.ID == "title" || sc.ID == "forYou" {
+		if sc.ID == "title" || sc.ID == "forYou" || sc.RequiresGroup {
 			continue
 		}
 		for _, direction := range sc.Directions {

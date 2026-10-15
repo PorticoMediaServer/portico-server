@@ -613,7 +613,16 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/libraries/{id}/discover":            perLibrary("/discover"),
 		"GET /v1/libraries/{id}/episode-issues":      perLibrary("/episode-issues"),
 		"GET /v1/libraries/{id}/facets":              probe(func(m *restrictionEnv) []string { return m.facetPaths() }),
-		"GET /v1/libraries/{id}/inventory-status":    perLibrary("/inventory-status"),
+		// Catalogue: lists across the viewer's libraries.
+		"GET /v1/browse-capabilities": static("/v1/browse-capabilities?pivot=titles", "/v1/browse-capabilities?pivot=items"),
+		"GET /v1/browse/facets": probe(func(m *restrictionEnv) []string {
+			out := []string{}
+			for _, field := range catalog.BrowseFacetFields() {
+				out = append(out, "/v1/browse/facets?field="+field)
+			}
+			return out
+		}),
+		"GET /v1/libraries/{id}/inventory-status": perLibrary("/inventory-status"),
 		// What plays when a library, an album, an artist or a book is started.
 		"GET /v1/libraries/{id}/listening/selection": probe(func(m *restrictionEnv) []string {
 			out := []string{}
@@ -667,7 +676,20 @@ func restrictionReadPOSTs(m *restrictionEnv) map[string][]postProbe {
 	if m != nil {
 		jobs = append(jobs, postProbe{"/v1/jobs", fmt.Sprintf(`{"operationId":"matrix-job","command":"personal-state","selector":{"items":{"ids":[%q]}},"args":{"watched":true}}`, m.visibleMovie)})
 	}
-	return map[string][]postProbe{"POST /v1/libraries/{id}/browse": browse, "POST /v1/jobs": jobs}
+	across := []postProbe{}
+	if m != nil {
+		for _, pivot := range []string{"titles", "items"} {
+			for _, group := range []string{`{"field":"watchlisted","operator":"equals","value":true}`, `{"field":"favorite","operator":"equals","value":true}`, `{"field":"lastPlayedAt","operator":"is-present","value":null}`} {
+				across = append(across, postProbe{"/v1/browse", fmt.Sprintf(`{"pivot":%q,"query":%s,"limit":100}`, pivot, group)})
+			}
+			for _, person := range m.people {
+				for _, field := range []string{"person", "cast", "crew"} {
+					across = append(across, postProbe{"/v1/browse", fmt.Sprintf(`{"pivot":%q,"query":{"field":%q,"operator":"equals","value":%q},"limit":100}`, pivot, field, person)})
+				}
+			}
+		}
+	}
+	return map[string][]postProbe{"POST /v1/libraries/{id}/browse": browse, "POST /v1/browse": across, "POST /v1/jobs": jobs}
 }
 
 func prefixed(prefix string, ids []string, suffix ...string) []string {

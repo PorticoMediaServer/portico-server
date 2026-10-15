@@ -309,6 +309,9 @@ type browseCompiler struct {
 	// itemPivot says every row of the pivot is a playable item, whose only
 	// membership is itself.
 	itemPivot bool
+	// rows are the Home rows the request names, resolved by the caller to the
+	// row's titles in its order (homeRow).
+	rows map[string][]int64
 }
 
 // drivenMaximum is the most matching member items a value-side selection
@@ -329,7 +332,7 @@ func browseRequiresGroup(node *BrowseNode) bool {
 	if node == nil {
 		return false
 	}
-	if node.Field == "genre" || node.Field == "memberOf" || node.Field == "collection" || node.Field == "person" || node.Field == "list" {
+	if node.Field == "genre" || browseGroupField(node.Field) {
 		switch node.Operator {
 		case "equals", "in", "contains", "contains-any", "contains-all":
 			return true
@@ -408,8 +411,7 @@ func (c *browseCompiler) predicate(node BrowseNode) (string, error) {
 }
 
 func foldBrowseText(field browseField) bool {
-	switch field.ID {
-	case "collection", "memberOf", "person", "list":
+	if browseIdentityField(field.ID) {
 		return false
 	}
 	return field.Type == valueString || field.Type == valueSet || field.Type == valueEnum
@@ -421,7 +423,7 @@ func collated(field browseField, expression string) string {
 	if foldBrowseText(field) {
 		return "portico_fold_text(" + expression + ")"
 	}
-	if field.ID == "collection" || field.ID == "memberOf" || field.ID == "person" || field.ID == "list" {
+	if browseIdentityField(field.ID) {
 		return "(" + expression + ")"
 	}
 	if field.Type == valueString || field.Type == valueEnum || field.Type == valueSet {
@@ -711,6 +713,14 @@ func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (stri
 	}
 	if clause, handled, err := c.groupMembershipPredicate(field, node); handled {
 		return clause, err
+	}
+	switch field.ID {
+	case "savedCollection":
+		return c.savedCollectionPredicate(node)
+	case "episodeGroup":
+		return c.episodeGroupPredicate(node)
+	case "homeRow":
+		return c.homeRowPredicate(node)
 	}
 	if field.ID == "playState" {
 		return c.playStatePredicate(node)
@@ -1006,6 +1016,13 @@ func drivenMemberSource(field browseField) (drivenSource, bool) {
 		// A credit names an item or its container (a show's cast), so the
 		// credited entity is either the member item or the title itself.
 		return drivenSource{from: `catalog_people person CROSS JOIN catalog_credits credit INDEXED BY catalog_credits_person ON credit.person_id=person.id`, scope: "1", item: "credit.entity_id",
+			members: `(bei.item_id=credit.entity_id OR bei.entity_id=credit.entity_id)`}, true
+	case "cast", "crew":
+		role := castDepartment
+		if field.ID == "crew" {
+			role = "NOT " + castDepartment
+		}
+		return drivenSource{from: `catalog_people person CROSS JOIN catalog_credits credit INDEXED BY catalog_credits_person ON credit.person_id=person.id JOIN catalog_credit_labels dept ON dept.id=credit.department_id`, scope: role, item: "credit.entity_id",
 			members: `(bei.item_id=credit.entity_id OR bei.entity_id=credit.entity_id)`}, true
 	case "communityRating", "criticRating":
 		providers := "'tmdb','imdb','musicbrainz','audible'"
