@@ -223,6 +223,8 @@ const accountPages: readonly AuthoredPage[] = [
       ]},
       {id: 'advanced', title: 'settings.section.advanced', advanced: true, rows: [
         pref('playback.playedThresholdPercent', 'settings.row.watchedThreshold', {type: 'choice', choices: [80, 85, 90, 95, 100].map(value => ({value, label: 'pref.unit.percent' as MessageId, labelValues: {value}}))}, {help: 'pref.help.playback.playedThresholdPercent'}),
+        // The other end of the same scale: how much is watched before a title joins Continue Watching (the server honours it).
+        pref('playback.startedThresholdPercent', 'pref.label.playback.startedThresholdPercent', {type: 'choice', choices: [1, 2, 5, 10, 15, 20, 25].map(value => ({value, label: 'pref.unit.percent' as MessageId, labelValues: {value}}))}, {help: 'pref.help.playback.startedThresholdPercent'}),
       ]},
     ],
   },
@@ -312,6 +314,8 @@ const accountPages: readonly AuthoredPage[] = [
       {id: 'history', rows: [
         toggle('privacy.pauseWatchHistory', 'pref.label.privacy.pauseWatchHistory', {help: 'pref.help.privacy.pauseWatchHistory'}),
         toggle('privacy.showActivityToMembers', 'settings.row.showActivity', {help: 'settings.help.showActivity'}),
+        // Off: in a Watch Together room this profile's activity is shown without its name.
+        toggle('privacy.includeInWatchTogether', 'pref.label.privacy.includeInWatchTogether'),
         toggle('search.rememberHistory', 'pref.label.search.rememberHistory'),
       ]},
       {id: 'recommendations', rows: [{kind: 'action', id: 'resetRecommendations', label: 'settings.resetRecommendations', help: 'settings.resetRecommendations.help', icon: 'refresh'}]},

@@ -31,6 +31,8 @@ export const ownerParityMessages = {
   'server.metadata.openSubtitlesPasswordSaved': 'A password is saved',
   'server.metadata.openSubtitlesUseServer': 'Use the server’s key',
   'server.metadata.openSubtitlesSignOut': 'Remove the account',
+  // ── Profiles: forgetting the devices that remember one ──
+  'profile.devicesForgotten': 'Devices that remembered {name} will ask for its PIN again.',
   // ── Merging titles from a phone ──
   'title.merge.action': 'Merge with another title…',
   'title.merge.find': 'Title to merge with',
