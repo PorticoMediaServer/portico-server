@@ -255,11 +255,15 @@ func TestPlaybackV1PlayerFailureReplansInPlace(t *testing.T) {
 
 // The audio track a profile picks is remembered for the film by language and
 // applied at the next start that names none.
-func TestPlaybackV1RemembersTrackChoices(t *testing.T) {
-	f := replanFixtureV1(t, 1)
+// A track picked in the player is for that playback: it carries through the
+// queue (the next episode keeps it) and a playback started afresh goes back to
+// the Settings. Nothing is remembered per title.
+func TestPlaybackV1InPlayerTrackChoicesLastOnePlayback(t *testing.T) {
+	f := replanFixtureV1(t, 2)
 	filmStreams(t, f, 0, 6_000_000)
+	filmStreams(t, f, 1, 6_000_000)
 	var s playbackv1.SessionView
-	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "remember-tracks-0001"}, startBody(f.items[0], nil), 201, &s)
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "player-choice-0001"}, startBody(f.items[0], nil), 201, &s)
 	if s.Presentation.AudioTrackID != "a1" {
 		t.Fatalf("the default track: %+v", s.Presentation)
 	}
@@ -269,51 +273,50 @@ func TestPlaybackV1RemembersTrackChoices(t *testing.T) {
 		t.Fatalf("audio change: %+v", chosen.Presentation)
 	}
 	f.call("DELETE", "/v1/playback/sessions/"+s.ID, nil, nil, 204, nil)
-	var language string
-	if err := f.db.QueryRow(`SELECT audio_language FROM playback_track_memory`).Scan(&language); err != nil || language != "ja" {
-		t.Fatalf("remembered %q %v", language, err)
+	// A fresh start of the same film: the Settings again.
+	var again playbackv1.SessionView
+	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "player-choice-0002"}, startBody(f.items[0], nil), 201, &again)
+	if again.Presentation.AudioTrackID != "a1" {
+		t.Fatalf("an in-player choice outlived its playback: %+v", again.Presentation)
 	}
-	var next playbackv1.SessionView
-	f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": "remember-tracks-0002"}, startBody(f.items[0], nil), 201, &next)
-	if next.Presentation.AudioTrackID != "a2" {
-		t.Fatalf("the remembered language was not applied: %+v", next.Presentation)
-	}
+	f.call("DELETE", "/v1/playback/sessions/"+again.ID, nil, nil, 204, nil)
 	var options playbackv1.Options
 	f.call("GET", "/v1/items/"+f.items[0]+"/playback-options", nil, nil, 200, &options)
-	if options.Preferred == nil || options.Preferred.AudioID != "a2" || options.Preferred.Reason != "last_used" {
+	if options.Preferred == nil || options.Preferred.AudioID != "a1" || options.Preferred.Reason != "default" {
 		t.Fatalf("options preferred %+v", options.Preferred)
 	}
-	// Another profile is not affected.
-	member, _ := f.member()
-	f.callAs(member, "PUT", "/v1/me/devices/current/capabilities", nil, webCapabilities(), 204, nil)
-	if err := f.db.QueryRow(`SELECT count(*) FROM playback_track_memory`).Scan(new(int)); err != nil {
-		t.Fatal(err)
+	if w := f.raw("DELETE", "/v1/items/"+f.items[0]+"/playback-memory", f.owner.AccessToken, nil, nil); w.Code != 404 && w.Code != 405 {
+		t.Fatalf("the forget route is still served: %d", w.Code)
 	}
-	var count int
-	_ = f.db.QueryRow(`SELECT count(DISTINCT profile_id) FROM playback_track_memory`).Scan(&count)
-	if count != 1 {
-		t.Fatalf("%d profiles remembered a choice only one made", count)
+
+	// In a queue the choice carries to the next entry.
+	var created playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "player-choice-queue-1"}, map[string]any{"owner": "device", "segments": []any{map[string]any{"source": queueItems(f.items...)}}, "startPlayback": map[string]any{"state": "playing"}}, 201, &created)
+	if created.Session == nil || created.Session.Presentation.AudioTrackID != "a1" {
+		t.Fatalf("queue start %+v", created.Session)
 	}
-	// Another profile's forget leaves this one's choice alone (here it cannot
-	// see the film at all); the profile's own forget clears it, and the next
-	// start is the default again.
-	if w := f.raw("DELETE", "/v1/items/"+f.items[0]+"/playback-memory", member, nil, nil); w.Code != 204 && w.Code != 404 {
-		t.Fatalf("another profile's forget: %d %s", w.Code, w.Body.String())
+	f.call("PATCH", "/v1/playback/sessions/"+created.Session.ID, map[string]string{"If-Match": created.Session.Revision}, map[string]any{"audio": map[string]any{"trackId": "a2"}, "subtitles": map[string]any{"trackId": "off"}}, 200, &chosen)
+	if chosen.Presentation.AudioTrackID != "a2" {
+		t.Fatalf("queue audio change: %+v", chosen.Presentation)
 	}
-	_ = f.db.QueryRow(`SELECT count(*) FROM playback_track_memory`).Scan(&count)
-	if count != 1 {
-		t.Fatalf("another profile's forget removed %d choices", 1-count)
+	var next playbackv1.QueueReply
+	f.call("POST", "/v1/queues/"+created.Queue.ID+":advance", map[string]string{"If-Match": created.Queue.Revision}, map[string]any{"reason": "completion"}, 200, &next)
+	if next.Session == nil || next.Session.ItemID != f.items[1] || next.Session.Presentation.AudioTrackID != "a2" || next.Session.Presentation.Subtitle != nil {
+		t.Fatalf("the next entry lost the playback's choice: %+v", next.Session)
 	}
-	f.call("DELETE", "/v1/items/"+f.items[0]+"/playback-memory", nil, nil, 204, nil)
-	_ = f.db.QueryRow(`SELECT count(*) FROM playback_track_memory`).Scan(&count)
-	if count != 0 {
-		t.Fatalf("forget left %d choices", count)
+	// Going back within the same queue keeps it too.
+	var back playbackv1.QueueReply
+	f.call("POST", "/v1/queues/"+created.Queue.ID+":advance", map[string]string{"If-Match": next.Queue.Revision}, map[string]any{"reason": "previous"}, 200, &back)
+	if back.Session == nil || back.Session.ItemID != f.items[0] || back.Session.Presentation.AudioTrackID != "a2" {
+		t.Fatalf("previous lost the playback's choice: %+v", back.Session)
 	}
-	f.call("GET", "/v1/items/"+f.items[0]+"/playback-options", nil, nil, 200, &options)
-	if options.Preferred == nil || options.Preferred.AudioID != "a1" || options.Preferred.Reason == "last_used" {
-		t.Fatalf("options after forget %+v", options.Preferred)
+	f.call("DELETE", "/v1/playback/sessions/"+back.Session.ID, nil, nil, 204, nil)
+	// A new queue is a new playback: the Settings again.
+	var fresh playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "player-choice-queue-2"}, map[string]any{"owner": "device", "segments": []any{map[string]any{"source": queueItems(f.items...)}}, "startPlayback": map[string]any{"state": "playing"}}, 201, &fresh)
+	if fresh.Session == nil || fresh.Session.Presentation.AudioTrackID != "a1" {
+		t.Fatalf("a new queue started with an old playback's choice: %+v", fresh.Session)
 	}
-	f.call("DELETE", "/v1/items/"+f.items[0]+"/playback-memory", nil, nil, 204, nil)
 }
 
 // The viewer's overrides travel in the capability document and change the plan.

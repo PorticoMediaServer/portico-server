@@ -57,7 +57,6 @@ export function decodeDeleteV1ItemsItemIdSubtitlesResourceResponse(input: unknow
 export function decodeDeleteWebhookResponse(input: unknown): types.DeleteWebhookResponse { return decode("DeleteWebhookResponse", input) as types.DeleteWebhookResponse; }
 export function decodeDownloadClientLogResponse(input: unknown): types.DownloadClientLogResponse { return decode("DownloadClientLogResponse", input) as types.DownloadClientLogResponse; }
 export function decodeEmptyMissingTitlesResponse(input: unknown): types.EmptyMissingTitlesResponse { return decode("EmptyMissingTitlesResponse", input) as types.EmptyMissingTitlesResponse; }
-export function decodeForgetPlaybackTrackMemoryResponse(input: unknown): types.ForgetPlaybackTrackMemoryResponse { return decode("ForgetPlaybackTrackMemoryResponse", input) as types.ForgetPlaybackTrackMemoryResponse; }
 export function decodeGetAdminAccessDevicesResponse(input: unknown): types.GetAdminAccessDevicesResponse { return decode("GetAdminAccessDevicesResponse", input) as types.GetAdminAccessDevicesResponse; }
 export function decodeGetAdminAccessInvitationsResponse(input: unknown): types.GetAdminAccessInvitationsResponse { return decode("GetAdminAccessInvitationsResponse", input) as types.GetAdminAccessInvitationsResponse; }
 export function decodeGetAdminAccessMembersResponse(input: unknown): types.GetAdminAccessMembersResponse { return decode("GetAdminAccessMembersResponse", input) as types.GetAdminAccessMembersResponse; }

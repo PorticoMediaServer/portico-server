@@ -1242,23 +1242,6 @@ export const routes = [
     "admission": "admin-heavy"
   },
   {
-    "id": "forget_playback_track_memory",
-    "method": "DELETE",
-    "path": "/v1/items/{itemId}/playback-memory",
-    "summary": "Forget the audio and subtitle choice remembered for this title's show or film",
-    "access": "viewer_item_restrictions",
-    "requires": "playback",
-    "lane": "default",
-    "cost": "constant",
-    "bodyLimit": 0,
-    "errors": [
-      "unauthorized",
-      "not_found"
-    ],
-    "status": 204,
-    "admission": "default"
-  },
-  {
     "id": "get_admin_access_devices",
     "method": "GET",
     "path": "/v1/admin/access/devices",
@@ -15688,7 +15671,6 @@ export const routePaths = {
   "delete_webhook": "/v1/admin/webhooks/{id}",
   "download_client_log": "/v1/admin/diagnostics/client-logs/{id}/download",
   "empty_missing_titles": "/v1/admin/missing-titles/empty",
-  "forget_playback_track_memory": "/v1/items/{itemId}/playback-memory",
   "get_admin_access_devices": "/v1/admin/access/devices",
   "get_admin_access_invitations": "/v1/admin/access/invitations",
   "get_admin_access_members": "/v1/admin/access/members",

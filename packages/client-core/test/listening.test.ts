@@ -35,12 +35,19 @@ test('preferences strictly validate rates, revision and bounded inactivity choic
  await assert.rejects(readListeningItem(async()=>wrapped({itemId:'song',libraryId:'library',kind:'song'},{profileId:'other'}),scope,'song'));
  await assert.rejects(readListeningItem(async()=>wrapped({itemId:'song',libraryId:'library',kind:'song',bookId:''}),scope,'song'));
 });
-test('profile music/book rate is applied to current and replacement engines; saves use CAS revision',async t=>{
- const f=setup({context:id=>({itemId:id,libraryId:'library',kind:id==='song'?'song':'audiobook_file'})});t.after(()=>f.service.dispose());await settle();
- await f.service.setRate(1.25);assert.equal(f.engine.rates.at(-1),1.25);assert.equal((f.writes[0] as any).revision,0);
- f.engine.update({itemId:'part',session:{id:'book-session',generation:1}});await settle();assert.equal(f.engine.rates.at(-1),1.5);
+test('profile music/book rate is applied to current and replacement engines; a speed chosen in the player lasts this playback and is never saved',async t=>{
+ const f=setup({context:id=>({itemId:id,libraryId:'library',kind:id==='song'||id==='song2'?'song':'audiobook_file'})});t.after(()=>f.service.dispose());await settle();
+ f.engine.update({playbackRun:1});
+ await f.service.setRate(1.25);assert.equal(f.engine.rates.at(-1),1.25);assert.equal(f.writes.length,0,'the Settings are not changed');
+ assert.equal(f.service.getSnapshot().preferences?.musicRate,1);
+ f.engine.update({itemId:'part',session:{id:'book-session',generation:1}});await settle();assert.equal(f.engine.rates.at(-1),1.5,'another kind starts at its own default');
  f.engine.update({session:{id:'book-session',generation:2}});assert.equal(f.engine.rates.at(-1),1.5);
- assert.equal(f.service.getSnapshot().preferences?.musicRate,1.25);
+ await f.service.setRate(2);assert.equal(f.engine.rates.at(-1),2);
+ f.engine.update({itemId:'part2',session:{id:'book-session-2',generation:1}});await settle();assert.equal(f.engine.rates.at(-1),2,'the next part of the same playback keeps the chosen speed');
+ assert.equal(f.engine.policies.at(-1).preferences.bookRate,2,'a native owner is told the speed in force');
+ f.engine.update({playbackRun:2,itemId:'part3',session:{id:'book-session-3',generation:1}});await settle();assert.equal(f.engine.rates.at(-1),1.5,'a new playback starts at the Settings speed');
+ await assert.rejects(f.service.setRate(9),'an impossible speed is refused');
+ assert.equal(f.writes.length,0);
 });
 test('minute timer pauses the real foreground player once; manual interaction resets stop latch',async t=>{
  const f=setup();t.after(()=>f.service.dispose());await settle();await f.service.setTimer(15);

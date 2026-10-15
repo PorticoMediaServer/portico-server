@@ -438,14 +438,6 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 			}
 			return d.playbackV1().Options(ctx, c.Principal, q.PathValue("itemId"), preview, d.v1Markers(q, c.Principal), d.v1Reach(q, c.Principal))
 		})
-	// The last audio and subtitle choice is remembered per show or film
-	// (playback-options names it, reason "last_used"); this forgets it.
-	v1Route(r, apikit.Metadata{Admission: laneDefault, ID: "forget_playback_track_memory", Method: "DELETE", Path: "/v1/items/{itemId}/playback-memory", Summary: "Forget the audio and subtitle choice remembered for this title's show or film",
-		Access: apikit.ViewerItem, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.Constant, Status: 204,
-		Errors: []string{"unauthorized", "not_found"}},
-		func(ctx context.Context, q *http.Request, _ noBody) (noBody, error) {
-			return noBody{}, d.playbackV1().ForgetTracks(ctx, callerFrom(ctx).Principal, q.PathValue("itemId"))
-		})
 }
 
 // previewFrom reads the options preview query (plan §7 item 15).

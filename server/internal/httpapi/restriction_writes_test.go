@@ -404,7 +404,6 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.ass": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.sup": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"DELETE /v1/items/{itemId}/subtitles/{resource}":                      perHidden("DELETE", "/v1/items/ID/subtitles/matrix-resource", `{}`, "item"),
-		"DELETE /v1/items/{itemId}/playback-memory":                           perHidden("DELETE", "/v1/items/ID/playback-memory", "", "item"),
 		"PUT /v1/items/{itemId}/subtitles/{resource}":                         perHidden("PUT", "/v1/items/ID/subtitles/matrix-resource", `{}`, "item"),
 		"POST /v1/items/{itemId}/subtitles/remote":                            perHidden("POST", "/v1/items/ID/subtitles/remote", `{}`, "item"),
 		"POST /v1/items/{itemId}/subtitles/search":                            perHidden("POST", "/v1/items/ID/subtitles/search", `{}`, "item"),

@@ -9,6 +9,8 @@ import {FeedbackDialog} from '../screens/shared/FeedbackDialog';
 import {subtitleTrackNames, trackName} from '@core/presentation/index.ts';
 import React, {useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {playbackUserMessage} from '@core/playback-messages.ts';
+import {playerSessionChoices} from '@core/player-session-choices.ts';
+import {usePlaybackChoice} from './playback-choice';
 import {playbackFailure} from './failure';
 import {SubtitleSurface} from './subtitle-surface';
 import {SubtitleOverlay} from './subtitles/overlay';
@@ -165,9 +167,9 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   useEffect(() => { syncRate.attach(video.current); return () => syncRate.attach(null); }, []);
   /* One element for the life of the player. The playback path mounts its port on it, and the
      subtitle surface is the one place a subtitle track is attached to it. */
-  /* Fit: the whole picture (the default), or filling the screen with the edges cropped. Kept on this device. */
-  const [fill, setFill] = useState(() => { try { return localStorage.getItem('portico.player.fill.v1') === '1'; } catch { return false; } });
-  const toggleFill = () => setFill(now => { try { localStorage.setItem('portico.player.fill.v1', now ? '0' : '1'); } catch { /* private mode */ } return !now; });
+  /* Fit: the whole picture (the default), or filling the screen with the edges cropped, for this playback. */
+  const [fill, setFill] = usePlaybackChoice('fill', state.playbackRun, false);
+  const toggleFill = () => setFill(now => !now);
   const [surface, setSurface] = useState<SubtitleSurface | null>(null);
   /* Styled and image subtitles are drawn on a canvas over the picture; the surface passes the
      stream's place on the element's clock on to it. */
@@ -221,16 +223,17 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const [pictureAway, setPictureAway] = useState<'none' | 'element' | 'document'>('none');
   const [systemFullscreen, setSystemFullscreen] = useState(false);
   const subtitles = usePlayerSubtitles(api, scope, service, surface, resourceKey, isAudio, overlay, pictureAway === 'element' ? 'window' : systemFullscreen ? 'system' : false);
-  const [forcedOnly, setForcedOnly] = useState(() => { try { return localStorage.getItem('portico.player.subtitle-forced-only.v1') === '1'; } catch { return false; } });
+  /* Forced only (an image track's forced lines alone) is a choice for the track playing now: it starts
+     off and holds for this playback. Settings' "Show subtitles: Forced only" picks forced tracks themselves. */
+  const [forcedOnly, setForcedOnly] = usePlaybackChoice('forcedOnly', state.playbackRun, false);
   useEffect(() => { overlay?.setForcedOnly(forcedOnly); }, [overlay, forcedOnly]);
-  const toggleForcedOnly = () => setForcedOnly(now => { try { localStorage.setItem('portico.player.subtitle-forced-only.v1', now ? '0' : '1'); } catch { /* private mode */ } return !now; });
+  const toggleForcedOnly = () => setForcedOnly(now => !now);
   /* Drawn subtitles keep the look they were made with. The viewer's caption size nudges their
-     overall size, and they can be moved up or down the picture (kept on this device). */
-  const [subtitleRaise, setSubtitleRaise] = useState(() => { try { const saved = Number(localStorage.getItem('portico.player.subtitle-raise.v1')); return Number.isFinite(saved) ? Math.max(-10, Math.min(30, saved)) : 0; } catch { return 0; } });
+     overall size, and they can be moved up or down the picture for this playback. */
+  const [subtitleRaise, setSubtitleRaise] = usePlaybackChoice('subtitleRaise', state.playbackRun, 0);
   const moveSubtitles = (step: number | null) => {
     const next = step === null ? 0 : Math.max(-10, Math.min(30, subtitleRaise + step));
-    setSubtitleRaise(next);
-    try { localStorage.setItem('portico.player.subtitle-raise.v1', String(next)); } catch { /* private mode */ }
+    setSubtitleRaise(() => next);
     setNotice(step === null ? i18n.t('player.subtitles.positionBack') : i18n.t('player.subtitles.positionNotice', {direction: i18n.t(step > 0 ? 'player.subtitles.positionUp' : 'player.subtitles.positionDown')}));
   };
   useEffect(() => { overlay?.adjust({scale: ({small: 0.9, medium: 1, large: 1.12, 'extra-large': 1.25} as Record<string, number>)[subtitleSize] ?? 1, raise: subtitleRaise / 100}); }, [overlay, subtitleSize, subtitleRaise]);
@@ -265,13 +268,15 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     setBuffered(0);
     setOpenBox(null);
   }, [resourceKey]);
-  /* A new video session starts at the profile's default speed. */
+  /* A new video playback starts at the profile's default speed; a speed chosen in the player holds
+     through the queue (the next episode) and goes when the viewer starts something new. */
+  const videoSpeed = playerSessionChoices.get('speed', state.playbackRun, defaultSpeed);
   useEffect(() => {
     if (isAudio || !state.session || state.channel) return;
-    setRate(defaultSpeed);
-    service.setPlaybackRate(defaultSpeed);
+    setRate(videoSpeed);
+    service.setPlaybackRate(videoSpeed);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.session?.id, isAudio]);
+  }, [state.session?.id, state.playbackRun, isAudio]);
 
   const usable = !!state.session && state.phase !== 'error';
   const canHide = visible && !isAudio && mediaPlaying && state.phase === 'ready' && state.intent === 'playing' && !buffering && !state.pendingSeek && !state.error && !notice && !openBox;
@@ -660,7 +665,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const setSpeed = (value: number) => {
     setRate(value);
     if (isAudio) void queue?.listening.setRate(value).catch(e => setNotice(errorText(e, 'playback', 'action')));
-    else service.setPlaybackRate(value);
+    else { playerSessionChoices.set('speed', state.playbackRun, value); service.setPlaybackRate(value); }
     setOpenBox(null);
   };
   const setSleep = (choice: SleepChoice) => {

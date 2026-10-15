@@ -488,7 +488,8 @@ export class V1QueuePlayer implements QueueController {
     this.qualityOverride = choices.quality;
     const asked = this.startChoices(choices);
     this.listening.interact();
-    const intent = this.playback.beginQueueIntent(first || undefined);
+    // A new queue is a new playback: the player's own choices go back to the Settings.
+    const intent = this.playback.beginQueueIntent(first || undefined, true);
     this.publish({phase: 'preparing', error: null, completion: null});
     try {
       if (!await this.playback.prepareQueueIntent(intent) || generation !== this.generation) return;

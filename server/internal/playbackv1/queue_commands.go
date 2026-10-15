@@ -1296,6 +1296,11 @@ func (s *Service) startQueueEntry(ctx context.Context, c Caller, key, startDiges
 	if req.Quality != nil {
 		stored.Quality = *req.Quality
 	}
+	if sessionKind == "vod" {
+		// The playback goes on: the tracks picked in the player for the entry
+		// before carry to this one.
+		stored.Carry = s.queueCarry(ctx, c, q.session)
+	}
 	view, preparing, err := s.startPresentation(ctx, c, key, startDigest, req, row{kind: sessionKind, role: "local", item: item, version: req.VersionID, queueID: q.id, entryID: req.Queue.EntryID}, stored)
 	if err != nil {
 		return view, preparing, err

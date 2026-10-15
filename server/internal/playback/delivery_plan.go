@@ -200,9 +200,10 @@ type DeliveryInput struct {
 	AudioStream             int
 	HasAudioChoice          bool
 	PreferredAudioLanguages []string
-	// RememberedAudioLanguage is the language this profile last chose for the
-	// show or film being played; it outranks the preferred list.
-	RememberedAudioLanguage string
+	// CarriedAudioLanguage is the language of the audio track picked in the
+	// player earlier in this playback (a queue continued); it outranks the
+	// preferred list.
+	CarriedAudioLanguage string
 	// Excluded routes were reported broken by this device for this source.
 	Excluded map[DeliveryStrategy]RouteRejection
 	// FMP4Output says this server build can produce fragmented MP4 HLS.
@@ -382,7 +383,7 @@ func planDelivery(in DeliveryInput) (p DeliveryPlan, err error) {
 	if in.HasAudioChoice {
 		explicit = in.AudioStream
 	}
-	audio, chosenBy := chooseAudio(source.Audio, explicit, in.RememberedAudioLanguage, in.PreferredAudioLanguages)
+	audio, chosenBy := chooseAudio(source.Audio, explicit, in.CarriedAudioLanguage, in.PreferredAudioLanguages)
 	video := source.Video
 	if video != nil {
 		p.SourceVideoCodec, p.OutputVideoCodec = video.Codec, video.Codec

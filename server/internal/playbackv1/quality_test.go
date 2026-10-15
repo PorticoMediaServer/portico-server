@@ -167,9 +167,10 @@ func TestPlanNeedsWhatItDelivers(t *testing.T) {
 	}
 }
 
-// What a profile last chose is applied by language: the best track in it, off
-// when subtitles were turned off, and nothing when no track matches.
-func TestRememberedSubtitleChoice(t *testing.T) {
+// What a playback carries to its next entry is applied by language: the best
+// track in it, off when subtitles were turned off, and nothing when no track
+// matches (the Settings then decide).
+func TestCarriedSubtitleChoice(t *testing.T) {
 	tracks := subtitles.PlaybackPlan{Resources: []subtitles.Resource{
 		{ID: "eng-forced", Language: "eng", Forced: true, Enabled: true, Renderer: "external_text"},
 		{ID: "eng-pgs", Language: "en", Enabled: true, Renderer: "burn_in", Format: "pgs"},
@@ -177,17 +178,20 @@ func TestRememberedSubtitleChoice(t *testing.T) {
 		{ID: "jpn", Language: "jpn", Enabled: true, Renderer: "external_text"},
 		{ID: "ger-off", Language: "ger", Enabled: false, Renderer: "external_text"},
 	}}
-	if got := rememberedSubtitle(TrackMemory{SubtitleMode: "on", SubtitleLanguage: "en"}, tracks); got == nil || got.TrackID != "eng-full" {
+	if got := carriedSubtitle(&TrackCarry{SubtitleMode: "on", SubtitleLanguage: "en"}, tracks); got == nil || got.TrackID != "eng-full" {
 		t.Fatalf("english: %+v", got)
 	}
-	if got := rememberedSubtitle(TrackMemory{SubtitleMode: "on", SubtitleLanguage: "ja"}, tracks); got == nil || got.TrackID != "jpn" {
+	if got := carriedSubtitle(&TrackCarry{SubtitleMode: "on", SubtitleLanguage: "ja"}, tracks); got == nil || got.TrackID != "jpn" {
 		t.Fatalf("japanese: %+v", got)
 	}
-	if got := rememberedSubtitle(TrackMemory{SubtitleMode: "off"}, tracks); got == nil || got.TrackID != TrackOff {
+	if got := carriedSubtitle(&TrackCarry{SubtitleMode: "off"}, tracks); got == nil || got.TrackID != TrackOff {
 		t.Fatalf("off: %+v", got)
 	}
-	for name, memory := range map[string]TrackMemory{"nothing remembered": {}, "a language this file lacks": {SubtitleMode: "on", SubtitleLanguage: "fr"}, "a track that is not selectable": {SubtitleMode: "on", SubtitleLanguage: "de"}} {
-		if got := rememberedSubtitle(memory, tracks); got != nil {
+	if got := carriedSubtitle(nil, tracks); got != nil {
+		t.Errorf("nothing carried chose %+v", got)
+	}
+	for name, carry := range map[string]TrackCarry{"no subtitle choice": {AudioLanguage: "en"}, "a language this file lacks": {SubtitleMode: "on", SubtitleLanguage: "fr"}, "a track that is not selectable": {SubtitleMode: "on", SubtitleLanguage: "de"}} {
+		if got := carriedSubtitle(&carry, tracks); got != nil {
 			t.Errorf("%s chose %+v", name, got)
 		}
 	}

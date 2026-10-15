@@ -188,7 +188,7 @@ func (s *Service) planInputsTx(ctx context.Context, tx *sql.Tx, p identity.Princ
 	}
 	target := v1.target(policy, cfg)
 	input := DeliveryInput{SourceID: aid, Container: container, VideoCodec: video, AudioCodec: audio, Duration: duration, Height: sourceHeight, ColorTransfer: transfer, ColorPrimaries: primaries, Remote: remote, Policy: policy, Target: target, Config: cfg, TranscodingEnabled: ownerTranscoding, Hardware: hardware}
-	input.Engine, input.SubtitleKind, input.SubtitleBesideStream, input.RememberedAudioLanguage = v1.Engine, v1.SubtitleKind, v1.SubtitleBesideStream, v1.RememberedAudioLanguage
+	input.Engine, input.SubtitleKind, input.SubtitleBesideStream, input.CarriedAudioLanguage = v1.Engine, v1.SubtitleKind, v1.SubtitleBesideStream, v1.CarriedAudioLanguage
 	if e := s.completeDeliveryInputTx(ctx, tx, p, &input, values, catalogued, explicitAudio); e != nil {
 		return planInputs{}, e
 	}

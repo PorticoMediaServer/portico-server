@@ -32,7 +32,6 @@ var routeLanes = map[string]string{
 	"DELETE /v1/dvr/rules/{id}":                                                  "browsing",
 	"DELETE /v1/groups/{id}/invites/{inviteId}":                                  "default",
 	"DELETE /v1/items/{id}/lyrics/{resource}":                                    "browsing",
-	"DELETE /v1/items/{itemId}/playback-memory":                                  "default",
 	"DELETE /v1/items/{itemId}/subtitles/{resource}":                             "default",
 	"DELETE /v1/me/access-tokens/{id}":                                           "security-fence",
 	"DELETE /v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}":            "browsing",

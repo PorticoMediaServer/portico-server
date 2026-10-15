@@ -11,7 +11,7 @@ import type {V1Http} from '../src/playback-v1/http.ts';
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 
-function setup(options: {postPlay?: {autoplay: boolean; countdownSeconds: number; passoutCheckDue: boolean; automaticAdvances: number}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]} = {}) {
+function setup(options: {postPlay?: {autoplay: boolean; countdownSeconds: number; passoutCheckDue: boolean; automaticAdvances: number}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]; beforeFreshPlayback?: () => Promise<void>} = {}) {
   const server = new FakePlaybackServer(options.server);
   const inner = fakeHttp(server);
   const log = options.log ?? [];
@@ -25,7 +25,7 @@ function setup(options: {postPlay?: {autoplay: boolean; countdownSeconds: number
   const timers: {fn: () => void; ms: number}[] = [];
   let serial = 0;
   const api = new V1PlaybackApi(http, {timers: {setTimer: (fn, ms) => { timers.push({fn, ms}); return timers.length; }, clearTimer: () => {}}, key: () => `k${++serial}`});
-  const playback = new PlaybackService(api, () => `r${++serial}`, {});
+  const playback = new PlaybackService(api, () => `r${++serial}`, options.beforeFreshPlayback ? {beforeFreshPlayback: options.beforeFreshPlayback} : {});
   const player = new V1QueuePlayer({http, api, playback, viewer, key: () => `q${++serial}-key-000000`, pendingPollMs: 10});
   const stop = player.connect();
   return {server, api, playback, player, log, timers, stop};
@@ -80,6 +80,43 @@ test('Next advances on the server, which starts the next session and ends the ol
   assert.equal(playback.getSnapshot().itemId, 'b');
   assert.equal((server as unknown as {sessions: Map<string, {ended?: unknown}>}).sessions.get(first)?.ended !== undefined, true, 'the replaced session ended');
   assert.equal(player.getSnapshot().view!.next.available, false);
+  stop();
+});
+
+test('one playback runs through the queue: Next and completion stay in it, a new Play begins another', async () => {
+  const {player, playback, stop} = setup();
+  const before = playback.getSnapshot().playbackRun;
+  await player.playEntries(['a', 'b', 'c'].map(queueItemInput));
+  const run = playback.getSnapshot().playbackRun;
+  assert.equal(run, before + 1, 'Play begins a playback');
+  const q = player.getSnapshot().view!.queue;
+  await player.next(q.id, q.revision);
+  assert.equal(playback.getSnapshot().itemId, 'b');
+  assert.equal(playback.getSnapshot().playbackRun, run, 'Next keeps the playback (the player keeps its choices)');
+  playToEnd(playback);
+  await settle(); await settle();
+  assert.equal(playback.getSnapshot().itemId, 'c');
+  assert.equal(playback.getSnapshot().playbackRun, run, 'autoplay keeps the playback');
+  await player.playEntries(['d'].map(queueItemInput));
+  assert.equal(playback.getSnapshot().playbackRun, run + 1, 'a new Play goes back to the Settings');
+  stop();
+});
+
+test('a new playback waits for the player\u2019s own choices to go back to the Settings; the queue moving on does not', async () => {
+  const log: {method: string; path: string; body?: unknown}[] = [];
+  let asked = 0, release!: () => void;
+  const {player, playback, stop} = setup({log, beforeFreshPlayback: () => { asked++; log.push({method: 'RESET', path: ''}); return new Promise<void>(r => { release = r; }); }});
+  const playing = player.playEntries(['a', 'b'].map(queueItemInput));
+  await settle();
+  assert.equal(asked, 1);
+  assert.equal(log.filter(r => r.path === '/v1/queues').length, 0, 'nothing is started before the Settings are back');
+  release();
+  await playing;
+  assert.equal(log.findIndex(r => r.method === 'RESET') < log.findIndex(r => r.path === '/v1/queues'), true);
+  const q = player.getSnapshot().view!.queue;
+  await player.next(q.id, q.revision);
+  assert.equal(playback.getSnapshot().itemId, 'b');
+  assert.equal(asked, 1, 'Next is the same playback');
   stop();
 });
 

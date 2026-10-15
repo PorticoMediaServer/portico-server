@@ -332,6 +332,9 @@ type storedRequest struct {
 	Subtitles        *SubtitleRequest `json:"subtitles,omitempty"`
 	SubtitleOffsetMs int64            `json:"subtitleOffsetMs,omitempty"`
 	Network          string           `json:"network,omitempty"`
+	// Carry is the audio and subtitle choice this playback carries from the
+	// queue entry before (nil: none; the Settings decide).
+	Carry *TrackCarry `json:"carry,omitempty"`
 }
 
 // normalized is a stored request with a quality mode: one stored before
@@ -550,10 +553,6 @@ type presentationTarget struct {
 	// throughputKbps is the connection estimate the request carried (0: none).
 	// Automatic changes only when the client asks for a step.
 	throughputKbps int
-	// rememberAudio and rememberSubtitle say the request's audio or subtitle
-	// track is the viewer's own choice made now, to be remembered for the show
-	// or film.
-	rememberAudio, rememberSubtitle bool
 }
 
 // ThroughputError refuses a presentation the client's measured connection
@@ -641,9 +640,9 @@ func (s *Service) assetFacts(ctx context.Context, asset string) SourceFacts {
 //
 // It is where everything a viewer can choose meets the device: the version
 // (the best one for this device when none is named), the quality (the saved
-// default when none is named), the audio and subtitle tracks (what this
-// profile last chose for the show or film when none is named), and the engine
-// the plan names.
+// default when none is named), the audio and subtitle tracks (what the
+// playback carries from the queue entry before when none is named, else the
+// viewer's Settings), and the engine the plan names.
 func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (playback.Session, Presentation, error) {
 	if s.Playback == nil {
 		return playback.Session{}, Presentation{}, playback.ErrIncompatible
@@ -673,9 +672,9 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	if err = s.audioChoice(ctx, c, t.item, kind, &choice); err != nil {
 		return playback.Session{}, Presentation{}, err
 	}
-	var memory TrackMemory
+	var carry *TrackCarry
 	if video {
-		memory = s.trackMemory(ctx, c.Principal, t.item)
+		carry = request.Carry
 	}
 	if a := request.Audio; a != nil {
 		index, ok := ParseStreamID("a", a.TrackID)
@@ -683,19 +682,19 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 			return playback.Session{}, Presentation{}, &FieldError{Path: "audio.trackId"}
 		}
 		choice.AudioStream = &index
-	} else {
-		choice.RememberedAudioLanguage = memory.AudioLanguage
+	} else if carry != nil {
+		choice.CarriedAudioLanguage = carry.AudioLanguage
 	}
 	// The subtitle track, known before planning: a styled or image track an
 	// engine cannot draw itself costs a converted picture, which decides the
 	// engine.
 	subtitle := request.Subtitles
 	var resources []subtitles.Resource
-	if video && asset != "" && (subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" || subtitle == nil && memory.SubtitleMode == "on") {
+	if video && asset != "" && (subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" || subtitle == nil && carry != nil && carry.SubtitleMode == "on") {
 		resources = s.subtitleResources(ctx, c.Principal, t.item, asset)
 	}
 	if subtitle == nil {
-		subtitle = rememberedSubtitle(memory, subtitles.PlaybackPlan{Resources: resources})
+		subtitle = carriedSubtitle(carry, subtitles.PlaybackPlan{Resources: resources})
 	}
 	var chosen *subtitles.Resource
 	if subtitle != nil && subtitle.TrackID != TrackOff && subtitle.TrackID != "" {
@@ -753,7 +752,7 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 	admitted := playback.WithReplanCeilings(ctx, playback.ReplanCeilings{Remote: choice.Remote, MaxVideoBitrateBPS: choice.AdminMaxVideoBitrateBPS})
 	result, err := s.applySubtitles(admitted, c.Principal, t.item, media.ID, subtitle, request.SubtitleOffsetMs, t.startMs, t.subtitleOp, draws)
 	if err != nil && request.Subtitles == nil {
-		// A remembered choice that cannot be applied to this file is not the
+		// A carried choice that cannot be applied to this file is not the
 		// viewer's request: the title plays without it.
 		result, err = s.applySubtitles(admitted, c.Principal, t.item, media.ID, nil, request.SubtitleOffsetMs, t.startMs, t.subtitleOp+"-n", false)
 	}
@@ -767,9 +766,6 @@ func (s *Service) present(ctx context.Context, c Caller, t presentationTarget) (
 		// video, under a new grant and generation.
 		media.StreamURL, media.Generation = result.replaced.StreamURL, result.replaced.Generation
 		s.adoptReplaced(ctx, &view, media.ID, result.replaced, choice)
-	}
-	if video && !t.pendingActivation && (t.replacing == nil || !t.replacing.Deferred) {
-		s.rememberPresentationTracks(ctx, c.Principal, t.item, media.ID, view, t.rememberAudio, t.rememberSubtitle)
 	}
 	return media, view, nil
 }
@@ -1035,7 +1031,7 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		startMs = *req.StartPositionMs
 	}
 	target := presentationTarget{pendingActivation: true, item: base.item, version: base.version, part: base.partIndex, request: stored, startMs: startMs, replacing: replacing, requestID: "v1." + id + ".1", subtitleOp: "v1-" + id + "-1",
-		throughputKbps: req.ThroughputKbps, rememberAudio: req.Audio != nil, rememberSubtitle: req.Subtitles != nil}
+		throughputKbps: req.ThroughputKbps}
 	media, view, err := s.present(ctx, c, target)
 
 	if err != nil {
@@ -1065,6 +1061,10 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 		stored.Quality = *view.Quality
 	}
 	stored.State = req.State
+	if base.kind == "vod" {
+		// A track picked with the start is carried to the queue's next entry.
+		stored.Carry = s.carryChoice(ctx, c.Principal, base.item, media.ID, view, req.Audio != nil, req.Subtitles != nil, stored.Carry)
+	}
 	requestJSON, _ := json.Marshal(stored)
 	presentationJSON, _ := json.Marshal(view)
 	now := s.now()
@@ -1115,7 +1115,6 @@ func (s *Service) startPresentation(ctx context.Context, c Caller, key, startDig
 	if replacing != nil {
 		_ = s.Playback.StopV1(context.WithoutCancel(ctx), old.media)
 	}
-	s.rememberPresentationTracks(ctx, c.Principal, base.item, media.ID, view, req.Audio != nil, req.Subtitles != nil)
 	s.hub.wake()
 	s.sweep.kick(s)
 	v := s.view(r)

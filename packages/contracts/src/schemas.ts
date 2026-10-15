@@ -11943,16 +11943,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "ForgetPlaybackTrackMemoryRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "ForgetPlaybackTrackMemoryResponse": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
   "GetAdminAccessDevicesRequest": {
     "properties": {},
     "required": [],
@@ -55892,12 +55882,6 @@ export const schemas = {
           },
           "reason": {
             "type": "string"
-          },
-          "subtitleId": {
-            "type": "string"
-          },
-          "subtitlesOff": {
-            "type": "boolean"
           },
           "versionId": {
             "type": "string"

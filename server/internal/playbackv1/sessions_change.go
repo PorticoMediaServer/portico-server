@@ -220,8 +220,7 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 		op := "v1-" + r.id + "-" + attempt
 		part := changedPart(r, change, version)
 		target := presentationTarget{item: r.item, version: version, part: part, request: next, startMs: position,
-			replacing: &playback.SessionReplacement{ID: r.media, Generation: oldMediaGeneration, Deferred: true}, requestID: "v1." + r.id + "." + attempt, subtitleOp: op,
-			rememberAudio: change.Audio != nil, rememberSubtitle: change.Subtitles != nil}
+			replacing: &playback.SessionReplacement{ID: r.media, Generation: oldMediaGeneration, Deferred: true}, requestID: "v1." + r.id + "." + attempt, subtitleOp: op}
 		if change.Quality != nil {
 			// Only a quality asked for now is checked against the connection.
 			target.throughputKbps = throughput
@@ -291,6 +290,11 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 			location = "remote"
 		}
 	}
+	if r.kind == "vod" {
+		// A track picked in the player is for this playback: it carries to the
+		// queue's next entry and is not remembered anywhere else.
+		next.Carry = s.carryChoice(ctx, c.Principal, r.item, media, presentation, change.Audio != nil, change.Subtitles != nil, next.Carry)
+	}
 	requestJSON, _ := json.Marshal(next)
 	presentationJSON, _ := json.Marshal(presentation)
 	now := s.now()
@@ -329,7 +333,6 @@ func (s *Service) Patch(ctx context.Context, c Caller, id, ifMatch string, chang
 	if bytes {
 		_ = s.Playback.StopV1(context.WithoutCancel(ctx), rMediaBefore)
 	}
-	s.rememberPresentationTracks(ctx, c.Principal, r.item, media, presentation, change.Audio != nil, change.Subtitles != nil)
 	s.cancelPreparedFor(ctx, id)
 	s.hub.wake()
 	return s.view(r), nil

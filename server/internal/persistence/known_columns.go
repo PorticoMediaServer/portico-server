@@ -3706,12 +3706,6 @@ playback_subtitle_state.resource_id
 playback_subtitle_state.resource_revision
 playback_subtitle_state.revision
 playback_subtitle_state.session_id
-playback_track_memory.audio_language
-playback_track_memory.item_id
-playback_track_memory.profile_id
-playback_track_memory.subtitle_language
-playback_track_memory.subtitle_mode
-playback_track_memory.updated_ms
 playback_v1_prepared.cancel_reason
 playback_v1_prepared.create_key
 playback_v1_prepared.created_ms

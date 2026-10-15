@@ -155,7 +155,7 @@ export type SubtitleTransport=Readonly<{install:(presentation:SubtitlePresentati
  * It reads the catalogue and the session's plan and manages files. It never selects: a track, Off
  * or a timing correction is a change of the playing session (`PlaybackService.changePlayback`
  * with `subtitleTrackId`, `subtitleDelivery` and `subtitleOffsetMs`), which the server applies,
- * remembers for the show and carries through later re-plans. */
+ * carries through later re-plans and on to the queue's next entry, for this playback only. */
 export class SubtitleService {
  private state:SubtitleSnapshot={catalog:null,plan:null,busy:false,loading:true,suppressed:false,error:null,canRetry:false,candidates:[]};
  private listeners=new Set<()=>void>();private active=false;private life=0;private interval?:ReturnType<typeof setInterval>;

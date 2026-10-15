@@ -449,7 +449,6 @@ index playback_route_failures_recent
 index playback_sessions_asset_id_fk
 index playback_sessions_item_id_fk
 index playback_sessions_session_hash
-index playback_track_memory_item
 index playback_v1_prepared_age
 index playback_v1_prepared_queue
 index playback_v1_prepared_session
@@ -1090,7 +1089,6 @@ table playback_source_versions
 table playback_subtitle_pins
 table playback_subtitle_presentations
 table playback_subtitle_state
-table playback_track_memory
 table playback_v1_prepared
 table playback_v1_sessions
 table playback_vod_intervals

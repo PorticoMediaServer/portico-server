@@ -58,10 +58,10 @@ export type PlaybackOptions = Readonly<{
   versions: readonly MediaVersion[]; chapters: readonly Chapter[]; markers: readonly Marker[]; trickplay?: Trickplay;
   /** The quality menu for the preferred (or previewed) version: the original, automatic, then the ladder steps no taller than its picture. */
   qualities: readonly QualityOption[];
-  /** What a start that names nothing would play: the version this device plays best, the tracks
-   * (`reason`: `last_used` is this profile's last choice for the show or film, `profile_language`,
-   * or `default`), whether subtitles were last turned off, and the saved quality for this network. */
-  preferred?: Readonly<{versionId: string; audioId?: string; subtitleId?: string; subtitlesOff: boolean; reason: string; quality: QualityInForce}>;
+  /** What a start that names nothing would play: the version this device plays best, the audio
+   * track (`reason`: `profile_language` or `default`; the viewer's Settings decide, never an earlier
+   * playback) and the saved quality for this network. */
+  preferred?: Readonly<{versionId: string; audioId?: string; reason: string; quality: QualityInForce}>;
   plan?: PlaybackPlan;
 }>;
 
@@ -101,7 +101,7 @@ export function parseOptions(v: unknown): PlaybackOptions {
     markers: Object.freeze(arr(v.markers).filter(obj).map(m => Object.freeze({id: str(m.id), type: oneOf(m.type, ['intro', 'recap', 'credits', 'preview', 'commercial'] as const, 'other' as never), startMs: num(m.startMs), endMs: num(m.endMs), confidence: oneOf(m.confidence, ['detected', 'manual', 'embedded'] as const, 'other' as never), automaticSafe: bool(m.automaticSafe)}))),
     trickplay: t ? Object.freeze({url: url(t.url, 'trickplay url'), intervalMs: num(t.intervalMs), tileWidth: num(t.tileWidth), tileHeight: num(t.tileHeight), columns: num(t.columns), rows: num(t.rows)}) : undefined,
     qualities: Object.freeze(arr(v.qualities).filter(obj).filter(q => q.mode === 'original' || q.mode === 'automatic' || q.mode === 'fixed' && typeof q.id === 'string').map(q => Object.freeze({mode: q.mode as 'original' | 'automatic' | 'fixed', ...(typeof q.id === 'string' && q.id ? {id: q.id as QualityOption['id']} : {}), maxHeight: optNum(q.maxHeight), maxVideoBitrateKbps: optNum(q.maxVideoBitrateKbps), maxAudioBitrateKbps: optNum(q.maxAudioBitrateKbps)}))),
-    preferred: obj(v.preferred) ? Object.freeze({versionId: id(v.preferred.versionId, 'preferred version'), audioId: optId(v.preferred.audioId, 'preferred audio'), subtitleId: optId(v.preferred.subtitleId, 'preferred subtitle'), subtitlesOff: bool(v.preferred.subtitlesOff), reason: str(v.preferred.reason), quality: parseQuality(v.preferred.quality)}) : undefined,
+    preferred: obj(v.preferred) ? Object.freeze({versionId: id(v.preferred.versionId, 'preferred version'), audioId: optId(v.preferred.audioId, 'preferred audio'), reason: str(v.preferred.reason), quality: parseQuality(v.preferred.quality)}) : undefined,
     plan,
   });
 }

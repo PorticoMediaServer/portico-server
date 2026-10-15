@@ -2943,21 +2943,6 @@ CREATE TABLE playback_route_failures(
  PRIMARY KEY(session_hash,asset_id,engine,route)
  ) STRICT;
 CREATE INDEX playback_route_failures_recent ON playback_route_failures(reported_at_ms DESC);
--- The audio and subtitle choice a profile last made for a show (item_id is the
--- show, for every episode of it) or a film, kept as languages so it carries
--- from one file to the next. subtitle_mode: '' nothing remembered, 'off'
--- subtitles were turned off, 'on' a track in subtitle_language was chosen.
-CREATE TABLE playback_track_memory(
- profile_id TEXT NOT NULL,
- item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
- audio_language TEXT NOT NULL DEFAULT '',
- subtitle_mode TEXT NOT NULL DEFAULT '' CHECK(subtitle_mode IN ('','off','on')),
- subtitle_language TEXT NOT NULL DEFAULT '',
- updated_ms INTEGER NOT NULL,
- PRIMARY KEY(profile_id,item_id)
- ) WITHOUT ROWID, STRICT;
--- Removing a title finds its remembered tracks by this, not by reading the table.
-CREATE INDEX playback_track_memory_item ON playback_track_memory(item_id);
 CREATE TABLE identity_refresh_credentials(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
  device_id TEXT NOT NULL REFERENCES identity_devices(id),
