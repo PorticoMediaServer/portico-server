@@ -99,6 +99,25 @@ class PlayerBoundary extends React.Component<{title: string; body: string; retry
 }
 
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
+/** Picture in Picture of either kind: the page's own window, or the browser's video-only one. */
+const pipAvailable = typeof document !== 'undefined' && (document.pictureInPictureEnabled || (typeof window !== 'undefined' && 'documentPictureInPicture' in window));
+
+/** The page's styles, for a window of its own: rules copied where they can be read, linked otherwise. */
+function copyStyles(from: Document, to: Document) {
+  for (const sheet of Array.from(from.styleSheets)) {
+    try {
+      const style = to.createElement('style');
+      style.textContent = Array.from(sheet.cssRules).map(rule => rule.cssText).join('\n');
+      to.head.append(style);
+    } catch {
+      if (!sheet.href) continue;
+      const link = to.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = sheet.href;
+      to.head.append(link);
+    }
+  }
+}
 const noQueue = () => () => {};
 const sleepChoices: readonly SleepChoice[] = ['off', 15, 30, 45, 60, 90, 'item'];
 /** One film frame, for stepping while paused (the file's own rate is not known to the page). */
@@ -160,10 +179,12 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     const made = SubtitleSurface.supported(el) ? new SubtitleSurface(el, {companion: drawn ?? undefined}) : null;
     setSurface(made);
     setOverlay(drawn);
-    const unmount = engine.playback.mount(el, made ?? drawn ?? undefined, () => (document.pictureInPictureElement === el ? 'pip' : undefined));
+    const unmount = engine.playback.mount(el, made ?? drawn ?? undefined, () => (document.pictureInPictureElement === el || el.ownerDocument !== document ? 'pip' : undefined));
     return () => { unmount(); made?.dispose(); drawn?.dispose(); setSurface(null); setOverlay(null); };
   }, [engine.playback]);
   const stage = useRef<HTMLDivElement>(null);
+  const pictureHome = useRef<HTMLDivElement>(null);
+  const picture = useRef<HTMLDivElement>(null);
   const resourceKey = webPlaybackResourceKey(state);
   const [notice, setNotice] = useState('');
   const [buffering, setBuffering] = useState(false);
@@ -192,7 +213,16 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const defaultSpeed = prefs.value<number>('playback.defaultSpeed', 1);
   const skipModes: Record<string, SkipMode> = {intro: prefs.value('playback.introSkip', 'ask'), credits: prefs.value('playback.creditsSkip', 'ask'), recap: prefs.value('playback.recapSkip', 'ask'), outro: prefs.value('playback.creditsSkip', 'ask'), commercial: 'ask'};
   const trickplay = useTrickplay(api, scope, item, offers.data?.current?.sourceId, !isAudio && !state.channel);
-  const subtitles = usePlayerSubtitles(api, scope, service, surface, resourceKey, isAudio, overlay);
+  /* Where the picture is. A Picture in Picture window of the page's own (Chrome and Edge's document
+     Picture in Picture) carries the page's subtitle canvas with the video; the browser's video-only
+     window and an iPhone's full-screen player do not, so a drawn subtitle is handed to them the
+     ordinary way while they last (see usePlayerSubtitles). */
+  const [pictureAway, setPictureAway] = useState<'none' | 'element' | 'document'>('none');
+  const [systemFullscreen, setSystemFullscreen] = useState(false);
+  const subtitles = usePlayerSubtitles(api, scope, service, surface, resourceKey, isAudio, overlay, pictureAway === 'element' || systemFullscreen);
+  const [forcedOnly, setForcedOnly] = useState(() => { try { return localStorage.getItem('portico.player.subtitle-forced-only.v1') === '1'; } catch { return false; } });
+  useEffect(() => { overlay?.setForcedOnly(forcedOnly); }, [overlay, forcedOnly]);
+  const toggleForcedOnly = () => setForcedOnly(now => { try { localStorage.setItem('portico.player.subtitle-forced-only.v1', now ? '0' : '1'); } catch { /* private mode */ } return !now; });
   /* Drawn subtitles keep the look they were made with. The viewer's caption size nudges their
      overall size, and they can be moved up or down the picture (kept on this device). */
   const [subtitleRaise, setSubtitleRaise] = useState(() => { try { const saved = Number(localStorage.getItem('portico.player.subtitle-raise.v1')); return Number.isFinite(saved) ? Math.max(-10, Math.min(30, saved)) : 0; } catch { return 0; } });
@@ -346,7 +376,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
           break;
         case 'm': take(); engine.setMuted(!engine.muted); break;
         case 'f': if (!isAudio) { take(); void toggleFullscreen(); } break;
-        case 'i': if (!isAudio && document.pictureInPictureEnabled) { take(); void pip(); } break;
+        case 'i': if (!isAudio && pipAvailable) { take(); void pip(); } break;
         case 'c': if (!isAudio && !live) { take(); toggleSubtitles(); } break;
         case 'z': if (!isAudio) { take(); toggleFill(); } break;
         case 'g': if (live) { take(); setMiniGuide(true); } else if (!isAudio) { take(); nudgeSubtitles(-0.1); } break;
@@ -376,6 +406,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     const read = () => {
       const on = !!document.fullscreenElement || !!el?.webkitDisplayingFullscreen;
       setFullscreen(on);
+      // The system's own full-screen player (an iPhone) shows the video and its text track only.
+      setSystemFullscreen(!document.fullscreenElement && !!el?.webkitDisplayingFullscreen);
       // A phone or tablet held upright turns to landscape for the film, where the browser allows.
       const orientation = screen.orientation as (ScreenOrientation & {lock?: (o: string) => Promise<void>}) | undefined;
       try { if (on && matchMedia('(pointer: coarse)').matches) void orientation?.lock?.('landscape').catch(() => {}); else orientation?.unlock?.(); } catch { /* not lockable here */ }
@@ -397,15 +429,61 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       setNotice(i18n.t('web.player.fullscreenUnavailable'));
     }
   }
+  /* Picture in Picture. Where the browser lets the page open a window of its own (Chrome and Edge),
+     the picture moves there with its subtitle canvas, so drawn subtitles stay on it; elsewhere the
+     browser's video-only window is used. The picture comes home when the window closes. */
+  const pipWindow = useRef<Window | null>(null);
   async function pip() {
-    const el = video.current;
+    const el = video.current, holder = picture.current;
     try {
-      if (document.pictureInPictureElement) await document.exitPictureInPicture();
-      else if (el?.requestPictureInPicture) await el.requestPictureInPicture();
+      if (pipWindow.current) { pipWindow.current.close(); return; }
+      if (document.pictureInPictureElement) { await document.exitPictureInPicture(); return; }
+      const documentPip = (window as Window & {documentPictureInPicture?: {requestWindow(o: {width: number; height: number}): Promise<Window>}}).documentPictureInPicture;
+      if (documentPip && el && holder && pictureHome.current) {
+        const ratio = el.videoWidth > 0 && el.videoHeight > 0 ? el.videoWidth / el.videoHeight : 16 / 9;
+        const win = await documentPip.requestWindow({width: 480, height: Math.round(480 / ratio)});
+        copyStyles(document, win.document);
+        win.document.documentElement.style.background = '#000'; // lint-design-allow: player-canvas black per PC-VISUAL 4.3
+        win.document.body.style.margin = '0';
+        win.document.body.append(holder);
+        holder.classList.add(s.pictureAway);
+        pipWindow.current = win;
+        setPictureAway('document');
+        const relayout = () => overlay?.relayout();
+        win.addEventListener('resize', relayout);
+        win.requestAnimationFrame(relayout);
+        win.addEventListener('pagehide', () => {
+          holder.classList.remove(s.pictureAway);
+          pictureHome.current?.append(holder);
+          pipWindow.current = null;
+          setPictureAway('none');
+          requestAnimationFrame(() => overlay?.relayout());
+          // Leaving the window is not a pause; a picture that stopped while moving plays on.
+          if (service.getSnapshot().intent === 'playing' && el.paused) void el.play().catch(() => {});
+        }, {once: true});
+        return;
+      }
+      if (el?.requestPictureInPicture) await el.requestPictureInPicture();
     } catch {
       setNotice(i18n.t('web.player.pipFailed'));
     }
   }
+  useEffect(() => {
+    const el = video.current;
+    if (!el) return;
+    const enter = () => setPictureAway('element'), leave = () => setPictureAway(now => (now === 'element' ? 'none' : now));
+    el.addEventListener('enterpictureinpicture', enter);
+    el.addEventListener('leavepictureinpicture', leave);
+    return () => { el.removeEventListener('enterpictureinpicture', enter); el.removeEventListener('leavepictureinpicture', leave); pipWindow.current?.close(); };
+  }, []);
+  /* The subtitle chosen here goes to the television with the title. It cannot draw styled or image
+     subtitles itself, so the server burns those into its picture (text stays text). Before the
+     subtitle list has loaded nothing is said, and the profile's usual choice applies. */
+  const castSubtitles = () => {
+    const plan = subtitles.snapshot.plan;
+    if (!plan) return undefined;
+    return {subtitleTrackId: plan.mode === 'track' && !subtitles.snapshot.suppressed && plan.selected ? plan.selected.id : null};
+  };
   /** Watch Together from the player: the title goes to the Together page, which plays it once the group has started. */
   function watchTogether() {
     if (!state.itemId) return;
@@ -647,12 +725,21 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
         </div>
       </Popover>
     );
+  /* An image subtitle with some lines marked forced (a disc's full track with foreign dialogue
+     flagged): the viewer may show those lines alone. Kept on this device. */
+  const forcedOnlyRow = (
+    <button key="forced-only" type="button" role="menuitemcheckbox" aria-checked={forcedOnly} className={s.option} title={i18n.t('player.subtitles.forcedOnlyHelp')} onClick={toggleForcedOnly}><span>{i18n.t('player.subtitles.forcedOnly')}</span>{forcedOnly ? <Icon name="check" size={16} /> : null}</button>
+  );
   const optionRow = (label: string, checked: boolean, onSelect: () => void, meta?: string, disabled?: boolean) => (
     <button key={label + meta} type="button" role="menuitemradio" aria-checked={checked} className={s.option} onClick={onSelect} disabled={disabled}><span>{label}</span>{meta ? <span className={s.optionMeta}>{meta}</span> : checked ? <Icon name="check" size={16} /> : null}</button>
   );
   return (
     <div ref={stage} className={cx(s.stage, isAudio && s.audio, hidden && s.hidden)} hidden={!visible} aria-label={i18n.t('player.stageLabel', {title: identity.title})} role="region" onPointerMove={e => { if (e.pointerType === 'mouse') reveal(); }} onPointerDown={e => { pointerKind.current = e.pointerType || 'mouse'; hiddenAtDown.current = chromeHidden && canHide; reveal(); }} tabIndex={-1}>
       {isAudio ? <Backdrop path={identity.backdropUrl ?? identity.posterUrl} height="100%" opacity={0.35} position="center" /> : null}
+      {/* The picture: the video and its subtitle canvas, together, so a Picture in Picture window
+          of the page's own takes both. The outer box stays where React put it; only the inner one moves. */}
+      <div ref={pictureHome} className={s.pictureHome}>
+      <div ref={picture} className={s.picture}>
       <video
         ref={video}
         className={cx(s.video, fill && !isAudio && s.fill)}
@@ -667,11 +754,14 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       />
       {/* Always in the page, like the video element: the overlay is made once for the player's life. Hidden unless a drawn subtitle is on. */}
       <canvas ref={subtitleCanvas} className={s.subtitleCanvas} aria-hidden />
+      </div>
+      </div>
+      {pictureAway === 'document' ? <div className={s.errorState}><StateView icon="pip" title={i18n.t('web.player.pipShowing')} action={{label: i18n.t('web.player.pipReturn'), onClick: () => pipWindow.current?.close()}} /></div> : null}
       {!isAudio ? <div className={s.tap} onClick={tap} onDoubleClick={() => { if (pointerKind.current === 'mouse') { clearTimeout(clickTimer.current); void toggleFullscreen(); } }} onWheel={e => { if (!openBox && e.deltaY !== 0) changeVolume(e.deltaY < 0 ? 0.05 : -0.05); }} aria-hidden /> : null}
       {(buffering || state.recovering) && state.intent === 'playing' && !state.error ? <div className={s.spinner} aria-hidden /> : null}
       {!isAudio ? <PostPlay engine={engine} onClose={close} /> : null}
       {!isAudio && !linear && state.phase === 'ready' ? <SkipPrompt markers={offers.data?.markers ?? null} position={state.positionSeconds} sessionId={state.session?.id} modes={promptModes} onSeek={engine.seekTo} onSkipped={(id, mode, at) => engine.service.markerSkipped(id, mode, at)} /> : null}
-      {upNext.offer && upNext.next ? <UpNextCredits engine={engine} offer={upNext.offer} next={upNext.next} onDismiss={upNext.dismiss} /> : null}
+      {upNext.offer && upNext.next ? <UpNextCredits engine={engine} offer={upNext.offer} next={upNext.next} postPlay={upNext.postPlay} rate={rate} onDismiss={upNext.dismiss} /> : null}
       {linear && state.linearStalled && state.phase !== 'error' ? (
         // A channel start that can't proceed says why, instead of "Preparing playback…" forever.
         <div className={s.errorState}>
@@ -716,8 +806,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
           <div className={s.topActions}>
             {linear && !isAudio ? <LiveCaptions video={video.current} /> : null}
             {linear && canSurfChannels() ? <><IconButton name="chevronUp" label={i18n.t('web.player.channelUp')} variant="ghost" onClick={() => surf(-1)} /><IconButton name="chevronDown" label={i18n.t('web.player.channelDown')} variant="ghost" onClick={() => surf(1)} /></> : null}
-            {!linear && state.itemId ? <PlayOnButton castAvailable={cast.state.available} video={video.current} onCast={() => { const itemId = state.itemId!, live = service.getSnapshot(), at = live.pendingSeek?.positionSeconds ?? live.positionSeconds; const meta = {title: identity.title, subtitle: identity.subtitle, kind: identity.kind ?? identity.item?.kind, artworkPath: identity.posterUrl ?? identity.item?.posterUrl}; noteCastMeta(itemId, meta); void cast.sender?.start(itemId, meta, at).then(ok => { if (ok) engine.leave(); }); }} /> : null}
-            {!isAudio && document.pictureInPictureEnabled ? <IconButton name="pip" label={i18n.t('web.player.pip')} variant="ghost" onClick={() => void pip()} /> : null}
+            {!linear && state.itemId ? <PlayOnButton castAvailable={cast.state.available} video={video.current} onCast={() => { const itemId = state.itemId!, live = service.getSnapshot(), at = live.pendingSeek?.positionSeconds ?? live.positionSeconds; const meta = {title: identity.title, subtitle: identity.subtitle, kind: identity.kind ?? identity.item?.kind, artworkPath: identity.posterUrl ?? identity.item?.posterUrl}; noteCastMeta(itemId, meta); void cast.sender?.start(itemId, meta, at, castSubtitles()).then(ok => { if (ok) engine.leave(); }); }} /> : null}
+            {!isAudio && pipAvailable ? <IconButton name="pip" label={i18n.t('web.player.pip')} variant="ghost" onClick={() => void pip()} /> : null}
             {/* WEB-PLAYER-05: Report a problem is a flag in a More menu, not a warning sign in the bar.
                 MU4 FEAT-07: linear sessions get Guide (mini guide) and Record here, never new top-bar buttons. */}
             <Menu label={i18n.t('player.more')} trigger={<IconButton name="more" label={i18n.t('player.more')} variant="ghost" />} items={[...(linear ? [{id: 'guide', label: i18n.t('player.live.guide'), icon: 'channels' as IconName}, ...(canRecordLive ? [{id: 'record', label: i18n.t('guide.record'), icon: 'dvr' as IconName}] : [])] : [...(!isAudio && !inRoom && state.itemId ? [{id: 'together', label: i18n.t('player.watchTogether'), icon: 'people' as IconName}] : []), ...(!isAudio ? [{id: 'fit', label: i18n.t(fill ? 'web.player.fit.contain' : 'web.player.fit.fill'), icon: 'fullscreen' as IconName}] : []), {id: 'info', label: i18n.t('player.opt.info'), icon: 'info' as IconName}, {id: 'report', label: i18n.t('player.reportProblem'), icon: 'flag' as IconName}]), ...(!compact ? [{id: 'shortcuts', label: i18n.t('player.shortcuts'), icon: 'keyboard' as IconName}] : [])]} onSelect={id => (id === 'report' ? setReport(true) : id === 'guide' ? setMiniGuide(true) : id === 'record' ? recordLive() : id === 'info' ? setInfo(v => !v) : id === 'together' ? watchTogether() : id === 'fit' ? toggleFill() : setLegend(true))} />
@@ -783,6 +873,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                         ) : optionRow(i18n.t('player.opt.findSubtitles'), false, () => { setSubtitleSearch(true); void subtitles.service!.search().catch(() => {}); })
                       ) : null}
                       {subtitlePlan.selected ? <div style={{display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap'}} title={i18n.t('player.opt.timingHelp')}><Text variant="caption" tone="tertiary">{i18n.t('player.opt.timing')} {i18n.t('player.opt.offsetSeconds', {seconds: subtitles.offsetSeconds.toFixed(1)})}</Text>{[-0.5, -0.1, 0.1, 0.5].map(step => <Button key={step} size="sm" variant="ghost" label={(step > 0 ? '+' : '−') + Math.abs(step)} onClick={() => { subtitles.nudge(step); }} />)}</div> : null}
+                      {subtitles.forcedChoice ? forcedOnlyRow : null}
                       {subtitles.drawnKind ? <div style={{display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap'}} title={i18n.t('player.subtitles.positionHelp')}><Text variant="caption" tone="tertiary">{subtitles.drawing ? i18n.t('player.subtitles.loadingDrawn') : i18n.t('player.subtitles.position')}</Text><Button size="sm" variant="ghost" label={i18n.t('player.subtitles.moveUp')} onClick={() => moveSubtitles(2)} /><Button size="sm" variant="ghost" label={i18n.t('player.subtitles.moveDown')} onClick={() => moveSubtitles(-2)} />{subtitleRaise !== 0 ? <Button size="sm" variant="ghost" label={i18n.t('player.subtitles.positionReset')} onClick={() => moveSubtitles(null)} /> : null}</div> : null}
                     </>
                   ) : <Text variant="caption" tone="tertiary">{subtitles.snapshot.loading ? i18n.t('player.opt.loadingSubtitles') : subtitles.snapshot.error ?? subtitles.rendererError ?? i18n.t('player.opt.subtitlesLater')}</Text>}
@@ -823,6 +914,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                 <>
                   {optionRow(i18n.t('player.opt.off'), subtitlePlan.mode === 'off', () => { void subtitles.turnOff().catch(subtitleChangeFailed); })}
                   {(subtitlePlan.resources ?? []).map(r => optionRow(subtitleName(r), !subtitles.snapshot.suppressed && subtitlePlan.selected?.id === r.id, () => chooseSubtitle(r), !r.enabled ? subtitleReason(r.reason) : ownerBlocks(r) ? i18n.t('player.ownerOff') : burnsIn(r) ? i18n.t('player.subtitles.bitmapNote') : undefined, subtitles.snapshot.busy || !r.enabled || ownerBlocks(r)))}
+                  {subtitles.forcedChoice ? forcedOnlyRow : null}
                 </>
               ) : <Text variant="caption" tone="tertiary">{i18n.t('player.opt.subtitlesLater')}</Text>) : null}
               {!isAudio ? box('quality', 'quality', i18n.t('player.opt.quality'), qualityLabelNow, qualityContent()) : null}

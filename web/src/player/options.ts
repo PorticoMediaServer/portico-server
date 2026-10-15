@@ -101,7 +101,13 @@ function useSessionFacts(playback: PlaybackService): SessionFacts {
  * the subtitles stay as they were. The subtitle routes are read here (the catalogue, the plan,
  * the cue documents and the originals) and used to manage files; they are not asked to select.
  */
-export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, surface: SubtitleSurface | null, resourceKey: string, audio: boolean, overlay: SubtitleOverlay | null = null) {
+/**
+ * `elsewhere`: the picture is on a surface the page cannot draw over (the browser's own Picture in
+ * Picture window, an iPhone's full-screen player). A drawn track is handed to the session the
+ * ordinary way while it lasts (text for a styled track where the server has it, otherwise burned
+ * into the picture), and drawn on the page again when the picture comes back.
+ */
+export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, surface: SubtitleSurface | null, resourceKey: string, audio: boolean, overlay: SubtitleOverlay | null = null, elsewhere = false) {
   const state = useSessionFacts(playback);
   const available = !audio && !!state.sessionId && state.generation !== undefined && !!state.itemId && !state.channel && !['error', 'ended', 'idle'].includes(state.phase);
   const service = useMemo(() => available ? new SubtitleService(api, {itemId: state.itemId!, sessionId: state.sessionId!, generation: state.generation!}, () => crypto.randomUUID(), {positionUs: () => String(Math.max(0, Math.round((playback.getSnapshot().pendingSeek?.positionSeconds ?? playback.getSnapshot().positionSeconds) * 1e6))), install: p => playback.getSnapshot().intentId === state.intentId && playback.installSubtitlePresentation(p)}) : null, [api, scope.serverId, scope.viewerId, available, state.itemId, state.intentId, state.sessionId, state.generation]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -141,7 +147,9 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
   const draws = useMemo(() => (overlay ? subtitleRenderingKinds() : ['text']), [overlay]);
   const undrawable = useRef(new Set<string>());
   const upgraded = useRef(new Set<string>());
-  const renderingFor = (resource: {id: string}) => (undrawable.current.has(resource.id) ? undefined : drawnRenderingFor(resource, draws));
+  const away = useRef(elsewhere);
+  away.current = elsewhere;
+  const renderingFor = (resource: {id: string}) => (undrawable.current.has(resource.id) || away.current ? undefined : drawnRenderingFor(resource, draws));
   type Track = NonNullable<SubtitleSnapshot['plan']>['resources'][number];
   /**
    * Selects a track (or none) with a delivery: the original for this browser to draw, or the
@@ -196,7 +204,7 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
   }, [service, overlay, selectedId, plan?.renderer, plan?.mode, subtitles.suppressed, subtitles.busy]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!overlay) return;
-    if (!original || !service || !plan?.selected) { drawRun.current++; drawnKey.current = ''; overlay.clear(); setDrawing(false); return; }
+    if (!original || !service || !plan?.selected) { drawRun.current++; drawnKey.current = ''; overlay.clear(); setDrawing(false); setForcedChoice(false); return; }
     overlay.setDelay(Number(plan.offsetUs) / 1e6);
     if (drawnKey.current === originalKey && overlay.active) return;
     // The server handed over the original of a track that already failed to draw here: nothing is tried again.
@@ -233,11 +241,27 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
         else source = {kind: original.format, data: absolute(original.url)};
         if (!current()) return;
         await overlay.present(source, read, failed);
-        if (current()) setDrawing(false);
+        if (current()) { setDrawing(false); setForcedChoice(overlay.forcedChoice); }
       } catch { failed(); }
     })();
   }, [api, overlay, service, originalKey, plan?.offsetUs]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { drawRun.current++; drawnKey.current = ''; overlay?.clear(); }, [overlay, service]);
+  /* The picture went where the page cannot draw: the drawn track is asked for the ordinary way,
+     and drawn again once the picture is back on the page (the same track, if it is still chosen). */
+  const handedOver = useRef<string | null>(null);
+  const [forcedChoice, setForcedChoice] = useState(false);
+  useEffect(() => {
+    const selected = plan?.selected;
+    if (!service || !overlay || !selected || plan?.mode !== 'track' || subtitles.suppressed) { if (!elsewhere) handedOver.current = null; return; }
+    if (elsewhere && selectedSubtitleOriginal(plan) && handedOver.current !== selected.id) {
+      handedOver.current = selected.id;
+      void select(selected, undefined, plan.offsetUs).catch(() => { handedOver.current = null; });
+    } else if (!elsewhere && handedOver.current === selected.id) {
+      handedOver.current = null;
+      const rendering = renderingFor(selected);
+      if (rendering && !selectedSubtitleOriginal(plan)) void select(selected, rendering, plan.offsetUs).catch(() => {});
+    }
+  }, [elsewhere, service, overlay, selectedId, plan?.mode, plan?.renderer, subtitles.suppressed]); // eslint-disable-line react-hooks/exhaustive-deps
   const choose = (resource: Track, offsetUs?: string): Promise<void> => select(resource, renderingFor(resource), offsetUs);
   const turnOff = (): Promise<void> => select(null, undefined);
   /** Turns on a track the server found beside the file but has not listed among the choices yet: it is selected like any other, on the session. */
@@ -343,6 +367,8 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
     draws: (resource: {id: string}) => renderingFor(resource) !== undefined,
     /** The kind being drawn on the canvas now, and whether it is still loading. */
     drawnKind: original?.format ?? null, drawing,
+    /** The image subtitle on screen marks some lines forced and not others: "Forced only" applies. */
+    forcedChoice: forcedChoice && !!original,
     /** Counts the times a track could not be drawn and was shown another way. */
     drawFallbacks,
   };
