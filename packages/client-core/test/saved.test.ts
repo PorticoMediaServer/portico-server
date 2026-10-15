@@ -302,3 +302,13 @@ test('CD-23: watchlist/history entries accept extra, author, book_series and dis
   s.dispose();
  }
 });
+test('a removal answers its undo token, and Undo sends it back to put that occurrence back',async()=>{
+ const writes:any[]=[];let revision=0;
+ const s=setup(async(p,m,b)=>{if(m==='GET')return isContent(p)?projection('playlist',revision,[occurrence('one'),occurrence('two')]):resource(revision,2);writes.push({p,m,b});revision++;return m==='DELETE'?{...receipt(b,revision),undoToken:'undo-1',undoUntil:'2026-10-15T12:00:30.000Z'}:receipt(b,revision);});
+ await s.select({view:'playlist',playlistId:'playlist'});
+ await s.mutate({action:'remove',entryId:'two'});
+ assert.equal(s.getSnapshot().lastReceipt?.undoToken,'undo-1');assert.equal(s.getSnapshot().lastReceipt?.undoUntil,'2026-10-15T12:00:30.000Z');
+ await s.mutate({action:'restore',undoToken:'undo-1'});
+ assert.equal(writes.length,2);assert.equal(writes[1].m,'POST');assert.match(writes[1].p,/\/v1\/playlists\/playlist\/entries$/);assert.equal(writes[1].b.undoToken,'undo-1');assert.equal(writes[1].b.itemId,undefined);
+ assert.throws(()=>s.mutate({action:'restore',undoToken:''} as any));
+});

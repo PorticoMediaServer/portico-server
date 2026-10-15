@@ -131,6 +131,9 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 	if len(m.EntryIDs) > MaxPlaylistEntries || len(m.ItemIDs) > MaxPlaylistEntries {
 		return out, ErrPlaylistCapacity
 	}
+	if m.UndoToken != "" && (action != "add" || m.ItemID != "" || !personalOperation.MatchString(m.UndoToken)) || action == "add" && (m.ItemID == "") == (m.UndoToken == "") {
+		return out, requestinput.New("add an item, or undo a removal with its token")
+	}
 	if m.ItemIDs != nil && action != "create" {
 		return out, requestinput.New("initial itemIds only apply to creation")
 	}
@@ -273,6 +276,22 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 			_, e = tx.Exec(`DELETE FROM playlist_shares WHERE playlist_id=?`, id)
 		}
 	case "add":
+		if m.UndoToken != "" {
+			// The same occurrence returns: its entry id, its item and its order
+			// key, so it sits where it was among the entries still there.
+			var removed []removedEntry
+			if removed, e = takeEntryUndo(tx, actorKey(a), "playlist", id, m.UndoToken); e != nil {
+				return out, e
+			}
+			for _, r := range removed {
+				if _, e = tx.Exec(`INSERT INTO catalog_playlist_entries(token,playlist_id,item_id,position,order_key) SELECT ?,p.id,?,(SELECT COALESCE(max(position),0)+1 FROM catalog_playlist_entries WHERE playlist_id=p.id),? FROM catalog_playlists p WHERE p.token=?`, r.entry, r.item, r.orderKey, id); e != nil {
+					return out, e
+				}
+				out.EntryID = r.entry
+				touchedEntries = append(touchedEntries, r.entry)
+			}
+			break
+		}
 		if e = playlistItemAllowed(tx, m.ItemID); e != nil {
 			return out, e
 		}
@@ -280,6 +299,10 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 		e = appendPlaylistEntry(tx, id, out.EntryID, m.ItemID)
 		touchedEntries = append(touchedEntries, out.EntryID)
 	case "remove":
+		var r removedEntry
+		if e = tx.QueryRow(`SELECT e.token,e.item_id,e.order_key FROM catalog_playlist_entries e JOIN catalog_playlists p ON p.id=e.playlist_id WHERE e.token=? AND p.token=?`, target, id).Scan(&r.entry, &r.item, &r.orderKey); e != nil {
+			return out, e
+		}
 		var result sql.Result
 		result, e = tx.Exec(`DELETE FROM catalog_playlist_entries WHERE token=? AND playlist_id=(SELECT id FROM catalog_playlists WHERE token=?)`, target, id)
 		if e == nil {
@@ -288,6 +311,7 @@ func (s *Service) MutatePlaylist(a ResourceActor, id, action, target string, m P
 				return out, sql.ErrNoRows
 			}
 			touchedEntries = append(touchedEntries, target)
+			out.UndoToken, out.UndoUntil, e = captureEntryUndo(tx, actorKey(a), "playlist", id, []removedEntry{r})
 		}
 	case "reorder":
 		e = reorderPlaylistWindow(tx, id, m.EntryIDs, m.AfterEntryID)

@@ -159,7 +159,7 @@ func (d Dependencies) playlistRoutes(mux *http.ServeMux) {
 						return e
 					}
 				}
-				if route.action == "add" {
+				if route.action == "add" && m.ItemID != "" {
 					if e := tx.QueryRow(`SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?)`, m.ItemID).Scan(&library); e != nil {
 						return e
 					}
