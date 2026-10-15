@@ -13,7 +13,6 @@ export {ContractError, consecutiveOnAlbum, parseAdminSession, parseDevice, parse
 export {CapabilityPublisher, PlaybackOptionsClient, defaultSelection, markerAt, summarizePlan, type OptionsPreview, type PlanSummary} from './options.ts';
 export {PlaybackSessionController, SessionsClient, seekNeedsServer, type ControllerOptions, type ControllerPhase, type ControllerSnapshot, type SessionChange, type StartOptions, type StartTarget, type Timers} from './sessions.ts';
 export {QUEUE_WINDOW_MAX, QueueClient, QueueView, parseQueuePlaylistSave, queueSaveMessage, saveQueueAsPlaylist, type QueuePlaylistSave, type CreateResult, type Placement, type QueueAnchor, type QueueOrder, type SegmentInput} from './queue.ts';
-export {CommandRouter, DeviceCommandsClient, commandHandler, parseCommand, type CommandHandler, type CommandTarget, type DeviceCommand, type PlayTarget, type ReceivedCommand, type TransferOffer} from './commands.ts';
 export {EventsClient, type EventsClientOptions, type EventsStatus, type RawStreamEvent, type StreamOpener} from './events.ts';
 export {AdminSessionsClient, NowPlayingStore, type NowPlayingSnapshot} from './admin-sessions.ts';
 export {localV1Http} from './local-http.ts';
