@@ -13,10 +13,13 @@ type ControlCommand struct {
 	ExpectedRevision string `json:"expectedRevision"`
 }
 type SessionControls struct {
-	SessionID  string   `json:"sessionId"`
-	Revision   string   `json:"revision"`
-	State      string   `json:"state"`
-	PositionMs int64    `json:"positionMs"`
+	SessionID  string `json:"sessionId"`
+	Revision   string `json:"revision"`
+	State      string `json:"state"`
+	PositionMs int64  `json:"positionMs"`
+	// DurationMs is the length of the version being played, from the
+	// catalogue's file facts; absent for a channel or an unknown length.
+	DurationMs int64    `json:"durationMs,omitempty"`
 	Actions    []string `json:"actions"`
 }
 
@@ -25,7 +28,15 @@ func controlsOf(r row) SessionControls {
 	if r.ended == 0 {
 		actions = []string{"pause", "resume", "seek", "stop"}
 	}
-	return SessionControls{r.id, strconv.Itoa(r.revision), r.state, r.position, actions}
+	return SessionControls{SessionID: r.id, Revision: strconv.Itoa(r.revision), State: r.state, PositionMs: r.position, Actions: actions}
+}
+
+// controlsWithDuration is controlsOf with the version's length.
+func (s *Service) controlsWithDuration(ctx context.Context, r row) (SessionControls, error) {
+	out := controlsOf(r)
+	duration, err := s.sessionDuration(ctx, r)
+	out.DurationMs = duration
+	return out, err
 }
 func (s *Service) AdminControls(ctx context.Context, id string) (SessionControls, error) {
 	r, err := loadRow(ctx, s.DB, id)
@@ -33,7 +44,7 @@ func (s *Service) AdminControls(ctx context.Context, id string) (SessionControls
 		return SessionControls{}, err
 	}
 	r = s.expireIfLapsed(ctx, r)
-	return controlsOf(r), nil
+	return s.controlsWithDuration(ctx, r)
 }
 
 // AdminControl is deliberately limited to transport. It cannot change tracks,
@@ -128,7 +139,11 @@ func (s *Service) RemoteControls(ctx context.Context, c Caller, cursor string, l
 		}
 		device := AdminName{ID: r.device, Name: r.device}
 		_ = s.DB.QueryRowContext(ctx, `SELECT name FROM identity_devices WHERE id=?`, r.device).Scan(&device.Name)
-		out.Items = append(out.Items, RemotePlayback{controlsOf(r), device, item, r.kind})
+		controls, e := s.controlsWithDuration(ctx, r)
+		if e != nil {
+			return out, e
+		}
+		out.Items = append(out.Items, RemotePlayback{controls, device, item, r.kind})
 	}
 	return out, nil
 }

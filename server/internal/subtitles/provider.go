@@ -59,13 +59,21 @@ type OpenSubtitles struct {
 	mu                       sync.Mutex
 	next                     time.Time
 	gate                     chan struct{}
+	// The owner's saved credentials (SetCredentials) and the environment's,
+	// which are used where the owner saved none. request adopts a change.
+	credentials, environment openSubtitlesCredentials
+	credentialMu             sync.Mutex
+	// changes counts SetCredentials calls; adopted is the count request last
+	// took its credentials at.
+	changes, adopted int
 }
 
-func ProviderFromEnvironment() Provider {
-	key := strings.TrimSpace(os.Getenv("PORTICO_OPENSUBTITLES_API_KEY"))
-	if key == "" {
-		return nil
-	}
+type openSubtitlesCredentials struct{ key, username, password string }
+
+// ProviderFromEnvironment is the OpenSubtitles provider, with the environment's
+// credentials until the owner saves their own (Server › Metadata).
+func ProviderFromEnvironment() *OpenSubtitles {
+	env := openSubtitlesCredentials{strings.TrimSpace(os.Getenv("PORTICO_OPENSUBTITLES_API_KEY")), os.Getenv("PORTICO_OPENSUBTITLES_USERNAME"), os.Getenv("PORTICO_OPENSUBTITLES_PASSWORD")}
 	tr := http.DefaultTransport.(*http.Transport).Clone()
 	tr.Proxy = nil
 	tr.MaxConnsPerHost = 2
@@ -75,7 +83,48 @@ func ProviderFromEnvironment() Provider {
 	if agent == "" {
 		agent = "Portico v1"
 	}
-	return &OpenSubtitles{key: key, username: os.Getenv("PORTICO_OPENSUBTITLES_USERNAME"), password: os.Getenv("PORTICO_OPENSUBTITLES_PASSWORD"), host: "api.opensubtitles.com", agent: agent, gate: make(chan struct{}, 1), client: &http.Client{Transport: progressio.Transport{Base: tr, Idle: 30 * time.Second, Overall: 15 * time.Minute}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	return &OpenSubtitles{key: env.key, username: env.username, password: env.password, environment: env, credentials: env, host: "api.opensubtitles.com", agent: agent, gate: make(chan struct{}, 1), client: &http.Client{Transport: progressio.Transport{Base: tr, Idle: 30 * time.Second, Overall: 15 * time.Minute}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+}
+
+// SetCredentials installs the owner's saved key and account. An empty key keeps
+// the environment's key; an empty username keeps the environment's account.
+// The next request signs in again with what is now in force.
+func (p *OpenSubtitles) SetCredentials(key, username, password string) {
+	next := openSubtitlesCredentials{strings.TrimSpace(key), username, password}
+	if next.key == "" {
+		next.key = p.environment.key
+	}
+	if next.username == "" {
+		next.username, next.password = p.environment.username, p.environment.password
+	}
+	p.credentialMu.Lock()
+	p.credentials = next
+	p.changes++
+	p.credentialMu.Unlock()
+	p.loginRejected.Store(false)
+}
+
+// adoptCredentials runs under the request gate: a change of credentials drops
+// the session token and a refused sign-in, so the new ones are tried.
+func (p *OpenSubtitles) adoptCredentials() {
+	p.credentialMu.Lock()
+	c, changes := p.credentials, p.changes
+	p.credentialMu.Unlock()
+	if changes == p.adopted {
+		return
+	}
+	p.adopted = changes
+	if c.key == p.key && c.username == p.username && c.password == p.password {
+		return
+	}
+	p.key, p.username, p.password, p.token, p.host = c.key, c.username, c.password, "", "api.opensubtitles.com"
+	p.loginRejected.Store(false)
+}
+
+func (p *OpenSubtitles) configured() bool {
+	p.credentialMu.Lock()
+	defer p.credentialMu.Unlock()
+	return p.credentials.key != "" || p.changes == 0 && p.key != ""
 }
 func (p *OpenSubtitles) ID() string { return "opensubtitles" }
 func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, out any) error {
@@ -85,7 +134,10 @@ func (p *OpenSubtitles) request(ctx context.Context, method, path string, body, 
 	case <-ctx.Done():
 		return ctx.Err()
 	}
-
+	p.adoptCredentials()
+	if p.key == "" {
+		return ErrUnavailable
+	}
 	if p.token == "" && p.username != "" {
 		if e := p.login(ctx); e != nil {
 			return e
@@ -467,6 +519,9 @@ func (s *Service) Apply(ctx context.Context, p identity.Principal, item string, 
 }
 
 func (p *OpenSubtitles) Status() ProviderStatus {
+	if !p.configured() {
+		return ProviderStatus{ID: p.ID(), Reason: "provider_not_configured"}
+	}
 	if p.loginRejected.Load() {
 		return ProviderStatus{ID: p.ID(), Reason: "provider_sign_in_failed"}
 	}

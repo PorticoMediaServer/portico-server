@@ -6111,6 +6111,11 @@
             },
             "type": "array"
           },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "positionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -20239,6 +20244,11 @@
               "type": "string"
             },
             "type": "array"
+          },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "positionMs": {
             "maximum": 9007199254740991,
@@ -51683,6 +51693,38 @@
                   "guideSourceId": {
                     "type": "string"
                   },
+                  "importLimits": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "bytes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "programmes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bytes",
+                          "channels",
+                          "programmes"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "kind": {
                     "type": "string"
                   },
@@ -51739,7 +51781,8 @@
                   "filters",
                   "logoImport",
                   "channelNumbering",
-                  "guideSourceId"
+                  "guideSourceId",
+                  "importLimits"
                 ],
                 "type": "object"
               },
@@ -51802,6 +51845,9 @@
                           "accountId": {
                             "type": "string"
                           },
+                          "accountName": {
+                            "type": "string"
+                          },
                           "allocationId": {
                             "type": "string"
                           },
@@ -51815,6 +51861,9 @@
                             "type": "string"
                           },
                           "profileId": {
+                            "type": "string"
+                          },
+                          "profileName": {
                             "type": "string"
                           },
                           "recordingId": {
@@ -51834,6 +51883,8 @@
                           "kind",
                           "accountId",
                           "profileId",
+                          "accountName",
+                          "profileName",
                           "recordingId",
                           "channelId",
                           "title",
@@ -51872,6 +51923,9 @@
                           "accountId": {
                             "type": "string"
                           },
+                          "accountName": {
+                            "type": "string"
+                          },
                           "allocationId": {
                             "type": "string"
                           },
@@ -51885,6 +51939,9 @@
                             "type": "string"
                           },
                           "profileId": {
+                            "type": "string"
+                          },
+                          "profileName": {
                             "type": "string"
                           },
                           "recordingId": {
@@ -51904,6 +51961,8 @@
                           "kind",
                           "accountId",
                           "profileId",
+                          "accountName",
+                          "profileName",
                           "recordingId",
                           "channelId",
                           "title",
@@ -52917,6 +52976,15 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "openSubtitlesKeyConfigured": {
+            "type": "boolean"
+          },
+          "openSubtitlesPasswordConfigured": {
+            "type": "boolean"
+          },
+          "openSubtitlesUsername": {
+            "type": "string"
+          },
           "revision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -52935,7 +53003,10 @@
           "localArtworkLimitBytes",
           "includeAdult",
           "tmdbCredentialConfigured",
-          "tvdbCredentialConfigured"
+          "tvdbCredentialConfigured",
+          "openSubtitlesKeyConfigured",
+          "openSubtitlesUsername",
+          "openSubtitlesPasswordConfigured"
         ],
         "type": "object"
       },
@@ -59675,6 +59746,11 @@
                     "name"
                   ],
                   "type": "object"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "item": {
                   "properties": {
@@ -72335,6 +72411,11 @@
                   ],
                   "type": "object"
                 },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "engine": {
                   "type": "string"
                 },
@@ -73450,6 +73531,12 @@
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "itemId": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
                 "reportedAtMs": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -73459,6 +73546,9 @@
                   "type": "string"
                 },
                 "sourceId": {
+                  "type": "string"
+                },
+                "title": {
                   "type": "string"
                 }
               },
@@ -102104,6 +102194,15 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "openSubtitlesApiKey": {
+            "type": "string"
+          },
+          "openSubtitlesPassword": {
+            "type": "string"
+          },
+          "openSubtitlesUsername": {
+            "type": "string"
+          },
           "tmdbReadToken": {
             "type": "string"
           },
@@ -102133,6 +102232,15 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "openSubtitlesKeyConfigured": {
+            "type": "boolean"
+          },
+          "openSubtitlesPasswordConfigured": {
+            "type": "boolean"
+          },
+          "openSubtitlesUsername": {
+            "type": "string"
+          },
           "revision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -102151,7 +102259,10 @@
           "localArtworkLimitBytes",
           "includeAdult",
           "tmdbCredentialConfigured",
-          "tvdbCredentialConfigured"
+          "tvdbCredentialConfigured",
+          "openSubtitlesKeyConfigured",
+          "openSubtitlesUsername",
+          "openSubtitlesPasswordConfigured"
         ],
         "type": "object"
       },
@@ -107043,6 +107154,38 @@
               "guideSourceId": {
                 "type": "string"
               },
+              "importLimits": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "bytes": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "programmes": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "bytes",
+                      "channels",
+                      "programmes"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
               "kind": {
                 "type": "string"
               },
@@ -107099,7 +107242,8 @@
               "filters",
               "logoImport",
               "channelNumbering",
-              "guideSourceId"
+              "guideSourceId",
+              "importLimits"
             ],
             "type": "object"
           }
@@ -107299,6 +107443,38 @@
                   "guideSourceId": {
                     "type": "string"
                   },
+                  "importLimits": {
+                    "anyOf": [
+                      {
+                        "properties": {
+                          "bytes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "programmes": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "bytes",
+                          "channels",
+                          "programmes"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
                   "kind": {
                     "type": "string"
                   },
@@ -107355,7 +107531,8 @@
                   "filters",
                   "logoImport",
                   "channelNumbering",
-                  "guideSourceId"
+                  "guideSourceId",
+                  "importLimits"
                 ],
                 "type": "object"
               },
@@ -131662,6 +131839,9 @@
                                     "accountId": {
                                       "type": "string"
                                     },
+                                    "accountName": {
+                                      "type": "string"
+                                    },
                                     "allocationId": {
                                       "type": "string"
                                     },
@@ -131675,6 +131855,9 @@
                                       "type": "string"
                                     },
                                     "profileId": {
+                                      "type": "string"
+                                    },
+                                    "profileName": {
                                       "type": "string"
                                     },
                                     "recordingId": {
@@ -131694,6 +131877,8 @@
                                     "kind",
                                     "accountId",
                                     "profileId",
+                                    "accountName",
+                                    "profileName",
                                     "recordingId",
                                     "channelId",
                                     "title",
@@ -131732,6 +131917,9 @@
                                     "accountId": {
                                       "type": "string"
                                     },
+                                    "accountName": {
+                                      "type": "string"
+                                    },
                                     "allocationId": {
                                       "type": "string"
                                     },
@@ -131745,6 +131933,9 @@
                                       "type": "string"
                                     },
                                     "profileId": {
+                                      "type": "string"
+                                    },
+                                    "profileName": {
                                       "type": "string"
                                     },
                                     "recordingId": {
@@ -131764,6 +131955,8 @@
                                     "kind",
                                     "accountId",
                                     "profileId",
+                                    "accountName",
+                                    "profileName",
                                     "recordingId",
                                     "channelId",
                                     "title",
@@ -145796,6 +145989,38 @@
                             "guideSourceId": {
                               "type": "string"
                             },
+                            "importLimits": {
+                              "anyOf": [
+                                {
+                                  "properties": {
+                                    "bytes": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "programmes": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "bytes",
+                                    "channels",
+                                    "programmes"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "kind": {
                               "type": "string"
                             },
@@ -145852,7 +146077,8 @@
                             "filters",
                             "logoImport",
                             "channelNumbering",
-                            "guideSourceId"
+                            "guideSourceId",
+                            "importLimits"
                           ],
                           "type": "object"
                         },
@@ -146076,6 +146302,38 @@
                       "guideSourceId": {
                         "type": "string"
                       },
+                      "importLimits": {
+                        "anyOf": [
+                          {
+                            "properties": {
+                              "bytes": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "channels": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "programmes": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "bytes",
+                              "channels",
+                              "programmes"
+                            ],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
                       "kind": {
                         "type": "string"
                       },
@@ -146132,7 +146390,8 @@
                       "filters",
                       "logoImport",
                       "channelNumbering",
-                      "guideSourceId"
+                      "guideSourceId",
+                      "importLimits"
                     ],
                     "type": "object"
                   }
@@ -146340,6 +146599,38 @@
                             "guideSourceId": {
                               "type": "string"
                             },
+                            "importLimits": {
+                              "anyOf": [
+                                {
+                                  "properties": {
+                                    "bytes": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "programmes": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "bytes",
+                                    "channels",
+                                    "programmes"
+                                  ],
+                                  "type": "object"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
                             "kind": {
                               "type": "string"
                             },
@@ -146396,7 +146687,8 @@
                             "filters",
                             "logoImport",
                             "channelNumbering",
-                            "guideSourceId"
+                            "guideSourceId",
+                            "importLimits"
                           ],
                           "type": "object"
                         },
@@ -150144,6 +150436,15 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "openSubtitlesKeyConfigured": {
+                      "type": "boolean"
+                    },
+                    "openSubtitlesPasswordConfigured": {
+                      "type": "boolean"
+                    },
+                    "openSubtitlesUsername": {
+                      "type": "string"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -150162,7 +150463,10 @@
                     "localArtworkLimitBytes",
                     "includeAdult",
                     "tmdbCredentialConfigured",
-                    "tvdbCredentialConfigured"
+                    "tvdbCredentialConfigured",
+                    "openSubtitlesKeyConfigured",
+                    "openSubtitlesUsername",
+                    "openSubtitlesPasswordConfigured"
                   ],
                   "type": "object"
                 }
@@ -150235,6 +150539,15 @@
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "openSubtitlesApiKey": {
+                    "type": "string"
+                  },
+                  "openSubtitlesPassword": {
+                    "type": "string"
+                  },
+                  "openSubtitlesUsername": {
+                    "type": "string"
+                  },
                   "tmdbReadToken": {
                     "type": "string"
                   },
@@ -150272,6 +150585,15 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "openSubtitlesKeyConfigured": {
+                      "type": "boolean"
+                    },
+                    "openSubtitlesPasswordConfigured": {
+                      "type": "boolean"
+                    },
+                    "openSubtitlesUsername": {
+                      "type": "string"
+                    },
                     "revision": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -150290,7 +150612,10 @@
                     "localArtworkLimitBytes",
                     "includeAdult",
                     "tmdbCredentialConfigured",
-                    "tvdbCredentialConfigured"
+                    "tvdbCredentialConfigured",
+                    "openSubtitlesKeyConfigured",
+                    "openSubtitlesUsername",
+                    "openSubtitlesPasswordConfigured"
                   ],
                   "type": "object"
                 }
@@ -152808,6 +153133,12 @@
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
                           "reportedAtMs": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -152817,6 +153148,9 @@
                             "type": "string"
                           },
                           "sourceId": {
+                            "type": "string"
+                          },
+                          "title": {
                             "type": "string"
                           }
                         },
@@ -153344,6 +153678,11 @@
                             ],
                             "type": "object"
                           },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "engine": {
                             "type": "string"
                           },
@@ -153577,6 +153916,11 @@
                       },
                       "type": "array"
                     },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "positionMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -153703,6 +154047,11 @@
                         "type": "string"
                       },
                       "type": "array"
+                    },
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     },
                     "positionMs": {
                       "maximum": 9007199254740991,
@@ -243908,6 +244257,11 @@
                               "name"
                             ],
                             "type": "object"
+                          },
+                          "durationMs": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           },
                           "item": {
                             "properties": {

@@ -53,6 +53,9 @@ type Service struct {
 	wikipedia         wikipediaSource
 	commons           commonsSource
 	LocalArtworkUsage func(context.Context) (int64, error)
+	// SubtitleCredentials receives the owner's saved OpenSubtitles key and
+	// account whenever the settings change (empty: the server's own).
+	SubtitleCredentials func(key, username, password string)
 	LocalArtwork      func(string) (*os.File, string, error)
 	db                *sql.DB
 	token             string

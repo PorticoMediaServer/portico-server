@@ -21,6 +21,15 @@ func TestAdministratorControlsAnotherProfilesSessionWithoutMediaURLs(t *testing.
 	}
 	var controls playbackv1.SessionControls
 	f.call("GET", "/v1/admin/sessions/"+session.ID+"/controls", nil, nil, 200, &controls)
+	// The length of what is playing comes with the controls, so a position slider has an end.
+	if controls.DurationMs != 600000 {
+		t.Fatal("controls without the title's length", controls)
+	}
+	var list playbackv1.AdminSessionPage
+	f.call("GET", "/v1/admin/sessions", nil, nil, 200, &list)
+	if len(list.Items) != 1 || list.Items[0].DurationMs != 600000 {
+		t.Fatal("session list without the title's length", list)
+	}
 	f.call("POST", "/v1/admin/sessions/"+session.ID+"/controls", nil, playbackv1.ControlCommand{Action: "pause", ExpectedRevision: controls.Revision}, 200, &controls)
 	if controls.State != "paused" {
 		t.Fatal(controls)
@@ -76,6 +85,15 @@ func TestAdministratorPauseIsKeptWhileTheSessionIsPreparing(t *testing.T) {
 	}
 	var controls playbackv1.SessionControls
 	f.call("GET", "/v1/admin/sessions/"+session.ID+"/controls", nil, nil, 200, &controls)
+	// The length of what is playing comes with the controls, so a position slider has an end.
+	if controls.DurationMs != 600000 {
+		t.Fatal("controls without the title's length", controls)
+	}
+	var list playbackv1.AdminSessionPage
+	f.call("GET", "/v1/admin/sessions", nil, nil, 200, &list)
+	if len(list.Items) != 1 || list.Items[0].DurationMs != 600000 {
+		t.Fatal("session list without the title's length", list)
+	}
 	f.call("POST", "/v1/admin/sessions/"+session.ID+"/controls", nil, playbackv1.ControlCommand{Action: "pause", ExpectedRevision: controls.Revision}, 200, &controls)
 	f.v1.ReadyCheck = func(context.Context, playback.Session) (bool, error) { return true, nil }
 	f.call("GET", "/v1/playback/sessions/"+session.ID, nil, nil, 200, &session)

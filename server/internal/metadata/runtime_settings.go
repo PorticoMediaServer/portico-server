@@ -19,6 +19,11 @@ type MetadataSettings struct {
 	IncludeAdult             bool  `json:"includeAdult"`
 	TMDBCredentialConfigured bool  `json:"tmdbCredentialConfigured"`
 	TVDBCredentialConfigured bool  `json:"tvdbCredentialConfigured"`
+	// OpenSubtitles, for subtitles found online: whether the owner saved their
+	// own API key and password (neither is ever sent back), and the account name.
+	OpenSubtitlesKeyConfigured      bool   `json:"openSubtitlesKeyConfigured"`
+	OpenSubtitlesUsername           string `json:"openSubtitlesUsername"`
+	OpenSubtitlesPasswordConfigured bool   `json:"openSubtitlesPasswordConfigured"`
 }
 type MetadataSettingsUpdate struct {
 	ExpectedRevision       int64   `json:"expectedRevision"`
@@ -26,15 +31,46 @@ type MetadataSettingsUpdate struct {
 	IncludeAdult           bool    `json:"includeAdult"`
 	TMDBReadToken          *string `json:"tmdbReadToken,omitempty"`
 	TVDBProjectKey         *string `json:"tvdbProjectKey,omitempty"`
+	// Absent: unchanged. Empty: back to the server's own (the environment's).
+	OpenSubtitlesAPIKey   *string `json:"openSubtitlesApiKey,omitempty"`
+	OpenSubtitlesUsername *string `json:"openSubtitlesUsername,omitempty"`
+	OpenSubtitlesPassword *string `json:"openSubtitlesPassword,omitempty"`
 }
 
+// subtitleCredentials are the owner's saved OpenSubtitles key and account.
+type subtitleCredentials struct{ key, username, password string }
+
 func readMetadataSettings(ctx context.Context, tx *sql.Tx) (MetadataSettings, string, string, error) {
+	out, tmdb, tvdb, _, err := readMetadataSettingsWithSubtitles(ctx, tx)
+	return out, tmdb, tvdb, err
+}
+func readMetadataSettingsWithSubtitles(ctx context.Context, tx *sql.Tx) (MetadataSettings, string, string, subtitleCredentials, error) {
 	var out MetadataSettings
 	var tmdb, tvdb string
-	err := tx.QueryRowContext(ctx, `SELECT revision,local_artwork_limit_bytes,include_adult,tmdb_read_token,tvdb_project_key FROM metadata_runtime_settings WHERE singleton=1`).Scan(&out.Revision, &out.LocalArtworkLimitBytes, &out.IncludeAdult, &tmdb, &tvdb)
+	var subs subtitleCredentials
+	err := tx.QueryRowContext(ctx, `SELECT revision,local_artwork_limit_bytes,include_adult,tmdb_read_token,tvdb_project_key,opensubtitles_api_key,opensubtitles_username,opensubtitles_password FROM metadata_runtime_settings WHERE singleton=1`).Scan(&out.Revision, &out.LocalArtworkLimitBytes, &out.IncludeAdult, &tmdb, &tvdb, &subs.key, &subs.username, &subs.password)
 	out.TMDBCredentialConfigured = tmdb != ""
 	out.TVDBCredentialConfigured = tvdb != ""
-	return out, tmdb, tvdb, err
+	out.OpenSubtitlesKeyConfigured = subs.key != ""
+	out.OpenSubtitlesUsername = subs.username
+	out.OpenSubtitlesPasswordConfigured = subs.password != ""
+	return out, tmdb, tvdb, subs, err
+}
+
+// validSubtitleAccount bounds an account name or password: printable, one line.
+func validSubtitleAccount(v *string) bool {
+	if v == nil {
+		return true
+	}
+	if len(*v) > 512 {
+		return false
+	}
+	for _, r := range *v {
+		if r < 32 || r == 127 {
+			return false
+		}
+	}
+	return true
 }
 func (s *Service) MetadataSettings(ctx context.Context) (MetadataSettings, error) {
 	read, e := dbwork.BeginSnapshot(ctx, s.db)
@@ -71,7 +107,7 @@ func validProviderCredential(v *string) bool {
 	return true
 }
 func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSettingsUpdate, authorize func(*sql.Tx) error) (MetadataSettings, error) {
-	if in.ExpectedRevision < 1 || in.LocalArtworkLimitBytes < 1 || in.LocalArtworkLimitBytes > 1<<50 || !validProviderCredential(in.TMDBReadToken) || !validProviderCredential(in.TVDBProjectKey) {
+	if in.ExpectedRevision < 1 || in.LocalArtworkLimitBytes < 1 || in.LocalArtworkLimitBytes > 1<<50 || !validProviderCredential(in.TMDBReadToken) || !validProviderCredential(in.TVDBProjectKey) || !validProviderCredential(in.OpenSubtitlesAPIKey) || !validSubtitleAccount(in.OpenSubtitlesUsername) || !validSubtitleAccount(in.OpenSubtitlesPassword) {
 		return MetadataSettings{}, ErrRepairInput
 	}
 	write, e := dbwork.Begin(ctx, s.db, dbwork.ClassInteractive)
@@ -85,7 +121,7 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 			return MetadataSettings{}, e
 		}
 	}
-	current, tmdb, tvdb, e := readMetadataSettings(ctx, tx)
+	current, tmdb, tvdb, subs, e := readMetadataSettingsWithSubtitles(ctx, tx)
 	if e != nil {
 		return current, e
 	}
@@ -98,7 +134,20 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 	if in.TVDBProjectKey != nil {
 		tvdb = strings.TrimSpace(*in.TVDBProjectKey)
 	}
-	_, e = tx.ExecContext(ctx, `UPDATE metadata_runtime_settings SET revision=revision+1,local_artwork_limit_bytes=?,include_adult=?,tmdb_read_token=?,tvdb_project_key=? WHERE singleton=1`, in.LocalArtworkLimitBytes, in.IncludeAdult, tmdb, tvdb)
+	if in.OpenSubtitlesAPIKey != nil {
+		subs.key = strings.TrimSpace(*in.OpenSubtitlesAPIKey)
+	}
+	if in.OpenSubtitlesUsername != nil {
+		subs.username = strings.TrimSpace(*in.OpenSubtitlesUsername)
+		// A different account never keeps the previous account's password.
+		if subs.username == "" {
+			subs.password = ""
+		}
+	}
+	if in.OpenSubtitlesPassword != nil {
+		subs.password = *in.OpenSubtitlesPassword
+	}
+	_, e = tx.ExecContext(ctx, `UPDATE metadata_runtime_settings SET revision=revision+1,local_artwork_limit_bytes=?,include_adult=?,tmdb_read_token=?,tvdb_project_key=?,opensubtitles_api_key=?,opensubtitles_username=?,opensubtitles_password=? WHERE singleton=1`, in.LocalArtworkLimitBytes, in.IncludeAdult, tmdb, tvdb, subs.key, subs.username, subs.password)
 	if e != nil {
 		return current, e
 	}
@@ -131,13 +180,16 @@ func (s *Service) loadProviderSettings(ctx context.Context) error {
 	if e != nil {
 		return e
 	}
-	out, tmdb, tvdb, e := readMetadataSettings(ctx, read.Tx())
+	out, tmdb, tvdb, subs, e := readMetadataSettingsWithSubtitles(ctx, read.Tx())
 	read.Rollback()
 	if e != nil {
 		return e
 	}
 	if s.settingsRevision == out.Revision {
 		return nil
+	}
+	if s.SubtitleCredentials != nil {
+		s.SubtitleCredentials(subs.key, subs.username, subs.password)
 	}
 	if tmdb == "" {
 		tmdb = s.token

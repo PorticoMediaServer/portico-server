@@ -55,6 +55,29 @@ type LiveSourceSettings struct {
 	// GuideSourceID names the XMLTV source that supplies this source's guide,
 	// which is how a standalone guide is attached to a streaming playlist.
 	GuideSourceID string `json:"guideSourceId"`
+	// ImportLimits lowers the server's import limits for this source alone; a
+	// zero field (or none at all) keeps the server's own. It can never raise
+	// them: the server's limits stay the ceiling.
+	ImportLimits *ImportLimits `json:"importLimits"`
+}
+
+// SourceImportLimits is what one source may bring in: the server's limits,
+// lowered where the source's own settings ask for less.
+func SourceImportLimits(server ImportLimits, own *ImportLimits) ImportLimits {
+	out := server.effective()
+	if own == nil {
+		return out
+	}
+	if own.Bytes > 0 {
+		out.Bytes = min(out.Bytes, own.Bytes)
+	}
+	if own.Channels > 0 {
+		out.Channels = min(out.Channels, own.Channels)
+	}
+	if own.Programmes > 0 {
+		out.Programmes = min(out.Programmes, own.Programmes)
+	}
+	return out
 }
 
 // RuntimeConfigurationTx reads the same typed documents the owner edits.
@@ -118,7 +141,7 @@ func (s *Store) configureInput(ctx context.Context, in *SourceInput) error {
 		return e
 	}
 	requested := in.Limits
-	in.Limits = d.ImportLimits
+	in.Limits = SourceImportLimits(d.ImportLimits, v.ImportLimits)
 	if requested.Bytes > 0 {
 		in.Limits.Bytes = min(in.Limits.Bytes, requested.Bytes)
 	}

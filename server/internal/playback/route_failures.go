@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"time"
 
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 )
@@ -124,6 +125,12 @@ type RememberedRouteFailure struct {
 	Detail       string `json:"detail"`
 	ReportedAtMS int64  `json:"reportedAtMs"`
 	ExpiresAtMS  int64  `json:"expiresAtMs"`
+	// ItemID and Title name the title the file belongs to, so the row can say
+	// what failed and link to it; absent once the file has left the catalogue.
+	ItemID string `json:"itemId,omitempty"`
+	Title  string `json:"title,omitempty"`
+	// Kind is the title's kind (movie, episode, track, ...), for its link.
+	Kind string `json:"kind,omitempty"`
 }
 type RouteFailurePage struct {
 	Items []RememberedRouteFailure `json:"items"`
@@ -134,15 +141,23 @@ type RouteFailurePage struct {
 // HTTP admission supplies owner authorization; no viewer credential is exposed.
 func (s *Service) RouteFailureMemory(ctx context.Context) (RouteFailurePage, error) {
 	out := RouteFailurePage{Items: []RememberedRouteFailure{}}
-	rows, err := dbwork.Query(ctx, s.db, `SELECT asset_id,engine,route,code,detail,reported_at_ms,reported_at_ms+CASE WHEN code IN(`+certainRouteFailures+`) THEN ? ELSE ? END FROM playback_route_failures WHERE reported_at_ms>CASE WHEN code IN(`+certainRouteFailures+`) THEN ? ELSE ? END ORDER BY reported_at_ms DESC,asset_id,engine,route LIMIT 101`, routeFailureTTL.Milliseconds(), uncertainRouteFailureTTL.Milliseconds(), time.Now().Add(-routeFailureTTL).UnixMilli(), time.Now().Add(-uncertainRouteFailureTTL).UnixMilli())
+	// The title is the file's first linked entity, found per row of a page of
+	// at most 101 through the asset token and link indexes.
+	rows, err := dbwork.Query(ctx, s.db, `SELECT f.asset_id,f.engine,f.route,f.code,f.detail,f.reported_at_ms,f.reported_at_ms+CASE WHEN f.code IN(`+certainRouteFailures+`) THEN ? ELSE ? END,COALESCE(pid(e.public_id),''),COALESCE(e.title,''),COALESCE(e.kind,0)
+ FROM playback_route_failures f LEFT JOIN catalog_entities e ON e.id=(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id WHERE a.token=f.asset_id ORDER BY l.entity_id LIMIT 1)
+ WHERE f.reported_at_ms>CASE WHEN f.code IN(`+certainRouteFailures+`) THEN ? ELSE ? END ORDER BY f.reported_at_ms DESC,f.asset_id,f.engine,f.route LIMIT 101`, routeFailureTTL.Milliseconds(), uncertainRouteFailureTTL.Milliseconds(), time.Now().Add(-routeFailureTTL).UnixMilli(), time.Now().Add(-uncertainRouteFailureTTL).UnixMilli())
 	if err != nil {
 		return out, err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var v RememberedRouteFailure
-		if err = rows.Scan(&v.SourceID, &v.Engine, &v.Route, &v.Code, &v.Detail, &v.ReportedAtMS, &v.ExpiresAtMS); err != nil {
+		var kind compactcatalog.Kind
+		if err = rows.Scan(&v.SourceID, &v.Engine, &v.Route, &v.Code, &v.Detail, &v.ReportedAtMS, &v.ExpiresAtMS, &v.ItemID, &v.Title, &kind); err != nil {
 			return out, err
+		}
+		if v.ItemID != "" {
+			v.Kind, _ = kind.Name()
 		}
 		if len(out.Items) == 100 {
 			out.More = true

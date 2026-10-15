@@ -106,6 +106,9 @@ func normalizeFilter(r *FilterRule) {
 }
 
 func normalizeLiveSourceSettings(v *LiveSourceSettings) {
+	if l := v.ImportLimits; l != nil && l.Bytes == 0 && l.Channels == 0 && l.Programmes == 0 {
+		v.ImportLimits = nil
+	}
 	if v.EnabledGroups == nil {
 		v.EnabledGroups = []string{}
 	}
@@ -168,6 +171,9 @@ func validateLiveSourceSettings(v *LiveSourceSettings) error {
 	}
 	if v.RetryWindowSeconds != nil && (*v.RetryWindowSeconds < 5 || *v.RetryWindowSeconds > 3600) {
 		fields = append(fields, "settings.retryWindowSeconds")
+	}
+	if l := v.ImportLimits; l != nil && (l.Bytes < 0 || l.Bytes > 1<<30 || l.Channels < 0 || l.Channels > 100000 || l.Programmes < 0 || l.Programmes > 10000000) {
+		fields = append(fields, "settings.importLimits")
 	}
 	if len(fields) > 0 {
 		return invalid(fields...)
@@ -246,6 +252,7 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 		effective.UserAgent = settings.UserAgent
 	}
 	effective.LogoImport = defaults.LogoImport && settings.Logos.Enabled
+	effective.ImportLimits = livechannels.SourceImportLimits(defaults.ImportLimits, settings.ImportLimits)
 	out.Settings, out.Revision, out.Digest, out.Effective = settings, revision, digestOf(settings), effective
 	return out, nil
 }
