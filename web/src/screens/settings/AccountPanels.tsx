@@ -111,6 +111,7 @@ function SubtitlePreview() {
 function About() {
   const session = useSession();
   const {t} = useI18n();
+  const navigate = useNavigate();
   // WEB-SET-03: no codename, and the developer gallery only in development builds.
   const version = (import.meta.env.VITE_APP_VERSION as string | undefined) || '0.1.0';
   return (
@@ -119,6 +120,9 @@ function About() {
         <SettingsRow label={t('web.about.webApp')} meta={version} />
         <SettingsRow label={t('web.about.server')} meta={session.system?.name ?? '—'} />
         <SettingsRow label={t('web.about.serverVersion')} meta={session.system?.version ?? '—'} />
+      </SettingsGroup>
+      <SettingsGroup>
+        <SettingsRow label={t('licenses.title')} help={t('licenses.rowHelp')} onClick={() => void navigate({to: '/settings/$section', params: {section: 'about'}, search: {tab: 'licenses'}})} />
       </SettingsGroup>
       <SettingsGroup>
         <SettingsRow icon="external" label={t('web.about.help')} onClick={() => window.open('https://getportico.tv/help', '_blank', 'noopener')} />
