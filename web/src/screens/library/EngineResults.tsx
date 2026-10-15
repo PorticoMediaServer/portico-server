@@ -12,6 +12,7 @@ import {EntryCard} from '../shared/Sections';
 import {Inset, Skeleton, StateView, WindowedGrid, createStaticCollection, gridColumnMin, type WindowedGridHandle} from '../../ui';
 import {AlphabetRail} from './BrowseFilters';
 import {TitlesTable} from './LibraryViews';
+import type {SequenceContainer} from '../../app/container-play';
 import b from './BrowseFilters.module.css';
 
 const EMPTY: readonly ContentEntry[] = [];
@@ -26,7 +27,7 @@ const EMPTY: readonly ContentEntry[] = [];
  * requests before paint — the remembered window renders from memory at its
  * scroll offset while the live collection revalidates behind it.
  */
-export function EngineResults({collection, onRefresh, libraryId, libraryKind, list, tracks, unmatched, sort, sorts, onSort, sortField, square, filtered, onClearFilters, pivot, listKey, scanning, card, empty}: {tracks?: boolean; /** The owner's Unmatched tab: empty is good news. */ unmatched?: boolean; sort: BrowseSortSelection; sorts: readonly BrowseSortCapability[]; /** Choosing a column header's order in the list view. */ onSort?: (next: BrowseSortSelection) => void; collection: WindowedCollection<ContentEntry>; onRefresh: () => void; libraryId: string; libraryKind: string; list: boolean; sortField: string; square: boolean; filtered: boolean; onClearFilters?: () => void; pivot?: string; listKey: string; scanning?: boolean; /** Cards that draw themselves (a genre's covers). They are not selectable. */ card?: (entry: ContentEntry) => React.ReactNode; /** What an empty list says when no filter is doing the excluding; the library's own words otherwise. */ empty?: React.ReactNode}) {
+export function EngineResults({collection, onRefresh, libraryId, libraryKind, list, tracks, unmatched, sort, sorts, onSort, sortField, square, filtered, onClearFilters, pivot, listKey, scanning, card, empty, sequence}: {/** The list as the server's query, for a row of the list view to play it on from there. */ sequence?: SequenceContainer; tracks?: boolean; /** The owner's Unmatched tab: empty is good news. */ unmatched?: boolean; sort: BrowseSortSelection; sorts: readonly BrowseSortCapability[]; /** Choosing a column header's order in the list view. */ onSort?: (next: BrowseSortSelection) => void; collection: WindowedCollection<ContentEntry>; onRefresh: () => void; libraryId: string; libraryKind: string; list: boolean; sortField: string; square: boolean; filtered: boolean; onClearFilters?: () => void; pivot?: string; listKey: string; scanning?: boolean; /** Cards that draw themselves (a genre's covers). They are not selectable. */ card?: (entry: ContentEntry) => React.ReactNode; /** What an empty list says when no filter is doing the excluding; the library's own words otherwise. */ empty?: React.ReactNode}) {
   const {t} = useI18n();
   const emptyCopy = useEmptyLibraryCopy();
   const remembered = useMemo(() => recallListWindow<ContentEntry>(listKey), [listKey]);
@@ -147,7 +148,7 @@ export function EngineResults({collection, onRefresh, libraryId, libraryKind, li
       <div>
         {snapshot.status === 'error' ? <Inset><ErrorNotice error={snapshot.error} context="library" retry={() => active.retry()} refresh={onRefresh} /></Inset> : null}
         {list ? (
-          <TitlesTable ref={grid} collection={active} libraryId={libraryId} tracks={tracks} sort={sort} sorts={sorts} onSort={onSort} onFirstVisible={onFirstVisible} />
+          <TitlesTable ref={grid} collection={active} libraryId={libraryId} tracks={tracks} sort={sort} sorts={sorts} onSort={onSort} onFirstVisible={onFirstVisible} sequence={sequence} />
         ) : (
           <WindowedGrid
             ref={grid}

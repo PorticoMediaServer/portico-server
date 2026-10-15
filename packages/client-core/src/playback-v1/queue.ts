@@ -18,7 +18,8 @@ import {ContractError, parseEntry, parsePage, parsePreparedNext, parseQueue, par
 export const QUEUE_WINDOW_MAX = 200;
 
 export type QueueOrder = Readonly<{mode: 'source'} | {mode: 'shuffle'; seed?: string}>;
-export type QueueAnchor = Readonly<{itemId: string} | {position: number}> | 'resume';
+/** Where a play starts: an item; in a playlist, the pressed occurrence (`entryId`, the playlist entry), with its item for when that copy has since been removed; a position; or a show's next episode. */
+export type QueueAnchor = Readonly<{itemId: string; entryId?: string} | {entryId: string} | {position: number}> | 'resume';
 export type SegmentInput = Readonly<{source: Selector; order?: QueueOrder; anchor?: QueueAnchor}>;
 export type Placement = 'next' | 'end' | Readonly<{after: string}>;
 

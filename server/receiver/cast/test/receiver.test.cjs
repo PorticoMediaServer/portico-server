@@ -85,6 +85,12 @@ test('loading another title replaces the session in the same request',async()=>{
  const h=await harness();await h.receiver.redeem('ABCD');await h.receiver.startPlayback('movie',0);await h.receiver.startPlayback('other',0);
  const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions'));assert.equal(starts[1].body.replacesSessionId,'ps_1');assert(!h.calls.some(c=>c.method==='DELETE'));
 });
+test('the sender’s subtitle choice starts the TV’s session with it; a malformed one is left out',async()=>{
+ const h=await harness();await h.receiver.redeem('ABCD');
+ await h.receiver.startPlayback('movie',0,null,'s3');await h.receiver.startPlayback('other',0,null,'off');await h.receiver.startPlayback('third',0,null,'bad id/../');
+ const starts=h.calls.filter(c=>c.url.endsWith('/v1/playback/sessions'));
+ assert.deepEqual(starts[0].body.subtitles,{trackId:'s3'});assert.deepEqual(starts[1].body.subtitles,{trackId:null});assert.equal(starts[2].body.subtitles,undefined);
+});
 test('every request the receiver makes is a current route (no Playback v2)',()=>{
  const paths=[...source.matchAll(/'(\/v\d\/[^'?]*)/g)].map(m=>m[1]);
  assert(paths.length>5);assert(paths.every(x=>x.startsWith('/v1/')),paths.join(' '));

@@ -9,6 +9,7 @@ import {useI18n, type MessageId} from '../../app/i18n';
 import {useOpenEntry} from '../../app/open';
 import {usePlayingItemId} from '../../player/engine';
 import {usePlayerActions} from '../../player/PlayerContext';
+import type {SequenceContainer} from '../../app/container-play';
 import {useRead} from '../../admin/console';
 import {valueLabel} from './BrowseFilters';
 import type {PlaylistCard} from '@core/saved.ts';
@@ -44,14 +45,17 @@ const QUEUE_AHEAD = 200;
  * A library's list view (and the Songs tab): a table whose headers sort the list on the server,
  * over the same windowed collection as the grid. Only the rows in view are mounted.
  */
-export const TitlesTable = forwardRef(function TitlesTable({collection, libraryId, tracks, sort, sorts, onSort, onFirstVisible}: {collection: WindowedCollection<ContentEntry>; libraryId: string; /** Songs: title, artist, album, duration, plays, date added. */ tracks?: boolean; sort: BrowseSortSelection; sorts: readonly BrowseSortCapability[]; /** Absent: the order is the tab's own. */ onSort?: (next: BrowseSortSelection) => void; onFirstVisible?: (index: number) => void}, ref: React.Ref<WindowedGridHandle>) {
+export const TitlesTable = forwardRef(function TitlesTable({collection, libraryId, tracks, sort, sorts, onSort, onFirstVisible, sequence}: {collection: WindowedCollection<ContentEntry>; libraryId: string; /** The list as the server's query: a pressed row plays it on from there, however long. */ sequence?: SequenceContainer; /** Songs: title, artist, album, duration, plays, date added. */ tracks?: boolean; sort: BrowseSortSelection; sorts: readonly BrowseSortCapability[]; /** Absent: the order is the tab's own. */ onSort?: (next: BrowseSortSelection) => void; onFirstVisible?: (index: number) => void}, ref: React.Ref<WindowedGridHandle>) {
   const {t} = useI18n();
   const player = usePlayerActions();
   const rowCount = useSyncExternalStore(collection.subscribe, () => collection.getSnapshot().total);
   const columns = tracks ? TRACK_COLUMNS : TITLE_COLUMNS;
-  // A song plays on through the list in the order shown, as every music player does: the songs
+  // A song plays on through the list in the order shown, as every music player does: the whole
+  // list, from the server's query, starting at the one pressed. Without the query, the songs
   // already loaded after it are the queue (bounded; nothing is fetched to build it).
   const playFrom = (index: number) => {
+    const pressed = collection.itemAt(index);
+    if (sequence && pressed?.playback) { player.playSequence([pressed], 0, pressed.playback.startSeconds ?? 0, sequence); return; }
     const queue: ContentEntry[] = [];
     for (let i = index; i < index + QUEUE_AHEAD; i++) { const item = collection.itemAt(i); if (!item) break; if (item.playback) queue.push(item); }
     if (queue.length) player.playSequence(queue, 0, 0);

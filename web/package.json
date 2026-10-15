@@ -7,6 +7,7 @@
     "dev": "vite --host 127.0.0.1 --port 5173",
     "build": "tsc --noEmit && vite build",
     "tokens": "node scripts/tokens.mjs",
+    "licences": "node --experimental-strip-types scripts/licences.ts",
     "lint:design": "node scripts/lint-design.mjs",
     "lint:strings": "node ../packages/i18n/scripts/lint-strings.mjs src ../packages/i18n/baselines/web.json && node ../packages/i18n/scripts/lint-raw-errors.mjs src && node ../packages/i18n/scripts/lint-glossary.mjs",
     "check": "npm run tokens && npm run lint:design -- --strict && node ../packages/client-core/scripts/check-preference-consumers.mjs && npm run lint:strings && tsc --noEmit && npm test",

@@ -33,6 +33,8 @@ const commonwealth: Rules = {
   theater: 'theatre',
   'gray$': 'grey',
   'catalog$': 'catalogue', 'catalogs$': 'catalogues',
+  // The noun; the catalogue never uses the verb ("licensed" is unchanged).
+  'license$': 'licence', 'licenses$': 'licences',
 };
 
 /** Canada keeps "-ize" and "program"; the rest of the Commonwealth does not. */

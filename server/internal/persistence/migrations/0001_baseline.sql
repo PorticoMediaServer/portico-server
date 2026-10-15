@@ -2222,6 +2222,12 @@ CREATE TABLE saved_resources(id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind I
 CREATE TABLE saved_resource_shares(resource_id TEXT NOT NULL REFERENCES saved_resources(id) ON DELETE CASCADE,authority TEXT NOT NULL,account_id TEXT NOT NULL,profile_id TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN('viewer','editor')),PRIMARY KEY(resource_id,authority,account_id,profile_id)) STRICT;
 CREATE TABLE saved_resource_entries(id TEXT PRIMARY KEY,resource_id TEXT NOT NULL REFERENCES saved_resources(id) ON DELETE CASCADE,item_id INTEGER REFERENCES catalog_entities(id) ON DELETE SET NULL,UNIQUE(resource_id,item_id)) STRICT;
 CREATE TABLE saved_resource_receipts(owner_key TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,response TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(owner_key,operation_id)) STRICT;
+-- A playlist or collection entry just removed, kept for its Undo (30 seconds):
+-- the same occurrence id, item and playlist order key go back. One live token
+-- per person and list; later removals clear expired ones a few at a time.
+CREATE TABLE saved_entry_undo(token TEXT NOT NULL,owner_key TEXT NOT NULL,kind TEXT NOT NULL CHECK(kind IN('playlist','collection')),resource_id TEXT NOT NULL,entry_id TEXT NOT NULL,item_id INTEGER REFERENCES catalog_entities(id) ON DELETE CASCADE,order_key TEXT NOT NULL DEFAULT '',expires_ms INTEGER NOT NULL,PRIMARY KEY(token,entry_id)) STRICT;
+CREATE INDEX saved_entry_undo_list ON saved_entry_undo(owner_key,kind,resource_id);
+CREATE INDEX saved_entry_undo_expiry ON saved_entry_undo(expires_ms);
 CREATE TABLE saved_pins(owner_key TEXT NOT NULL,kind TEXT NOT NULL,resource_id TEXT NOT NULL,pinned INTEGER NOT NULL DEFAULT 0,revision INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(owner_key,kind,resource_id)) STRICT;
 CREATE TABLE saved_resource_generation(id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TABLE playback_legacy_replacement_requests(account_id TEXT NOT NULL,profile_id TEXT NOT NULL,request_id TEXT NOT NULL,old_session_id TEXT NOT NULL,old_generation INTEGER NOT NULL,PRIMARY KEY(account_id,profile_id,request_id)) STRICT;

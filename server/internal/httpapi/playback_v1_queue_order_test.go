@@ -62,3 +62,58 @@ func TestShuffledQueueCanRemoveItsFinalEntry(t *testing.T) {
 		t.Fatalf("removed entry survived: %+v", q.Queue)
 	}
 }
+
+// A playlist can hold the same title more than once. Playing it from one of
+// those copies starts at that copy, not the first: the anchor names the
+// playlist entry. An entry removed since starts at its title instead.
+func TestPlaylistPlaysFromThePressedOccurrence(t *testing.T) {
+	f := newV1Fixture(t, 3)
+	a, b, c := f.items[0], f.items[1], f.items[2]
+	var q playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "occurrence-queue-0001"}, map[string]any{"segments": []any{map[string]any{"source": queueItems(a, b, a, c)}}}, 201, &q)
+	var saved playbackv1.SavedPlaylist
+	f.call("POST", "/v1/queues/"+q.Queue.ID+":save-as-playlist", map[string]string{"Idempotency-Key": "occurrence-save-00001", "If-Match": q.Queue.Revision}, map[string]any{"name": "Twice"}, 201, &saved)
+	rows, err := f.db.Query(`SELECT pe.token FROM catalog_playlist_entries pe JOIN catalog_playlists p ON p.id=pe.playlist_id WHERE p.token=? ORDER BY pe.order_key,pe.id`, saved.PlaylistID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var entries []string
+	for rows.Next() {
+		var token string
+		_ = rows.Scan(&token)
+		entries = append(entries, token)
+	}
+	rows.Close()
+	if len(entries) != 4 {
+		t.Fatalf("playlist entries %v", entries)
+	}
+	playlist := map[string]any{"container": map[string]any{"kind": "playlist", "id": saved.PlaylistID}}
+	start := func(key string, anchor map[string]any) playbackv1.QueueReply {
+		t.Helper()
+		var out playbackv1.QueueReply
+		f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": key}, map[string]any{"segments": []any{map[string]any{"source": playlist, "anchor": anchor}}}, 201, &out)
+		return out
+	}
+	second := start("occurrence-play-00001", map[string]any{"entryId": entries[2], "itemId": a})
+	if second.Queue.Current == nil || second.Queue.Current.Position != 2 || second.Queue.Total != 4 {
+		t.Fatalf("the second copy: %+v", second.Queue.Current)
+	}
+	first := start("occurrence-play-00002", map[string]any{"itemId": a})
+	if first.Queue.Current == nil || first.Queue.Current.Position != 0 {
+		t.Fatalf("an item anchor: %+v", first.Queue.Current)
+	}
+	if _, err = f.db.Exec(`DELETE FROM catalog_playlist_entries WHERE token=?`, entries[2]); err != nil {
+		t.Fatal(err)
+	}
+	gone := start("occurrence-play-00003", map[string]any{"entryId": entries[2], "itemId": a})
+	if gone.Queue.Current == nil || gone.Queue.Current.Position != 0 || gone.Queue.Total != 3 {
+		t.Fatalf("a removed copy starts at its title: %+v", gone.Queue.Current)
+	}
+	last := start("occurrence-play-00004", map[string]any{"entryId": entries[3]})
+	if last.Queue.Current == nil || last.Queue.Current.Position != 2 {
+		t.Fatalf("an entry anchor alone: %+v", last.Queue.Current)
+	}
+	if w := f.raw("POST", "/v1/queues", f.owner.AccessToken, map[string]string{"Idempotency-Key": "occurrence-play-00005"}, map[string]any{"segments": []any{map[string]any{"source": queueItems(a, b), "anchor": map[string]any{"entryId": entries[0]}}}}); w.Code != 422 && w.Code != 400 {
+		t.Fatalf("an entry anchor outside a playlist: %d", w.Code)
+	}
+}

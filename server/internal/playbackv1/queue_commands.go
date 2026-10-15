@@ -739,7 +739,7 @@ func (s *Service) AddSegment(ctx context.Context, c Caller, id, ifMatch string, 
 	}
 	if snap.partial {
 		// The rest is built in the background; an added segment grows in place.
-		snap.anchorItem = ""
+		snap.anchorItem, snap.anchorAt = "", nil
 		raw, _ := json.Marshal(buildCaller{Viewer: c.Principal.Viewer, Epoch: c.Principal.Epoch})
 		snap.caller = string(raw)
 	}
@@ -1326,8 +1326,8 @@ func (s *Service) planBuilding(ctx context.Context, c Caller, segments []Segment
 			continue
 		}
 		if !(i == 0 && in.Order != nil && in.Order.Mode == "shuffle") {
-			if snap.anchorItem != "" {
-				raw, _ := json.Marshal(queueStart{Mode: "ordered", AnchorItem: snap.anchorItem})
+			if snap.anchorItem != "" || snap.anchorAt != nil {
+				raw, _ := json.Marshal(queueStart{Mode: "ordered", AnchorItem: snap.anchorItem, AnchorAt: snap.anchorAt})
 				snap.start = string(raw)
 			}
 			continue

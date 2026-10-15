@@ -9,7 +9,7 @@ import {activeYearsLabel, artistReleaseGroups, captionFor, formatClock, formatDu
 import {mosaicPaths} from '../../app/title-layout';
 import {albumHeroFacts, artistHeroFacts, discNumberFromSubtitle, trackSubtitleForAlbum, type T as WordsT} from '../../app/library-words';
 import {useOpenEntry} from '../../app/open';
-import {sequenceContainer} from '../../app/container-play';
+import {groupSequence, sequenceContainer} from '../../app/container-play';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
 import {useDownloads} from '../../app/downloads';
@@ -22,6 +22,7 @@ import {useLibrariesContext} from '../../app/libraries';
 import body from '../detail/Detail.module.css';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
+import {useQuietRefresh} from '../../app/quiet-refresh';
 
 /**
  * Generic entity workspace: artist, album, collection, category, author,
@@ -44,6 +45,7 @@ export function EntityScreen() {
   const downloads = useDownloads();
   const content = useMemo<ContentRoute>(() => ({libraryId, view: view as Exclude<ContentView, 'home'>, entityId}), [libraryId, view, entityId]);
   const {snapshot, retry, refresh, next} = useContent(content);
+  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', refresh);
   useSelectionRefresh(refresh);
   // PERF-S02: section "More" appends inside its own section; the page's other
   // sections stay rendered.
@@ -77,7 +79,12 @@ export function EntityScreen() {
   // On Playback v1 a container plays (or shuffles) as one server-snapshotted request, not the loaded page.
   // A disc page id maps to the v1 disc selector; popular tracks play their own five (no container).
   const containerOf = (shuffle: boolean) => sequenceContainer(entity?.kind, entity?.id, {shuffle});
+  // Sorted or filtered, the hero's Play and Shuffle play that list (the server's query, however long).
+  const sortedGroup = songGroup.active ? songGroup : titleGroup.active ? titleGroup : undefined;
+  let sortedFirst: ContentEntry | undefined;
+  for (let i = 0; sortedGroup?.collection && i < 50 && !sortedFirst; i++) { const item = sortedGroup.collection.itemAt(i); if (!item) break; if (item.playback) sortedFirst = item; }
   const shuffle = () => {
+    if (sortedGroup && sortedFirst) { player.playSequence([sortedFirst], 0, 0, groupSequence(sortedGroup, {shuffle: true})); return; }
     if (!loaded.length) return;
     player.playSequence(loaded, 0, 0, containerOf(true));
   };
@@ -96,13 +103,11 @@ export function EntityScreen() {
     if (!queue.length) return;
     player.playSequence(queue, 0, queue[0]!.playback!.startSeconds ?? 0, container);
   };
-  // A sorted or filtered song list plays on in the order shown, as the Songs tab does: the songs loaded after the one pressed.
+  // A sorted or filtered song list plays on in the order shown, as the Songs tab does: the whole
+  // list, from the server's query, starting at the song pressed.
   const playSorted = (index: number) => {
-    const list = songGroup.collection;
-    if (!list) return;
-    const queue: ContentEntry[] = [];
-    for (let i = index; i < index + 200; i++) { const item = list.itemAt(i); if (!item) break; if (item.playback) queue.push(item); }
-    if (queue.length) player.playSequence(queue, 0, 0);
+    const pressed = songGroup.collection?.itemAt(index);
+    if (pressed?.playback) player.playSequence([pressed], 0, 0, groupSequence(songGroup));
   };
   // An album, book or artist keeps its own personal state on the container route (O(1)): the
   // watched default for a book, and Favorite for all three. Music has no "watched" at all. Other
@@ -185,11 +190,12 @@ export function EntityScreen() {
           facts={heroFacts}
           synopsis={entity?.overview}
           primary={resumeEntry?.playback ? {label: t('title.resumeRemaining', {remaining: formatDuration(Math.max(0, (resumeEntry.duration ?? 0) - (resumeEntry.progressSeconds ?? 0)))}), onClick: () => player.play(resumeEntry.playback!.itemId, resumeEntry.playback!.startSeconds ?? 0, resumeEntry), progress: resumeEntry.duration ? (resumeEntry.progressSeconds ?? 0) / resumeEntry.duration : undefined}
+            : sortedGroup && sortedFirst ? {label: t('action.play'), onClick: () => player.playSequence([sortedFirst!], 0, 0, groupSequence(sortedGroup))}
             : playable?.playback ? {label: t('action.play'), onClick: () => (loaded.length ? player.playSequence(loaded, Math.max(0, loaded.indexOf(playable)), playable.playback!.startSeconds ?? 0, containerOf(false)) : player.play(playable.playback!.itemId, playable.playback!.startSeconds ?? 0, playable))} : undefined}
           secondary={music && loaded.length > 1 || entityMore || watchedKind || canFavorite || canList || canDownload ? (
             <>
               {/* One row on every title (Justin, 2 Oct 2026): Play · Shuffle (music) · My List (books) · Favorite · Finished (books; music has no "watched") · Download · ⋯. */}
-              {music && loaded.length > 1 ? <Button variant="secondary" size="lg" icon="shuffle" label={t('title.shuffle')} onClick={shuffle} /> : null}
+              {music && (loaded.length > 1 || sortedFirst) ? <Button variant="secondary" size="lg" icon="shuffle" label={t('title.shuffle')} onClick={shuffle} /> : null}
               {canList && entity ? <Button variant="secondary" size="lg" icon={listed ? 'bookmarkFilled' : 'bookmark'} label={t(listed ? 'title.inWatchlist' : 'title.watchlist')} selected={listed} disabled={!containerWatched.state} onClick={() => void containerWatched.setFlag('watchlisted', !listed)} /> : null}
               {canFavorite && entity ? <Button variant="secondary" size="lg" icon={favorite ? 'heartFilled' : 'heart'} aria-label={t(favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} title={t(favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} selected={favorite} disabled={!containerWatched.state} onClick={() => void containerWatched.setFlag('favorite', !favorite)} /> : null}
               {watchedKind && entity ? <Button variant="secondary" size="lg" icon={containerWatched.state?.watched ? 'watched' : 'check'} aria-label={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} title={t(containerWatched.state?.watched ? 'title.markNotFinished' : 'title.markFinished')} selected={containerWatched.state?.watched} disabled={containerWatched.saving} onClick={() => void containerWatched.setWatched(!(containerWatched.state?.watched ?? false))} /> : null}
@@ -201,7 +207,7 @@ export function EntityScreen() {
       <Page>
         {snapshot.phase === 'loading' && !snapshot.sections.length ? <LoadingShelves density={shape === 'square' ? 'square' : 'poster'} /> : null}
         {snapshot.phase === 'error' && !snapshot.sections.length ? <ErrorState error={snapshot.error} context="collection" retry={retry} refresh={refresh} /> : null}
-        {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="collection" refresh={refresh} /></Inset> : null}
+        {changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="collection" refresh={refresh} /></Inset> : null}
         {/* Entity sections sit above the backdrop scrim (Detail `.body` rule). */}
         <div className={body.body}>
           {/* The five most played first ("Popular" when the owner shares activity across profiles, "Your most played" otherwise), then every song, then the releases by type. */}

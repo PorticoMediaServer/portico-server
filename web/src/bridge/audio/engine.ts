@@ -89,10 +89,10 @@ export class Deck {
     if (this.startFrame === undefined) return this.decoded / this.rate;
     return Math.max(0, (this.startFrame + this.decoded) / this.rate - now(this.context));
   }
-  /** Frames of this track played so far, at the context rate. */
-  playedFrames(): number {
+  /** Frames of this track played by context time `at` (now by default), at the context rate. */
+  playedFrames(at = now(this.context)): number {
     if (this.startFrame === undefined) return 0;
-    return Math.max(0, Math.min(this.outFrames, Math.floor(now(this.context) * this.rate) - this.startFrame));
+    return Math.max(0, Math.min(this.outFrames, Math.floor(at * this.rate) - this.startFrame));
   }
 
   /** Decodes until `seconds` of audio lie ahead of the playhead (or are held), then stops. */

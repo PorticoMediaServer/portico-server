@@ -7,6 +7,9 @@
 .stage.audio .video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 /* Styled and image subtitles are drawn here, over the picture and under everything the viewer can press. Its box is set by the overlay. */
 .subtitleCanvas { position: absolute; left: 0; top: 0; display: none; pointer-events: none; }
+/* The picture's box: the video and its subtitle canvas. In a Picture in Picture window of the page's own it fills that window. */
+.pictureHome, .picture { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.picture.pictureAway { position: fixed; background: #000; /* lint-design-allow: player-canvas black per PC-VISUAL 4.3 */ }
 .tap { position: absolute; inset: 0; cursor: default; }
 .hidden { cursor: none; }
 .chrome { position: absolute; inset: 0; pointer-events: none; opacity: 1; transition: opacity var(--motion-standard) var(--ease-out); }
@@ -128,6 +131,13 @@
 /* Up next while the credits run: a small card in the corner the skip button uses. */
 .upNext { position: absolute; right: max(24px, env(safe-area-inset-right)); bottom: clamp(150px, 24vh, 220px); display: flex; flex-direction: column; gap: 8px; width: min(340px, calc(100vw - 32px)); padding: 14px 16px; border-radius: var(--radius-surface); background: color-mix(in srgb, var(--color-ink) 88%, transparent); border: 1px solid var(--line-soft); }
 .upNextTitle { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upNextRow { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.upNextStill { flex: 0 0 120px; }
+.upNextPoster { flex: 0 0 56px; }
+.upNextCopy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.upNextWhen { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.upNextMeter { height: 3px; border-radius: 2px; background: var(--line-soft); overflow: hidden; }
+.upNextMeter i { display: block; height: 100%; background: var(--accent); transition: width 250ms linear; }
 .upNextActions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 @media (max-width: 720px) { .upNext { bottom: clamp(140px, 26vh, 200px); right: 16px; } }
 .skip { position: absolute; right: max(24px, env(safe-area-inset-right)); bottom: clamp(150px, 24vh, 220px); display: flex; align-items: center; gap: 6px; }

@@ -310,7 +310,7 @@ export class V1QueuePlayer implements QueueController {
       queue, highestSequence: '0',
       current: this.session ? Object.freeze({id: this.session.id, generation: this.session.presentation.generation, state: this.session.state}) : null,
       next,
-      items: Object.freeze(this.window.filter(e => e.itemId).map(e => Object.freeze({entryId: e.entryId, itemId: e.itemId, title: e.title, kind: e.kind, libraryId: ''}))),
+      items: Object.freeze(this.window.filter(e => e.itemId).map(e => Object.freeze({entryId: e.entryId, itemId: e.itemId, title: e.title, kind: e.kind, libraryId: '', ...(e.posterUrl ? {posterUrl: e.posterUrl} : {}), ...(e.stillUrl ? {stillUrl: e.stillUrl} : {})}))),
       postPlay,
     });
     this.publish({view, error: null});
@@ -667,6 +667,15 @@ export class V1QueuePlayer implements QueueController {
     if (queueId !== this.header?.id || expectedRevision !== this.header.revision) throw new Error('Refresh the queue before advancing.');
     if (this.nativeOwns()) { await this.native!.advance('next'); return; }
     await this.advance('next');
+  }
+
+  /** The credits' countdown ran out: the server hears a completion, so it counts toward the
+   * passout check like an advance at the end would. */
+  async advanceFromCredits(queueId: string, expectedRevision: string): Promise<void> {
+    if (queueId !== this.header?.id || expectedRevision !== this.header.revision) throw new Error('Refresh the queue before advancing.');
+    // A native listening owner plays music, which has no credits; it only knows a viewer's move.
+    if (this.nativeOwns()) { await this.native!.advance('next'); return; }
+    await this.advance('completion');
   }
 
   /** Previous restarts the item after three seconds, else moves back. */

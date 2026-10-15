@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -76,6 +77,11 @@ type QueueEntry struct {
 	AlbumID string `json:"albumId,omitempty"`
 	Disc    int    `json:"disc,omitempty"`
 	Track   int    `json:"track,omitempty"`
+	// PosterURL is the title's poster (an episode's season or show poster, a
+	// song's album cover, a book file's cover), present only when one exists.
+	// StillURL is an episode's own still. A client's Up next card shows them.
+	PosterURL string `json:"posterUrl,omitempty"`
+	StillURL  string `json:"stillUrl,omitempty"`
 }
 
 // Page is the style guide's collection envelope for queue entries (§17.9).
@@ -635,17 +641,27 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 	}
 	// Facts only (entities, songs, book files, links, assets): no wait.
 	type info struct {
-		kind, title, album string
-		duration           float64
-		disc, track        int
+		kind, title, album, still string
+		duration                  float64
+		disc, track               int
+		poster                    bool
 	}
 	found := map[string]info{}
+	// Artwork is keyed lookups on the selection's primary key: the item's own
+	// still, and whether the poster the item art route would serve exists (its
+	// own, else its album's or book's cover, else its season's or show's).
 	rows, err := l.tx.QueryContext(ctx, `SELECT pid(i.public_id),k.name,i.title,
  COALESCE((SELECT a.duration FROM catalog_asset_links x JOIN catalog_assets a ON a.id=x.asset_id WHERE x.entity_id=i.id ORDER BY x.part_index,a.id LIMIT 1),0),
- COALESCE(pid(album.public_id),pid(book.public_id),''),COALESCE(s.disc_number,b.disc_number,0),COALESCE(s.track_number,b.part_number,0)
+ COALESCE(pid(album.public_id),pid(book.public_id),''),COALESCE(s.disc_number,b.disc_number,0),COALESCE(s.track_number,b.part_number,0),
+ COALESCE((SELECT a.role||'/'||a.digest FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.kind='item' AND a.entity_id=i.id AND a.role IN('still','thumbnail') AND a.subject='' ORDER BY a.role LIMIT 1),''),
+ EXISTS(SELECT 1 FROM artwork_selections a JOIN artwork_objects o ON o.digest=a.digest AND o.status='ready' WHERE a.subject='' AND (
+  (a.kind='item' AND a.entity_id=i.id AND a.role IN('poster','cover')) OR (a.kind='album' AND a.entity_id=s.album_id AND a.role='cover') OR
+  (a.kind='book' AND a.entity_id=b.book_id AND a.role='cover') OR (a.kind='season' AND a.entity_id=ep.season_id AND a.role='poster') OR
+  (a.kind='show' AND a.entity_id=ep.show_id AND a.role='poster')))
 	FROM catalog_entities i JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1
 	LEFT JOIN catalog_songs s ON s.entity_id=i.id LEFT JOIN catalog_entities album ON album.id=s.album_id
 	LEFT JOIN catalog_book_files b ON b.entity_id=i.id LEFT JOIN catalog_entities book ON book.id=b.book_id
+	LEFT JOIN catalog_episodes ep ON ep.entity_id=i.id
 	WHERE i.public_id IN (SELECT pid_blob(value) FROM json_each(?))`, jsonList(keys))
 	if err != nil {
 		return nil, err
@@ -653,7 +669,7 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 	for rows.Next() {
 		var id string
 		var v info
-		if err = rows.Scan(&id, &v.kind, &v.title, &v.duration, &v.album, &v.disc, &v.track); err != nil {
+		if err = rows.Scan(&id, &v.kind, &v.title, &v.duration, &v.album, &v.disc, &v.track, &v.still, &v.poster); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -680,6 +696,13 @@ func (s *Service) window(ctx context.Context, l *layout, p identity.Principal, f
 		if ok && visible[out[i].ItemID] {
 			out[i].Kind, out[i].Title, out[i].DurationMs, out[i].Available = v1Kind(v.kind), v.title, int64(v.duration*1000), true
 			out[i].AlbumID, out[i].Disc, out[i].Track = v.album, max(v.disc, 0), max(v.track, 0)
+			escaped := url.PathEscape(out[i].ItemID)
+			if v.poster {
+				out[i].PosterURL = "/v1/items/" + escaped + "/art/poster"
+			}
+			if role, digest, ok := strings.Cut(v.still, "/"); ok {
+				out[i].StillURL = "/v1/metadata/item/" + escaped + "/art/" + role + "?v=" + url.QueryEscape(digest) + "&w=800"
+			}
 		} else {
 			// A title that's gone or became restricted after the snapshot is a
 			// placeholder: no id, no title, not playable.

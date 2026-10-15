@@ -87,7 +87,9 @@ func (d Dependencies) audioGrant(w http.ResponseWriter, r *http.Request, mode st
 		return
 	}
 	plan, session, e = d.Playback.AudioPlanByGrant(r.Context(), grant)
-	if e != nil || plan == nil || plan.Mode != mode {
+	// A direct plan with a part-way start is also served converted, from a frame.
+	deep := mode == "converted" && plan != nil && plan.Mode == "direct" && plan.DeepStart != nil && plan.Convert != nil
+	if e != nil || plan == nil || plan.Mode != mode && !deep {
 		writeNoSuchAudio(w)
 		return
 	}
@@ -134,6 +136,7 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 	d.httpHandle(mux, "HEAD /v1/media/{grant}/audio", serveDirect)
 	// Converted: FLAC, Ogg Opus or ADTS AAC, exact (spec §18.1). ?fromFrame=N starts at
 	// output frame N; before commit only from frame 0, within prefetchBytes.
+	// A direct plan's deepStart is this route too: FLAC at the file's own rate.
 	d.httpHandle(mux, "GET /v1/media/{grant}/audio-converted", func(w http.ResponseWriter, r *http.Request) {
 		_, aid, item, session, plan, private, ok := d.audioGrant(w, r, "converted")
 		if !ok {

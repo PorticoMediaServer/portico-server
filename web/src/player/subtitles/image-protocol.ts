@@ -4,6 +4,6 @@ export type ImageWorkerRequest =
   | {type: 'paint'; index: number};
 export type FrameRect = {x: number; y: number; width: number; height: number; bitmap?: ImageBitmap; rgba?: ArrayBuffer};
 export type ImageWorkerReply =
-  | {type: 'ready'; width: number; height: number; starts: Float64Array; ends: Float64Array; skipped: number}
+  | {type: 'ready'; width: number; height: number; starts: Float64Array; ends: Float64Array; forced: Uint8Array; skipped: number}
   | {type: 'failed'; message: string}
   | {type: 'frame'; index: number; rects: FrameRect[]};
