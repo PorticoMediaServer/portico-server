@@ -14,7 +14,7 @@ func runtimeDefaults(ctx context.Context, tx *sql.Tx) (DVRDocument, error) {
 	v := DefaultDVRDefaults()
 	var rev int64
 	var days, count int
-	err := tx.QueryRowContext(ctx, `SELECT revision,before_seconds,after_seconds,retention_days,episode_limit FROM dvr_defaults WHERE singleton=1`).Scan(&rev, &v.PrePaddingSeconds, &v.PostPaddingSeconds, &days, &count)
+	err := tx.QueryRowContext(ctx, `SELECT revision,before_seconds,after_seconds,retention_days,episode_limit,live_tuner_conflict FROM dvr_defaults WHERE singleton=1`).Scan(&rev, &v.PrePaddingSeconds, &v.PostPaddingSeconds, &days, &count, &v.LiveTunerConflict)
 	if count > 0 {
 		v.Keep = KeepPolicy{Mode: "keep-count", KeepCount: count}
 	} else if days > 0 {
@@ -51,7 +51,7 @@ func (s *Service) saveRuntimeDVRSettings(ctx context.Context, auth Authorize, c 
 		if c.Settings.Keep.Mode == "keep-count" {
 			count = c.Settings.Keep.KeepCount
 		}
-		result, err := tx.ExecContext(ctx, `UPDATE dvr_defaults SET revision=revision+1,before_seconds=?,after_seconds=?,retention_days=?,episode_limit=? WHERE singleton=1 AND revision=?`, c.Settings.PrePaddingSeconds, c.Settings.PostPaddingSeconds, days, count, c.ExpectedRevision)
+		result, err := tx.ExecContext(ctx, `UPDATE dvr_defaults SET revision=revision+1,before_seconds=?,after_seconds=?,retention_days=?,episode_limit=?,live_tuner_conflict=? WHERE singleton=1 AND revision=?`, c.Settings.PrePaddingSeconds, c.Settings.PostPaddingSeconds, days, count, c.Settings.LiveTunerConflict, c.ExpectedRevision)
 		if err != nil {
 			return err
 		}

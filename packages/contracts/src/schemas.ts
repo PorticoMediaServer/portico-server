@@ -11943,6 +11943,16 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "ForgetPlaybackTrackMemoryRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "ForgetPlaybackTrackMemoryResponse": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
   "GetAdminAccessDevicesRequest": {
     "properties": {},
     "required": [],
@@ -15686,6 +15696,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "liveTunerConflict": {
+                "type": "string"
+              },
               "movieFolderTemplate": {
                 "type": "string"
               },
@@ -15738,7 +15751,8 @@ export const schemas = {
               "movieFolderTemplate",
               "recordingProfile",
               "sidecars",
-              "tunerPreference"
+              "tunerPreference",
+              "liveTunerConflict"
             ],
             "type": "object"
           }
@@ -94228,6 +94242,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "liveTunerConflict": {
+            "type": "string"
+          },
           "movieFolderTemplate": {
             "type": "string"
           },
@@ -94280,7 +94297,8 @@ export const schemas = {
           "movieFolderTemplate",
           "recordingProfile",
           "sidecars",
-          "tunerPreference"
+          "tunerPreference",
+          "liveTunerConflict"
         ],
         "type": "object"
       }
@@ -94393,6 +94411,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "liveTunerConflict": {
+                "type": "string"
+              },
               "movieFolderTemplate": {
                 "type": "string"
               },
@@ -94445,7 +94466,8 @@ export const schemas = {
               "movieFolderTemplate",
               "recordingProfile",
               "sidecars",
-              "tunerPreference"
+              "tunerPreference",
+              "liveTunerConflict"
             ],
             "type": "object"
           }
@@ -100008,446 +100030,6 @@ export const schemas = {
     "required": [
       "scope",
       "receipt"
-    ],
-    "type": "object"
-  },
-  "PutV1ItemsItemIdPlaybackSessionSubtitlesRequest": {
-    "properties": {
-      "control": {},
-      "expectedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "generation": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "mode": {
-        "type": "string"
-      },
-      "offsetUs": {
-        "type": "string"
-      },
-      "operationId": {
-        "type": "string"
-      },
-      "positionUs": {
-        "type": "string"
-      },
-      "rendering": {
-        "type": "string"
-      },
-      "resourceId": {
-        "type": "string"
-      },
-      "resourceRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      }
-    },
-    "required": [
-      "operationId",
-      "generation",
-      "expectedRevision",
-      "mode",
-      "offsetUs"
-    ],
-    "type": "object"
-  },
-  "PutV1ItemsItemIdPlaybackSessionSubtitlesResponse": {
-    "properties": {
-      "appliedRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "catalogRevision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "discovered": {
-        "items": {
-          "properties": {
-            "default": {
-              "type": "boolean"
-            },
-            "enabled": {
-              "type": "boolean"
-            },
-            "forced": {
-              "type": "boolean"
-            },
-            "format": {
-              "type": "string"
-            },
-            "hearingImpaired": {
-              "type": "boolean"
-            },
-            "id": {
-              "type": "string"
-            },
-            "language": {
-              "type": "string"
-            },
-            "origin": {
-              "type": "string"
-            },
-            "reason": {
-              "type": "string"
-            },
-            "revision": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "sourceId": {
-              "type": "string"
-            },
-            "title": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "id",
-            "sourceId",
-            "revision",
-            "origin",
-            "format",
-            "language",
-            "title",
-            "default",
-            "forced",
-            "hearingImpaired",
-            "enabled"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "documentUrl": {
-        "type": "string"
-      },
-      "generation": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "mode": {
-        "type": "string"
-      },
-      "offAvailable": {
-        "type": "boolean"
-      },
-      "offsetUs": {
-        "type": "string"
-      },
-      "presentation": {
-        "properties": {
-          "generation": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "mode": {
-            "type": "string"
-          },
-          "positionUs": {
-            "type": "string"
-          },
-          "sessionId": {
-            "type": "string"
-          },
-          "streamUrl": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "sessionId",
-          "generation",
-          "streamUrl",
-          "mode",
-          "positionUs"
-        ],
-        "type": "object"
-      },
-      "renderer": {
-        "type": "string"
-      },
-      "resources": {
-        "items": {
-          "properties": {
-            "attribution": {
-              "type": "string"
-            },
-            "canManage": {
-              "type": "boolean"
-            },
-            "default": {
-              "type": "boolean"
-            },
-            "deliveries": {
-              "items": {
-                "properties": {
-                  "companionUrl": {
-                    "type": "string"
-                  },
-                  "fontsUrl": {
-                    "type": "string"
-                  },
-                  "format": {
-                    "type": "string"
-                  },
-                  "url": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "format"
-                ],
-                "type": "object"
-              },
-              "type": "array"
-            },
-            "discoveryId": {
-              "type": "string"
-            },
-            "enabled": {
-              "type": "boolean"
-            },
-            "forced": {
-              "type": "boolean"
-            },
-            "format": {
-              "type": "string"
-            },
-            "hearingImpaired": {
-              "type": "boolean"
-            },
-            "id": {
-              "type": "string"
-            },
-            "language": {
-              "type": "string"
-            },
-            "manifestName": {
-              "type": "string"
-            },
-            "offsetUs": {
-              "type": "string"
-            },
-            "origin": {
-              "type": "string"
-            },
-            "pinned": {
-              "type": "boolean"
-            },
-            "provider": {
-              "type": "string"
-            },
-            "reason": {
-              "type": "string"
-            },
-            "renderer": {
-              "type": "string"
-            },
-            "retired": {
-              "type": "boolean"
-            },
-            "revision": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "rights": {
-              "type": "string"
-            },
-            "scope": {
-              "type": "string"
-            },
-            "sourceId": {
-              "type": "string"
-            },
-            "title": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "deliveries",
-            "id",
-            "sourceId",
-            "revision",
-            "scope",
-            "language",
-            "title",
-            "format",
-            "origin",
-            "rights",
-            "offsetUs",
-            "canManage",
-            "enabled",
-            "renderer",
-            "default",
-            "hearingImpaired",
-            "forced"
-          ],
-          "type": "object"
-        },
-        "type": "array"
-      },
-      "revision": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      },
-      "selected": {
-        "nullable": true,
-        "properties": {
-          "attribution": {
-            "type": "string"
-          },
-          "canManage": {
-            "type": "boolean"
-          },
-          "default": {
-            "type": "boolean"
-          },
-          "deliveries": {
-            "items": {
-              "properties": {
-                "companionUrl": {
-                  "type": "string"
-                },
-                "fontsUrl": {
-                  "type": "string"
-                },
-                "format": {
-                  "type": "string"
-                },
-                "url": {
-                  "type": "string"
-                }
-              },
-              "required": [
-                "format"
-              ],
-              "type": "object"
-            },
-            "type": "array"
-          },
-          "discoveryId": {
-            "type": "string"
-          },
-          "enabled": {
-            "type": "boolean"
-          },
-          "forced": {
-            "type": "boolean"
-          },
-          "format": {
-            "type": "string"
-          },
-          "hearingImpaired": {
-            "type": "boolean"
-          },
-          "id": {
-            "type": "string"
-          },
-          "language": {
-            "type": "string"
-          },
-          "manifestName": {
-            "type": "string"
-          },
-          "offsetUs": {
-            "type": "string"
-          },
-          "origin": {
-            "type": "string"
-          },
-          "pinned": {
-            "type": "boolean"
-          },
-          "provider": {
-            "type": "string"
-          },
-          "reason": {
-            "type": "string"
-          },
-          "renderer": {
-            "type": "string"
-          },
-          "retired": {
-            "type": "boolean"
-          },
-          "revision": {
-            "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
-            "type": "integer"
-          },
-          "rights": {
-            "type": "string"
-          },
-          "scope": {
-            "type": "string"
-          },
-          "sourceId": {
-            "type": "string"
-          },
-          "title": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "deliveries",
-          "id",
-          "sourceId",
-          "revision",
-          "scope",
-          "language",
-          "title",
-          "format",
-          "origin",
-          "rights",
-          "offsetUs",
-          "canManage",
-          "enabled",
-          "renderer",
-          "default",
-          "hearingImpaired",
-          "forced"
-        ],
-        "type": "object"
-      },
-      "sessionId": {
-        "type": "string"
-      },
-      "sourceId": {
-        "type": "string"
-      },
-      "version": {
-        "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
-        "type": "integer"
-      }
-    },
-    "required": [
-      "version",
-      "sessionId",
-      "generation",
-      "sourceId",
-      "revision",
-      "catalogRevision",
-      "renderer",
-      "mode",
-      "offAvailable",
-      "offsetUs",
-      "selected",
-      "resources",
-      "discovered"
     ],
     "type": "object"
   },

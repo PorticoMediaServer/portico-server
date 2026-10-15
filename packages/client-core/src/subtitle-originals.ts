@@ -12,8 +12,7 @@ import {routePattern} from "../../contracts/src/routes.ts";
  * (from the `deliveries` of a subtitle resource or of a playback-options subtitle stream), which
  * one to ask for given what the device draws, and bounded reads of the files. Asking is done with
  * the selection itself: `subtitles: {trackId, delivery: "embeddedClient"}` on the session
- * (`PlaybackChoices.subtitleDelivery`), or `rendering` on the subtitle route
- * (`SubtitleService.choose`).
+ * (`PlaybackChoices.subtitleDelivery`).
  */
 export type DrawnSubtitleFormat = 'ass' | 'pgs' | 'vobsub' | 'dvb';
 export const drawnSubtitleFormats: readonly DrawnSubtitleFormat[] = Object.freeze(['ass', 'pgs', 'vobsub', 'dvb']);

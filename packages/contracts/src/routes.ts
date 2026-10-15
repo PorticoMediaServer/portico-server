@@ -1242,6 +1242,23 @@ export const routes = [
     "admission": "admin-heavy"
   },
   {
+    "id": "forget_playback_track_memory",
+    "method": "DELETE",
+    "path": "/v1/items/{itemId}/playback-memory",
+    "summary": "Forget the audio and subtitle choice remembered for this title's show or film",
+    "access": "viewer_item_restrictions",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_found"
+    ],
+    "status": 204,
+    "admission": "default"
+  },
+  {
     "id": "get_admin_access_devices",
     "method": "GET",
     "path": "/v1/admin/access/devices",
@@ -12630,38 +12647,6 @@ export const routes = [
     "admission": "default"
   },
   {
-    "id": "put_v1_items_itemId_playback_session_subtitles",
-    "method": "PUT",
-    "path": "/v1/items/{itemId}/playback/{session}/subtitles",
-    "summary": "Read or change authorized subtitles",
-    "access": "viewer_item_restrictions",
-    "requires": "playback",
-    "lane": "default",
-    "cost": "constant",
-    "bodyLimit": 805306368,
-    "query": [
-      "segment"
-    ],
-    "errors": [
-      "unauthorized",
-      "not_permitted",
-      "not_found",
-      "invalid_request",
-      "internal",
-      "subtitle_unavailable",
-      "subtitle_not_found",
-      "subtitle_renderer_platform_unsupported",
-      "subtitle_renderer_configuration",
-      "subtitle_conflict",
-      "subtitle_operation_conflict",
-      "subtitle_capacity",
-      "subtitle_unsupported",
-      "subtitle_invalid_input"
-    ],
-    "status": 200,
-    "admission": "playback"
-  },
-  {
     "id": "put_v1_items_itemId_subtitles_resource",
     "method": "PUT",
     "path": "/v1/items/{itemId}/subtitles/{resource}",
@@ -15703,6 +15688,7 @@ export const routePaths = {
   "delete_webhook": "/v1/admin/webhooks/{id}",
   "download_client_log": "/v1/admin/diagnostics/client-logs/{id}/download",
   "empty_missing_titles": "/v1/admin/missing-titles/empty",
+  "forget_playback_track_memory": "/v1/items/{itemId}/playback-memory",
   "get_admin_access_devices": "/v1/admin/access/devices",
   "get_admin_access_invitations": "/v1/admin/access/invitations",
   "get_admin_access_members": "/v1/admin/access/members",
@@ -16203,7 +16189,6 @@ export const routePaths = {
   "put_shows_id_metadata_screen_season": "/v1/shows/{id}/metadata/screen/season",
   "put_shows_id_metadata_tvdb": "/v1/shows/{id}/metadata/tvdb",
   "put_storage_sources_webdav_id": "/v1/storage/sources/webdav/{id}",
-  "put_v1_items_itemId_playback_session_subtitles": "/v1/items/{itemId}/playback/{session}/subtitles",
   "put_v1_items_itemId_subtitles_resource": "/v1/items/{itemId}/subtitles/{resource}",
   "query_titles": "/v1/titles",
   "refresh_items_metadata": "/v1/items/{id}/metadata/refresh",

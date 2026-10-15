@@ -55,6 +55,7 @@ function reasonLabel(t: I18n['t'], reason: string): string {
     case '': return '';
     case 'capture-window-missed': return t('web.dvr.reason.missed');
     case 'tuner-conflict': return t('web.dvr.reason.conflict');
+    case 'tuner-in-use-live': return t('dvr.reason.liveInUse');
     case 'storage-floor': return t('web.dvr.reason.storageFloor');
     case 'storage-cap': return t('web.dvr.reason.storageCap');
     case 'owner-cancelled': return t('web.dvr.reason.cancelled');

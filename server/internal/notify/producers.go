@@ -75,17 +75,32 @@ func NotifyDownload(tx *sql.Tx, now int64, authority, account, profile, download
 // NotifyRecordingConflict tells the account admins that a scheduled recording
 // lost its tuner. The dedupe key is the recording, so a recurring series that
 // keeps colliding updates one notice per recording instead of one per attempt.
+//
+// Live viewing has its own three steps on that one notice (the owner's
+// "keep watching" policy): the recording is waiting because every tuner is
+// being watched ("tuner-in-use-live-waiting"), it started late once one freed
+// up ("tuner-in-use-live-late"), or none freed up in time ("tuner-in-use-live").
 func NotifyRecordingConflict(tx *sql.Tx, now int64, recordingID, title, reason string) ([]Result, error) {
+	heading, severity := "Recording did not start", SeverityWarning
 	body := "Portico could not record " + title + " because no tuner was free."
-	if reason == "storage-floor" || reason == "storage-cap" {
+	switch reason {
+	case "storage-floor", "storage-cap":
 		body = "Portico could not record " + title + " because recording storage is full."
+	case "tuner-in-use-live-waiting":
+		heading = "Recording is waiting for a tuner"
+		body = "Every tuner is being used to watch live TV, so " + title + " has not started. It starts as soon as one is free."
+	case "tuner-in-use-live-late":
+		heading, severity = "Recording started late", SeverityInfo
+		body = title + " started late because every tuner was being used to watch live TV. The start of the programme is missing."
+	case "tuner-in-use-live":
+		body = "Portico could not record " + title + " because every tuner was being used to watch live TV."
 	}
 	return RaiseForAdmins(tx, now, Draft{
-		Severity:  SeverityWarning,
+		Severity:  severity,
 		Source:    SourceDVR,
 		Category:  "dvr.conflict",
 		DedupeKey: "recording:" + recordingID,
-		Title:     "Recording did not start",
+		Title:     heading,
 		Body:      body,
 		Arguments: map[string]string{"title": title, "recordingId": recordingID, "reason": reason},
 		Actions: []Action{

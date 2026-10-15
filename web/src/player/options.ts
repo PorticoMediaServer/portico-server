@@ -112,7 +112,7 @@ function useSessionFacts(playback: PlaybackService): SessionFacts {
 export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, surface: SubtitleSurface | null, resourceKey: string, audio: boolean, overlay: SubtitleOverlay | null = null, elsewhere: false | 'window' | 'system' = false) {
   const state = useSessionFacts(playback);
   const available = !audio && !!state.sessionId && state.generation !== undefined && !!state.itemId && !state.channel && !['error', 'ended', 'idle'].includes(state.phase);
-  const service = useMemo(() => available ? new SubtitleService(api, {itemId: state.itemId!, sessionId: state.sessionId!, generation: state.generation!}, () => crypto.randomUUID(), {positionUs: () => String(Math.max(0, Math.round((playback.getSnapshot().pendingSeek?.positionSeconds ?? playback.getSnapshot().positionSeconds) * 1e6))), install: p => playback.getSnapshot().intentId === state.intentId && playback.installSubtitlePresentation(p)}) : null, [api, scope.serverId, scope.viewerId, available, state.itemId, state.intentId, state.sessionId, state.generation]); // eslint-disable-line react-hooks/exhaustive-deps
+  const service = useMemo(() => available ? new SubtitleService(api, {itemId: state.itemId!, sessionId: state.sessionId!, generation: state.generation!}, () => crypto.randomUUID(), {install: p => playback.getSnapshot().intentId === state.intentId && playback.installSubtitlePresentation(p)}) : null, [api, scope.serverId, scope.viewerId, available, state.itemId, state.intentId, state.sessionId, state.generation]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     service?.start();
     const focus = () => {

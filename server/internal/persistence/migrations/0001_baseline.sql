@@ -2885,7 +2885,11 @@ CREATE TABLE dvr_recording_grants(
  authority TEXT NOT NULL CHECK(authority='local'),account_id TEXT NOT NULL,profile_id TEXT NOT NULL,
  enabled INTEGER NOT NULL CHECK(enabled IN(0,1)),inherit_profiles INTEGER NOT NULL CHECK(inherit_profiles IN(0,1)),revision INTEGER NOT NULL,
  PRIMARY KEY(authority,account_id,profile_id)) STRICT;
-CREATE TABLE dvr_defaults(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,before_seconds INTEGER NOT NULL,after_seconds INTEGER NOT NULL,retention_days INTEGER NOT NULL,episode_limit INTEGER NOT NULL) STRICT;
+-- live_tuner_conflict: what happens when a recording needs a tuner that someone
+-- is watching live. 'keep-watching' (the default): the viewer keeps it and the
+-- recording waits for a free tuner (failing if none frees up in its window);
+-- 'stop-watching': the viewer is given a countdown and the recording takes it.
+CREATE TABLE dvr_defaults(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL,before_seconds INTEGER NOT NULL,after_seconds INTEGER NOT NULL,retention_days INTEGER NOT NULL,episode_limit INTEGER NOT NULL,live_tuner_conflict TEXT NOT NULL DEFAULT 'keep-watching' CHECK(live_tuner_conflict IN('keep-watching','stop-watching'))) STRICT;
 CREATE TABLE direct_memberships(
  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
  role TEXT NOT NULL CHECK(role IN('owner','admin','member')),

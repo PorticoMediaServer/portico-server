@@ -98,6 +98,26 @@ func (s *Service) rememberTracks(ctx context.Context, p identity.Principal, item
 	})
 }
 
+// ForgetTracks clears what this profile last chose for the item's show or
+// film, so the next start goes back to the profile's language preferences.
+// Forgetting what was never remembered is not an error.
+func (s *Service) ForgetTracks(ctx context.Context, p identity.Principal, item string) error {
+	if s.DB == nil || item == "" {
+		return ErrNotFound
+	}
+	return dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassInteractive, func(ctx context.Context, tx *sql.Tx) error {
+		var scope int64
+		if err := tx.QueryRowContext(ctx, trackScopeQuery, item).Scan(&scope); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+		_, err := tx.ExecContext(ctx, `DELETE FROM playback_track_memory WHERE profile_id=? AND item_id=?`, identity.PersonalKey(p.Viewer), scope)
+		return err
+	})
+}
+
 // rememberedSubtitle turns what is remembered into a subtitle request for one
 // presentation's subtitle catalogue: off, the best track in the remembered
 // language, or nil when nothing is remembered or no track matches (the

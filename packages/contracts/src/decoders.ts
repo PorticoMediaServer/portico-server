@@ -57,6 +57,7 @@ export function decodeDeleteV1ItemsItemIdSubtitlesResourceResponse(input: unknow
 export function decodeDeleteWebhookResponse(input: unknown): types.DeleteWebhookResponse { return decode("DeleteWebhookResponse", input) as types.DeleteWebhookResponse; }
 export function decodeDownloadClientLogResponse(input: unknown): types.DownloadClientLogResponse { return decode("DownloadClientLogResponse", input) as types.DownloadClientLogResponse; }
 export function decodeEmptyMissingTitlesResponse(input: unknown): types.EmptyMissingTitlesResponse { return decode("EmptyMissingTitlesResponse", input) as types.EmptyMissingTitlesResponse; }
+export function decodeForgetPlaybackTrackMemoryResponse(input: unknown): types.ForgetPlaybackTrackMemoryResponse { return decode("ForgetPlaybackTrackMemoryResponse", input) as types.ForgetPlaybackTrackMemoryResponse; }
 export function decodeGetAdminAccessDevicesResponse(input: unknown): types.GetAdminAccessDevicesResponse { return decode("GetAdminAccessDevicesResponse", input) as types.GetAdminAccessDevicesResponse; }
 export function decodeGetAdminAccessInvitationsResponse(input: unknown): types.GetAdminAccessInvitationsResponse { return decode("GetAdminAccessInvitationsResponse", input) as types.GetAdminAccessInvitationsResponse; }
 export function decodeGetAdminAccessMembersResponse(input: unknown): types.GetAdminAccessMembersResponse { return decode("GetAdminAccessMembersResponse", input) as types.GetAdminAccessMembersResponse; }
@@ -557,7 +558,6 @@ export function decodePutShowsIdMetadataScreenResponse(input: unknown): types.Pu
 export function decodePutShowsIdMetadataScreenSeasonResponse(input: unknown): types.PutShowsIdMetadataScreenSeasonResponse { return decode("PutShowsIdMetadataScreenSeasonResponse", input) as types.PutShowsIdMetadataScreenSeasonResponse; }
 export function decodePutShowsIdMetadataTvdbResponse(input: unknown): types.PutShowsIdMetadataTvdbResponse { return decode("PutShowsIdMetadataTvdbResponse", input) as types.PutShowsIdMetadataTvdbResponse; }
 export function decodePutStorageSourcesWebdavIdResponse(input: unknown): types.PutStorageSourcesWebdavIdResponse { return decode("PutStorageSourcesWebdavIdResponse", input) as types.PutStorageSourcesWebdavIdResponse; }
-export function decodePutV1ItemsItemIdPlaybackSessionSubtitlesResponse(input: unknown): types.PutV1ItemsItemIdPlaybackSessionSubtitlesResponse { return decode("PutV1ItemsItemIdPlaybackSessionSubtitlesResponse", input) as types.PutV1ItemsItemIdPlaybackSessionSubtitlesResponse; }
 export function decodePutV1ItemsItemIdSubtitlesResourceResponse(input: unknown): types.PutV1ItemsItemIdSubtitlesResourceResponse { return decode("PutV1ItemsItemIdSubtitlesResourceResponse", input) as types.PutV1ItemsItemIdSubtitlesResourceResponse; }
 export function decodeQueryTitlesResponse(input: unknown): types.QueryTitlesResponse { return decode("QueryTitlesResponse", input) as types.QueryTitlesResponse; }
 export function decodeRefreshItemsMetadataResponse(input: unknown): types.RefreshItemsMetadataResponse { return decode("RefreshItemsMetadataResponse", input) as types.RefreshItemsMetadataResponse; }

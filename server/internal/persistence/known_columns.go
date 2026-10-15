@@ -1763,6 +1763,7 @@ dvr_cleanup_work.recording_id
 dvr_defaults.after_seconds
 dvr_defaults.before_seconds
 dvr_defaults.episode_limit
+dvr_defaults.live_tuner_conflict
 dvr_defaults.retention_days
 dvr_defaults.revision
 dvr_defaults.singleton

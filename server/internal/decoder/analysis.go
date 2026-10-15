@@ -33,7 +33,8 @@ type AnalysisSpec struct {
 	// Audio conversion (spec §18.1 converted mode): raw decoded frames
 	// [AudioStart, AudioStart+AudioFrames) of the source, resampled to AudioRate
 	// and AudioChannels, padded or cut to exactly AudioOut frames, encoded as FLAC
-	// (AudioBitDepth 16 or 24) or Opus (AudioBitrate bits per second).
+	// (AudioBitDepth 16 or 24), Opus or AAC-LC in ADTS (AudioBitrate bits per
+	// second).
 	AudioStart, AudioFrames, AudioOut int64
 	AudioRate, AudioChannels          int
 	AudioSourceRate                   int
@@ -63,7 +64,7 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 	if s.Kind == "image" {
 		args = append(args, "-ss", fmt.Sprintf("%d.%06d", s.StartUS/1000000, s.StartUS%1000000))
 	}
-	if s.Kind == "audio_flac" || s.Kind == "audio_opus" {
+	if audioConversion(s.Kind) {
 		if s.AudioSourceRate > 0 && s.AudioSourceRate <= 768000 && s.AudioStart >= s.AudioPriming && s.AudioStart-s.AudioPriming > int64(s.AudioSourceRate)*3 {
 			seconds := (s.AudioStart-s.AudioPriming)/int64(s.AudioSourceRate) - 2
 			args = append(args, "-ss", fmt.Sprint(seconds))
@@ -79,7 +80,7 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 	case "loudness":
 		// ametadata's file=- writes metadata to stdout; null emits no media bytes.
 		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", "ebur128=metadata=1:peak=true,ametadata=mode=print:file=-", "-f", "null", "pipe:1")
-	case "audio_flac", "audio_opus":
+	case "audio_flac", "audio_opus", "audio_aac":
 		if s.AudioStart < 0 || s.AudioFrames <= 0 || s.AudioOut <= 0 || s.AudioRate < 8000 || s.AudioRate > 768000 || s.AudioChannels < 1 || s.AudioChannels > 8 {
 			return nil, ErrInvalidConfiguration
 		}
@@ -97,6 +98,13 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 				return nil, ErrInvalidConfiguration
 			}
 			args = append(args, "-c:a", "flac", "-sample_fmt", format, "-bits_per_raw_sample", depth, "-f", "flac", "pipe:1")
+		} else if s.Kind == "audio_aac" {
+			// FFmpeg's own AAC-LC encoder, in ADTS so the stream is readable as it
+			// arrives; its 1024-frame delay is the plan's trim (playback.AACPriming).
+			if s.AudioRate != 44100 && s.AudioRate != 48000 || s.AudioChannels > 2 || s.AudioBitrate < 16000 || s.AudioBitrate > 512000 {
+				return nil, ErrInvalidConfiguration
+			}
+			args = append(args, "-c:a", "aac", "-profile:a", "aac_low", "-b:a", fmt.Sprint(s.AudioBitrate), "-f", "adts", "pipe:1")
 		} else {
 			if s.AudioRate != 48000 || s.AudioBitrate < 6000 || s.AudioBitrate > 512000 {
 				return nil, ErrInvalidConfiguration
@@ -152,7 +160,7 @@ func RunAnalysis(ctx context.Context, sup *storage.Supervisor, key, executable, 
 		res.Close()
 		return err
 	}
-	cmd, err := decoderJob{executable: executable, args: args, endpoint: endpoint, libraries: libraries, background: spec.Kind != "audio_flac" && spec.Kind != "audio_opus", hardware: analysisNeedsHardware(spec)}.command()
+	cmd, err := decoderJob{executable: executable, args: args, endpoint: endpoint, libraries: libraries, background: !audioConversion(spec.Kind), hardware: analysisNeedsHardware(spec)}.command()
 	if err != nil {
 		res.Close()
 		return err
@@ -169,8 +177,14 @@ func RunAnalysis(ctx context.Context, sup *storage.Supervisor, key, executable, 
 	return err
 }
 
+// audioConversion is whether a kind is one of the playback audio conversions
+// (spec §18.1 converted mode) rather than background analysis.
+func audioConversion(kind string) bool {
+	return kind == "audio_flac" || kind == "audio_opus" || kind == "audio_aac"
+}
+
 func analysisRunKey(spec AnalysisSpec, key string) string {
-	if spec.Kind == "audio_flac" || spec.Kind == "audio_opus" {
+	if audioConversion(spec.Kind) {
 		return "playback:audio:" + key
 	}
 	return "analysis:" + key

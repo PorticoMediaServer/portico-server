@@ -6,7 +6,10 @@ import {dependsOn} from '@core/freshness-hub.ts';
 import {useFreshDocument} from '../../app/freshness';
 import {useSession} from '../../app/session';
 import {useViewerScope} from '../../app/viewer-scope';
-import {Select} from '../../ui';
+import {Button, Select} from '../../ui';
+import {PlaybackOptionsClient} from '@core/playback-v1/options.ts';
+import {localV1Http} from '@core/playback-v1/local-http.ts';
+import {preplaySubtitles} from '@core/pending-track-choice.ts';
 import {channelsLabel, codecLabel, resolutionLabel, subtitleTrackNames, versionNames, type VersionFacts} from '@core/presentation/index.ts';
 import s from './Detail.module.css';
 import {useI18n, type I18n} from '../../app/i18n';
@@ -17,9 +20,12 @@ import {useI18n, type I18n} from '../../app/i18n';
  * viewer never touches them. The item's playback offers are read once for the page; the
  * selection travels with Play (version and quality) and through `pending-choice` (tracks).
  *
- * Subtitles are the chosen file's own tracks, picked by language: the server builds its subtitle
- * plan inside a session, so before Play there is no plan to list. Untouched, the control reads
- * "Automatic" (the viewer's subtitle preference decides), never a guess at what will show.
+ * Subtitles are the chosen version's tracks as the playback options list them, one entry per
+ * track, chosen by the track's identity: two tracks in one language, a track with no language, SDH
+ * and forced tracks are each their own choice. Only when the options cannot be read are the
+ * file's tracks offered by language. Untouched, the control reads "Automatic" (the viewer's
+ * subtitle preference decides), never a guess at what will show. While the server is applying the
+ * profile's last choice for this show or film, it can be forgotten here.
  */
 export type PlaybackChoice = Readonly<{prepared?: PreparedChoice; quality?: string; audioStreamIndex?: number; subtitle?: 'off' | {language?: string; resourceId?: string};
   /** What Play sends with the start: the version and audio track picked here, and for a prepared
@@ -43,6 +49,17 @@ export function PlaybackChoices({libraryId, itemId, onChange, compact, facts}: {
   const [version, setVersion] = useState<string>('');
   const [audio, setAudio] = useState<string>('');
   const [subtitle, setSubtitle] = useState<string>('');
+  // The title's playback options: each version's subtitle tracks, and whether the profile's last choice is in force.
+  const optionsClient = useMemo(() => new PlaybackOptionsClient(localV1Http(api)), [api]);
+  const [optionsRead, setOptionsRead] = useState(0);
+  const [options, setOptions] = useState<{itemId: string; options: Awaited<ReturnType<PlaybackOptionsClient['options']>>}>();
+  const [forgetting, setForgetting] = useState(false);
+  useEffect(() => {
+    let live = true;
+    void optionsClient.options(itemId).then(o => { if (live) setOptions({itemId, options: o}); }, () => {});
+    return () => { live = false; };
+  }, [optionsClient, itemId, optionsRead]);
+  const current = options?.itemId === itemId ? options.options : undefined;
   useEffect(() => {
     if (data && version && !data.sources.some(s => s.id === version) && !data.preparedVersions.some(v => `prepared:${v.id}` === version && v.selectable)) {
       setVersion(''); setAudio(''); setSubtitle('');
@@ -53,6 +70,10 @@ export function PlaybackChoices({libraryId, itemId, onChange, compact, facts}: {
   const audioStreams = useMemo(() => source?.streams.filter(x => x.type === 'audio' && x.enabled) ?? [], [source]);
   const subtitleResources = data?.subtitlePlan?.resources ?? [];
   const subtitleStreams = useMemo(() => source?.streams.filter(x => x.type === 'subtitle' && x.language && x.language !== 'und') ?? [], [source]);
+  const optionTracks = useMemo(() => {
+    const listed = current?.versions.find(v => v.id === source?.id) ?? (current?.versions.length === 1 ? current.versions[0] : undefined);
+    return listed ? preplaySubtitles(listed.subtitles, i18n.t, i18n.locale) : undefined;
+  }, [current, source?.id, i18n]);
   useEffect(() => {
     if (!data) return;
     const choice: PlaybackChoice = {
@@ -72,15 +93,22 @@ export function PlaybackChoices({libraryId, itemId, onChange, compact, facts}: {
   const audioOptions = audioStreams.map((x, i) => ({value: String(x.index), label: audioLabel(i18n, x, i + 1)}));
   const subtitleTracks = subtitleResources.some(r => r.enabled)
     ? (names => subtitleResources.filter(r => r.enabled).map(r => ({value: r.id, label: names.get(r.id) ?? r.id})))(subtitleTrackNames(subtitleResources.filter(r => r.enabled), t, i18n.locale))
+    : optionTracks ? optionTracks.map(x => ({value: x.id, label: x.label}))
     : [...new Map(subtitleStreams.map(x => [x.language!, {value: `lang:${x.language}`, label: i18n.languageName(x.language!)}])).values()];
+  const lastUsed = current?.preferred?.reason === 'last_used';
+  const forget = () => {
+    setForgetting(true);
+    void optionsClient.forgetTrackMemory(itemId).then(() => setOptionsRead(n => n + 1), () => {}).finally(() => setForgetting(false));
+  };
   const subtitleOptions = [{value: '', label: t('title.subtitlesAutomatic')}, {value: 'off', label: t('title.subtitlesOff')}, ...subtitleTracks];
   // One control is noise; the row appears when there is a choice to make somewhere.
-  if (versions.length < 2 && audioOptions.length < 2 && !subtitleTracks.length) return null;
+  if (versions.length < 2 && audioOptions.length < 2 && !subtitleTracks.length && !lastUsed) return null;
   return (
     <div className={compact ? s.choicesCompact : s.choicesRow} aria-label={t('title.playbackChoices')}>
       {versions.length > 1 ? <Select label={t('title.version')} value={version || source?.id || ''} options={versions} onChange={e => { setVersion(e.target.value); setAudio(''); setSubtitle(''); }} /> : null}
       {audioOptions.length > 1 ? <Select label={t('title.audio')} value={audio || String(audioStreams.find(x => x.default)?.index ?? audioStreams[0]?.index ?? '')} options={audioOptions} onChange={e => setAudio(e.target.value)} /> : null}
       {subtitleTracks.length ? <Select label={t('title.subtitles')} value={subtitle} options={subtitleOptions} onChange={e => setSubtitle(e.target.value)} /> : null}
+      {lastUsed ? <Button variant="ghost" size="sm" label={t('title.forgetLastChoice')} title={t('title.forgetLastChoiceHelp')} disabled={forgetting} onClick={forget} /> : null}
     </div>
   );
 }

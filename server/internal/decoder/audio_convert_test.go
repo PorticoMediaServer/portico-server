@@ -3,6 +3,7 @@ package decoder
 import (
 	"bytes"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -90,4 +91,77 @@ func TestAudioConversionIsExact(t *testing.T) {
 			t.Logf("%s: %s", name, got)
 		}
 	}
+}
+
+// B-10.11: the AAC target (Apple's own renderer under a bitrate limit) is
+// AAC-LC in ADTS, which states no priming of its own: the plan's trim
+// (playback.AACPriming, 1024) must be exactly where the track starts in the
+// decoded stream, and every frame of the track must follow it.
+func TestAudioConversionAACStartsAfterItsPriming(t *testing.T) {
+	ffmpeg, err := exec.LookPath("ffmpeg")
+	if err != nil {
+		t.Skip("ffmpeg not installed")
+	}
+	dir := t.TempDir()
+	server := httptest.NewServer(http.FileServer(http.Dir(dir)))
+	defer server.Close()
+	// A FLAC source: 3 s of silence-free tone, so the priming is the only quiet part.
+	const rate, frames = 44100, int64(3*44100 + 333)
+	expr := fmt.Sprintf("0.5*sin(2*PI*441*n/%d)+0.3", rate)
+	if out, err := exec.Command(ffmpeg, "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", fmt.Sprintf("aevalsrc=%s|%s:s=%d:n=4096", expr, expr, rate), "-af", fmt.Sprintf("atrim=end_sample=%d", frames), "-c:a", "flac", filepath.Join(dir, "src.flac")).CombinedOutput(); err != nil {
+		t.Fatalf("source: %v %s", err, out)
+	}
+	for _, bad := range []AnalysisSpec{
+		{Kind: "audio_aac", MaxDurationUS: 10_000_000, AudioFrames: frames, AudioOut: frames, AudioRate: 32000, AudioChannels: 2, AudioBitrate: 128000},
+		{Kind: "audio_aac", MaxDurationUS: 10_000_000, AudioFrames: frames, AudioOut: frames, AudioRate: 44100, AudioChannels: 6, AudioBitrate: 128000},
+		{Kind: "audio_aac", MaxDurationUS: 10_000_000, AudioFrames: frames, AudioOut: frames, AudioRate: 44100, AudioChannels: 2, AudioBitrate: 8000},
+	} {
+		if _, err := AnalysisArgs(server.URL+"/src.flac", bad); err == nil {
+			t.Fatalf("an AAC recipe outside its bounds was accepted: %+v", bad)
+		}
+	}
+	spec := AnalysisSpec{Kind: "audio_aac", MaxDurationUS: 10_000_000, AudioFrames: frames, AudioOut: frames, AudioRate: rate, AudioChannels: 2, AudioBitrate: 128000}
+	args, err := AnalysisArgs(server.URL+"/src.flac", spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded := filepath.Join(dir, "out.aac")
+	file, err := os.Create(encoded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	cmd := exec.Command(ffmpeg, args...)
+	cmd.Stdout, cmd.Stderr = file, &stderr
+	err = cmd.Run()
+	file.Close()
+	if err != nil {
+		t.Fatalf("convert: %v %s", err, stderr.String())
+	}
+	// Every decoded frame, as a raw decoder (Core Audio with no priming method) gives it.
+	pcm, err := exec.Command(ffmpeg, "-hide_banner", "-loglevel", "error", "-flags2", "+skip_manual", "-f", "aac", "-i", encoded, "-ac", "1", "-f", "f32le", "-c:a", "pcm_f32le", "pipe:1").Output()
+	if err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	samples := make([]float32, len(pcm)/4)
+	for i := range samples {
+		bits := uint32(pcm[4*i]) | uint32(pcm[4*i+1])<<8 | uint32(pcm[4*i+2])<<16 | uint32(pcm[4*i+3])<<24
+		samples[i] = math.Float32frombits(bits)
+	}
+	const priming = 1024
+	if int64(len(samples)) < priming+frames {
+		t.Fatalf("decoded %d frames, fewer than the priming and the track (%d)", len(samples), priming+frames)
+	}
+	mean := func(from, to int) float64 {
+		total := 0.0
+		for _, v := range samples[from:to] {
+			total += float64(v)
+		}
+		return total / float64(to-from)
+	}
+	// The tone rides on +0.3: the priming is near 0, the track near 0.3 from its first frames.
+	if before, after := mean(0, priming-128), mean(priming+128, priming+2048); before > 0.05 || after < 0.25 {
+		t.Fatalf("the track does not start at the priming: before %.3f after %.3f", before, after)
+	}
+	t.Logf("decoded %d frames for %d (+%d priming)", len(samples), frames, priming)
 }

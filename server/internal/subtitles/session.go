@@ -3,7 +3,6 @@ package subtitles
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -162,18 +161,16 @@ func (s *Service) PlanTx(ctx context.Context, tx *sql.Tx, p identity.Principal, 
 }
 
 type SelectRequest struct {
-	Rendering        string          `json:"rendering,omitempty"`
-	Recovery         bool            `json:"-"`
-	Control          json.RawMessage `json:"control,omitempty"`
-	ControlProof     string          `json:"-"`
-	OperationID      string          `json:"operationId"`
-	Generation       int             `json:"generation"`
-	ExpectedRevision int64           `json:"expectedRevision"`
-	Mode             string          `json:"mode"`
-	ResourceID       string          `json:"resourceId,omitempty"`
-	ResourceRevision int64           `json:"resourceRevision,omitempty"`
-	OffsetUS         string          `json:"offsetUs"`
-	PositionUS       string          `json:"positionUs,omitempty"`
+	Rendering        string `json:"rendering,omitempty"`
+	Recovery         bool   `json:"-"`
+	OperationID      string `json:"operationId"`
+	Generation       int    `json:"generation"`
+	ExpectedRevision int64  `json:"expectedRevision"`
+	Mode             string `json:"mode"`
+	ResourceID       string `json:"resourceId,omitempty"`
+	ResourceRevision int64  `json:"resourceRevision,omitempty"`
+	OffsetUS         string `json:"offsetUs"`
+	PositionUS       string `json:"positionUs,omitempty"`
 }
 
 func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, session string, m SelectRequest, prepared *selectionPreparation) (PlaybackPlan, error) {
@@ -221,15 +218,6 @@ func (s *Service) selectCommit(ctx context.Context, p identity.Principal, item, 
 	}
 	if !errors.Is(e, sql.ErrNoRows) {
 		return PlaybackPlan{}, e
-	}
-	if s.ControlSelection != nil {
-		position, err := s.ControlSelection(ctx, gated2, p, session, m, true)
-		if err != nil {
-			return PlaybackPlan{}, err
-		}
-		if prepared != nil {
-			prepared.position = position
-		}
 	}
 	if scope.generation != m.Generation {
 		return PlaybackPlan{}, ErrConflict

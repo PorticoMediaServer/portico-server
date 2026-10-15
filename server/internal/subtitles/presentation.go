@@ -151,11 +151,6 @@ func (s *Service) Select(ctx context.Context, p identity.Principal, item, sessio
 		}
 		prepared.position = position
 	}
-	if s.ControlSelection != nil {
-		if _, e = s.ControlSelection(ctx, gated, p, session, m, false); e != nil {
-			return PlaybackPlan{}, e
-		}
-	}
 	if e = gated.Commit(); e != nil {
 		return PlaybackPlan{}, e
 	}

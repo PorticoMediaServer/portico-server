@@ -36,7 +36,7 @@ func New(db *sql.DB, live *livechannels.Store, durable DurableAuthority) (*Store
 	// The numbered schema migration owns the table. First-use initialization
 	// only supplies its default row, preserving settings imported earlier.
 	if _, err := dbwork.ExecWrite(context.Background(), db, dbwork.ClassInteractive,
-		`INSERT OR IGNORE INTO dvr_defaults VALUES(1,1,60,180,0,0)`); err != nil {
+		`INSERT OR IGNORE INTO dvr_defaults(singleton,revision,before_seconds,after_seconds,retention_days,episode_limit) VALUES(1,1,60,180,0,0)`); err != nil {
 		return nil, ErrUnavailable
 	}
 	return &Store{db: db, live: live, durable: durable, now: time.Now, active: map[string]map[string]context.CancelFunc{}}, nil

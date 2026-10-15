@@ -34,7 +34,6 @@ func TestSubtitleCredentialScopesPreserveLibraryBoundaries(t *testing.T) {
 	for _, request := range []struct{ method, path, credential string }{
 		{"POST", base + "/subtitles", read.Secret},
 		{"POST", base + "/subtitles/import", play.Secret},
-		{"PUT", base + "/playback/unknown/subtitles", read.Secret},
 	} {
 		w := f.call(request.method, request.path, request.credential, "{}")
 		if w.Code != 403 || registryErrorCode(t, w) != "insufficient_scope" {

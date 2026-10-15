@@ -386,13 +386,22 @@ func TestDVRTemplatesAndTunerConflicts(t *testing.T) {
 		}
 	}
 	settings.FolderTemplate = ""
+	// Live viewing keeps its tuner unless the owner says otherwise (15 Oct).
+	if settings.LiveTunerConflict != "keep-watching" || len(document.Enumerations["liveTunerConflict"]) != 2 {
+		t.Fatalf("live tuner conflict default %q %v", settings.LiveTunerConflict, document.Enumerations["liveTunerConflict"])
+	}
+	settings.LiveTunerConflict = "take-it"
+	if _, err = service.SaveDVRSettings(ctx, allow, Change[DVRDefaults]{ExpectedRevision: 1, Settings: settings, OperationID: "test-policy-key-18"}); err == nil {
+		t.Fatal("an unknown live tuner policy should have been refused")
+	}
+	settings.LiveTunerConflict = "stop-watching"
 	settings.PrePaddingSeconds = 120
 	saved, err := service.SaveDVRSettings(ctx, allow, Change[DVRDefaults]{ExpectedRevision: 1, Settings: settings, OperationID: "test-policy-key-17"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if saved.Revision != 2 {
-		t.Fatalf("revision %d", saved.Revision)
+	if saved.Revision != 2 || saved.Settings.LiveTunerConflict != "stop-watching" {
+		t.Fatalf("revision %d policy %q", saved.Revision, saved.Settings.LiveTunerConflict)
 	}
 	// Three overlapping recordings against two tuners is one conflict.
 	list := []TunerAssignment{

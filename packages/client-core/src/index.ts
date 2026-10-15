@@ -23,6 +23,7 @@ import {playableAudio,type AudioRenderV2} from './playback-v1/audio-render.ts';
 export * from './audio-effects.ts';
 export * from './music-preferences.ts';
 import {sessionEndMessage} from './session-end.ts';
+import {TUNER_RESERVED, tunerHandedOver} from './live-handover.ts';
 import {readCertificateResponse, type CertificateAction} from './certificates.ts';
 import type {PlayerFailureCode} from './client-profile.ts';
 import {normalizeTransportClass,transportClassHeader,deviceClassHeader,deliveryContextHeaders,setDeliveryContext,type TransportClass} from './delivery.ts';
@@ -631,6 +632,8 @@ export type PlaybackOptions = {
    * again, instead of failing the play (O4, 24 Sep).
    */
   pageVisibility?: PageVisibility;
+  /** The wall clock (tests). A channel's tuner deadline is compared with it. */
+  now?: () => number;
 };
 /** A hidden page and a way to hear when it is shown again (web `document.visibilityState`). */
 export type PageVisibility = {hidden(): boolean; onVisible(listener: () => void): () => void};
@@ -1076,6 +1079,9 @@ export class PlaybackService {
   useChannelPlayback(control:ChannelPlayback){if(this.snapshot.channel)this.leave();this.channels=control;}
   private applyChannel(state:ChannelView){
     const linear=state.linear,m=linear.media,seek=linear.desired.seek;
+    // B-11.27: the owner lets recordings take a watched tuner and this one's moment has come (or
+    // the server already gave it away). Stop here, once, and say why; nothing retries.
+    if(tunerHandedOver(m,this.options.now?.()??Date.now())){this.handTunerOver(linear);return;}
     const changed=this.snapshot.session?.generation!==Number(m.bufferGeneration);
     let patch:Partial<PlaybackSnapshot>={linear,channel:linear.channel,linearStalled:state.status==='recoverable',intent:this.channelWantedState==='paused'?'paused':linear.desired.state,error:m.errorCode?channelMessage(m.errorCode):undefined};
     // No engine attachment until an ordered, server-resolved join target exists.
@@ -1110,6 +1116,11 @@ export class PlaybackService {
       patch.failedSeek={revision:this.snapshot.seekRevision,positionSeconds:observedPosition};
     }
     this.update(patch);
+  }
+  private handTunerOver(linear:ChannelView['linear']){
+    const intentId=this.snapshot.intentId;
+    this.channels?.close();this.channelSeekId=undefined;this.channelObservedSeek=undefined;this.channelSubmittedSeek=undefined;
+    this.fail(intentId,sessionEndMessage({reason:TUNER_RESERVED}),{ended:Object.freeze({reason:TUNER_RESERVED}),linear,linearStalled:false,session:undefined});
   }
   goLive(){if(this.snapshot.channel){this.channelWantedState='playing';this.channels?.goLive();}}
   getQueueConnection(){return this.queueConnection;}
@@ -1976,6 +1987,7 @@ export * from './sse.ts';
 export * from './downloads-service.ts';
 
 export * from './client-reports.ts';
+export * from './live-handover.ts';
 
 export * from './metadata-attention.ts';
 export * from './metadata-settings.ts';
