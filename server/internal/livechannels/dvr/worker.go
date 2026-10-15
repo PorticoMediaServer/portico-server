@@ -236,7 +236,7 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 		}
 		// A recording that lost its tuner or its storage is the one DVR outcome a
 		// viewer has to be told about; it commits with the state change.
-		if reason == "tuner-conflict" || reason == "storage-floor" || reason == "storage-cap" {
+		if reason == "tuner-conflict" || reason == "tuner-in-use-live" || reason == "storage-floor" || reason == "storage-cap" {
 			if _, e = notify.NotifyRecordingConflict(tx, s.now().UnixMilli(), id, r.Programme.Title, reason); e != nil {
 				return nil, false, e
 			}
@@ -399,6 +399,10 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 			if r.State == "conflicted" || r.Reason == "tuner-conflict" {
 				return fail("tuner-conflict")
 			}
+			if r.Reason == "tuner-in-use-live" {
+				// Every tuner stayed with live viewers for the whole window.
+				return fail("tuner-in-use-live")
+			}
 			return fail("capture-window-missed")
 		}
 		captureStart, captureEnd, blocked, e := s.captureWindowTx(ctx, tx, r)
@@ -426,11 +430,29 @@ func (s *Store) claimNext(ctx context.Context) (*claim, bool, error) {
 		if errors.Is(e, livechannels.ErrPreemptPending) {
 			return later("tuner-preemption-countdown")
 		}
+		if errors.Is(e, livechannels.ErrLiveInUse) {
+			// The owner keeps live viewers watching: the recording waits and starts
+			// (late, kept as a partial recording) as soon as a tuner is free. The
+			// owner is told once, when it first has to wait.
+			if r.Reason != "tuner-in-use-live" {
+				if _, e = notify.NotifyRecordingConflict(tx, s.now().UnixMilli(), id, r.Programme.Title, "tuner-in-use-live-waiting"); e != nil {
+					return nil, false, e
+				}
+			}
+			return later("tuner-in-use-live")
+		}
 		if errors.Is(e, livechannels.ErrCapacity) || errors.Is(e, livechannels.ErrLease) {
 			return later("tuner-retiring")
 		}
 		if e != nil {
 			return nil, false, e
+		}
+		if r.Reason == "tuner-in-use-live" {
+			// It waited for live viewing to give a tuner back: the notice says
+			// it started late rather than that it is still waiting.
+			if _, e = notify.NotifyRecordingConflict(tx, s.now().UnixMilli(), id, r.Programme.Title, "tuner-in-use-live-late"); e != nil {
+				return nil, false, e
+			}
 		}
 		c.request.Allocation = allocation
 		c.request.Generation = generation + 1

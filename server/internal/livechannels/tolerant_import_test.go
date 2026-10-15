@@ -174,6 +174,10 @@ func TestSharedChannelPreemptionNotifiesEveryViewerOnce(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	// The owner chose "stop watching": a recording takes a watched tuner.
+	if _, e = s.db.Exec(`UPDATE dvr_defaults SET live_tuner_conflict='stop-watching'`); e != nil {
+		t.Fatal(e)
+	}
 	for i := 0; i < 2; i++ {
 		e = s.transaction(ctx, a, true, func(tx *sql.Tx) error {
 			_, err := AcquireTx(ctx, tx, Allocation{SourceID: source.ID, ChannelID: "one", ResourceID: fmt.Sprint(i), Kind: "live", Owner: Owner{"local", "account", fmt.Sprint(i)}}, time.Now())
@@ -204,5 +208,65 @@ func TestSharedChannelPreemptionNotifiesEveryViewerOnce(t *testing.T) {
 	}
 	if events != 2 || deadlines != 2 {
 		t.Fatalf("events=%d deadlines=%d", events, deadlines)
+	}
+}
+
+// Justin's default (15 Oct): live viewing is never stopped for a recording.
+// The recording is told every tuner is being watched (and waits); nobody gets
+// a countdown, and a viewer who starts before a scheduled recording gets no
+// deadline either.
+func TestKeepWatchingNeverPreemptsALiveViewer(t *testing.T) {
+	s := testStore(t)
+	ctx := context.Background()
+	a := testAuthority("owner", true, true)
+	source, e := s.Save(ctx, a, testInput())
+	if e != nil {
+		t.Fatal(e)
+	}
+	var policy string
+	if e = s.transaction(ctx, a, false, func(tx *sql.Tx) error { var err error; policy, err = LiveConflictTx(ctx, tx); return err }); e != nil || policy != KeepWatching {
+		t.Fatalf("default policy %q %v", policy, e)
+	}
+	now := time.Now()
+	// A recording on another channel is due in five minutes; it holds a reservation.
+	if _, e = s.db.Exec(`INSERT INTO live_reservations(id,source_id,start_ms,end_ms,priority,enabled) VALUES('soon',?,?,?,0,1)`, source.ID, now.Add(5*time.Minute).UnixMilli(), now.Add(65*time.Minute).UnixMilli()); e != nil {
+		t.Skipf("reservation fixture: %v", e)
+	}
+	var viewer Allocation
+	if e = s.transaction(ctx, a, true, func(tx *sql.Tx) error {
+		var err error
+		viewer, err = AcquireTx(ctx, tx, Allocation{SourceID: source.ID, ChannelID: "one", ResourceID: "viewer", Kind: "live", Owner: Owner{"local", "account", "viewer"}}, now)
+		return err
+	}); e != nil {
+		t.Fatal(e)
+	}
+	if !viewer.PreemptAt.IsZero() {
+		t.Fatalf("a live viewer was given a deadline %v", viewer.PreemptAt)
+	}
+	// Fill the remaining tuners with viewers too.
+	for i := 0; ; i++ {
+		err := s.transaction(ctx, a, true, func(tx *sql.Tx) error {
+			_, err := AcquireTx(ctx, tx, Allocation{SourceID: source.ID, ChannelID: fmt.Sprint("ch", i), ResourceID: fmt.Sprint("v", i), Kind: "live", Owner: Owner{"local", "account", fmt.Sprint("v", i)}}, now)
+			return err
+		})
+		if errors.Is(err, ErrCapacity) {
+			break
+		}
+		if err != nil || i > 64 {
+			t.Fatalf("filling tuners: %v", err)
+		}
+	}
+	e = s.transaction(ctx, a, true, func(tx *sql.Tx) error {
+		_, err := AcquireTx(ctx, tx, Allocation{SourceID: source.ID, ChannelID: "two", ResourceID: "record", Kind: "recording", Owner: Owner{"local", "account", "rec"}}, now)
+		return err
+	})
+	if !errors.Is(e, ErrLiveInUse) {
+		t.Fatalf("a recording against live viewers: %v", e)
+	}
+	var events, deadlines int
+	_ = s.db.QueryRow(`SELECT count(*) FROM api_events WHERE type='channel.reservation-required'`).Scan(&events)
+	_ = s.db.QueryRow(`SELECT count(*) FROM live_allocations WHERE preempt_at_ms>0`).Scan(&deadlines)
+	if events != 0 || deadlines != 0 {
+		t.Fatalf("keep watching still counted down: events=%d deadlines=%d", events, deadlines)
 	}
 }

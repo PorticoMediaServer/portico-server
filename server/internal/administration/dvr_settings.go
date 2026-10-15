@@ -55,12 +55,19 @@ type DVRDefaults struct {
 	// TunerPreference decides which tuner a new recording takes when several
 	// could serve it.
 	TunerPreference string `json:"tunerPreference"`
+	// LiveTunerConflict is what happens when a recording needs a tuner that
+	// someone is watching live: "keep-watching" (the default; the recording
+	// waits for a free tuner and fails if none frees up in its window) or
+	// "stop-watching" (the viewer gets a countdown and the recording takes it).
+	LiveTunerConflict string `json:"liveTunerConflict"`
 }
 
 // RecordingProfiles and TunerPreferences are published choice lists.
 var (
 	RecordingProfiles = []string{"original"}
 	TunerPreferences  = []string{"first-available"}
+	// LiveTunerConflicts mirrors livechannels' policy names.
+	LiveTunerConflicts = []string{livechannels.KeepWatching, livechannels.StopWatching}
 )
 
 // DefaultDVRDefaults is the answer before any owner write.
@@ -75,6 +82,7 @@ func DefaultDVRDefaults() DVRDefaults {
 		RecordingProfile:   "original",
 		Sidecars:           Sidecars{},
 		TunerPreference:    "first-available",
+		LiveTunerConflict:  livechannels.KeepWatching,
 	}
 }
 
@@ -172,6 +180,12 @@ func validateDVRDefaults(v *DVRDefaults) error {
 	if !oneOf(v.TunerPreference, TunerPreferences...) {
 		fields = append(fields, "settings.tunerPreference")
 	}
+	if v.LiveTunerConflict == "" {
+		v.LiveTunerConflict = livechannels.KeepWatching
+	}
+	if !oneOf(v.LiveTunerConflict, LiveTunerConflicts...) {
+		fields = append(fields, "settings.liveTunerConflict")
+	}
 	if len(fields) > 0 {
 		return invalid(fields...)
 	}
@@ -203,7 +217,7 @@ func (s *Service) SaveDVRSettings(ctx context.Context, auth Authorize, change Ch
 }
 
 func dvrEnumerations() map[string][]string {
-	return map[string][]string{"keepMode": KeepModes, "conversionMode": ConversionModes, "recordingProfile": RecordingProfiles, "tunerPreference": TunerPreferences}
+	return map[string][]string{"keepMode": KeepModes, "conversionMode": ConversionModes, "recordingProfile": RecordingProfiles, "tunerPreference": TunerPreferences, "liveTunerConflict": LiveTunerConflicts}
 }
 
 // TunerAllocation is one live source's tuners: how many there are, what is

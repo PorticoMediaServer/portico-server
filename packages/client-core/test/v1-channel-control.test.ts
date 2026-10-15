@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PlaybackService} from '../src/index.ts';
+import {PlaybackService, tunerHandover} from '../src/index.ts';
 import {V1ChannelControl, channelEndMessage, v1ChannelId} from '../src/playback-v1/channel-control.ts';
 import type {V1Http, V1Request} from '../src/playback-v1/http.ts';
 import type {ChannelReference} from '../src/playback/linear-protocol.ts';
@@ -119,4 +119,37 @@ test('v1 channels: an end names why: the administrator’s message, Live TV off 
   assert.equal(channelEndMessage({reason: 'feature_restricted'}), 'Live TV is turned off for this profile.');
   assert.match(channelEndMessage({reason: 'something_new'}), /has ended/);
   assert.match(channelEndMessage(undefined), /has ended/);
+});
+
+// B-11.27: with the owner's "Stop watching" setting a recording takes a watched tuner. The viewer
+// is counted down, then the channel stops by itself and says why; it is not retried.
+test('v1 channels: a tuner deadline counts down, then the channel stops once with the reason', async () => {
+  const {server, playback} = setup();
+  try {
+    await playback.playChannel(channel);
+    await new Promise(r => setTimeout(r, 40));
+    await settle();
+    const deadline = Date.now() + 90_000;
+    (server as any).s.presentation.linear.reservationRequiredAtMs = deadline;
+    await new Promise(r => setTimeout(r, 20));
+    await settle();
+    let s = playback.getSnapshot();
+    assert.equal(s.linear?.media.reservationRequiredAtMs, deadline);
+    assert.deepEqual(tunerHandover(deadline, Date.now()), {kind: 'later', atMs: deadline});
+    assert.deepEqual(tunerHandover(deadline, deadline - 12_300), {kind: 'countdown', secondsLeft: 13});
+    assert.notEqual(s.phase, 'error');
+    // The server gives the tuner to the recording.
+    (server as any).s.presentation.linear.errorCode = 'tuner_reservation_changed';
+    await new Promise(r => setTimeout(r, 20));
+    await settle();
+    s = playback.getSnapshot();
+    assert.equal(s.phase, 'error');
+    assert.equal(s.ended?.reason, 'tuner_reserved');
+    assert.equal(s.linear?.name, 'News', 'the stop still names the channel');
+    assert.ok(server.log.some(r => r.method === 'DELETE'), 'the channel session is stopped');
+    const reads = server.log.length;
+    await new Promise(r => setTimeout(r, 30));
+    await settle();
+    assert.equal(server.log.length, reads, 'nothing polls or retries after the stop');
+  } finally { playback.leave(); }
 });

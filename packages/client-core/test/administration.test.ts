@@ -119,7 +119,7 @@ test('a channel map lists two channels served on one number so the clash can be 
 });
 
 test('the DVR document refuses deleting the original with no conversion, and templates are checked before a write',()=>{
- const settings={prePaddingSeconds:60,postPaddingSeconds:180,keepPolicy:{mode:'keep-count',keepCount:5,keepDays:0,keepUntilWatched:true},conversion:{mode:'remux',ladderId:'',deleteOriginal:false},folderTemplate:'{series}/Season {season:02}/{series} - S{season:02}E{episode:02} - {title}',movieFolderTemplate:'{title} ({year})/{title} ({year})',recordingProfile:'original',sidecars:{nfo:true,poster:true,fanart:false,thumbnail:true},tunerPreference:'least-busy'};
+ const settings={prePaddingSeconds:60,postPaddingSeconds:180,keepPolicy:{mode:'keep-count',keepCount:5,keepDays:0,keepUntilWatched:true},conversion:{mode:'remux',ladderId:'',deleteOriginal:false},folderTemplate:'{series}/Season {season:02}/{series} - S{season:02}E{episode:02} - {title}',movieFolderTemplate:'{title} ({year})/{title} ({year})',recordingProfile:'original',sidecars:{nfo:true,poster:true,fanart:false,thumbnail:true},tunerPreference:'least-busy',liveTunerConflict:'keep-watching'};
  const tokens=[{token:'{series}',description:'Series title.',example:'Nova',supportsPadding:false},{token:'{season}',description:'Season number.',example:'3',supportsPadding:true},{token:'{episode}',description:'Episode number.',example:'7',supportsPadding:true},{token:'{title}',description:'Title.',example:'The Planets',supportsPadding:false},{token:'{year}',description:'Year.',example:'2024',supportsPadding:false}];
  const document=parseDVRDocument({revision:1,digest:'d',settings,folderTokens:tokens,enumerations:{keepMode:['keep-all','keep-count','keep-days']}});
  assert.equal(document.settings.keepPolicy.keepCount,5);
@@ -214,7 +214,7 @@ test('the state-permissions item parses and only live items match',()=>{
 });
 
 test('current DVR defaults accept unavailable templates as empty and retain the supported settings',()=>{
- const settings={prePaddingSeconds:60,postPaddingSeconds:180,keepPolicy:{mode:'keep-all',keepCount:0,keepDays:0,keepUntilWatched:false},conversion:{mode:'none',ladderId:'',deleteOriginal:false},folderTemplate:'',movieFolderTemplate:'',recordingProfile:'original',sidecars:{nfo:false,poster:false,fanart:false,thumbnail:false},tunerPreference:'first-available'};
+ const settings={prePaddingSeconds:60,postPaddingSeconds:180,keepPolicy:{mode:'keep-all',keepCount:0,keepDays:0,keepUntilWatched:false},conversion:{mode:'none',ladderId:'',deleteOriginal:false},folderTemplate:'',movieFolderTemplate:'',recordingProfile:'original',sidecars:{nfo:false,poster:false,fanart:false,thumbnail:false},tunerPreference:'first-available',liveTunerConflict:'stop-watching'};
  const wire={revision:1,digest:'current',settings,folderTokens:[],enumerations:{keepMode:['keep-all','keep-count','keep-days'],conversionMode:['none'],recordingProfile:['original'],tunerPreference:['first-available']}};
  const document=parseDVRDocument(wire);
  assert.deepEqual(document.settings,settings);

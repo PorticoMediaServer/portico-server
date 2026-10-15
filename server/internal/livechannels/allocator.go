@@ -24,6 +24,35 @@ func (o Owner) Key() string { return id(o.Authority, o.AccountID, o.ProfileID) }
 const AllocationTTL = 20 * time.Second
 
 var ErrCapacity = errors.New("All tuners are in use.")
+
+// ErrLiveInUse is a recording that found every tuner taken by live viewing
+// while the owner's policy keeps viewers watching: it waits for a free tuner.
+var ErrLiveInUse = errors.New("Every tuner is being used to watch live TV.")
+
+// What happens when a recording needs a tuner someone is watching live: the
+// owner's DVR setting (dvr_defaults.live_tuner_conflict). KeepWatching is the
+// default: nobody's live viewing is ever stopped for a recording, and a live
+// viewer is never given a deadline. StopWatching gives the viewer a countdown
+// (channel.reservation-required) and then the tuner goes to the recording.
+const (
+	KeepWatching = "keep-watching"
+	StopWatching = "stop-watching"
+)
+
+// LiveConflictTx reads the owner's policy; a database without the row keeps
+// viewers watching.
+func LiveConflictTx(ctx context.Context, tx *sql.Tx) (string, error) {
+	var policy string
+	err := tx.QueryRowContext(ctx, `SELECT live_tuner_conflict FROM dvr_defaults WHERE singleton=1`).Scan(&policy)
+	if errors.Is(err, sql.ErrNoRows) || err == nil && policy != StopWatching {
+		return KeepWatching, nil
+	}
+	if err != nil {
+		return "", ErrUnavailable
+	}
+	return policy, nil
+}
+
 var ErrPreemptPending = errors.New("A live tuner is being released for a protected recording.")
 var ErrReservation = errors.New("A protected recording requires this tuner now.")
 var ErrLease = errors.New("This source allocation is no longer valid.")
@@ -165,7 +194,10 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 	}
 	reservations = filtered
 	if cap.Known && !shared {
-
+		policy, e := LiveConflictTx(ctx, tx)
+		if e != nil {
+			return want, e
+		}
 		if active >= cap.Effective {
 			if want.Kind == "recording" {
 				// A newly submitted recording cannot silently kill an active viewer.
@@ -174,6 +206,10 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 				boundary := now.Add(RetirementGrace).UnixMilli()
 				var victim string
 				err := tx.QueryRowContext(ctx, `SELECT channel_id FROM live_allocations a WHERE source_id=? AND kind='live' AND state='active' AND NOT EXISTS(SELECT 1 FROM live_allocations b WHERE b.source_id=a.source_id AND b.channel_id=a.channel_id AND b.kind='recording' AND b.state!='released') ORDER BY created_ms DESC,id DESC LIMIT 1`, want.SourceID).Scan(&victim)
+				if err == nil && policy != StopWatching {
+					// The viewer keeps watching; the recording waits for a tuner.
+					return want, ErrLiveInUse
+				}
 				if err == nil {
 					err = preemptChannelTx(ctx, tx, want.SourceID, victim, boundary)
 					if err != nil {
@@ -187,7 +223,7 @@ func AcquireTx(ctx context.Context, tx *sql.Tx, want Allocation, now time.Time) 
 			}
 			return want, ErrCapacity
 		}
-		if want.Kind == "live" {
+		if want.Kind == "live" && policy == StopWatching {
 			// Active recording leases already consume capacity; count only live leases
 			// plus protected reservations, so a recording is never counted twice.
 			var liveCount int

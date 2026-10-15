@@ -15,6 +15,7 @@ import {SubtitleOverlay} from './subtitles/overlay';
 import {webPlaybackResourceKey} from '../playback-v1/web-playback';
 import {fixedQuality, offeredQualities, qualityChoiceOf, qualityRequest, type FixedQuality, type QualityChoice} from '@core/playback-v1/choices.ts';
 import {ownerStopOf} from './owner-stop';
+import {TUNER_RESERVED, tunerHandover, tunerHandoverLines} from '@core/live-handover.ts';
 import {shortcutKey} from './shortcut-key';
 import {audiobookRates, type SleepChoice} from '@core/listening.ts';
 import {subtitleReason} from '@core/subtitles.ts';
@@ -423,6 +424,14 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const failed = playbackFailure(state.error);
   const ownerStop = ownerStopOf(state.ended);
   const ownerStopped = !!ownerStop;
+  // B-11.27: a recording is taking this channel's tuner (the owner's "Stop watching" setting): the
+  // time it goes, then a countdown; at the moment the service stops the channel itself.
+  const tunerDeadline = linear?.media.reservationRequiredAtMs;
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => { if (tunerDeadline === undefined) return; setClock(Date.now()); const timer = setInterval(() => setClock(Date.now()), 1000); return () => clearInterval(timer); }, [tunerDeadline]);
+  const handover = state.phase !== 'error' ? tunerHandover(tunerDeadline, clock) : undefined;
+  const handoverLines = handover ? tunerHandoverLines(handover, i18n.t, ms => i18n.time(ms)) : undefined;
+  const tunerReserved = state.ended?.reason === TUNER_RESERVED;
   // FEAT-07: channel up/down from the guide's lineup.
   const surf = (delta: 1 | -1) => { const next = surfChannel(delta); const raw = next ? legacyChannel(next) : undefined; if (raw) engine.tune(raw); };
   const audioPlan = state.audio;
@@ -684,7 +693,19 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
           <StateView icon="info" title={i18n.t('web.player.ownerStopped')} body={ownerStop?.message ? i18n.t('web.player.ownerStopped.message', {message: ownerStop.message}) : undefined} action={{label: i18n.t(isAudio ? 'action.close' : 'action.back'), onClick: close}} />
         </div>
       ) : null}
-      {state.phase === 'error' && !ownerStopped ? (
+      {tunerReserved ? (
+        // A recording took the tuner: said once, with the way back to the guide; nothing retries.
+        <div className={s.errorState} role="alert">
+          <StateView icon="info" title={i18n.t('live.handover.stoppedTitle')} body={i18n.t('live.handover.stopped')} action={{label: i18n.t('web.channelProblem.backToGuide'), onClick: () => { close(); void navigate({to: '/channels'}); }}} secondaryAction={{label: i18n.t('action.close'), onClick: close}} />
+        </div>
+      ) : null}
+      {handoverLines ? (
+        <div className={s.handover} role={handover?.kind === 'countdown' ? 'alert' : 'status'} aria-live={handover?.kind === 'countdown' ? 'assertive' : 'polite'}>
+          <strong>{handoverLines[0]}</strong>
+          <span>{handoverLines[1]}</span>
+        </div>
+      ) : null}
+      {state.phase === 'error' && !ownerStopped && !tunerReserved ? (
         // Two honest cases: something another try can fix, and a title that cannot be played here at all.
         <div className={s.errorState} role="alert">
           {failed.permanent

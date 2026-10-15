@@ -41,6 +41,7 @@
 .volume { display: flex; align-items: center; gap: 6px; }
 .volumeRange { width: 96px; accent-color: var(--accent); }
 .notice { position: absolute; left: 50%; bottom: 190px; transform: translateX(-50%); max-width: min(560px, calc(100vw - 48px)); padding: 10px 16px; border-radius: var(--radius-surface); background: color-mix(in srgb, var(--color-ink) 88%, transparent); border: 1px solid var(--line-soft); color: var(--text-primary); font-size: 14px; display: flex; align-items: center; gap: 12px; }
+.handover { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); max-width: min(560px, calc(100vw - 48px)); padding: 12px 16px; border-radius: var(--radius-surface); background: color-mix(in srgb, var(--color-ink) 88%, transparent); border: 1px solid var(--line-soft); color: var(--text-primary); font-size: 14px; display: flex; flex-direction: column; gap: 4px; text-align: center; z-index: 2; }
 .spinner { position: absolute; left: 50%; top: 50%; width: 56px; height: 56px; margin: -28px 0 0 -28px; border-radius: 50%; border: 3px solid color-mix(in srgb, white 20%, transparent); border-top-color: var(--color-text); animation: spin 0.9s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .errorState { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; }

@@ -6,6 +6,7 @@ export function sessionEndMessage(end:Readonly<{reason:string;message?:string}>)
  switch(end.reason){
   case 'terminated':{const text=(end.message??'').replace(/[\u0000-\u001f\u007f]+/g,' ').replace(/ {2,}/g,' ').trim().slice(0,500);return text||'The server owner stopped this playback.';}
   case 'transferred':return 'Playback continued on another device.';
+  case 'tuner_reserved':return 'Live TV stopped because a recording needed this tuner.';
   case 'lease_expired':return 'The stream disconnected. Play again to continue.';
   case 'replaced':return 'This playback was replaced by a newer one.';
   case 'restored':return 'The server was restored from a backup. Play again to continue.';

@@ -14637,6 +14637,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "liveTunerConflict": {
+                "type": "string"
+              },
               "movieFolderTemplate": {
                 "type": "string"
               },
@@ -14689,7 +14692,8 @@ export const schemas = {
               "movieFolderTemplate",
               "recordingProfile",
               "sidecars",
-              "tunerPreference"
+              "tunerPreference",
+              "liveTunerConflict"
             ],
             "type": "object"
           }
@@ -92237,6 +92241,9 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "liveTunerConflict": {
+            "type": "string"
+          },
           "movieFolderTemplate": {
             "type": "string"
           },
@@ -92289,7 +92296,8 @@ export const schemas = {
           "movieFolderTemplate",
           "recordingProfile",
           "sidecars",
-          "tunerPreference"
+          "tunerPreference",
+          "liveTunerConflict"
         ],
         "type": "object"
       }
@@ -92402,6 +92410,9 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "liveTunerConflict": {
+                "type": "string"
+              },
               "movieFolderTemplate": {
                 "type": "string"
               },
@@ -92454,7 +92465,8 @@ export const schemas = {
               "movieFolderTemplate",
               "recordingProfile",
               "sidecars",
-              "tunerPreference"
+              "tunerPreference",
+              "liveTunerConflict"
             ],
             "type": "object"
           }

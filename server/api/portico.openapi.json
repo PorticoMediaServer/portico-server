@@ -15754,6 +15754,9 @@
                     ],
                     "type": "object"
                   },
+                  "liveTunerConflict": {
+                    "type": "string"
+                  },
                   "movieFolderTemplate": {
                     "type": "string"
                   },
@@ -15806,7 +15809,8 @@
                   "movieFolderTemplate",
                   "recordingProfile",
                   "sidecars",
-                  "tunerPreference"
+                  "tunerPreference",
+                  "liveTunerConflict"
                 ],
                 "type": "object"
               }
@@ -97332,6 +97336,9 @@
                 ],
                 "type": "object"
               },
+              "liveTunerConflict": {
+                "type": "string"
+              },
               "movieFolderTemplate": {
                 "type": "string"
               },
@@ -97384,7 +97391,8 @@
               "movieFolderTemplate",
               "recordingProfile",
               "sidecars",
-              "tunerPreference"
+              "tunerPreference",
+              "liveTunerConflict"
             ],
             "type": "object"
           }
@@ -97497,6 +97505,9 @@
                     ],
                     "type": "object"
                   },
+                  "liveTunerConflict": {
+                    "type": "string"
+                  },
                   "movieFolderTemplate": {
                     "type": "string"
                   },
@@ -97549,7 +97560,8 @@
                   "movieFolderTemplate",
                   "recordingProfile",
                   "sidecars",
-                  "tunerPreference"
+                  "tunerPreference",
+                  "liveTunerConflict"
                 ],
                 "type": "object"
               }
@@ -130707,6 +130719,9 @@
                               ],
                               "type": "object"
                             },
+                            "liveTunerConflict": {
+                              "type": "string"
+                            },
                             "movieFolderTemplate": {
                               "type": "string"
                             },
@@ -130759,7 +130774,8 @@
                             "movieFolderTemplate",
                             "recordingProfile",
                             "sidecars",
-                            "tunerPreference"
+                            "tunerPreference",
+                            "liveTunerConflict"
                           ],
                           "type": "object"
                         }
@@ -130899,6 +130915,9 @@
                         ],
                         "type": "object"
                       },
+                      "liveTunerConflict": {
+                        "type": "string"
+                      },
                       "movieFolderTemplate": {
                         "type": "string"
                       },
@@ -130951,7 +130970,8 @@
                       "movieFolderTemplate",
                       "recordingProfile",
                       "sidecars",
-                      "tunerPreference"
+                      "tunerPreference",
+                      "liveTunerConflict"
                     ],
                     "type": "object"
                   }
@@ -131072,6 +131092,9 @@
                               ],
                               "type": "object"
                             },
+                            "liveTunerConflict": {
+                              "type": "string"
+                            },
                             "movieFolderTemplate": {
                               "type": "string"
                             },
@@ -131124,7 +131147,8 @@
                             "movieFolderTemplate",
                             "recordingProfile",
                             "sidecars",
-                            "tunerPreference"
+                            "tunerPreference",
+                            "liveTunerConflict"
                           ],
                           "type": "object"
                         }

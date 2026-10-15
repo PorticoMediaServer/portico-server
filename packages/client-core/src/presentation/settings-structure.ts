@@ -381,6 +381,8 @@ const serverPages: readonly AuthoredPage[] = [
       {id: 'recordingDefaults', tab: 'recording', title: 'web.dvrSettings.defaults', description: 'web.dvrSettings.defaultsLede', rows: [
         setting('recording', 'prePaddingSeconds', 'web.dvr.startEarly', {type: 'number', min: 0, max: 120, unit: 'settings.unit.minutes', scale: 60}, {help: 'web.dvrSettings.startEarlyHelp'}),
         setting('recording', 'postPaddingSeconds', 'web.dvrSettings.finishLate', {type: 'number', min: 0, max: 240, unit: 'settings.unit.minutes', scale: 60}, {help: 'web.dvrSettings.finishLateHelp'}),
+        // Justin (15 Oct): live viewing keeps its tuner unless the owner says otherwise.
+        setting('recording', 'liveTunerConflict', 'server.live.tunerConflict', {type: 'choice', choices: [{value: 'keep-watching', label: 'server.live.tunerConflict.keep'}, {value: 'stop-watching', label: 'server.live.tunerConflict.stop'}]}, {help: 'server.live.tunerConflictHelp'}),
         setting('recording', 'keepPolicy.mode', 'web.dvr.keepLabel', {type: 'choice', choices: [{value: 'keep-all', label: 'web.logs.everything'}, {value: 'keep-count', label: 'web.dvrSettings.keepNewest'}, {value: 'keep-days', label: 'web.dvrSettings.keepDays'}]}),
         setting('recording', 'keepPolicy.keepCount', 'web.dvrSettings.howMany', {type: 'number', min: 1, max: 1000}, {when: {key: 'keepPolicy.mode', equals: 'keep-count'}}),
         setting('recording', 'keepPolicy.keepDays', 'web.dvrSettings.howManyDays', {type: 'number', min: 1, max: 3650, unit: 'settings.unit.days'}, {when: {key: 'keepPolicy.mode', equals: 'keep-days'}}),

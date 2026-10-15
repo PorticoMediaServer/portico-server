@@ -1656,6 +1656,7 @@ export const enUS = {
   'dvr.state.deleted': 'Deleted',
   'dvr.reason.missed': 'The program ended before recording could start.',
   'dvr.reason.conflict': 'Other recordings are using every tuner at this time. Change their priority or padding, or cancel one.',
+  'dvr.reason.liveInUse': 'Live TV viewing is using every tuner.',
   'dvr.reason.storageFloor': 'Stopped to keep free space on the server.',
   'dvr.reason.storageCap': 'The recording space is full.',
   'dvr.reason.cancelled': 'Canceled by this profile.',
