@@ -141,6 +141,8 @@ var preferenceRegistry = func() []PreferenceField {
 		prefIntEnum("playback.skipForwardSeconds", 30, []int{10, 15, 30, 60}, ScopeProfileServer),
 		prefBool("playback.autoplayNext", true, ScopeProfileServer),
 		prefIntEnum("playback.upNextCountdownSeconds", 10, []int{0, 5, 10, 15}, ScopeProfileServer),
+		// Off: the credits card says when the next title starts, and it starts when this one ends.
+		prefBool("playback.startNextDuringCredits", false, ScopeProfileServer),
 		prefBool("playback.passoutProtection", true, ScopeProfileServer),
 		prefInt("playback.passoutAfterEpisodes", 3, 2, 5, ScopeProfileServer),
 		prefEnum("playback.introSkip", "ask", skipModes, ScopeProfileServer),

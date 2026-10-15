@@ -428,13 +428,17 @@ export const schemas = {
               },
               "passoutCheckDue": {
                 "type": "boolean"
+              },
+              "startDuringCredits": {
+                "type": "boolean"
               }
             },
             "required": [
               "autoplay",
               "countdownSeconds",
               "passoutCheckDue",
-              "automaticAdvances"
+              "automaticAdvances",
+              "startDuringCredits"
             ],
             "type": "object"
           },
@@ -1241,13 +1245,17 @@ export const schemas = {
               },
               "passoutCheckDue": {
                 "type": "boolean"
+              },
+              "startDuringCredits": {
+                "type": "boolean"
               }
             },
             "required": [
               "autoplay",
               "countdownSeconds",
               "passoutCheckDue",
-              "automaticAdvances"
+              "automaticAdvances",
+              "startDuringCredits"
             ],
             "type": "object"
           },
@@ -5515,13 +5523,17 @@ export const schemas = {
               },
               "passoutCheckDue": {
                 "type": "boolean"
+              },
+              "startDuringCredits": {
+                "type": "boolean"
               }
             },
             "required": [
               "autoplay",
               "countdownSeconds",
               "passoutCheckDue",
-              "automaticAdvances"
+              "automaticAdvances",
+              "startDuringCredits"
             ],
             "type": "object"
           },
@@ -8252,13 +8264,17 @@ export const schemas = {
               },
               "passoutCheckDue": {
                 "type": "boolean"
+              },
+              "startDuringCredits": {
+                "type": "boolean"
               }
             },
             "required": [
               "autoplay",
               "countdownSeconds",
               "passoutCheckDue",
-              "automaticAdvances"
+              "automaticAdvances",
+              "startDuringCredits"
             ],
             "type": "object"
           },
@@ -58943,13 +58959,17 @@ export const schemas = {
           },
           "passoutCheckDue": {
             "type": "boolean"
+          },
+          "startDuringCredits": {
+            "type": "boolean"
           }
         },
         "required": [
           "autoplay",
           "countdownSeconds",
           "passoutCheckDue",
-          "automaticAdvances"
+          "automaticAdvances",
+          "startDuringCredits"
         ],
         "type": "object"
       },
@@ -70958,13 +70978,17 @@ export const schemas = {
               },
               "passoutCheckDue": {
                 "type": "boolean"
+              },
+              "startDuringCredits": {
+                "type": "boolean"
               }
             },
             "required": [
               "autoplay",
               "countdownSeconds",
               "passoutCheckDue",
-              "automaticAdvances"
+              "automaticAdvances",
+              "startDuringCredits"
             ],
             "type": "object"
           },
@@ -100348,13 +100372,17 @@ export const schemas = {
               },
               "passoutCheckDue": {
                 "type": "boolean"
+              },
+              "startDuringCredits": {
+                "type": "boolean"
               }
             },
             "required": [
               "autoplay",
               "countdownSeconds",
               "passoutCheckDue",
-              "automaticAdvances"
+              "automaticAdvances",
+              "startDuringCredits"
             ],
             "type": "object"
           },
@@ -112304,13 +112332,17 @@ export const schemas = {
               },
               "passoutCheckDue": {
                 "type": "boolean"
+              },
+              "startDuringCredits": {
+                "type": "boolean"
               }
             },
             "required": [
               "autoplay",
               "countdownSeconds",
               "passoutCheckDue",
-              "automaticAdvances"
+              "automaticAdvances",
+              "startDuringCredits"
             ],
             "type": "object"
           },

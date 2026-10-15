@@ -435,13 +435,17 @@
                   },
                   "passoutCheckDue": {
                     "type": "boolean"
+                  },
+                  "startDuringCredits": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
                   "autoplay",
                   "countdownSeconds",
                   "passoutCheckDue",
-                  "automaticAdvances"
+                  "automaticAdvances",
+                  "startDuringCredits"
                 ],
                 "type": "object"
               },
@@ -1248,13 +1252,17 @@
                   },
                   "passoutCheckDue": {
                     "type": "boolean"
+                  },
+                  "startDuringCredits": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
                   "autoplay",
                   "countdownSeconds",
                   "passoutCheckDue",
-                  "automaticAdvances"
+                  "automaticAdvances",
+                  "startDuringCredits"
                 ],
                 "type": "object"
               },
@@ -5776,13 +5784,17 @@
                   },
                   "passoutCheckDue": {
                     "type": "boolean"
+                  },
+                  "startDuringCredits": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
                   "autoplay",
                   "countdownSeconds",
                   "passoutCheckDue",
-                  "automaticAdvances"
+                  "automaticAdvances",
+                  "startDuringCredits"
                 ],
                 "type": "object"
               },
@@ -9125,13 +9137,17 @@
                   },
                   "passoutCheckDue": {
                     "type": "boolean"
+                  },
+                  "startDuringCredits": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
                   "autoplay",
                   "countdownSeconds",
                   "passoutCheckDue",
-                  "automaticAdvances"
+                  "automaticAdvances",
+                  "startDuringCredits"
                 ],
                 "type": "object"
               },
@@ -61254,13 +61270,17 @@
               },
               "passoutCheckDue": {
                 "type": "boolean"
+              },
+              "startDuringCredits": {
+                "type": "boolean"
               }
             },
             "required": [
               "autoplay",
               "countdownSeconds",
               "passoutCheckDue",
-              "automaticAdvances"
+              "automaticAdvances",
+              "startDuringCredits"
             ],
             "type": "object"
           },
@@ -75863,13 +75883,17 @@
                   },
                   "passoutCheckDue": {
                     "type": "boolean"
+                  },
+                  "startDuringCredits": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
                   "autoplay",
                   "countdownSeconds",
                   "passoutCheckDue",
-                  "automaticAdvances"
+                  "automaticAdvances",
+                  "startDuringCredits"
                 ],
                 "type": "object"
               },
@@ -105623,13 +105647,17 @@
                   },
                   "passoutCheckDue": {
                     "type": "boolean"
+                  },
+                  "startDuringCredits": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
                   "autoplay",
                   "countdownSeconds",
                   "passoutCheckDue",
-                  "automaticAdvances"
+                  "automaticAdvances",
+                  "startDuringCredits"
                 ],
                 "type": "object"
               },
@@ -118233,13 +118261,17 @@
                   },
                   "passoutCheckDue": {
                     "type": "boolean"
+                  },
+                  "startDuringCredits": {
+                    "type": "boolean"
                   }
                 },
                 "required": [
                   "autoplay",
                   "countdownSeconds",
                   "passoutCheckDue",
-                  "automaticAdvances"
+                  "automaticAdvances",
+                  "startDuringCredits"
                 ],
                 "type": "object"
               },
@@ -254976,13 +255008,17 @@
                             },
                             "passoutCheckDue": {
                               "type": "boolean"
+                            },
+                            "startDuringCredits": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
                             "autoplay",
                             "countdownSeconds",
                             "passoutCheckDue",
-                            "automaticAdvances"
+                            "automaticAdvances",
+                            "startDuringCredits"
                           ],
                           "type": "object"
                         },
@@ -255909,13 +255945,17 @@
                         },
                         "passoutCheckDue": {
                           "type": "boolean"
+                        },
+                        "startDuringCredits": {
+                          "type": "boolean"
                         }
                       },
                       "required": [
                         "autoplay",
                         "countdownSeconds",
                         "passoutCheckDue",
-                        "automaticAdvances"
+                        "automaticAdvances",
+                        "startDuringCredits"
                       ],
                       "type": "object"
                     },
@@ -256149,13 +256189,17 @@
                             },
                             "passoutCheckDue": {
                               "type": "boolean"
+                            },
+                            "startDuringCredits": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
                             "autoplay",
                             "countdownSeconds",
                             "passoutCheckDue",
-                            "automaticAdvances"
+                            "automaticAdvances",
+                            "startDuringCredits"
                           ],
                           "type": "object"
                         },
@@ -257217,13 +257261,17 @@
                             },
                             "passoutCheckDue": {
                               "type": "boolean"
+                            },
+                            "startDuringCredits": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
                             "autoplay",
                             "countdownSeconds",
                             "passoutCheckDue",
-                            "automaticAdvances"
+                            "automaticAdvances",
+                            "startDuringCredits"
                           ],
                           "type": "object"
                         },
@@ -258113,13 +258161,17 @@
                             },
                             "passoutCheckDue": {
                               "type": "boolean"
+                            },
+                            "startDuringCredits": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
                             "autoplay",
                             "countdownSeconds",
                             "passoutCheckDue",
-                            "automaticAdvances"
+                            "automaticAdvances",
+                            "startDuringCredits"
                           ],
                           "type": "object"
                         },
@@ -259141,13 +259193,17 @@
                             },
                             "passoutCheckDue": {
                               "type": "boolean"
+                            },
+                            "startDuringCredits": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
                             "autoplay",
                             "countdownSeconds",
                             "passoutCheckDue",
-                            "automaticAdvances"
+                            "automaticAdvances",
+                            "startDuringCredits"
                           ],
                           "type": "object"
                         },
@@ -260222,13 +260278,17 @@
                             },
                             "passoutCheckDue": {
                               "type": "boolean"
+                            },
+                            "startDuringCredits": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
                             "autoplay",
                             "countdownSeconds",
                             "passoutCheckDue",
-                            "automaticAdvances"
+                            "automaticAdvances",
+                            "startDuringCredits"
                           ],
                           "type": "object"
                         },
@@ -261115,13 +261175,17 @@
                             },
                             "passoutCheckDue": {
                               "type": "boolean"
+                            },
+                            "startDuringCredits": {
+                              "type": "boolean"
                             }
                           },
                           "required": [
                             "autoplay",
                             "countdownSeconds",
                             "passoutCheckDue",
-                            "automaticAdvances"
+                            "automaticAdvances",
+                            "startDuringCredits"
                           ],
                           "type": "object"
                         },

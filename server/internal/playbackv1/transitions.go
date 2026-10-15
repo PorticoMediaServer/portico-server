@@ -52,6 +52,10 @@ type QueuePostPlay struct {
 	CountdownSeconds  int  `json:"countdownSeconds"`
 	PassoutCheckDue   bool `json:"passoutCheckDue"`
 	AutomaticAdvances int  `json:"automaticAdvances"`
+	// StartDuringCredits: the viewer lets the next title start during the
+	// credits (with autoplay, on credits the server is sure of). Off by default:
+	// the next title starts when this one ends.
+	StartDuringCredits bool `json:"startDuringCredits"`
 }
 
 var (
@@ -549,10 +553,11 @@ func audioRenderOf(p *playback.AudioPlan) *AudioRender {
 
 // PostPlayPolicy is the effective viewer choice, read for each completion edge.
 type PostPlayPolicy struct {
-	Autoplay         bool
-	CountdownSeconds int
-	Protection       bool
-	Episodes         int
+	Autoplay           bool
+	CountdownSeconds   int
+	StartDuringCredits bool
+	Protection         bool
+	Episodes           int
 }
 
 func (s *Service) postPlayPolicy(ctx context.Context, tx *sql.Tx, c Caller, l *layout) (QueuePostPlay, error) {
@@ -564,7 +569,7 @@ func (s *Service) postPlayPolicy(ctx context.Context, tx *sql.Tx, c Caller, l *l
 	if err != nil {
 		return out, err
 	}
-	out.Autoplay, out.CountdownSeconds = policy.Autoplay, policy.CountdownSeconds
+	out.Autoplay, out.CountdownSeconds, out.StartDuringCredits = policy.Autoplay, policy.CountdownSeconds, policy.StartDuringCredits
 	out.PassoutCheckDue = currentEpisode(ctx, tx, l) && policy.Protection && policy.Episodes > 0 && l.q.automatic+1 >= policy.Episodes
 	return out, nil
 }

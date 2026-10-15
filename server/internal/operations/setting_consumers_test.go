@@ -290,6 +290,7 @@ var preferenceRuntimeSources = map[string][2]string{
 	"playback.skipBackSeconds":            {"web/src/player/Player.tsx", "playback.skipBackSeconds"},
 	"playback.skipForwardSeconds":         {"web/src/player/Player.tsx", "playback.skipForwardSeconds"},
 	"playback.sleepTimerMinutes":          {"server/internal/catalog/listening_preferences.go", "playback.sleepTimerMinutes"},
+	"playback.startNextDuringCredits":     {"server/internal/httpapi/playback_v1_routes.go", "playback.startNextDuringCredits"},
 	"playback.startedThresholdPercent":    {"server/internal/catalog/personal_activity.go", "playback.startedThresholdPercent"},
 	"playback.subtitleBackground":         {"web/src/player/Player.tsx", "playback.subtitleBackground"},
 	"playback.subtitleMode":               {"server/internal/playback/delivery_context.go", "playback.subtitleMode"},

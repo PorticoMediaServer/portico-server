@@ -11,7 +11,7 @@ import type {V1Http} from '../src/playback-v1/http.ts';
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 
-function setup(options: {postPlay?: {autoplay: boolean; countdownSeconds: number; passoutCheckDue: boolean; automaticAdvances: number}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]} = {}) {
+function setup(options: {postPlay?: {autoplay: boolean; countdownSeconds: number; passoutCheckDue: boolean; automaticAdvances: number; startDuringCredits?: boolean}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]} = {}) {
   const server = new FakePlaybackServer(options.server);
   const inner = fakeHttp(server);
   const log = options.log ?? [];
@@ -660,6 +660,7 @@ test('the server still-watching policy holds completion and a manual Continue re
   assert.equal(held?.postPlay.passoutCheckDue, true);
   assert.equal(held?.postPlay.countdownSeconds, 5);
   assert.equal(held?.postPlay.automaticAdvances, 2);
+  assert.equal(held?.postPlay.startDuringCredits, false, 'starting during the credits is off unless the server says on');
   await player.continueCompletion('automatic');
   assert.ok(player.getSnapshot().completion, 'an automatic callback must leave the question open');
   assert.equal(log.filter(r => r.path.endsWith(':advance')).length, 0);
@@ -713,4 +714,14 @@ test('republishing capabilities re-plans the same session without remembering th
     assert.equal(playback.playbackChoices().replan, undefined);
     assert.equal(log.filter(r => r.method === 'POST' && r.path === '/v1/queues').length, 1);
   } finally { stop(); }
+});
+
+test('the queue view carries the viewer\'s choice to start the next title during the credits', async () => {
+  for (const startDuringCredits of [true, false]) {
+    const {player, stop} = setup({postPlay: {autoplay: true, countdownSeconds: 10, passoutCheckDue: false, automaticAdvances: 0, startDuringCredits}});
+    await player.playEntries(['a', 'b'].map(queueItemInput));
+    await settle();
+    assert.equal(player.getSnapshot().view?.postPlay.startDuringCredits, startDuringCredits);
+    stop();
+  }
 });
