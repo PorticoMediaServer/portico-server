@@ -10,6 +10,8 @@ export const webMessages = {
  'ffmpeg.validation.missingFeatures': 'This FFmpeg build does not have all the media features Portico needs.',
  'ffmpeg.validation.timedOut': 'Checking this FFmpeg build took too long. Try again.',
 
+  'web.browser.unsupportedTitle': 'This browser is too old for Portico',
+  'web.browser.unsupportedBody': 'Portico needs Chrome or Edge 111, Firefox 113, Safari 16.4 or newer. Update this browser or open Portico in another one.',
   'web.setup.alreadyComplete': 'This server is already set up.',
   'web.connectivity.httpOutsideHome': 'This connection uses HTTP outside your home networks.',
   'web.connectivity.connectionLimit': 'Connection limit',
