@@ -1,6 +1,7 @@
 import {encodedRoutePath, routePattern} from "../../contracts/src/routes.ts";
 import {enUS,type MessageId} from '../../i18n/src/index.ts';
 import {unreadableServerResponse} from './server-messages.ts';
+import {keepReadable} from './tolerant.ts';
 import type {LibraryContentApi} from './library-content.ts';
 
 export type SubtitleFormat='srt'|'vtt'|'ass'|'ssa'|'pgs'|'sup'|'vobsub'|'idx'|'dvb'|'smi'|'sami'|'ttml'|'dfxp';
@@ -63,7 +64,8 @@ function discovery(v:unknown):SubtitleDiscovery{
 }
 export function validateSubtitlePlan(v:unknown):SubtitlePlan{
  if(!record(v)||v.version!==1||!id(v.sessionId)||!integer(v.generation)||!id(v.sourceId)||!integer(v.revision)||!integer(v.catalogRevision)||!['external_text','burn_in','client'].includes(String(v.renderer))||!['off','track'].includes(String(v.mode))||v.offAvailable!==true||!decimal(v.offsetUs,600000000,true))invalid();
- const resources=array(v.resources,128).map(resource),discovered=array(v.discovered,1024).map(discovery),selected=v.selected===null?null:resource(v.selected);
+ // A row this app cannot read (a format or origin newer than it) is left out and the rest offered; the selected track stays exact.
+ const resources=keepReadable('subtitle-plan','resources',array(v.resources,128),resource),discovered=keepReadable('subtitle-plan','discovered',array(v.discovered,1024),discovery),selected=v.selected===null?null:resource(v.selected);
  if(resources.some(r=>r.sourceId!==v.sourceId)||discovered.some(r=>r.sourceId!==v.sourceId)||selected&&selected.sourceId!==v.sourceId)invalid();
  if(new Set(resources.map(r=>r.id)).size!==resources.length||new Set(discovered.map(r=>r.id)).size!==discovered.length)invalid();
  if((v.mode==='off')!==(selected===null)||v.mode==='off'&&(v.offsetUs!=='0'||v.documentUrl!==undefined))invalid();
@@ -76,7 +78,7 @@ export function validateSubtitlePlan(v:unknown):SubtitlePlan{
 export function validateSubtitleCatalog(v:unknown):SubtitleCatalog{
  if(!record(v)||v.version!==1||!id(v.itemId)||!integer(v.revision)||typeof v.canShare!=='boolean'||!record(v.provider)||!text(v.provider.id,64)||typeof v.provider.enabled!=='boolean'||v.provider.reason!==undefined&&!text(v.provider.reason,128))invalid();
  const sources=array(v.sources,32).map(s=>{if(!record(s)||!id(s.id)||!decimal(s.durationUs)||!integer(s.inventoryRevision,0)||typeof s.available!=='boolean'||typeof s.timingKnown!=='boolean')invalid();return Object.freeze({...s});});
- const resources=array(v.resources,128).map(resource),discovered=array(v.discovered,1024).map(discovery);
+ const resources=keepReadable('subtitle-catalog','resources',array(v.resources,128),resource),discovered=keepReadable('subtitle-catalog','discovered',array(v.discovered,1024),discovery);
  if(resources.some(r=>!sources.some(s=>s.id===r.sourceId))||discovered.some(r=>!sources.some(s=>s.id===r.sourceId)))invalid();
  return Object.freeze({...v,sources:Object.freeze(sources),resources:Object.freeze(resources),discovered:Object.freeze(discovered),provider:Object.freeze({...v.provider})}) as SubtitleCatalog;
 }

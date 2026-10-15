@@ -1,6 +1,7 @@
 import {routeBody} from "../../contracts/src/routes.ts";
 import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
+import {keepReadable} from './tolerant.ts';
 import type { ContentScope, LibraryContentApi } from './library-content.ts';
 export type LyricLine = Readonly<{
     atMs: number | null;
@@ -262,7 +263,8 @@ export class LyricsService {
         this.publish({ candidates: [], warnings: [] });
         const body = { ...this.bound(), provider, query, language, resourceId: replacement?.id ?? '', expectedRevision: replacement?.revision ?? 0 };
         return this.run(async (signal) => { const raw = await this.request(this.path('/search'), 'POST', body, signal); if (!obj(raw) || !Array.isArray(raw.candidates) || raw.candidates.length > 24 || !Array.isArray(raw.warnings) || raw.warnings.length > 12 || !raw.warnings.every(v => str(v, 512)))
-            invalid(); const candidates = raw.candidates.map((v: unknown) => { if (!obj(v) || !id(v.id) || !languageTag(v.language) || !['text', 'lrc'].includes(String(v.format)) || !str(v.preview, 512))
+            invalid(); // A candidate this app cannot read (a format or source newer than it) is left out; the rest are offered.
+            const candidates = keepReadable('lyrics', 'candidates', raw.candidates, (v: unknown) => { if (!obj(v) || !id(v.id) || !languageTag(v.language) || !['text', 'lrc'].includes(String(v.format)) || !str(v.preview, 512))
             invalid(); return Object.freeze({ ...v, provenance: provenance(v.provenance) }) as LyricCandidate; }); return { candidates: Object.freeze(candidates), warnings: Object.freeze(raw.warnings as string[]) }; });
     };
     preview = (resource: LyricRevision) => this.run(async (signal) => { const raw = await this.request(this.path('/' + encodeURIComponent(resource.id) + '/revisions/' + resource.revision) + this.query(), 'GET', undefined, signal); const r = revision(raw, true); if (r.id !== resource.id || r.revision !== resource.revision)
