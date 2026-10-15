@@ -5,13 +5,17 @@ import {accessListPath} from '@core/server-admin/panel-logic.ts';
 export {accessListPath, accessLists} from '@core/server-admin/panel-logic.ts';
 import {VIEWING_HOURS_MAX, dayChoiceOf, daysOfChoice, deviceFacts, newViewingHours, roleLabel, trustApplies, type DayChoice} from '@core/server-admin/people-words.ts';
 import {clockMinutes, clockText} from '@core/server-admin/panel-logic.ts';
-import {QUIET_READ_EVERY_MS, sendFresh, useAction} from '../../admin/console';
+import {sendFresh, useAction} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
 import {findInPages, nextCursorOf, useCursorList} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
 import {Button, ConfirmDialog, Dialog, Input, Notice, Select, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch, Text, TextArea, relative} from '../../ui';
 import {useI18n} from '../../app/i18n';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const INVITATION_MOVES = [dependsOn.list('invitations')];
+const DEVICE_MOVES = [dependsOn.list('devices')];
 
 const items = <T,>(raw: unknown, each: (x: unknown) => T): T[] => {
   const list = (raw as {items?: unknown})?.items;
@@ -104,8 +108,8 @@ export function InvitationsPanel() {
   const {t} = i18n;
   const {api} = useSession();
   const page = async (cursor: string) => { const raw = await api.request(accessListPath('invitations', cursor)); return {items: items(raw, parseInvitation), nextCursor: nextCursorOf(raw)}; };
-  // An invitation leaves this list when someone joins with it, and nothing on the feed says so.
-  const read = useCursorList(page, [api], {every: QUIET_READ_EVERY_MS});
+  // An invitation leaves this list when someone joins with it; the feed says so.
+  const read = useCursorList(page, [api], {on: INVITATION_MOVES});
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
   const [opIds] = useState(createOperationIds);
@@ -168,7 +172,7 @@ export function AccountDevices({accountId}: {/** Absent: everyone's devices, mos
   const {api} = useSession();
   const page = async (cursor: string) => { const raw = await api.request(accessListPath('devices', cursor) + (accountId ? '&account=' + encodeURIComponent(accountId) : '')); return {items: [...parseAccessDevicePage(raw).items], nextCursor: nextCursorOf(raw)}; };
   // A device that has just signed in and waits for approval appears here by itself.
-  const read = useCursorList(page, [api, accountId], {every: QUIET_READ_EVERY_MS});
+  const read = useCursorList(page, [api, accountId], {on: DEVICE_MOVES});
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
   const [opIds] = useState(createOperationIds);

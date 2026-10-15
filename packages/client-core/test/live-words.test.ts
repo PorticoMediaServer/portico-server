@@ -31,6 +31,9 @@ test('a tuner says what is using it', () => {
   assert.equal(tunerUseLine(t, {kind: 'recording', state: 'recording', title: 'Match of the Day', startsAt: '2026-10-13T20:00:00Z'}, when), 'Recording now · Match of the Day');
   assert.equal(tunerUseLine(t, {kind: 'recording', state: 'scheduled', title: 'Newsnight', startsAt: '2026-10-13T20:00:00Z'}, when), 'Tue 20:00 · Newsnight');
   assert.equal(tunerUseLine(t, {kind: 'live', state: 'retiring', title: 'BBC Two', startsAt: ''}, when), 'Being watched · BBC Two · finishing');
+  // Whose it is, when the server names them: the profile, with the account when they differ.
+  assert.equal(tunerUseLine(t, {kind: 'live', state: 'active', title: 'BBC One', startsAt: '', accountName: 'sam', profileName: 'Kids'}, when), 'Being watched · BBC One · Kids (sam)');
+  assert.equal(tunerUseLine(t, {kind: 'live', state: 'active', title: 'BBC One', startsAt: '', accountName: 'sam', profileName: 'sam'}, when), 'Being watched · BBC One · sam');
   assert.deepEqual(tunerStatus(t, {conflicts: 2, inUse: 1, tunerCount: 2}), {tone: 'danger', text: '2 clashes'});
   assert.deepEqual(tunerStatus(t, {conflicts: 0, inUse: 2, tunerCount: 2}), {tone: 'warning', text: '2 of 2 in use'});
   assert.deepEqual(tunerStatus(t, {conflicts: 0, inUse: 0, tunerCount: 2}), {tone: 'healthy', text: '0 of 2 in use'});

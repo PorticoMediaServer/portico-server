@@ -16,6 +16,7 @@ import {settingsMessages} from './en-US/settings.ts';
 import {channelBuilderMessages} from './en-US/channel-builder.ts';
 import {drawnSubtitleMessages} from './en-US/subtitles.ts';
 import {ownerConsoleMessages} from './en-US/owner-console.ts';
+import {ownerParityMessages} from './en-US/owner-parity.ts';
 
 export const enUS = {
   'browse.field.search': 'Search',
@@ -2170,6 +2171,8 @@ export const enUS = {
   ...drawnSubtitleMessages,
   // ── Owner console: later screens (catalog/en-US/owner-console.ts) ──
   ...ownerConsoleMessages,
+  // ── Owner tools on every client (catalog/en-US/owner-parity.ts) ──
+  ...ownerParityMessages,
 } as const satisfies Record<string, string>;
 
 export type MessageId = keyof typeof enUS;

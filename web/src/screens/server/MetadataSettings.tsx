@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
-import {artworkLimitBytes as limitBytes, artworkLimitText as limitText, metadataSettingsService, type MetadataSettings} from '@core/metadata-settings.ts';
+import {artworkLimitBytes as limitBytes, artworkLimitText as limitText, metadataSettingsService, type MetadataSettings, type MetadataSettingsChange} from '@core/metadata-settings.ts';
 import {problem, useRead} from '../../admin/console';
 import {isStaleAnswer} from '@core/freshness-actions.ts';
 import {useInlineForm} from '../settings/ServerForms';
@@ -32,10 +32,19 @@ export function MetadataSettingsPanel() {
   const [adult, setAdult] = useState(false);
   const [tmdb, setTmdb] = useState<KeyEdit>(untouched);
   const [tvdb, setTvdb] = useState<KeyEdit>(untouched);
-  const reset = (d: MetadataSettings) => { setLimit(limitText(d.localArtworkLimitBytes)); setAdult(d.includeAdult); setTmdb(untouched); setTvdb(untouched); };
+  // OpenSubtitles: a key like the others, and an account (a name shown back, a password never).
+  const [subtitleKey, setSubtitleKey] = useState<KeyEdit>(untouched);
+  const [subtitleUser, setSubtitleUser] = useState('');
+  const [subtitlePassword, setSubtitlePassword] = useState('');
+  const reset = (d: MetadataSettings) => { setLimit(limitText(d.localArtworkLimitBytes)); setAdult(d.includeAdult); setTmdb(untouched); setTvdb(untouched); setSubtitleKey(untouched); setSubtitleUser(d.openSubtitlesUsername); setSubtitlePassword(''); };
   useEffect(() => { if (doc) reset(doc); }, [doc]);
   const bytes = limitBytes(limit);
-  const dirty = !!doc && (bytes !== doc.localArtworkLimitBytes || adult !== doc.includeAdult || keyChange(tmdb) !== undefined || keyChange(tvdb) !== undefined);
+  const userChange = doc && subtitleUser.trim() !== doc.openSubtitlesUsername ? subtitleUser.trim() : undefined;
+  const subtitleChanges = (): Partial<Pick<MetadataSettingsChange, 'openSubtitlesApiKey' | 'openSubtitlesUsername' | 'openSubtitlesPassword'>> => {
+    const key = keyChange(subtitleKey);
+    return {...(key !== undefined ? {openSubtitlesApiKey: key} : {}), ...(userChange !== undefined ? {openSubtitlesUsername: userChange} : {}), ...(subtitlePassword ? {openSubtitlesPassword: subtitlePassword} : {})};
+  };
+  const dirty = !!doc && (bytes !== doc.localArtworkLimitBytes || adult !== doc.includeAdult || keyChange(tmdb) !== undefined || keyChange(tvdb) !== undefined || Object.keys(subtitleChanges()).length > 0);
   const inline = useInlineForm('metadata-settings', {
     dirty,
     problem: bytes === undefined ? 'server.metadata.limitProblem' : undefined,
@@ -43,7 +52,7 @@ export function MetadataSettingsPanel() {
     save: async () => {
       if (!doc || bytes === undefined) return;
       const tmdbKey = keyChange(tmdb), tvdbKey = keyChange(tvdb);
-      const keys = {...(tmdbKey !== undefined ? {tmdbReadToken: tmdbKey} : {}), ...(tvdbKey !== undefined ? {tvdbProjectKey: tvdbKey} : {})};
+      const keys = {...(tmdbKey !== undefined ? {tmdbReadToken: tmdbKey} : {}), ...(tvdbKey !== undefined ? {tvdbProjectKey: tvdbKey} : {}), ...subtitleChanges()};
       try { await service.save({expectedRevision: doc.revision, localArtworkLimitBytes: bytes, includeAdult: adult, ...keys}); }
       catch (e) {
         if (!isStaleAnswer(e)) throw e;
@@ -74,6 +83,23 @@ export function MetadataSettingsPanel() {
         {key(t('metadata.settings.tmdbToken'), doc.tmdbCredentialConfigured, tmdb, setTmdb)}
         {key(t('metadata.settings.tvdbKey'), doc.tvdbCredentialConfigured, tvdb, setTvdb)}
         <SettingsRow label={t('metadata.settings.includeAdult')} help={t('server.metadata.adultHelp')} control={<Switch checked={adult} onCheckedChange={setAdult} label={t('metadata.settings.includeAdult')} />} />
+      </SettingsGroup>
+      <SettingsGroup title={t('server.metadata.subtitles')} description={t('server.metadata.subtitlesLede')}>
+        <SettingsRow label={t('server.metadata.openSubtitlesKey')} stack
+          state={<Status tone={subtitleKey.remove ? 'warning' : doc.openSubtitlesKeyConfigured ? 'healthy' : 'neutral'}>{subtitleKey.remove ? t('server.metadata.keyRemoving') : doc.openSubtitlesKeyConfigured ? t('server.metadata.openSubtitlesKeyOwn') : t('server.metadata.openSubtitlesKeyServer')}</Status>}
+          control={<div style={{display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap', width: '100%'}}>
+            <div style={{flex: 1, minWidth: 220, maxWidth: 520}}><PasswordInput hideLabel label={t('server.metadata.openSubtitlesKey')} autoComplete="off" spellCheck={false} maxLength={2048} disabled={subtitleKey.remove} placeholder={doc.openSubtitlesKeyConfigured ? t('server.metadata.keyReplace') : t('server.metadata.keyPaste')} value={subtitleKey.typed} onChange={e => setSubtitleKey({typed: e.target.value, remove: false})} /></div>
+            {doc.openSubtitlesKeyConfigured ? <Button variant="ghost" label={subtitleKey.remove ? t('server.metadata.keyKeep') : t('server.metadata.openSubtitlesUseServer')} onClick={() => setSubtitleKey({typed: '', remove: !subtitleKey.remove})} /> : null}
+          </div>} />
+        <SettingsRow label={t('server.metadata.openSubtitlesUser')}
+          control={<div style={{display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
+            <Input hideLabel label={t('server.metadata.openSubtitlesUser')} autoComplete="off" spellCheck={false} maxLength={512} value={subtitleUser} onChange={e => setSubtitleUser(e.target.value)} />
+            {doc.openSubtitlesUsername ? <Button variant="ghost" label={t('server.metadata.openSubtitlesSignOut')} onClick={() => { setSubtitleUser(''); setSubtitlePassword(''); }} /> : null}
+          </div>} />
+        {subtitleUser.trim() ? (
+          <SettingsRow label={t('server.metadata.openSubtitlesPassword')} state={doc.openSubtitlesPasswordConfigured && !subtitlePassword && userChange === undefined ? t('server.metadata.openSubtitlesPasswordSaved') : undefined}
+            control={<PasswordInput hideLabel label={t('server.metadata.openSubtitlesPassword')} autoComplete="new-password" maxLength={512} value={subtitlePassword} onChange={e => setSubtitlePassword(e.target.value)} />} />
+        ) : null}
       </SettingsGroup>
       <SettingsGroup title={t('server.metadata.artwork')}>
         <SettingsRow label={t('metadata.settings.artworkLimit')} help={t('server.metadata.artworkHelp')} state={t('server.metadata.artworkUsed', {used: i18n.bytes(doc.localArtworkUsedBytes), limit: i18n.bytes(doc.localArtworkLimitBytes)})}

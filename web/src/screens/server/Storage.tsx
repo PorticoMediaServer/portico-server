@@ -2,14 +2,18 @@ import React, {useEffect, useState} from 'react';
 import {StorageManagementService, type StorageManagementSnapshot, type StorageMount} from '@core/storage-management.ts';
 import {RemoteSourceService, type DAVConfiguration, type RemoteSource} from '@core/remote-sources.ts';
 import {davCommandSucceeded, davConfiguration, mountCommandSucceeded, stableStorageOperationId, type WebDavDraft} from '@core/server-admin/panel-logic.ts';
+import {ALREADY_DONE} from '@core/freshness-actions.ts';
 export {davCommandSucceeded, davConfiguration, mountCommandSucceeded, stableStorageOperationId, storageOperationId, type WebDavDraft} from '@core/server-admin/panel-logic.ts';
-import {QUIET_READ_EVERY_MS, problem, useAction, useQuietly} from '../../admin/console';
+import {problem, useAction, useQuietly} from '../../admin/console';
 import {mountStateId, sourceStateText} from '@core/server-admin/storage-words.ts';
 import {useService} from '../../app/content';
 import {useSession} from '../../app/session';
 import {useViewerScope} from '../../app/viewer-scope';
 import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Menu, Notice, PasswordInput, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Text, TextArea, type MenuItem} from '../../ui';
 import {useI18n} from '../../app/i18n';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const REMOTE_STORAGE_MOVES = [dependsOn.list('remoteSources')];
 
 const mountTone = (m: StorageMount): 'healthy' | 'warning' | 'danger' | 'neutral' => (m.observedState === 'mounted' ? 'healthy' : m.observedState === 'failed' || m.observedState === 'quarantined' ? 'danger' : m.observedState === 'starting' || m.observedState === 'stopping' ? 'warning' : 'neutral');
 
@@ -39,17 +43,36 @@ export function RemoteSourcesPanel() {
   const [remove, setRemove] = useState<{kind: 'mount'; mount: StorageMount} | {kind: 'webdav'; source: RemoteSource} | null>(null);
   const action = useAction();
   const runMount = (work: () => Promise<unknown>, done?: string) => action.run(async () => {
+    let outcome: unknown;
     try {
-      await work();
+      outcome = await work();
     } finally {
       const phase = mounts.service.getSnapshot().mutation.phase;
       if (phase !== 'ambiguous' && phase !== 'pending' && phase !== 'preparing' && phase !== 'recovering') mountIds.release();
     }
+    // The command no longer applies because it already happened (stopped elsewhere, say): that is done, not a failure.
+    if (outcome === ALREADY_DONE) return;
     const mutation = mounts.service.getSnapshot().mutation;
     // Q1: the mutation error carries a stable code; the presenter maps it and
     // the raw message never reaches the screen.
     if (!mountCommandSucceeded(mutation)) throw Object.assign(new Error('request_failed'), {code: mutation.error?.code ?? 'request_failed'});
   }, done);
+  // A mount's revision also moves as it starts and stops by itself, so a command can meet a
+  // revision that moved for no reason the owner would see. The mount is read again and the same
+  // command sent once more, silently; if it is no longer offered, it has already happened.
+  const mountCommand = (mountId: string, command: 'start' | 'stop' | 'restart' | 'delete') => async () => {
+    const send = (revision: number) => (command === 'delete' ? mounts.service.remove(mountId, revision) : mounts.service.act(mountId, command, revision));
+    const current = mounts.service.getSnapshot().data?.mounts.find(x => x.id === mountId);
+    if (!current) throw Object.assign(new Error('request_failed'), {code: 'storage_command_conflict'});
+    await send(current.controlRevision);
+    if (mounts.service.getSnapshot().mutation.phase !== 'conflict') return;
+    mountIds.release();
+    await mounts.service.revalidate();
+    const fresh = mounts.service.getSnapshot().data?.mounts.find(x => x.id === mountId);
+    if (!fresh || fresh.removalPending) return command === 'delete' ? ALREADY_DONE : undefined;
+    if (!fresh.actions.includes(command)) return ALREADY_DONE;
+    await send(fresh.controlRevision);
+  };
   const runDav = (work: () => Promise<unknown>, done?: string) => action.run(async () => {
     try {
       await work();
@@ -62,7 +85,7 @@ export function RemoteSourcesPanel() {
   const m = mounts.snapshot;
   const d = dav.snapshot;
   // A mount that starts, stops or fails by itself, and a share that stops answering, show without a reload.
-  useQuietly(() => Promise.all([mounts.service.revalidate(), dav.service.revalidate()]), () => !!mounts.service.getSnapshot().data, {every: QUIET_READ_EVERY_MS});
+  useQuietly(() => Promise.all([mounts.service.revalidate(), dav.service.revalidate()]), () => !!mounts.service.getSnapshot().data, {on: REMOTE_STORAGE_MOVES});
   const list = m.data?.mounts ?? [];
   const davs = d.sources.filter(x => x.kind === 'webdav');
   const loading = (m.phase === 'loading' && !m.data) || (d.loading && !d.sources.length);
@@ -86,14 +109,14 @@ export function RemoteSourcesPanel() {
           if (x.actions.includes('stop')) items.push({id: 'stop', label: t('web.storage.unmount'), icon: 'stop'});
           if (x.actions.includes('restart')) items.push({id: 'restart', label: t('web.storage.restart'), icon: 'refresh'});
           if (x.actions.includes('delete')) items.push({id: 'delete', label: t('action.removeShort'), icon: 'trash', destructive: true, separatorBefore: true});
-          return <SettingsRow key={x.id} icon="storage" label={x.name} help={facts([t('web.storage.rcloneRemote'), mono(x.mountPath), x.cacheBytes ? t('web.storage.cacheSize', {size: i18n.bytes(x.cacheBytes)}) : null, x.removalPending ? t('server.storage.removalPending') : null])} state={x.error ? x.error : undefined} meta={<Badge tone={mountTone(x)} dot live={x.observedState === 'starting'}>{t(mountStateId(x.observedState))}</Badge>} control={items.length ? <Menu label={x.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('server.row.actions', {name: x.name})} />} items={items} onSelect={id => { action.clear(); if (id === 'delete') setRemove({kind: 'mount', mount: x}); else void runMount(() => mounts.service.act(x.id, id as 'start' | 'stop' | 'restart', x.controlRevision)); }} /> : undefined} />;
+          return <SettingsRow key={x.id} icon="storage" label={x.name} help={facts([t('web.storage.rcloneRemote'), mono(x.mountPath), x.cacheBytes ? t('web.storage.cacheSize', {size: i18n.bytes(x.cacheBytes)}) : null, x.removalPending ? t('server.storage.removalPending') : null])} state={x.error ? x.error : undefined} meta={<Badge tone={mountTone(x)} dot live={x.observedState === 'starting'}>{t(mountStateId(x.observedState))}</Badge>} control={items.length ? <Menu label={x.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('server.row.actions', {name: x.name})} />} items={items} onSelect={id => { action.clear(); if (id === 'delete') setRemove({kind: 'mount', mount: x}); else void runMount(mountCommand(x.id, id as 'start' | 'stop' | 'restart')); }} /> : undefined} />;
         })}
         {m.data && !list.length && !davs.length && !d.loading ? <SettingsEmpty title={t('web.storage.empty')} body={t('web.storage.emptyHelp')} /> : null}
         <SettingsFooter><Text as="p" variant="caption" tone="tertiary">{list.length && m.data ? `${t('web.storage.rcloneRemotes')}: ${t('web.storage.rcloneLimits', {active: m.data.limits.active, definitions: m.data.limits.definitions})}. ` : ''}{t('web.storage.libraryFolders')}</Text></SettingsFooter>
       </SettingsGroup>
       <WebDavDialog open={add === 'webdav' || !!editDav} source={editDav} onClose={() => { setAdd(null); setEditDav(null); }} onSave={(id, input) => void runDav(() => dav.service.configure(id, input), t(id ? 'server.storage.saved' : 'server.storage.added')).then(ok => { if (ok) { setAdd(null); setEditDav(null); } })} busy={d.busy || action.busy} error={action.error} />
       <RcloneDialog open={add === 'rclone'} onClose={() => setAdd(null)} onSave={input => void runMount(() => mounts.service.create(input), t('server.storage.added')).then(ok => ok && setAdd(null))} busy={action.busy} error={action.error} />
-      <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.storage.removeMountTitle', {name: remove?.kind === 'mount' ? remove.mount.name : remove?.source.name ?? ''})} body={remove?.kind === 'mount' ? t('web.storage.removeMountBody') : t('web.storage.removeSourceBody')} confirmLabel={t('action.removeShort')} busy={action.busy} error={action.error || undefined} onConfirm={() => { if (!remove) return; void (remove.kind === 'mount' ? runMount(() => mounts.service.remove(remove.mount.id, remove.mount.controlRevision)) : runDav(() => dav.service.remove(remove.source))).then(ok => ok && setRemove(null)); }} />
+      <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.storage.removeMountTitle', {name: remove?.kind === 'mount' ? remove.mount.name : remove?.source.name ?? ''})} body={remove?.kind === 'mount' ? t('web.storage.removeMountBody') : t('web.storage.removeSourceBody')} confirmLabel={t('action.removeShort')} busy={action.busy} error={action.error || undefined} onConfirm={() => { if (!remove) return; void (remove.kind === 'mount' ? runMount(mountCommand(remove.mount.id, 'delete')) : runDav(() => dav.service.remove(remove.source))).then(ok => ok && setRemove(null)); }} />
     </>
   );
 }

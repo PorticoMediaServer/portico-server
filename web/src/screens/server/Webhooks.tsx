@@ -1,11 +1,14 @@
 import {useEffect, useMemo, useState} from 'react';
 import {createWebhook, deleteWebhook, listWebhookDeliveries, listWebhooks, sendWebhookTest, updateWebhook, type IssuedWebhook, type Webhook, type WebhookDelivery} from '@core/api-access.ts';
 import {deliveryProblem, deliveryProgress, deliveryTone, webhookAddressOk, webhookEventGroups, webhookEventLabel, webhookTrouble} from '@core/server-admin/api-words.ts';
-import {QUIET_READ_EVERY_MS, problem, useAction, useRead} from '../../admin/console';
+import {problem, useAction, useRead} from '../../admin/console';
 import {usePollWhile} from '../../admin/poll-while';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
 import {Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, PasswordInput, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch, Text, TextArea, type MenuItem} from '../../ui';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const WEBHOOK_MOVES = [dependsOn.list('webhooks')];
 
 type Draft = {name: string; url: string; events: readonly string[]; secret: string};
 
@@ -19,8 +22,8 @@ export function WebhooksPanel() {
   const i18n = useI18n();
   const {t} = i18n;
   const {api} = useSession();
-  // Whether each one is arriving changes as the server delivers; nothing on the feed says so.
-  const read = useRead(() => listWebhooks(api), [api], {every: QUIET_READ_EVERY_MS});
+  // Whether each one is arriving changes as the server delivers; the feed says when.
+  const read = useRead(() => listWebhooks(api), [api], {on: WEBHOOK_MOVES});
   const action = useAction();
   const [editing, setEditing] = useState<{webhook?: Webhook} | null>(null);
   const [issued, setIssued] = useState<IssuedWebhook>();

@@ -275,6 +275,8 @@ export function parseDevice(v: unknown): ControllableDevice {
 // ── Admin Now Playing (spec §14) ────────────────────────────────────
 export type AdminSession = Readonly<{
   id: string; user: string; profile: string; device: string; itemId?: string; title: string; kind: SessionKind; state: string; positionMs: number;
+  /** The length of what is playing, when the server knows it (never for a channel). */
+  durationMs?: number;
   decision: Readonly<{video?: Decision; audio?: Decision; subtitles?: Decision}>; bitrateKbps?: number; bandwidthKbps?: number;
   /** The player engine the device is playing with and the quality in force (absent for a channel). */
   engine?: PlaybackEngine; quality?: QualityInForce;
@@ -289,6 +291,7 @@ export function parseAdminSession(v: unknown): AdminSession {
     itemId: obj(v.item) && typeof v.item.id === 'string' ? v.item.id : typeof v.itemId === 'string' ? v.itemId : undefined,
     title: obj(v.item) ? str(v.item.title) : str(v.title),
     kind: oneOf(v.kind, ['vod', 'audio', 'live', 'channel'] as const, 'other' as never), state: str(v.state), positionMs: num(v.positionMs),
+    ...(typeof v.durationMs === 'number' && Number.isSafeInteger(v.durationMs) && v.durationMs > 0 ? {durationMs: v.durationMs} : {}),
     decision: Object.freeze({video: decision(d.video), audio: decision(d.audio), subtitles: decision(d.subtitles)}),
     bitrateKbps: optNum(v.bitrateKbps), bandwidthKbps: optNum(v.bandwidthKbps),
     engine: typeof v.engine === 'string' && v.engine ? engineOf(v.engine) : undefined, quality: obj(v.quality) ? parseQuality(v.quality) : undefined,

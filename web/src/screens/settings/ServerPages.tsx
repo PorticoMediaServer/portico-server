@@ -11,14 +11,15 @@ import s from './Settings.module.css';
 /**
  * One page of the Server heading, drawn from the authored structure: status and lists are
  * panels, plain settings are rows bound to the page's forms, and the page has one Save.
- * Owners only: the structure lists no Server page for anyone else.
+ * Owners, and administrators for the sections the structure marks for them: it lists no Server
+ * page for anyone else.
  */
 export function ServerPage({page}: {page: StructurePage}) {
   const session = useSession();
   const {t} = useI18n();
   const navigate = useNavigate();
   const search = useSearch({from: '/app/settings/$section'});
-  if (!session.owner) return <StateView icon="lock" title={t('web.console.ownerTitle')} body={t('web.console.ownerBody')} action={{label: t('route.goHome'), onClick: () => void navigate({to: '/'})}} />;
+  if (!session.owner && !session.administrator) return <StateView icon="lock" title={t('web.console.ownerTitle')} body={t('web.console.ownerBody')} action={{label: t('route.goHome'), onClick: () => void navigate({to: '/'})}} />;
   const tab = page.tabs ? (page.tabs.find(x => x.id === search.tab) ?? page.tabs[0]!).id : undefined;
   const sections = page.sections.filter(section => !page.tabs || section.tab === tab);
   return (

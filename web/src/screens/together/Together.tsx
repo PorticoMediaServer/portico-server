@@ -7,6 +7,10 @@ import {takePendingTogetherCode} from '../../app/link-fragment';
 import {usePlayerOptional} from '../../player/engine';
 import {Artwork, Badge, Button, ConfirmDialog, IconButton, Input, Inset, ListRow, Loading, Notice, Page, PageHeader, Segmented, StateView, Surface, Text} from '../../ui';
 import {useI18n, type I18n} from '../../app/i18n';
+import {useFreshDocument} from '../../app/freshness';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const TOGETHER_MOVES = [dependsOn.list('togetherGroups')];
 
 const authorityOptions = (t: I18n['t']) => [{id: 'host-only' as const, label: t('web.together.onlyMe')}, {id: 'anyone' as const, label: t('web.together.everyone')}];
 function stateLabel(t: I18n['t'], state: Group['state']): string {
@@ -50,6 +54,8 @@ export function TogetherScreen() {
   const {t} = useI18n();
   const {service, state} = useTogether();
   useEffect(() => { void service?.refreshDirectory(); }, [service]);
+  // A room this profile joins, leaves or that ends elsewhere shows by itself (the feed says when).
+  useFreshDocument(TOGETHER_MOVES, async () => { await service?.refreshDirectory(); });
   const inRoom = state.group && state.phase !== 'idle' && state.phase !== 'left' && state.phase !== 'joining';
   // WEB-TOGETHER-01: a title's "Watch Together" arrives here; it plays once the group has started.
   const [pending, setPending] = useState(takePendingTogether);

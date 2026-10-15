@@ -4,6 +4,7 @@ import {loadResourceUsage, pauseBackgroundWork, type MaintenanceDocument, type M
 import type {RuntimeSettings} from '@core/console.ts';
 import {QUIET_READ_EVERY_MS, useAction, useRead} from '../../admin/console';
 import {operationId} from './operation-ids';
+import {dependsOn} from '@core/freshness-hub.ts';
 import {useServerForm} from '../settings/ServerForms';
 import {useDownloads} from '../../app/downloads';
 import {useSession} from '../../app/session';
@@ -36,6 +37,8 @@ export function FFmpegStatusRow() {
   const text = refused ? t('server.ffmpeg.refusedLine', {reason}) : checked.state === 'accepted' ? t(checked.inUse ? 'server.ffmpeg.inUse' : 'server.ffmpeg.afterRestart') : t('server.ffmpeg.unchecked');
   return <SettingsRow label={t('server.ffmpeg.status')} help={refused && checked.missingFeatures.length ? t('server.ffmpeg.missing', {features: i18n.list(checked.missingFeatures.slice(0, 8))}) : undefined} control={<Status tone={refused ? 'danger' : checked.state === 'accepted' && checked.inUse ? 'healthy' : 'neutral'}>{text}</Status>} />;
 }
+
+const DOWNLOAD_MOVES = [dependsOn.list('downloads')];
 
 /** Storage & backups › what is in use right now, beside the limits the rows below set. */
 export function ResourceUsagePanel() {
@@ -96,8 +99,21 @@ export function DownloadUsagePanel() {
   const i18n = useI18n();
   const {t} = i18n;
   const {service} = useDownloads();
-  // What people have downloaded grows and shrinks as their devices come and go.
-  const read = useRead(async () => (service ? service.serverUsage() : null), [service], {every: QUIET_READ_EVERY_MS});
+  // What people have downloaded grows and shrinks as their devices come and go; the feed says when.
+  // Everyone the owner has asked to see is read again: the first page and each "Show more" after it.
+  const [pages, setPages] = useState(1);
+  const read = useRead(async () => {
+    if (!service) return null;
+    const first = await service.serverUsage();
+    const profiles = [...first.profiles];
+    let cursor = first.profilesNextCursor ?? '';
+    for (let page = 1; page < pages && cursor; page++) {
+      const next = await service.serverUsage(cursor);
+      profiles.push(...next.profiles);
+      cursor = next.profilesNextCursor ?? '';
+    }
+    return {...first, profiles, profilesNextCursor: cursor};
+  }, [service, pages], {on: DOWNLOAD_MOVES});
   const action = useAction();
   const [revoking, setRevoking] = useState<{key: string; name: string}>();
   const usage = read.data;
@@ -115,7 +131,7 @@ export function DownloadUsagePanel() {
           control={p.profileKey && p.count ? <Button size="sm" variant="ghost" label={t('server.downloadUsage.remove')} onClick={() => { action.clear(); setRevoking({key: p.profileKey!, name: name(p)}); }} /> : undefined} />
       ))}
       {usage && !usage.profiles.length ? <SettingsEmpty title={t('server.downloadUsage.none')} /> : null}
-      {usage?.profilesNextCursor ? <SettingsFooter><Text variant="caption" tone="tertiary">{t('server.downloadUsage.more')}</Text></SettingsFooter> : null}
+      {usage?.profilesNextCursor ? <SettingsFooter><Button size="sm" variant="ghost" label={t('server.showMore')} disabled={read.loading} onClick={() => setPages(n => n + 1)} /></SettingsFooter> : null}
       <ConfirmDialog open={!!revoking} onOpenChange={o => !o && setRevoking(undefined)} title={t('server.downloadUsage.removeTitle', {name: revoking?.name ?? ''})} body={t('server.downloadUsage.removeBody')} confirmLabel={t('server.downloadUsage.remove')} busy={action.busy} error={action.error || undefined}
         onConfirm={() => void action.run(async () => {
           if (!revoking) return;

@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {deleteClientReport, listClientReports, readClientReport, type ClientReport} from '@core/client-reports.ts';
-import {QUIET_READ_EVERY_MS, problem, useAction, useRead} from '../../admin/console';
+import {problem, useAction, useRead} from '../../admin/console';
 import {readCatalogueFailures} from '@core/catalogue-failures.ts';
 import {dependsOn} from '@core/freshness-hub.ts';
 
@@ -11,6 +11,8 @@ import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
 import {Button, ConfirmDialog, Dialog, Loading, Menu, Notice, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Text} from '../../ui';
+
+const CLIENT_REPORT_MOVES = [dependsOn.list('clientReports')];
 
 /** "iPhone · phone · 1.4.2": what sent a report, in the words the report carries. */
 export const reportSender = (report: Pick<ClientReport, 'platform' | 'deviceClass' | 'appVersion'>): string => [report.platform, report.deviceClass, report.appVersion].filter(Boolean).join(' · ');
@@ -34,7 +36,7 @@ export function ClientReportsPanel() {
   const {t} = i18n;
   const {api, system, session} = useSession();
   const serverId = system?.id ?? session?.viewer.serverId ?? '';
-  const read = useCursorList(async cursor => { const page = await listClientReports(api, serverId, cursor); return {items: [...page.items], nextCursor: page.nextCursor ?? ''}; }, [api, serverId], {every: QUIET_READ_EVERY_MS});
+  const read = useCursorList(async cursor => { const page = await listClientReports(api, serverId, cursor); return {items: [...page.items], nextCursor: page.nextCursor ?? ''}; }, [api, serverId], {on: CLIENT_REPORT_MOVES});
   const action = useAction();
   const [open, setOpen] = useState<{report: ClientReport; body?: string; error?: string}>();
   const [removing, setRemoving] = useState<ClientReport>();

@@ -67,7 +67,11 @@ export type SettingsCapabilities = Readonly<{
   accessTokens?: boolean;
 }>;
 
-export type SettingsContext = Readonly<{owner: boolean; platform: SettingsPlatform; capabilities: SettingsCapabilities}>;
+/**
+ * `owner`: the server's owner. `administrator`: an account of the administrator tier, which sees
+ * only the Server sections marked for administrators (what the server lets that tier do).
+ */
+export type SettingsContext = Readonly<{owner: boolean; administrator?: boolean; platform: SettingsPlatform; capabilities: SettingsCapabilities}>;
 
 export type SettingsChoice = Readonly<{value: string | number | boolean; label: MessageId; labelValues?: MessageValues}>;
 
@@ -159,7 +163,8 @@ const PLAYER_ENGINE_CHOICES: readonly SettingsChoice[] = [
 
 type Only = Readonly<{platforms?: readonly SettingsPlatform[]; needs?: (c: SettingsCapabilities) => boolean}>;
 type Authored<T> = T & Only;
-type AuthoredSection = Readonly<{id: string; title?: MessageId; description?: MessageId; advanced?: boolean; tab?: string; rows: readonly Authored<SettingsRow>[]}> & Only;
+/** `administrators`: an administrator (not only the owner) sees this section, because every call it makes is one the server allows that tier. */
+type AuthoredSection = Readonly<{id: string; title?: MessageId; description?: MessageId; advanced?: boolean; tab?: string; administrators?: boolean; rows: readonly Authored<SettingsRow>[]}> & Only;
 type AuthoredPage = Readonly<{id: string; title: MessageId; icon: IconId; tabs?: readonly SettingsTab[]; sections: readonly AuthoredSection[]}> & Only;
 
 const seconds = (...values: number[]): SettingsChoice[] => values.map(value => ({value, label: 'pref.unit.seconds', labelValues: {count: value}}));
@@ -192,7 +197,7 @@ const accountPages: readonly AuthoredPage[] = [
       {id: 'porticoAccount', rows: [custom('porticoAccount', 'settings.row.porticoAccount')]},
       {id: 'devices', title: 'settings.section.devices', rows: [custom('devices', 'settings.section.devices')], needs: c => c.manageDevices ?? !!c.localAccount},
       // For a member's own scripts and apps: kept out of the way until asked for. The owner makes API keys under Server › Integrations.
-      {id: 'tokens', title: 'api.tokens.title', advanced: true, rows: [custom('accessTokens', 'api.tokens.title')], platforms: ['web'], needs: c => !!c.accessTokens},
+      {id: 'tokens', title: 'api.tokens.title', advanced: true, rows: [custom('accessTokens', 'api.tokens.title')], platforms: ['web', 'phone'], needs: c => !!c.accessTokens},
       {id: 'session', rows: [{kind: 'action', id: 'signOut', label: 'action.signOut', icon: 'signOut', destructive: true}]},
     ],
   },
@@ -232,9 +237,9 @@ const accountPages: readonly AuthoredPage[] = [
         ]}, {help: 'settings.help.subtitleMode'}),
         pref('playback.preferredSubtitleLanguages', 'pref.label.playback.preferredSubtitleLanguages', {type: 'languages'}, {help: 'settings.help.subtitleLanguages'}),
       ]},
-      // The web player draws its own subtitles; Apple's system player styles them from the device's Accessibility settings.
-      {id: 'appearance', title: 'settings.section.subtitleAppearance', platforms: ['web'], rows: [
-        custom('subtitlePreview', 'settings.section.subtitleAppearance'),
+      // Every player engine draws captions in this style, on top of the device's own Accessibility caption settings; the preview is the web's.
+      {id: 'appearance', title: 'settings.section.subtitleAppearance', rows: [
+        custom('subtitlePreview', 'settings.section.subtitleAppearance', {platforms: ['web']}),
         pref('playback.subtitleSize', 'settings.row.subtitleSize', {type: 'choice', choices: (['small', 'medium', 'large', 'extra-large'] as const).map(value => ({value, label: `settings.subtitleSize.${value}` as MessageId}))}),
         pref('playback.subtitleBackground', 'settings.row.subtitleBackground', {type: 'choice', choices: (['none', 'translucent', 'opaque'] as const).map(value => ({value, label: `settings.subtitleBackground.${value}` as MessageId}))}),
       ]},
@@ -279,8 +284,9 @@ const accountPages: readonly AuthoredPage[] = [
   {
     id: 'appearance', title: 'settings.page.appearance', icon: 'sliders', sections: [
       {id: 'look', rows: [
-        {kind: 'composite', id: 'cardSize', storage: 'registry', label: 'settings.row.cardSize', scope: 'deviceClass', platforms: ['web'], control: {type: 'choice', choices: [{value: 'small', label: 'settings.cardSize.small'}, {value: 'medium', label: 'settings.cardSize.medium'}, {value: 'large', label: 'settings.cardSize.large'}]}},
-        toggle('appearance.showBackdrops', 'pref.label.appearance.showBackdrops', {scope: 'deviceClass', help: 'settings.help.backdrops', platforms: ['web']}),
+        // Every app draws cards at this size and backdrops behind titles (the shell applies both).
+        {kind: 'composite', id: 'cardSize', storage: 'registry', label: 'settings.row.cardSize', scope: 'deviceClass', needs: c => !c.preferenceKeys || c.preferenceKeys.has('appearance.cardSizePercent'), control: {type: 'choice', choices: [{value: 'small', label: 'settings.cardSize.small'}, {value: 'medium', label: 'settings.cardSize.medium'}, {value: 'large', label: 'settings.cardSize.large'}]}},
+        toggle('appearance.showBackdrops', 'pref.label.appearance.showBackdrops', {scope: 'deviceClass', help: 'settings.help.backdrops'}),
         toggle('appearance.reduceMotion', 'pref.label.appearance.reduceMotion', {scope: 'deviceClass', help: 'pref.help.appearance.reduceMotion.web', platforms: ['web']}),
         // Apple keeps this on the device, beside the system's own Reduce Motion.
         {kind: 'composite', id: 'reduceMotion', storage: 'device', label: 'pref.label.appearance.reduceMotion', help: 'settings.help.reduceMotionDevice', scope: 'device', platforms: ['phone', 'tv'], control: {type: 'switch'}},
@@ -331,10 +337,13 @@ const accountPages: readonly AuthoredPage[] = [
 // A dozen pages in place of the console's fifteen sections; each duplicated concept has one home.
 // Status is at the top of a page and settings below it. Plain settings are `server-setting`
 // rows, written once for the web and the iPhone app; the rest are panels each client draws.
-// Television shows the Dashboard only (who is watching, alerts, health).
+// Phones and tablets have the owner's administration as on the web (Justin, 14 Oct 2026);
+// television shows the read-only Dashboard only (who is watching, alerts, health).
+// An administrator sees the sections marked `administrators`: what the server lets that tier do
+// (who is watching and their transport, people below them, invitations, devices, logs).
 
 const TV_SERVER_PAGES = new Set(['dashboard']);
-const panel = (id: string, panelId: SettingsCustomId, title?: MessageId, more: Only & {tab?: string; description?: MessageId} = {}): AuthoredSection => ({id, ...(title ? {title} : {}), rows: [custom(panelId, title)], ...more});
+const panel = (id: string, panelId: SettingsCustomId, title?: MessageId, more: Only & {tab?: string; description?: MessageId; administrators?: boolean} = {}): AuthoredSection => ({id, ...(title ? {title} : {}), rows: [custom(panelId, title)], ...more});
 const setting = (form: ServerFormId, key: string, label: MessageId, control: ServerControl, more: {help?: MessageId; when?: ServerSettingRow['when']} = {}): Authored<SettingsRow> => ({kind: 'server-setting', form, key, label, control, ...more});
 const on = (form: ServerFormId, key: string, label: MessageId, help?: MessageId, when?: ServerSettingRow['when']) => setting(form, key, label, {type: 'switch'}, {...(help ? {help} : {}), ...(when ? {when} : {})});
 const choices = (prefix: string, values: readonly string[]): SettingsChoice[] => values.map(value => ({value, label: `${prefix}.${value}` as MessageId}));
@@ -344,7 +353,7 @@ const PAUSED_MINUTES = [0, 15, 30, 60, 120, 240];
 
 const serverPages: readonly AuthoredPage[] = [
   {id: 'dashboard', title: 'settings.server.dashboard', icon: 'pulse', sections: [
-    panel('nowPlaying', 'server.nowPlaying', 'settings.server.nowPlaying'),
+    panel('nowPlaying', 'server.nowPlaying', 'settings.server.nowPlaying', {administrators: true}),
     panel('alerts', 'server.alerts', 'settings.server.alerts'),
     panel('health', 'server.health', 'settings.server.health'),
     panel('activity', 'server.activity', 'settings.server.activity'),
@@ -355,7 +364,7 @@ const serverPages: readonly AuthoredPage[] = [
   {id: 'libraries', title: 'settings.server.libraries', icon: 'library', sections: [panel('libraries', 'server.libraries')]},
   // What every library shares when it looks titles up: the owner's own provider keys and how much local artwork is kept.
   // Which provider a library uses is that library's own setting (Libraries › a library › Metadata).
-  {id: 'metadata', title: 'settings.server.metadata', icon: 'image', platforms: ['web'], sections: [panel('settings', 'server.metadataSettings', 'settings.server.metadata')]},
+  {id: 'metadata', title: 'settings.server.metadata', icon: 'image', platforms: ['web', 'phone'], sections: [panel('settings', 'server.metadataSettings', 'settings.server.metadata')]},
   {id: 'live', title: 'settings.server.live', icon: 'live', needs: c => c.liveTV !== false,
     tabs: [{id: 'sources', title: 'settings.server.liveSources'}, {id: 'recording', title: 'settings.server.recording'}, {id: 'channels', title: 'settings.server.libraryChannels'}],
     sections: [
@@ -393,19 +402,17 @@ const serverPages: readonly AuthoredPage[] = [
       panel('channels', 'server.channels', undefined, {tab: 'channels'}),
     ]},
   {id: 'people', title: 'settings.server.people', icon: 'people',
-    tabs: [{id: 'accounts', title: 'settings.server.accounts'}, {id: 'invitations', title: 'settings.server.invitations'}, {id: 'devices', title: 'settings.section.devices'}, {id: 'keys', title: 'settings.server.apiKeys'}],
+    tabs: [{id: 'accounts', title: 'settings.server.accounts'}, {id: 'invitations', title: 'settings.server.invitations'}, {id: 'devices', title: 'settings.section.devices'}],
     sections: [
-      panel('accounts', 'server.accounts', undefined, {tab: 'accounts'}),
-      panel('invitations', 'server.invitations', undefined, {tab: 'invitations'}),
+      panel('accounts', 'server.accounts', undefined, {tab: 'accounts', administrators: true}),
+      panel('invitations', 'server.invitations', undefined, {tab: 'invitations', administrators: true}),
       // Holding new devices until the owner approves them, and every device that has signed in, newest first.
       {id: 'deviceApproval', tab: 'devices', rows: [on('runtime', 'deviceApprovalRequired', 'server.people.deviceApproval', 'server.people.deviceApprovalHelp')]},
-      panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web']}),
-      // The web has a page for keys, tokens, webhooks and assistants; the phone keeps its keys list here.
-      panel('apiKeys', 'server.apiKeys', undefined, {tab: 'keys', platforms: ['phone']}),
+      panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web'], administrators: true}),
     ]},
   // Everything another program uses to work with this server, in one place: the owner's keys, members' own tokens,
   // messages sent out when something happens, and the address an assistant connects to.
-  {id: 'integrations', title: 'settings.server.integrations', icon: 'link', platforms: ['web'],
+  {id: 'integrations', title: 'settings.server.integrations', icon: 'link', platforms: ['web', 'phone'],
     tabs: [{id: 'keys', title: 'settings.server.apiKeys'}, {id: 'tokens', title: 'settings.server.memberTokens'}, {id: 'webhooks', title: 'api.webhooks.title'}, {id: 'assistants', title: 'settings.server.assistants'}],
     sections: [
       panel('apiKeys', 'server.apiKeys', 'settings.server.apiKeys', {tab: 'keys'}),
@@ -452,7 +459,7 @@ const serverPages: readonly AuthoredPage[] = [
       setting('connectivity', 'pausedSessionTimeoutMinutes', 'web.connectivity.pausedLimit', {type: 'choice', choices: PAUSED_MINUTES.map(value => ({value, label: (value === 0 ? 'web.connectivity.pausedNever' : value === 60 ? 'web.connectivity.pausedHour' : value % 60 === 0 ? 'web.connectivity.pausedHours' : 'web.connectivity.pausedMinutes') as MessageId, labelValues: {count: value % 60 === 0 ? value / 60 : value}}))}, {help: 'web.connectivity.pausedLimitHelp'}),
     ]},
     // Ways of playing a file that failed on a device and are being avoided for a while; absent while there are none.
-    panel('problems', 'server.playbackProblems', 'server.routes.title', {platforms: ['web']}),
+    panel('problems', 'server.playbackProblems', 'server.routes.title', {platforms: ['web', 'phone']}),
   ]},
   {id: 'remote', title: 'settings.server.remote', icon: 'network', sections: [
     panel('status', 'server.remoteStatus'),
@@ -517,9 +524,9 @@ const serverPages: readonly AuthoredPage[] = [
       custom('server.retention'),
     ]},
     // Where the server keeps things, what is in use against the limits, and what downloads take, person by person.
-    panel('usage', 'server.resourceUsage', 'server.usage.title', {platforms: ['web']}),
-    panel('places', 'server.storageStatus', 'server.places.title', {platforms: ['web']}),
-    panel('downloadUsage', 'server.downloadUsage', 'server.downloadUsage.title', {platforms: ['web']}),
+    panel('usage', 'server.resourceUsage', 'server.usage.title', {platforms: ['web', 'phone']}),
+    panel('places', 'server.storageStatus', 'server.places.title', {platforms: ['web', 'phone']}),
+    panel('downloadUsage', 'server.downloadUsage', 'server.downloadUsage.title', {platforms: ['web', 'phone']}),
     panel('sources', 'server.remoteSources', 'settings.server.remoteSources'),
     panel('backups', 'server.backups', 'settings.server.backups'),
     {id: 'missing', title: 'settings.server.missingTitles', description: 'settings.server.missingTitlesLede', rows: [
@@ -540,13 +547,13 @@ const serverPages: readonly AuthoredPage[] = [
   {id: 'troubleshooting', title: 'settings.server.troubleshooting', icon: 'wrench', sections: [
     // One control for more detail, in place of three.
     {id: 'detail', rows: [custom('server.detailWindow', 'settings.server.detailWindow')]},
-    panel('logs', 'server.logs', 'settings.server.logs'),
+    panel('logs', 'server.logs', 'settings.server.logs', {administrators: true}),
     panel('records', 'server.records', 'settings.server.records'),
     panel('capabilities', 'server.capabilities', 'settings.server.capabilities'),
     // Logs an app sent after something went wrong: to read, download and delete.
     // Titles a rebuild could not finish, with why: present only while there are any.
-    panel('setAside', 'server.setAsideTitles', 'server.setAside.title', {platforms: ['web']}),
-    panel('clientReports', 'server.clientReports', 'web.diagnostics.clientReports', {platforms: ['web']}),
+    panel('setAside', 'server.setAsideTitles', 'server.setAside.title', {platforms: ['web', 'phone'], administrators: true}),
+    panel('clientReports', 'server.clientReports', 'web.diagnostics.clientReports', {platforms: ['web', 'phone']}),
     panel('export', 'server.supportExport', 'settings.server.supportExport'),
     panel('feedback', 'server.feedback', 'settings.server.feedback'),
     panel('state', 'server.stateFolder'),
@@ -557,7 +564,7 @@ const serverPages: readonly AuthoredPage[] = [
       custom('server.identity'),
     ]},
     panel('updates', 'server.updates', 'settings.server.updates'),
-    panel('restart', 'server.restart', 'web.maintenance.serverRestart', {platforms: ['web']}),
+    panel('restart', 'server.restart', 'web.maintenance.serverRestart', {platforms: ['web', 'phone']}),
     {id: 'alerts', title: 'settings.server.alertThresholds', description: 'web.alerts.lede', rows: [
       setting('alerts', 'storageWarningPercent', 'web.alerts.storageWarning', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageWarningHelp'}),
       setting('alerts', 'storageCriticalPercent', 'web.alerts.storageCritical', {type: 'number', min: 1, max: 50, unit: 'settings.unit.percent'}, {help: 'web.alerts.storageCriticalHelp'}),
@@ -577,14 +584,14 @@ function strip<T extends Only>(item: T): Omit<T, 'platforms' | 'needs'> {
   return rest;
 }
 
-function resolve(pages: readonly AuthoredPage[], context: SettingsContext): SettingsPage[] {
+function resolve(pages: readonly AuthoredPage[], context: SettingsContext, administratorOnly = false): SettingsPage[] {
   const keys = context.capabilities.preferenceKeys;
   const out: SettingsPage[] = [];
   for (const authored of pages) {
     if (!allowed(authored, context)) continue;
     const sections: SettingsSection[] = [];
     for (const section of authored.sections) {
-      if (!allowed(section, context)) continue;
+      if (!allowed(section, context) || administratorOnly && !section.administrators) continue;
       const rows = section.rows.filter(row => allowed(row, context) && (row.kind !== 'preference' || !keys || keys.has(row.key))).map(row => strip(row) as SettingsRow);
       if (rows.length) sections.push({id: section.id, ...(section.title ? {title: section.title} : {}), ...(section.description ? {description: section.description} : {}), ...(section.advanced ? {advanced: true} : {}), ...(section.tab ? {tab: section.tab} : {}), rows});
     }
@@ -605,11 +612,11 @@ export function settingsScopeLabel(scope: SettingsScope | undefined, platform: S
   return undefined;
 }
 
-/** The Settings screen for this viewer on this device: Account for everyone, Server for owners. */
+/** The Settings screen for this viewer on this device: Account for everyone, Server for owners and (what they may do) administrators. */
 export function settingsStructure(context: SettingsContext): SettingsStructure {
   const headings: SettingsHeading[] = [{id: 'account', title: 'settings.heading.account', pages: resolve(accountPages, context)}];
-  if (context.owner) {
-    const pages = resolve(context.platform === 'tv' ? serverPages.filter(p => TV_SERVER_PAGES.has(p.id)) : serverPages, context);
+  if (context.owner || context.administrator) {
+    const pages = resolve(context.platform === 'tv' ? serverPages.filter(p => TV_SERVER_PAGES.has(p.id)) : serverPages, context, !context.owner);
     if (pages.length) headings.push({id: 'server', title: 'settings.heading.server', pages});
   }
   return Object.freeze({headings});

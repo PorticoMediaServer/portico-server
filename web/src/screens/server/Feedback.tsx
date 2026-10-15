@@ -3,11 +3,14 @@ import {feedbackCategoryName, feedbackStatusName} from '@core/server-admin/conso
 import {useState} from 'react';
 import type {FeedbackReport, FeedbackStatus} from '@core/console.ts';
 export {feedbackCategoryLabel} from '@core/server-admin/panel-logic.ts';
-import {QUIET_READ_EVERY_MS, sendFresh, useAction, useConsole, useRead, when} from '../../admin/console';
+import {sendFresh, useAction, useConsole, useRead, when} from '../../admin/console';
 import {devicePlatform} from '@core/server-admin/people-words.ts';
 import {Badge, Button, Dialog, Freshness, Notice, Select, SettingsEmpty, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Text, TextArea} from '../../ui';
 import {useI18n} from '../../app/i18n';
 import s from './Server.module.css';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const FEEDBACK_MOVES = [dependsOn.list('feedback')];
 
 const statusTone = (v: FeedbackStatus): 'accent' | 'warning' | 'healthy' | 'neutral' => (v === 'open' ? 'accent' : v === 'in-progress' ? 'warning' : v === 'resolved' ? 'healthy' : 'neutral');
 /** Viewer feedback: reports as an inbox, triaged in a dialog with a reply. */
@@ -16,7 +19,7 @@ export function FeedbackPanel() {
   const i18n = useI18n();
   const {t} = i18n;
   // A report a viewer sends shows here by itself.
-  const read = useRead(() => client.reports(true), [client], {every: QUIET_READ_EVERY_MS});
+  const read = useRead(() => client.reports(true), [client], {on: FEEDBACK_MOVES});
   const has = (id: string) => i18n.has(id);
   const [selected, setSelected] = useState<FeedbackReport | null>(null);
   const items = read.data?.items ?? [];

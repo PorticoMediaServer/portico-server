@@ -8,7 +8,7 @@ import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
 import {useV1Events} from '../../player/engine';
 import {problem, useAction} from '../../admin/console';
-import {NOW_PLAYING_ROW_PX, REMOTE_SKIP_MS, STOP_MESSAGE_MAX, driveNowPlaying, sendTransport, sessionFacts, sessionViewer, stopMessage, transportOffers, windowRange, type TransportCommand} from '../../admin/now-playing';
+import {NOW_PLAYING_ROW_PX, REMOTE_SKIP_MS, STOP_MESSAGE_MAX, clampToLength, driveNowPlaying, offersScrubber, playedFraction, positionClock, sendSeekTo, sendTransport, sessionFacts, sessionViewer, stopMessage, transportOffers, windowRange, type TransportCommand} from '../../admin/now-playing';
 import {Badge, Button, ConfirmDialog, Freshness, Menu, Notice, Skeleton, StateView, Surface, Text, TextArea, type IconName, type MenuItem} from '../../ui';
 import s from './Server.module.css';
 import css from './NowPlaying.module.css';
@@ -34,11 +34,16 @@ function V1NowPlaying() {
   // Transport is not a change to the server: it has its own small state, and the list follows it by the feed.
   const [sending, setSending] = useState(false);
   const [refused, setRefused] = useState('');
-  const send = (x: AdminSession, command: TransportCommand) => {
+  const send = (x: AdminSession, command: TransportCommand | {to: number}) => {
     if (sending) return;
     setSending(true); setRefused('');
-    sendTransport(controls, x.id, command).then(() => {}, e => setRefused(problem(e, 'action'))).finally(() => { setSending(false); void store.refresh(); });
+    const sent = typeof command === 'object' ? sendSeekTo(controls, x.id, command.to) : sendTransport(controls, x.id, command);
+    sent.then(() => {}, e => setRefused(problem(e, 'action'))).finally(() => { setSending(false); void store.refresh(); });
   };
+  // Move to…: a position bar for the whole title, in a small dialog of its own.
+  const [moving, setMoving] = useState<AdminSession | null>(null);
+  const [target, setTarget] = useState(0);
+  const startMove = (x: AdminSession) => { setMoving(x); setTarget(x.positionMs); };
   const [stop, setStop] = useState<AdminSession | null>(null);
   const [message, setMessage] = useState('');
   const items = snap.sessions;
@@ -55,7 +60,23 @@ function V1NowPlaying() {
       {!loaded && !snap.error ? <div className={css.pending}><Skeleton height={14} width="60%" /><Skeleton height={14} width="45%" /></div> : null}
       {loaded && !items.length ? <StateView inline icon="play" title={t('web.nowPlaying.empty')} /> : null}
       {refused ? <div style={{padding: '12px 16px 0'}}><Notice tone="error" compact>{refused}</Notice></div> : null}
-      {items.length ? <SessionList items={items} busy={sending} onStop={open} onSend={send} /> : null}
+      {items.length ? <SessionList items={items} busy={sending} onStop={open} onSend={send} onMove={startMove} /> : null}
+      <ConfirmDialog
+        open={!!moving}
+        onOpenChange={o => !o && setMoving(null)}
+        title={t('web.nowPlaying.moveTitle', {title: moving?.title || t('web.nowPlaying.untitled')})}
+        body={moving?.durationMs ? (
+          <div style={{display: 'grid', gap: 8}}>
+            <span>{t('web.nowPlaying.moveBody', {viewer: viewer(moving)})}</span>
+            <input type="range" className={css.scrub} min={0} max={moving.durationMs} step={1000} value={target} aria-label={t('player.position')}
+              aria-valuetext={t('player.clockOf', {position: positionClock(target), duration: positionClock(moving.durationMs)})} onChange={e => setTarget(clampToLength(Number(e.target.value), moving.durationMs))} />
+            <Text variant="caption" tone="secondary">{t('player.clockOf', {position: positionClock(target), duration: positionClock(moving.durationMs)})}</Text>
+          </div>
+        ) : undefined}
+        confirmLabel={t('web.nowPlaying.moveConfirm')}
+        busy={sending}
+        onConfirm={() => { if (moving) { send(moving, {to: target}); setMoving(null); } }}
+      />
       <ConfirmDialog
         open={!!stop}
         onOpenChange={o => !o && open(null)}
@@ -78,7 +99,7 @@ function V1NowPlaying() {
 /** Only the rows in view are rendered (the scale rule), at a fixed pitch. */
 const transportIcons: Record<TransportCommand, IconName> = {pause: 'pause', resume: 'play', back: 'arrowLeft', forward: 'arrowRight', startOver: 'restart'};
 
-function SessionList({items, busy, onStop, onSend}: {items: readonly AdminSession[]; busy: boolean; onStop: (x: AdminSession) => void; onSend: (x: AdminSession, command: TransportCommand) => void}) {
+function SessionList({items, busy, onStop, onSend, onMove}: {items: readonly AdminSession[]; busy: boolean; onStop: (x: AdminSession) => void; onSend: (x: AdminSession, command: TransportCommand) => void; onMove: (x: AdminSession) => void}) {
   const {t} = useI18n();
   const navigate = useNavigate();
   const box = useRef<HTMLDivElement>(null);
@@ -98,6 +119,7 @@ function SessionList({items, busy, onStop, onSend}: {items: readonly AdminSessio
   const words: Record<TransportCommand, string> = {pause: t('action.pause'), resume: t('entry.resume'), back: t('player.skipBackSeconds', {seconds}), forward: t('player.skipForwardSeconds', {seconds}), startOver: t('action.startOver')};
   const menu = (x: AdminSession): MenuItem[] => [
     ...transportOffers(x).map(command => ({id: command, label: words[command], icon: transportIcons[command], disabled: busy})),
+    ...(offersScrubber(x) ? [{id: 'move', label: t('web.nowPlaying.moveTo'), icon: 'clock' as IconName, disabled: busy}] : []),
     ...(x.itemId ? [{id: 'open', label: t('action.details'), icon: 'info' as IconName, separatorBefore: true}] : []),
   ];
   return (
@@ -112,8 +134,9 @@ function SessionList({items, busy, onStop, onSend}: {items: readonly AdminSessio
             <div className={css.actions}>
               <Button size="sm" variant="secondary" label={t('web.nowPlaying.stop')} onClick={() => onStop(x)} />
               <Menu label={x.title || t('web.nowPlaying.untitled')} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('web.nowPlaying.controls', {title: x.title || t('web.nowPlaying.untitled')})} />} items={menu(x)}
-                onSelect={id => { if (id === 'open') { if (x.itemId) void navigate({to: '/media/$itemId', params: {itemId: x.itemId}, search: {}}); } else onSend(x, id as TransportCommand); }} />
+                onSelect={id => { if (id === 'open') { if (x.itemId) void navigate({to: '/media/$itemId', params: {itemId: x.itemId}, search: {}}); } else if (id === 'move') onMove(x); else onSend(x, id as TransportCommand); }} />
             </div>
+            {playedFraction(x) !== undefined ? <span className={css.progress} aria-hidden style={{width: `${playedFraction(x)! * 100}%`}} /> : null}
           </div>
         ))}
       </div>

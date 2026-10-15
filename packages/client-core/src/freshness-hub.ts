@@ -51,7 +51,20 @@ export const dependsOn = Object.freeze({
   clock: (name: string): FreshnessDependency => `clock:${name}`,
   /** Any other event type on the feed (`notification.changed`, `library.scan.updated`), optionally for one resource. */
   event: (type: string, resourceId?: string): FreshnessDependency => (resourceId ? `event:${type}:${resourceId}` : `event:${type}`),
+  /** One of the lists the server sends a `list.changed` hint for (keys, members, sources...). */
+  list: (name: ServerList): FreshnessDependency => `event:list.changed:${name}`,
 });
+
+/**
+ * The lists the server hints about. The owner and administrators hear every one but
+ * `accessTokens` and `togetherGroups`, which are a profile's own and heard by that profile.
+ */
+export type ServerList =
+  | 'apiKeys' | 'memberTokens' | 'accessTokens' | 'webhooks' | 'members' | 'invitations' | 'devices'
+  | 'clientReports' | 'feedback' | 'downloads' | 'remoteSources' | 'liveSources' | 'tuners'
+  | 'recordingGroups' | 'recordingStorage' | 'libraryChannels' | 'playbackProblems'
+  /** The Watch Together rooms this profile is in (heard by the profile). */
+  | 'togetherGroups';
 
 /** Everything a screen of titles with personal marks depends on, for one library or all of them. */
 export function titlesWithPersonalState(libraryId?: string): readonly FreshnessDependency[] {
