@@ -38,7 +38,7 @@ test('the file is well formed: Portico first, every text present, sources stated
   assert.match(data.texts[data.components[0]!.text!]!, /GNU GENERAL PUBLIC LICENSE\s+Version 3/);
   for (const c of data.components) {
     assert.ok(c.text === undefined || typeof data.texts[c.text] === 'string', c.id);
-    assert.ok(c.text !== undefined || c.textPending, `${c.id} has no licence text`);
+    assert.ok(c.text !== undefined || c.textPending || (c.textAtUrl && c.url), `${c.id} has no licence text`);
   }
   assert.equal(new Set(data.texts).size, data.texts.length, 'identical texts are stored once');
   assert.deepEqual(data.sources.map(s => s.id), ['portico', 'ffmpeg']);

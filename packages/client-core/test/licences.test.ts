@@ -77,6 +77,7 @@ test('Maven licence names and POM fields', () => {
   assert.equal(spdxFromMavenName('MIT License'), 'MIT');
   assert.equal(spdxFromMavenName('Android Software Development Kit License'), 'Android Software Development Kit License');
   const pom = readPom('<project><parent><groupId>g</groupId><artifactId>p</artifactId><version>1</version></parent><url>https://x.invalid</url><organization><name>Org</name></organization><licenses><license><name>MIT</name><url>u</url></license></licenses></project>');
+  assert.equal(pom.licenceUrl, 'u');
   assert.deepEqual(pom.licences, ['MIT']);
   assert.equal(pom.organisation, 'Org');
   assert.equal(pom.url, 'https://x.invalid');
@@ -86,10 +87,12 @@ test('Maven licence names and POM fields', () => {
 });
 
 test('Podfile.lock pods and their sources', () => {
-  const lock = 'PODS:\n  - boost (1.84.0)\n  - hermes-engine (0.14.1):\n    - hermes-engine/Pre-built (= 0.14.1)\n  - hermes-engine/Pre-built (0.14.1)\n  - "RCT-Folly/Default (2024.11.18.00)":\n    - boost\n\nDEPENDENCIES:\n  - boost (from `x`)\n\nEXTERNAL SOURCES:\n  boost:\n    :podspec: "../node_modules/react-native/third-party-podspecs/boost.podspec"\n  React-Core:\n    :path: "../node_modules/react-native/"\n\nCOCOAPODS: 1.16.2\n';
+  const lock = 'PODS:\n  - boost (1.84.0)\n  - hermes-engine (0.14.1):\n    - hermes-engine/Pre-built (= 0.14.1)\n  - hermes-engine/Pre-built (0.14.1)\n  - "RCT-Folly/Default (2024.11.18.00)":\n    - boost\n\nDEPENDENCIES:\n  - boost (from `x`)\n\nEXTERNAL SOURCES:\n  boost:\n    :podspec: "../node_modules/react-native/third-party-podspecs/boost.podspec"\n  React-Core:\n    :path: "../node_modules/react-native/"\n  RNSVG:\n    :path: "../node_modules/react-native-svg"\n\nCOCOAPODS: 1.16.2\n';
   assert.deepEqual(readPodfileLock(lock), [{name: 'boost', version: '1.84.0'}, {name: 'hermes-engine', version: '0.14.1'}, {name: 'RCT-Folly', version: '2024.11.18.00'}]);
   assert.deepEqual(podSources(lock).get('boost'), {podspec: '../node_modules/react-native/third-party-podspecs/boost.podspec'});
   assert.deepEqual(podSources(lock).get('React-Core'), {path: '../node_modules/react-native/'});
+  // A pod whose name is all capitals is a pod, not the start of the next section.
+  assert.deepEqual(podSources(lock).get('RNSVG'), {path: '../node_modules/react-native-svg'});
 });
 
 const sample: LicenceData = {

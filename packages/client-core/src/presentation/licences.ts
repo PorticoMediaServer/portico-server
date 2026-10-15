@@ -33,6 +33,8 @@ export type LicenceComponent = {
   only?: string[];
   /** The text could not be collected where the file was generated (an Apple pod read on a Mac). */
   textPending?: boolean;
+  /** The licence's terms are a web page (`url`), not a file in the component (Google's SDK terms). */
+  textAtUrl?: boolean;
 };
 
 /** Where the corresponding source is published (top of the screen). */

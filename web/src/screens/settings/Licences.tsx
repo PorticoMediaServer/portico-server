@@ -78,7 +78,7 @@ export function LicenceView({data, id}: {data: LicenceData; id: string}) {
         </SettingsGroup>
       ) : null}
       <SettingsGroup title={t('licenses.text')}>
-        {text ? <pre className={s.licenceText} tabIndex={0}>{text}</pre> : <p className={s.sectionLede}>{t('licenses.textMissing')}</p>}
+        {text ? <pre className={s.licenceText} tabIndex={0}>{text}</pre> : <p className={s.sectionLede}>{t(component.textAtUrl ? 'licenses.textAtWebsite' : 'licenses.textMissing')}</p>}
       </SettingsGroup>
     </div>
   );

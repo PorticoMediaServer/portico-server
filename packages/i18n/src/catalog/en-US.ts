@@ -1092,6 +1092,7 @@ export const enUS = {
   'licenses.copyright': 'Copyright',
   'licenses.website': 'Website',
   'licenses.text': 'License text',
+  'licenses.textAtWebsite': 'The terms of this license are published on its website.',
   'licenses.textMissing': 'The full text of this license isn’t shown here. It comes with the component’s source code.',
   'licenses.loading': 'Loading licenses',
   'licenses.unavailable': 'The list of licenses couldn’t be loaded.',

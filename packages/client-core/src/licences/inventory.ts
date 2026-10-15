@@ -2,7 +2,7 @@ import type {LicenceComponent, LicenceData, LicenceGroup, LicenceSource} from '.
 
 /**
  * Building blocks of the licence generators (web: `web/scripts/licences.ts`; the apps:
- * `apps/native/scripts/licences.ts`). Pure: the scripts read the files and pass their contents
+ * `apps/native/scripts/licences.mts`). Pure: the scripts read the files and pass their contents
  * in, so the same rules (what counts as bundled, how a text is cleaned, how texts are shared)
  * hold for every client and are tested once.
  */
@@ -184,14 +184,15 @@ export function spdxFromMavenName(name: string): string {
 }
 
 /** `<licenses>` names and `<organization>`/`<url>` of a POM, read with a few regular expressions (POMs are simple). */
-export function readPom(xml: string): {licences: string[]; organisation?: string; url?: string; parent?: {group: string; artifact: string; version: string}} {
+export function readPom(xml: string): {licences: string[]; licenceUrl?: string; organisation?: string; url?: string; parent?: {group: string; artifact: string; version: string}} {
   const licences = [...xml.matchAll(/<license>[\s\S]*?<name>\s*([^<]+?)\s*<\/name>[\s\S]*?<\/license>/g)].map(m => m[1]!);
+  const licenceUrl = xml.match(/<license>[\s\S]*?<url>\s*([^<]+?)\s*<\/url>[\s\S]*?<\/license>/)?.[1];
   const organisation = xml.match(/<organization>[\s\S]*?<name>\s*([^<]+?)\s*<\/name>/)?.[1];
   const project = xml.replace(/<parent>[\s\S]*?<\/parent>/, '').replace(/<(licenses|developers|organization|scm|dependencies|dependencyManagement|build|distributionManagement)>[\s\S]*?<\/\1>/g, '');
   const url = project.match(/<url>\s*([^<]+?)\s*<\/url>/)?.[1];
   const p = xml.match(/<parent>([\s\S]*?)<\/parent>/)?.[1];
   const parent = p ? {group: p.match(/<groupId>([^<]+)</)?.[1] ?? '', artifact: p.match(/<artifactId>([^<]+)</)?.[1] ?? '', version: p.match(/<version>([^<]+)</)?.[1] ?? ''} : undefined;
-  return {licences, ...(organisation ? {organisation} : {}), ...(url ? {url} : {}), ...(parent ? {parent} : {})};
+  return {licences, ...(licenceUrl ? {licenceUrl} : {}), ...(organisation ? {organisation} : {}), ...(url ? {url} : {}), ...(parent ? {parent} : {})};
 }
 
 /** `group:artifact:version` lines (comments and blanks ignored), as Gradle's check writes them. */
@@ -209,7 +210,7 @@ export function readDependencyList(text: string): {group: string; artifact: stri
 /** The pods of a Podfile.lock (top-level names, without subspecs) and their versions. */
 export function readPodfileLock(text: string): {name: string; version: string}[] {
   const pods = new Map<string, string>();
-  const section = text.split(/\n(?=[A-Z ]+:\n)/).find(s => s.startsWith('PODS:')) ?? '';
+  const section = text.split(/\n(?=[A-Z][A-Z ]*:\n)/).find(s => s.startsWith('PODS:')) ?? '';
   for (const m of section.matchAll(/^  - "?([^\s"(]+) \(([^)]+)\)"?:?$/gm)) {
     const name = m[1]!.split('/')[0]!;
     if (!pods.has(name)) pods.set(name, m[2]!);
@@ -220,7 +221,7 @@ export function readPodfileLock(text: string): {name: string; version: string}[]
 /** Where each pod comes from (`:path` / `:podspec` under EXTERNAL SOURCES); absent for trunk pods. */
 export function podSources(text: string): Map<string, {path?: string; podspec?: string}> {
   const out = new Map<string, {path?: string; podspec?: string}>();
-  const section = text.split(/\n(?=[A-Z ]+:\n)/).find(s => s.startsWith('EXTERNAL SOURCES:')) ?? '';
+  const section = text.split(/\n(?=[A-Z][A-Z ]*:\n)/).find(s => s.startsWith('EXTERNAL SOURCES:')) ?? '';
   let current: string | undefined;
   for (const line of section.split('\n').slice(1)) {
     const name = line.match(/^  "?([^\s":]+)"?:$/)?.[1];
