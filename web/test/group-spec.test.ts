@@ -26,6 +26,7 @@ test('an author lists books, a book its parts; a kind with no pivot of its own h
   assert.equal(entityGroups('lib', 'audiobook', {kind: 'author', id: 'w'}).titles?.pivot, 'books');
   assert.deepEqual(entityGroups('lib', 'audiobook', {kind: 'book', id: 'b'}).titles, {libraryId: 'lib', libraryKind: 'audiobook', pivot: 'parts', base: [{field: 'memberOf', operator: 'equals', value: 'b'}], own: 'parts'});
   assert.deepEqual(entityGroups('lib', 'music', {kind: 'disc', id: 'd'}), {});
+  assert.deepEqual(entityGroups('lib', 'music', {kind: 'disc', id: 'alb:disc:2'}).songs?.base, [{field: 'memberOf', operator: 'equals', value: 'alb'}, {field: 'discNumber', operator: 'equals', value: 2}]);
   assert.deepEqual(entityGroups('lib', 'unknown', {kind: 'collection', id: 'c'}), {titles: undefined});
   assert.deepEqual(entityGroups('', 'movie', {kind: 'collection', id: 'c'}), {});
   assert.deepEqual(entityGroups('lib', 'movie', undefined), {});

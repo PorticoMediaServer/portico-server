@@ -85,6 +85,11 @@ export function entityGroups(libraryId: string, libraryKind: string, entity: Rea
     case 'collection': return {titles: of(titlePivot(libraryKind), {field: 'collection', operator: 'equals', value: entity.id}, {own: 'collection'})};
     case 'artist': return libraryKind === 'music' ? {titles: of('albums', member(entity.id), {own: 'default'}), songs: of('songs', member(entity.id), {own: 'default'})} : {};
     case 'album': return libraryKind === 'music' ? {songs: of('songs', member(entity.id), {opening: {field: 'trackNumber', direction: 'asc'}})} : {};
+    // One disc of an album ("<album id>:disc:<n>"): the album's songs on that disc.
+    case 'disc': {
+      const disc = /^(.+):disc:(\d+)$/.exec(entity.id);
+      return libraryKind === 'music' && disc ? {songs: {libraryId, libraryKind, pivot: 'songs', base: [member(disc[1]!), {field: 'discNumber', operator: 'equals', value: Number(disc[2])}], opening: {field: 'trackNumber', direction: 'asc'}}} : {};
+    }
     case 'author': return libraryKind === 'audiobook' ? {titles: of('books', member(entity.id), {own: 'default'})} : {};
     // A book's parts, read as the library's parts pivot within the book.
     case 'book': return libraryKind === 'audiobook' ? {titles: of('parts', member(entity.id), {own: 'parts'})} : {};
