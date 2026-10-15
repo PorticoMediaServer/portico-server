@@ -1,8 +1,13 @@
 package httpapi
 
 import (
+	"context"
+	"database/sql"
 	"strings"
 	"testing"
+
+	"portico.local/server/internal/apievents"
+	"portico.local/server/internal/dbwork"
 )
 
 func TestPlaybackCredentialCannotAdministerOtherMembers(t *testing.T) {
@@ -62,6 +67,31 @@ func TestReadCredentialDoesNotReceiveOwnerEvents(t *testing.T) {
 		hasPrivate := strings.Contains(body, "private-owner-operation")
 		if hasPrivate != (token != read.Secret) {
 			t.Fatalf("owner events for credential: %s", body)
+		}
+	}
+}
+
+func TestListHintsReachOwnerAndAdministratorsOnly(t *testing.T) {
+	f := administrationFixtureNew(t)
+	issueCredential(t, f, "/v1/admin/api-keys", f.owner, `{"operationId":"list-hint","name":"Hinted","scopes":["read"]}`)
+	if err := dbwork.WithWriteTx(context.Background(), f.deps.DB, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		_, err := apievents.Flush(context.Background(), tx, 64)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct {
+		name, token string
+		hears       bool
+	}{{"owner", f.owner, true}, {"administrator", f.admin, true}, {"member", f.member, false}} {
+		w := f.call("GET", "/v1/events?after=0&waitSeconds=0", c.token, "")
+		if w.Code != 200 {
+			t.Fatalf("%s events: %d %s", c.name, w.Code, w.Body)
+		}
+		body := w.Body.String()
+		heard := strings.Contains(body, `"type":"list.changed"`) && strings.Contains(body, `"id":"apiKeys"`)
+		if heard != c.hears {
+			t.Fatalf("%s heard the API keys list hint: %v (%s)", c.name, heard, body)
 		}
 	}
 }

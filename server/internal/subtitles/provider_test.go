@@ -68,3 +68,29 @@ func TestProviderRejectedLoginDoesNotRepeatCredentials(t *testing.T) {
 		t.Fatal(logins, p.Status())
 	}
 }
+
+func TestProviderTakesTheOwnersCredentialsAndFallsBackToTheEnvironment(t *testing.T) {
+	p := &OpenSubtitles{key: "env-key", environment: openSubtitlesCredentials{key: "env-key"}, credentials: openSubtitlesCredentials{key: "env-key"}, gate: make(chan struct{}, 1)}
+	if !p.Status().Enabled {
+		t.Fatal("the environment's key should be in force")
+	}
+	p.SetCredentials("owner-key", "owner", "secret")
+	p.adoptCredentials()
+	if p.key != "owner-key" || p.username != "owner" || p.password != "secret" || p.token != "" {
+		t.Fatalf("owner credentials not adopted: %q %q", p.key, p.username)
+	}
+	p.loginRejected.Store(true)
+	p.SetCredentials("", "", "")
+	p.adoptCredentials()
+	if p.key != "env-key" || p.username != "" || p.loginRejected.Load() {
+		t.Fatalf("clearing should fall back to the environment: %q %q", p.key, p.username)
+	}
+	empty := &OpenSubtitles{gate: make(chan struct{}, 1)}
+	empty.SetCredentials("", "", "")
+	if empty.Status().Reason != "provider_not_configured" {
+		t.Fatalf("no key anywhere: %+v", empty.Status())
+	}
+	if _, err := empty.Search(context.Background(), "x", "en", 1); err != ErrUnavailable {
+		t.Fatalf("an unconfigured provider must not call out: %v", err)
+	}
+}

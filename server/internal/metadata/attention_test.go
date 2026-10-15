@@ -124,6 +124,26 @@ func TestMetadataSettingsNeverReturnCredentials(t *testing.T) {
 	if _, e = s.UpdateMetadataSettings(ctx, MetadataSettingsUpdate{ExpectedRevision: current.Revision, LocalArtworkLimitBytes: 1 << 30}, nil); !errors.Is(e, ErrScreenConflict) {
 		t.Fatal(e)
 	}
+	// The subtitle provider's key and account: saved, handed to the provider, never sent back.
+	var handed [3]string
+	s.SubtitleCredentials = func(key, username, password string) { handed = [3]string{key, username, password} }
+	subKey, user, password := "subtitle-key-secret", "subtitle-user", "subtitle-password-secret"
+	out, e = s.UpdateMetadataSettings(ctx, MetadataSettingsUpdate{ExpectedRevision: out.Revision, LocalArtworkLimitBytes: 4 << 30, OpenSubtitlesAPIKey: &subKey, OpenSubtitlesUsername: &user, OpenSubtitlesPassword: &password}, nil)
+	if e != nil || !out.OpenSubtitlesKeyConfigured || out.OpenSubtitlesUsername != user || !out.OpenSubtitlesPasswordConfigured {
+		t.Fatal(out, e)
+	}
+	if handed != [3]string{subKey, user, password} {
+		t.Fatal("provider not given the saved credentials", handed)
+	}
+	raw, _ = json.Marshal(out)
+	if strings.Contains(string(raw), subKey) || strings.Contains(string(raw), password) {
+		t.Fatal("subtitle credential returned")
+	}
+	empty := ""
+	out, e = s.UpdateMetadataSettings(ctx, MetadataSettingsUpdate{ExpectedRevision: out.Revision, LocalArtworkLimitBytes: 4 << 30, OpenSubtitlesUsername: &empty}, nil)
+	if e != nil || out.OpenSubtitlesUsername != "" || out.OpenSubtitlesPasswordConfigured || !out.OpenSubtitlesKeyConfigured {
+		t.Fatal("clearing the account must drop its password and keep the key", out, e)
+	}
 }
 
 func TestLocaleChangeAndExplicitShowRefreshBypassHeldDocuments(t *testing.T) {

@@ -128,12 +128,10 @@ export function LocalProfiles({onLimits}: {onLimits: (profile: {id: string; name
       <input ref={picker} type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={e => { const file = e.target.files?.[0]; e.target.value = ''; void picked(file); }} />
       {profiles.map((p, index) => {
         const has = avatars.some(a => a.profileId === p.id);
-        // CON-12: one shared model decides the profile menu order. Forget remembered
-        // devices has no handler here, so it is hidden (listed under Questions).
+        // CON-12: one shared model decides the profile menu order.
         const model = profileActions({hasPicture: has, pinRequired: p.pinRequired, primary: p.primary}, {canManage: manage, isCurrent: p.id === current});
         const items: MenuItem[] = [];
         for (const action of model) {
-          if (action.id === 'forgetDevices') continue;
           if (action.id === 'changePin' || action.id === 'forgotPin') {
             items.push({id: action.id, label: t(action.label), icon: action.icon, ...(action.destructive ? {destructive: true} : {}), separatorBefore: true});
           } else {
@@ -161,6 +159,8 @@ export function LocalProfiles({onLimits}: {onLimits: (profile: {id: string; name
               else if (id === 'up') move(p, -1);
               else if (id === 'down') move(p, 1);
               else if (id === 'delete') void startDelete(p);
+              // The devices that remember this profile ask for its PIN again; nothing else changes.
+              else if (id === 'forgetDevices') void run(p.id, () => client.forgetTrust(p.id), t('profile.devicesForgotten', {name: p.name}));
             }} />} />
         );
       })}

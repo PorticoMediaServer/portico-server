@@ -2295,7 +2295,8 @@ CREATE TABLE metadata_runtime_settings(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
  local_artwork_limit_bytes INTEGER NOT NULL DEFAULT 2147483648 CHECK(local_artwork_limit_bytes>0),
  include_adult INTEGER NOT NULL DEFAULT 0 CHECK(include_adult IN(0,1)),
- tmdb_read_token TEXT NOT NULL DEFAULT '',tvdb_project_key TEXT NOT NULL DEFAULT '') STRICT;
+ tmdb_read_token TEXT NOT NULL DEFAULT '',tvdb_project_key TEXT NOT NULL DEFAULT '',
+ opensubtitles_api_key TEXT NOT NULL DEFAULT '',opensubtitles_username TEXT NOT NULL DEFAULT '',opensubtitles_password TEXT NOT NULL DEFAULT '') STRICT;
 INSERT INTO metadata_runtime_settings(singleton) VALUES(1);
 CREATE TABLE screen_metadata_consent(
  singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL DEFAULT 1,
@@ -7263,3 +7264,161 @@ CREATE TRIGGER compact_visibility_availability_move AFTER UPDATE OF class_id,gen
  DELETE FROM compact_visibility_availability_counts WHERE (class_id,generation,library_id,kind,availability_state)=(OLD.class_id,OLD.generation,OLD.library_id,OLD.kind,OLD.availability_state) AND total=0;
  INSERT INTO compact_visibility_availability_counts VALUES(NEW.class_id,NEW.generation,NEW.library_id,NEW.kind,NEW.availability_state,1) ON CONFLICT(class_id,generation,library_id,kind,availability_state) DO UPDATE SET total=total+1;
 END;
+
+-- Owner and member lists the screens keep current: one coalesced list.changed
+-- hint per list (resource list:<name>), for the owner and administrators
+-- ('admin') or for the profile whose list it is. The revision is only the time
+-- of the change; the hint says "read the list again", never what changed.
+CREATE TRIGGER api_credentials_api_keys_list_insert AFTER INSERT ON api_credentials WHEN NEW.kind='key' BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','apiKeys',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER api_credentials_api_keys_list_update AFTER UPDATE ON api_credentials WHEN NEW.kind='key' BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','apiKeys',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER api_credentials_api_keys_list_delete AFTER DELETE ON api_credentials WHEN OLD.kind='key' BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','apiKeys',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER api_credentials_member_tokens_list_insert AFTER INSERT ON api_credentials WHEN NEW.kind='token' BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','memberTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER api_credentials_member_tokens_list_update AFTER UPDATE ON api_credentials WHEN NEW.kind='token' BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','memberTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER api_credentials_member_tokens_list_delete AFTER DELETE ON api_credentials WHEN OLD.kind='token' BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','memberTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER api_credentials_access_tokens_list_insert AFTER INSERT ON api_credentials WHEN NEW.kind='token' BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:local:'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','accessTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER api_credentials_access_tokens_list_update AFTER UPDATE ON api_credentials WHEN NEW.kind='token' BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:local:'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','accessTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER api_credentials_access_tokens_list_delete AFTER DELETE ON api_credentials WHEN OLD.kind='token' BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:local:'||OLD.account_id||':'||OLD.profile_id,'list.changed','list','accessTokens',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER webhooks_webhooks_list_insert AFTER INSERT ON webhooks BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','webhooks',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER webhooks_webhooks_list_update AFTER UPDATE ON webhooks BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','webhooks',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER webhooks_webhooks_list_delete AFTER DELETE ON webhooks BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','webhooks',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER webhook_deliveries_webhooks_list_insert AFTER INSERT ON webhook_deliveries BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','webhooks',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER webhook_deliveries_webhooks_list_update AFTER UPDATE OF state ON webhook_deliveries BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','webhooks',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER webhook_deliveries_webhooks_list_delete AFTER DELETE ON webhook_deliveries BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','webhooks',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER direct_memberships_members_list_insert AFTER INSERT ON direct_memberships BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','members',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER direct_memberships_members_list_update AFTER UPDATE ON direct_memberships BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','members',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER direct_memberships_members_list_delete AFTER DELETE ON direct_memberships BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','members',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER accounts_members_list_insert AFTER INSERT ON accounts BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','members',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER accounts_members_list_update AFTER UPDATE OF username ON accounts BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','members',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER accounts_members_list_delete AFTER DELETE ON accounts BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','members',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER direct_profiles_members_list_insert AFTER INSERT ON direct_profiles BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','members',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER direct_profiles_members_list_update AFTER UPDATE OF name,deleted ON direct_profiles BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','members',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER direct_profiles_members_list_delete AFTER DELETE ON direct_profiles BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','members',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER access_invitations_invitations_list_insert AFTER INSERT ON access_invitations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','invitations',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER access_invitations_invitations_list_update AFTER UPDATE ON access_invitations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','invitations',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER access_invitations_invitations_list_delete AFTER DELETE ON access_invitations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','invitations',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER identity_devices_devices_list_insert AFTER INSERT ON identity_devices BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','devices',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER identity_devices_devices_list_update AFTER UPDATE OF name,trusted,approval_state ON identity_devices BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','devices',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER identity_devices_devices_list_delete AFTER DELETE ON identity_devices BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','devices',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER client_log_uploads_client_reports_list_insert AFTER INSERT ON client_log_uploads BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','clientReports',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER client_log_uploads_client_reports_list_delete AFTER DELETE ON client_log_uploads BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','clientReports',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER console_reports_feedback_list_insert AFTER INSERT ON console_reports BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','feedback',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER console_reports_feedback_list_update AFTER UPDATE OF status,revision ON console_reports BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','feedback',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER console_reports_feedback_list_delete AFTER DELETE ON console_reports BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','feedback',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER download_preparations_downloads_list_insert AFTER INSERT ON download_preparations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','downloads',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER download_preparations_downloads_list_update AFTER UPDATE OF state ON download_preparations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','downloads',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER download_preparations_downloads_list_delete AFTER DELETE ON download_preparations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','downloads',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER remote_sources_remote_sources_list_insert AFTER INSERT ON remote_sources BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','remoteSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER remote_sources_remote_sources_list_update AFTER UPDATE OF name,state,error_code,generation ON remote_sources BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','remoteSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER remote_sources_remote_sources_list_delete AFTER DELETE ON remote_sources BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','remoteSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER managed_mounts_remote_sources_list_insert AFTER INSERT ON managed_mounts BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','remoteSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER managed_mounts_remote_sources_list_update AFTER UPDATE OF name,desired,observed,error ON managed_mounts BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','remoteSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER managed_mounts_remote_sources_list_delete AFTER DELETE ON managed_mounts BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','remoteSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_sources_live_sources_list_insert AFTER INSERT ON live_sources BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','liveSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_sources_live_sources_list_update AFTER UPDATE ON live_sources BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','liveSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_sources_live_sources_list_delete AFTER DELETE ON live_sources BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','liveSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_source_removals_live_sources_list_insert AFTER INSERT ON live_source_removals BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','liveSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_source_removals_live_sources_list_delete AFTER DELETE ON live_source_removals BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','liveSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_remote_configs_live_sources_list_insert AFTER INSERT ON live_remote_configs BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','liveSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_remote_configs_live_sources_list_update AFTER UPDATE OF state,error_code,failures ON live_remote_configs BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','liveSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_remote_configs_live_sources_list_delete AFTER DELETE ON live_remote_configs BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','liveSources',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_allocations_tuners_list_insert AFTER INSERT ON live_allocations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','tuners',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_allocations_tuners_list_update AFTER UPDATE OF state ON live_allocations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','tuners',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_allocations_tuners_list_delete AFTER DELETE ON live_allocations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','tuners',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_recordings_tuners_list_insert AFTER INSERT ON dvr_recordings BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','tuners',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_recordings_tuners_list_update AFTER UPDATE OF state,start_ms,end_ms ON dvr_recordings BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','tuners',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_recordings_tuners_list_delete AFTER DELETE ON dvr_recordings BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','tuners',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER admin_dvr_groups_recording_groups_list_insert AFTER INSERT ON admin_dvr_groups BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER admin_dvr_groups_recording_groups_list_update AFTER UPDATE ON admin_dvr_groups BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER admin_dvr_groups_recording_groups_list_delete AFTER DELETE ON admin_dvr_groups BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_recording_grants_recording_groups_list_insert AFTER INSERT ON dvr_recording_grants BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_recording_grants_recording_groups_list_update AFTER UPDATE ON dvr_recording_grants BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_recording_grants_recording_groups_list_delete AFTER DELETE ON dvr_recording_grants BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_storage_policy_recording_storage_list_insert AFTER INSERT ON dvr_storage_policy BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingStorage',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_storage_policy_recording_storage_list_update AFTER UPDATE ON dvr_storage_policy BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','recordingStorage',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER lc_channels_library_channels_list_insert AFTER INSERT ON lc_channels BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','libraryChannels',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER lc_channels_library_channels_list_update AFTER UPDATE ON lc_channels BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','libraryChannels',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER lc_channels_library_channels_list_delete AFTER DELETE ON lc_channels BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','libraryChannels',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER playback_route_failures_playback_problems_list_insert AFTER INSERT ON playback_route_failures BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','playbackProblems',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER playback_route_failures_playback_problems_list_update AFTER UPDATE ON playback_route_failures BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','playbackProblems',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER playback_route_failures_playback_problems_list_delete AFTER DELETE ON playback_route_failures BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','playbackProblems',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+-- Watch Together: the rooms a profile is in, for its own devices.
+CREATE TRIGGER social_group_members_together_list_insert AFTER INSERT ON social_group_members BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','togetherGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER social_group_members_together_list_update AFTER UPDATE OF state ON social_group_members WHEN OLD.state IS NOT NEW.state BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','togetherGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER social_group_members_together_list_delete AFTER DELETE ON social_group_members BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||OLD.authority||':'||OLD.account_id||':'||OLD.profile_id,'list.changed','list','togetherGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER social_groups_together_list_ended AFTER UPDATE OF state ON social_groups WHEN NEW.state IN('ended','failed') AND OLD.state NOT IN('ended','failed') BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) SELECT 'profile:'||m.authority||':'||m.account_id||':'||m.profile_id,'list.changed','list','togetherGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT) FROM social_group_members m WHERE m.group_id=NEW.id AND m.state='joined' ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;

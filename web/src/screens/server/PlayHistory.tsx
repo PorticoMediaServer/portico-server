@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Link} from '@tanstack/react-router';
 import {PLAY_HISTORY_COLUMNS, PLAY_HISTORY_PERIODS, fetchPlayHistory, playHistoryPeriodLabel, playHistoryPlatform, playHistoryPlayed, playHistoryTitle, playHistoryType, playHistoryUser, type PlayHistoryEntry, type PlayHistoryFilters, type PlayHistoryPeriod} from '@core/play-history.ts';
-import {QUIET_READ_EVERY_MS, useConsole, useQuietly, useRead} from '../../admin/console';
+import {useConsole, useQuietly, useRead} from '../../admin/console';
 import {mergeRevalidatedList} from '@core/freshness-actions.ts';
 import {useI18n} from '../../app/i18n';
 import {useLibrariesContext} from '../../app/libraries';
@@ -9,6 +9,10 @@ import {useSession} from '../../app/session';
 import {present} from '../../app/errors';
 import {Button, Freshness, Notice, Select, Surface, Table, Text} from '../../ui';
 import s from './PlayHistory.module.css';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+// A play is recorded as it starts and ends, which is when the list of sessions moves.
+const HISTORY_MOVES = [dependsOn.event('admin.sessions')];
 
 /**
  * Settings › Server › Play history: every play on the server, newest first, filtered by person,
@@ -42,7 +46,7 @@ export function PlayHistoryPanel() {
     const page = await fetchPlayHistory(api, filters, '');
     if (n !== run.current) return;
     setState(prev => (prev.loading || prev.shown !== filters ? prev : {...prev, entries: mergeRevalidatedList(prev.entries, page.entries, e => e.id, {complete: !page.nextCursor && !prev.next, same: (a, b) => JSON.stringify(a) === JSON.stringify(b)}), total: page.total ?? prev.total, next: prev.entries.length > page.entries.length ? prev.next : page.nextCursor, at: Date.now()}));
-  }, () => state.shown === filters && !state.loading, {every: QUIET_READ_EVERY_MS});
+  }, () => state.shown === filters && !state.loading, {on: HISTORY_MOVES});
   const libraryName = useMemo(() => new Map(libraries.items.map(l => [l.id, l.name])), [libraries.items]);
   const filtered = !!filters.accountId || !!filters.libraryId || filters.period !== 'all';
   const columns = PLAY_HISTORY_COLUMNS.map(c => ({label: t(c.label)}));

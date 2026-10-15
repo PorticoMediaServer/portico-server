@@ -112,7 +112,7 @@ export function sessionFacts(x: AdminSession, t: Translate): string {
   const state = stateId(x.state);
   if (state) parts.push(t(state as MessageId));
   // Where playback is, for something with a timeline: what Back and Forward are measured from.
-  if ((x.kind === 'vod' || x.kind === 'audio') && x.positionMs > 0) parts.push(t('web.nowPlaying.position', {position: positionClock(x.positionMs)}));
+  if ((x.kind === 'vod' || x.kind === 'audio') && x.positionMs > 0) parts.push(x.durationMs ? t('web.nowPlaying.positionOf', {position: positionClock(x.positionMs), duration: positionClock(x.durationMs)}) : t('web.nowPlaying.position', {position: positionClock(x.positionMs)}));
   for (const id of [deliveryId(x.decision), locationId(x.location)]) if (id) parts.push(t(id as MessageId));
   const rate = rateMbps(x);
   if (rate) parts.push(t('web.nowPlaying.rate', {rate}));
@@ -145,10 +145,35 @@ export function transportOffers(x: Readonly<{kind: string; state: string}>, allo
 /** The server action a command is sent as. */
 export const transportAction = (command: TransportCommand): 'pause' | 'resume' | 'seek' => (command === 'pause' || command === 'resume' ? command : 'seek');
 
-/** Where a seeking command lands from a position, in whole milliseconds; nothing for Pause and Resume. */
-export function seekTarget(command: TransportCommand, positionMs: number): number | undefined {
+/**
+ * Where a seeking command lands from a position, in whole milliseconds; nothing for Pause and
+ * Resume. With the length known, Forward stops short of the end rather than running past it.
+ */
+export function seekTarget(command: TransportCommand, positionMs: number, durationMs?: number): number | undefined {
   const at = Number.isFinite(positionMs) ? Math.max(0, Math.round(positionMs)) : 0;
-  return command === 'back' ? Math.max(0, at - REMOTE_SKIP_MS) : command === 'forward' ? at + REMOTE_SKIP_MS : command === 'startOver' ? 0 : undefined;
+  const target = command === 'back' ? Math.max(0, at - REMOTE_SKIP_MS) : command === 'forward' ? at + REMOTE_SKIP_MS : command === 'startOver' ? 0 : undefined;
+  return target === undefined ? undefined : clampToLength(target, durationMs);
+}
+
+/** How near the end a move may land: the last seconds are left to play. */
+export const END_MARGIN_MS = 5_000;
+
+/** A position kept inside a known length (short of its last seconds); unchanged when the length is unknown. */
+export function clampToLength(positionMs: number, durationMs?: number): number {
+  const at = Math.max(0, Math.round(Number.isFinite(positionMs) ? positionMs : 0));
+  if (!durationMs || durationMs <= 0) return at;
+  return Math.min(at, Math.max(0, durationMs - END_MARGIN_MS));
+}
+
+/** How far through playback is, 0–1, for a position bar; undefined without a known length. */
+export function playedFraction(x: Readonly<{positionMs: number; durationMs?: number}>): number | undefined {
+  if (!x.durationMs || x.durationMs <= 0) return undefined;
+  return Math.min(1, Math.max(0, x.positionMs / x.durationMs));
+}
+
+/** Whether a position bar is offered: something with a timeline, a known length and leave to seek. */
+export function offersScrubber(x: Readonly<{kind: string; durationMs?: number}>, allowed?: readonly string[]): boolean {
+  return (x.kind === 'vod' || x.kind === 'audio') && !!x.durationMs && x.durationMs > 0 && (!allowed || allowed.includes('seek'));
 }
 
 /** Whether the session already is what a command asks for (someone else pressed it first). */
@@ -169,7 +194,7 @@ export async function sendTransport(service: Readonly<{readAdmin(id: string): Pr
   if (transportDone(command, first.state)) return first;
   let latest = first;
   try {
-    const out = await sendWithFreshRecord(first, current => service.controlAdmin(current, action, seekTarget(command, current.positionMs)), {
+    const out = await sendWithFreshRecord(first, current => service.controlAdmin(current, action, seekTarget(command, current.positionMs, current.durationMs)), {
       reread: async () => (latest = await service.readAdmin(sessionId)),
       applies: now => (!now.actions.includes(action) ? false : transportDone(command, now.state) ? 'done' : true),
     });
@@ -177,6 +202,27 @@ export async function sendTransport(service: Readonly<{readAdmin(id: string): Pr
   } catch (error) {
     // It ended while the command was on its way: say that, not that something changed.
     if (!latest.actions.includes(action)) throw ended();
+    throw error;
+  }
+}
+
+/**
+ * The owner moved the position bar of a session on another device to `positionMs`. As with the
+ * other commands the controls are read first and a moved session is sent again silently; the
+ * position is absolute, so a session that moved underneath still lands where the owner pointed.
+ */
+export async function sendSeekTo(service: Parameters<typeof sendTransport>[0], sessionId: string, positionMs: number): Promise<SessionControls> {
+  const first = await service.readAdmin(sessionId);
+  if (!first.actions.includes('seek')) throw ended();
+  let latest = first;
+  try {
+    const out = await sendWithFreshRecord(first, current => service.controlAdmin(current, 'seek', clampToLength(positionMs, current.durationMs)), {
+      reread: async () => (latest = await service.readAdmin(sessionId)),
+      applies: now => now.actions.includes('seek'),
+    });
+    return out === ALREADY_DONE ? latest : out;
+  } catch (error) {
+    if (!latest.actions.includes('seek')) throw ended();
     throw error;
   }
 }

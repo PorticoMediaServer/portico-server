@@ -46,6 +46,13 @@ and owner/admin visibility. Known hints include:
 - `settings.changed`: reread the affected settings document.
 - `receiver.inbox_changed`: reread a receiver's inbox.
 - `operation.updated`: reread a background operation.
+- `list.changed`: reread one list; `resource.id` names it. The owner and
+  administrators hear `apiKeys`, `memberTokens`, `webhooks` (including the
+  delivery log), `members`, `invitations`, `devices`, `clientReports`,
+  `feedback`, `downloads`, `remoteSources`, `liveSources` (with refresh state),
+  `tuners`, `recordingGroups`, `recordingStorage`, `libraryChannels` and
+  `playbackProblems`. A profile hears `accessTokens` for its own tokens and
+  `togetherGroups` for the Watch Together rooms it is in.
 
 Treat hints as coalescible invalidations, not a complete change log or a payload
 for mutating local records. Ignore unknown event types safely. Source:

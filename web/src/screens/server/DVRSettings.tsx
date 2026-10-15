@@ -2,11 +2,14 @@ import {useEffect, useState} from 'react';
 import {recordingOwnerKey, recordingOwnerLabel} from '../../admin/recording-policy';
 import {parseEnvelope, parseTunerView} from '@core/administration.ts';
 import {tunerStatus, tunerUseLine} from '@core/server-admin/live-words.ts';
-import {QUIET_READ_EVERY_MS, problem, useRead} from '../../admin/console';
+import {problem, useRead} from '../../admin/console';
 import {useInlineForm} from '../settings/ServerForms';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
 import {Notice, Select, SettingsEmpty, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch, Text} from '../../ui';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const TUNER_MOVES = [dependsOn.list('tuners')];
 
 function useServerId() { const {system, session} = useSession(); return system?.id ?? session?.viewer.serverId ?? ''; }
 
@@ -16,7 +19,7 @@ export function TunersGroup() {
   const i18n = useI18n();
   const {t} = i18n;
   const serverId = useServerId();
-  const read = useRead(async () => parseEnvelope(await api.request<unknown>('/v1/admin/dvr/tuners'), serverId, parseTunerView).result, [api, serverId], {every: QUIET_READ_EVERY_MS});
+  const read = useRead(async () => parseEnvelope(await api.request<unknown>('/v1/admin/dvr/tuners'), serverId, parseTunerView).result, [api, serverId], {on: TUNER_MOVES});
   const view = read.data;
   return (
     <SettingsGroup title={t('web.dvrSettings.tuners')} description={view ? t('web.dvrSettings.tunersLede', {hours: view.upcomingWindowHours}) : undefined}>

@@ -5,7 +5,7 @@ import {parseRecordingGrants, parseRecordingOwners, recordingAllowed, recordingO
 import {RecordingPermissionsGroup} from './DVRSettings';
 import {guideOnlyPatch} from '@core/server-admin/panel-logic.ts';
 export {guideOnlyPatch} from '@core/server-admin/panel-logic.ts';
-import {QUIET_READ_EVERY_MS, problem, sendFresh, useAction, useRead} from '../../admin/console';
+import {problem, sendFresh, useAction, useRead} from '../../admin/console';
 import {isStaleAnswer, rebaseDraft} from '@core/freshness-actions.ts';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
@@ -13,6 +13,9 @@ import {liveSourceChoicesService, type LiveSourceChoicePage} from '@core/adminis
 import {useI18n} from '../../app/i18n';
 import {Badge, Button, Checkbox, ConfirmDialog, Dialog, Input, Loading, Menu, Notice, Segmented, Select, SettingsEmpty, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Switch, Text, type MenuItem} from '../../ui';
 import type {MessageId} from '../../app/i18n';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const RULE_MOVES = [dependsOn.list('recordingGroups')];
 
 function useServerId() { const {system, session} = useSession(); return system?.id ?? session?.viewer.serverId ?? ''; }
 /** These documents come in the shared admin envelope; the page reads fields it names and no others. */
@@ -37,8 +40,10 @@ export function chunkChannelMapEntries<T>(entries: readonly T[]): T[][] {
 }
 
 type FilterRule = {mode: 'include' | 'exclude'; values: string[]};
-type SourceSettings = {enabledGroups: readonly string[]; enabledChannels: readonly string[]; kind: string; streamBufferSeconds: number | null; retryWindowSeconds: number | null; userAgent: string; filters: {categories: FilterRule; countries: FilterRule; keywords: FilterRule}; logoImport: {enabled: boolean; overwriteExisting: boolean}; channelNumbering: {mode: 'source' | 'sequential'; startAt: number; step: number}; guideSourceId: string};
-type SourceDocument = {sourceId: string; sourceName: string; revision: number; settings: SourceSettings; effective: {streamBufferSeconds: number; retryWindowSeconds: number}; availableKinds: string[]};
+type SourceSettings = {enabledGroups: readonly string[]; enabledChannels: readonly string[]; kind: string; streamBufferSeconds: number | null; retryWindowSeconds: number | null; userAgent: string; filters: {categories: FilterRule; countries: FilterRule; keywords: FilterRule}; logoImport: {enabled: boolean; overwriteExisting: boolean}; channelNumbering: {mode: 'source' | 'sequential'; startAt: number; step: number}; guideSourceId: string; importLimits?: ImportLimits | null};
+type ImportLimits = {bytes: number; channels: number; programmes: number};
+type SourceDocument = {sourceId: string; sourceName: string; revision: number; settings: SourceSettings; effective: {streamBufferSeconds: number; retryWindowSeconds: number; importLimits?: ImportLimits}; availableKinds: string[]};
+const MB = 1048576;
 const kindName: Record<string, MessageId> = {playlist: 'server.live.sourceKind.playlist', 'xmltv-guide': 'server.live.sourceKind.guide', hdhomerun: 'server.live.sourceKind.tuner'};
 const filterName = {categories: 'server.live.filter.categories', countries: 'server.live.filter.countries', keywords: 'server.live.filter.keywords'} as const satisfies Record<string, MessageId>;
 
@@ -131,6 +136,25 @@ export function SourceSettingsDialog({src, guides, onClose, onChanged}: {src: {i
             <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
               <Input label={t('web.liveSource.streamBuffer')} type="number" min={0} placeholder={t('web.liveSource.serverDefault', {value: doc.effective.streamBufferSeconds})} value={draft.streamBufferSeconds === null ? '' : String(draft.streamBufferSeconds)} onChange={e => patch({streamBufferSeconds: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)})} style={{width: 220}} />
               <Input label={t('web.liveSource.retryFor')} type="number" min={0} placeholder={t('web.liveSource.serverDefault', {value: doc.effective.retryWindowSeconds})} value={draft.retryWindowSeconds === null ? '' : String(draft.retryWindowSeconds)} onChange={e => patch({retryWindowSeconds: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)})} style={{width: 220}} />
+            </div>
+            {/* This source's own import limits: lower than the server's, never higher; an empty field is the server's. */}
+            <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
+              <Text variant="label" tone="secondary">{t('server.liveSource.limits')}</Text>
+              <Text variant="caption" tone="tertiary">{t('server.liveSource.limitsHelp')}</Text>
+              <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
+                {(['channels', 'programmes', 'bytes'] as const).map(field => {
+                  const own = draft.importLimits?.[field] ?? 0;
+                  const scale = field === 'bytes' ? MB : 1;
+                  const server = doc.effective.importLimits?.[field];
+                  const label = field === 'channels' ? t('server.live.limitChannels') : field === 'programmes' ? t('server.live.limitProgrammes') : `${t('server.live.limitSize')} (${t('settings.unit.mb')})`;
+                  const set = (raw: string) => {
+                    const value = raw === '' ? 0 : Math.max(0, Math.round((Number(raw) || 0) * scale));
+                    const next = {...(draft.importLimits ?? {bytes: 0, channels: 0, programmes: 0}), [field]: value};
+                    patch({importLimits: next.bytes || next.channels || next.programmes ? next : null});
+                  };
+                  return <Input key={field} label={label} type="number" min={0} placeholder={server ? t('server.liveSource.limitDefault', {value: Math.round(server / scale)}) : undefined} value={own ? String(Math.round(own / scale)) : ''} onChange={e => set(e.target.value)} style={{width: 220}} />;
+                })}
+              </div>
             </div>
           </>
         ) : null}
@@ -292,7 +316,7 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
     return {owners, grants};
   }, [admin]);
   // A rule a member makes from the guide, or pauses, shows here by itself.
-  const read = useRead(() => admin.get<{items: Group[]}>('/v1/admin/dvr/recording-groups?limit=100'), [admin], {every: QUIET_READ_EVERY_MS});
+  const read = useRead(() => admin.get<{items: Group[]}>('/v1/admin/dvr/recording-groups?limit=100'), [admin], {on: RULE_MOVES});
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
   const [ruleOpIds] = useState(createOperationIds);

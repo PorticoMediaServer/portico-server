@@ -600,7 +600,8 @@ func run() (runErr error) {
 	}
 	subtitleAuthority := httpapi.Dependencies{DB: db, Identity: ident, Hosted: control, Catalog: cat}
 	doneSubtitles := reporter.step("subtitles", "Open subtitle storage")
-	subtitleService, e := subtitles.New(subtitles.Options{DB: db, Directory: filepath.Join(state, "subtitles"), Storage: storeIO, HelperBinary: helperBinary, FFmpeg: ffmpegTool, Authorize: subtitleAuthority.AuthorizeSubtitles, Provider: subtitles.ProviderFromEnvironment()})
+	subtitleProvider := subtitles.ProviderFromEnvironment()
+	subtitleService, e := subtitles.New(subtitles.Options{DB: db, Directory: filepath.Join(state, "subtitles"), Storage: storeIO, HelperBinary: helperBinary, FFmpeg: ffmpegTool, Authorize: subtitleAuthority.AuthorizeSubtitles, Provider: subtitleProvider})
 	if e != nil {
 		return e
 	}
@@ -812,6 +813,7 @@ func run() (runErr error) {
 	drain.add("analysis-retention", nil, retentionDone)
 	meta := metadata.New(db, os.Getenv("PORTICO_TMDB_READ_ACCESS_TOKEN"))
 	meta.Admission = workAdmission.Admit
+	meta.SubtitleCredentials = subtitleProvider.SetCredentials
 	if e = meta.ConfigureAcoustID(os.Getenv("PORTICO_ACOUSTID_CLIENT_KEY")); e != nil {
 		return e
 	}

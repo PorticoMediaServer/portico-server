@@ -13,7 +13,7 @@ const STALE_CODES: ReadonlySet<string> = new Set([
   'stale_continuation', 'invalid_cursor', 'revision_conflict', 'resource_conflict', 'conflict',
   'personal_state_conflict', 'playlist_conflict', 'collection_conflict', 'console_conflict', 'administration_conflict',
   'show_settings_conflict', 'listening_preferences_conflict', 'library_configuration_conflict', 'metadata_conflict',
-  'channel_revision_conflict', 'operation_conflict', 'precondition_failed', 'stale_playback_offer', 'stale_chapter_projection',
+  'channel_revision_conflict', 'library_channel_changed', 'operation_conflict', 'precondition_failed', 'stale_playback_offer', 'stale_chapter_projection',
   // A change sent with no revision, or with one that has moved on (428 and 412 on the typed routes).
   'revision_required', 'revision_mismatch',
 ]);

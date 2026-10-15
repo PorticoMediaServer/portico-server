@@ -5478,6 +5478,11 @@ export const schemas = {
         },
         "type": "array"
       },
+      "durationMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "positionMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -19209,6 +19214,11 @@ export const schemas = {
           "type": "string"
         },
         "type": "array"
+      },
+      "durationMs": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
       },
       "positionMs": {
         "maximum": 9007199254740991,
@@ -49889,6 +49899,32 @@ export const schemas = {
               "guideSourceId": {
                 "type": "string"
               },
+              "importLimits": {
+                "nullable": true,
+                "properties": {
+                  "bytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "programmes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "bytes",
+                  "channels",
+                  "programmes"
+                ],
+                "type": "object"
+              },
               "kind": {
                 "type": "string"
               },
@@ -49933,7 +49969,8 @@ export const schemas = {
               "filters",
               "logoImport",
               "channelNumbering",
-              "guideSourceId"
+              "guideSourceId",
+              "importLimits"
             ],
             "type": "object"
           },
@@ -49996,6 +50033,9 @@ export const schemas = {
                       "accountId": {
                         "type": "string"
                       },
+                      "accountName": {
+                        "type": "string"
+                      },
                       "allocationId": {
                         "type": "string"
                       },
@@ -50009,6 +50049,9 @@ export const schemas = {
                         "type": "string"
                       },
                       "profileId": {
+                        "type": "string"
+                      },
+                      "profileName": {
                         "type": "string"
                       },
                       "recordingId": {
@@ -50028,6 +50071,8 @@ export const schemas = {
                       "kind",
                       "accountId",
                       "profileId",
+                      "accountName",
+                      "profileName",
                       "recordingId",
                       "channelId",
                       "title",
@@ -50066,6 +50111,9 @@ export const schemas = {
                       "accountId": {
                         "type": "string"
                       },
+                      "accountName": {
+                        "type": "string"
+                      },
                       "allocationId": {
                         "type": "string"
                       },
@@ -50079,6 +50127,9 @@ export const schemas = {
                         "type": "string"
                       },
                       "profileId": {
+                        "type": "string"
+                      },
+                      "profileName": {
                         "type": "string"
                       },
                       "recordingId": {
@@ -50098,6 +50149,8 @@ export const schemas = {
                       "kind",
                       "accountId",
                       "profileId",
+                      "accountName",
+                      "profileName",
                       "recordingId",
                       "channelId",
                       "title",
@@ -51105,6 +51158,15 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "openSubtitlesKeyConfigured": {
+        "type": "boolean"
+      },
+      "openSubtitlesPasswordConfigured": {
+        "type": "boolean"
+      },
+      "openSubtitlesUsername": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -51123,7 +51185,10 @@ export const schemas = {
       "localArtworkLimitBytes",
       "includeAdult",
       "tmdbCredentialConfigured",
-      "tvdbCredentialConfigured"
+      "tvdbCredentialConfigured",
+      "openSubtitlesKeyConfigured",
+      "openSubtitlesUsername",
+      "openSubtitlesPasswordConfigured"
     ],
     "type": "object"
   },
@@ -57721,6 +57786,11 @@ export const schemas = {
                 "name"
               ],
               "type": "object"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "item": {
               "properties": {
@@ -67805,6 +67875,11 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "engine": {
               "type": "string"
             },
@@ -68914,6 +68989,12 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "itemId": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
             "reportedAtMs": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
@@ -68923,6 +69004,9 @@ export const schemas = {
               "type": "string"
             },
             "sourceId": {
+              "type": "string"
+            },
+            "title": {
               "type": "string"
             }
           },
@@ -97339,6 +97423,15 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "openSubtitlesApiKey": {
+        "type": "string"
+      },
+      "openSubtitlesPassword": {
+        "type": "string"
+      },
+      "openSubtitlesUsername": {
+        "type": "string"
+      },
       "tmdbReadToken": {
         "type": "string"
       },
@@ -97368,6 +97461,15 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "openSubtitlesKeyConfigured": {
+        "type": "boolean"
+      },
+      "openSubtitlesPasswordConfigured": {
+        "type": "boolean"
+      },
+      "openSubtitlesUsername": {
+        "type": "string"
+      },
       "revision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -97386,7 +97488,10 @@ export const schemas = {
       "localArtworkLimitBytes",
       "includeAdult",
       "tmdbCredentialConfigured",
-      "tvdbCredentialConfigured"
+      "tvdbCredentialConfigured",
+      "openSubtitlesKeyConfigured",
+      "openSubtitlesUsername",
+      "openSubtitlesPasswordConfigured"
     ],
     "type": "object"
   },
@@ -102305,6 +102410,32 @@ export const schemas = {
           "guideSourceId": {
             "type": "string"
           },
+          "importLimits": {
+            "nullable": true,
+            "properties": {
+              "bytes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "channels": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "programmes": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "bytes",
+              "channels",
+              "programmes"
+            ],
+            "type": "object"
+          },
           "kind": {
             "type": "string"
           },
@@ -102349,7 +102480,8 @@ export const schemas = {
           "filters",
           "logoImport",
           "channelNumbering",
-          "guideSourceId"
+          "guideSourceId",
+          "importLimits"
         ],
         "type": "object"
       }
@@ -102549,6 +102681,32 @@ export const schemas = {
               "guideSourceId": {
                 "type": "string"
               },
+              "importLimits": {
+                "nullable": true,
+                "properties": {
+                  "bytes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "programmes": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "bytes",
+                  "channels",
+                  "programmes"
+                ],
+                "type": "object"
+              },
               "kind": {
                 "type": "string"
               },
@@ -102593,7 +102751,8 @@ export const schemas = {
               "filters",
               "logoImport",
               "channelNumbering",
-              "guideSourceId"
+              "guideSourceId",
+              "importLimits"
             ],
             "type": "object"
           },

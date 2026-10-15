@@ -31,9 +31,16 @@ export function importSkipped(t: Translate, has: Has, diagnostics: unknown): Imp
 }
 
 /** One thing using a tuner: "Being watched · BBC One", "Recording · Match of the Day", or when a recording starts. */
-export function tunerUseLine(t: Translate, use: Readonly<{kind: string; state: string; title: string; startsAt: string}>, when: (iso: string) => string): string {
+export function tunerUseLine(t: Translate, use: Readonly<{kind: string; state: string; title: string; startsAt: string; accountName?: string; profileName?: string}>, when: (iso: string) => string): string {
   const what = use.kind === 'live' ? t('server.live.beingWatched') : use.state === 'recording' || use.kind === 'recording' && !use.startsAt ? t('server.live.recordingNow') : use.startsAt ? when(use.startsAt) : t('server.live.recordingNow');
-  return [what, use.title, use.state === 'retiring' ? t('server.live.finishing') : ''].filter(Boolean).join(' · ');
+  return [what, use.title, tunerWhose(t, use), use.state === 'retiring' ? t('server.live.finishing') : ''].filter(Boolean).join(' · ');
+}
+
+/** Whose a tuner's use is: the profile, with its account when they differ; empty when the server could not name them. */
+export function tunerWhose(t: Translate, use: Readonly<{accountName?: string; profileName?: string}>): string {
+  const account = use.accountName ?? '', profile = use.profileName ?? '';
+  if (profile && account && profile !== account) return t('server.tuners.whoseProfile', {profile, account});
+  return profile || account;
 }
 
 /** How busy a source's tuners are, as its status says it. */

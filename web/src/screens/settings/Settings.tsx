@@ -44,6 +44,7 @@ function SettingsFrame({address}: {address?: string}) {
   const registry = server.snapshot?.registry;
   const structure = useMemo(() => settingsStructure({
     owner: session.owner,
+    administrator: session.administrator,
     platform: 'web',
     capabilities: {
       ...(registry ? {preferenceKeys: new Set(registry.fields.map(f => f.key))} : {}),
@@ -61,7 +62,7 @@ function SettingsFrame({address}: {address?: string}) {
       audioPassthrough: false,
       hdr: hdrScreen(),
     },
-  }), [session.owner, session.session, registry, local, manageAccount, session.local?.hostedAccountId, session.hosted, downloads.state.unavailable]);
+  }), [session.owner, session.administrator, session.session, registry, local, manageAccount, session.local?.hostedAccountId, session.hosted, downloads.state.unavailable]);
   const [query, setQuery] = useState('');
   const matches = useMemo(() => searchSettings(structure, query, t), [structure, query, t]);
   const current = address || !narrow ? findSettingsPage(structure, address) : undefined;

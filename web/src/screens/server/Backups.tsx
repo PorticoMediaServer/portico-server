@@ -1,13 +1,17 @@
 import {useEffect, useRef, useState} from 'react';
 import {backupProgressFraction, isRestoreRefusalCode, parseEnvelope, parseFilesystemPage, type BackupKind, type BackupSummary, type FilesystemPage, type LastRestore, type RestoreRefusalCode} from '@core/administration.ts';
 import {deleteBackup, getBackups, isAuthenticationFailure, restoreBackup, startBackup, waitForBackupCompletion, waitForServerAnswer} from '@core/backups.ts';
-import {QUIET_READ_EVERY_MS, problem, useAction, useRead} from '../../admin/console';
+import {problem, useAction, useRead} from '../../admin/console';
 import {filesystemPath, mergeFilesystemPages} from './LibrarySettings';
 import {createOperationIds} from './operation-ids';
 import {useSession} from '../../app/session';
 import {usePollWhile} from '../../admin/poll-while';
 import {useI18n, type MessageId} from '../../app/i18n';
 import {Button, ConfirmDialog, Dialog, Freshness, IconButton, Input, ListRow, Loading, Notice, ProgressBar, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Surface, Text} from '../../ui';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+// A backup is made, restored and pruned as a task: its progress is on the feed.
+const BACKUP_MOVES = [dependsOn.event('operation.updated')];
 
 /** Catalogue copy for every restore/backup refusal code (spec §4). Anything else falls back
  * to the shared presenter. Tested in test/backups.test.ts. */
@@ -46,7 +50,7 @@ export function BackupsGroup() {
   const i18n = useI18n();
   const {t} = i18n;
   // A scheduled backup that starts or finishes, and a copy kept before a restore, show without a reload.
-  const read = useRead(() => getBackups(api, serverId), [api, serverId], {every: QUIET_READ_EVERY_MS});
+  const read = useRead(() => getBackups(api, serverId), [api, serverId], {on: BACKUP_MOVES});
   const action = useAction();
   // M19: one ID per logical write; retries reuse it.
   const [opIds] = useState(createOperationIds);

@@ -19,11 +19,34 @@ test('the web has one page for keys, members\' tokens, webhooks and assistants',
   assert.deepEqual(page(server('web'), 'people')!.tabs?.map(x => x.id), ['accounts', 'invitations', 'devices']);
 });
 
-test('the phone keeps its keys list under People and has no page it cannot draw', () => {
+test('phones and tablets have the owner administration as on the web, in the web\'s order', () => {
   const pages = server('phone');
-  assert.equal(page(pages, 'integrations'), undefined);
-  assert.equal(page(pages, 'metadata'), undefined);
-  assert.deepEqual(page(pages, 'people')!.tabs?.map(x => x.id), ['accounts', 'invitations', 'devices', 'keys']);
+  assert.deepEqual(pages.map(p => p.id), server('web').map(p => p.id));
+  assert.ok(page(pages, 'integrations'));
+  assert.ok(page(pages, 'metadata'));
+  // The keys list has one home, Integrations, as on the web.
+  assert.deepEqual(page(pages, 'people')!.tabs?.map(x => x.id), ['accounts', 'invitations', 'devices']);
+  for (const id of ['server.resourceUsage', 'server.storageStatus', 'server.downloadUsage']) assert.ok(rowIds(page(pages, 'storage')!).includes(id), id);
+  for (const id of ['server.setAsideTitles', 'server.clientReports']) assert.ok(rowIds(page(pages, 'troubleshooting')!).includes(id), id);
+  assert.ok(rowIds(page(pages, 'general')!).includes('server.restart'));
+  assert.ok(rowIds(page(pages, 'streaming')!).includes('server.playbackProblems'));
+  // Television keeps the read-only Dashboard alone.
+  assert.deepEqual(server('tv').map(p => p.id), ['dashboard']);
+});
+
+test('an administrator sees only what the server lets the administrator tier do', () => {
+  const admin = (platform: 'web' | 'phone' | 'tv') => settingsStructure({owner: false, administrator: true, platform, capabilities: {}}).headings.find(h => h.id === 'server')?.pages ?? [];
+  const web = admin('web');
+  assert.deepEqual(web.map(p => p.id), ['dashboard', 'people', 'troubleshooting']);
+  assert.deepEqual(rowIds(page(web, 'dashboard')!), ['server.nowPlaying']);
+  assert.deepEqual(rowIds(page(web, 'people')!), ['server.accounts', 'server.invitations', 'server.devices']);
+  assert.deepEqual(rowIds(page(web, 'troubleshooting')!), ['server.logs', 'server.setAsideTitles']);
+  // No setting row: every owner form is the owner's.
+  for (const p of [...web, ...admin('phone')]) for (const section of p.sections) for (const row of section.rows) assert.notEqual(row.kind, 'server-setting', row.kind);
+  assert.deepEqual(admin('tv').map(p => p.id), ['dashboard']);
+  assert.deepEqual(rowIds(admin('tv')[0]!), ['server.nowPlaying']);
+  // A member has no Server heading at all.
+  assert.equal(settingsStructure({owner: false, platform: 'web', capabilities: {}}).headings.some(h => h.id === 'server'), false);
 });
 
 test('remote access carries the home networks, the address to give out, proxies, the owner\'s certificate and the connection limit', () => {
@@ -44,10 +67,11 @@ test('background work speed is one named choice beside background priority', () 
 });
 
 test('personal access tokens appear in a member\'s account only when the client says the member makes them', () => {
-  const sections = (accessTokens: boolean, platform: 'web' | 'phone' = 'web') => settingsStructure({owner: false, platform, capabilities: {accessTokens}}).headings[0]!.pages.find(p => p.id === 'profile')!.sections.map(s => s.id);
+  const sections = (accessTokens: boolean, platform: 'web' | 'phone' | 'tv' = 'web') => settingsStructure({owner: false, platform, capabilities: {accessTokens}}).headings[0]!.pages.find(p => p.id === 'profile')!.sections.map(s => s.id);
   assert.ok(sections(true).includes('tokens'));
   assert.ok(!sections(false).includes('tokens'));
-  assert.ok(!sections(true, 'phone').includes('tokens'));
+  assert.ok(sections(true, 'phone').includes('tokens'));
+  assert.ok(!sections(true, 'tv').includes('tokens'));
 });
 
 test('the new pages are found by the settings search', () => {
@@ -132,11 +156,10 @@ test('the third-pass panels sit beside the settings they explain', () => {
   const playback = rowIds(page(web, 'streaming')!);
   assert.ok(playback.indexOf('server.ffmpegStatus') === playback.indexOf('runtime.ffmpegPath') + 1, 'the check result follows the path it checked');
   assert.ok(rowIds(page(web, 'troubleshooting')!).includes('server.setAsideTitles'));
-  // What the server is avoiding after a playback failure is the last thing on the page about playing, and only where it is drawn.
+  // What the server is avoiding after a playback failure is the last thing on the page about playing.
   assert.equal(playback.at(-1), 'server.playbackProblems');
-  for (const p of server('phone')) assert.ok(!rowIds(p).includes('server.playbackProblems'));
-  // None of the web's panels is offered where nothing draws it.
-  for (const id of ['server.resourceUsage', 'server.storageStatus', 'server.downloadUsage', 'server.setAsideTitles']) for (const p of server('phone')) assert.ok(!rowIds(p).includes(id), id);
+  // None of the console's panels is offered on television, which draws the Dashboard alone.
+  for (const id of ['server.resourceUsage', 'server.storageStatus', 'server.downloadUsage', 'server.setAsideTitles', 'server.playbackProblems']) for (const p of server('tv')) assert.ok(!rowIds(p).includes(id), id);
   const device = settingsStructure({owner: false, platform: 'web', capabilities: {}}).headings[0]!.pages.find(p => p.id === 'device')!;
   assert.ok(rowIds(device).includes('remoteControls'));
 });

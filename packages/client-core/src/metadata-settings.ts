@@ -1,13 +1,16 @@
 import {routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
-export type MetadataSettings=Readonly<{revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean}>;
-export type MetadataSettingsChange=Readonly<{expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;tmdbReadToken?:string;tvdbProjectKey?:string}>;
+/** The OpenSubtitles fields say whether the owner saved their own key and password (never sent back) and the account name. */
+export type MetadataSettings=Readonly<{revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean}>;
+/** A credential left out is unchanged; an empty one goes back to the server's own (for the username: no account). */
+export type MetadataSettingsChange=Readonly<{expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
 export function parseMetadataSettings(raw:unknown):MetadataSettings{
  if(typeof raw!=='object'||raw===null||Array.isArray(raw))throw new Error(unreadableServerResponse);
  const v=raw as Record<string,unknown>;
  if(typeof v.revision!=='number'||!Number.isSafeInteger(v.revision)||v.revision<1||typeof v.localArtworkLimitBytes!=='number'||!Number.isSafeInteger(v.localArtworkLimitBytes)||v.localArtworkLimitBytes<1||typeof v.includeAdult!=='boolean'||typeof v.tmdbCredentialConfigured!=='boolean'||typeof v.tvdbCredentialConfigured!=='boolean')throw new Error(unreadableServerResponse);
  if(typeof v.localArtworkUsedBytes!=="number"||!Number.isSafeInteger(v.localArtworkUsedBytes)||v.localArtworkUsedBytes<0)throw new Error(unreadableServerResponse);
- return Object.freeze({localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured});
+ return Object.freeze({localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured,
+  openSubtitlesKeyConfigured:v.openSubtitlesKeyConfigured===true,openSubtitlesUsername:typeof v.openSubtitlesUsername==='string'&&v.openSubtitlesUsername.length<=512?v.openSubtitlesUsername:'',openSubtitlesPasswordConfigured:v.openSubtitlesPasswordConfigured===true});
 }
 type Request=<T>(path:string,method?:string,body?:unknown)=>Promise<T>;
 export function metadataSettingsService(request:Request){const path=routePath("get_metadata_settings");return Object.freeze({async read(){return parseMetadataSettings(await request<unknown>(path));},async save(change:MetadataSettingsChange){return parseMetadataSettings(await request<unknown>(path,'PUT',change));}});}

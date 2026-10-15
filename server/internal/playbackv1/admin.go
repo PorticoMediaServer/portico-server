@@ -24,6 +24,9 @@ type AdminSession struct {
 	Kind          string     `json:"kind"` // "vod" | "audio" | "channel"
 	State         string     `json:"state"`
 	PositionMs    int64      `json:"positionMs"`
+	// DurationMs is the length of the version being played; absent for a
+	// channel or when the files do not say.
+	DurationMs    int64      `json:"durationMs,omitempty"`
 	Decision      Decisions  `json:"decision"`
 	BitrateKbps   int        `json:"bitrateKbps,omitempty"`
 	BandwidthKbps int64      `json:"bandwidthKbps,omitempty"`
@@ -57,10 +60,10 @@ const adminActiveV1 = `v.ended_ms=0 AND v.lease_expires_ms>?`
 
 // The branch yields the same columns: protocol, id, created, user id and
 // name, profile id and name, device id and name, item id and title, kind,
-// state, position, presentation, bandwidth, location.
+// state, position, presentation, bandwidth, location, catalogue item and version.
 const adminV1Branch = `SELECT 'v1' AS protocol,v.id AS id,v.created_ms AS created,v.account_id,COALESCE(a.username,''),v.profile_id,COALESCE(p.name,''),v.device_id,COALESCE(d.name,''),
  CASE WHEN v.kind IN ('live','channel') THEN v.channel_id ELSE COALESCE(pid(i.public_id),'') END,CASE WHEN v.kind IN ('live','channel') THEN COALESCE(json_extract(cs.selection_json,'$.name'),'') ELSE COALESCE(i.title,'') END,
- CASE WHEN v.kind IN ('live','channel') THEN 'channel' ELSE v.kind END,v.state,CASE WHEN v.kind IN ('live','channel') THEN COALESCE(cs.confirmed_position_us/1000,0) ELSE v.position_ms END,v.presentation,v.bandwidth_kbps,v.location
+ CASE WHEN v.kind IN ('live','channel') THEN 'channel' ELSE v.kind END,v.state,CASE WHEN v.kind IN ('live','channel') THEN COALESCE(cs.confirmed_position_us/1000,0) ELSE v.position_ms END,v.presentation,v.bandwidth_kbps,v.location,CASE WHEN v.kind IN ('live','channel') THEN 0 ELSE v.item_id END,v.version_id
  FROM playback_v1_sessions v INDEXED BY playback_v1_sessions_active
  LEFT JOIN playback_channel_sessions cs ON cs.session_id=v.id
  LEFT JOIN accounts a ON a.id=v.account_id AND v.authority='local'
@@ -108,11 +111,12 @@ func (s *Service) AdminSessions(ctx context.Context, limit int, cursor string) (
 	}
 	defer rows.Close()
 	lastMs := int64(0)
+	var lengths []durationKey
 	for rows.Next() {
 		var a AdminSession
-		var item, title, presentation string
-		var created int64
-		if err = rows.Scan(&a.Protocol, &a.ID, &created, &a.User.ID, &a.User.Name, &a.Profile.ID, &a.Profile.Name, &a.Device.ID, &a.Device.Name, &item, &title, &a.Kind, &a.State, &a.PositionMs, &presentation, &a.BandwidthKbps, &a.Location); err != nil {
+		var item, title, presentation, version string
+		var created, entity int64
+		if err = rows.Scan(&a.Protocol, &a.ID, &created, &a.User.ID, &a.User.Name, &a.Profile.ID, &a.Profile.Name, &a.Device.ID, &a.Device.Name, &item, &title, &a.Kind, &a.State, &a.PositionMs, &presentation, &a.BandwidthKbps, &a.Location, &entity, &version); err != nil {
 			return out, err
 		}
 		if len(out.Items) == limit {
@@ -141,8 +145,23 @@ func (s *Service) AdminSessions(ctx context.Context, limit int, cursor string) (
 		}
 		a.StartedAt = time.UnixMilli(created).UTC().Format(time.RFC3339Nano)
 		out.Items = append(out.Items, a)
+		lengths = append(lengths, durationKey{entity, version})
 	}
-	return out, rows.Err()
+	if err = rows.Err(); err != nil {
+		return out, err
+	}
+	rows.Close()
+	// The lengths of the page's versions, in one read for the whole page.
+	durations, err := durationsOf(ctx, tx, lengths[:len(out.Items)])
+	if err != nil {
+		return out, err
+	}
+	for i := range out.Items {
+		if k := lengths[i]; k.entity != 0 {
+			out.Items[i].DurationMs = durations[k]
+		}
+	}
+	return out, nil
 }
 
 // AdminTerminateMessageMax bounds what an administrator can show the viewer.

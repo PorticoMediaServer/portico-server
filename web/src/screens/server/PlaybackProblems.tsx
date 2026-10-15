@@ -1,9 +1,13 @@
 import {useMemo} from 'react';
+import {useNavigate} from '@tanstack/react-router';
 import {clearPlaybackFailureMemory, groupPlaybackFailures, readPlaybackFailureMemory, type PlaybackFailure} from '@core/playback-failure-memory.ts';
-import {QUIET_READ_EVERY_MS, useAction, useRead} from '../../admin/console';
+import {useAction, useRead} from '../../admin/console';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
 import {Button, Notice, SettingsFooter, SettingsGroup, SettingsNote, SettingsRow, Text} from '../../ui';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const PROBLEM_MOVES = [dependsOn.list('playbackProblems')];
 
 /**
  * Streaming › Playback problems Portico remembers: ways of playing a file that failed on a
@@ -16,9 +20,10 @@ export function PlaybackProblemsPanel() {
   const {t} = i18n;
   const {api} = useSession();
   // A failure a device reports, and one that expires, show and go by themselves.
-  const read = useRead(() => readPlaybackFailureMemory(api), [api], {every: QUIET_READ_EVERY_MS});
+  const read = useRead(() => readPlaybackFailureMemory(api), [api], {on: PROBLEM_MOVES});
   const action = useAction();
   const groups = useMemo(() => groupPlaybackFailures(read.data?.items ?? []), [read.data]);
+  const navigate = useNavigate();
   if (!groups.length && !action.notice) return null;
   const line = (f: PlaybackFailure) => t('server.routes.line', {route: t(`server.routes.route.${f.route}`), engine: t(`server.routes.engine.${f.engine}`)});
   return (
@@ -27,10 +32,14 @@ export function PlaybackProblemsPanel() {
       {action.error ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
       {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
       {groups.map(group => (
-        <SettingsRow key={group.sourceId} icon="warning" label={line(group.failures[0]!)}
-          help={[...group.failures.slice(1).map(line), t('server.routes.when', {when: i18n.dateTime(group.reportedAtMs), until: i18n.dateTime(group.expiresAtMs)})].join(' · ')}
+        // The title the file belongs to leads; what failed, and when, is underneath.
+        <SettingsRow key={group.sourceId} icon="warning" label={group.item?.title || t('server.routes.unknownTitle')}
+          help={[...group.failures.map(line), t('server.routes.when', {when: i18n.dateTime(group.reportedAtMs), until: i18n.dateTime(group.expiresAtMs)})].join(' · ')}
           state={group.failures[0]!.detail || group.failures[0]!.code ? <Text variant="mono" tone="tertiary" style={{fontSize: 12, overflowWrap: 'anywhere'}}>{group.failures[0]!.detail || group.failures[0]!.code}</Text> : undefined}
-          control={<Button size="sm" variant="ghost" label={t('server.routes.forget')} aria-label={t('server.routes.forgetFor')} disabled={action.busy} onClick={() => void action.run(async () => { await clearPlaybackFailureMemory(api, group.sourceId); read.reload(); }, t('server.routes.forgotten'))} />} />
+          control={<>
+            {group.item ? <Button size="sm" variant="ghost" label={t('action.details')} aria-label={t('server.routes.openTitle')} onClick={() => void navigate({to: '/media/$itemId', params: {itemId: group.item!.id}, search: {}})} /> : null}
+            <Button size="sm" variant="ghost" label={t('server.routes.forget')} aria-label={t('server.routes.forgetFor')} disabled={action.busy} onClick={() => void action.run(async () => { await clearPlaybackFailureMemory(api, group.sourceId); read.reload(); }, t('server.routes.forgotten'))} />
+          </>} />
       ))}
       {read.data?.more ? <SettingsFooter><Text variant="caption" tone="tertiary">{t('server.routes.more')}</Text></SettingsFooter> : null}
     </SettingsGroup>

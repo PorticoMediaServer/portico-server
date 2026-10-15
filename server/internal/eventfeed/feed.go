@@ -179,7 +179,9 @@ func (h *Hub) AdmitStream(key string, cancel context.CancelFunc) (func(), bool) 
 	}, true
 }
 
-func (h *Hub) Read(ctx context.Context, p identity.Principal, owner bool, after int64, supplied bool) (Page, error) {
+// administrative is a verified owner or administrator: both hear the admin
+// audience's list hints; only the owner's account inbox is the owner's.
+func (h *Hub) Read(ctx context.Context, p identity.Principal, administrative bool, after int64, supplied bool) (Page, error) {
 	out := Page{Events: []Event{}, NextAfter: "0"}
 	gate, err := dbwork.BeginSnapshot(ctx, h.DB)
 	if err != nil {
@@ -199,7 +201,7 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, owner bool, after 
 		out.Events = append(out.Events, Event{ID: out.NextAfter, Type: "stream.resync", At: time.Now().UTC().Format("2006-01-02T15:04:05.000Z"), Resource: Resource{Kind: "stream", ID: "all"}, Revision: out.NextAfter})
 		return out, gate.Commit()
 	}
-	adminInbox := owner && p.Authority == "local"
+	adminInbox := administrative && p.Role == "owner" && p.Authority == "local"
 	audience := apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID)
 	var deviceID string
 	if err = tx.QueryRowContext(ctx, `SELECT device_id FROM identity_device_families b JOIN authorization_family_tokens t ON t.family_id=b.family_id WHERE t.token_hash=?`, p.Hash).Scan(&deviceID); err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -214,7 +216,7 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, owner bool, after 
 	if adminInbox {
 		adminAudience = apievents.AccountAudience(p.Authority, p.AccountID)
 	}
-	if owner {
+	if administrative {
 		operationAudience = apievents.AdminAudience
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT id,audience,type,resource_kind,resource_id,revision,data,at_ms FROM api_events WHERE id>? AND (audience IN (?,?,?,?,'server') OR audience >= 'library:' AND audience < 'library;') ORDER BY id LIMIT ?`, after, audience, deviceAudience, adminAudience, operationAudience, PageLimit+1)
@@ -274,15 +276,17 @@ func (h *Hub) Read(ctx context.Context, p identity.Principal, owner bool, after 
 
 // SubscribeFor filters private profile/device changes in memory. Library hints
 // still pass the snapshot authorization check in Read before delivery.
-func (h *Hub) SubscribeFor(p identity.Principal, owner bool) (<-chan struct{}, func()) {
+func (h *Hub) SubscribeFor(p identity.Principal, administrative bool) (<-chan struct{}, func()) {
 	ch := make(chan struct{}, 1)
 	audiences := map[string]bool{apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID): true, "server": true}
 	if p.DeviceID != "" {
 		audiences[apievents.DeviceAudience(p.DeviceID)] = true
 	}
-	if owner {
+	if administrative {
 		audiences[apievents.AdminAudience] = true
-		audiences[apievents.AccountAudience(p.Authority, p.AccountID)] = true
+		if p.Role == "owner" {
+			audiences[apievents.AccountAudience(p.Authority, p.AccountID)] = true
+		}
 	}
 	h.mu.Lock()
 	h.readers[ch] = audiences

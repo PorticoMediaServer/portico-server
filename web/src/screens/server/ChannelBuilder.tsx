@@ -1,5 +1,6 @@
 import React, {useEffect, useMemo, useRef, useState} from 'react';
-import {librarySampleLabel, previewLibraryChannel, saveLibraryChannel, type LibraryChannelConfig, type LibraryChannelOrder, type LibraryChannelPreview, type LibraryChannelRule} from '@core/library-channels';
+import {isStaleAnswer, rebaseDraft} from '@core/freshness-actions.ts';
+import {librarySampleLabel, previewLibraryChannel, readLibraryChannels, saveLibraryChannel, type LibraryChannelConfig, type LibraryChannelOrder, type LibraryChannelPreview, type LibraryChannelRule} from '@core/library-channels';
 import {ApiError} from '@core/index.ts';
 import {parseBrowseResult, type BrowseFieldCapability, type BrowseNode} from '@core/browse.ts';
 import type {ContentEntry} from '@core/library-content.ts';
@@ -196,8 +197,16 @@ export function ChannelEditor({value, onClose, onSaved}: {value: {config: Librar
     if (local.timezone) setAdvanced(true);
     if (!valid) return;
     void action.run(async () => {
-      const key = JSON.stringify({config, revision: value.revision});
-      try { const out = await saveLibraryChannel(api, serverId, config, value.revision, opIds.forPayload(key)); opIds.release(); return out; } catch (e) {
+      const send = async (sent: LibraryChannelConfig, revision: number) => { const out = await saveLibraryChannel(api, serverId, sent, revision, opIds.forPayload(JSON.stringify({config: sent, revision}))); opIds.release(); return out; };
+      try { return await send(config, value.revision); } catch (e) {
+        // The channel moved while the builder was open (it was reordered, switched on or off, or
+        // regenerated): its edits are carried onto what the server has now and saved again,
+        // silently, unless the same thing was changed there too.
+        if (value.revision && isStaleAnswer(e)) {
+          const fresh = (await readLibraryChannels(api, serverId).catch(() => [])).find(c => c.config.id === value.config.id);
+          const rebased = fresh ? rebaseDraft(value.config, config, fresh.config) : undefined;
+          if (fresh && rebased && !rebased.conflict) return await send(rebased.merged, fresh.revision);
+        }
         if (e instanceof ApiError && (e.code === 'invalid_library_channel' || e.code === 'library_channel_timezone_invalid')) {
           const field = e.code === 'library_channel_timezone_invalid' ? 'timezone' : fieldOfPath(e.path);
           setRejected(true);

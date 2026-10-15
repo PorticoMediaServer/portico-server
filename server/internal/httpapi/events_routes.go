@@ -55,12 +55,18 @@ func (d Dependencies) eventAuthority(r *http.Request) (identity.Principal, bool,
 			return p, false, nil
 		}
 	}
-	if p.Role != "owner" {
+	// The owner and administrators hear the administration audience (lists,
+	// sessions, tasks); each is re-checked against the live membership.
+	switch p.Role {
+	case "owner":
+		_, err = d.owner(r)
+	case "admin":
+		_, err = d.administrator(r)
+	default:
 		return p, false, nil
 	}
-	_, err = d.owner(r)
 	if err != nil {
-		if errors.Is(err, identity.ErrUnauthorized) {
+		if errors.Is(err, identity.ErrUnauthorized) || errors.Is(err, identity.ErrForbidden) {
 			return p, false, nil
 		}
 		return p, false, err

@@ -93,6 +93,8 @@ export type SessionValue = {
   session?: LocalSession;
   system?: SystemInfo;
   owner: boolean;
+  /** An account of the administrator tier: the Server pages show what the server lets that tier do. */
+  administrator: boolean;
   hostedUrl: string;
   account: AccountState;
   hosted?: Omit<HostedSession, 'refreshToken'>;
@@ -1047,6 +1049,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
       session: scope.session ?? offline?.record.session,
       system,
       owner: scope.session?.viewer.role === 'owner',
+      administrator: scope.session?.viewer.role === 'admin',
       hostedUrl: central.api.origin,
       account,
       hosted: account.session,

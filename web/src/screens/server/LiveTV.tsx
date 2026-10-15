@@ -7,13 +7,17 @@ import {channelRequestID, newLiveSourceInput, type LiveSourceInput} from '@core/
 import type {RecordingStorage} from '@core/dvr.ts';
 import {canRefreshSource, normalizeHdHomerunLocator} from '@core/server-admin/panel-logic.ts';
 export {canRefreshSource, normalizeHdHomerunLocator} from '@core/server-admin/panel-logic.ts';
-import {QUIET_READ_EVERY_MS, problem, sendFresh, useAction, useRead} from '../../admin/console';
+import {problem, sendFresh, useAction, useRead} from '../../admin/console';
 import {useInlineForm} from '../settings/ServerForms';
 import {createOperationIds} from './operation-ids';
 import {usePollWhile} from '../../admin/poll-while';
 import {useSession} from '../../app/session';
 import {Badge, Button, ConfirmDialog, Dialog, Freshness, Input, KeyValue, Menu, Notice, PasswordInput, Segmented, Select, SettingsEmpty, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, type MenuItem} from '../../ui';
 import {ChannelMapDialog, DiscoverTunersDialog, RecordingRulesGroup, SourceSettingsDialog} from './LiveSourceExtras';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const SOURCE_MOVES = [dependsOn.list('liveSources')];
+const RECORDING_SPACE_MOVES = [dependsOn.list('recordingStorage')];
 
 type LiveSource = {id: string; name: string; revision: number; state: string; tunerCount: number; tunerCountMode: string; generation: string; publishedAt: string; channels: number; programmes: number; deliveryValidation: string; capacityKnown: boolean; planningEstimate: number};
 type SourceList = {sources: LiveSource[]; refresh: RefreshStatus[]};
@@ -27,7 +31,7 @@ export function LiveSourcesPanel() {
   const i18n = useI18n();
   const {t} = i18n;
   // A scheduled guide refresh, a source that starts failing, or one added from another device shows by itself.
-  const read = useRead<SourceList>(() => api.request<SourceList>('/v1/admin/live-sources'), [api], {every: QUIET_READ_EVERY_MS});
+  const read = useRead<SourceList>(() => api.request<SourceList>('/v1/admin/live-sources'), [api], {on: SOURCE_MOVES});
   const action = useAction();
   // BE-API-10: one ID per logical write; retries reuse it.
   const [opIds] = useState(createOperationIds);
@@ -187,7 +191,7 @@ export function RecordingStoragePanel() {
   const {t} = i18n;
   // What recordings use and what is free are measured by the server as it records: followed quietly.
   const readStorage = () => api.request<{result?: RecordingStorage} & Partial<RecordingStorage>>('/v1/dvr/storage');
-  const read = useRead(readStorage, [api], {every: QUIET_READ_EVERY_MS});
+  const read = useRead(readStorage, [api], {on: RECORDING_SPACE_MOVES});
   // BE-API-10: one ID per logical save; retries reuse it.
   const [opIds] = useState(createOperationIds);
   const data = (read.data?.result ?? read.data) as RecordingStorage | undefined;

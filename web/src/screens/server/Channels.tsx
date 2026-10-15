@@ -3,7 +3,7 @@ import {readLibraryChannels, readLibraryDefaults, readLibraryTemplates, saveLibr
 import {channelRequestID} from '@core/live-source-draft.ts';
 import {regenerationBody} from '@core/server-admin/panel-logic.ts';
 export {regenerationBody} from '@core/server-admin/panel-logic.ts';
-import {QUIET_READ_EVERY_MS, sendFresh, useAction, useRead} from '../../admin/console';
+import {sendFresh, useAction, useRead} from '../../admin/console';
 import {isStaleAnswer} from '@core/freshness-actions.ts';
 import type {MessageId} from '../../app/i18n';
 import {createOperationIds} from './operation-ids';
@@ -12,6 +12,9 @@ import {Badge, Button, ConfirmDialog, Dialog, Freshness, KeyValue, Menu, Notice,
 import {SectionHeader} from './Server';
 import {ChannelEditor} from './ChannelBuilder';
 import {useI18n, type I18n} from '../../app/i18n';
+import {dependsOn} from '@core/freshness-hub.ts';
+
+const CHANNEL_MOVES = [dependsOn.list('libraryChannels')];
 
 /** CD-13: the logo fence is the logo revision, never the channel configuration revision.
  * The client cannot obtain the logo revision, so it omits the fence for an
@@ -42,7 +45,7 @@ export function LibraryChannelsPanel() {
   const {t} = i18n;
   const serverId = session?.viewer.serverId ?? '';
   // A channel that finishes building its schedule, or runs out of titles, shows by itself.
-  const read = useRead<LibraryChannel[]>(() => readLibraryChannels(api, serverId), [api, serverId], {every: QUIET_READ_EVERY_MS});
+  const read = useRead<LibraryChannel[]>(() => readLibraryChannels(api, serverId), [api, serverId], {on: CHANNEL_MOVES});
   const again = (id: string) => async () => (await readLibraryChannels(api, serverId)).find(c => c.config.id === id);
   const templates = useRead<LibraryChannelTemplate[]>(() => readLibraryTemplates(api, serverId), [api, serverId]);
   const action = useAction();
