@@ -85,6 +85,7 @@ def verify_manifest(directory,expected_source,trusted_public_key):
     embedded,settings=artifact_identity(artifact)
     trust_symbol='portico.local/server/internal/hostedtrust.OfficialRoot' if component=='server' else 'portico.local/hosted/trust.OfficialRoot'
     if settings.get('-tags')!='release' or embedded.get(trust_symbol)!=manifest.get('officialRoot'):raise ValueError('Release lacks the certified official trust root')
+    if settings.get('-trimpath')!='true':raise ValueError('Release was built without -trimpath and carries build-machine paths')
     prefix='portico.local/'+component+'/internal/buildinfo.'
     if embedded.get(prefix+'SourceDigest')!=expected_source or embedded.get(prefix+'BuildID')!=manifest['buildId']:raise ValueError('Embedded build identity does not match release source')
     if manifest.get('version') is not None and embedded.get(prefix+'Version')!=manifest['version']:raise ValueError('Embedded version does not match release manifest')
@@ -153,7 +154,8 @@ def main():
     flags=' '.join(f'-X {prefix}{key}={value}' for key,value in {'SourceDigest':snapshot,'BuildID':build_id,'Version':args.version,'BuiltAt':built_at,'Proof':f'PORTICO_SOURCE_V1:{snapshot}:{build_id}:END'}.items())
     flags+=' -X '+('portico.local/server/internal/hostedtrust.OfficialRoot' if args.component=='server' else 'portico.local/hosted/trust.OfficialRoot')+'='+root_key
     env=controlled_env();env.update({'GOOS':args.os,'GOARCH':args.arch,'CGO_ENABLED':'0'})
-    subprocess.run([str(ROOT/'scripts/env.sh'),'go','build','-tags','release','-buildvcs=false','-mod=readonly','-ldflags',flags,'-o',str(stage/('portico-'+args.component+('.exe' if args.os=='windows' else ''))),'./cmd/'+args.component],cwd=source,env=env,check=True)
+    # -trimpath: the binary names module paths, never this machine's folders (the snapshot, the module cache, Go's own).
+    subprocess.run([str(ROOT/'scripts/env.sh'),'go','build','-tags','release','-buildvcs=false','-mod=readonly','-trimpath','-ldflags',flags,'-o',str(stage/('portico-'+args.component+('.exe' if args.os=='windows' else ''))),'./cmd/'+args.component],cwd=source,env=env,check=True)
     if snapshot_digest(source)[0]!=snapshot:raise SystemExit('Source snapshot changed during build.')
     if hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()!=builder_digest:raise SystemExit('Builder changed during execution; discard output and retry.')
     binary=stage/('portico-'+args.component+('.exe' if args.os=='windows' else ''));manifest={'schema':1,'version':args.version,'component':args.component,'buildId':build_id,'sourceDigest':snapshot,'officialRoot':root_key,'builtAt':built_at,'target':args.os+'-'+args.arch,'builderSha256':builder_digest,'sourceFiles':copied,'artifact':{'path':binary.name,'sha256':hashlib.sha256(binary.read_bytes()).hexdigest()}}
