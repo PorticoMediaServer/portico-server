@@ -156,3 +156,60 @@ func TestRawRoutesKeepAccessAndQueryRules(t *testing.T) {
 		t.Fatal("raw route not listed for contract generation")
 	}
 }
+
+// B-08.12: a validator known before the response is composed answers a repeat
+// read with 304 and no composition, marshalling or hashing.
+func TestConditionalAnswersBeforeComposing(t *testing.T) {
+	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
+	m := Metadata{ID: "page", Method: "GET", Path: "/v1/pages/{id}", Summary: "Page", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+	composed := 0
+	if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: func(ctx context.Context, q *http.Request, _ struct{}) (testResponse, error) {
+		if Conditional(ctx, "rev-"+q.PathValue("id")) {
+			return testResponse{}, nil
+		}
+		composed++
+		return testResponse{Name: q.PathValue("id"), Items: []string{}}, nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	get := func(id, holds string) *httptest.ResponseRecorder {
+		q := httptest.NewRequest("GET", "/v1/pages/"+id, nil)
+		if holds != "" {
+			q.Header.Set("If-None-Match", holds)
+		}
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, q)
+		return w
+	}
+	if w := get("a", ""); w.Code != 200 || w.Header().Get("ETag") != `"rev-a"` || composed != 1 {
+		t.Fatal(w.Code, w.Header(), composed)
+	}
+	for _, holds := range []string{`"rev-a"`, `W/"rev-a"`, `"other", "rev-a"`, `*`} {
+		if w := get("a", holds); w.Code != 304 || w.Body.Len() != 0 || w.Header().Get("ETag") != `"rev-a"` || w.Header().Get("Cache-Control") != "private, no-cache" || composed != 1 {
+			t.Fatal(holds, w.Code, w.Header(), composed)
+		}
+	}
+	if w := get("b", `"rev-a"`); w.Code != 200 || composed != 2 {
+		t.Fatal("another page is composed", w.Code, composed)
+	}
+}
+
+// A revision named through SetHeader is compared before the body is marshalled.
+func TestNamedValidatorIsComparedBeforeMarshalling(t *testing.T) {
+	r := New(func(context.Context, *http.Request, Metadata) error { return nil }, nil)
+	m := Metadata{ID: "doc", Method: "GET", Path: "/v1/doc", Summary: "Doc", Access: Device, Requires: ScopeRead, Lane: Default, Cost: Constant, Status: 200}
+	if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: func(ctx context.Context, _ *http.Request, _ struct{}) (testResponse, error) {
+		SetHeader(ctx, "ETag", `"7"`)
+		// A nil list is refused when marshalled: reaching the marshaller would answer 500.
+		return testResponse{Name: "doc"}, nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	q := httptest.NewRequest("GET", "/v1/doc", nil)
+	q.Header.Set("If-None-Match", `"7"`)
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, q)
+	if w.Code != 304 || w.Body.Len() != 0 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
