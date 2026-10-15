@@ -9514,6 +9514,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -9541,6 +9544,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -9602,6 +9611,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -9629,6 +9641,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -9690,6 +9708,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -9717,6 +9738,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -9874,6 +9901,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -9969,6 +9999,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -10130,6 +10166,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -10225,6 +10264,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -71507,6 +71552,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -71534,6 +71582,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -71902,6 +71956,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -71997,6 +72054,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -87536,6 +87599,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -87563,6 +87629,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -87624,6 +87696,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -87651,6 +87726,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -88169,6 +88250,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -88264,6 +88348,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -97015,6 +97105,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -97042,6 +97135,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -97329,6 +97428,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -97424,6 +97526,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -97585,6 +97693,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -97680,6 +97791,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -99468,6 +99585,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {

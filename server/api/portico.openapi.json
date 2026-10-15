@@ -10357,6 +10357,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -10384,6 +10387,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -10445,6 +10454,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -10472,6 +10484,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -10533,6 +10551,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -10560,6 +10581,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -10723,6 +10750,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -10818,6 +10848,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -10985,6 +11021,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -11080,6 +11119,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -76382,6 +76427,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -76409,6 +76457,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -76793,6 +76847,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -76888,6 +76945,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -92583,6 +92646,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -92610,6 +92676,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -92671,6 +92743,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -92698,6 +92773,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -93228,6 +93309,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -93323,6 +93407,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -102200,6 +102290,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -102227,6 +102320,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -102520,6 +102619,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -102615,6 +102717,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -102782,6 +102890,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -102877,6 +102988,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -104671,6 +104788,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -246883,6 +247006,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -246918,6 +247044,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -247046,6 +247178,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -247081,6 +247216,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -247387,6 +247528,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -247422,6 +247566,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -249194,6 +249344,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -249229,6 +249382,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -249365,6 +249524,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -249400,6 +249562,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -249663,6 +249831,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -249938,6 +250112,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -249973,6 +250150,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -250099,6 +250282,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -250134,6 +250320,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -262290,6 +262482,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -262393,6 +262588,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -262627,6 +262828,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -262730,6 +262934,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -263230,6 +263440,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -263333,6 +263546,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -265227,6 +265446,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -265330,6 +265552,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -265699,6 +265927,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -265802,6 +266033,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -266034,6 +266271,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -266137,6 +266377,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [

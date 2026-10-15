@@ -4120,6 +4120,14 @@ retained_title_state.watched
 retained_title_state.watchlisted
 retained_title_state_counts.profile_id
 retained_title_state_counts.title_count
+saved_entry_undo.entry_id
+saved_entry_undo.expires_ms
+saved_entry_undo.item_id
+saved_entry_undo.kind
+saved_entry_undo.order_key
+saved_entry_undo.owner_key
+saved_entry_undo.resource_id
+saved_entry_undo.token
 saved_operation_fences.created_at
 saved_operation_fences.domain
 saved_operation_fences.operation_id

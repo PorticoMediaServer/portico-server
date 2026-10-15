@@ -27,6 +27,7 @@ import {getContainerState} from '@core/container-state.ts';
 import {useI18n, type I18n} from '../../app/i18n';
 import {GroupBar, GroupRows} from '../shared/GroupBrowse';
 import {useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-browse';
+import {groupSequence} from '../../app/container-play';
 
 type ShowSearch = {library?: string; season?: string; episode?: string; title?: string; sort?: string; direction?: 'asc' | 'desc'; filters?: string};
 /** Up to this many seasons show as tabs; beyond it, a menu (Spec — Title Pages §2). */
@@ -146,16 +147,12 @@ export function ShowScreen() {
   const episodeMembers = selected?.group ? undefined : selected?.seasonId ?? show?.id;
   const episodeSpec = useMemo<GroupSpec | undefined>(() => (show && episodeMembers && (libraryKind === 'tv' || libraryKind === 'anime') ? {libraryId: show.libraryId, libraryKind, pivot: 'episodes', base: [{field: 'memberOf', operator: 'equals', value: episodeMembers}], own: 'season'} : undefined), [show, episodeMembers, libraryKind]);
   const episodeGroup = useGroupBrowse(episodeSpec, {sort: search.sort, direction: search.direction, filters: search.filters}, useCallback((next: GroupChoice) => void navigate({to: params.episodeId ? '/show/$showId/episode/$episodeId' : '/show/$showId', params: {showId, ...(params.episodeId ? {episodeId: params.episodeId} : {})}, search: showSearch({sort: next.sort, direction: next.direction, filters: next.filters}), replace: true, resetScroll: false}), [navigate, showId, params.episodeId, showSearch]));
-  // A sorted or filtered list plays on in the order shown: the episodes loaded after the one pressed.
+  // A sorted or filtered list plays on in the order shown: the whole list, from the server's query,
+  // starting at the episode pressed.
   const playListed = useCallback((episode: ContentEntry, startSeconds?: number) => {
-    const list = episodeGroup.collection;
-    const queue: ContentEntry[] = [];
-    const total = list?.getSnapshot().total ?? 0;
-    let at = -1;
-    for (let i = 0; list && i < total && i < 2000; i++) { const item = list.itemAt(i); if (at < 0) { if (item?.id === episode.id) at = i; else continue; } if (!item || queue.length >= 200) break; if (item.playback) queue.push(item); }
-    if (!queue.length && episode.playback) queue.push(episode);
-    if (queue.length) player.playSequence(queue, 0, startSeconds ?? episode.playback?.startSeconds ?? episode.progressSeconds ?? 0);
-  }, [episodeGroup.collection, player]);
+    if (!episode.playback) return;
+    player.playSequence([episode], 0, startSeconds ?? episode.playback.startSeconds ?? episode.progressSeconds ?? 0, groupSequence(episodeGroup));
+  }, [episodeGroup, player]);
   const openedHere = useRef(false);
   const openEpisode = useCallback((episode: ContentEntry) => {
     openedHere.current = true;

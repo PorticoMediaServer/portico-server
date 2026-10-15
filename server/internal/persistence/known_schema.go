@@ -492,6 +492,8 @@ index remote_listing_directory_history
 index remote_listing_retention
 index retained_title_identities_state
 index retained_title_state_profile
+index saved_entry_undo_expiry
+index saved_entry_undo_list
 index saved_pin_order_position
 index saved_resource_entries_item_id_fk
 index saved_resource_owner
@@ -1145,6 +1147,7 @@ table restrictions
 table retained_title_identities
 table retained_title_state
 table retained_title_state_counts
+table saved_entry_undo
 table saved_operation_fences
 table saved_pin_order
 table saved_pin_order_revisions
