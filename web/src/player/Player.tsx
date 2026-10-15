@@ -219,7 +219,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
      ordinary way while they last (see usePlayerSubtitles). */
   const [pictureAway, setPictureAway] = useState<'none' | 'element' | 'document'>('none');
   const [systemFullscreen, setSystemFullscreen] = useState(false);
-  const subtitles = usePlayerSubtitles(api, scope, service, surface, resourceKey, isAudio, overlay, pictureAway === 'element' || systemFullscreen);
+  const subtitles = usePlayerSubtitles(api, scope, service, surface, resourceKey, isAudio, overlay, pictureAway === 'element' ? 'window' : systemFullscreen ? 'system' : false);
   const [forcedOnly, setForcedOnly] = useState(() => { try { return localStorage.getItem('portico.player.subtitle-forced-only.v1') === '1'; } catch { return false; } });
   useEffect(() => { overlay?.setForcedOnly(forcedOnly); }, [overlay, forcedOnly]);
   const toggleForcedOnly = () => setForcedOnly(now => { try { localStorage.setItem('portico.player.subtitle-forced-only.v1', now ? '0' : '1'); } catch { /* private mode */ } return !now; });
@@ -472,9 +472,17 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     const el = video.current;
     if (!el) return;
     const enter = () => setPictureAway('element'), leave = () => setPictureAway(now => (now === 'element' ? 'none' : now));
+    /* Safari also moves the picture from its own controls (the Picture in Picture button of an
+       iPhone's full-screen player, the system's swipe home), and says so as a presentation mode. */
+    const mode = () => {
+      const now = (el as HTMLVideoElement & {webkitPresentationMode?: string}).webkitPresentationMode;
+      if (now === 'picture-in-picture') enter(); else if (now !== undefined) leave();
+      if (now !== undefined) setSystemFullscreen(now === 'fullscreen' && !document.fullscreenElement);
+    };
     el.addEventListener('enterpictureinpicture', enter);
     el.addEventListener('leavepictureinpicture', leave);
-    return () => { el.removeEventListener('enterpictureinpicture', enter); el.removeEventListener('leavepictureinpicture', leave); pipWindow.current?.close(); };
+    el.addEventListener('webkitpresentationmodechanged', mode);
+    return () => { el.removeEventListener('enterpictureinpicture', enter); el.removeEventListener('leavepictureinpicture', leave); el.removeEventListener('webkitpresentationmodechanged', mode); pipWindow.current?.close(); };
   }, []);
   /* The subtitle chosen here goes to the television with the title. It cannot draw styled or image
      subtitles itself, so the server burns those into its picture (text stays text). Before the

@@ -102,12 +102,14 @@ function useSessionFacts(playback: PlaybackService): SessionFacts {
  * the cue documents and the originals) and used to manage files; they are not asked to select.
  */
 /**
- * `elsewhere`: the picture is on a surface the page cannot draw over (the browser's own Picture in
- * Picture window, an iPhone's full-screen player). A drawn track is handed to the session the
- * ordinary way while it lasts (text for a styled track where the server has it, otherwise burned
- * into the picture), and drawn on the page again when the picture comes back.
+ * `elsewhere`: the picture is on a surface the page cannot draw over. A drawn track is handed to
+ * the session the ordinary way while it lasts, and drawn on the page again when the picture comes
+ * back. In the browser's own Picture in Picture window ('window') that is text for a styled track
+ * the server has as text, otherwise the subtitle burned into the picture. In an iPhone's
+ * full-screen player ('system') only text is asked for: a new picture would end the full-screen
+ * player, so a track that would have to be burned in waits for the page.
  */
-export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, surface: SubtitleSurface | null, resourceKey: string, audio: boolean, overlay: SubtitleOverlay | null = null, elsewhere = false) {
+export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, surface: SubtitleSurface | null, resourceKey: string, audio: boolean, overlay: SubtitleOverlay | null = null, elsewhere: false | 'window' | 'system' = false) {
   const state = useSessionFacts(playback);
   const available = !audio && !!state.sessionId && state.generation !== undefined && !!state.itemId && !state.channel && !['error', 'ended', 'idle'].includes(state.phase);
   const service = useMemo(() => available ? new SubtitleService(api, {itemId: state.itemId!, sessionId: state.sessionId!, generation: state.generation!}, () => crypto.randomUUID(), {positionUs: () => String(Math.max(0, Math.round((playback.getSnapshot().pendingSeek?.positionSeconds ?? playback.getSnapshot().positionSeconds) * 1e6))), install: p => playback.getSnapshot().intentId === state.intentId && playback.installSubtitlePresentation(p)}) : null, [api, scope.serverId, scope.viewerId, available, state.itemId, state.intentId, state.sessionId, state.generation]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -253,7 +255,7 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
   useEffect(() => {
     const selected = plan?.selected;
     if (!service || !overlay || !selected || plan?.mode !== 'track' || subtitles.suppressed) { if (!elsewhere) handedOver.current = null; return; }
-    if (elsewhere && selectedSubtitleOriginal(plan) && handedOver.current !== selected.id) {
+    if (elsewhere && selectedSubtitleOriginal(plan) && handedOver.current !== selected.id && (elsewhere === 'window' || selected.renderer !== 'burn_in')) {
       handedOver.current = selected.id;
       void select(selected, undefined, plan.offsetUs).catch(() => { handedOver.current = null; });
     } else if (!elsewhere && handedOver.current === selected.id) {
