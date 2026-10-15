@@ -63,6 +63,8 @@ export type SettingsCapabilities = Readonly<{
   audioPassthrough?: boolean;
   /** This device or its display can show HDR. Absent: it can. */
   hdr?: boolean;
+  /** This device can be laid out for a television or for touch, whatever it reports itself as (an Android device). Absent or false: its layout is fixed. */
+  layoutChoice?: boolean;
   /** This member makes personal access tokens for their own scripts. Absent or false: not offered (the owner makes API keys on the Server pages instead). */
   accessTokens?: boolean;
 }>;
@@ -82,7 +84,9 @@ export type CompositeId =
   | 'playbackMethod' | 'cardSize'
   // Kept by the device and published in its capability document (`withViewerSettings`).
   | 'playerEngine' | 'forceStereo' | 'disablePassthrough' | 'disableHdr'
-  | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices';
+  | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices'
+  // Kept by the device and read before the app draws anything (B-19.10).
+  | 'layout';
 export type SettingsActionId = 'signOut' | 'resetRecommendations' | 'linkTV';
 export type SettingsCustomId =
   | 'identity' | 'profiles' | 'password' | 'twoStep' | 'devices' | 'porticoAccount' | 'servers'
@@ -285,6 +289,9 @@ const accountPages: readonly AuthoredPage[] = [
         // Apple keeps this on the device, beside the system's own Reduce Motion.
         {kind: 'composite', id: 'reduceMotion', storage: 'device', label: 'pref.label.appearance.reduceMotion', help: 'settings.help.reduceMotionDevice', scope: 'device', platforms: ['phone', 'tv'], control: {type: 'switch'}},
         {kind: 'composite', id: 'textSize', storage: 'device', label: 'settings.row.textSize', scope: 'device', platforms: ['tv'], control: {type: 'choice', choices: [{value: 'standard', label: 'settings.textSize.standard'}, {value: 'large', label: 'settings.textSize.large'}]}},
+        // A box that does not say it is a television (or a tablet that is used as one) is laid out
+        // the way the person says: Automatic decides from what the device reports.
+        {kind: 'composite', id: 'layout', storage: 'device', label: 'settings.row.layout', help: 'settings.help.layout', scope: 'device', platforms: ['phone', 'tv'], needs: c => !!c.layoutChoice, control: {type: 'choice', choices: [{value: 'automatic', label: 'settings.layout.automatic'}, {value: 'television', label: 'settings.layout.television'}, {value: 'touch', label: 'settings.layout.touch'}]}},
         {kind: 'composite', id: 'libraryView', storage: 'device', label: 'settings.row.libraryView', help: 'settings.help.libraryView', scope: 'device', platforms: ['web'], control: {type: 'choice', choices: [{value: 'grid', label: 'settings.libraryView.grid'}, {value: 'list', label: 'settings.libraryView.list'}]}},
         toggle('notifications.badges', 'settings.row.unreadBadge', {help: 'settings.help.unreadBadge'}),
       ]},
