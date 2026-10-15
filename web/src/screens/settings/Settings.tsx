@@ -1,5 +1,5 @@
 import React, {Suspense, useEffect, useMemo, useState} from 'react';
-import {Link, useLocation, useNavigate, useParams} from '@tanstack/react-router';
+import {Link, useLocation, useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import {findSettingsPage, searchSettings, settingsPageId, settingsRowId, settingsStructure, type SettingsPage as StructurePage, type SettingsRow as StructureRow, type SettingsSection} from '@core/presentation/index.ts';
 import type {PreferencePatch} from '@core/preferences.ts';
 import {useSession} from '../../app/session';
@@ -14,6 +14,8 @@ import s from './Settings.module.css';
 
 // The Server heading's pages carry the console's forms and charts: loaded when an owner opens one.
 const ServerPage = React.lazy(() => import('./ServerPages').then(m => ({default: m.ServerPage})));
+// About › Open-source licenses (`?tab=licenses`, one component `&id=`): its own chunk, and its list another.
+const Licences = React.lazy(() => import('./Licences').then(m => ({default: m.Licences})));
 
 /** Addresses from before the one Settings screen (Justin, 2 Oct 2026), so old links still land. */
 const FORMER: Readonly<Record<string, string>> = {account: 'profile', preferences: 'playback', servers: 'device', notifications: 'profile'};
@@ -63,6 +65,8 @@ function SettingsFrame({address}: {address?: string}) {
   const [query, setQuery] = useState('');
   const matches = useMemo(() => searchSettings(structure, query, t), [structure, query, t]);
   const current = address || !narrow ? findSettingsPage(structure, address) : undefined;
+  const search = useSearch({strict: false}) as {tab?: string; id?: string};
+  const licences = current?.page.id === 'about' && search.tab === 'licenses';
   const list = (
     <nav className={s.nav} aria-label={t('settings.pages')}>
       <Input hideLabel type="search" label={t('settings.search')} placeholder={t('settings.search')} value={query} onChange={e => setQuery(e.target.value)} />
@@ -100,7 +104,9 @@ function SettingsFrame({address}: {address?: string}) {
           {narrow ? <Link to="/settings" className={s.back}><Icon name="back" size={14} />{t('settings.title')}</Link> : null}
           {current.heading.id === 'server'
             ? <Suspense fallback={<Loading label={t(current.page.title)} />}><ServerPage page={current.page} /></Suspense>
-            : <AccountPage key={current.page.id} page={current.page} />}
+            : licences
+              ? <Suspense fallback={<Loading label={t('licenses.loading')} />}><Licences id={search.id} /></Suspense>
+              : <AccountPage key={current.page.id} page={current.page} />}
         </div>
       </div>
     </Page>
