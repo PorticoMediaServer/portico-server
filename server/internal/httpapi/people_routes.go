@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadata"
@@ -212,4 +213,35 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
+	// The owner's manual order of a library collection, moved the way a
+	// playlist's is and fenced by the collection's revision.
+	d.httpHandle(mux, "PUT /v1/collections/{id}/order", func(w http.ResponseWriter, r *http.Request) {
+		if _, e := d.owner(r); e != nil {
+			failure(w, e)
+			return
+		}
+		var body collectionReorder
+		if e := decode(w, r, &body); e != nil {
+			failure(w, e)
+			return
+		}
+		out, e := d.Catalog.WithContext(r.Context()).ReorderCollection(r.PathValue("id"), body.ExpectedRevision, body.ItemIDs, body.AfterItemID)
+		if errors.Is(e, catalog.ErrPlaylistConflict) && standardErrors != nil {
+			standardErrors.Write(w, "", &apierror.Error{Code: "revision_mismatch"})
+			return
+		}
+		if e != nil {
+			failure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+}
+
+// collectionReorder is PUT /v1/collections/{id}/order: the titles to move (at
+// most 200) and, optionally, the title they go after ("" the front).
+type collectionReorder struct {
+	ExpectedRevision int64    `json:"expectedRevision"`
+	ItemIDs          []string `json:"itemIds"`
+	AfterItemID      *string  `json:"afterItemId,omitempty"`
 }

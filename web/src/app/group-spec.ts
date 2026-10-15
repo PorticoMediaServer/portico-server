@@ -82,7 +82,8 @@ export function entityGroups(libraryId: string, libraryKind: string, entity: Rea
   if (!entity || !libraryId) return {};
   const of = (pivot: string | undefined, base: BrowseNode, rest: Partial<GroupSpec> = {}): GroupSpec | undefined => (pivot ? {libraryId, libraryKind, pivot, base: [base], ...rest} : undefined);
   switch (entity.kind) {
-    case 'collection': return {titles: of(titlePivot(libraryKind), {field: 'collection', operator: 'equals', value: entity.id}, {own: 'collection'})};
+    // A collection's own order is the owner's (or a box set's): the page lists it in that order.
+    case 'collection': return {titles: of(titlePivot(libraryKind), {field: 'collection', operator: 'equals', value: entity.id}, {own: 'collection', always: true})};
     case 'artist': return libraryKind === 'music' ? {titles: of('albums', member(entity.id), {own: 'default'}), songs: of('songs', member(entity.id), {own: 'default'})} : {};
     case 'album': return libraryKind === 'music' ? {songs: of('songs', member(entity.id), {opening: {field: 'trackNumber', direction: 'asc'}})} : {};
     // One disc of an album ("<album id>:disc:<n>"): the album's songs on that disc.

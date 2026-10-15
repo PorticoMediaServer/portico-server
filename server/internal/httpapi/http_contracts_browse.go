@@ -198,6 +198,10 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_people_id_portrait", Method: "GET", Path: "/v1/people/{id}/portrait", Summary: "Read people portrait", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"v"}, ResponseContentType: "image/jpeg", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
+	// internal/httpapi/people_routes.go: a library collection's manual order
+	if err := apikit.RegisterHTTP[collectionReorder, catalog.Collection](registry, apikit.Metadata{ID: "reorder_library_collection", Method: "PUT", Path: "/v1/collections/{id}/order", Summary: "Move titles of a library collection (at most 200), fenced by its revision", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
+		return err
+	}
 	// internal/httpapi/people_routes.go:195
 	if err := apikit.RegisterHTTP[struct {
 		AddItemIDs    []string "json:\"addItemIds\""

@@ -166,6 +166,20 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
 		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
+	}](registry, apikit.Metadata{ID: "reorder_saved_collection", Method: "PUT", Path: "/v1/saved-resources/{id}/order", Summary: "Move entries of a personal collection (at most 200), fenced by its revision", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
+		return err
+	}
+	// internal/httpapi/saved_resources.go:140
+	if err := apikit.RegisterHTTP[catalog.SavedResourceMutation, struct {
+		ServerID    string                       `json:"serverId"`
+		ViewerFence string                       `json:"viewerFence"`
+		Receipt     catalog.SavedResourceReceipt `json:"receipt"`
+		Current     *struct {
+			ResourceID string `json:"resourceId"`
+			Revision   int64  `json:"revision"`
+			Deleted    bool   `json:"deleted"`
+		} `json:"current,omitempty"`
+		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
 	}](registry, apikit.Metadata{ID: "put_saved_resources_id_shares", Method: "PUT", Path: "/v1/saved-resources/{id}/shares", Summary: "Save saved resources shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}

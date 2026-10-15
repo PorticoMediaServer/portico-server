@@ -113,7 +113,7 @@ func TestQueueKeysResolveSavedViewsAndSharedCollections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.MutateSavedResource(actor, collection.ResourceID, "entries", SavedResourceMutation{OperationID: "saved-queue-entries-01", ExpectedRevision: collection.Revision, AddItemIDs: []string{names["m2"].Public, names["m1"].Public}}, func(*sql.Tx) error { return nil })
+	added, err := s.MutateSavedResource(actor, collection.ResourceID, "entries", SavedResourceMutation{OperationID: "saved-queue-entries-01", ExpectedRevision: collection.Revision, AddItemIDs: []string{names["m2"].Public, names["m1"].Public}}, func(*sql.Tx) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,8 +121,20 @@ func TestQueueKeysResolveSavedViewsAndSharedCollections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// A collection plays in the order it is shown, by title, not the order its entries were added.
-	if !reflect.DeepEqual(got, []string{names["m1"].Public, names["m2"].Public}) {
+	// A collection plays in its own order: the order entries were added in...
+	if !reflect.DeepEqual(got, []string{names["m2"].Public, names["m1"].Public}) {
 		t.Fatalf("shared collection membership %v", got)
+	}
+	// ...or wherever its owner has moved them since.
+	var second string
+	if err = db.QueryRow(`SELECT id FROM saved_resource_entries WHERE resource_id=? AND item_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`, collection.ResourceID, names["m1"].Public).Scan(&second); err != nil {
+		t.Fatal(err)
+	}
+	front := ""
+	if _, err = s.MutateSavedResource(actor, collection.ResourceID, "reorder", SavedResourceMutation{OperationID: "saved-queue-order-01", ExpectedRevision: added.Revision, EntryIDs: []string{second}, AfterEntryID: &front}, func(*sql.Tx) error { return nil }); err != nil {
+		t.Fatal(err)
+	}
+	if got, err = read(other, collection.ResourceID); err != nil || !reflect.DeepEqual(got, []string{names["m1"].Public, names["m2"].Public}) {
+		t.Fatalf("after a move %v %v", got, err)
 	}
 }

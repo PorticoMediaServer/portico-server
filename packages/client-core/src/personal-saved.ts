@@ -21,6 +21,9 @@ export type PersonalSavedIntent=Readonly<
  {action:'update';name?:string;summary?:string;visibility?:PersonalVisibility;definition?:SavedDefinition}|
  /** `undoToken` alone: put back the entries a removal took out (its result's `undo.token`). */
  {action:'entries';addItemIds?:readonly string[];removeEntryIds?:readonly string[];undoToken?:string}|
+ /** A collection's own order: these entries go just after `afterEntryId` ("" the front), in the
+  * order given; without it they swap among their places. Fenced by the collection's revision. */
+ {action:'reorder';entryIds:readonly string[];afterEntryId?:string}|
  {action:'delete'}|{action:'pin';pinned:boolean}|
  {action:'share';actor:SavedActor;role:'viewer'|'editor'}|{action:'unshare';actor:SavedActor}|
  {action:'clear-history'|'reset-viewing-activity'}>;
@@ -47,9 +50,9 @@ function definition(v:unknown):SavedDefinition{
 function resource(v:unknown,scope:SavedScope):PersonalResource{
  if(!obj(v)||v.serverId!==scope.serverId||!id(v.viewerFence)||!id(v.id)||!['collection','view'].includes(v.kind as string)||!str(v.name,400)||!v.name.trim()||!str(v.summary,8000)||!['private','server'].includes(v.visibility as string)||!num(v.revision)||!num(v.entryCount)||!['owner','editor','viewer'].includes(v.role as string)||!['ready','needs-review'].includes(v.status as string)||typeof v.pinned!=='boolean'||!num(v.pinRevision))bad();
  // An action this app does not know is not offered. The role and what a role may hold stay exact.
- const offered=rows(v.actions,8),actions=[...new Set(offered.filter((a):a is string=>typeof a==='string'&&['pin','update','delete','entries','share'].includes(a)))];
+ const offered=rows(v.actions,8),actions=[...new Set(offered.filter((a):a is string=>typeof a==='string'&&['pin','update','delete','entries','reorder','share'].includes(a)))];
  if(actions.length!==offered.length)noteSkipped('personal-saved','resource.actions',offered.length-actions.length);
- if(v.role==='viewer'&&actions.some(a=>a!=='pin')||v.role==='editor'&&actions.some(a=>a!=='pin'&&a!=='entries'))bad();
+ if(v.role==='viewer'&&actions.some(a=>a!=='pin')||v.role==='editor'&&actions.some(a=>a!=='pin'&&a!=='entries'&&a!=='reorder'))bad();
  const shares=keepReadable('personal-saved','resource.shares',rows(v.shares??[],100),s=>{if(!obj(s)||typeof s.role!=='string'||!str(s.displayName,512))bad();/* Someone a collection or view is shared with is never hidden for holding a role this app does not know: they are listed, as a viewer, and can still be removed. */return {...actor(s),role:oneOfOr('personal-saved','share.role',s.role,['viewer','editor'] as const,'viewer'),displayName:s.displayName};});
  const invalidComponents=keepReadable('personal-saved','resource.invalidComponents',rows(v.invalidComponents,32),x=>{if(!str(x,256))bad();return x;});
  // Needs-review definitions are deliberately not executed or silently normalized.
@@ -105,7 +108,7 @@ export function parsePersonalBatchReceipt(v:unknown,serverId:string,requested:re
  return Object.freeze({serverId,viewerFence:v.viewerFence,operationId:v.operationId,results:Object.freeze(results),updated:v.updated,failed:v.failed});
 }
 export const PERSONAL_BATCH_PATH=routePath("put_items_personal_state_batch");
-function info(e:unknown):PersonalSavedError{const x=e as {code?:unknown};const code=id(x?.code)?x.code:'request_failed';return {code,message:e instanceof Error?e.message:'The request failed.',conflict:['playlist_conflict','resource_conflict','personal_state_conflict','stale_continuation','operation_expired'].includes(code)};}
+function info(e:unknown):PersonalSavedError{const x=e as {code?:unknown};const code=id(x?.code)?x.code:'request_failed';return {code,message:e instanceof Error?e.message:'The request failed.',conflict:['playlist_conflict','resource_conflict','revision_mismatch','personal_state_conflict','stale_continuation','operation_expired'].includes(code)};}
 function freeze<T>(v:T):T{if(v&&typeof v==='object'){for(const c of Object.values(v))freeze(c);Object.freeze(v);}return v;}
 export function isPersonalSavedRoute(route:SavedRoute|null):boolean{return !!route&&['collections','views','history','resource'].includes(route.view);}
 /** The definition names an existing authorized library and canonical browse semantics. */
@@ -140,7 +143,7 @@ export function savedCategoryId(d?:SavedDefinition):string{
 }
 export class PersonalSavedService{
  private state:PersonalSavedSnapshot;private listeners=new Set<()=>void>();private generation=0;private readTicket=0;private candidateTicket=0;private disposed=false;private controllers=new Set<AbortController>();
- private command?:{intent:PersonalSavedIntent;path:string;method:string;body:Record<string,unknown>;fence:string};
+ private command?:{intent:PersonalSavedIntent;path:string;method:string;body:Record<string,unknown>;fence:string;rebased?:boolean};
  private api:SavedApi;readonly scope:SavedScope;private requestId:()=>Promise<string>;
  constructor(api:SavedApi,scope:SavedScope,requestId:()=>Promise<string>){this.api=api;this.scope=Object.freeze({...scope});this.requestId=requestId;if(!id(scope.serverId)||!str(scope.viewerId,1024)||!scope.viewerId)throw new Error('A complete viewer scope is required.');this.state=this.empty();}
  private empty():PersonalSavedSnapshot{return freeze({route:null,loading:false,error:null,mutationError:null,pending:false,retryPending:false,resources:[],resource:null,entries:[],browse:null,revision:0,viewerFence:'',cursor:null,history:[],nextCursor:'',result:null,candidates:[],candidateCursor:'',libraries:[]});}
@@ -208,7 +211,7 @@ export class PersonalSavedService{
   try{const raw=await this.request<RouteResponse<"get_saved_resources_id_share_candidates">>(encodedRoutePath("get_saved_resources_id_share_candidates", {"id": encodeURIComponent(r.id)}) + "?" + (new URLSearchParams({limit:'40',...(cursor?{cursor}:{})})));if(!this.alive(g)||ticket!==this.candidateTicket)return;
    if(!obj(raw)||raw.serverId!==this.scope.serverId||raw.viewerFence!==r.viewerFence||raw.resourceId!==r.id||raw.revision!==r.revision||!str(raw.nextCursor,4096))bad();const candidates=distinct(keepReadable('personal-saved','candidates',rows(raw.candidates),c=>{if(!obj(c)||!id(c.id)||!str(c.displayName,512))bad();return {...actor(c),id:c.id,displayName:c.displayName};}),'candidates');this.publish({candidates,candidateCursor:raw.nextCursor});
   }catch(e){if(this.alive(g)&&ticket===this.candidateTicket)this.publish({error:info(e)});}}
- async mutate(intent:PersonalSavedIntent):Promise<boolean>{
+ async mutate(intent:PersonalSavedIntent,rebased=false):Promise<boolean>{
   if(this.disposed||this.state.loading||this.state.pending||this.command)throw new Error('Finish or dismiss the outstanding change before starting another.');
   const r=this.state.resource,g=this.generation,route=this.state.route;if(!route||!this.state.viewerFence)throw new Error('Reload Saved before changing it.');
   let path: string=routePath("post_saved_resources"),method='POST',body:Record<string,unknown>={expectedRevision:r?.revision??0};
@@ -220,12 +223,13 @@ export class PersonalSavedService{
     case 'update':path=encodedRoutePath('patch_saved_resources_id',{id:resourceId});method='PATCH';Object.assign(body,{...(intent.name!==undefined?{name:intent.name}:{}),...(intent.summary!==undefined?{summary:intent.summary}:{}),...(intent.visibility!==undefined?{visibility:visibility(intent.visibility)}:{}),...(intent.definition?{definition:definition(intent.definition)}:{})});break;
     case 'delete':path=encodedRoutePath('delete_saved_resources_id',{id:resourceId});method='DELETE';break;
     case 'entries':method='PUT';path=encodedRoutePath('put_saved_resources_id_entries',{id:resourceId});if(intent.undoToken!==undefined){if(!id(intent.undoToken)||intent.addItemIds?.length||intent.removeEntryIds?.length)throw new Error('Invalid collection entries.');body.undoToken=intent.undoToken;break;}if((intent.addItemIds?.length??0)>100||(intent.removeEntryIds?.length??0)>100||intent.addItemIds?.some(x=>!id(x))||intent.removeEntryIds?.some(x=>!id(x)))throw new Error('Invalid collection entries.');Object.assign(body,{addItemIds:intent.addItemIds??[],removeEntryIds:intent.removeEntryIds??[]});break;
+    case 'reorder':method='PUT';path=encodedRoutePath('reorder_saved_collection',{id:resourceId});if(!intent.entryIds.length||intent.entryIds.length>200||intent.entryIds.some(x=>!id(x))||new Set(intent.entryIds).size!==intent.entryIds.length||intent.afterEntryId!==undefined&&intent.afterEntryId!==''&&(!id(intent.afterEntryId)||intent.entryIds.includes(intent.afterEntryId)))throw new Error('Invalid collection order.');Object.assign(body,{entryIds:[...intent.entryIds],...(intent.afterEntryId!==undefined?{afterEntryId:intent.afterEntryId}:{})});break;
     case 'share':case 'unshare':path=encodedRoutePath(intent.action==='share'?'put_saved_resources_id_shares':'delete_saved_resources_id_shares',{id:resourceId});method=intent.action==='share'?'PUT':'DELETE';Object.assign(body,actor(intent.actor));if(intent.action==='share')body.role=intent.role;break;
     case 'pin':path=encodedRoutePath("put_saved_pins_kind_id", {"kind": r.kind, "id": encodeURIComponent(r.id)});method='PUT';body={expectedRevision:r.pinRevision,pinned:intent.pinned};break;
    }
   }
   this.publish({pending:true,mutationError:null,result:null});
-  try{const operationId=await this.bounded(()=>this.requestId());if(!this.alive(g))return false;if(!uuid.test(operationId))throw new Error('A UUIDv4 operation ID is required.');body.operationId=operationId;this.command={intent:freeze({...intent}),path,method,body:freeze(body),fence:this.state.viewerFence};return await this.send();}
+  try{const operationId=await this.bounded(()=>this.requestId());if(!this.alive(g))return false;if(!uuid.test(operationId))throw new Error('A UUIDv4 operation ID is required.');body.operationId=operationId;this.command={intent:freeze({...intent}),path,method,body:freeze(body),fence:this.state.viewerFence,...(rebased?{rebased}:{})};return await this.send();}
   catch(e){if(this.alive(g))this.publish({pending:false,mutationError:info(e),retryPending:!!this.command});return false;}
  }
  private async send():Promise<boolean>{const c=this.command,g=this.generation;if(!c||this.disposed)return false;this.publish({pending:true,mutationError:null});
@@ -236,7 +240,11 @@ export class PersonalSavedService{
    const undo=c.intent.action==='entries'&&id(receipt.undoToken)&&str(receipt.undoUntil,64)?{undo:{token:receipt.undoToken,until:receipt.undoUntil}}:{};
    this.command=undefined;this.publish({pending:false,retryPending:false,mutationError:null,result:{...(entries?{entries}:{}),...undo,...(typeof receipt.resourceId==='string'?{resourceId:receipt.resourceId}:{}),deleted},candidates:[],candidateCursor:''});
    if(!deleted)await this.refresh();return this.alive(g);
-  }catch(e){if(!this.alive(g))return false;const error=info(e);this.publish({pending:false,retryPending:true,mutationError:error});if(error.conflict)await this.refresh();return false;}
+  }catch(e){if(!this.alive(g))return false;const error=info(e);this.publish({pending:false,retryPending:true,mutationError:error});if(error.conflict)await this.refresh();
+   // A move made while the collection changed elsewhere is made again on what is there now, once:
+   // the entries it names still say what the viewer meant. The viewer sees a conflict only if that fails too.
+   if(error.conflict&&c.intent.action==='reorder'&&!c.rebased&&this.alive(g)&&this.command===c){this.command=undefined;const again=await this.mutate(c.intent,true);return again;}
+   return false;}
  }
  /** Network retry is byte-identical. Rebase is a separate, explicit reviewed intent. */
  retry=()=>this.state.pending?Promise.resolve(false):this.send();

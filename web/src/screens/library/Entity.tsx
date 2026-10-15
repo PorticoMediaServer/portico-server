@@ -1,6 +1,6 @@
 import {useSelectionRefresh} from '../../app/selection';
 import {useBack} from '../../app/back';
-import React, {useCallback, useMemo} from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import type {ContentEntry, ContentRoute, ContentView} from '@core/library-content.ts';
 import {useContent} from '../../app/content';
@@ -14,7 +14,10 @@ import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
 import {useDownloads} from '../../app/downloads';
 import {containerKindFor, useContainerWatched} from '../shared/container-watched';
-import {Button, Inset, KeyValue, ListRow, Page, Section, Skeleton, StateView, Text, TitleHero, type MenuAnchor} from '../../ui';
+import {Button, Inset, KeyValue, ListRow, Page, Section, Skeleton, StateView, Surface, Text, TitleHero, type MenuAnchor} from '../../ui';
+import {ManualOrderList, useWholeList} from '../shared/ManualOrder';
+import {moveRequest} from '@core/presentation/manual-order.ts';
+import {moveCollectionTitle} from '@core/library-collection-order.ts';
 import {LoadingShelves, SectionView, sectionHeading} from '../shared/Sections';
 import {GroupBar, GroupGrid, GroupRows} from '../shared/GroupBrowse';
 import {entityGroups, useGroupBrowse, type GroupChoice} from '../../app/group-browse';
@@ -41,11 +44,12 @@ export function EntityScreen() {
   const navigate = useNavigate();
   const player = usePlayerActions();
   const open = useOpenEntry();
-  const {api} = useSession();
+  const {api, owner, administrator} = useSession();
   const downloads = useDownloads();
   const content = useMemo<ContentRoute>(() => ({libraryId, view: view as Exclude<ContentView, 'home'>, entityId}), [libraryId, view, entityId]);
   const {snapshot, retry, refresh, next} = useContent(content);
   const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', refresh);
+  const [reordering, setReordering] = useState(false);
   useSelectionRefresh(refresh);
   // PERF-S02: section "More" appends inside its own section; the page's other
   // sections stay rendered.
@@ -179,6 +183,16 @@ export function EntityScreen() {
   // The toolbar's list: a book's parts, an artist's releases, else a collection's or author's titles (the first section).
   const barredSection = kind === 'book' ? (onePart ? undefined : parts) : legacySections[0];
   const titleBar = groups.titles && snapshot.sections.length && (kind !== 'book' || barredSection) ? <Inset><GroupBar group={titleGroup} total={isArtist ? releases?.totalCount : barredSection?.totalCount} /></Inset> : null;
+  // The owner arranges a library collection's own order here (only while it is shown in that order).
+  const ownOrderShown = kind === 'collection' && !address.sort && !address.filters;
+  const canReorder = (owner || administrator) && ownOrderShown && !!entity && (titleGroup.total ?? 0) > 1;
+  const reorderList = useWholeList(reordering && canReorder ? titleGroup.collection : undefined);
+  const moveTitle = async (from: number, to: number) => {
+    const request = moveRequest(reorderList.entries.map(e => e.id), from, to);
+    if (!request || !entity) return;
+    await moveCollectionTitle(<T,>(path: string, method: 'GET' | 'PUT', body?: unknown) => api.request<T>(path, method, body), entity.id, request.entryId, request.afterEntryId);
+    titleGroup.refresh?.();
+  };
   return (
     <div style={{position: 'relative'}}>
         <TitleHero
@@ -252,8 +266,9 @@ export function EntityScreen() {
           {/* An artist's albums, a collection's or an author's titles: the library's toolbar under their heading, and the library's own grid once a sort or filter is chosen. */}
           {titleGroup.active ? (
             <Section title={isArtist ? t('title.albums') : barredSection ? sectionHeading(i18n, barredSection.heading) : undefined}>
-              {titleBar}
-              <GroupGrid group={titleGroup} square={libraryKind === 'music' || libraryKind === 'audiobook'} />
+              {canReorder || reordering ? <Inset><Button variant={reordering ? 'primary' : 'secondary'} icon={reordering ? 'check' : 'list'} label={reordering ? t('order.done') : t('order.reorder')} aria-pressed={reordering} onClick={() => setReordering(on => !on)} /></Inset> : null}
+              {reordering && canReorder ? null : titleBar}
+              {reordering && canReorder ? <Inset><Surface padless><ManualOrderList entries={reorderList.entries} whole={reorderList.whole} label={entity?.title ?? ''} onMove={moveTitle} /></Surface></Inset> : <GroupGrid group={titleGroup} square={libraryKind === 'music' || libraryKind === 'audiobook'} />}
             </Section>
           ) : null}
           {/* Releases by type: Albums, Singles & EPs, Compilations, Appears on (client-core `artistReleaseGroups`). */}

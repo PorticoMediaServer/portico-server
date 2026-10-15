@@ -27,6 +27,8 @@ import type {BrowseNode} from '@core/browse.ts';
 import {acrossGroup, useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-browse';
 import {useLibrariesContext} from '../../app/libraries';
 import {GroupBar, GroupGrid, GroupRows} from '../shared/GroupBrowse';
+import {ManualOrderList} from '../shared/ManualOrder';
+import {moveRequest} from '@core/presentation/manual-order.ts';
 
 const requestId = () => Promise.resolve(crypto.randomUUID());
 type Visible = Extract<PlaylistOccurrence, {hidden: false}>;
@@ -66,6 +68,8 @@ export function SavedResourceScreen() {
   const [problem, setProblem] = useState('');
   const [entryMenu, setEntryMenu] = useState<{id: string; anchor: MenuAnchor} | null>(null);
   const [removal, setRemoval] = useState<Removal | null>(null);
+  // A personal collection's own order, being rearranged (owner or editor; only in Collection order).
+  const [reordering, setReordering] = useState(false);
   const closeRemoval = useCallback(() => setRemoval(null), []);
   const last = useRef('');
   useEffect(() => {
@@ -101,7 +105,7 @@ export function SavedResourceScreen() {
   const definition = resourceKind === 'view' ? personalBinding.snapshot.resource?.definition : undefined;
   const viewSpec = useMemo<GroupSpec | undefined>(() => {
     if (playlist) return acrossGroup('list', resourceId, 'playlist');
-    if (resourceKind === 'collection') return acrossGroup('savedCollection', resourceId);
+    if (resourceKind === 'collection') return acrossGroup('savedCollection', resourceId, 'collection');
     if (!definition) return undefined;
     const library = libraries.find(l => l.id === definition.libraryId);
     return library ? {libraryId: library.id, libraryKind: library.kind, pivot: definition.pivot, base: definition.query ? [definition.query as BrowseNode] : [], opening: definition.sort[0]} : undefined;
@@ -225,6 +229,15 @@ export function SavedResourceScreen() {
   if (can('delete')) pageMenu.push({id: 'delete', label: view ? t('web.saved.deleteView') : t('web.saved.deleteCollection'), icon: 'trash', destructive: true, separatorBefore: pageMenu.length > 0});
   // A saved view or collection plays whole, from the server, in the order it is shown.
   const ownPlayable = items.flatMap(e => (e.media?.playback ? [e.media] : []));
+  // Moves send the moved entry and the one it now follows; the list shown is the server's own order.
+  const ordered = personalAll.flatMap(e => (e.media ? [{id: e.id, media: e.media}] : []));
+  const canReorder = r?.kind === 'collection' && can('reorder') && !group.active && ordered.length > 1;
+  const moveEntry = async (from: number, to: number) => {
+    const request = moveRequest(ordered.map(e => e.id), from, to);
+    if (!request) return;
+    setProblem('');
+    try { await done(service.mutate({action: 'reorder', entryIds: [request.entryId], afterEntryId: request.afterEntryId})); } catch (e) { setProblem(errorText(e, 'collection', 'save')); throw e; }
+  };
   const remove = (id: string) => void change(async () => {
     const title = items.find(x => x.id === id)?.media?.title ?? '';
     await done(service.mutate({action: 'entries', removeEntryIds: [id]}));
@@ -242,6 +255,7 @@ export function SavedResourceScreen() {
           <Button variant="primary" icon="play" label={t('action.play')} onClick={() => playOwn(ownPlayable, savedSequence(resourceId))} />
           {ownPlayable.length > 1 ? <Button variant="secondary" icon="shuffle" label={t('title.shuffle')} onClick={() => playOwn(ownPlayable, savedSequence(resourceId, {shuffle: true}))} /> : null}
         </> : null}
+        {canReorder || reordering ? <Button variant={reordering ? 'primary' : 'secondary'} icon={reordering ? 'check' : 'list'} label={reordering ? t('order.done') : t('order.reorder')} aria-pressed={reordering} onClick={() => setReordering(on => !on)} /> : null}
         {pageMenu.length ? <Menu label={t('web.saved.collectionOptions')} trigger={<Button variant="ghost" icon="more" aria-label={t('web.saved.collectionOptions')} />} items={pageMenu} onSelect={id => (id === 'rename' ? setRenaming(true) : setDeleting(true))} /> : null}
       </>} />
       {snap.error ? <Inset><ErrorNotice error={snap.error} context="collection" retry={() => void service.refresh().catch(() => {})} /></Inset> : null}
@@ -250,7 +264,7 @@ export function SavedResourceScreen() {
       {snap.loading && !items.length ? <LoadingGrid /> : null}
       {!snap.loading && !items.length && !snap.error ? <StateView icon="collection" title={view ? t('web.saved.viewEmpty') : t('web.saved.collectionEmpty')} /> : null}
       {viewSpec && (view || items.length) ? <Inset><GroupBar group={group} total={r?.entryCount} /></Inset> : null}
-      {group.active ? <GroupGrid group={group} square={viewSpec?.libraryKind === 'music' || viewSpec?.libraryKind === 'audiobook'} /> : items.length > SECTION_WINDOW_AT ? (
+      {reordering && !group.active ? <Inset><Surface padless><ManualOrderList entries={ordered} whole={!snap.nextCursor} label={name} onMove={moveEntry} /></Surface></Inset> : group.active ? <GroupGrid group={group} square={viewSpec?.libraryKind === 'music' || viewSpec?.libraryKind === 'audiobook'} /> : items.length > SECTION_WINDOW_AT ? (
         <WindowedRows items={items} estimateRowHeight={300} columnMin="clamp(120px, 11vw, 168px)" label={name} renderItem={e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} href={hrefOf(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />} />
       ) : items.length ? <Grid density="poster">{items.map(e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} href={hrefOf(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />)}</Grid> : null}
       {loadingMore && !group.active ? <Inset><Skeleton height={48} /></Inset> : null}

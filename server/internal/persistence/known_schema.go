@@ -495,6 +495,7 @@ index saved_entry_undo_expiry
 index saved_entry_undo_list
 index saved_pin_order_position
 index saved_resource_entries_item_id_fk
+index saved_resource_entries_order
 index saved_resource_owner
 index saved_resource_receipts_expiry
 index saved_resource_shared
@@ -1407,6 +1408,7 @@ trigger catalog_browse_sort_parent_title
 trigger catalog_collection_member_count_delete
 trigger catalog_collection_member_count_insert
 trigger catalog_collection_member_count_move
+trigger catalog_collection_member_order
 trigger catalog_collection_visible_class_delete
 trigger catalog_collection_visible_class_insert
 trigger catalog_collection_visible_class_repoint

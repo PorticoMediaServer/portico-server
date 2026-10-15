@@ -12806,6 +12806,28 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "reorder_library_collection",
+    "method": "PUT",
+    "path": "/v1/collections/{id}/order",
+    "summary": "Move titles of a library collection (at most 200), fenced by its revision",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "reorder_playlist_window",
     "method": "PUT",
     "path": "/v1/playlists/{id}/order",
@@ -12827,6 +12849,28 @@ export const routes = [
       "revision_required"
     ],
     "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "reorder_saved_collection",
+    "method": "PUT",
+    "path": "/v1/saved-resources/{id}/order",
+    "summary": "Move entries of a personal collection (at most 200), fenced by its revision",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
     "admission": "default"
   },
   {
@@ -16198,7 +16242,9 @@ export const routePaths = {
   "refresh_shows_metadata": "/v1/shows/{id}/metadata/refresh",
   "remove_library": "/v1/admin/libraries/{id}",
   "remove_queue_entry": "/v1/queues/{id}/entries/{entryId}",
+  "reorder_library_collection": "/v1/collections/{id}/order",
   "reorder_playlist_window": "/v1/playlists/{id}/order",
+  "reorder_saved_collection": "/v1/saved-resources/{id}/order",
   "report_changed_paths": "/v1/libraries/paths-changed",
   "report_playback_timeline": "/v1/playback/sessions/{id}/timeline",
   "revalidate_download_receipts": "/v1/downloads/receipts/revalidate",

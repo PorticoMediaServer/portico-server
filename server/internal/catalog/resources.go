@@ -76,10 +76,15 @@ type SavedResourceMutation struct {
 	// UndoToken puts back the entries a removal just took out (the removal's
 	// receipt carries it), in place of adding or removing.
 	UndoToken string `json:"undoToken,omitempty"`
-	Authority string `json:"authority,omitempty"`
-	AccountID        string               `json:"accountId,omitempty"`
-	ProfileID        string               `json:"profileId,omitempty"`
-	Role             string               `json:"role,omitempty"`
+	// EntryIDs and AfterEntryID reorder a collection (at most 200 entries):
+	// with AfterEntryID the entries move, in the order given, to just after
+	// it ("" the front); without it they swap among the places they hold.
+	EntryIDs     []string `json:"entryIds,omitempty"`
+	AfterEntryID *string  `json:"afterEntryId,omitempty"`
+	Authority    string   `json:"authority,omitempty"`
+	AccountID    string   `json:"accountId,omitempty"`
+	ProfileID    string   `json:"profileId,omitempty"`
+	Role         string   `json:"role,omitempty"`
 }
 type SavedResourceReceipt struct {
 	OperationID string         `json:"operationId"`
@@ -191,11 +196,11 @@ func (s *Service) SavedResource(server, fence, id string, a ResourceActor) (Save
 	if role == "owner" {
 		out.Actions = append(out.Actions, "update", "delete")
 		if kind == "collection" {
-			out.Actions = append(out.Actions, "entries", "share")
+			out.Actions = append(out.Actions, "entries", "reorder", "share")
 		}
 	}
 	if role == "editor" && kind == "collection" {
-		out.Actions = append(out.Actions, "entries")
+		out.Actions = append(out.Actions, "entries", "reorder")
 	}
 	if role == "owner" && kind == "collection" {
 		out.Shares = []PlaylistShare{}
@@ -363,7 +368,8 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 		rev.Catalog += r.Revision
 		scope := cursorScope{Profile: actorKey(a), View: "saved_collection", Entity: id, Viewer: fence, Limit: limit}
 		// Inaccessible membership has an opaque stable entry ID and no media facts.
-		// Collections are ordered only for display, never by insertion/playback intent.
+		// A collection lists in its own order: new entries at the end, wherever its
+		// owner (or an editor) has moved them since.
 		restriction, bound := ItemRestrictionSQL("i.id", viewer.EffectiveRestrictions())
 		from := ` FROM saved_resource_entries e LEFT JOIN catalog_entities i ON i.id=e.item_id AND i.retired=0 AND EXISTS(SELECT 1 FROM catalog_item_details detail WHERE detail.entity_id=i.id) AND i.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?)) AND retired=0) WHERE e.resource_id=? AND (i.id IS NULL OR ` + restriction + `)`
 		args := append([]any{string(raw), id}, bound...)
@@ -372,26 +378,26 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 			if e != nil {
 				return out, e
 			}
-			from += ` AND (COALESCE(i.title,'') COLLATE NOCASE>? OR (COALESCE(i.title,'') COLLATE NOCASE=? AND e.id>?))`
+			from += ` AND (e.order_key>? OR (e.order_key=? AND e.id>?))`
 			args = append(args, c.Value, c.Value, c.ID)
 		}
 		args = append(args, limit+1)
-		rows, e := s.read().Query(`SELECT e.id,COALESCE(pid(i.public_id),''),COALESCE(i.title,'')`+from+` ORDER BY COALESCE(i.title,'') COLLATE NOCASE,e.id LIMIT ?`, args...)
+		rows, e := s.read().Query(`SELECT e.id,COALESCE(pid(i.public_id),''),e.order_key`+from+` ORDER BY e.order_key,e.id LIMIT ?`, args...)
 		if e != nil {
 			return out, e
 		}
-		ids, names := []string{}, []string{}
+		ids, keys := []string{}, []string{}
 		for rows.Next() {
 			var entry SavedResourceEntry
-			var item, title string
-			if e = rows.Scan(&entry.ID, &item, &title); e != nil {
+			var item, key string
+			if e = rows.Scan(&entry.ID, &item, &key); e != nil {
 				rows.Close()
 				return out, e
 			}
 			entry.Hidden = item == ""
 			out.Entries = append(out.Entries, entry)
 			ids = append(ids, item)
-			names = append(names, title)
+			keys = append(keys, key)
 		}
 		e = rows.Err()
 		rows.Close()
@@ -401,7 +407,7 @@ func (s *Service) SavedResourceContent(viewer Viewer, server, fence, id string, 
 		if len(out.Entries) > limit {
 			out.Entries = out.Entries[:limit]
 			ids = ids[:limit]
-			out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: names[limit-1], ID: out.Entries[limit-1].ID, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
+			out.NextCursor, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: keys[limit-1], ID: out.Entries[limit-1].ID, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
 			if e != nil {
 				return out, e
 			}
@@ -466,6 +472,9 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 	if m.UndoToken != "" && (action != "entries" || m.AddItemIDs != nil || m.RemoveEntryIDs != nil || !personalOperation.MatchString(m.UndoToken)) {
 		return out, requestinput.New("an undo token undoes a removal on its own")
 	}
+	if (m.EntryIDs != nil || m.AfterEntryID != nil) && action != "reorder" || action == "reorder" && (len(m.EntryIDs) == 0 || len(m.EntryIDs) > 200) {
+		return out, requestinput.New("a reorder names 1-200 entries")
+	}
 	if m.Kind != "" && action != "create" || (m.Name != nil || m.Summary != nil || m.Definition != nil || m.Visibility != nil) && action != "create" && action != "update" || (m.AddItemIDs != nil || m.RemoveEntryIDs != nil) && action != "entries" || (m.Authority != "" || m.AccountID != "" || m.ProfileID != "") && action != "share" && action != "unshare" || m.Role != "" && action != "share" {
 		return out, requestinput.New("fields do not apply to resource operation")
 	}
@@ -488,7 +497,7 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 		if e != nil {
 			return out, e
 		}
-		if role != "owner" && (role != "editor" || action != "entries") {
+		if role != "owner" && (role != "editor" || action != "entries" && action != "reorder") {
 			return out, identity.ErrUnauthorized
 		}
 	}
@@ -592,7 +601,7 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 			}
 			for _, r := range removed {
 				var result sql.Result
-				if result, e = tx.Exec(`INSERT INTO saved_resource_entries(id,resource_id,item_id) VALUES(?,?,?) ON CONFLICT DO NOTHING`, r.entry, id, r.item); e != nil {
+				if result, e = tx.Exec(`INSERT INTO saved_resource_entries(id,resource_id,item_id,order_key) VALUES(?,?,?,?) ON CONFLICT DO NOTHING`, r.entry, id, r.item, r.orderKey); e != nil {
 					return out, e
 				}
 				if n, _ := result.RowsAffected(); n == 1 {
@@ -619,14 +628,14 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 				outcomes.Unchanged = append(outcomes.Unchanged, item)
 				continue
 			}
-			if _, e = tx.Exec(`INSERT INTO saved_resource_entries(id,resource_id,item_id) VALUES(?,?,?) ON CONFLICT(resource_id,item_id) DO NOTHING`, identity.Token(), id, entityID); e != nil {
+			if e = appendSavedEntry(tx, id, identity.Token(), entityID); e != nil {
 				return out, e
 			}
 			outcomes.Added = append(outcomes.Added, item)
 		}
 		for _, entry := range m.RemoveEntryIDs {
 			r := removedEntry{entry: entry}
-			err := tx.QueryRow(`DELETE FROM saved_resource_entries WHERE resource_id=? AND id=? RETURNING item_id`, id, entry).Scan(&r.item)
+			err := tx.QueryRow(`DELETE FROM saved_resource_entries WHERE resource_id=? AND id=? RETURNING item_id,order_key`, id, entry).Scan(&r.item, &r.orderKey)
 			if errors.Is(err, sql.ErrNoRows) {
 				outcomes.fail(entry, "not_found")
 				continue
@@ -643,6 +652,11 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 			}
 		}
 		out.Entries = &outcomes
+	case "reorder":
+		if kind != "collection" {
+			return out, requestinput.New("only a collection has an order")
+		}
+		e = reorderSavedEntries(tx, id, m.EntryIDs, m.AfterEntryID)
 	case "share", "unshare":
 		if kind != "collection" || m.Authority == "" || m.AccountID == "" || m.ProfileID == "" || (ResourceActor{m.Authority, m.AccountID, m.ProfileID}) == a {
 			return out, requestinput.New("invalid collection share")

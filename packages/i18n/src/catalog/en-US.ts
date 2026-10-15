@@ -172,6 +172,12 @@ export const enUS = {
   'a11y.artwork.unavailable': 'Artwork unavailable',
   'a11y.artwork.unavailableFor': '{title}, artwork unavailable',
   // After an entry is taken out of a playlist or a collection, with Undo while the server offers it.
+  'order.reorder': 'Reorder',
+  'order.done': 'Done',
+  'order.moveTop': 'Move to top',
+  'order.moveBottom': 'Move to bottom',
+  'order.handle': 'Drag {title} to move it, or use its menu',
+  'order.failed': 'Couldn’t move “{title}”. Try again.',
   'saved.removal.fromPlaylist': 'Removed “{title}” from the playlist.',
   'saved.removal.fromCollection': 'Removed “{title}” from the collection.',
   'saved.removal.undoFailed': 'That couldn’t be undone. “{title}” stays removed.',

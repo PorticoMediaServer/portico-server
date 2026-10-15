@@ -564,7 +564,9 @@ export function decodeRefreshItemsMetadataResponse(input: unknown): types.Refres
 export function decodeRefreshShowsMetadataResponse(input: unknown): types.RefreshShowsMetadataResponse { return decode("RefreshShowsMetadataResponse", input) as types.RefreshShowsMetadataResponse; }
 export function decodeRemoveLibraryResponse(input: unknown): types.RemoveLibraryResponse { return decode("RemoveLibraryResponse", input) as types.RemoveLibraryResponse; }
 export function decodeRemoveQueueEntryResponse(input: unknown): types.RemoveQueueEntryResponse { return decode("RemoveQueueEntryResponse", input) as types.RemoveQueueEntryResponse; }
+export function decodeReorderLibraryCollectionResponse(input: unknown): types.ReorderLibraryCollectionResponse { return decode("ReorderLibraryCollectionResponse", input) as types.ReorderLibraryCollectionResponse; }
 export function decodeReorderPlaylistWindowResponse(input: unknown): types.ReorderPlaylistWindowResponse { return decode("ReorderPlaylistWindowResponse", input) as types.ReorderPlaylistWindowResponse; }
+export function decodeReorderSavedCollectionResponse(input: unknown): types.ReorderSavedCollectionResponse { return decode("ReorderSavedCollectionResponse", input) as types.ReorderSavedCollectionResponse; }
 export function decodeReportChangedPathsResponse(input: unknown): types.ReportChangedPathsResponse { return decode("ReportChangedPathsResponse", input) as types.ReportChangedPathsResponse; }
 export function decodeReportPlaybackTimelineResponse(input: unknown): types.ReportPlaybackTimelineResponse { return decode("ReportPlaybackTimelineResponse", input) as types.ReportPlaybackTimelineResponse; }
 export function decodeRevalidateDownloadReceiptsResponse(input: unknown): types.RevalidateDownloadReceiptsResponse { return decode("RevalidateDownloadReceiptsResponse", input) as types.RevalidateDownloadReceiptsResponse; }

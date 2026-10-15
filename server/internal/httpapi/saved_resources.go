@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
+	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/requestinput"
@@ -135,7 +136,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 		}
 		d.savedResponse(w, r, fence, out)
 	})
-	for _, route := range []struct{ pattern, action string }{{"POST /v1/saved-resources", "create"}, {"PATCH /v1/saved-resources/{id}", "update"}, {"DELETE /v1/saved-resources/{id}", "delete"}, {"PUT /v1/saved-resources/{id}/entries", "entries"}, {"PUT /v1/saved-resources/{id}/shares", "share"}, {"DELETE /v1/saved-resources/{id}/shares", "unshare"}} {
+	for _, route := range []struct{ pattern, action string }{{"POST /v1/saved-resources", "create"}, {"PATCH /v1/saved-resources/{id}", "update"}, {"DELETE /v1/saved-resources/{id}", "delete"}, {"PUT /v1/saved-resources/{id}/entries", "entries"}, {"PUT /v1/saved-resources/{id}/order", "reorder"}, {"PUT /v1/saved-resources/{id}/shares", "share"}, {"DELETE /v1/saved-resources/{id}/shares", "unshare"}} {
 		d.httpHandle(mux, route.pattern, func(w http.ResponseWriter, r *http.Request) {
 			p, _, fence, e := d.homeScope(r)
 			if e != nil {
@@ -200,6 +201,13 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 				}
 				return nil
 			})
+			if route.action == "reorder" && errors.Is(e, catalog.ErrPlaylistConflict) {
+				// As a playlist's order: the collection changed since it was read.
+				if standardErrors != nil {
+					standardErrors.Write(w, "", &apierror.Error{Code: "revision_mismatch"})
+					return
+				}
+			}
 			if e != nil {
 				failure(w, e)
 				return
@@ -299,3 +307,6 @@ func (d Dependencies) servePersonalHistory(w http.ResponseWriter, r *http.Reques
 	}
 	d.savedResponse(w, r, fence, out)
 }
+
+// standardErrors writes the standard error answers (apierror.Defaults).
+var standardErrors, _ = apierror.New()

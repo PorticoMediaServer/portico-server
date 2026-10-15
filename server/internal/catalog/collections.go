@@ -3,8 +3,10 @@ package catalog
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"portico.local/server/internal/requestinput"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -21,6 +23,9 @@ type Collection struct {
 	LibraryID string `json:"libraryId"`
 	Name      string `json:"name"`
 	ItemCount int    `json:"itemCount"`
+	// Revision moves with every membership or order change: an owner's
+	// reorder names the revision it was made against.
+	Revision int64 `json:"revision"`
 }
 
 func collectionName(name string) (string, string, error) {
@@ -36,11 +41,11 @@ func collectionName(name string) (string, string, error) {
 	return name, strings.ToLower(strings.Join(strings.Fields(name), " ")), nil
 }
 
-const collectionColumns = `pid(e.public_id),l.library_id,e.title`
+const collectionColumns = `pid(e.public_id),l.library_id,e.title,c.revision`
 
 func (s *Service) Collection(id string) (Collection, error) {
 	var c Collection
-	err := s.read().QueryRow(`SELECT `+collectionColumns+`,c.member_count FROM catalog_entities e JOIN catalog_collections c ON c.entity_id=e.id JOIN catalog_libraries l ON l.id=c.library_id WHERE e.public_id=pid_blob(?) AND `+collectionHeadFence, id).Scan(&c.ID, &c.LibraryID, &c.Name, &c.ItemCount)
+	err := s.read().QueryRow(`SELECT `+collectionColumns+`,c.member_count FROM catalog_entities e JOIN catalog_collections c ON c.entity_id=e.id JOIN catalog_libraries l ON l.id=c.library_id WHERE e.public_id=pid_blob(?) AND `+collectionHeadFence, id).Scan(&c.ID, &c.LibraryID, &c.Name, &c.Revision, &c.ItemCount)
 	return c, err
 }
 
@@ -160,10 +165,109 @@ func (s *Service) SetCollectionItem(collection, item string, present bool) error
 	if movie == 0 {
 		return sql.ErrNoRows
 	}
-	if err = compactcatalog.SetCollectionMemberTx(ctx, tx, entity, movie, "", present); err != nil {
+	if present {
+		err = appendCollectionMemberTx(ctx, tx, entity, movie)
+	} else {
+		err = compactcatalog.SetCollectionMemberTx(ctx, tx, entity, movie, "", false)
+	}
+	if err != nil {
 		return err
 	}
 	return gated.Commit()
+}
+
+// appendCollectionMemberTx adds a title at the end of a library collection's
+// own order (nothing when it is already a member: it keeps its place).
+func appendCollectionMemberTx(ctx context.Context, tx *sql.Tx, collection, item int64) error {
+	var member bool
+	var last string
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_collection_members WHERE collection_id=? AND item_id=?),COALESCE((SELECT order_key FROM catalog_collection_members INDEXED BY catalog_collection_members_page WHERE collection_id=? ORDER BY order_key DESC,item_id DESC LIMIT 1),'')`, collection, item, collection).Scan(&member, &last); err != nil || member {
+		return err
+	}
+	return compactcatalog.SetCollectionMemberTx(ctx, tx, collection, item, playlistEndKey(last), true)
+}
+
+// ReorderCollection moves titles of a library collection (at most 200), the
+// owner's manual order, the way a playlist's entries move: with after, in the
+// order given, just after that title ("" the front); without it, they swap
+// among the places they hold. Only the moved titles' keys are written. A
+// collection changed since expected (its revision) is ErrPlaylistConflict.
+func (s *Service) ReorderCollection(collection string, expected int64, items []string, after *string) (Collection, error) {
+	if len(items) == 0 || len(items) > MaxCollectionBatch {
+		return Collection{}, requestinput.New("a reorder names 1 to 200 titles")
+	}
+	ctx := s.Context()
+	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
+		entity, _, err := collectionTx(ctx, tx, collection)
+		if err != nil {
+			return err
+		}
+		var revision, unkeyed int64
+		if err = tx.QueryRowContext(ctx, `SELECT c.revision,(SELECT count(*) FROM catalog_collection_members m WHERE m.collection_id=c.entity_id AND m.order_key='') FROM catalog_collections c WHERE c.entity_id=?`, entity).Scan(&revision, &unkeyed); err != nil {
+			return err
+		}
+		if revision != expected {
+			return ErrPlaylistConflict
+		}
+		if unkeyed > 0 {
+			// Titles added before the collection had its own order share one
+			// empty key; they get keys once, in the order they show in now.
+			if _, err = tx.ExecContext(ctx, `WITH r(item_id,n) AS MATERIALIZED (SELECT item_id,ROW_NUMBER() OVER (ORDER BY order_key,item_id) FROM catalog_collection_members WHERE collection_id=?1)
+ UPDATE catalog_collection_members SET order_key=(SELECT printf('%020dV',r.n) FROM r WHERE r.item_id=catalog_collection_members.item_id) WHERE collection_id=?1`, entity); err != nil {
+				return err
+			}
+		}
+		key := func(public string) (string, int64, error) {
+			var k string
+			var id int64
+			err := tx.QueryRowContext(ctx, `SELECT m.order_key,m.item_id FROM catalog_collection_members m JOIN catalog_entities i ON i.id=m.item_id WHERE m.collection_id=? AND i.public_id=pid_blob(?)`, entity, public).Scan(&k, &id)
+			return k, id, err
+		}
+		seen := map[string]bool{}
+		keys, ids := make([]string, 0, len(items)), make([]int64, 0, len(items))
+		for _, public := range items {
+			if public == "" || seen[public] {
+				return requestinput.New("a reorder names distinct titles")
+			}
+			seen[public] = true
+			k, id, err := key(public)
+			if err != nil {
+				return err
+			}
+			keys, ids = append(keys, k), append(ids, id)
+		}
+		if after == nil {
+			sort.Strings(keys)
+		} else {
+			if seen[*after] {
+				return requestinput.New("a title can't move after itself")
+			}
+			lower, upper := "", ""
+			if *after != "" {
+				if lower, _, err = key(*after); err != nil {
+					return err
+				}
+			}
+			raw, _ := json.Marshal(ids)
+			err = tx.QueryRowContext(ctx, `SELECT order_key FROM catalog_collection_members INDEXED BY catalog_collection_members_page WHERE collection_id=? AND order_key>? AND item_id NOT IN(SELECT value FROM json_each(?)) ORDER BY order_key,item_id LIMIT 1`, entity, lower, string(raw)).Scan(&upper)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+			for i := range keys {
+				keys[i] = playlistRank(lower, upper, int64(i), int64(len(keys)))
+			}
+		}
+		for i, id := range ids {
+			if err = compactcatalog.SetCollectionMemberTx(ctx, tx, entity, id, keys[i], true); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return Collection{}, err
+	}
+	return s.Collection(collection)
 }
 
 // EntryOutcomes reports one membership batch item by item. Library collections
@@ -237,7 +341,7 @@ func (s *Service) SetCollectionItems(collection string, add, remove []string) (C
 			out.Entries.Unchanged = append(out.Entries.Unchanged, item)
 			continue
 		}
-		if err = compactcatalog.SetCollectionMemberTx(ctx, tx, entity, movie, "", true); err != nil {
+		if err = appendCollectionMemberTx(ctx, tx, entity, movie); err != nil {
 			return out, err
 		}
 		out.Entries.Added = append(out.Entries.Added, item)
@@ -297,7 +401,7 @@ func (s *Service) VisibleCollection(ctx context.Context, v Viewer, id string) (C
 	}
 	if !v.EffectiveRestrictions().Active() {
 		var c Collection
-		err := s.read().QueryRowContext(ctx, `SELECT `+collectionColumns+`,c.member_count FROM catalog_entities e JOIN catalog_collections c ON c.entity_id=e.id JOIN catalog_libraries l ON l.id=c.library_id WHERE e.public_id=pid_blob(?) AND `+collectionHeadFence, id).Scan(&c.ID, &c.LibraryID, &c.Name, &c.ItemCount)
+		err := s.read().QueryRowContext(ctx, `SELECT `+collectionColumns+`,c.member_count FROM catalog_entities e JOIN catalog_collections c ON c.entity_id=e.id JOIN catalog_libraries l ON l.id=c.library_id WHERE e.public_id=pid_blob(?) AND `+collectionHeadFence, id).Scan(&c.ID, &c.LibraryID, &c.Name, &c.Revision, &c.ItemCount)
 		if err == nil && !v.AllowsLibrary(c.LibraryID) {
 			return Collection{}, sql.ErrNoRows
 		}
@@ -316,7 +420,7 @@ func (s *Service) VisibleCollection(ctx context.Context, v Viewer, id string) (C
 		return Collection{}, err
 	}
 	var c Collection
-	err = s.read().QueryRowContext(ctx, `SELECT `+collectionColumns+`,COALESCE(vc.total,0) FROM catalog_entities e JOIN catalog_collections c ON c.entity_id=e.id JOIN catalog_libraries l ON l.id=c.library_id LEFT JOIN catalog_collection_visible_counts vc ON vc.class_id=? AND vc.generation=? AND vc.collection_id=c.entity_id WHERE e.public_id=pid_blob(?) AND `+collectionHeadFence+` AND (c.member_count=0 OR COALESCE(vc.total,0)>0)`, class, generation, id).Scan(&c.ID, &c.LibraryID, &c.Name, &c.ItemCount)
+	err = s.read().QueryRowContext(ctx, `SELECT `+collectionColumns+`,COALESCE(vc.total,0) FROM catalog_entities e JOIN catalog_collections c ON c.entity_id=e.id JOIN catalog_libraries l ON l.id=c.library_id LEFT JOIN catalog_collection_visible_counts vc ON vc.class_id=? AND vc.generation=? AND vc.collection_id=c.entity_id WHERE e.public_id=pid_blob(?) AND `+collectionHeadFence+` AND (c.member_count=0 OR COALESCE(vc.total,0)>0)`, class, generation, id).Scan(&c.ID, &c.LibraryID, &c.Name, &c.Revision, &c.ItemCount)
 	return c, err
 }
 
@@ -367,7 +471,7 @@ func (s *Service) Collections(library string, v Viewer, cursor string, limit int
 		var row Collection
 		var key string
 		var entity int64
-		if err = rows.Scan(&entity, &row.ID, &row.LibraryID, &row.Name, &key, &row.ItemCount); err != nil {
+		if err = rows.Scan(&entity, &row.ID, &row.LibraryID, &row.Name, &row.Revision, &key, &row.ItemCount); err != nil {
 			rows.Close()
 			return nil, "", err
 		}

@@ -230,8 +230,12 @@ func (s *Service) applyBulkCommand(ctx context.Context, tx *sql.Tx, p identity.P
 		_, e := tx.Exec(`INSERT INTO catalog_playlist_entries(token,playlist_id,item_id,position,order_key) SELECT ?,p.id,i.id,?,? FROM catalog_playlists p,catalog_entities i WHERE p.token=? AND i.public_id=pid_blob(?)`, identity.Token(), pos, prefix+key, target, item)
 		return e
 	case "collection-add":
-		_, e := tx.Exec(`INSERT INTO saved_resource_entries(id,resource_id,item_id) SELECT ?,d.target_id,i.id FROM personal_job_destinations d,catalog_entities i WHERE d.job_id=? AND i.public_id=pid_blob(?) ON CONFLICT(resource_id,item_id) DO NOTHING`, identity.Token(), job, item)
-		return e
+		var target string
+		var entity int64
+		if e := tx.QueryRow(`SELECT d.target_id,i.id FROM personal_job_destinations d,catalog_entities i WHERE d.job_id=? AND i.public_id=pid_blob(?)`, job, item).Scan(&target, &entity); e != nil {
+			return e
+		}
+		return appendSavedEntry(tx, target, identity.Token(), entity)
 	default:
 		if s.BulkCommands.Apply == nil {
 			return errors.New("command worker unavailable")

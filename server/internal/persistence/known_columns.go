@@ -787,6 +787,7 @@ catalog_collections.entity_id
 catalog_collections.library_id
 catalog_collections.member_count
 catalog_collections.name_key
+catalog_collections.revision
 catalog_container_added.added_text
 catalog_container_added.container_id
 catalog_container_added.item_id
@@ -4148,6 +4149,7 @@ saved_pins.resource_id
 saved_pins.revision
 saved_resource_entries.id
 saved_resource_entries.item_id
+saved_resource_entries.order_key
 saved_resource_entries.resource_id
 saved_resource_generation.id
 saved_resource_generation.revision

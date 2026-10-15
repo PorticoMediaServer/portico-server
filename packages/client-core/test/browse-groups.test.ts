@@ -19,6 +19,7 @@ test('groups across libraries name their condition, pivot and own order', () => 
   assert.equal(acrossPivot('list'), 'items');
   assert.equal(acrossPivot('person'), 'titles');
   assert.equal(acrossOwnOrder('homeRow'), true);
+  assert.equal(acrossOwnOrder('savedCollection'), true, 'a personal collection has its own order');
   assert.equal(acrossOwnOrder('watchlist'), false);
   assert.deepEqual(episodeGroupCondition('s1', 'range:100'), {field: 'episodeGroup', operator: 'equals', value: 's1/range:100'});
 });
