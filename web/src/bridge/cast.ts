@@ -4,7 +4,7 @@
  * status for the controller only). This file only loads Google's sender SDK, decides whether
  * Cast can be offered here (an application id and an HTTPS server), and bridges a Cast
  * session to the controller's transport. */
-import {CAST_NAMESPACE, CastController, type CastMetadata, type CastSnapshot, type CastTransport} from '@core/cast/index.ts';
+import {CAST_NAMESPACE, CastController, type CastChoices, type CastMetadata, type CastSnapshot, type CastTransport} from '@core/cast/index.ts';
 import {noteCastMeta} from '@core/presentation/index.ts';
 
 export type {CastMetadata, CastSnapshot};
@@ -83,7 +83,7 @@ export class CastSender {
   }
 
   /** Resolves true once the television has started the title, so the local player can stop. */
-  async start(itemId: string, meta: CastMetadata, startSeconds: number): Promise<boolean> {
+  async start(itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices): Promise<boolean> {
     const controller = this.controller;
     if (!controller || !controller.getSnapshot().available) return false;
     controller.connecting(meta.title);
@@ -93,7 +93,7 @@ export class CastSender {
     try { await context.requestSession(); } catch { controller.cancelConnecting(); return false; }
     const session = context.getCurrentSession();
     if (!session) { controller.cancelConnecting(); return false; }
-    return controller.start(transportFor(session), itemId, meta, startSeconds);
+    return controller.start(transportFor(session), itemId, meta, startSeconds, choices);
   }
   toggle() { this.controller?.toggle(); }
   setAudioTrack(trackId: number) { this.controller?.setAudioTrack(trackId); }

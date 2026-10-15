@@ -104,6 +104,7 @@ export class SubtitleOverlay {
   private offset: number | null = 0;
   private delay = 0;
   private adjustment: OverlayAdjustment = {scale: 1, raise: 0};
+  private forcedOnly = false;
   private geometry: OverlayGeometry | null = null;
   private stopLayout: (() => void) | null = null;
   private loop: {video?: number; frame?: number} = {};
@@ -146,6 +147,7 @@ export class SubtitleOverlay {
     }
     this.loading = null;
     this.renderer = renderer;
+    renderer.setForcedOnly?.(this.forcedOnly);
     this.geometry = null;
     for (const type of clockEvents) this.video.addEventListener(type, this.tick);
     for (const type of layoutEvents) this.video.addEventListener(type, this.moved);
@@ -173,6 +175,22 @@ export class SubtitleOverlay {
 
   /** Whether a drawn subtitle is on (or loading). */
   get active(): boolean { return this.renderer !== null || this.loading !== null; }
+
+  /** The subtitle on screen marks some lines forced and not others, so "Forced only" means something. */
+  get forcedChoice(): boolean {
+    const cues = this.renderer?.cues;
+    return !!cues && cues.forced > 0 && cues.forced < cues.total;
+  }
+
+  /** Shows only the lines marked forced, for every image subtitle from now on, or every line. */
+  setForcedOnly(on: boolean): void {
+    this.forcedOnly = on;
+    this.renderer?.setForcedOnly?.(on);
+    this.sync();
+  }
+
+  /** The picture moved to another window (Picture in Picture keeps the page's own player): measure again. */
+  relayout(): void { this.geometry = null; this.layout(); this.sync(); }
 
   /** The viewer's timing correction, in seconds (positive shows the subtitle later). */
   setDelay(seconds: number): void { this.delay = Number.isFinite(seconds) ? seconds : 0; this.sync(); }

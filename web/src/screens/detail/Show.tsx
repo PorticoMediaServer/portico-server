@@ -28,6 +28,7 @@ import {useI18n, type I18n} from '../../app/i18n';
 import {GroupBar, GroupRows} from '../shared/GroupBrowse';
 import {useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-browse';
 import {groupSequence} from '../../app/container-play';
+import {useQuietRefresh} from '../../app/quiet-refresh';
 
 type ShowSearch = {library?: string; season?: string; episode?: string; title?: string; sort?: string; direction?: 'asc' | 'desc'; filters?: string};
 /** Up to this many seasons show as tabs; beyond it, a menu (Spec — Title Pages §2). */
@@ -77,6 +78,8 @@ export function ShowScreen() {
   const seasonIdParam = seasonParam && !/^\d+$/.test(seasonParam) ? seasonParam : undefined;
   const route = useMemo<ShowWorkspaceRoute>(() => ({libraryId, ...(showId !== 'season' ? {showId} : {}), ...(seasonIdParam ? {seasonId: seasonIdParam} : {})}), [libraryId, showId, seasonIdParam]);
   const {snapshot, selectSeason, selectGroup, nextSeasons, previousSeasons, retry} = useShowWorkspace(route);
+  // A show the server says changed is read again quietly; the notice is for one that stays refused.
+  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', retry);
   const recommendations = useShowRecommendations(showId);
   const notInterested = useNotInterested();
   const recommendationRows = relatedRowsForPage((recommendations.data?.rows ?? []).map(row => withoutHidden(row, notInterested.hidden)));
@@ -266,7 +269,7 @@ export function ShowScreen() {
       <Page>
         <div style={{position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 32}}>
           {snapshot.phase === 'error' && data ? <Inset><ErrorNotice error={snapshot.error} context="show" retry={retry} /></Inset> : null}
-          {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="show" refresh={retry} /></Inset> : null}
+          {changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="show" refresh={retry} /></Inset> : null}
           <Section title={t('title.episodes')}>
             <div className={s.seasonBar}>
               <SeasonSwitcher

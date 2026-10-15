@@ -32,7 +32,7 @@ export type DetailMetadata = Readonly<{
 export type DetailCredit = Readonly<{ id: string; name: string; role: string; department: string; provider: string; portraitUrl?:string; personId?:string}>;
 /** One page of a title's cast or crew (GET /v1/items/{id}/credits). */
 export type CreditPage = Readonly<{ group: 'cast' | 'crew'; credits: readonly DetailCredit[]; total: number; nextCursor?: string }>;
-export type DetailEpisodeInfo = Readonly<{ showId: string; showTitle: string; seasonId?: string; seasonNumber?: number | null; numbering: string; number: number; localIdentityStatus: string; providerMatchStatus: string; orderingBasis: string; sourceBoundary: string }>;
+export type DetailEpisodeInfo = Readonly<{ showId: string; showTitle: string; seasonId?: string; /** When it first aired (YYYY-MM-DD), when known. */ airDate?: string; seasonNumber?: number | null; numbering: string; number: number; localIdentityStatus: string; providerMatchStatus: string; orderingBasis: string; sourceBoundary: string }>;
 export type DetailSongInfo = Readonly<{ albumId: string; albumTitle: string; albumArtist: string; artist: string; discNumber?: number | null; trackNumber?: number | null; providerMatchStatus: string; localMetadataIssue?: string; providerTitle?:string;providerArtist?:string;providerRecordingId?:string;providerReleaseId?:string;providerReleaseGroupId?:string;providerTrackId?:string;providerReleaseStatus?:string;providerObservedAt?:string }>;
 export type DetailBookFileInfo = Readonly<{ bookId: string; bookTitle: string; discNumber?: number | null; partNumber?: number | null; sourceBoundary: string; localMetadataIssue?: string;localMetadata?:LocalBookMetadata;localPolicy?:LocalAudioPolicy }>;
 export type DetailSource = NonNullable<MediaItem['sources']>[number] & { duration?: number };
@@ -191,7 +191,7 @@ function projection(raw: unknown, scope: DetailScope, target: DetailTarget): Det
   });
   if (media.sources) Object.freeze(media.sources);
   const episode = part('item.episode', item.episode, value => {
-    const fields = hierarchy(value, ['showId','showTitle','numbering','localIdentityStatus','providerMatchStatus','orderingBasis','sourceBoundary'], ['seasonId'], ['seasonNumber','number']);
+    const fields = hierarchy(value, ['showId','showTitle','numbering','localIdentityStatus','providerMatchStatus','orderingBasis','sourceBoundary'], ['seasonId','airDate'], ['seasonNumber','number']);
     if (!integer(fields.number) || !id(fields.showId) || fields.seasonId !== undefined && !id(fields.seasonId)) invalid();
     return fields as DetailEpisodeInfo;
   });

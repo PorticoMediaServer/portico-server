@@ -49,7 +49,26 @@ type AudioPlan struct {
 	Gain           *AudioGain       `json:"gain,omitempty"`
 	Generation     int              `json:"generation"`
 	Convert        *AudioConversion `json:"convert,omitempty"`
+	// DeepStart is how a direct plan whose container carries no index a
+	// client can seek by (MP3, ADTS, Ogg) starts part-way without reading
+	// everything before the position: the converted route from that frame,
+	// lossless FLAC at the file's own rate, so frame numbers stay the plan's.
+	DeepStart *AudioDeepStart `json:"deepStart,omitempty"`
 }
+
+// AudioDeepStart is a direct plan's part-way start (see AudioPlan.DeepStart).
+type AudioDeepStart struct {
+	URL        string `json:"url"`
+	Container  string `json:"container"`
+	Codec      string `json:"codec"`
+	SampleRate int    `json:"sampleRate"`
+	Channels   int    `json:"channels"`
+	BitDepth   int    `json:"bitDepth"`
+}
+
+// unindexed containers have no sample index a client can seek by without
+// reading from the start (an MP3's Xing table is approximate).
+var unindexed = map[string]bool{"mp3": true, "adts": true, "ogg": true}
 
 type AudioTrim struct {
 	StartFrames int64  `json:"startFrames"`
@@ -189,6 +208,14 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 		// The start plus a trailing index (an MP4 moov at the end): 30 s at the
 		// file's own rate, never under 4 MiB, never over 16 MiB or the file.
 		p.PrefetchBytes = min(size, max(4<<20, min(16<<20, int64(sourceBPS/8)*30+(1<<20))))
+		if flacCap, canFLAC := findCap(v1.AudioDecode, "flac", "flac"); unindexed[f.Container] && ownerTranscoding && canFLAC && capAllowsRate(flacCap, f.SampleRate) && (flacCap.MaxChannels <= 0 || f.Channels <= flacCap.MaxChannels) {
+			depth := 16
+			if isLossless(f.Codec) && f.BitDepth > 16 && (flacCap.MaxBitDepth <= 0 || flacCap.MaxBitDepth >= 24) {
+				depth = 24
+			}
+			p.Convert = &AudioConversion{Codec: "flac", SourceRate: f.SampleRate, SourceStart: f.StartFrames, SourceFrames: f.DurationFrames, Rate: f.SampleRate, Channels: f.Channels, BitDepth: depth}
+			p.DeepStart = &AudioDeepStart{URL: "/v1/media/" + grant + "/audio-converted", Container: "flac", Codec: "flac", SampleRate: f.SampleRate, Channels: f.Channels, BitDepth: depth}
+		}
 		return p, s.storeAudioPlan(tx, session.ID, p)
 	}
 	if !ownerTranscoding {

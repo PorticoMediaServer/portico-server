@@ -1,11 +1,10 @@
 import {cardCaptionOf} from '../../app/content';
 import {useSelectionRefresh} from '../../app/selection';
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearch} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import {PersonalSavedService, type PersonalSavedSnapshot} from '@core/personal-saved.ts';
 import {SavedService, historyPeriods, savedListFilters, type HistoryPeriod, type PlaylistCard, type PlaylistOccurrence, type SavedEntry, type SavedListFilter, type SavedRoute, type SavedSnapshot} from '@core/saved.ts';
-import {useService} from '../../app/content';
 import {captionFor, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {useEntryHref, useOpenEntry} from '../../app/open';
 import {useSession} from '../../app/session';
@@ -14,7 +13,7 @@ import {LoadingGrid} from '../shared/Sections';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {errorText} from '../../app/errors';
 import {useViewerScope} from '../../app/viewer-scope';
-import {useFreshDocument} from '../../app/freshness';
+import {usePooled, usePooledService} from '../../app/freshness';
 import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 
 import {useI18n, type I18n} from '../../app/i18n';
@@ -22,6 +21,7 @@ import type {BrowseNode} from '@core/browse.ts';
 import {sortDirectionKind} from '@core/presentation/index.ts';
 import {spanningGroup, titlePivot, useGroupBrowse, useGroupLibraries, type GroupChoice} from '../../app/group-browse';
 import {GroupBar, GroupGrid, GroupLibraryChips} from '../shared/GroupBrowse';
+import {useQuietRefresh} from '../../app/quiet-refresh';
 
 type SavedTab = 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history';
 const tabIds: readonly SavedTab[] = ['watchlist', 'favorites', 'playlists', 'collections', 'views', 'history'];
@@ -84,30 +84,32 @@ export function SavedSortControl({sorts, active, direction, onChange}: {sorts: r
 export function useSaved(route: SavedRoute | null) {
   const {api} = useSession();
   const scope = useViewerScope();
-  const {service, snapshot} = useService<SavedService, SavedSnapshot>(() => new SavedService({api, scope, requestId}), [api, scope]);
+  /* One kept list per saved view, like a library's pages: Back shows it at once, with its pages
+     and place, and it is read again in place when this profile's saved titles, watched state or
+     the libraries behind them moved. Another sort or filter of the same view reads in place too. */
+  const {service, snapshot, memo} = usePooledService<SavedService, SavedSnapshot>(`saved:${route?.view ?? ''}`, () => new SavedService({api, scope, requestId}), savedDependencies, {hasContent: s => s.getSnapshot().phase === 'ready'});
   const key = route ? JSON.stringify(route) : '';
-  const last = useRef<{key: string; service: unknown}>({key: '', service: null});
   useEffect(() => {
-    if (!route || (last.current.key === key && last.current.service === service)) return;
-    last.current = {key, service};
+    if (!route || memo.selected === key) return;
+    memo.selected = key;
     try { void service.select(route).catch(() => {}); } catch {}
-  }, [service, key, route]);
-  // The list on screen is read again in place when this profile's saved titles, watched state or the libraries behind them moved.
-  useFreshDocument(savedDependencies, context => service.revalidate(context), () => service.getSnapshot().phase === 'ready');
+  }, [service, key, route, memo]);
   return {service, snapshot, refresh: useCallback(() => void service.refresh().catch(() => {}), [service]), retry: useCallback(() => void service.retry().catch(() => {}), [service]), next: useCallback((id: string) => void service.next(id).catch(() => {}), [service]), previous: useCallback(() => void service.previous().catch(() => {}), [service])};
 }
 function usePersonal(route: SavedRoute | null) {
   const {api} = useSession();
   const scope = useViewerScope();
-  const {service, snapshot} = useService<PersonalSavedService, PersonalSavedSnapshot>(() => new PersonalSavedService(api, scope, requestId), [api, scope]);
+  // Kept like the saved lists above: History, collections and saved views come back with Back.
+  const {service, snapshot, memo} = usePooled<PersonalSavedService, PersonalSavedSnapshot>(`saved-personal:${route?.view ?? ''}`, () => {
+    const made = new PersonalSavedService(api, scope, requestId);
+    return {service: made, document: {dependencies: savedDependencies, hasContent: () => !!made.getSnapshot().viewerFence, revalidate: context => made.revalidate(context)}};
+  });
   const key = route ? JSON.stringify(route) : '';
-  const last = useRef<{key: string; service: unknown}>({key: '', service: null});
   useEffect(() => {
-    if (!route || (last.current.key === key && last.current.service === service)) return;
-    last.current = {key, service};
+    if (!route || memo.selected === key) return;
+    memo.selected = key;
     try { void service.select(route).catch(() => {}); } catch {}
-  }, [service, key, route]);
-  useFreshDocument(savedDependencies, context => service.revalidate(context), () => !!service.getSnapshot().viewerFence);
+  }, [service, key, route, memo]);
   return {service, snapshot, refresh: useCallback(() => void service.refresh().catch(() => {}), [service]), next: useCallback(() => void service.next().catch(() => {}), [service]), previous: useCallback(() => void service.previous().catch(() => {}), [service])};
 }
 
@@ -188,6 +190,7 @@ export function SavedScreen() {
 }
 
 function SavedView({tab, filter, onShowAll, snapshot, onRetry, onRefresh, onNext, onPrevious}: {tab: Exclude<SavedTab, 'history' | 'collections'>; filter?: string; onShowAll: () => void; snapshot: SavedSnapshot; onRetry: () => void; onRefresh: () => void; onNext: (id: string) => void; onPrevious: () => void}) {
+  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', onRefresh);
   const {t} = useI18n();
   const navigate = useNavigate();
   const sections = snapshot.projection?.sections ?? [];
@@ -199,7 +202,7 @@ function SavedView({tab, filter, onShowAll, snapshot, onRetry, onRefresh, onNext
   const list = tab === 'favorites' ? t('saved.tab.favorites') : t('saved.tab.watchlist');
   return (
     <>
-      {snapshot.phase === 'error' && !sections.length ? <ErrorState error={snapshot.error} context="saved" retry={onRetry} refresh={onRefresh} /> : snapshot.phase === 'error' ? <Inset><ErrorNotice error={snapshot.error} context="saved" retry={onRetry} refresh={onRefresh} /></Inset> : snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="saved" refresh={onRefresh} /></Inset> : null}
+      {snapshot.phase === 'error' && !sections.length ? <ErrorState error={snapshot.error} context="saved" retry={onRetry} refresh={onRefresh} /> : snapshot.phase === 'error' ? <Inset><ErrorNotice error={snapshot.error} context="saved" retry={onRetry} refresh={onRefresh} /></Inset> : changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="saved" refresh={onRefresh} /></Inset> : null}
       {snapshot.phase === 'loading' && !sections.length ? <LoadingGrid /> : null}
       {snapshot.phase === 'ready' && !entries.length ? (filtered ? <StateView icon="filter" title={filter === 'unwatched' ? t('web.saved.noneUnwatched', {list}) : t('web.saved.noneInProgress', {list})} action={{label: t('web.saved.showAll'), onClick: onShowAll}} /> : <StateView icon={copy.icon} title={copy.title} body={copy.body} />) : null}
       {tab === 'playlists' ? (

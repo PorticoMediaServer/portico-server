@@ -1,15 +1,19 @@
-import React, {useEffect, useState, useSyncExternalStore} from 'react';
-import {Button, Text} from '../ui';
+import React, {useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {Artwork, Button, Text} from '../ui';
 import {useI18n} from '../app/i18n';
+import {formatClock} from '@core/presentation/index.ts';
 import type {PlayerEngine} from './engine';
 import type {SkipMode} from './SkipPrompt';
-import {upNextOffer, type ClosingMarker} from './up-next';
+import {upNextCountdown, upNextOffer, type ClosingMarker, type UpNextOffer} from './up-next';
 import s from './Player.module.css';
 
+type NextTitle = Readonly<{title: string; kind: string; posterUrl?: string; stillUrl?: string}>;
+
 /**
- * The next title, offered in a corner while the credits run. "Play now" goes straight to it;
- * "Watch credits" puts the card away for this title. Nothing here plays anything by itself: the
- * countdown and the passout check stay with the card shown when the title has ended.
+ * The next title, offered in a corner while the credits run, with its artwork and a countdown.
+ * "Play now" goes straight to it; "Watch credits" puts the card away for this title. The count
+ * starts the next title by itself only where `upNextCountdown` says so (autoplay on, credits the
+ * server is sure of); otherwise it says when the end card will start it.
  */
 export function useUpNextDuringCredits(engine: PlayerEngine, markers: readonly ClosingMarker[] | undefined, mode: SkipMode, enabled: boolean) {
   const {queue, state} = engine;
@@ -21,22 +25,51 @@ export function useUpNextDuringCredits(engine: PlayerEngine, markers: readonly C
     ? upNextOffer({markers, positionSeconds: state.positionSeconds, durationSeconds: state.duration, kind: engine.identity.kind, mode, nextAvailable: !!view?.next.available, passoutDue: !!view?.postPlay.passoutCheckDue})
     : null;
   const shown = offer && dismissed !== offer.id ? offer : null;
-  return {offer: shown, next, dismiss: () => { if (offer) setDismissed(offer.id); }};
+  return {offer: shown, next, postPlay: view?.postPlay, dismiss: () => { if (offer) setDismissed(offer.id); }};
 }
 
-export function UpNextCredits({engine, offer, next, onDismiss}: {engine: PlayerEngine; offer: {marker?: ClosingMarker}; next: {title: string}; onDismiss: () => void}) {
+export function UpNextCredits({engine, offer, next, postPlay, rate, onDismiss}: {engine: PlayerEngine; offer: UpNextOffer; next: NextTitle; postPlay?: Readonly<{autoplay: boolean; countdownSeconds: number}>; rate: number; onDismiss: () => void}) {
   const {t} = useI18n();
-  const play = () => {
+  const {state} = engine;
+  // Seconds of this offer spent playing: a pause holds the count where it is.
+  const [elapsed, setElapsed] = useState(0);
+  const playing = state.intent === 'playing' && !state.pendingSeek;
+  useEffect(() => { setElapsed(0); }, [offer.id]);
+  useEffect(() => {
+    if (!playing) return;
+    let last = Date.now();
+    const id = setInterval(() => { const now = Date.now(); setElapsed(e => e + (now - last) / 1000); last = now; }, 250);
+    return () => clearInterval(id);
+  }, [playing, offer.id]);
+  const countdown = upNextCountdown({offer, positionSeconds: state.positionSeconds, durationSeconds: state.duration, rate, autoplay: postPlay?.autoplay ?? true, countdownSeconds: postPlay?.countdownSeconds ?? 10, elapsedSeconds: elapsed});
+  const moved = useRef('');
+  const leave = (automatic: boolean) => {
+    if (moved.current === offer.id) return;
+    moved.current = offer.id;
     // Leaving during the credits is a skip of them, recorded like the skip button's.
-    if (offer.marker) engine.service.markerSkipped(offer.marker.id, 'manual', engine.state.positionSeconds);
-    engine.next();
+    if (offer.marker) engine.service.markerSkipped(offer.marker.id, automatic ? 'automatic' : 'manual', engine.state.positionSeconds);
+    const view = engine.queue?.getSnapshot()?.view;
+    if (automatic && view && engine.queue?.advanceFromCredits) void engine.queue.advanceFromCredits(view.queue.id, view.queue.revision).catch(() => {});
+    else engine.next();
   };
+  const due = countdown?.automatic && countdown.seconds <= 0;
+  useEffect(() => { if (due) leave(true); }); // eslint-disable-line react-hooks/exhaustive-deps
+  const episode = next.kind === 'episode';
+  const art = next.stillUrl ?? next.posterUrl;
+  const total = Math.max(1, postPlay?.countdownSeconds ?? 10);
   return (
     <div className={s.upNext} role="group" aria-label={t('player.upNext.duringCredits')}>
-      <Text variant="label" tone="tertiary">{t('player.upNext.duringCredits')}</Text>
-      <span className={s.upNextTitle}>{next.title}</span>
+      <div className={s.upNextRow}>
+        <div className={next.stillUrl || !art ? s.upNextStill : s.upNextPoster}><Artwork path={art} shape={next.stillUrl || (!art && episode) ? 'landscape' : 'poster'} icon={episode ? 'tv' : 'film'} alt="" /></div>
+        <div className={s.upNextCopy}>
+          <Text variant="label" tone="tertiary">{t('player.upNext.duringCredits')}</Text>
+          <span className={s.upNextTitle}>{next.title}</span>
+          {countdown ? <span className={s.upNextWhen} aria-live="off">{countdown.automatic ? t('player.post.playingIn', {seconds: countdown.seconds}) : t('player.upNext.startsIn', {time: formatClock(countdown.seconds)})}</span> : null}
+        </div>
+      </div>
+      {countdown?.automatic ? <div className={s.upNextMeter} aria-hidden><i style={{width: `${Math.min(100, (elapsed / total) * 100)}%`}} /></div> : null}
       <div className={s.upNextActions}>
-        <Button variant="glass" icon="play" label={t('player.upNext.playNow')} onClick={play} />
+        <Button variant="glass" icon="play" label={t('player.upNext.playNow')} onClick={() => leave(false)} />
         <Button variant="ghost" size="sm" label={t(offer.marker ? 'player.upNext.watchCredits' : 'player.upNext.notNow')} onClick={onDismiss} />
       </div>
     </div>

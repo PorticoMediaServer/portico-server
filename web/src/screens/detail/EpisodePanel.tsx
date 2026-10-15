@@ -1,4 +1,5 @@
 import React from 'react';
+import {Link} from '@tanstack/react-router';
 import {useEffect, useMemo, useState} from 'react';
 import type {ContentEntry} from '@core/library-content.ts';
 import {formatDuration} from '@core/presentation/index.ts';
@@ -16,6 +17,7 @@ import {episodeCode, formatAirDate} from './EpisodeCard';
 import {PlaybackChoices, type PlaybackChoice} from './PlaybackChoices';
 import {setPendingTrackChoice} from '../../player/pending-choice';
 import s from './Show.module.css';
+import d from './Detail.module.css';
 import {useI18n} from '../../app/i18n';
 
 /**
@@ -77,14 +79,36 @@ export function EpisodePanel({libraryId, showId, episodeId, preview, previous, n
     else player.play(play.playback.itemId, seconds, entry, choice.prepared, choice.quality, choice.choices);
     onClose();
   };
-  // One entry per person even when the server lists them in two roles (writer and teleplay, say).
-  const names = (list: typeof credits, withRole = false, all = false) => [...new Map(list.map(c => [c.personId ?? c.name, withRole && c.role ? `${c.name} (${c.role})` : c.name])).values()].slice(0, all ? undefined : 12).join(', ');
+  /* Guest stars, directors and writers, each a link to the person's page where the server knows
+     who they are (B-18.30). One entry per person even when the server lists them in two roles
+     (writer and teleplay, say). */
+  const people = (list: typeof credits, withRole = false, all = false) => {
+    const unique = [...new Map(list.map(c => [c.personId ?? c.name, c])).values()].slice(0, all ? undefined : 12);
+    return (
+      <span>
+        {unique.map((c, i) => {
+          const label = withRole && c.role ? `${c.name} (${c.role})` : c.name;
+          return (
+            <React.Fragment key={c.personId ?? c.name}>
+              {i ? ', ' : null}
+              {c.personId ? <Link className={d.genreLink} to="/person/$personId" params={{personId: c.personId}} onClick={onClose}>{label}</Link> : label}
+            </React.Fragment>
+          );
+        })}
+      </span>
+    );
+  };
   // M26: the episode's own still, else the styled placeholder — never the show backdrop.
   const still = episodeArt({stillUrl: item?.stillUrl ?? preview?.stillUrl});
-  const rows = [guests.length ? [t('title.cast'), allCast ? names(castPages.credits, true, true) : names(guests, true)] : null].filter((r): r is [string, string] => !!r);
-  const crewLines = [directors.length ? t('title.directedBy', {names: names(directors)}) : null, writers.length ? t('title.writtenBy', {names: names(writers)}) : null].filter((l): l is string => !!l);
+  // The air date is the episode's own on a direct visit too, not only when opened from its card.
+  const airDate = item?.episode?.airDate || preview?.airDate;
+  const rows = [
+    guests.length ? [t('title.cast'), allCast ? people(castPages.credits, true, true) : people(guests, true)] : null,
+    directors.length ? [t('title.directedByLabel'), people(directors)] : null,
+    writers.length ? [t('title.writtenByLabel'), people(writers)] : null,
+  ].filter((r): r is [string, React.ReactElement] => !!r);
   return (
-    <Dialog open onOpenChange={open => !open && onClose()} title={title} description={[code, item?.duration ? formatDuration(item.duration) : preview?.duration ? formatDuration(preview.duration) : undefined, preview?.airDate ? t('title.airedOn', {date: formatAirDate(i18n, preview.airDate)}) : undefined].filter(Boolean).join(' · ') || undefined} placement="side" width={480}>
+    <Dialog open onOpenChange={open => !open && onClose()} title={title} description={[code, item?.duration ? formatDuration(item.duration) : preview?.duration ? formatDuration(preview.duration) : undefined, airDate ? t('title.airedOn', {date: formatAirDate(i18n, airDate)}) : undefined].filter(Boolean).join(' · ') || undefined} placement="side" width={480}>
       {still.kind === 'still' ? <Artwork path={still.path} shape="landscape" icon="tv" className={s.panelStill} alt="" progress={item && item.duration ? item.progressSeconds / item.duration : undefined} /> : <div className={s.panelStillPlaceholder} style={placeholderTint(showId)} aria-hidden><span>{code}</span></div>}
       {snapshot.phase === 'error' && !data ? <ErrorNotice error={snapshot.error} context="detail" retry={retry} /> : null}
       {!data && snapshot.phase !== 'error' ? <Loading label={t('title.loadingEpisode', {title})} /> : null}
@@ -102,7 +126,6 @@ export function EpisodePanel({libraryId, showId, episodeId, preview, previous, n
       {data?.missingSince ? <Notice tone="warning" compact title={i18n.t('title.missing')}>{i18n.t('title.missingSince', {when: i18n.date(data.missingSince, 'long')})}</Notice> : null}
       {rows.length ? <KeyValue rows={rows} /> : null}
       {castTotal > 12 && !(allCast && castPages.done) ? <div><Button variant="link" label={t(allCast ? 'title.moreCast' : 'title.allCast')} onClick={() => { setAllCast(true); castPages.more(); }} /></div> : null}
-      {crewLines.map(line => <Text key={line} as="p" variant="caption" tone="secondary">{line}</Text>)}
       {data?.files?.length ? <TitleFiles files={data.files} onDelete={owner && item ? (file, summary) => setDeletingVersion({file, summary}) : undefined} /> : null}
       {deletingVersion && item ? <DeleteVersionDialog itemId={item.id} title={item.title} file={deletingVersion.file} summary={deletingVersion.summary} onClose={() => setDeletingVersion(undefined)} onDeleted={() => { setDeletingVersion(undefined); void retry(); }} /> : null}
       {previous || next ? (

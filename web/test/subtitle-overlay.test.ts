@@ -218,7 +218,7 @@ function imageWorker(ready: ImageWorkerReply) {
   };
   return {worker, sent};
 }
-const track = (): ImageWorkerReply => ({type: 'ready', width: 1920, height: 1080, starts: Float64Array.from([1000, 3000, 9000]), ends: Float64Array.from([2500, 4000, 9500]), skipped: 0});
+const track = (forced = [0, 0, 0]): ImageWorkerReply => ({type: 'ready', width: 1920, height: 1080, starts: Float64Array.from([1000, 3000, 9000]), ends: Float64Array.from([2500, 4000, 9500]), forced: Uint8Array.from(forced), skipped: 0});
 
 test('image subtitles: the cue due now is asked for, drawn scaled onto the picture, and the next one is ready in time', async () => {
   const c = canvas(), {worker, sent} = imageWorker(track());
@@ -257,6 +257,28 @@ test('image subtitles: the cue due now is asked for, drawn scaled onto the pictu
   assert.equal(worker.terminated, true);
   assert.equal(closed, 1, 'bitmaps are released');
   assert.deepEqual(c.calls.at(-1)!.slice(0, 1), ['clear']);
+});
+
+test('image subtitles: "Forced only" shows the lines the disc marks forced and nothing else', async () => {
+  const c = canvas(), {worker, sent} = imageWorker(track([0, 1, 0]));
+  const renderer = new ImageSubtitleRenderer({spawn: () => worker, fromPixels: (_rgba, width, height) => `pixels ${width}x${height}` as unknown as CanvasImageSource});
+  await renderer.load({kind: 'pgs', data: new Uint8Array(3)}, {canvas: c.element, read: noRead, signal: new AbortController().signal, failed: () => {}});
+  assert.deepEqual(renderer.cues, {forced: 1, total: 3});
+  renderer.resize({width: 1920, height: 1080, picture: {x: 0, y: 0, width: 1920, height: 1080}});
+  renderer.setForcedOnly(true);
+  renderer.sync({timeSeconds: 1.2, paused: false, rate: 1});
+  assert.deepEqual(sent.slice(1), [{type: 'paint', index: 1}], 'an ordinary line is neither painted nor drawn; the forced one after it is painted ahead');
+  worker.reply({type: 'frame', index: 1, rects: [{x: 0, y: 0, width: 10, height: 10, rgba: new ArrayBuffer(400)}]});
+  renderer.sync({timeSeconds: 3.5, paused: false, rate: 1});
+  assert.deepEqual(c.calls.at(-1), ['draw', 'pixels 10x10', 0, 0, 10, 10]);
+  renderer.sync({timeSeconds: 9.1, paused: true, rate: 1});
+  assert.equal(sent.some(m => m.type === 'paint' && m.index === 2), false);
+  assert.deepEqual(c.calls.at(-1)!.slice(0, 1), ['clear']);
+  // Every line again.
+  renderer.setForcedOnly(false);
+  renderer.sync({timeSeconds: 9.1, paused: true, rate: 1});
+  assert.deepEqual(sent.at(-1), {type: 'paint', index: 2});
+  renderer.dispose();
 });
 
 test('image subtitles: a file the worker cannot read, and a worker that dies', async () => {

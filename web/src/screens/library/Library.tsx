@@ -39,6 +39,7 @@ import {isRecommendationRow} from '@core/recommendation-feedback.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {withoutHidden} from '../../app/not-interested';
 import {useI18n, type I18n} from '../../app/i18n';
+import {useQuietRefresh} from '../../app/quiet-refresh';
 
 const SORT_NAMES = new Set(['title', 'added', 'year', 'duration', 'last_played', 'rating', 'episode', 'track', 'artist', 'album', 'author', 'release', 'random']);
 const sortLabel = (t: I18n['t'], key: string): string => {
@@ -124,6 +125,8 @@ export function LibraryScreen() {
   const content = useMemo<ContentRoute>(() => (search.row || custom ? {libraryId, view: 'discover'} : ({libraryId, view: tab as ContentView, ...(search.category ? {category: search.category} : {}), ...(search.sort ? {sort: search.sort, direction: search.direction} : {})})), [libraryId, tab, custom, search.row, search.category, search.sort, search.direction]);
   /* The authored content route still serves Discover, categories and the tab strip; browsable pivots read the engine. */
   const {snapshot, retry, refresh, next} = useContent(engine ? {libraryId, view: 'discover'} : content);
+  // Read again quietly when the server says the page changed; the notice is for one that stays refused.
+  const changedStuck = useQuietRefresh(!engine && !custom && snapshot.phase === 'refresh-required', refresh);
   const projection = snapshot.projection;
   // PERF-S02: section "More" appends inside its own section; the page's other
   // sections stay rendered.
@@ -254,7 +257,7 @@ export function LibraryScreen() {
         setSearch({view: id as Tab, category: undefined, row: undefined, sort: kept?.sort?.field, direction: kept?.sort?.direction, filters: kept?.filters?.length ? encodePredicates(kept.filters as readonly Predicate[]) : undefined});
       }} size="large" label={t('web.library.viewsLabel')} />
       {search.row ? (
-        <RowView libraryId={libraryId} rowId={search.row} snapshot={snapshot} retry={retry} refresh={refresh} next={next} onBack={() => setSearch({row: undefined})} list={view === 'list'} square={square} />
+        <RowView libraryId={libraryId} rowId={search.row} snapshot={snapshot} changedStuck={changedStuck} retry={retry} refresh={refresh} next={next} onBack={() => setSearch({row: undefined})} list={view === 'list'} square={square} />
       ) : (
       <>
       {engine && capabilities ? (
@@ -282,7 +285,7 @@ export function LibraryScreen() {
       ) : null}
       {!engine && !custom && snapshot.phase === 'loading' && !snapshot.sections.length ? (tab === 'browse' ? <LoadingGrid density={square ? 'square' : 'poster'} /> : <LoadingShelves density={square ? 'square' : 'poster'} />) : null}
       {!engine && !custom && snapshot.phase === 'error' && !snapshot.sections.length ? <ErrorState error={snapshot.error} context="library" retry={retry} refresh={refresh} /> : null}
-      {!engine && !custom && snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="library" refresh={refresh} /></Inset> : null}
+      {changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="library" refresh={refresh} /></Inset> : null}
       {!engine && !custom ? (appendedSections.map(raw => {
         // P5: Discover's recommendation rows offer Not interested and drop a card turned down.
         const recommendation = tab === 'discover' && isRecommendationRow(raw);
@@ -309,7 +312,7 @@ function categoryName(id: string): string {
  * projection (the row pages through its own cursor, exactly like the inline
  * rail), rendered as a grid with the row's title and a way back.
  */
-function RowView({libraryId, rowId, snapshot, retry, refresh, next, onBack, list, square}: {libraryId: string; rowId: string; snapshot: LibraryContentSnapshot; retry: () => void; refresh: () => void; next: (sectionId: string) => void; onBack: () => void; list: boolean; square: boolean}) {
+function RowView({libraryId, rowId, snapshot, changedStuck, retry, refresh, next, onBack, list, square}: {libraryId: string; rowId: string; snapshot: LibraryContentSnapshot; changedStuck: boolean; retry: () => void; refresh: () => void; next: (sectionId: string) => void; onBack: () => void; list: boolean; square: boolean}) {
   const i18n = useI18n();
   const {t} = i18n;
   const notInterested = useNotInterested();
@@ -340,7 +343,7 @@ function RowView({libraryId, rowId, snapshot, retry, refresh, next, onBack, list
   return (
     <>
       <PageHeader title={sectionHeading(i18n, section.heading)} onBack={onBack} backLabel={t('action.back')} />
-      {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="library" refresh={refresh} /></Inset> : null}
+      {changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="library" refresh={refresh} /></Inset> : null}
       <SectionView section={presented} libraryId={libraryId} hideTitle origin={recommendation ? 'recommendation' : undefined} onMore={section.nextCursor ? () => next(section.id) : undefined} />
     </>
   );
