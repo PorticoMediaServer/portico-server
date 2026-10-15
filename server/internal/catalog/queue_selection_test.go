@@ -113,7 +113,7 @@ func TestQueueKeysResolveSavedViewsAndSharedCollections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.MutateSavedResource(actor, collection.ResourceID, "entries", SavedResourceMutation{OperationID: "saved-queue-entries-01", ExpectedRevision: collection.Revision, AddItemIDs: []string{names["m1"].Public, names["m2"].Public}}, func(*sql.Tx) error { return nil })
+	_, err = s.MutateSavedResource(actor, collection.ResourceID, "entries", SavedResourceMutation{OperationID: "saved-queue-entries-01", ExpectedRevision: collection.Revision, AddItemIDs: []string{names["m2"].Public, names["m1"].Public}}, func(*sql.Tx) error { return nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -121,7 +121,8 @@ func TestQueueKeysResolveSavedViewsAndSharedCollections(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got) != 2 {
+	// A collection plays in the order it is shown, by title, not the order its entries were added.
+	if !reflect.DeepEqual(got, []string{names["m1"].Public, names["m2"].Public}) {
 		t.Fatalf("shared collection membership %v", got)
 	}
 }

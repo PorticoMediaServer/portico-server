@@ -31,6 +31,10 @@ import (
 // other condition, the restriction and the order are then applied to those
 // members alone.
 
+// AcrossLibraries is the library a queue selector names for a list across
+// the viewer's libraries (clients' acrossLibraries).
+const AcrossLibraries = "*"
+
 // acrossMaximum bounds the members one list across libraries reads. Past it
 // the list holds the group's first acrossMaximum members in its own order and
 // says its total is a lower bound.
@@ -506,4 +510,69 @@ func (s *Service) FacetsAcross(viewer Viewer, request FacetRequest) (FacetPage, 
 		out.Values = out.Values[:limit]
 	}
 	return out, nil
+}
+
+// acrossQueue is what playing a list across libraries plays: its titles in
+// the order shown (the same members, conditions and order as its pages),
+// each title's playable items in their own order.
+func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, query *QueueQuery) (QueueSelection, error) {
+	pivot, ok := acrossPivot(query.Pivot)
+	if !ok {
+		return QueueSelection{}, ErrBrowsePivot
+	}
+	sorts, err := resolveBrowseSorts(pivot, query.Sort)
+	if err != nil {
+		return QueueSelection{}, err
+	}
+	if sorts[0].Field == "forYou" {
+		return QueueSelection{}, browseIssue("sort[0].field", "For you ranks one library at a time")
+	}
+	anchor := acrossAnchor(query.Query)
+	if anchor == nil {
+		return QueueSelection{}, ErrBrowseAcrossGroup
+	}
+	members, memberArgs, ordered, err := acrossMembers(anchor, viewer.Profile, nil)
+	if err != nil {
+		return QueueSelection{}, err
+	}
+	if sorts[0].Field == "groupOrder" && !ordered {
+		return QueueSelection{}, ErrBrowseGroupOrder
+	}
+	kinds, err := acrossKinds(pivot)
+	if err != nil {
+		return QueueSelection{}, err
+	}
+	where := `e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(kinds)) + `)`
+	args := append([]any{idsJSON(viewer.Libraries)}, kinds...)
+	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions}
+	clause, err := compiler.compile(query.Query)
+	if err != nil {
+		return QueueSelection{}, err
+	}
+	where += " AND " + clause
+	args = append(args, compiler.args...)
+	if live, liveArgs := EntityRestrictionSQL("e.entity_id", viewer.Restrictions); live != "1" {
+		where += " AND " + live
+		args = append(args, liveArgs...)
+	}
+	_, _, order, orderArgs := acrossOrder(sorts[0], viewer.Profile)
+	visible, visibleArgs := viewer.itemVisibilitySQL("i.id")
+	group := `WITH anchor(id,pos) AS MATERIALIZED (SELECT id,pos FROM (` + members + `) LIMIT ` + strconv.Itoa(acrossMaximum) + `),
+ ord(id,pos) AS MATERIALIZED (SELECT id,min(pos) FROM (SELECT id,pos FROM anchor
+  UNION ALL SELECT bm.entity_id,anchor.pos FROM anchor CROSS JOIN catalog_browse_memberships bm INDEXED BY catalog_browse_membership_item ON bm.item_id=anchor.id
+  UNION ALL SELECT bm.item_id,anchor.pos FROM anchor CROSS JOIN catalog_browse_memberships bm ON bm.entity_id=anchor.id) GROUP BY id)`
+	query2 := group + `, ranked AS (SELECT e.entity_id,row_number() OVER(ORDER BY ` + order + `) AS ordinal FROM ord CROSS JOIN catalog_browse_rows e ON e.entity_id=ord.id WHERE ` + where + `), members AS (
+ SELECT i.id,min(r.ordinal) AS ordinal FROM ranked r JOIN catalog_browse_memberships bm ON bm.entity_id=r.entity_id JOIN catalog_entities i ON i.id=bm.item_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1
+ WHERE ` + visible + recordingsClause("i.id", viewer.Restrictions) + ` AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=i.id) GROUP BY i.id)
+ SELECT pid(i.public_id) FROM members m JOIN catalog_entities i ON i.id=m.id
+ LEFT JOIN catalog_episodes ep ON ep.entity_id=i.id LEFT JOIN catalog_seasons season ON season.entity_id=ep.season_id
+ LEFT JOIN catalog_songs song ON song.entity_id=i.id LEFT JOIN catalog_entities album ON album.id=song.album_id LEFT JOIN catalog_book_files part ON part.entity_id=i.id
+ ORDER BY m.ordinal,COALESCE(season.number,1),COALESCE(ep.number,0),COALESCE(album.year,0),COALESCE(album.sort_key,''),COALESCE(album.id,0),COALESCE(song.disc_number,part.disc_number,1),COALESCE(song.track_number,part.part_number,0),i.id`
+	bound := append(append(append(append([]any{}, memberArgs...), orderArgs...), args...), visibleArgs...)
+	revision, err := s.acrossRevision(AcrossRequest{Query: query.Query, profile: viewer.Profile, fence: viewer.Fence, libraries: viewer.Libraries}, pivot, sorts)
+	if err != nil {
+		return QueueSelection{}, err
+	}
+	served, err := compactcatalog.SearchServingSQL(ctx, tx, compactcatalog.ServingSQL(query2))
+	return QueueSelection{SQL: served, Args: bound, Revision: revision}, err
 }

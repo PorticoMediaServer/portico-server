@@ -37,6 +37,9 @@ type PlaylistMutation struct {
 	Summary          *string  `json:"summary,omitempty"`
 	ItemID           string   `json:"itemId,omitempty"`
 	ItemIDs          []string `json:"itemIds,omitempty"`
+	// UndoToken, on an add, puts back the occurrence a removal just took out
+	// (the removal's receipt carries it) in place of adding an item.
+	UndoToken string `json:"undoToken,omitempty"`
 	EntryIDs         []string `json:"entryIds,omitempty"`
 	AfterEntryID     *string  `json:"afterEntryId,omitempty"`
 	Authority        string   `json:"authority,omitempty"`
@@ -52,4 +55,7 @@ type PlaylistReceipt struct {
 	Revision    int64  `json:"revision"`
 	EntryID     string `json:"entryId,omitempty"`
 	Deleted     bool   `json:"deleted"`
+	// A removal can be undone until UndoUntil by adding with UndoToken.
+	UndoToken string `json:"undoToken,omitempty"`
+	UndoUntil string `json:"undoUntil,omitempty"`
 }

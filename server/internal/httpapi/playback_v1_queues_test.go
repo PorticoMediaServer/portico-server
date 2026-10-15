@@ -208,3 +208,41 @@ func TestPlaybackV1QueueAuthorization(t *testing.T) {
 		t.Fatalf("query selector: %d %s", w.Code, w.Body.String())
 	}
 }
+
+// The window carries the artwork an Up next card shows: the poster the item
+// art route serves (only when one exists) and an episode's own still.
+func TestPlaybackV1QueueWindowArtwork(t *testing.T) {
+	f := newV1Fixture(t, 3)
+	digest := fmt.Sprintf("%064x", 7)
+	if _, err := f.db.Exec(`INSERT INTO artwork_objects VALUES(?,'image/jpeg',800,1200,10,'2000-01-01T00:00:00Z','ready')`, digest); err != nil {
+		t.Fatal(err)
+	}
+	for i, v := range []struct{ item, role string }{{f.items[1], "poster"}, {f.items[2], "still"}} {
+		var entity int64
+		if err := f.db.QueryRow(`SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, v.item).Scan(&entity); err != nil {
+			t.Fatal(err)
+		}
+		candidate := fmt.Sprintf("candidate-%d", i)
+		if _, err := f.db.Exec(`INSERT INTO artwork_candidates(id,kind,entity_id,role,provider,image_id,origin,attribution,source_fence,observed_at) VALUES(?,'item',?,?,'owner',?,'upload','','fence','2000-01-01')`, candidate, entity, v.role, candidate); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.db.Exec(`INSERT INTO artwork_selections(kind,entity_id,role,candidate_id,digest,thumbnail_digest,actor,observed_at) VALUES('item',?,?,?,?,?,'owner','2000-01-01')`, entity, v.role, candidate, digest, digest); err != nil {
+			t.Fatal(err)
+		}
+	}
+	body := map[string]any{"owner": "device", "segments": []any{map[string]any{"source": queueItems(f.items...)}}}
+	var created playbackv1.QueueReply
+	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "queue-art-0000000001"}, body, 201, &created)
+	if len(created.Window) != 3 {
+		t.Fatalf("window %+v", created.Window)
+	}
+	if w := created.Window[0]; w.PosterURL != "" || w.StillURL != "" {
+		t.Fatalf("no artwork: %+v", w)
+	}
+	if w := created.Window[1]; w.PosterURL != "/v1/items/"+f.items[1]+"/art/poster" || w.StillURL != "" {
+		t.Fatalf("poster: %+v", w)
+	}
+	if w := created.Window[2]; w.PosterURL != "" || w.StillURL != "/v1/metadata/item/"+f.items[2]+"/art/still?v="+digest+"&w=800" {
+		t.Fatalf("still: %+v", w)
+	}
+}

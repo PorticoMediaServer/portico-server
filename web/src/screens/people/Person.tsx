@@ -8,6 +8,7 @@ import {readPerson, type PersonCredit, type PersonPage, type PersonRole} from '@
 import type {CollectionStatus, WindowedCollection} from '@core/collections/index.ts';
 import {createWindowedCollection} from '@core/collections/index.ts';
 import {PERSON_CREDIT_PAGE, PERSON_CREDIT_RESIDENT_PAGES, personCreditsSource} from './person-credits';
+import {personCredits, rememberedPerson} from './person-memory';
 import {captionFor, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {useEntryHref, useOpenEntry} from '../../app/open';
 import {useSession} from '../../app/session';
@@ -48,24 +49,28 @@ export function PersonScreen() {
   const scope = useViewerScope();
   const address = useSearch({from: '/app/person/$personId'});
   const navigate = useNavigate();
-  const [role, setRole] = useState<PersonRole>('all');
-  const [state, setState] = useState<State>({phase: 'loading'});
+  // Back to a person shows what was there: kept for the last few people visited (person-memory).
+  const kept = useMemo(() => rememberedPerson(api, scope, personId), [api, scope, personId]);
+  const [role, setRoleState] = useState<PersonRole>(kept.role);
+  const setRole = (next: PersonRole) => { kept.role = next; setRoleState(next); };
+  const [state, setState] = useState<State>(() => (kept.page ? {phase: 'ready', page: kept.page} : {phase: 'loading'}));
   const load = useCallback(async () => {
     setState(prev => ({phase: 'loading', page: prev.page}));
     try {
       // The header only: one credit keeps the request small; the grid pages the rest.
       const page = await readPerson(api, scope, personId, {role, limit: 1});
+      if (role === kept.role) kept.page = page;
       setState({phase: 'ready', page});
     } catch (e) {
       setState(prev => ({phase: 'error', page: prev.page, error: e}));
     }
   }, [api, scope, personId, role]);
   useEffect(() => { void load(); }, [load]);
+  // The grid is the kept one (the memory releases it when the person is pushed out).
   const credits = useMemo<WindowedCollection<PersonCredit>>(
-    () => createWindowedCollection<PersonCredit>({fetchPage: personCreditsSource(api, scope, personId, role), pageSize: PERSON_CREDIT_PAGE, maxResidentPages: PERSON_CREDIT_RESIDENT_PAGES, keyOf: c => `${c.media.id}:${c.role}:${c.character}`}),
-    [api, scope, personId, role],
+    () => personCredits(kept, role, () => createWindowedCollection<PersonCredit>({fetchPage: personCreditsSource(api, scope, personId, role), pageSize: PERSON_CREDIT_PAGE, maxResidentPages: PERSON_CREDIT_RESIDENT_PAGES, keyOf: c => `${c.media.id}:${c.role}:${c.character}`})),
+    [api, scope, personId, role, kept],
   );
-  useEffect(() => () => credits.dispose(), [credits]);
   // A person's titles follow the libraries while the page is open: a title that arrives, goes or is watched updates in place.
   useFreshDocument(personDependencies, context => credits.revalidate({fetchPage: personCreditsSource(api, scope, personId, role), hold: context.settle}), () => credits.getSnapshot().total !== undefined);
   const creditsSnapshot = useSyncExternalStore(credits.subscribe, credits.getSnapshot);

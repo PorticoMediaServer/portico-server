@@ -85,3 +85,12 @@ test('malformed collection outcome cannot become a successful receipt',async()=>
  const s=setup(async(_p,m,b)=>m==='GET'?content():{serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'collection',revision:2,deleted:false,entries:{added:['item'],removed:[],unchanged:[],failed:[{itemId:'item',code:'denied'}]}}});
  await s.select({view:'resource',resourceId:'collection'});assert.equal(await s.mutate({action:'entries',addItemIds:['item']}),false);assert.equal(s.getSnapshot().result,null);s.dispose();
 });
+test('a collection removal carries its undo token, and Undo sends the token alone',async()=>{
+ const writes:any[]=[];let revision=1;const s=setup(async(_p,m,b)=>{if(m==='GET')return content(resource({revision}),[{id:'member',hidden:false,media:media()}]);writes.push(b);revision++;return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'collection',revision,deleted:false,entries:b.undoToken?{added:['member'],removed:[],unchanged:[],failed:[]}:{added:[],removed:['member'],unchanged:[],failed:[]},...(b.undoToken?{}:{undoToken:'undo-1',undoUntil:'2026-10-15T12:00:30.000Z'})}};});
+ await s.select({view:'resource',resourceId:'collection'});
+ assert.equal(await s.mutate({action:'entries',removeEntryIds:['member']}),true);
+ assert.deepEqual(s.getSnapshot().result?.undo,{token:'undo-1',until:'2026-10-15T12:00:30.000Z'});
+ assert.equal(await s.mutate({action:'entries',undoToken:'undo-1'}),true);
+ assert.equal(writes[1].undoToken,'undo-1');assert.equal(writes[1].addItemIds,undefined);assert.equal(writes[1].removeEntryIds,undefined);assert.equal(s.getSnapshot().result?.undo,undefined);
+ await assert.rejects(()=>s.mutate({action:'entries',undoToken:'undo-1',removeEntryIds:['member']}),/Invalid/);s.dispose();
+});

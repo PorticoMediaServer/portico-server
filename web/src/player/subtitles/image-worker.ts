@@ -52,7 +52,9 @@ scope.onmessage = event => {
       track = message.kind === 'pgs' ? parsePgs(data) : message.kind === 'vobsub' ? parseVobSub(message.index ?? '', data) : parseDvb(data);
       if (!track.cues.length || !track.width || !track.height) { scope.postMessage({type: 'failed', message: 'This subtitle has no pictures that can be shown.'}); return; }
       const starts = Float64Array.from(track.cues, cue => cue.startMs), ends = Float64Array.from(track.cues, cue => cue.endMs);
-      scope.postMessage({type: 'ready', width: track.width, height: track.height, starts, ends, skipped: track.skipped}, [starts.buffer, ends.buffer]);
+      // Which cues the disc marks forced (foreign dialogue, signs), for the viewer's "Forced only".
+      const forced = Uint8Array.from(track.cues, cue => (cue.forced ? 1 : 0));
+      scope.postMessage({type: 'ready', width: track.width, height: track.height, starts, ends, forced, skipped: track.skipped}, [starts.buffer, ends.buffer, forced.buffer]);
     } else if (message.type === 'paint') {
       if (!Number.isInteger(message.index) || message.index < 0 || !track || message.index >= track.cues.length) return;
       // One paint runs at a time; excessive queued seeks are answered without allocating pixels.

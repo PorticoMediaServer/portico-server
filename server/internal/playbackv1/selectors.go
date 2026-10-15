@@ -44,9 +44,13 @@ type Order struct {
 }
 
 // Anchor says where playback starts in a segment: an item, a position, or
-// "resume" (a show's next episode for this viewer).
+// "resume" (a show's next episode for this viewer). In a playlist, EntryID
+// names one occurrence of an item that appears more than once, so the copy
+// that was pressed is the one that plays; ItemID, when also given, is where
+// it starts should that occurrence have been removed meanwhile.
 type Anchor struct {
 	ItemID   string
+	EntryID  string
 	Position *int64
 	Resume   bool
 }
@@ -62,6 +66,7 @@ func (a *Anchor) UnmarshalJSON(b []byte) error {
 	}
 	var v struct {
 		ItemID   string `json:"itemId"`
+		EntryID  string `json:"entryId"`
 		Position *int64 `json:"position"`
 	}
 	d := json.NewDecoder(strings.NewReader(string(b)))
@@ -69,10 +74,13 @@ func (a *Anchor) UnmarshalJSON(b []byte) error {
 	if err := d.Decode(&v); err != nil {
 		return err
 	}
-	if (v.ItemID == "") == (v.Position == nil) {
-		return errors.New("anchor needs itemId or position")
+	if (v.ItemID == "" && v.EntryID == "") == (v.Position == nil) {
+		return errors.New("anchor needs itemId, entryId or position")
 	}
-	a.ItemID, a.Position = v.ItemID, v.Position
+	if v.EntryID != "" && !itemIDPattern.MatchString(v.EntryID) {
+		return errors.New("anchor entryId is not an entry id")
+	}
+	a.ItemID, a.EntryID, a.Position = v.ItemID, v.EntryID, v.Position
 	return nil
 }
 func (a Anchor) MarshalJSON() ([]byte, error) {
@@ -81,6 +89,12 @@ func (a Anchor) MarshalJSON() ([]byte, error) {
 		return []byte(`"resume"`), nil
 	case a.Position != nil:
 		return json.Marshal(map[string]int64{"position": *a.Position})
+	case a.EntryID != "":
+		out := map[string]string{"entryId": a.EntryID}
+		if a.ItemID != "" {
+			out["itemId"] = a.ItemID
+		}
+		return json.Marshal(out)
 	}
 	return json.Marshal(map[string]string{"itemId": a.ItemID})
 }
@@ -203,8 +217,10 @@ type snapshot struct {
 	// for, and the builder continues from there (P16).
 	partial bool
 	seen    int64
-	// anchorItem is an item anchor not reached before the scan stopped.
+	// anchorItem is an item anchor not reached before the scan stopped;
+	// anchorAt a playlist occurrence's source position not reached.
 	anchorItem string
+	anchorAt   *int64
 	// For a partial snapshot, what the command decided (see CreateQueue):
 	// declared is its full size when known up front (a shuffle), start a queue
 	// start that waits for it, hint one key resolved ahead, caller whose access

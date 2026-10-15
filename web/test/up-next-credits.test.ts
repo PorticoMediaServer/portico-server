@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {upNextOffer} from '../src/player/up-next.ts';
+import {upNextCountdown, upNextOffer} from '../src/player/up-next.ts';
 
 const credits = {id: 'c1', kind: 'credits', startSeconds: 1290, endSeconds: 1380, automaticSafe: true};
 const opening = {id: 'o1', kind: 'credits', startSeconds: 30, endSeconds: 90, automaticSafe: true};
@@ -29,4 +29,15 @@ test('the next title is offered while the closing credits run, and only then', (
   ];
   for (const c of cases) assert.equal(upNextOffer({...base, ...c.input})?.id ?? null, c.want, c.name);
   assert.equal(upNextOffer(base)?.marker?.id, 'c1');
+});
+
+test('the countdown starts the next title early only for credits the server is sure of, with autoplay on', () => {
+  const sure = {id: 'marker:c1', marker: credits}, unsure = {id: 'marker:c2', marker: {...credits, id: 'c2', automaticSafe: false}}, tail = {id: 'tail'};
+  const at = {positionSeconds: 1300, durationSeconds: 1380, rate: 1, autoplay: true, countdownSeconds: 10, elapsedSeconds: 3.2};
+  assert.deepEqual(upNextCountdown({...at, offer: sure}), {automatic: true, seconds: 7});
+  assert.deepEqual(upNextCountdown({...at, offer: sure, elapsedSeconds: 12}), {automatic: true, seconds: 0});
+  // Otherwise the count is what is left of this title, at its speed, plus the end card's countdown.
+  assert.deepEqual(upNextCountdown({...at, offer: unsure}), {automatic: false, seconds: 90});
+  assert.deepEqual(upNextCountdown({...at, offer: tail, rate: 2}), {automatic: false, seconds: 50});
+  assert.equal(upNextCountdown({...at, offer: sure, autoplay: false}), null);
 });

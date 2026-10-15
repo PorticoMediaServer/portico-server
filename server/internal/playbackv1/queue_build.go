@@ -46,6 +46,8 @@ var ErrQueueBuilding = errors.New("queue building")
 type queueStart struct {
 	Mode       string `json:"mode"` // "ordered" | "shuffle"
 	AnchorItem string `json:"anchorItem,omitempty"`
+	// AnchorAt is a playlist occurrence's source position the scan hadn't reached.
+	AnchorAt *int64 `json:"anchorAt,omitempty"`
 	Seed       int64  `json:"seed,omitempty"`
 	// Base is the source position of this snapshot's first entry when the
 	// queue was created (segments before it).
@@ -214,7 +216,9 @@ func (sc *snapshotScan) scan(tx *sql.Tx, keys *sql.Rows, p identity.Principal) e
 		return err
 	}
 	row := int64(0) // absolute source position
-	index := make(map[string]int64, chunkKeys)
+	// pending's source positions: a playlist may hold an item more than once,
+	// so a position belongs to an occurrence, not to an id.
+	positions := make([]int64, 0, chunkKeys)
 	pending := make([]string, 0, chunkKeys)
 	chunk := make([]string, 0, chunkKeys)
 	stopped := false
@@ -237,16 +241,27 @@ func (sc *snapshotScan) scan(tx *sql.Tx, keys *sql.Rows, p identity.Principal) e
 		if err != nil {
 			return err
 		}
+		// allowed is pending in order with the hidden keys left out: each kept
+		// key is the next pending occurrence of that id.
+		next := 0
 		for _, id := range allowed {
+			for next < len(pending) && pending[next] != id {
+				next++
+			}
+			if next == len(pending) {
+				return errors.New("queue snapshot: visibility filter changed the key order")
+			}
+			at := positions[next]
+			next++
 			if snap.count >= min(sc.limit, MaxSnapshotKeys) {
 				return ErrQueueTooLarge
 			}
-			if sc.anchor < 0 && sc.anchorAt >= 0 && index[id] >= sc.anchorAt {
+			if sc.anchor < 0 && sc.anchorAt >= 0 && at >= sc.anchorAt {
 				sc.anchor = snap.count
 			}
 			chunk = append(chunk, id)
 			snap.count++
-			sc.accounted = index[id] + 1
+			sc.accounted = at + 1
 			if len(chunk) == chunkKeys {
 				if err = flush(); err != nil {
 					return err
@@ -259,8 +274,7 @@ func (sc *snapshotScan) scan(tx *sql.Tx, keys *sql.Rows, p identity.Principal) e
 				}
 			}
 		}
-		pending = pending[:0]
-		clear(index)
+		pending, positions = pending[:0], positions[:0]
 		return nil
 	}
 	for keys.Next() {
@@ -276,7 +290,7 @@ func (sc *snapshotScan) scan(tx *sql.Tx, keys *sql.Rows, p identity.Principal) e
 		if sc.anchorItem != "" && id == sc.anchorItem && sc.anchorAt < 0 {
 			sc.anchorAt = position
 		}
-		index[id] = position
+		positions = append(positions, position)
 		if pending = append(pending, id); len(pending) == chunkKeys {
 			if err = admit(); err != nil {
 				return err
@@ -305,6 +319,9 @@ func (sc *snapshotScan) scan(tx *sql.Tx, keys *sql.Rows, p identity.Principal) e
 func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue string, in SegmentInput, path string, limit int64, stage func(context.Context, *sql.Tx) error, budget scanBudget) (snapshot, error) {
 	if err := in.Source.validate(path + ".source"); err != nil {
 		return snapshot{}, err
+	}
+	if in.Anchor != nil && in.Anchor.EntryID != "" && (in.Source.Container == nil || in.Source.Container.Kind != "playlist") {
+		return snapshot{}, &FieldError{Path: path + ".anchor.entryId"}
 	}
 	raw, _ := json.Marshal(in.Source)
 	snap := snapshot{id: newShortID("s"), selector: string(raw), anchor: -1}
@@ -347,6 +364,13 @@ func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue
 		if in.Anchor.Resume && in.Source.Container != nil && in.Source.Container.Kind == "show" {
 			sc.anchorAt = s.resumeIndex(ctx, tx, p, in.Source.Container.ID, specials)
 		}
+		if in.Anchor.EntryID != "" {
+			// The pressed occurrence, found in this same read; one removed since
+			// starts at the item (when named), as an item anchor does.
+			if at, ok := occurrencePosition(ctx, tx, in.Source.Container.ID, in.Anchor.EntryID); ok {
+				sc.anchorAt, sc.anchorItem = at, ""
+			}
+		}
 	}
 	if kind == "items" {
 		sc.budget = scanBudget{} // at most 500 keys
@@ -357,6 +381,10 @@ func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue
 	snap.anchor = sc.anchor
 	if snap.partial && snap.anchor < 0 && sc.anchorItem != "" {
 		snap.anchorItem = sc.anchorItem
+	}
+	if snap.partial && snap.anchor < 0 && sc.anchorItem == "" && sc.anchorAt >= 0 {
+		at := sc.anchorAt
+		snap.anchorAt = &at
 	}
 	if in.Anchor != nil && in.Anchor.Position != nil && *in.Anchor.Position >= 0 && *in.Anchor.Position < snap.count {
 		snap.anchor = *in.Anchor.Position
@@ -377,6 +405,15 @@ func (s *Service) buildSnapshot(ctx context.Context, p identity.Principal, queue
 		retained = true
 	}
 	return snap, nil
+}
+
+// occurrencePosition is a playlist entry's position in the playlist's key
+// query (entry order, cleared entries left out), counted on the entry order
+// index: the scan's anchorAt for that occurrence.
+func occurrencePosition(ctx context.Context, tx *sql.Tx, playlist, entry string) (int64, bool) {
+	var at int64
+	err := tx.QueryRowContext(ctx, `SELECT (SELECT count(*) FROM catalog_playlist_entries other INDEXED BY catalog_playlist_entries_page WHERE other.playlist_id=e.playlist_id AND (other.order_key,other.id)<(e.order_key,e.id) AND other.item_id IS NOT NULL) FROM catalog_playlists p JOIN catalog_playlist_entries e ON e.playlist_id=p.id WHERE p.token=? AND p.deleted=0 AND e.token=? AND e.item_id IS NOT NULL`, playlist, entry).Scan(&at)
+	return at, err == nil
 }
 
 func (s *Service) snapshotLabel(ctx context.Context, tx *sql.Tx, in SegmentInput, snap snapshot) string {
@@ -680,6 +717,9 @@ func (s *Service) continueBuild(parent context.Context, id string) error {
 	sc := &snapshotScan{s: s, ctx: ctx, snap: &snap, queue: queue, limit: s.queueKeyLimit(), skip: seen, chunkNo: (built + chunkKeys - 1) / chunkKeys, anchorAt: -1, anchor: -1}
 	if in.Anchor != nil {
 		sc.anchorItem = in.Anchor.ItemID
+	}
+	if pendingStart != nil && pendingStart.AnchorAt != nil {
+		sc.anchorAt = *pendingStart.AnchorAt
 	}
 	lastEvent := time.Now()
 	sc.onBatch = func(ctx context.Context, w *sql.Tx) error {

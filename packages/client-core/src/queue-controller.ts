@@ -8,7 +8,7 @@ import type {QueueIntent, QueueItemInput, QueueSnapshot, QueueState} from './que
 
 /** The queue as the player shows it: the snapshot, what is playing, what comes next, and the
  * titles of its visible window. */
-export type QueuePlaybackView=Readonly<{queue:QueueSnapshot;highestSequence:string;current:Readonly<{id:string;generation:number;state:string}>|null;next:Readonly<{entryId:string|null;available:boolean;reason:'ready'|'end'|'unavailable'}>;items:readonly Readonly<{entryId:string;itemId:string;title:string;kind:string;libraryId:string}>[];postPlay:QueuePostPlay}>;
+export type QueuePlaybackView=Readonly<{queue:QueueSnapshot;highestSequence:string;current:Readonly<{id:string;generation:number;state:string}>|null;next:Readonly<{entryId:string|null;available:boolean;reason:'ready'|'end'|'unavailable'}>;items:readonly Readonly<{entryId:string;itemId:string;title:string;kind:string;libraryId:string;posterUrl?:string;stillUrl?:string}>[];postPlay:QueuePostPlay}>;
 /** A completion the player holds for the post-play card instead of advancing. */
 export type HeldCompletion=Readonly<{sessionId:string;intentId:number;nextEntryId:string|null;nextAvailable:boolean;reason:'ready'|'end'|'unavailable';postPlay:QueuePostPlay}>;
 export type CompletionPolicy=(context:Readonly<{kind:string;itemId:string}>)=>'advance'|'hold';
@@ -41,6 +41,9 @@ export interface QueueController {
   /** Saves the queue, in play order, as a new playlist, following a long save to the end (NEW-37). Absent where the queue can't be saved. */
   saveAsPlaylist?(queueId: string, name: string, onProgress?: (save: QueuePlaylistSave) => void, signal?: AbortSignal): Promise<QueuePlaylistSave>;
   next(queueId: string, expectedRevision: string): Promise<void>;
+  /** Moves on from a title's closing credits as if it had finished: an automatic advance, which
+   * counts toward the "Still watching?" check. Absent where the queue can't tell the server so. */
+  advanceFromCredits?(queueId: string, expectedRevision: string): Promise<void>;
   previous(): Promise<void>;
   /** Whether `next` follows `current` on one album (the engine then joins, not crossfades). */
   sameAlbum?(currentItemId: string, nextItemId: string): boolean;

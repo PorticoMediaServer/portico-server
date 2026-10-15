@@ -27,7 +27,7 @@
  *
  * Sender protocol:
  *   pair  {displayName}                         → paired | pair-pending | pair-failed {code: 'tv_busy' | …}
- *   load  {title, subtitle, seriesTitle, season, episode, kind, artworkPath}
+ *   load  {title, subtitle, seriesTitle, season, episode, kind, artworkPath, subtitleTrackId}
  *   controller receives takeover-requested {requester} and replies takeover {allow}
  *   a replaced controller receives {type: 'replaced'}
  *
@@ -399,7 +399,7 @@
   }
   /** Starts a v1 session for the item and answers CAF's load request for it. A session already
    * playing here is replaced in the same request, so this TV holds one playback slot. */
-  async function resolvePlayback(itemId, startSeconds, identity) {
+  async function resolvePlayback(itemId, startSeconds, identity, subtitleTrackId) {
     if (!session || !manager || !/^[A-Za-z0-9_-]{1,128}$/.test(itemId)) throw new Error('playback_unavailable');
     clearTimeout(reportTimer); clearTimeout(bufferingTimer);
     var replaces = playback && playback.id;
@@ -411,6 +411,10 @@
     var body = {itemId: itemId, state: 'playing'};
     if (Number.isFinite(startSeconds)) body.startPositionMs = Math.round(Math.max(0, startSeconds) * 1000); else body.startFrom = 'resume';
     if (replaces) body.replacesSessionId = replaces;
+    // The sender's subtitle choice ("off", or a track id). This TV draws text only; the server
+    // delivers a styled or image track burned into the picture.
+    if (subtitleTrackId === 'off') body.subtitles = {trackId: null};
+    else if (typeof subtitleTrackId === 'string' && /^[A-Za-z0-9._:-]{1,128}$/.test(subtitleTrackId)) body.subtitles = {trackId: subtitleTrackId};
     var key = token(16), waited = 0, answer;
     // 202: the server is still preparing; the identical request is repeated until it answers.
     for (;;) {
@@ -429,7 +433,7 @@
     reportSeq = 0; reportFailures = 0;
     return load;
   }
-  function startPlayback(itemId,startSeconds,identity) { recoveries=0; return serial(async function(){try{var load=await resolvePlayback(itemId,startSeconds,identity);await manager.load(load);showPlaying();scheduleReport(0);return playback;}catch(e){showError(e&&(e.code||e.message));throw e;}}); }
+  function startPlayback(itemId,startSeconds,identity,subtitleTrackId) { recoveries=0; return serial(async function(){try{var load=await resolvePlayback(itemId,startSeconds,identity,subtitleTrackId);await manager.load(load);showPlaying();scheduleReport(0);return playback;}catch(e){showError(e&&(e.code||e.message));throw e;}}); }
 
   // --- Timeline: progress, lease renewal and observation in one report -------
 
@@ -643,7 +647,7 @@
       controllerPresent=true;
       switch (message.type) {
         case 'load':
-          startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message)).then(function () {
+          startPlayback(String(message.itemId || ''), typeof message.startSeconds === 'number' ? message.startSeconds : undefined, displayMeta(message), message.subtitleTrackId).then(function () {
             broadcast();
           }).catch(function (error) {
             reply({ type: 'load-failed', code: error.code || error.message || '' });

@@ -53,7 +53,7 @@ export function PostPlay({engine, onClose}: {engine: PlayerEngine; onClose: () =
         <div className={s.postCard}>
           <Text variant="label" tone="tertiary">{t(passoutDue ? 'player.post.stillWatching' : 'player.post.upNext')}</Text>
           <div className={s.postNext}>
-            <div className={s.postArt}><Artwork path={undefined} shape={next.kind === 'episode' ? 'landscape' : 'poster'} icon={next.kind === 'episode' ? 'tv' : 'film'} alt="" /></div>
+            <div className={s.postArt}><Artwork path={next.stillUrl ?? next.posterUrl} shape={next.stillUrl || (!next.posterUrl && next.kind === 'episode') ? 'landscape' : 'poster'} icon={next.kind === 'episode' ? 'tv' : 'film'} alt="" /></div>
             <div className={s.postCopy}>
               <span className={s.postTitle}>{next.title}</span>
               <span className={s.postSub}>{passoutDue ? t('player.post.pausedAfterEpisodes') : counting ? t('player.post.playingIn', {seconds: remaining}) : t('player.post.ready')}</span>

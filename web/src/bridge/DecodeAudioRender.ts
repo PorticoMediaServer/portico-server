@@ -5,6 +5,7 @@ import {Deck, linkDecks, type PcmSource} from './audio/engine';
 import {ConvertedSource} from './audio/converted';
 import {TrackStream} from './audio/track';
 import {Stretch} from './audio/stretch';
+import {MediaCarrier} from './audio/carrier';
 
 /**
  * Music decoded on the device (spec §18.1 version 2; Plan §9.6), Plexamp's model: the original file
@@ -37,6 +38,9 @@ export type SameAlbum = (currentItemId: string | undefined, nextItemId: string) 
 export class DecodeAudioRender {
   private context: AudioContext;
   private master: GainNode;
+  private carrier: MediaCarrier;
+  /** Seconds between the context's clock and what is heard (the output path's latency), smoothed. */
+  private lag = 0;
   private primary?: Playing;
   private candidate?: Candidate;
   private incoming?: Linked;
@@ -68,7 +72,8 @@ export class DecodeAudioRender {
     this.context.addEventListener('statechange', this.contextChanged);
     document.addEventListener('visibilitychange', this.interrupted);
     this.master = this.context.createGain();
-    this.master.connect(this.context.destination);
+    // Through a media element where the browser allows it, so media keys and the lock screen reach music too.
+    this.carrier = new MediaCarrier(this.context, this.master, () => { if (!this.disposed && this.service.getSnapshot().intent === 'playing') this.service.pause(); });
     this.volume();
     element.addEventListener('volumechange', this.volume);
     document.addEventListener('click', this.gesture);
@@ -97,6 +102,7 @@ export class DecodeAudioRender {
     queueMicrotask(() => {
       if (!this.disposed && this.service.getSnapshot().intent === 'playing') {
         this.askedForGesture = false;
+        this.carrier.play();
         void this.context.resume().catch(() => this.service.audioEffectsNotice('Press play to allow audio in this browser.'));
       }
     });
@@ -115,7 +121,17 @@ export class DecodeAudioRender {
     // A start or seek that is still reading the file is alive, however long the link makes it take.
     const alive = () => { if (!this.disposed && !prepared) this.service.engineProgress(this.service.getSnapshot().intentId); };
     const range = new RangeReader({url: this.url(plan.url), key: plan.id, size: plan.bytes, cache: audioByteCache, onBytes: alive, ...(prepared && plan.prefetchBytes ? {limit: plan.prefetchBytes} : {})});
-    return {unlock: () => range.unlock(), close: () => range.close(), prefetchAll: () => range.prefetchAll(), open: fromFrame => TrackStream.open(plan, range, fromFrame)};
+    // A file with no seek index (MP3, ADTS, Ogg) started part-way: the server decodes it from that
+    // frame exactly and sends FLAC at the file's own rate, so nothing before it is read here.
+    const deep = !prepared && plan.deepStart?.sampleRate === plan.sampleRate ? plan.deepStart : undefined;
+    let deepSource: ConvertedSource | undefined;
+    const open = async (fromFrame: number): Promise<PcmSource | undefined> => {
+      const stream = await TrackStream.open(plan, range, fromFrame);
+      if (stream || !deep || fromFrame <= 0) return stream;
+      deepSource = new ConvertedSource({id: plan.id, container: deep.container, codec: deep.codec, sampleRate: deep.sampleRate, channels: deep.channels, durationFrames: plan.durationFrames, trim: {startFrames: 0, endFrames: 0}, url: this.url(deep.url)}, fromFrame, {locked: false});
+      return deepSource;
+    };
+    return {unlock: () => range.unlock(), close: () => { range.close(); deepSource?.close(); }, prefetchAll: () => range.prefetchAll(), open};
   }
 
   private gainFor(plan: AudioRenderV2) { return audioGainLinear(plan, this.snapshot.audioEffects.settings.normalization); }
@@ -164,7 +180,8 @@ export class DecodeAudioRender {
   }
 
   private transport(s: PlaybackSnapshot) {
-    if (s.intent === 'paused' || s.seekError) { void this.context.suspend(); return; }
+    if (s.intent === 'paused' || s.seekError) { this.carrier.pause(); void this.context.suspend(); return; }
+    this.carrier.play();
     if ((this.context.state as string === 'suspended' || this.context.state as string === 'interrupted') && !this.starting && !this.askedForGesture) {
       // An autoplay denial needs a gesture: say so rather than failing.
       this.askedForGesture = true;
@@ -249,23 +266,53 @@ export class DecodeAudioRender {
     this.candidate = undefined;
   }
 
-  /** Seconds into the current track, from the sample clock. */
+  /** Seconds into the current track, as heard: the sample clock less the output path's latency. */
   private position(): number {
     const p = this.primary;
     if (!p) return this.snapshot.positionSeconds;
     // Output frames at the context rate → track frames at the file's rate, times the speed.
-    const played = p.deck.playedFrames() * p.plan.sampleRate / this.context.sampleRate * p.speed;
+    const played = p.deck.playedFrames(this.heardTime()) * p.plan.sampleRate / this.context.sampleRate * p.speed;
     return (p.fromFrame + played) / p.plan.sampleRate;
+  }
+
+  /** The context time of the sample being heard now. */
+  private heardTime(): number { return Math.max(0, this.context.currentTime - this.lag); }
+
+  /**
+   * How far the speakers are behind the context's clock (A-17.26): the browser's own output
+   * timestamp where it gives one, else its stated output and processing latencies. Measured while
+   * the context runs (a suspended clock stands still while the page's clock moves on), bounded to
+   * half a second, and smoothed so the position never jumps.
+   */
+  private measureLag() {
+    const c = this.context as AudioContext & {outputLatency?: number; getOutputTimestamp?: () => AudioTimestamp};
+    if (c.state !== 'running') return;
+    let lag: number | undefined;
+    try {
+      const stamp = c.getOutputTimestamp?.();
+      if (stamp && Number.isFinite(stamp.contextTime) && Number.isFinite(stamp.performanceTime) && stamp.performanceTime! > 0 && typeof performance !== 'undefined')
+        lag = c.currentTime - (stamp.contextTime! + (performance.now() - stamp.performanceTime!) / 1000);
+    } catch { lag = undefined; }
+    if (lag === undefined || !(lag > 0)) {
+      const stated = (Number.isFinite(c.outputLatency) ? c.outputLatency! : 0) + (Number.isFinite(c.baseLatency) ? c.baseLatency : 0);
+      if (lag === undefined || stated > 0) lag = stated;
+    }
+    if (!Number.isFinite(lag)) return;
+    const bounded = Math.max(0, Math.min(0.5, lag));
+    this.lag = this.lag === 0 ? bounded : this.lag + (bounded - this.lag) * 0.1;
   }
 
   private tick() {
     if (this.disposed) return;
     const s = this.service.getSnapshot(), p = this.primary;
     if (!p || s.phase === 'error' || s.phase === 'ended') return;
+    this.measureLag();
     const frame = Math.floor(this.context.currentTime * this.context.sampleRate);
+    // What is heard: the boundary and the end are when the listener hears them, not when they are scheduled.
+    const heard = Math.floor(this.heardTime() * this.context.sampleRate);
     // The boundary: the committed track is now the one playing.
     const next = this.incoming;
-    if (next && this.context.state === 'running' && frame >= next.edge) {
+    if (next && this.context.state === 'running' && heard >= next.edge) {
       this.retiring = p;
       this.primary = {deck: next.deck, plan: next.plan, key: sessionKey(s.audioEffects.committed?.session), fromFrame: 0, reader: next.reader, token: next.token, speed: next.speed};
       this.incoming = undefined; this.committing = undefined; this.seekKey = '';
@@ -284,7 +331,7 @@ export class DecodeAudioRender {
     this.service.audioRenderStatus?.(playing && !starving ? s.audioEffects.rate : 0, starving);
     if (playing && !s.pendingSeek) {
       const position = this.position();
-      if (frame >= end && !this.incoming && !this.committing && !s.audioEffects.prepared) this.service.fact(s.intentId, position, 'ended');
+      if (heard >= end && !this.incoming && !this.committing && !s.audioEffects.prepared) this.service.fact(s.intentId, position, 'ended');
       else if (s.intentId !== this.factIntent || Math.abs(position - this.factPosition) >= 0.25) { this.factIntent = s.intentId; this.factPosition = position; this.service.fact(s.intentId, position, 'playing'); }
     }
     // Commit shortly before the edge, once the candidate is buffered (§9.6 rule 5).
@@ -307,7 +354,7 @@ export class DecodeAudioRender {
     this.element.removeEventListener('volumechange', this.volume);
     this.context.removeEventListener('statechange', this.contextChanged);
     document.removeEventListener('visibilitychange', this.interrupted);
-    this.master.disconnect();
+    this.carrier.dispose();
     void this.context.close();
   }
 }

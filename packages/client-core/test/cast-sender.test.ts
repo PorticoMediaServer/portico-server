@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {CastController, parseCastEvent, type CastCommand, type CastTransport} from '../src/cast/index.ts';
+import {CastController, castChoiceFields, parseCastEvent, type CastCommand, type CastTransport} from '../src/cast/index.ts';
 
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(setImmediate); };
 
@@ -41,6 +41,20 @@ function harness(code: string | null = 'ABC123') {
 }
 
 const meta = {title: 'Pilot', seriesTitle: 'The Show', season: 1, episode: 1, kind: 'episode', artworkPath: '/v1/artwork/x'};
+
+test('the subtitle chosen on the sender travels with load: a track id, or off; nothing when unknown', async () => {
+  assert.deepEqual(castChoiceFields({subtitleTrackId: 's3'}), {subtitleTrackId: 's3'});
+  assert.deepEqual(castChoiceFields({subtitleTrackId: null}), {subtitleTrackId: 'off'});
+  assert.deepEqual(castChoiceFields({}), {});
+  assert.deepEqual(castChoiceFields(undefined), {});
+  assert.deepEqual(castChoiceFields({subtitleTrackId: 'a b'}), {});
+  const h = harness(), r = receiver();
+  const started = h.controller.start(r.transport, 'item-1', {title: 'Pilot'}, 0, {subtitleTrackId: 's3'});
+  await settle();
+  r.reply({type: 'paired'});
+  assert.equal(await started, true);
+  assert.deepEqual(r.sent[1], {type: 'load', itemId: 'item-1', startSeconds: 0, title: 'Pilot', subtitleTrackId: 's3'});
+});
 
 test('pairs with a server-issued code, then loads the title with its display fields', async () => {
   const h = harness(), r = receiver();

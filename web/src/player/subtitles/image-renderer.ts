@@ -48,7 +48,8 @@ export class ImageSubtitleRenderer implements DrawnSubtitleRenderer {
   private canvas: HTMLCanvasElement | null = null;
   private context: Context2D | null = null;
   private geometry: OverlayGeometry | null = null;
-  private track: {width: number; height: number; starts: Float64Array; ends: Float64Array} | null = null;
+  private track: {width: number; height: number; starts: Float64Array; ends: Float64Array; forced: Uint8Array} | null = null;
+  private forcedOnly = false;
   private current = -1;
   private drawn = -2;
   private readonly frames = new Map<number, Drawable[]>();
@@ -76,7 +77,7 @@ export class ImageSubtitleRenderer implements DrawnSubtitleRenderer {
       worker.onerror = () => { clearTimeout(timer); if (this.track) { if (!this.disposed) context.failed(new Error('The subtitle reader stopped.')); } else reject(new Error('The subtitle reader could not start.')); };
       worker.onmessage = event => {
         const reply = event.data;
-        if (reply.type === 'ready') { clearTimeout(timer); this.track = {width: reply.width, height: reply.height, starts: reply.starts, ends: reply.ends}; resolve(); }
+        if (reply.type === 'ready') { clearTimeout(timer); this.track = {width: reply.width, height: reply.height, starts: reply.starts, ends: reply.ends, forced: reply.forced ?? new Uint8Array(reply.starts.length)}; resolve(); }
         else if (reply.type === 'failed') { clearTimeout(timer); if (this.track) { if (!this.disposed) context.failed(new Error(reply.message)); } else reject(new Error(reply.message)); }
         else this.arrived(reply.index, reply.rects);
       };
@@ -94,14 +95,32 @@ export class ImageSubtitleRenderer implements DrawnSubtitleRenderer {
     this.draw();
   }
 
+  /** Cues the subtitle marks forced, and all its cues; known once it has loaded. */
+  get cues(): {forced: number; total: number} {
+    const track = this.track;
+    if (!track) return {forced: 0, total: 0};
+    let forced = 0;
+    for (const flag of track.forced) forced += flag;
+    return {forced, total: track.forced.length};
+  }
+
+  /** Shows only the cues marked forced (the viewer's "Forced only"), or every cue. */
+  setForcedOnly(on: boolean): void {
+    if (this.forcedOnly === on) return;
+    this.forcedOnly = on;
+    this.drawn = -2;
+  }
+
   sync(clock: OverlayClock): void {
     const track = this.track;
     if (!track || this.disposed) return;
-    this.current = cueIndexAt(track.starts, track.ends, clock.timeSeconds * 1000);
+    const shown = (index: number) => index >= 0 && (!this.forcedOnly || track.forced[index] === 1);
+    const at = cueIndexAt(track.starts, track.ends, clock.timeSeconds * 1000);
+    this.current = shown(at) ? at : -1;
     if (this.current >= 0) this.ask(this.current);
     // The next cue is painted ahead so it is there when its time comes.
-    const next = this.current >= 0 ? this.current + 1 : cueIndexAt(track.starts, track.ends, clock.timeSeconds * 1000 + 1500);
-    if (!clock.paused && next >= 0 && next < track.starts.length) this.ask(next);
+    const next = at >= 0 ? at + 1 : cueIndexAt(track.starts, track.ends, clock.timeSeconds * 1000 + 1500);
+    if (!clock.paused && next >= 0 && next < track.starts.length && shown(next)) this.ask(next);
     this.draw();
   }
 

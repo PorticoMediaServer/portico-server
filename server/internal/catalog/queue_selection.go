@@ -50,15 +50,19 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 				return QueueSelection{}, err
 			}
 			prefix += fence + ":"
+			// A collection plays in the order it is shown: by title.
 			visible, args := viewer.itemVisibilitySQL("i.id")
 			args = append([]any{saved}, args...)
-			return QueueSelection{SQL: `SELECT pid(i.public_id) FROM saved_resource_entries entry JOIN catalog_entities i ON i.id=entry.item_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 WHERE entry.resource_id=? AND ` + visible + recordingsClause("i.id", viewer.Restrictions) + ` ORDER BY entry.id`, Args: args, Revision: prefix + viewer.Fence, Label: label}, nil
+			return QueueSelection{SQL: `SELECT pid(i.public_id) FROM saved_resource_entries entry JOIN catalog_entities i ON i.id=entry.item_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1 WHERE entry.resource_id=? AND ` + visible + recordingsClause("i.id", viewer.Restrictions) + ` ORDER BY i.title COLLATE NOCASE,entry.id`, Args: args, Revision: prefix + viewer.Fence, Label: label}, nil
 		}
 		var d SavedViewDefinition
 		if json.Unmarshal([]byte(definition), &d) != nil || len(validateSavedView(s.read(), d)) != 0 {
 			return QueueSelection{}, browseIssue("saved", "review this saved view before playing it")
 		}
 		query = &QueueQuery{LibraryID: d.LibraryID, Pivot: d.Pivot, Query: d.Query, Sort: d.Sort}
+	}
+	if query != nil && query.LibraryID == AcrossLibraries {
+		return s.acrossQueue(ctx, tx, viewer, query)
 	}
 	if query == nil || !viewer.AllowsLibrary(query.LibraryID) {
 		return QueueSelection{}, sql.ErrNoRows

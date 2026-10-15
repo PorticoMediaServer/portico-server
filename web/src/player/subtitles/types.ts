@@ -43,6 +43,9 @@ export interface DrawnSubtitleRenderer {
   sync(clock: OverlayClock): void;
   /** Stops and releases everything; the canvas is left clear. */
   dispose(): void;
+  /** Image subtitles: how many cues are marked forced, of how many, and showing only those. */
+  readonly cues?: {forced: number; total: number};
+  setForcedOnly?(on: boolean): void;
 }
 
 export const subtitleFileLimits = Object.freeze({script: 16 * 1024 * 1024, image: 96 * 1024 * 1024, index: 8 * 1024 * 1024, fonts: 32});

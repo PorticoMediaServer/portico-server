@@ -358,3 +358,52 @@ func TestQueueFollowsGroupOrder(t *testing.T) {
 		}
 	}
 }
+
+// Playing a list across libraries plays what its pages show, in their order.
+func TestQueueAcrossLibrariesFollowsTheList(t *testing.T) {
+	c := catalogtest.Open(t)
+	movies := c.Library("m", "Movies", "movie", "/m")
+	tv := c.Library("t", "TV", "tv", "/t")
+	zulu := c.Movie(movies, "/m/z.mkv", "Zulu", 2001)
+	alpha := c.Movie(movies, "/m/a.mkv", "Alpha", 1999)
+	show := c.Show(tv, "Kilo", 2003)
+	episode := c.Episode(show, c.Season(show, 1), 1, "/t/e1.mkv")
+	owner := identity.PersonalKey(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"})
+	c.Exec(`INSERT INTO catalog_playlists(token,owner_authority,owner_account,owner_profile,name,creation_operation,creation_hash,created_at) VALUES('list','local','account','profile','Mine','op','hash','now')`)
+	for position, id := range []int64{zulu.ID, episode.ID, alpha.ID} {
+		c.Exec(`INSERT INTO catalog_playlist_entries(token,playlist_id,item_id,position) SELECT ?,id,?,? FROM catalog_playlists WHERE token='list'`, fmt.Sprintf("e%d", position), id, position+1)
+	}
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: owner, Fence: "f", Libraries: []string{"m", "t"}}
+	for _, selection := range []BrowseSortSelection{{Field: "groupOrder", Direction: "asc"}, {Field: "groupOrder", Direction: "desc"}, {Field: "title", Direction: "asc"}} {
+		query := &BrowseNode{Field: "list", Operator: "equals", Value: "list"}
+		want := []string{}
+		for _, entry := range walkAcross(t, s, v, AcrossRequest{Pivot: "items", Query: query, Sort: []BrowseSortSelection{selection}, Limit: 2}) {
+			want = append(want, entry.ID)
+		}
+		tx, done, err := dbwork.BeginRead(context.Background(), c.DB)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan, err := s.QueueKeysTx(context.Background(), tx, v, ResourceActor{}, &QueueQuery{LibraryID: AcrossLibraries, Pivot: "items", Query: query, Sort: []BrowseSortSelection{selection}}, "")
+		if err != nil {
+			done()
+			t.Fatal(err)
+		}
+		rows, err := tx.QueryContext(context.Background(), plan.SQL, plan.Args...)
+		got := []string{}
+		for err == nil && rows.Next() {
+			var id string
+			err = rows.Scan(&id)
+			got = append(got, id)
+		}
+		if rows != nil {
+			rows.Close()
+		}
+		done()
+		if err != nil || !reflect.DeepEqual(got, want) || len(want) != 3 {
+			t.Fatalf("%v: queue %v, list %v (%v)", selection, got, want, err)
+		}
+	}
+}
