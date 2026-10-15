@@ -134,7 +134,7 @@
 .upNextStill { flex: 0 0 120px; }
 .upNextPoster { flex: 0 0 56px; }
 .upNextCopy { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.upNextWhen { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.upNextWhen { font-size: 0.8125rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .upNextMeter { height: 3px; border-radius: 2px; background: var(--line-soft); overflow: hidden; }
 .upNextMeter i { display: block; height: 100%; background: var(--accent); transition: width 250ms linear; }
 .upNextActions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
