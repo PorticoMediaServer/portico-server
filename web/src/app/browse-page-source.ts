@@ -1,12 +1,12 @@
 import type {FetchPage} from '@core/collections/index.ts';
 import type {ContentEntry} from '@core/library-content.ts';
-import {parseBrowseResult, type BrowseNode, type BrowseRequestBody, type BrowseSortSelection} from '@core/browse.ts';
-import {bucketIndexFor} from '@core/browse-buckets.ts';
+import {browsePath, parseBrowseResult, type BrowseNode, type BrowseRequestBody, type BrowseSortSelection} from '@core/browse.ts';
+import {bucketIndexFor, titleBucketValue} from '@core/browse-buckets.ts';
 
 export type Predicate = Extract<BrowseNode, {field: string}>;
 
 function sortValueFor(entry: ContentEntry, sortField: string): unknown {
-  if (sortField === 'title') return (entry as {title?: unknown}).title;
+  if (sortField === 'title') return titleBucketValue(entry);
   if (sortField === 'year') return (entry as {year?: unknown}).year;
   if (sortField === 'duration' || sortField === 'durationSeconds') return (entry as {duration?: unknown}).duration;
   if (['added', 'lastPlayed', 'addedAt', 'lastPlayedAt', 'dateAdded'].includes(sortField)) return (entry as {addedAt?: unknown}).addedAt;
@@ -34,7 +34,7 @@ export function browsePageSource(api: {request<T>(path: string, method?: string,
   const loadRange = async (start: number, count: number, signal: AbortSignal, rev: string | undefined) => {
     const conditions: readonly BrowseNode[] = input.base?.length ? [...input.base, ...input.predicates] : input.predicates;
     const body: BrowseRequestBody = {pivot: input.pivot, ...(conditions.length ? {query: {all: conditions}} : {}), ...(input.sort ? {sort: [input.sort]} : {}), limit: count, range: {start, ...(rev ? {revision: rev} : {})}};
-    return parseBrowseResult(await api.request<unknown>(`/v1/libraries/${encodeURIComponent(input.libraryId)}/browse`, 'POST', body, signal));
+    return parseBrowseResult(await api.request<unknown>(browsePath(input.libraryId), 'POST', body, signal));
   };
   const toPage = (result: ReturnType<typeof parseBrowseResult>, start: number) => {
     if (result.entries.length) {

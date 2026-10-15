@@ -17,6 +17,8 @@ export type ContentEntryKind = 'movie' | 'show' | 'season' | 'episode' | 'artist
 export type ContentHeading = Readonly<{ key: string; fallback: string; params?: Readonly<Record<string, string>> }>;
 export type ContentEntry = Readonly<{
   id: string; libraryId?: string; kind: ContentEntryKind; title: string; subtitle?: string; posterUrl?: string; backdropUrl?: string; /** An episode's own still, never inherited from the season or show (absent when it has none). */ stillUrl?: string; overview?: string;
+  /** The letter a browse page files the entry under (its sort title's, articles already set aside): a key of the page's `positionIndex`. */
+  sortLetter?: string;
   missing?:boolean; available?: boolean; watched?:boolean;discNumber?:number;trackNumber?:number;episodeNumber?:number;seasonNumber?:number; duration?: number; progressSeconds?: number; addedAt?: string | null; count?: number;
   year?: number; contentRating?: string; genres?: readonly string[]; watchlisted?: boolean;
   /** The album artist; album entities only (M24, behind presence). Absent on older servers. */
@@ -158,6 +160,7 @@ function entry(v: unknown): ContentEntry {
     if (string(v[field], 4096)) row[field] = v[field] as string; else left('entry.' + field, v[field]);
   }
   if (v.addedAt === null || string(v.addedAt, 128)) row.addedAt = v.addedAt as string | null; else left('entry.addedAt', v.addedAt);
+  if (string(v.sortLetter, 8) && v.sortLetter) row.sortLetter = v.sortLetter as string; else left('entry.sortLetter', v.sortLetter);
   if (count(v.count)) row.count = v.count; else left('entry.count', v.count);
   if (count(v.totalAtLeast) && row.count !== undefined) row.countIsLowerBound = true; else left('entry.totalAtLeast', v.totalAtLeast);
   if(typeof v.watched==='boolean')row.watched=v.watched;else left('entry.watched',v.watched);

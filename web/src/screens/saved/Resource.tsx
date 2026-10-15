@@ -22,9 +22,9 @@ import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 
 import {useI18n} from '../../app/i18n';
 import type {BrowseNode} from '@core/browse.ts';
-import {itemPivot, spanningGroup, useGroupBrowse, useGroupLibraries, type GroupChoice, type GroupSpec} from '../../app/group-browse';
+import {acrossGroup, useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-browse';
 import {useLibrariesContext} from '../../app/libraries';
-import {GroupBar, GroupGrid, GroupLibraryChips, GroupRows} from '../shared/GroupBrowse';
+import {GroupBar, GroupGrid, GroupRows} from '../shared/GroupBrowse';
 
 const requestId = () => Promise.resolve(crypto.randomUUID());
 type Visible = Extract<PlaylistOccurrence, {hidden: false}>;
@@ -82,22 +82,22 @@ export function SavedResourceScreen() {
   const personalPage = personalBinding.snapshot.entries;
   const personalAll = useAppendedPages(`resource:${resourceId}`, personalBinding.snapshot.cursor, personalPage, e => e.id);
 
-  // The library's sort and filters on what is listed here. A playlist spans libraries, so with
-  // entries from several the viewer picks one; a saved view is one library's already, and its own
-  // conditions stay in force under whatever is added. A personal collection has no such list on
-  // the server yet and keeps its own order.
+  // The library's sort and filters on what is listed here. A playlist and a personal collection span
+  // libraries and are sorted and filtered across them as one list (a playlist keeps its own order
+  // under a filter); a saved view is one library's already, and its own conditions stay in force
+  // under whatever is added.
   const libraries = useLibrariesContext().items;
-  const listBase = useMemo<readonly BrowseNode[]>(() => [{field: 'list', operator: 'equals', value: resourceId}], [resourceId]);
-  const held = useGroupLibraries(playlist ? listBase : undefined, itemPivot);
-  const listScope = useMemo(() => spanningGroup(held.libraries, address.library, listBase, 'playlist'), [held.libraries, address.library, listBase]);
-  const definition = !playlist && personalBinding.snapshot.resource?.kind === 'view' ? personalBinding.snapshot.resource.definition : undefined;
+  const resourceKind = !playlist ? personalBinding.snapshot.resource?.kind : undefined;
+  const definition = resourceKind === 'view' ? personalBinding.snapshot.resource?.definition : undefined;
   const viewSpec = useMemo<GroupSpec | undefined>(() => {
+    if (playlist) return acrossGroup('list', resourceId, 'playlist');
+    if (resourceKind === 'collection') return acrossGroup('savedCollection', resourceId);
     if (!definition) return undefined;
     const library = libraries.find(l => l.id === definition.libraryId);
     return library ? {libraryId: library.id, libraryKind: library.kind, pivot: definition.pivot, base: definition.query ? [definition.query as BrowseNode] : [], opening: definition.sort[0]} : undefined;
-  }, [definition, libraries]);
-  const choose = useCallback((next: {library?: string} & GroupChoice) => void navigate({to: '/saved/$kind/$resourceId', params: {kind, resourceId}, search: {...(title ? {title} : {}), ...next}, replace: true, resetScroll: false}), [navigate, kind, resourceId, title]);
-  const group = useGroupBrowse(playlist ? listScope.spec : viewSpec, {sort: address.sort, direction: address.direction, filters: address.filters}, useCallback((next: GroupChoice) => choose({library: playlist ? listScope.chosen : undefined, ...next}), [choose, playlist, listScope.chosen]));
+  }, [playlist, resourceKind, resourceId, definition, libraries]);
+  const choose = useCallback((next: GroupChoice) => void navigate({to: '/saved/$kind/$resourceId', params: {kind, resourceId}, search: {...(title ? {title} : {}), ...next}, replace: true, resetScroll: false}), [navigate, kind, resourceId, title]);
+  const group = useGroupBrowse(viewSpec, {sort: address.sort, direction: address.direction, filters: address.filters}, choose);
 
   if (playlist) {
     const snap = savedBinding.snapshot;
@@ -161,8 +161,7 @@ export function SavedResourceScreen() {
         {problem && !deleting ? <Inset><Notice tone="error" action={{label: t('action.dismiss'), onClick: () => setProblem('')}}>{problem}</Notice></Inset> : null}
         {snap.phase === 'loading' && !entries.length ? <LoadingGrid /> : null}
         {snap.phase === 'ready' && !media.length ? <StateView icon="queue" title={t('web.saved.playlistEmpty')} body={t('web.saved.playlistEmptyBody')} /> : null}
-        {media.length && listScope.choose ? <Inset><GroupLibraryChips libraries={held.libraries} value={listScope.chosen} onChange={library => choose(library ? {library} : {})} /></Inset> : null}
-        {media.length && listScope.spec ? <Inset><GroupBar group={group} total={p?.entryCount} /></Inset> : null}
+        {media.length ? <Inset><GroupBar group={group} total={p?.entryCount} /></Inset> : null}
         {group.pending ? <LoadingGrid /> : group.active ? (
           // Sorted or filtered, the playlist is a list of titles: its own order, and moving entries within it, belong to Playlist order.
           <GroupRows group={group} context="playlist" label={name} estimateRowHeight={72}
@@ -210,7 +209,7 @@ export function SavedResourceScreen() {
       {problem && !deleting ? <Inset><Notice tone="error" action={{label: t('action.dismiss'), onClick: () => setProblem('')}}>{problem}</Notice></Inset> : null}
       {snap.loading && !items.length ? <LoadingGrid /> : null}
       {!snap.loading && !items.length && !snap.error ? <StateView icon="collection" title={view ? t('web.saved.viewEmpty') : t('web.saved.collectionEmpty')} /> : null}
-      {view && viewSpec ? <Inset><GroupBar group={group} total={r?.entryCount} /></Inset> : null}
+      {viewSpec && (view || items.length) ? <Inset><GroupBar group={group} total={r?.entryCount} /></Inset> : null}
       {group.active ? <GroupGrid group={group} square={viewSpec?.libraryKind === 'music' || viewSpec?.libraryKind === 'audiobook'} /> : items.length > SECTION_WINDOW_AT ? (
         <WindowedRows items={items} estimateRowHeight={300} columnMin="clamp(120px, 11vw, 168px)" label={name} renderItem={e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} href={hrefOf(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />} />
       ) : items.length ? <Grid density="poster">{items.map(e => <Card key={e.id} title={e.media!.title} caption={cardCaptionOf(e.media!)} path={e.media!.posterUrl} shape={shapeFor(e.media!.kind)} icon={iconFor(e.media!.kind)} progress={progressFor(e.media!)} href={hrefOf(e.media!)} onOpen={() => open(e.media!)} onPlay={e.media!.playback ? () => open(e.media!, 'play') : undefined} onMore={anchor => (can('entries') && !view ? setEntryMenu({id: e.id, anchor}) : open(e.media!, 'more', undefined, anchor))} />)}</Grid> : null}

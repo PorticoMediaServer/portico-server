@@ -141,7 +141,7 @@ export function LibraryScreen() {
   // sort the server offers can be chosen, and the choice is remembered for the tab.
   const tabSort = useMemo<BrowseSortSelection>(() => libraryTabSort(active, capabilities?.sorts, capabilities?.resolvedPivot?.defaultSort[0]), [active, capabilities]);
   const chosenSort = useMemo<BrowseSortSelection>(() => {
-    const chosen = search.sort ? capabilities?.sorts.find(x => x.id === search.sort) : undefined;
+    const chosen = search.sort ? capabilities?.sorts.find(x => x.id === search.sort && !x.requiresGroup) : undefined;
     if (search.sort && chosen) return {field: search.sort, direction: search.direction ?? chosen.defaultDirection};
     return tabSort;
   }, [search.sort, search.direction, capabilities, tabSort]);

@@ -83,7 +83,8 @@ export function toolbarModel(capabilities: BrowseCapabilities, libraryKind: stri
     .map(id => ({id, fields: fields.filter(f => toolbarGroupOf(f.id) === id).sort((a, b) => rankOf(a.id) - rankOf(b.id))}))
     .filter(g => g.fields.length > 0);
   const directions = capabilities.sorts.find(s => s.id === sort.field)?.directions ?? ['asc', 'desc'];
-  return Object.freeze({promoted, quick, groups, sorts: capabilities.sorts, sort: Object.freeze({field: sort.field, direction: sort.direction, flippable: directions.length > 1}), applied});
+  // A group's own order is offered by the group's page as its first sort, never in the list itself.
+  return Object.freeze({promoted, quick, groups, sorts: capabilities.sorts.filter(s => !s.requiresGroup), sort: Object.freeze({field: sort.field, direction: sort.direction, flippable: directions.length > 1}), applied});
 }
 
 /** Server ids whose catalogue name is filed under another word (`filter.field.*`). */

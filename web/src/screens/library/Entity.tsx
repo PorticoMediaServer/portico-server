@@ -7,7 +7,7 @@ import {useContent} from '../../app/content';
 import {usePlayingItemId} from '../../player/engine';
 import {activeYearsLabel, artistReleaseGroups, captionFor, formatClock, formatDuration, iconFor, shapeFor} from '@core/presentation/index.ts';
 import {mosaicPaths} from '../../app/title-layout';
-import {albumHeroFacts, artistHeroFacts, discNumberFromSubtitle, trackSubtitleForAlbum, type T as WordsT} from '../../app/library-words';
+import {albumHeroFacts, artistHeroFacts, discGroups, trackSubtitleForAlbum, type T as WordsT} from '../../app/library-words';
 import {useOpenEntry} from '../../app/open';
 import {sequenceContainer} from '../../app/container-play';
 import {usePlayerActions} from '../../player/PlayerContext';
@@ -171,7 +171,9 @@ export function EntityScreen() {
   const parts = entity?.kind === 'book' ? appendedSections.find(section => section.entries.length > 0 && section.entries.every(e => e.kind === 'audiobook_file')) : undefined;
   const onePart = !!parts && parts.entries.length === 1 && !parts.nextCursor;
   const legacySections = !isMusicList ? appendedSections.filter(section => !(section.entries.length === 1 && section.entries[0]!.kind === 'disc') && !(onePart && section === parts)) : [];
-  const titleBar = groups.titles && snapshot.sections.length ? <Inset><GroupBar group={titleGroup} total={isArtist ? releases?.totalCount : legacySections[0]?.totalCount} /></Inset> : null;
+  // The toolbar's list: a book's parts, an artist's releases, else a collection's or author's titles (the first section).
+  const barredSection = kind === 'book' ? (onePart ? undefined : parts) : legacySections[0];
+  const titleBar = groups.titles && snapshot.sections.length && (kind !== 'book' || barredSection) ? <Inset><GroupBar group={titleGroup} total={isArtist ? releases?.totalCount : barredSection?.totalCount} /></Inset> : null;
   return (
     <div style={{position: 'relative'}}>
         <TitleHero
@@ -242,7 +244,7 @@ export function EntityScreen() {
           ) : null}
           {/* An artist's albums, a collection's or an author's titles: the library's toolbar under their heading, and the library's own grid once a sort or filter is chosen. */}
           {titleGroup.active ? (
-            <Section title={isArtist ? t('title.albums') : legacySections[0] ? sectionHeading(i18n, legacySections[0].heading) : undefined}>
+            <Section title={isArtist ? t('title.albums') : barredSection ? sectionHeading(i18n, barredSection.heading) : undefined}>
               {titleBar}
               <GroupGrid group={titleGroup} square={libraryKind === 'music' || libraryKind === 'audiobook'} />
             </Section>
@@ -263,9 +265,9 @@ export function EntityScreen() {
             );
             return barred ? <Section key={group.id} title={t(group.label)}>{titleBar}{view}</Section> : view;
           }) : null}
-          {(isMusicList ? rest.filter(section => !(titleGroup.active && section.id === 'releases')) : titleGroup.active ? [] : legacySections).map((section, index) => {
-            // The list the toolbar is for: an artist's undivided releases, or a collection's or author's titles.
-            const barred = !!titleBar && (isArtist ? section.id === 'releases' : !isMusicList && index === 0);
+          {(isMusicList ? rest.filter(section => !(titleGroup.active && section.id === 'releases')) : titleGroup.active ? legacySections.filter(section => kind === 'book' && section !== barredSection) : legacySections).map(section => {
+            // The list the toolbar is for: an artist's undivided releases, a book's parts, or a collection's or author's titles.
+            const barred = !!titleBar && (isArtist ? section.id === 'releases' : !isMusicList && section === barredSection);
             const view = <SectionView key={section.id} section={section} libraryId={libraryId} hideTitle={barred} loadingMore={snapshot.phase === 'loading'} onMore={section.nextCursor ? () => next(section.id) : undefined} />;
             return barred ? <Section key={section.id} title={sectionHeading(i18n, section.heading)}>{titleBar}{view}</Section> : view;
           })}
@@ -310,15 +312,8 @@ function MusicTracks({kind, albumArtist, entries, onPlay, onMore, onShowMore}: {
   // single disc — or tracks without a disc number — renders with no heading
   // (never "Unnumbered disc").
   if (kind === 'album') {
-    const discs = entries.map(e => discNumberFromSubtitle(e.subtitle) ?? 0);
-    if (new Set(discs).size > 1) {
-      const groups = new Map<number, Array<{entry: ContentEntry; index: number}>>();
-      entries.forEach((entry, index) => {
-        const disc = discNumberFromSubtitle(entry.subtitle) ?? 0;
-        const list = groups.get(disc) ?? [];
-        list.push({entry, index});
-        groups.set(disc, list);
-      });
+    const groups = discGroups(entries);
+    if (groups) {
       return (
         <div>
           {[...groups.entries()].map(([disc, items]) =>

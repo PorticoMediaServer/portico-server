@@ -1,13 +1,14 @@
 import React, {useMemo, useSyncExternalStore} from 'react';
 import type {ContentEntry} from '@core/library-content.ts';
-import type {GroupBrowse, GroupLibrary} from '../../app/group-browse';
+import type {GroupBrowse} from '../../app/group-browse';
 import {listWindowKey} from '../../app/list-position';
 import {useViewerScope} from '../../app/viewer-scope';
 import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
+import {groupOrderSort} from '@core/presentation/browse-groups.ts';
 import {BrowseBar} from '../library/BrowseFilters';
 import {EngineResults} from '../library/EngineResults';
-import {Chip, Chips, Inset, StateView, WindowedGrid} from '../../ui';
+import {Inset, StateView, WindowedGrid} from '../../ui';
 
 /**
  * The library's toolbar on a group page (a collection, an artist's albums, an album's songs, a
@@ -29,7 +30,7 @@ export function GroupBar({group, total}: {group: GroupBrowse; /** The page's own
   }, [group.capabilities, spec]);
   if (!spec || !capabilities) return null;
   // The page's own order cannot be kept through a filter (the server orders what it filters), so it is offered only while nothing is filtered.
-  const ownOrder = spec.own && !spec.always && !group.filtered ? {label: t('web.group.ownOrder', {group: spec.own}), selected: group.ownSelected, onSelect: group.ownOrder} : undefined;
+  const ownOrder = spec.own && !spec.always && (!group.filtered || group.opening.field === groupOrderSort) ? {label: t('web.group.ownOrder', {group: spec.own}), selected: group.ownSelected, onSelect: group.ownOrder} : undefined;
   return <BrowseBar libraryId={spec.libraryId} libraryKind={spec.libraryKind} pivot={spec.pivot} capabilities={capabilities} predicates={group.predicates} onChange={group.setPredicates} sort={group.sort} onSort={group.setSort} defaultSort={group.opening} ownOrder={ownOrder} total={group.total ?? total} totalIsLowerBound={group.total !== undefined && group.totalIsLowerBound} />;
 }
 
@@ -98,18 +99,3 @@ export function GroupRows({group, label, estimateRowHeight, columnMin, className
 
 const noSubscribe = () => () => {};
 
-/**
- * A list that spans libraries is sorted and filtered one library at a time: these chips pick the
- * library ("All libraries" is the page's own list). Shown only when more than one library holds
- * part of the list.
- */
-export function GroupLibraryChips({libraries, value, onChange}: {libraries: readonly GroupLibrary[]; value: string | undefined; onChange: (libraryId: string | undefined) => void}) {
-  const {t} = useI18n();
-  if (libraries.length < 2) return null;
-  return (
-    <Chips>
-      <Chip label={t('web.group.allLibraries')} pressed={!value} onClick={() => onChange(undefined)} />
-      {libraries.map(library => <Chip key={library.id} label={library.name} count={library.total} pressed={value === library.id} onClick={() => onChange(library.id)} />)}
-    </Chips>
-  );
-}

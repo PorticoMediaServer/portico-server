@@ -4,7 +4,7 @@ import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useNavigate, useSearch} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import {PersonalSavedService, type PersonalSavedSnapshot} from '@core/personal-saved.ts';
-import {SavedService, historyPeriods, savedListFilters, type HistoryPeriod, type PlaylistCard, type PlaylistOccurrence, type SavedEntry, type SavedListFilter, type SavedRoute, type SavedSnapshot} from '@core/saved.ts';
+import {SavedService, historyPeriods, type HistoryPeriod, type PlaylistCard, type PlaylistOccurrence, type SavedEntry, type SavedRoute, type SavedSnapshot} from '@core/saved.ts';
 import {useService} from '../../app/content';
 import {captionFor, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {useEntryHref, useOpenEntry} from '../../app/open';
@@ -18,15 +18,14 @@ import {useFreshDocument} from '../../app/freshness';
 import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 
 import {useI18n, type I18n} from '../../app/i18n';
-import type {BrowseNode} from '@core/browse.ts';
 import {sortDirectionKind} from '@core/presentation/index.ts';
-import {spanningGroup, titlePivot, useGroupBrowse, useGroupLibraries, type GroupChoice} from '../../app/group-browse';
-import {GroupBar, GroupGrid, GroupLibraryChips} from '../shared/GroupBrowse';
+import {acrossGroup, useGroupBrowse, type GroupChoice} from '../../app/group-browse';
+import type {AcrossGroup} from '@core/presentation/browse-groups.ts';
+import {GroupBar, GroupGrid} from '../shared/GroupBrowse';
 
 type SavedTab = 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history';
 const tabIds: readonly SavedTab[] = ['watchlist', 'favorites', 'playlists', 'collections', 'views', 'history'];
 const tabs = (t: I18n['t']): {id: SavedTab; label: string}[] => [{id: 'watchlist', label: t('saved.tab.watchlist')}, {id: 'favorites', label: t('saved.tab.favorites')}, {id: 'playlists', label: t('saved.tab.playlists')}, {id: 'collections', label: t('saved.tab.collections')}, {id: 'views', label: t('saved.tab.savedViews')}, {id: 'history', label: t('saved.tab.history')}];
-const filterLabel = (t: I18n['t'], f: string) => f === 'unwatched' ? t('web.saved.unwatched') : f === 'inProgress' ? t('web.saved.inProgress') : t('web.search.all');
 const periodLabel = (t: I18n['t'], p: HistoryPeriod) => p === '24h' ? t('web.live.today') : p === '7d' ? t('web.saved.thisWeek') : p === '30d' ? t('web.saved.days', {count: 30}) : p === '90d' ? t('web.saved.days', {count: 90}) : t('web.saved.allTime');
 const emptyCopy = (t: I18n['t'], tab: SavedTab): {icon: IconName; title: string; body: string} => {
   switch (tab) {
@@ -125,17 +124,14 @@ export function SavedScreen() {
   const direction = search.direction;
   const filter = search.filter;
   const period = search.period;
-  // The library's sort and filters on My List and Favorites. They span libraries, so with titles in
-  // several the viewer picks one and gets its toolbar; "All libraries" keeps the list's own order
-  // and its own few sorts. With titles in one library only, that library's toolbar is the list's.
-  const listBase = useMemo<readonly BrowseNode[] | undefined>(() => (tab === 'watchlist' ? [{field: 'watchlisted', operator: 'equals', value: true}] : tab === 'favorites' ? [{field: 'favorite', operator: 'equals', value: true}] : undefined), [tab]);
-  const held = useGroupLibraries(listBase, titlePivot);
-  const scoped = useMemo(() => (listBase ? spanningGroup(held.libraries, search.library, listBase, 'default') : {choose: false as const, spec: undefined, chosen: undefined}), [held.libraries, search.library, listBase]);
-  const group = useGroupBrowse(scoped.spec, {sort, direction, filters: search.filters}, useCallback((next: GroupChoice) => void navigate({to: '/saved', search: {view: search.view, library: scoped.chosen, ...next}, replace: true}), [navigate, search.view, scoped.chosen]));
-  // The address's sort is the library toolbar's while a library's toolbar is on the page; the list's own sorts apply only without one.
-  const toolbar = !!scoped.spec;
-  const ownSorting = !listBase || (held.ready && !toolbar);
-  const savedRoute = useMemo<SavedRoute | null>(() => (tab === 'history' || tab === 'collections' || tab === 'views' ? null : {view: tab, ...(sort && ownSorting ? {sort, direction} : {}), ...(filter && filter !== 'all' && (tab === 'watchlist' || tab === 'favorites') ? {filter} : {})}), [tab, sort, direction, filter, ownSorting]);
+  // The library's sort and filters on My List, Favorites and History, across every library as one
+  // list. Each opens in its own order (the history by day), which stands until a sort or filter is chosen.
+  const across: AcrossGroup | undefined = tab === 'watchlist' ? 'watchlist' : tab === 'favorites' ? 'favorites' : tab === 'history' ? 'history' : undefined;
+  const spec = useMemo(() => (across ? acrossGroup(across, undefined, across === 'history' ? 'history' : 'default') : undefined), [across]);
+  const group = useGroupBrowse(spec, {sort, direction, filters: search.filters}, useCallback((next: GroupChoice) => void navigate({to: '/saved', search: {view: search.view, ...next}, replace: true}), [navigate, search.view]));
+  // The address's sort is the toolbar's on these lists; Playlists keeps its own.
+  const toolbar = !!spec;
+  const savedRoute = useMemo<SavedRoute | null>(() => (tab === 'history' || tab === 'collections' || tab === 'views' ? null : {view: tab, ...(sort && !toolbar ? {sort, direction} : {})}), [tab, sort, direction, toolbar]);
   const personalRoute = useMemo<SavedRoute | null>(() => (tab === 'history' ? {view: 'history', ...(period ? {period} : {})} : tab === 'collections' ? {view: 'collections'} : tab === 'views' ? {view: 'views'} : null), [tab, period]);
   const [creating, setCreating] = useState(false);
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
@@ -156,8 +152,6 @@ export function SavedScreen() {
   const refresh = personalRoute ? personal.refresh : saved.refresh;
   useSelectionRefresh(refresh);
   usePersonalChanges(refresh);
-  const listFilter = projection?.filters?.find(f => f.id === 'filter');
-  const countFor = (f: SavedListFilter) => listFilter?.options.find(o => o.id === f)?.count;
   const canCreatePlaylist = tab === 'playlists' && !!projection?.actions?.includes('create_playlist');
   const clearHistory = async () => {
     setClearBusy(true); setClearError('');
@@ -167,13 +161,8 @@ export function SavedScreen() {
     <Page>
       <PageHeader title={t('web.saved.title')} actions={<Button variant="ghost" icon="refresh" aria-label={t('action.refresh')} onClick={refresh} />} />
       <Tabs items={tabs(t)} value={tab} onChange={id => setSearch({view: id, sort: undefined, direction: undefined, filter: undefined, period: undefined, library: undefined, filters: undefined})} size="large" label={t('web.saved.sections')} />
-      {scoped.choose ? <Inset><GroupLibraryChips libraries={held.libraries} value={scoped.chosen} onChange={library => setSearch({library, sort: undefined, direction: undefined, filter: undefined, filters: undefined})} /></Inset> : null}
       {toolbar ? <Inset><GroupBar group={group} /></Inset> : null}
-      {(tab === 'watchlist' || tab === 'favorites') && !toolbar ? (
-        // The list's own controls, laid out as the library toolbar is: Sort first (one control naming the field and the direction; choosing the current field again turns it round), then what to show.
-        <Inset><Row>{sortControl}<Text variant="label" tone="tertiary">{t('web.notifications.show')}</Text><Chips>{savedListFilters.map(f => <Chip key={f} label={filterLabel(t, f)} count={countFor(f)} pressed={(filter ?? 'all') === f} onClick={() => setSearch({filter: f === 'all' ? undefined : f})} />)}</Chips></Row></Inset>
-      ) : null}
-      {tab === 'history' ? (
+      {tab === 'history' && !group.active ? (
         <Inset><Row style={{justifyContent: 'space-between', flexWrap: 'wrap'}}><Row><Text variant="label" tone="tertiary">{t('web.saved.period')}</Text><Chips>{historyPeriods.map(x => <Chip key={x} label={periodLabel(t, x)} pressed={(period ?? 'all') === x} onClick={() => setSearch({period: x === 'all' ? undefined : x})} />)}</Chips></Row>{personal.snapshot.entries.length ? <Button variant="ghost" size="sm" icon="trash" label={t('web.saved.clearHistory')} onClick={() => { setClearError(''); setClearing(true); }} /> : null}</Row></Inset>
       ) : null}
       {tab === 'collections' ? <Inset><Row><Button variant="secondary" size="sm" icon="plus" label={t('web.saved.newCollection')} onClick={() => setCreating(true)} /></Row></Inset> : null}
@@ -181,8 +170,8 @@ export function SavedScreen() {
       <NameDialog open={creatingPlaylist} title={t('web.saved.newPlaylist')} action={t('web.saved.create')} context="playlist" onClose={() => setCreatingPlaylist(false)} onSave={async (name, summary) => { await saved.service.mutate({action: 'create', name, summary}); saved.refresh(); }} />
       <ConfirmDialog open={clearing} onOpenChange={o => !o && setClearing(false)} title={t('web.saved.clearHistoryTitle')} body={t('web.saved.clearHistoryBody')} confirmLabel={t('web.saved.clearHistoryAction')} destructive busy={clearBusy} error={clearError || undefined} onConfirm={() => void clearHistory()} />
       <NewCollectionDialog open={creating} onClose={() => setCreating(false)} onCreate={async (name, summary, visibility) => { if (!await personal.service.mutate({action: 'create', kind: 'collection', name, summary, visibility})) throw personal.service.getSnapshot().mutationError ?? new Error('not created'); }} />
-      {toolbar && group.pending ? <LoadingGrid /> : toolbar && group.active ? <GroupGrid group={group} square={scoped.spec?.libraryKind === 'music' || scoped.spec?.libraryKind === 'audiobook'} /> : null}
-      {toolbar && (group.pending || group.active) ? null : personalRoute ? <PersonalView tab={tab} snapshot={personal.snapshot} onRefresh={personal.refresh} onNext={personal.next} onPrevious={personal.previous} /> : <SavedView tab={tab as Exclude<SavedTab, 'history' | 'collections'>} filter={filter} onShowAll={() => setSearch({filter: undefined})} snapshot={saved.snapshot} onRetry={saved.retry} onRefresh={saved.refresh} onNext={saved.next} onPrevious={saved.previous} />}
+      {toolbar && group.pending ? <LoadingGrid /> : toolbar && group.active ? <GroupGrid group={group} square={false} /> : null}
+      {toolbar && (group.pending || group.active) ? null : personalRoute ? <PersonalView tab={tab} snapshot={personal.snapshot} onRefresh={personal.refresh} onNext={personal.next} onPrevious={personal.previous} /> : <SavedView tab={tab as Exclude<SavedTab, 'history' | 'collections'>} filter={toolbar ? undefined : filter} onShowAll={() => setSearch({filter: undefined})} snapshot={saved.snapshot} onRetry={saved.retry} onRefresh={saved.refresh} onNext={saved.next} onPrevious={saved.previous} />}
     </Page>
   );
 }
