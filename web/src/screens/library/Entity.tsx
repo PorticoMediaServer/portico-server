@@ -22,6 +22,7 @@ import {useLibrariesContext} from '../../app/libraries';
 import body from '../detail/Detail.module.css';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
+import {useQuietRefresh} from '../../app/quiet-refresh';
 
 /**
  * Generic entity workspace: artist, album, collection, category, author,
@@ -44,6 +45,7 @@ export function EntityScreen() {
   const downloads = useDownloads();
   const content = useMemo<ContentRoute>(() => ({libraryId, view: view as Exclude<ContentView, 'home'>, entityId}), [libraryId, view, entityId]);
   const {snapshot, retry, refresh, next} = useContent(content);
+  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', refresh);
   useSelectionRefresh(refresh);
   // PERF-S02: section "More" appends inside its own section; the page's other
   // sections stay rendered.
@@ -201,7 +203,7 @@ export function EntityScreen() {
       <Page>
         {snapshot.phase === 'loading' && !snapshot.sections.length ? <LoadingShelves density={shape === 'square' ? 'square' : 'poster'} /> : null}
         {snapshot.phase === 'error' && !snapshot.sections.length ? <ErrorState error={snapshot.error} context="collection" retry={retry} refresh={refresh} /> : null}
-        {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="collection" refresh={refresh} /></Inset> : null}
+        {changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="collection" refresh={refresh} /></Inset> : null}
         {/* Entity sections sit above the backdrop scrim (Detail `.body` rule). */}
         <div className={body.body}>
           {/* The five most played first ("Popular" when the owner shares activity across profiles, "Your most played" otherwise), then every song, then the releases by type. */}

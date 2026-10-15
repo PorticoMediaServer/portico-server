@@ -1,5 +1,6 @@
 import type {BrowseNode, BrowseSortSelection} from '../browse.ts';
 import {validateSubtitleDelivery} from '../subtitles.ts';
+import {apiRoot} from '../../../contracts/src/routes.ts';
 /**
  * Playback v1 resource shapes and tolerant readers (style guide amendment 3): unknown fields are
  * ignored, unknown open-enum values map to a fallback, absent arrays read as empty. Strict only
@@ -251,7 +252,7 @@ export function parseQueue(v: unknown): QueueHeader {
 }
 
 /** An artwork address on this server's API, as the queue window gives it. */
-const artworkPath = (v: unknown): boolean => typeof v === 'string' && v.length <= 512 && v.startsWith('/v1/') && !/[\s\\]/.test(v);
+const artworkPath = (v: unknown): boolean => typeof v === 'string' && v.length <= 512 && v.startsWith(apiRoot) && !/[\s\\]/.test(v);
 
 export function parseEntry(v: unknown): QueueEntry {
   if (!obj(v)) throw new ContractError('queue entry');
