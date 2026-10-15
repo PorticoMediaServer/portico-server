@@ -49,6 +49,11 @@ and `AbortSignal.timeout` (some television browsers), and, on a plain-HTTP page,
 | `src/admin/` | Console client hooks and label maps shared by the server screens. |
 | `docs/administration.md` | The administration information architecture and the rules every settings page follows. |
 
+`npm run lint:hooks` (oxlint, React's hook rules only) fails the check when a
+hook is called conditionally or its dependency list is incomplete. A deliberate
+exception carries `// eslint-disable-line react-hooks/exhaustive-deps -- why`
+on the line it excuses.
+
 `scripts/lint-design.mjs` fails the build if hex/rgb colours, font families or
 z-index values appear outside `src/ui` and `src/bridge`. Use semantic tokens
 from `base.css` (`--surface-*`, `--text-*`, `--layer-*`) instead.
