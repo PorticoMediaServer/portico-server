@@ -589,6 +589,7 @@ table audio_metadata_policies
 table audio_render_fact_failures
 table audio_render_fact_requests
 table audio_render_facts
+table audio_seek_index
 table audio_source_metadata
 table audio_tag_evidence
 table authorization_family_grants

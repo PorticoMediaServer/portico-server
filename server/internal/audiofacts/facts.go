@@ -1,7 +1,8 @@
 // Package audiofacts measures what a client-side audio decoder needs and can't
 // know on its own (spec §18.1 version 2, §18.7): the exact frame count and the
 // gapless trim, relative to the codec's raw decoded output, and the codec
-// configuration a packet decoder needs. Measurement is one confined ffprobe pass
+// configuration a packet decoder needs, and for MP3, ADTS and Ogg a seek index
+// (seekindex.go). Measurement is one confined ffprobe pass
 // that decodes with skipping off (every frame of every packet) and reads the
 // packets' skip side data, which is how FFmpeg surfaces the LAME header, MP4 edit
 // lists and Opus pre-skip; iTunSMPB, which FFmpeg reads only in part (never the
@@ -36,6 +37,12 @@ type Facts struct {
 	// AudioSpecificConfig, Opus's OpusHead, FLAC's 34-byte STREAMINFO body, the
 	// ALAC magic cookie. Empty when the codec has none (MP3, PCM).
 	DecoderConfig string
+	// SeekIndex is the encoded seek index of an MP3, ADTS or Ogg file
+	// (EncodeSeekIndex), made with the measurement; nil when there is none.
+	SeekIndex []byte
+	// HasSeekIndex: a fresh index is stored (Read sets it; the index itself
+	// is read only when a client asks for it).
+	HasSeekIndex bool
 }
 
 var (

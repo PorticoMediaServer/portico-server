@@ -3448,6 +3448,16 @@ CREATE TABLE audio_render_facts(
  measured_ms INTEGER NOT NULL,
  CHECK(start_frames+duration_frames+end_frames=raw_frames)
 ) WITHOUT ROWID, STRICT;
+-- An MP3, ADTS or Ogg file's seek index (audiofacts.EncodeSeekIndex): byte
+-- offsets at packet or page boundaries and the raw frame each starts at, one
+-- every few seconds, at most 4096 entries. Derived data, fenced like the facts:
+-- it counts only while the asset's size and mtime are the ones it was made from.
+CREATE TABLE audio_seek_index(
+ asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ size INTEGER NOT NULL,
+ modified_ns INTEGER NOT NULL,
+ entries BLOB NOT NULL CHECK(length(entries) BETWEEN 2 AND 131072)
+) STRICT;
 CREATE TABLE audio_render_fact_failures(
  asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
  size INTEGER NOT NULL,

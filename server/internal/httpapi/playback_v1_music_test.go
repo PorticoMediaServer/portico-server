@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"portico.local/server/internal/audiofacts"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/playback"
@@ -632,46 +633,59 @@ func TestPlaybackV1QueueEntriesPlaceSongsOnTheirAlbum(t *testing.T) {
 	}
 }
 
-// An MP3 (ADTS, Ogg) played direct has no index a client can seek by, so its
-// plan says how to start part-way: the converted route from that frame, FLAC at
-// the file's own rate. Only when converting is allowed and the device decodes
-// FLAC at that rate; a plan in an indexed container has none.
-func TestPlaybackV1DirectPlanOffersADeepStartForUnindexedFiles(t *testing.T) {
-	f := musicFixture(t, 4)
+// A direct plan in a container with no index of its own (MP3, ADTS, Ogg) names
+// the server's seek index when the file has one: byte offsets with the raw
+// frame each starts at, served on the plan's grant. Nothing is converted for a
+// part-way start: the converted route never serves a direct plan, whatever the
+// owner allows and whatever the device decodes.
+func TestPlaybackV1DirectPlanNamesItsSeekIndex(t *testing.T) {
+	f := musicFixture(t, 3)
 	if _, err := f.db.Exec(`UPDATE audio_render_facts SET container='mp3',codec='mp3',decoder_config='',start_frames=1105,end_frames=0,raw_frames=1105+duration_frames,trim_source='lame'`); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := f.db.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=1`); err != nil {
 		t.Fatal(err)
 	}
+	index := audiofacts.EncodeSeekIndex(&audiofacts.SeekIndex{Offsets: []int64{4096, 52_000, 99_000}, Frames: []int64{0, 132_480, 264_960}})
+	if _, err := f.db.Exec(`INSERT INTO audio_seek_index(asset_id,size,modified_ns,entries) SELECT token,size,modified_ns,? FROM catalog_assets WHERE token=?`, index, f.records[0].Token); err != nil {
+		t.Fatal(err)
+	}
 	mp3 := map[string]any{"codec": "mp3", "containers": []string{"mp3"}}
+	declareDecode(t, f, mp3, map[string]any{"codec": "flac", "containers": []string{"flac"}, "maxSampleRate": 96000})
 	start := func(i int, key string) *playbackv1.AudioRender {
 		var s playbackv1.SessionView
 		f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": key}, startBody(f.items[i], nil), 201, &s)
 		return s.Presentation.AudioRender
 	}
-	declareDecode(t, f, mp3, map[string]any{"codec": "flac", "containers": []string{"flac"}, "maxSampleRate": 96000})
-	plan := start(0, "deep-start-00000001")
-	if plan.Mode != "direct" || plan.DeepStart == nil || !strings.HasSuffix(plan.DeepStart.URL, "/audio-converted") || plan.DeepStart.Codec != "flac" || plan.DeepStart.SampleRate != 44100 || plan.DeepStart.Channels != 2 || plan.DeepStart.BitDepth != 16 {
-		t.Fatalf("deep start %+v", plan.DeepStart)
+	plan := start(0, "seek-index-0000001")
+	if plan.Mode != "direct" || plan.SeekIndex == nil || !strings.HasSuffix(plan.SeekIndex.URL, "/audio-index") {
+		t.Fatalf("seek index %+v", plan.SeekIndex)
 	}
-	// The grant serves the part-way start (this fixture has no converter: unavailable, not unknown).
-	if w := f.raw("GET", plan.DeepStart.URL+"?fromFrame=441000", "", nil, nil); w.Code != 503 || !strings.Contains(w.Body.String(), "conversion_unavailable") {
-		t.Fatalf("deep start route: %d %s", w.Code, w.Body.String())
+	var got struct {
+		Version int     `json:"version"`
+		Offsets []int64 `json:"offsets"`
+		Frames  []int64 `json:"frames"`
 	}
-	// No FLAC on the device, or no converting: no deep start.
-	declareDecode(t, f, mp3)
-	if plan = start(1, "deep-start-00000002"); plan.Mode != "direct" || plan.DeepStart != nil {
-		t.Fatalf("no FLAC: %+v", plan.DeepStart)
+	w := f.raw("GET", plan.SeekIndex.URL, "", nil, nil)
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &got) != nil || got.Version != 1 || len(got.Offsets) != 3 || got.Offsets[1] != 52_000 || got.Frames[2] != 264_960 {
+		t.Fatalf("index route: %d %s", w.Code, w.Body.String())
 	}
-	declareDecode(t, f, mp3, map[string]any{"codec": "flac", "containers": []string{"flac"}})
-	if _, err := f.db.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=0`); err != nil {
+	// No conversion is offered or served for a direct plan's part-way start.
+	if w := f.raw("GET", strings.TrimSuffix(plan.URL, "/audio")+"/audio-converted?fromFrame=441000", "", nil, nil); w.Code != 404 {
+		t.Fatalf("a direct plan is served converted: %d", w.Code)
+	}
+	// A file without an index (not measured with one, or it changed since) names none.
+	if plan = start(1, "seek-index-0000002"); plan.Mode != "direct" || plan.SeekIndex != nil {
+		t.Fatalf("no index: %+v", plan.SeekIndex)
+	}
+	if w := f.raw("GET", strings.TrimSuffix(plan.URL, "/audio")+"/audio-index", "", nil, nil); w.Code != 404 {
+		t.Fatalf("a plan without an index serves one: %d", w.Code)
+	}
+	// The index goes with the file: once the asset changes, it is not served.
+	if _, err := f.db.Exec(`UPDATE audio_seek_index SET modified_ns=modified_ns+1`); err != nil {
 		t.Fatal(err)
 	}
-	if plan = start(2, "deep-start-00000003"); plan.Mode != "direct" || plan.DeepStart != nil {
-		t.Fatalf("converting off: %+v", plan.DeepStart)
-	}
-	if w := f.raw("GET", strings.TrimSuffix(plan.URL, "/audio")+"/audio-converted?fromFrame=441000", "", nil, nil); w.Code != 404 {
-		t.Fatalf("a direct plan without a deep start is not served converted: %d", w.Code)
+	if plan = start(0, "seek-index-0000004"); plan.SeekIndex != nil {
+		t.Fatalf("a stale index is named: %+v", plan.SeekIndex)
 	}
 }

@@ -5375,6 +5375,26 @@ export const routes = [
     "admission": "media-body"
   },
   {
+    "id": "get_media_grant_audio_index",
+    "method": "GET",
+    "path": "/v1/media/{grant}/audio-index",
+    "summary": "Read the seek index of media audio",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "media-body"
+  },
+  {
     "id": "get_media_grant_file",
     "method": "GET",
     "path": "/v1/media/{grant}/{file}",
@@ -15853,6 +15873,7 @@ export const routePaths = {
   "get_media_grant": "/v1/media/{grant}",
   "get_media_grant_audio": "/v1/media/{grant}/audio",
   "get_media_grant_audio_converted": "/v1/media/{grant}/audio-converted",
+  "get_media_grant_audio_index": "/v1/media/{grant}/audio-index",
   "get_media_grant_file": "/v1/media/{grant}/{file}",
   "get_media_linear_playbackId_generation_token_name": "/v1/media/linear/{playbackId}/{generation}/{token}/{name}",
   "get_metadata_attention": "/v1/libraries/{id}/metadata/attention",

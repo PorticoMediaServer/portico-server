@@ -276,6 +276,7 @@ var routeLanes = map[string]string{
 	"GET /v1/media/{grant}":                                                      "media-body",
 	"GET /v1/media/{grant}/audio":                                                "media-body",
 	"GET /v1/media/{grant}/audio-converted":                                      "media-body",
+	"GET /v1/media/{grant}/audio-index":                                          "media-body",
 	"GET /v1/media/{grant}/{file}":                                               "media-body",
 	"GET /v1/metadata/{kind}/{id}":                                               "default",
 	"GET /v1/metadata/{kind}/{id}/art/{role}":                                    "media",

@@ -48,6 +48,10 @@ func registerPlaybackHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "head_media_grant_audio", Method: "HEAD", Path: "/v1/media/{grant}/audio", Summary: "Read headers for media audio", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Admission: laneMediaBody, Cost: apikit.Constant, BodyLimit: 0, Status: 200, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
+	// internal/httpapi/audio_media.go: the seek index of a direct MP3, ADTS or Ogg plan
+	if err := apikit.RegisterHTTP[struct{}, SeekIndexContract](registry, apikit.Metadata{ID: "get_media_grant_audio_index", Method: "GET", Path: "/v1/media/{grant}/audio-index", Summary: "Read the seek index of media audio", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Admission: laneMediaBody, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
 	// internal/httpapi/audio_media.go:137
 	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_media_grant_audio_converted", Method: "GET", Path: "/v1/media/{grant}/audio-converted", Summary: "Read media audio converted", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Admission: laneMediaBody, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Query: []string{"fromFrame"}, ResponseContentType: "application/octet-stream", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err

@@ -590,42 +590,6 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -675,6 +639,17 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {
@@ -1403,42 +1378,6 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -1488,6 +1427,17 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {
@@ -4923,42 +4873,6 @@ export const schemas = {
               "decoderConfig": {
                 "type": "string"
               },
-              "deepStart": {
-                "properties": {
-                  "bitDepth": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "channels": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "codec": {
-                    "type": "string"
-                  },
-                  "container": {
-                    "type": "string"
-                  },
-                  "sampleRate": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "url": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "url",
-                  "container",
-                  "codec",
-                  "sampleRate",
-                  "channels"
-                ],
-                "type": "object"
-              },
               "downmixed": {
                 "type": "boolean"
               },
@@ -5008,6 +4922,17 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "seekIndex": {
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "type": "object"
               },
               "trim": {
                 "properties": {
@@ -5677,42 +5602,6 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -5762,6 +5651,17 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {
@@ -8414,42 +8314,6 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -8499,6 +8363,17 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {
@@ -51703,6 +51578,42 @@ export const schemas = {
     "format": "binary",
     "type": "string"
   },
+  "GetMediaGrantAudioIndexRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetMediaGrantAudioIndexResponse": {
+    "properties": {
+      "frames": {
+        "items": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "offsets": {
+        "items": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "version": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "version",
+      "offsets",
+      "frames"
+    ],
+    "type": "object"
+  },
   "GetMediaGrantAudioRequest": {
     "properties": {},
     "required": [],
@@ -56278,42 +56189,6 @@ export const schemas = {
               "decoderConfig": {
                 "type": "string"
               },
-              "deepStart": {
-                "properties": {
-                  "bitDepth": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "channels": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "codec": {
-                    "type": "string"
-                  },
-                  "container": {
-                    "type": "string"
-                  },
-                  "sampleRate": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "url": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "url",
-                  "container",
-                  "codec",
-                  "sampleRate",
-                  "channels"
-                ],
-                "type": "object"
-              },
               "downmixed": {
                 "type": "boolean"
               },
@@ -56363,6 +56238,17 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "seekIndex": {
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "type": "object"
               },
               "trim": {
                 "properties": {
@@ -71104,42 +70990,6 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -71189,6 +71039,17 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {
@@ -91818,42 +91679,6 @@ export const schemas = {
               "decoderConfig": {
                 "type": "string"
               },
-              "deepStart": {
-                "properties": {
-                  "bitDepth": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "channels": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "codec": {
-                    "type": "string"
-                  },
-                  "container": {
-                    "type": "string"
-                  },
-                  "sampleRate": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "url": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "url",
-                  "container",
-                  "codec",
-                  "sampleRate",
-                  "channels"
-                ],
-                "type": "object"
-              },
               "downmixed": {
                 "type": "boolean"
               },
@@ -91903,6 +91728,17 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "seekIndex": {
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "type": "object"
               },
               "trim": {
                 "properties": {
@@ -100494,42 +100330,6 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -100579,6 +100379,17 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {
@@ -111459,42 +111270,6 @@ export const schemas = {
               "decoderConfig": {
                 "type": "string"
               },
-              "deepStart": {
-                "properties": {
-                  "bitDepth": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "channels": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "codec": {
-                    "type": "string"
-                  },
-                  "container": {
-                    "type": "string"
-                  },
-                  "sampleRate": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "url": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "url",
-                  "container",
-                  "codec",
-                  "sampleRate",
-                  "channels"
-                ],
-                "type": "object"
-              },
               "downmixed": {
                 "type": "boolean"
               },
@@ -111544,6 +111319,17 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "seekIndex": {
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "type": "object"
               },
               "trim": {
                 "properties": {
@@ -112450,42 +112236,6 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -112535,6 +112285,17 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {

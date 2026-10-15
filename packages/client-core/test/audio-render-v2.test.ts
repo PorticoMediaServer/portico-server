@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync, readdirSync} from 'node:fs';
 import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
-import {audioGainLinear, audioTrimWindow, parseAudioRenderV2, playableAudio, type PlayableAudioRender} from '../src/playback-v1/audio-render.ts';
+import {audioGainLinear, audioTrimWindow, parseAudioRenderV2, parseSeekIndex, playableAudio, type PlayableAudioRender} from '../src/playback-v1/audio-render.ts';
 import {parsePresentation} from '../src/playback-v1/types.ts';
 import {FakePlaybackServer, fakeHttp} from '../src/playback-v1/testing/fake-server.ts';
 
@@ -26,12 +26,24 @@ test('§18.1 v2: a direct plan reads whole; unknown versions and malformed plans
   assert.deepEqual(unavailable, {version: 2, mode: 'unavailable', id: 'm2', reason: 'The owner doesn’t allow converting audio.'});
 });
 
-test('a direct plan with no seek index says where a part-way start reads from; only at the plan’s own rate', () => {
-  const deepStart = {url: '/v1/media/g/audio-converted', container: 'flac', codec: 'flac', sampleRate: 44100, channels: 2, bitDepth: 16};
-  assert.deepEqual(parseAudioRenderV2({...direct, deepStart})?.deepStart, deepStart);
-  assert.equal(parseAudioRenderV2({...direct, deepStart: {...deepStart, sampleRate: 48000}})?.deepStart, undefined, 'other frames than the plan’s would misplace the start');
-  assert.equal(parseAudioRenderV2({...direct, deepStart: {...deepStart, url: 7}})?.deepStart, undefined);
-  assert.equal(parseAudioRenderV2({...direct, mode: 'converted', deepStart})?.deepStart, undefined);
+test('a direct plan in a container with no index of its own names the server’s seek index; nothing to convert', () => {
+  const seekIndex = {url: '/v1/media/g/audio-index'};
+  assert.deepEqual(parseAudioRenderV2({...direct, seekIndex})?.seekIndex, seekIndex);
+  assert.equal(parseAudioRenderV2({...direct, seekIndex: {url: 7}})?.seekIndex, undefined);
+  assert.equal(parseAudioRenderV2({...direct, mode: 'converted', seekIndex})?.seekIndex, undefined);
+  assert.equal((parseAudioRenderV2({...direct, deepStart: {url: '/x'}}) as Record<string, unknown>)?.deepStart, undefined, 'no converted part-way start any more');
+  const index = parseSeekIndex({version: 1, offsets: [417, 52_100, 104_903], frames: [0, 132_480, 264_960]});
+  assert.deepEqual(index, {offsets: [417, 52_100, 104_903], frames: [0, 132_480, 264_960]});
+  for (const bad of [
+    {version: 2, offsets: [1], frames: [0]},
+    {version: 1, offsets: [], frames: []},
+    {version: 1, offsets: [1, 2], frames: [0]},
+    {version: 1, offsets: [5, 5], frames: [0, 10]},
+    {version: 1, offsets: [5, 9], frames: [10, 0]},
+    {version: 1, offsets: [-1], frames: [0]},
+    {version: 1, offsets: [1.5], frames: [0]},
+    {version: 1, offsets: Array.from({length: 4097}, (_, i) => i + 1), frames: Array.from({length: 4097}, (_, i) => i)},
+  ]) assert.equal(parseSeekIndex(bad), undefined, JSON.stringify(bad).slice(0, 60));
 });
 
 test('§18.1 v2: a presentation carries the v2 plan as `audio`', () => {

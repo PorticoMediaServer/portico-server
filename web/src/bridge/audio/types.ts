@@ -44,6 +44,10 @@ export interface Demuxer {
    * confirmed by its checksum. Throws when no start near the position is confirmed, so the
    * caller hands the position to the ordinary player instead of reading everything before it. */
   locate?(target: number, preroll: number, signal?: AbortSignal): Promise<SeekResult>;
+  /** Packets from `offset`, a packet (MP3, ADTS) or page (Ogg) boundary the server's seek index
+   * names, read from there without what comes before. Each packet says its length in frames
+   * where the bitstream does (not Vorbis). */
+  packetsFrom?(offset: number, signal?: AbortSignal): AsyncGenerator<Packet>;
 }
 
 export type SeekResult = {packets: AsyncGenerator<Packet>; rawStart: number};

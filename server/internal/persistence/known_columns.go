@@ -379,6 +379,10 @@ audio_render_facts.sample_rate
 audio_render_facts.size
 audio_render_facts.start_frames
 audio_render_facts.trim_source
+audio_seek_index.asset_id
+audio_seek_index.entries
+audio_seek_index.modified_ns
+audio_seek_index.size
 audio_source_metadata.asset_id
 audio_source_metadata.issue
 audio_source_metadata.library_id

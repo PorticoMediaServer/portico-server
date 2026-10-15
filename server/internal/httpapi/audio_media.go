@@ -87,9 +87,7 @@ func (d Dependencies) audioGrant(w http.ResponseWriter, r *http.Request, mode st
 		return
 	}
 	plan, session, e = d.Playback.AudioPlanByGrant(r.Context(), grant)
-	// A direct plan with a part-way start is also served converted, from a frame.
-	deep := mode == "converted" && plan != nil && plan.Mode == "direct" && plan.DeepStart != nil && plan.Convert != nil
-	if e != nil || plan == nil || plan.Mode != mode && !deep {
+	if e != nil || plan == nil || plan.Mode != mode {
 		writeNoSuchAudio(w)
 		return
 	}
@@ -134,9 +132,34 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 	}
 	d.httpHandle(mux, "GET /v1/media/{grant}/audio", serveDirect)
 	d.httpHandle(mux, "HEAD /v1/media/{grant}/audio", serveDirect)
+	// A direct MP3, ADTS or Ogg plan's seek index (spec §18.1): byte offsets at
+	// packet or page boundaries and the raw frame each starts at, made once per
+	// file with its facts. The client reads the original from the nearest entry
+	// with a Range request; nothing is converted.
+	d.httpHandle(mux, "GET /v1/media/{grant}/audio-index", func(w http.ResponseWriter, r *http.Request) {
+		_, aid, _, _, plan, _, ok := d.audioGrant(w, r, "direct")
+		if !ok {
+			return
+		}
+		if plan.SeekIndex == nil {
+			writeNoSuchAudio(w)
+			return
+		}
+		index, found, err := audiofacts.ReadSeekIndex(r.Context(), d.DB, aid)
+		if err != nil {
+			failure(w, err)
+			return
+		}
+		if !found {
+			// The file changed since the plan was made: the index went with it.
+			writeNoSuchAudio(w)
+			return
+		}
+		w.Header().Set("Cache-Control", "private, no-store")
+		write(w, http.StatusOK, SeekIndexContract{Version: 1, Offsets: index.Offsets, Frames: index.Frames})
+	})
 	// Converted: FLAC, Ogg Opus or ADTS AAC, exact (spec §18.1). ?fromFrame=N starts at
 	// output frame N; before commit only from frame 0, within prefetchBytes.
-	// A direct plan's deepStart is this route too: FLAC at the file's own rate.
 	d.httpHandle(mux, "GET /v1/media/{grant}/audio-converted", func(w http.ResponseWriter, r *http.Request) {
 		_, aid, item, session, plan, private, ok := d.audioGrant(w, r, "converted")
 		if !ok {
@@ -193,6 +216,17 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 			fmt.Fprint(io.Discard, err)
 		}
 	})
+}
+
+// SeekIndexContract is GET /v1/media/{grant}/audio-index: Offsets[i] is a
+// byte offset at a packet (MP3, ADTS) or page (Ogg) boundary and Frames[i] the
+// raw frame decoding from there starts at, counted as the plan's trim counts
+// (from the first audio packet; Vorbis: the page granule before it). Entries
+// rise in both, a few seconds apart, at most 4096.
+type SeekIndexContract struct {
+	Version int     `json:"version"`
+	Offsets []int64 `json:"offsets"`
+	Frames  []int64 `json:"frames"`
 }
 
 var errBudget = errors.New("prefetch budget spent")

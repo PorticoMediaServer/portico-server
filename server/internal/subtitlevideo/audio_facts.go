@@ -53,5 +53,15 @@ func (r *Runtime) measureAudio(ctx context.Context, item, asset string) (audiofa
 	if parsed != nil {
 		return f, parsed
 	}
+	// An MP3, ADTS or Ogg file also gets its seek index: one more read of the
+	// same fenced input, headers only, nothing decoded. A file that can't be
+	// indexed exactly simply has none.
+	if audiofacts.Indexed(f) {
+		index, e := audiofacts.BuildSeekIndex(ctx, input.ReadExtent, input.Size(), f)
+		if e != nil {
+			return f, e
+		}
+		f.SeekIndex = audiofacts.EncodeSeekIndex(index)
+	}
 	return f, input.Validate(ctx)
 }

@@ -1,5 +1,5 @@
 import type {PlaybackService, PlaybackSnapshot} from '@core/index';
-import {audioGainLinear, playableAudio, type AudioRenderV2, type PlayableAudioRender} from '@core/playback-v1/audio-render.ts';
+import {audioGainLinear, parseSeekIndex, playableAudio, type AudioRenderV2, type PlayableAudioRender, type SeekIndex} from '@core/playback-v1/audio-render.ts';
 import {RangeReader, audioByteCache} from './audio/bytes';
 import {Deck, linkDecks, type PcmSource} from './audio/engine';
 import {ConvertedSource} from './audio/converted';
@@ -121,17 +121,15 @@ export class DecodeAudioRender {
     // A start or seek that is still reading the file is alive, however long the link makes it take.
     const alive = () => { if (!this.disposed && !prepared) this.service.engineProgress(this.service.getSnapshot().intentId); };
     const range = new RangeReader({url: this.url(plan.url), key: plan.id, size: plan.bytes, cache: audioByteCache, onBytes: alive, ...(prepared && plan.prefetchBytes ? {limit: plan.prefetchBytes} : {})});
-    // A file with no seek index (MP3, ADTS, Ogg) started part-way: the server decodes it from that
-    // frame exactly and sends FLAC at the file's own rate, so nothing before it is read here.
-    const deep = !prepared && plan.deepStart?.sampleRate === plan.sampleRate ? plan.deepStart : undefined;
-    let deepSource: ConvertedSource | undefined;
-    const open = async (fromFrame: number): Promise<PcmSource | undefined> => {
-      const stream = await TrackStream.open(plan, range, fromFrame);
-      if (stream || !deep || fromFrame <= 0) return stream;
-      deepSource = new ConvertedSource({id: plan.id, container: deep.container, codec: deep.codec, sampleRate: deep.sampleRate, channels: deep.channels, durationFrames: plan.durationFrames, trim: {startFrames: 0, endFrames: 0}, url: this.url(deep.url)}, fromFrame, {locked: false});
-      return deepSource;
-    };
-    return {unlock: () => range.unlock(), close: () => { range.close(); deepSource?.close(); }, prefetchAll: () => range.prefetchAll(), open};
+    // A file with no index of its own (MP3, ADTS, Ogg) started part-way reads the server's seek
+    // index (once) and the file from the nearest entry; nothing before it is read and nothing
+    // is converted.
+    const indexUrl = plan.seekIndex?.url;
+    let indexRead: Promise<SeekIndex | undefined> | undefined;
+    const index = indexUrl ? () => (indexRead ??= fetch(this.url(indexUrl), {credentials: 'omit', cache: 'no-store', redirect: 'error'})
+      .then(r => (r.ok ? r.json() : undefined)).then(parseSeekIndex, () => undefined)) : undefined;
+    const open = (fromFrame: number): Promise<PcmSource | undefined> => TrackStream.open(plan, range, fromFrame, undefined, {index});
+    return {unlock: () => range.unlock(), close: () => range.close(), prefetchAll: () => range.prefetchAll(), open};
   }
 
   private gainFor(plan: AudioRenderV2) { return audioGainLinear(plan, this.snapshot.audioEffects.settings.normalization); }

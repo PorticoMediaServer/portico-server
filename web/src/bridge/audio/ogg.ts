@@ -26,15 +26,18 @@ async function page(c: Cursor): Promise<Page | undefined> {
   }
 }
 
-/** Packets of one serial, reassembled across pages. */
-async function* oggPackets(reader: ByteReader, from: number, serial: number | undefined, signal?: AbortSignal): AsyncGenerator<{data: Uint8Array; serial: number; offset: number; granule: number; lastOnPage: boolean}> {
+/** Packets of one serial, reassembled across pages. Started part-way (`midStream`), a packet
+ * continued from a page before the start is incomplete and is dropped. */
+async function* oggPackets(reader: ByteReader, from: number, serial: number | undefined, signal?: AbortSignal, midStream = false): AsyncGenerator<{data: Uint8Array; serial: number; offset: number; granule: number; lastOnPage: boolean}> {
   const c = new Cursor(reader, from, 1 << 16, signal);
-  let partial: Uint8Array[] = [], stream = serial;
+  let partial: Uint8Array[] = [], stream = serial, first = midStream;
   for (;;) {
     const p = await page(c);
     if (!p) return;
     if (stream === undefined) stream = p.serial;
     if (p.serial !== stream) continue;
+    let dropFirst = first && !!(p.flags & 1);
+    first = false;
     if (!(p.flags & 1)) partial = []; // not a continuation: drop any dangling piece
     let at = 0;
     const done: Uint8Array[] = [];
@@ -46,7 +49,8 @@ async function* oggPackets(reader: ByteReader, from: number, serial: number | un
         const size = partial.reduce((s, x) => s + x.length, 0), data = new Uint8Array(size);
         let o = 0;
         for (const x of partial) { data.set(x, o); o += x.length; }
-        done.push(data);
+        if (!dropFirst) done.push(data);
+        dropFirst = false;
         partial = [];
       }
     }
@@ -99,16 +103,22 @@ export async function openOgg(reader: ByteReader): Promise<Demuxer & {preSkip: n
     config = Object.freeze({codec: 'vorbis', family: 'vorbis', sampleRate: u32le(id, 12), numberOfChannels: id[11]!, description: xiphLace(headers.map(h => h.data))});
   }
   const stream = serial!, headerCount = need(), opus = kind === 'opus';
+  const packet = (p: {data: Uint8Array; offset: number}): Packet => (opus ? {data: p.data, frames: opusPacketFrames(p.data), offset: p.offset} : {data: p.data, offset: p.offset});
+  async function* packets(signal?: AbortSignal): AsyncGenerator<Packet> {
+    let seen = 0;
+    // From the page holding the first header: skip the header packets.
+    for await (const p of oggPackets(reader, headers[0]!.offset, stream, signal)) {
+      if (seen++ < headerCount) continue;
+      yield packet(p);
+    }
+    void after;
+  }
   return {
-    config, preSkip,
-    async *packets(signal?: AbortSignal): AsyncGenerator<Packet> {
-      let seen = 0;
-      // From the page holding the last header: skip the header packets on it.
-      for await (const p of oggPackets(reader, headers[0]!.offset, stream, signal)) {
-        if (seen++ < headerCount) continue;
-        yield opus ? {data: p.data, frames: opusPacketFrames(p.data), offset: p.offset} : {data: p.data, offset: p.offset};
-      }
-      void after;
+    config, preSkip, packets,
+    async *packetsFrom(offset: number, signal?: AbortSignal): AsyncGenerator<Packet> {
+      // An index entry is a page past the headers that starts a packet.
+      if (offset <= headers[headers.length - 1]!.offset) { yield* packets(signal); return; }
+      for await (const p of oggPackets(reader, offset, stream, signal, true)) yield packet(p);
     },
   };
 }

@@ -239,6 +239,7 @@ export function decodeGetMeLibraryNavigationResponse(input: unknown): types.GetM
 export function decodeGetMediaGrantResponse(input: unknown): types.GetMediaGrantResponse { return decode("GetMediaGrantResponse", input) as types.GetMediaGrantResponse; }
 export function decodeGetMediaGrantAudioResponse(input: unknown): types.GetMediaGrantAudioResponse { return decode("GetMediaGrantAudioResponse", input) as types.GetMediaGrantAudioResponse; }
 export function decodeGetMediaGrantAudioConvertedResponse(input: unknown): types.GetMediaGrantAudioConvertedResponse { return decode("GetMediaGrantAudioConvertedResponse", input) as types.GetMediaGrantAudioConvertedResponse; }
+export function decodeGetMediaGrantAudioIndexResponse(input: unknown): types.GetMediaGrantAudioIndexResponse { return decode("GetMediaGrantAudioIndexResponse", input) as types.GetMediaGrantAudioIndexResponse; }
 export function decodeGetMediaGrantFileResponse(input: unknown): types.GetMediaGrantFileResponse { return decode("GetMediaGrantFileResponse", input) as types.GetMediaGrantFileResponse; }
 export function decodeGetMediaLinearPlaybackIdGenerationTokenNameResponse(input: unknown): types.GetMediaLinearPlaybackIdGenerationTokenNameResponse { return decode("GetMediaLinearPlaybackIdGenerationTokenNameResponse", input) as types.GetMediaLinearPlaybackIdGenerationTokenNameResponse; }
 export function decodeGetMetadataAttentionResponse(input: unknown): types.GetMetadataAttentionResponse { return decode("GetMetadataAttentionResponse", input) as types.GetMetadataAttentionResponse; }
