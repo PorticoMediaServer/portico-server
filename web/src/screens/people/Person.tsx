@@ -66,7 +66,7 @@ export function PersonScreen() {
     } catch (e) {
       setState(prev => ({phase: 'error', page: prev.page, error: e}));
     }
-  }, [api, scope, personId, role]);
+  }, [api, scope, personId, role, kept]);
   useEffect(() => { void load(); }, [load]);
   // The grid is the kept one (the memory releases it when the person is pushed out).
   const credits = useMemo<WindowedCollection<PersonCredit>>(
