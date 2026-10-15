@@ -1,4 +1,4 @@
-export {alertLabel, alertLabels, alertTone, duration, factLabel, factLabels, formatFact, jobLabel, jobLabels, jobStateLabel, jobTone, sentence} from '@core/server-admin/console-words.ts';
+export {alertTone, duration, jobTone, sentence} from '@core/server-admin/console-words.ts';
 import {useFreshness} from '../app/freshness';
 import type {FreshnessDependency} from '@core/freshness-hub.ts';
 import type {I18n} from '@i18n';

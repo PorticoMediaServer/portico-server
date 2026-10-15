@@ -16,4 +16,5 @@ if (styleNonce && styleNonce !== '__PORTICO_STYLE_NONCE__') {
 // selection, playback) own real side effects and are not written for
 // double-invoked effects. Lifecycle correctness is tested against them
 // directly instead.
-createRoot(document.getElementById('root')!).render(<App />);
+// Below the browser floor, `browser-check.js` has already said so in place of the app.
+if (!(window as Window & {__porticoUnsupportedBrowser?: boolean}).__porticoUnsupportedBrowser) createRoot(document.getElementById('root')!).render(<App />);

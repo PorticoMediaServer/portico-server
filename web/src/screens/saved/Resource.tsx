@@ -170,7 +170,7 @@ export function SavedResourceScreen() {
     const mosaic = mosaicPaths({}, media.map(e => e.media));
     return (
       <Page>
-        <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={t('web.saved.playlist')} title={name} titleAdornment={<HeroMosaic paths={mosaic ?? []} />} subtitle={p ? [p.entryCount > 0 ? t('web.saved.items', {count: p.entryCount}) : undefined, p.summary].filter(Boolean).join(' · ') || undefined : undefined} actions={<>
+        <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={t('web.saved.playlist')} pageKey={p?.id} title={name} titleAdornment={<HeroMosaic paths={mosaic ?? []} />} subtitle={p ? [p.entryCount > 0 ? t('web.saved.items', {count: p.entryCount}) : undefined, p.summary].filter(Boolean).join(' · ') || undefined : undefined} actions={<>
           {/* PERF-S06: Play and Shuffle send one v1 playlist-container request, however large. */}
           {group.active ? (sortedFirst ? <>
             <Button variant="primary" icon="play" label={t('action.play')} onClick={() => playSorted(sortedFirst)} />
@@ -234,7 +234,7 @@ export function SavedResourceScreen() {
   });
   return (
     <Page>
-      <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={view ? t('web.saved.savedView') : r?.visibility === 'server' ? t('web.saved.sharedCollection') : t('web.saved.collection')} title={name} titleAdornment={<HeroMosaic paths={collectionMosaic ?? []} />} subtitle={r?.summary} actions={<>
+      <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={view ? t('web.saved.savedView') : r?.visibility === 'server' ? t('web.saved.sharedCollection') : t('web.saved.collection')} pageKey={r?.id} title={name} titleAdornment={<HeroMosaic paths={collectionMosaic ?? []} />} subtitle={r?.summary} actions={<>
         {r?.kind === 'collection' && r.role === 'owner' && can('update') ? <Switch label={t('web.saved.visibleToAll')} checked={r.visibility === 'server'} disabled={snap.pending} onCheckedChange={v => void service.mutate({action: 'update', visibility: v ? 'server' : 'private'}).catch(() => {})} /> : null}
         {group.active ? (sortedFirst ? <>
           <Button variant="primary" icon="play" label={t('action.play')} onClick={() => playSorted(sortedFirst)} />
@@ -291,6 +291,7 @@ function WindowedRows<T extends {id: string}>({items, estimateRowHeight, columnM
   const store = React.useMemo(() => createStaticCollection<T>({keyOf: e => e.id}), []);
   React.useEffect(() => { store.setItems(items); }, [store, items]);
   React.useEffect(() => () => store.collection.dispose(), [store]);
+  const placeholder = useCallback(() => <div style={{height: estimateRowHeight, padding: '8px 16px'}}><Skeleton height={estimateRowHeight - 16} /></div>, [estimateRowHeight]);
   return (
     <WindowedGrid
       collection={store.collection}
@@ -298,7 +299,7 @@ function WindowedRows<T extends {id: string}>({items, estimateRowHeight, columnM
       columnMin={columnMin}
       label={label}
       renderItem={renderItem}
-      renderPlaceholder={() => <div style={{height: estimateRowHeight, padding: '8px 16px'}}><Skeleton height={estimateRowHeight - 16} /></div>}
+      renderPlaceholder={placeholder}
     />
   );
 }

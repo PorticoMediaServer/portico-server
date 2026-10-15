@@ -145,7 +145,8 @@ export function Shell() {
   const who = sessionIdentity(session.session);
   const libraries = useLibraries(session.api, who || undefined);
   const metrics = useMemo(artworkMetricsEnabled, []);
-  const artwork = useMemo(() => new ArtworkStore(session.api, currentAccessToken, metrics ? {onScreenSettled: logScreen} : {}), [session.api, who, metrics]);
+  // A new viewer gets a new store: artwork is authorized per viewer, so one viewer's cached images are never shown to the next.
+  const artwork = useMemo(() => new ArtworkStore(session.api, currentAccessToken, metrics ? {onScreenSettled: logScreen} : {}), [session.api, who, metrics]); // eslint-disable-line react-hooks/exhaustive-deps -- `who` is the reset key
   useArtworkScreens(artwork, metrics);
   useSearchShortcut();
   // A replaced store must release its object URLs, or every poster it ever

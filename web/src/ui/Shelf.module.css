@@ -1,8 +1,8 @@
 .shelf { display: flex; flex-direction: column; gap: 12px; }
 .head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; padding: 0 var(--page-gutter); }
 .headLeft { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
-.title { font-size: 18px; font-weight: 600; letter-spacing: -0.01em; }
-.count { font-size: 13px; color: var(--text-tertiary); }
+.title { font-size: 1.125rem; font-weight: 600; letter-spacing: -0.01em; }
+.count { font-size: 0.8125rem; color: var(--text-tertiary); }
 .headRight { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .scroller { position: relative; }
 .track { display: grid; grid-auto-flow: column; grid-auto-columns: var(--card-width); gap: var(--card-gap, 16px); overflow-x: auto; overscroll-behavior-x: contain; scroll-snap-type: x proximity; scroll-padding-inline: var(--page-gutter); padding: 6px var(--page-gutter) 12px; scrollbar-width: none; }

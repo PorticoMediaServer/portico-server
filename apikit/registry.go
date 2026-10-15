@@ -215,6 +215,11 @@ type replyKey struct{}
 type reply struct {
 	status int
 	header http.Header
+	// For a GET: what the client holds (If-None-Match), and whether the handler
+	// found it current before composing anything (Conditional).
+	ifNoneMatch string
+	conditional bool
+	notModified bool
 }
 
 // SetStatus overrides the route's declared success status for this request (a
@@ -231,6 +236,35 @@ func SetHeader(ctx context.Context, key, value string) {
 	if r, ok := ctx.Value(replyKey{}).(*reply); ok && !strings.ContainsAny(key+value, "\r\n") {
 		r.header.Set(key, value)
 	}
+}
+
+// Conditional names this GET response's validator before the handler composes
+// it, and reports whether the client already holds that version. On true the
+// handler returns at once with a zero response and no error: the registry
+// answers 304 without building, marshalling or hashing a body. The tag must
+// change whenever the bytes could (revisions, the viewer's authority fence,
+// the request's own parameters); it replaces the body-digest validator.
+func Conditional(ctx context.Context, tag string) bool {
+	r, ok := ctx.Value(replyKey{}).(*reply)
+	if !ok || !r.conditional || tag == "" || strings.ContainsAny(tag, "\"\r\n") {
+		return false
+	}
+	quoted := "\"" + tag + "\""
+	r.header.Set("ETag", quoted)
+	r.notModified = holds(r.ifNoneMatch, quoted)
+	return r.notModified
+}
+
+// holds is the If-None-Match comparison: a list of entity tags, or `*`. The
+// weak comparison applies, so W/ and the strong form match.
+func holds(header, tag string) bool {
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" || candidate != "" && strings.TrimPrefix(candidate, "W/") == strings.TrimPrefix(tag, "W/") {
+			return true
+		}
+	}
+	return false
 }
 
 func New(authorize Authorize, catalogue *apierror.Registry) *Registry {
@@ -533,7 +567,7 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 			fail(&apierror.Error{Code: "invalid_request"})
 			return
 		}
-		out := &reply{header: http.Header{}}
+		out := &reply{header: http.Header{}, conditional: m.Method == "GET", ifNoneMatch: q.Header.Get("If-None-Match")}
 		q = q.WithContext(context.WithValue(q.Context(), replyKey{}, out))
 		response, err := route.Handler(q.Context(), q, request)
 		if err != nil {
@@ -551,6 +585,14 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 			w.WriteHeader(204)
 			return
 		}
+		// A validator the handler named (Conditional, or a revision through
+		// SetHeader) is compared before the body is marshalled: an unchanged
+		// answer costs no encoding, hashing or writing.
+		if m.Method == "GET" && (out.notModified || w.Header().Get("ETag") != "" && holds(out.ifNoneMatch, w.Header().Get("ETag"))) {
+			w.Header().Set("Cache-Control", "private, no-cache")
+			w.WriteHeader(304)
+			return
+		}
 		raw, err := marshalResponse(response)
 		if err != nil {
 			fail(err)
@@ -564,11 +606,9 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 				w.Header().Set("ETag", tag)
 			}
 			w.Header().Set("Cache-Control", "private, no-cache")
-			for _, candidate := range strings.Split(q.Header.Get("If-None-Match"), ",") {
-				if strings.TrimPrefix(strings.TrimSpace(candidate), "W/") == tag || strings.TrimSpace(candidate) == "*" {
-					w.WriteHeader(304)
-					return
-				}
+			if holds(out.ifNoneMatch, tag) {
+				w.WriteHeader(304)
+				return
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")

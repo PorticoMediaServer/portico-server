@@ -2,7 +2,8 @@ import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import type {DeletionPreview, IdentityProvider, SecurityIntent, SecurityPurpose, SecurityResult, SecurityState} from '@core/hosted-security';
 import {useSession} from '../../app/session';
 import {accountSecurityClient} from '../../bridge/account-security-client';
-import {accountApi, type AccountScope} from '../../bridge/account-api';
+import type {AccountScope} from '../../bridge/account-api';
+import {useAccountApi, useAccountScope} from './account-hooks';
 import {currentI18n, useI18n, type I18n} from '../../app/i18n';
 import {ErrorNotice, errorText} from '../../app/errors';
 import {Button, ConfirmDialog, Dialog, Input, Loading, Notice, SettingsGroup, SettingsPage, SettingsRow, Text, PasswordStrength} from '../../ui';
@@ -35,7 +36,8 @@ export function AccountSecurity({scope, returning, onReturned}: {scope: AccountS
   const i18n = useI18n();
   const {t} = i18n;
   const client = useMemo(() => accountSecurityClient(), []);
-  const api = useMemo(() => accountApi(scope), [scope.accountId, scope.familyId]);
+  const account = useAccountScope(scope);
+  const api = useAccountApi(account);
   const [state, setState] = useState<SecurityState>();
   const [error, setError] = useState<unknown>();
   const [notice, setNotice] = useState('');
@@ -48,8 +50,8 @@ export function AccountSecurity({scope, returning, onReturned}: {scope: AccountS
   const [disconnecting, setDisconnecting] = useState<{id: string; provider: IdentityProvider}>();
   const load = useCallback(async () => {
     setError(undefined);
-    try { setState(await client.state(scope, await api.token())); } catch (e) { setError(e ?? new Error()); }
-  }, [client, api, scope.accountId, scope.familyId]);
+    try { setState(await client.state(account, await api.token())); } catch (e) { setError(e ?? new Error()); }
+  }, [client, api, account]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     let live = true;
@@ -137,7 +139,7 @@ export function AccountSecurity({scope, returning, onReturned}: {scope: AccountS
 function SecurityTask({task, state, scope, onClose}: {task: Task; state: SecurityState; scope: AccountScope; onClose: (message?: string, signedOut?: boolean) => void}) {
   const {t} = useI18n();
   const client = useMemo(() => accountSecurityClient(), []);
-  const api = useMemo(() => accountApi(scope), [scope.accountId, scope.familyId]);
+  const api = useAccountApi(scope);
   const operationId = useMemo(() => crypto.randomUUID(), []);
   const [password, setPassword] = useState('');
   const [factor, setFactor] = useState('');
@@ -225,7 +227,7 @@ export const confirmationMatches = (typed: string, target: string) => !!target &
 function DeleteAccount({state, scope, onClose}: {state: SecurityState; scope: AccountScope; onClose: () => void}) {
   const {t} = useI18n();
   const client = useMemo(() => accountSecurityClient(), []);
-  const api = useMemo(() => accountApi(scope), [scope.accountId, scope.familyId]);
+  const api = useAccountApi(scope);
   const session = useSession();
   const operationId = useMemo(() => crypto.randomUUID(), []);
   const [preview, setPreview] = useState<DeletionPreview>();

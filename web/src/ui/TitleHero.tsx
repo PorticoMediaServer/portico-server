@@ -29,7 +29,7 @@ export type TitleHeroAction = {label: string; icon?: IconName; onClick: () => vo
  * - Artwork beside the identity on wide layouts only when there's no logo:
  *   poster, square for music, circle for artists and people.
  */
-export function TitleHero({backdrop, artwork, logo, title, originalTitle, context, onContext, facts = [], badge, extra, tagline, synopsis, credits, choices, primary, secondary, onBack, loading}: {
+export function TitleHero({backdrop, artwork, logo, title, originalTitle, context, onContext, facts = [], badge, extra, tagline, synopsis, credits, choices, primary, secondary, onBack, loading, pageKey}: {
   backdrop?: string;
   artwork?: {path?: string; shape: Extract<ArtworkShape, 'poster' | 'square' | 'circle'>; icon?: IconName; initial?: string; /** 2×2 hero mosaic (collection/playlist without custom art); wins over `path`. */ mosaic?: readonly string[]};
   logo?: string;
@@ -56,6 +56,8 @@ export function TitleHero({backdrop, artwork, logo, title, originalTitle, contex
   secondary?: React.ReactNode;
   onBack?: () => void;
   loading?: boolean;
+  /** What the hero shows (the loaded title's id), so the page's announcement can tell two titles of the same name apart. */
+  pageKey?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const shownFacts = facts.filter(f => f !== undefined && f !== null && f !== false && f !== '');
@@ -85,8 +87,8 @@ export function TitleHero({backdrop, artwork, logo, title, originalTitle, contex
         ) : null}
         <div className={s.identity}>
           {context ? (onContext ? <button type="button" className={cx(s.context, s.contextLink)} onClick={onContext}>{context}</button> : <span className={s.context}>{context}</span>) : null}
-          {logo ? <Artwork path={logo} shape="logo" alt={title ?? ''} className={s.logo} /> : title ? <h1 className={s.title}>{title}</h1> : <Skeleton height={44} width="55%" />}
-          {logo && title ? <h1 className="visually-hidden">{title}</h1> : null}
+          {logo ? <Artwork path={logo} shape="logo" alt={title ?? ''} className={s.logo} /> : title ? <h1 className={s.title} data-page-key={pageKey}>{title}</h1> : <Skeleton height={44} width="55%" />}
+          {logo && title ? <h1 className="visually-hidden" data-page-key={pageKey}>{title}</h1> : null}
           {originalTitle ? <p className={s.originalTitle}>{originalTitle}</p> : null}
           {shownFacts.length || badge || extra ? (
             <div className={s.facts}>

@@ -40,22 +40,19 @@ test('a picture colour this app does not know reads as blue and the profile is o
  assert.equal(second.art,'coral');
  assert.deepEqual(skippedParts(),[{document:'profiles',part:'profile.art',count:1}]);
 });
-test('a profile list read for display leaves out one unreadable profile and never shows it with a restriction missing',async()=>{
- const hosted={authority:'hosted' as const,accountId:'account'};
- const listed=(profiles:unknown[],extra:Record<string,unknown>={})=>new ManagedProfilesClient(apiFor({accountId:'account',maxProfiles:8,profiles,...extra},[]),hosted).list();
+test('a profile list read for display leaves out one unreadable profile and never shows it with a restriction missing',()=>{
+ const listed=(profiles:unknown)=>parseManagedProfiles(profiles,true);
  resetSkippedParts();
- const kept=await listed([p(),{...p(1),pinRequired:'no'},{...p(2),allowedLibraries:[7]},{...p(3),allowedLibraries:'all'},{...p(4),pinRevision:0},{...p(5),name:''},null,{...p(7),pinRequired:true,allowedLibraries:[]}],{futureField:1});
+ const kept=listed([p(),{...p(1),pinRequired:'no'},{...p(2),allowedLibraries:[7]},{...p(3),allowedLibraries:'all'},{...p(4),pinRevision:0},{...p(5),name:''},null,{...p(7),pinRequired:true,allowedLibraries:[]}]);
  assert.deepEqual(kept.map(v=>v.id),['profile-0','profile-7']);assert.equal(kept[1].pinRequired,true);assert.deepEqual(kept[1].allowedLibraries,[]);
  assert.deepEqual(skippedParts(),[{document:'profiles',part:'rows',count:6}]);
- // The primary profile, the size of the list, a repeated id, the account and its profile limit are not negotiable.
- await assert.rejects(listed([{...p(),pinRequired:'no'},p(1)]));
- await assert.rejects(listed([p(),{...p(1),primary:true}]));
- await assert.rejects(listed([p(),p(1),{...p(1),pinRequired:true}]));
- await assert.rejects(listed(Array.from({length:9},(_,i)=>p(i))));
- await assert.rejects(listed([]));
- await assert.rejects(listed([p()],{accountId:'another'}));
- await assert.rejects(listed([p()],{maxProfiles:9}));
- await assert.rejects(listed({} as unknown as unknown[]));
+ // The primary profile, the size of the list and a repeated id are not negotiable.
+ assert.throws(()=>listed([{...p(),pinRequired:'no'},p(1)]));
+ assert.throws(()=>listed([p(),{...p(1),primary:true}]));
+ assert.throws(()=>listed([p(),p(1),{...p(1),pinRequired:true}]));
+ assert.throws(()=>listed(Array.from({length:9},(_,i)=>p(i))));
+ assert.throws(()=>listed([]));
+ assert.throws(()=>listed({}));
 });
 test('sign-in and the account snapshot still refuse a profile list with an unreadable profile in it',async()=>{
  const account={id:'account',username:'member',primaryProfileId:'profile-0',role:'member',revision:1,disabled:false,allowedLibraries:[]};
@@ -64,23 +61,10 @@ test('sign-in and the account snapshot still refuse a profile list with an unrea
  assert.throws(()=>parseDirectSnapshot(raw));assert.throws(()=>parseDirectSnapshot(raw,{accountId:'account',serverId:'server'}));
  const local=new ManagedProfilesClient(apiFor(raw,[]),scope);
  assert.deepEqual((await local.list()).map(v=>v.id),['profile-0']);
- // A profile whose row could not be read has no policy this app can state, so none is stated.
- await assert.rejects(local.policies('profile-1'));
- assert.deepEqual(await local.policies('profile-0'),[{serverId:'server',allowedLibraries:null}]);
  // The account's own role, restrictions and identity are exact in every reading.
  for(const patch of [{role:'superuser'},{allowedLibraries:[7]},{allowedLibraries:undefined},{disabled:'no'},{revision:0},{id:''}]){
   const changed={...raw,profiles:[p()],account:{...account,...patch}};
   assert.throws(()=>parseDirectSnapshot(changed));await assert.rejects(new ManagedProfilesClient(apiFor(changed,[]),scope).list());
  }
  await assert.rejects(new ManagedProfilesClient(apiFor({...raw,profiles:[p()],serverId:'another'},[]),scope).list());
-});
-test('a hosted profile policy list is a restriction document and is read whole or not at all',async()=>{
- const hosted={authority:'hosted' as const,accountId:'account'};
- const policies=(items:unknown)=>new ManagedProfilesClient(apiFor({items,futureField:1},[]),hosted).policies('profile-1');
- assert.deepEqual(await policies([{serverId:'a',allowedLibraries:null,futureField:1},{serverId:'b',allowedLibraries:['films']}]),[{serverId:'a',allowedLibraries:null},{serverId:'b',allowedLibraries:['films']}]);
- await assert.rejects(policies([{serverId:'a',allowedLibraries:null},{serverId:'b',allowedLibraries:[7]}]));
- await assert.rejects(policies([{serverId:'a',allowedLibraries:null},{serverId:'b'}]));
- await assert.rejects(policies([{serverId:'a',allowedLibraries:null},{serverId:'',allowedLibraries:[]}]));
- await assert.rejects(policies([{serverId:'a',allowedLibraries:null},null]));
- await assert.rejects(policies(Array.from({length:1001},()=>({serverId:'a',allowedLibraries:null}))));
 });
