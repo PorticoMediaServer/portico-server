@@ -256,6 +256,7 @@ export function ShowScreen() {
         <TitleHero
           onBack={back}
           loading={!show}
+          pageKey={show?.id}
           backdrop={show?.backdropUrl}
           artwork={{path: show?.posterUrl, shape: 'poster', icon: 'tv'}}
           logo={show?.logoUrl}

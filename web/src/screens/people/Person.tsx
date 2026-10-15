@@ -92,7 +92,7 @@ export function PersonScreen() {
   const knownFor = person && role === 'all' && total > person.knownFor.length ? person.knownFor : [];
   return (
     <Page>
-      <PageHeader onBack={back} title={person?.name ?? (state.phase === 'loading' ? <Skeleton style={{width: 220, height: 32}} /> : t('web.person.fallback'))} eyebrow={person?.roles.join(' · ')} subtitle={dates || undefined} />
+      <PageHeader onBack={back} pageKey={person?.id} title={person?.name ?? (state.phase === 'loading' ? <Skeleton style={{width: 220, height: 32}} /> : t('web.person.fallback'))} eyebrow={person?.roles.join(' · ')} subtitle={dates || undefined} />
       {state.phase === 'error' && !person ? <ErrorState error={state.error} context="person" retry={() => void load()} /> : null}
       {person ? (
         <Inset>

@@ -1,10 +1,14 @@
 import React, {useEffect, useRef, useState} from 'react';
-import {useRouterState} from '@tanstack/react-router';
+import {useRouter, useRouterState} from '@tanstack/react-router';
 import {currentI18n} from './i18n';
 import {useViewerScope} from './viewer-scope';
 
-/** What names the page at this moment: the element, and the name it gives (none while it is a stand-in or still empty). */
-export type PageHeading = Readonly<{element: unknown; name: string}>;
+/**
+ * What names the page at this moment: the element, the name it gives (none while it is a stand-in
+ * or still empty), and what it is the heading of (`data-page-key`: an entity's id), so two titles
+ * with the same name on the same heading element are still told apart.
+ */
+export type PageHeading = Readonly<{element: unknown; name: string; key?: string}>;
 
 /**
  * The name of the page that is open: its heading, or the name a page gives itself with
@@ -16,7 +20,8 @@ export function pageName(root: {querySelector(selector: string): {getAttribute(n
   const found = root.querySelector('main [data-page-title], main h1');
   if (!found) return undefined;
   const text = found.getAttribute('data-provisional') !== null ? '' : found.getAttribute('data-page-title') ?? found.textContent;
-  return {element: found, name: (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200)};
+  const key = found.getAttribute('data-page-key');
+  return {element: found, name: (text ?? '').replace(/\s+/g, ' ').trim().slice(0, 200), ...(key ? {key} : {})};
 }
 
 /**
@@ -24,7 +29,7 @@ export function pageName(root: {querySelector(selector: string): {getAttribute(n
  * be announced, what the previous destination left on screen (`stale`), and what was last seen.
  */
 export type PageTitleState = Readonly<{scope: string; pathname: string; pending: boolean; stale?: PageHeading; last?: PageHeading}>;
-const same = (a: PageHeading | undefined, b: PageHeading | undefined) => !!a && !!b && a.element === b.element && a.name === b.name;
+const same = (a: PageHeading | undefined, b: PageHeading | undefined) => !!a && !!b && a.element === b.element && a.name === b.name && a.key === b.key;
 
 /**
  * The address or the viewer changed; `heading` is what is on screen at that moment. A new address
@@ -32,23 +37,29 @@ const same = (a: PageHeading | undefined, b: PageHeading | undefined) => !!a && 
  * (the browser reads the document title on load). A change of viewer on the same address is not
  * a navigation: it announces nothing and drops anything not yet announced. What the previous
  * destination left on screen is remembered so that it is never taken for the new one's name: the
- * same heading the last address showed, or, when the viewer changed, whatever is showing at all.
+ * same heading the last address showed, the heading that was up as this navigation began
+ * (`outgoing`: after several quick moves, a page passed through may never have been looked at),
+ * or, when the viewer changed, whatever is showing at all.
  */
-export function pageTitleMoved(previous: PageTitleState | undefined, scope: string, pathname: string, heading: PageHeading | undefined): PageTitleState {
+export function pageTitleMoved(previous: PageTitleState | undefined, scope: string, pathname: string, heading: PageHeading | undefined, outgoing?: PageHeading): PageTitleState {
   if (!previous) return {scope, pathname, pending: false, last: heading};
-  const stale = heading && (previous.scope !== scope || same(heading, previous.last)) ? heading : undefined;
+  const stale = heading && (previous.scope !== scope || same(heading, previous.last) || same(heading, outgoing)) ? heading : undefined;
   return {scope, pathname, pending: previous.pathname !== pathname, stale, last: heading};
 }
 
 /**
  * The page was looked at again. Returns the name to announce now, if any: the destination's own
  * name the first time it has one. Nothing that happens afterwards on the same address is
- * announced: a refresh, a renamed item, a tab kept in the query.
+ * announced: a refresh, a renamed item, a tab kept in the query. Once anything other than the
+ * previous destination's heading has been on screen (a stand-in, no heading, another element),
+ * that heading is no longer the previous page's: a destination with the very same name and
+ * heading is then announced when its name comes back.
  */
 export function pageTitleRead(state: PageTitleState, heading: PageHeading | undefined): {state: PageTitleState; announce: string} {
-  const name = heading && !same(heading, state.stale) ? heading.name : '';
+  const leftover = same(heading, state.stale);
+  const name = heading && !leftover ? heading.name : '';
   const announce = state.pending ? name : '';
-  return {state: {...state, pending: state.pending && !announce, stale: name ? undefined : state.stale, last: heading}, announce};
+  return {state: {...state, pending: state.pending && !announce, stale: leftover ? state.stale : undefined, last: heading}, announce};
 }
 
 /** The browser tab's title: the page, then the product; the product alone while a page has no name yet. */
@@ -68,14 +79,18 @@ const product = typeof document === 'undefined' ? '' : document.title;
  */
 export function PageTitle() {
   const pathname = useRouterState({select: state => (state.resolvedLocation ?? state.location).pathname});
+  const router = useRouter();
   const viewer = useViewerScope();
   const scope = viewer.serverId + '/' + viewer.viewerId;
   const [announcement, setAnnouncement] = useState('');
   const state = useRef<PageTitleState | undefined>(undefined);
+  // The heading up as each navigation begins, before the next page draws anything.
+  const outgoing = useRef<PageHeading | undefined>(undefined);
+  useEffect(() => router.subscribe('onBeforeNavigate', () => { outgoing.current = pageName(document); }), [router]);
   useEffect(() => {
     // Nothing from the address or viewer just left stays in the live region or waiting to enter it.
     setAnnouncement('');
-    state.current = pageTitleMoved(state.current, scope, pathname, pageName(document));
+    state.current = pageTitleMoved(state.current, scope, pathname, pageName(document), outgoing.current);
     let timer: ReturnType<typeof setTimeout> | undefined;
     const read = () => {
       timer = undefined;

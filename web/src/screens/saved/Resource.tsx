@@ -151,7 +151,7 @@ export function SavedResourceScreen() {
     const mosaic = mosaicPaths({}, media.map(e => e.media));
     return (
       <Page>
-        <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={t('web.saved.playlist')} title={name} titleAdornment={<HeroMosaic paths={mosaic ?? []} />} subtitle={p ? [p.entryCount > 0 ? t('web.saved.items', {count: p.entryCount}) : undefined, p.summary].filter(Boolean).join(' · ') || undefined : undefined} actions={<>
+        <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={t('web.saved.playlist')} pageKey={p?.id} title={name} titleAdornment={<HeroMosaic paths={mosaic ?? []} />} subtitle={p ? [p.entryCount > 0 ? t('web.saved.items', {count: p.entryCount}) : undefined, p.summary].filter(Boolean).join(' · ') || undefined : undefined} actions={<>
           {/* PERF-S06: Play and Shuffle send one v1 playlist-container request, however large. */}
           {first ? <Button variant="primary" icon="play" label={t('action.play')} onClick={() => player.playSequence(media.map(e => e.media), 0, 0, sequenceContainer('playlist', resourceId))} /> : null}
           {media.filter(e => e.media.playback).length > 1 ? <Button variant="secondary" icon="shuffle" label={t('title.shuffle')} onClick={() => player.playSequence(media.map(e => e.media), 0, 0, sequenceContainer('playlist', resourceId, {shuffle: true}))} /> : null}
@@ -201,7 +201,7 @@ export function SavedResourceScreen() {
   if (can('delete')) pageMenu.push({id: 'delete', label: view ? t('web.saved.deleteView') : t('web.saved.deleteCollection'), icon: 'trash', destructive: true, separatorBefore: pageMenu.length > 0});
   return (
     <Page>
-      <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={view ? t('web.saved.savedView') : r?.visibility === 'server' ? t('web.saved.sharedCollection') : t('web.saved.collection')} title={name} titleAdornment={<HeroMosaic paths={collectionMosaic ?? []} />} subtitle={r?.summary} actions={<>
+      <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={view ? t('web.saved.savedView') : r?.visibility === 'server' ? t('web.saved.sharedCollection') : t('web.saved.collection')} pageKey={r?.id} title={name} titleAdornment={<HeroMosaic paths={collectionMosaic ?? []} />} subtitle={r?.summary} actions={<>
         {r?.kind === 'collection' && r.role === 'owner' && can('update') ? <Switch label={t('web.saved.visibleToAll')} checked={r.visibility === 'server'} disabled={snap.pending} onCheckedChange={v => void service.mutate({action: 'update', visibility: v ? 'server' : 'private'}).catch(() => {})} /> : null}
         {pageMenu.length ? <Menu label={t('web.saved.collectionOptions')} trigger={<Button variant="ghost" icon="more" aria-label={t('web.saved.collectionOptions')} />} items={pageMenu} onSelect={id => (id === 'rename' ? setRenaming(true) : setDeleting(true))} /> : null}
       </>} />
