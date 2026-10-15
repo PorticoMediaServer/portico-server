@@ -24,6 +24,7 @@ import {spanningGroup, titlePivot, useGroupBrowse, useGroupLibraries, type Group
 import {GroupBar, GroupGrid, GroupLibraryChips} from '../shared/GroupBrowse';
 
 type SavedTab = 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history';
+const NO_SECTIONS: NonNullable<SavedSnapshot['projection']>['sections'] = [];
 const tabIds: readonly SavedTab[] = ['watchlist', 'favorites', 'playlists', 'collections', 'views', 'history'];
 const tabs = (t: I18n['t']): {id: SavedTab; label: string}[] => [{id: 'watchlist', label: t('saved.tab.watchlist')}, {id: 'favorites', label: t('saved.tab.favorites')}, {id: 'playlists', label: t('saved.tab.playlists')}, {id: 'collections', label: t('saved.tab.collections')}, {id: 'views', label: t('saved.tab.savedViews')}, {id: 'history', label: t('saved.tab.history')}];
 const filterLabel = (t: I18n['t'], f: string) => f === 'unwatched' ? t('web.saved.unwatched') : f === 'inProgress' ? t('web.saved.inProgress') : t('web.search.all');
@@ -190,7 +191,7 @@ export function SavedScreen() {
 function SavedView({tab, filter, onShowAll, snapshot, onRetry, onRefresh, onNext, onPrevious}: {tab: Exclude<SavedTab, 'history' | 'collections'>; filter?: string; onShowAll: () => void; snapshot: SavedSnapshot; onRetry: () => void; onRefresh: () => void; onNext: (id: string) => void; onPrevious: () => void}) {
   const {t} = useI18n();
   const navigate = useNavigate();
-  const sections = snapshot.projection?.sections ?? [];
+  const sections = snapshot.projection?.sections ?? NO_SECTIONS;
   const entries = useMemo(() => sections.flatMap(x => x.entries), [sections]);
   const pageable = sections.find(x => x.nextCursor);
   const copy = emptyCopy(t, tab);

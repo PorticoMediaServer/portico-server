@@ -15,6 +15,7 @@ import {dependsOn} from '@core/freshness-hub.ts';
 
 /** A finished or failed recording and a conflict each raise a notice: the one hint the server sends for this page. */
 const dvrHints = Object.freeze([dependsOn.event('notification.changed')]);
+const NO_RECORDINGS: readonly Recording[] = [];
 
 const views = (t: I18n['t']): {id: View; label: string}[] => [{id: 'upcoming', label: t('web.dvr.upcoming')}, {id: 'recorded', label: t('web.dvr.recorded')}, {id: 'rules', label: t('web.dvr.rules')}, {id: 'history', label: t('web.dvr.history')}, {id: 'storage', label: t('web.dvr.storage')}];
 const statusOf = (e: unknown) => (e && typeof e === 'object' && typeof (e as {status?: unknown}).status === 'number' ? (e as {status: number}).status : 0);
@@ -133,7 +134,7 @@ export function DVRView() {
     setError('');
     try { setConfirm({kind: 'delete', recording: r, preview: await dvr.deletePreview(r)}); } catch (e) { setError(dvrError(e)); }
   };
-  const recordings = page?.recordings ?? [];
+  const recordings = page?.recordings ?? NO_RECORDINGS;
   const rules = page?.rules ?? [];
   const loaded = view === 'storage' ? !!storage : !!page;
   const stateTone = (r: Recording) => (r.state === 'recording' ? 'record' : r.state === 'failed' || r.state === 'conflicted' ? 'danger' : r.state === 'completed' || r.state === 'incomplete-playable' ? 'healthy' : 'neutral');

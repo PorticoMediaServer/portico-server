@@ -57,14 +57,14 @@ export function AccountForm({onSignedIn, onTitle}: {onSignedIn: (session: Hosted
     // MAIL-04: one link, /reset#token=, nothing to paste. The new password is chosen on that
     // page, so this form asks for the email only and then says to check the inbox.
     const titles: Record<Mode, [string, string?]> = {
-      signin: mfa ? ['Enter your verification code'] : ['Welcome home.', 'Sign in with your Portico Account to access servers shared with you.'],
-      create: ['Create your account', 'One Portico Account reaches every server you own or that someone shares with you.'],
-      verify: ['Check your email', registration ? `We sent a code to ${registration.maskedAddress}.` : undefined],
+      signin: mfa ? [t('auth.enterVerificationCode')] : [t('auth.welcomeHome'), t('auth.accountLead')],
+      create: [t('auth.createYourAccount'), t('auth.oneAccount')],
+      verify: [t('auth.checkEmail'), registration ? t('auth.codeSentTo', {address: registration.maskedAddress}) : undefined],
       forgot: [t('auth.forgotPasswordTitle'), t('auth.resetLinkLedeEmail')],
       sent: [t('auth.checkEmail'), note],
     };
     onTitle?.(...titles[mode]);
-  }, [mode, mfa, registration, note, onTitle]);
+  }, [mode, mfa, registration, note, onTitle, t]);
   const run = async (work: () => Promise<void>) => {
     if (busy) return;
     setBusy(true); setError('');
@@ -154,7 +154,7 @@ export function AccountForm({onSignedIn, onTitle}: {onSignedIn: (session: Hosted
   }
   return (
     <form className={s.stack} onSubmit={e => { e.preventDefault(); void signIn(); }}>
-      {providers.map(p => <button key={p.id} type="button" style={providerStyle(p.id === 'google')} disabled={busy} onClick={() => void provider(p.id)}>{p.id === 'google' ? <GoogleMark /> : <AppleMark />}{p.id === 'google' ? 'Sign in with Google' : 'Sign in with Apple'}</button>)}
+      {providers.map(p => <button key={p.id} type="button" style={providerStyle(p.id === 'google')} disabled={busy} onClick={() => void provider(p.id)}>{p.id === 'google' ? <GoogleMark /> : <AppleMark />}{p.id === 'google' ? t('auth.signInWithGoogle') : t('auth.signInWithApple')}</button>)}
       {providers.length && options?.password !== false ? <div className={s.divider}>{t('auth.orWithEmail')}</div> : null}
       {options?.password !== false ? (
         <>
