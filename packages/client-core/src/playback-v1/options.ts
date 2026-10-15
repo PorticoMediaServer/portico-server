@@ -42,6 +42,12 @@ export class PlaybackOptionsClient {
     const r = await call(this.http, {method: 'GET', path: encodedRoutePath("get_playback_options", {"itemId": enc(itemId)}) + (query(preview)), signal});
     return parseOptions(r.body);
   }
+
+  /** Forgets the audio and subtitle choice remembered for this title's show or film (`preferred.reason`
+   * `last_used`): the next start goes back to the profile's language preferences. */
+  async forgetTrackMemory(itemId: string, signal?: AbortSignal): Promise<void> {
+    await call(this.http, {method: 'DELETE', path: encodedRoutePath("forget_playback_track_memory", {"itemId": enc(itemId)}), signal});
+  }
 }
 
 /** What a plan does, for one-line labels and the technical details panel. */

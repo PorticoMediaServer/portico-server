@@ -136,25 +136,6 @@ func TestSubtitleReplanRoutesHoldToTheMembersCurrentCeiling(t *testing.T) {
 	patch(outside, nil, nil)
 	held("turning the subtitle off", 3_000_000, false)
 
-	// The subtitle route, naming the v1 session and then its media session.
-	selectBy := func(session, operation, resource string) {
-		t.Helper()
-		var plan subtitles.PlaybackPlan
-		w := f.rawFrom(outside, "GET", "/v1/items/"+film+"/playback/"+session+"/subtitles", member, claimsLocal, nil)
-		if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &plan) != nil {
-			t.Fatalf("subtitle plan by %s: %d %s", session, w.Code, w.Body.String())
-		}
-		body := map[string]any{"operationId": operation, "generation": plan.Generation, "expectedRevision": plan.Revision, "mode": "track", "resourceId": resource, "resourceRevision": 1, "offsetUs": "0", "positionUs": "0"}
-		if w = f.rawFrom(outside, "PUT", "/v1/items/"+film+"/playback/"+session+"/subtitles", member, claimsLocal, body); w.Code != 200 {
-			t.Fatalf("subtitle selection by %s: %d %s", session, w.Code, w.Body.String())
-		}
-	}
-	selectBy(s.ID, "route-select-1", first)
-	held("burn-in through the subtitle route", 3_000_000, true)
-	media, _, _ := planned()
-	selectBy(media, "route-select-2", second)
-	held("burn-in through the subtitle route by media session", 3_000_000, true)
-
 	// A lower cap applies to the next change. Once the owner lifts it, the next
 	// change on the home network is planned from the quality the session asked
 	// for (the original) under the ceilings that hold now, like any other change

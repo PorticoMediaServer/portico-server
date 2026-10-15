@@ -1,7 +1,6 @@
 package httpapi
 
 import (
-	"encoding/json"
 	"net/url"
 	"testing"
 
@@ -76,21 +75,24 @@ func TestPlaybackV1ClientReadsWithTheV1SessionID(t *testing.T) {
 		}
 	}
 
-	// A subtitle selection fences on the v1 generation the client holds.
-	var plan subtitles.PlaybackPlan
-	f.call("GET", "/v1/items/"+item+"/playback/"+s.ID+"/subtitles", nil, nil, 200, &plan)
-	stale := map[string]any{"operationId": "new28-select-stale", "generation": s.Presentation.Generation + 5, "expectedRevision": plan.Revision, "mode": "off", "offsetUs": "0"}
-	if w := f.raw("PUT", "/v1/items/"+item+"/playback/"+s.ID+"/subtitles", f.owner.AccessToken, nil, stale); w.Code != 409 {
-		t.Fatalf("a stale generation must conflict: %d %s", w.Code, w.Body.String())
+	// A subtitle selection is a change of the session: it fences on the
+	// session revision the client holds, and the plan still names the v1
+	// session afterwards. There is no separate selection route.
+	stale := map[string]any{"subtitles": map[string]any{"trackId": nil}}
+	if w := f.raw("PATCH", "/v1/playback/sessions/"+s.ID, f.owner.AccessToken, map[string]string{"If-Match": `"` + s.Revision + `9"`}, stale); w.Code != 412 {
+		t.Fatalf("a stale revision must be refused: %d %s", w.Code, w.Body.String())
 	}
-	fresh := map[string]any{"operationId": "new28-select-fresh", "generation": s.Presentation.Generation, "expectedRevision": plan.Revision, "mode": "off", "offsetUs": "0"}
-	w := f.raw("PUT", "/v1/items/"+item+"/playback/"+s.ID+"/subtitles", f.owner.AccessToken, nil, fresh)
+	if w := f.raw("PUT", "/v1/items/"+item+"/playback/"+s.ID+"/subtitles", f.owner.AccessToken, nil, map[string]any{}); w.Code != 404 && w.Code != 405 {
+		t.Fatalf("the retired subtitle selection route still answers: %d %s", w.Code, w.Body.String())
+	}
+	w := f.raw("PATCH", "/v1/playback/sessions/"+s.ID, f.owner.AccessToken, map[string]string{"If-Match": `"` + s.Revision + `"`}, stale)
 	if w.Code != 200 {
-		t.Fatalf("select off on the v1 session: %d %s", w.Code, w.Body.String())
+		t.Fatalf("subtitles off on the v1 session: %d %s", w.Code, w.Body.String())
 	}
 	var selected subtitles.PlaybackPlan
-	if err := json.Unmarshal(w.Body.Bytes(), &selected); err != nil || selected.SessionID != s.ID || selected.Generation != s.Presentation.Generation {
-		t.Fatalf("selection names %s gen %d (%v)", selected.SessionID, selected.Generation, err)
+	f.call("GET", "/v1/items/"+item+"/playback/"+s.ID+"/subtitles", nil, nil, 200, &selected)
+	if selected.SessionID != s.ID || selected.Mode != "off" {
+		t.Fatalf("selection names %s mode %s", selected.SessionID, selected.Mode)
 	}
 
 	// Stop ends it; the reads then answer a hidden 404 (not 401, not 503).

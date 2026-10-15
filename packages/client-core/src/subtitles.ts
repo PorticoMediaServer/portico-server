@@ -143,26 +143,34 @@ export function subtitleReason(reason?:string,translate:(id:MessageId)=>string=i
 
 export type SubtitleTarget=Readonly<{itemId:string;sessionId:string;generation:number;sourceId?:never}>|Readonly<{itemId:string;sourceId:string;sessionId?:never;generation?:never}>;
 export type SubtitleSnapshot=Readonly<{catalog:SubtitleCatalog|null;plan:SubtitlePlan|null;busy:boolean;loading:boolean;suppressed:boolean;error:string|null;canRetry:boolean;candidates:readonly SubtitleCandidate[]}>;
+/** What a playing session's subtitle reads need from the player: a presentation the server moved
+ * the session to (a subtitle burned in or taken out again) is handed over here. */
+export type SubtitleTransport=Readonly<{install:(presentation:SubtitlePresentation)=>boolean}>;
 /** Bound to exactly one viewer/API and playback generation. No disk cache or
- * separate media clock. Management operations do not replace the active pin. */
+ * separate media clock. Management operations do not replace the active pin.
+ *
+ * It reads the catalogue and the session's plan and manages files. It never selects: a track, Off
+ * or a timing correction is a change of the playing session (`PlaybackService.changePlayback`
+ * with `subtitleTrackId`, `subtitleDelivery` and `subtitleOffsetMs`), which the server applies,
+ * remembers for the show and carries through later re-plans. */
 export class SubtitleService {
  private state:SubtitleSnapshot={catalog:null,plan:null,busy:false,loading:true,suppressed:false,error:null,canRetry:false,candidates:[]};
  private listeners=new Set<()=>void>();private active=false;private life=0;private interval?:ReturnType<typeof setInterval>;
- private controllers=new Set<AbortController>();private queue:Promise<void>=Promise.resolve();private queued=0;private choice=0;private retryOperation?:()=>Promise<void>;
- private api:LibraryContentApi; target:SubtitleTarget; private operationId:()=>string; private transport?:{positionUs:()=>string;reserve?:(payload:Record<string,unknown>)=>Promise<Record<string,unknown>>;select?:(path:string,payload:Record<string,unknown>)=>Promise<unknown>;install:(presentation:SubtitlePresentation)=>boolean};
- constructor(api:LibraryContentApi,target:SubtitleTarget,operationId:()=>string,transport?:{positionUs:()=>string;reserve?:(payload:Record<string,unknown>)=>Promise<Record<string,unknown>>;select?:(path:string,payload:Record<string,unknown>)=>Promise<unknown>;install:(presentation:SubtitlePresentation)=>boolean}){this.api=api;this.target=target;this.operationId=operationId;this.transport=transport;if(!id(target.itemId)||(target.sourceId!==undefined?!id(target.sourceId):!id(target.sessionId)||!integer(target.generation)))throw new Error('Invalid subtitle target.');}
+ private controllers=new Set<AbortController>();private queue:Promise<void>=Promise.resolve();private queued=0;private retryOperation?:()=>Promise<void>;
+ private api:LibraryContentApi; target:SubtitleTarget; private operationId:()=>string; private transport?:SubtitleTransport;
+ constructor(api:LibraryContentApi,target:SubtitleTarget,operationId:()=>string,transport?:SubtitleTransport){this.api=api;this.target=target;this.operationId=operationId;this.transport=transport;if(!id(target.itemId)||(target.sourceId!==undefined?!id(target.sourceId):!id(target.sessionId)||!integer(target.generation)))throw new Error('Invalid subtitle target.');}
  getSnapshot=()=>this.state;subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(p:Partial<SubtitleSnapshot>){this.state=Object.freeze({...this.state,...p});this.listeners.forEach(f=>f());}
  private path(suffix=''){return encodedRoutePath("get_v1_items_itemId_subtitles", {"itemId": this.target.itemId}) + (suffix);}
  get sourceId(){return this.target.sourceId??this.state.plan?.sourceId;}
- private selectionPath(){if(this.target.sourceId!==undefined)throw new Error('Start playback to select subtitles.');return encodedRoutePath("get_v1_items_itemId_playback_session_subtitles", {"itemId": this.target.itemId, "session": this.target.sessionId});}
+ private planPath(){if(this.target.sourceId!==undefined)throw new Error('Start playback to read the subtitle plan.');return encodedRoutePath("get_v1_items_itemId_playback_session_subtitles", {"itemId": this.target.itemId, "session": this.target.sessionId});}
  private polling=true;
  start(){if(this.active)return;this.active=true;this.life++;void this.refresh();this.arm();}
  private arm(){if(this.interval){clearInterval(this.interval);this.interval=undefined;}if(this.active&&this.polling&&this.target.sourceId===undefined)this.interval=setInterval(()=>void this.refresh(),25000);}
  /** PERF-24: re-reading the catalogue every 25 s is only worth it while subtitles are on or their
   * menu is open; a client turns it off otherwise (a later `setPolling(true)` reads at once). */
  setPolling(on:boolean){if(this.polling===on)return;this.polling=on;this.arm();if(on&&this.active)void this.refresh();}
- stop(){this.active=false;this.life++;this.choice++;if(this.interval)clearInterval(this.interval);for(const c of this.controllers)c.abort();this.controllers.clear();this.retryOperation=undefined;this.publish({catalog:null,plan:null,candidates:[],suppressed:true,loading:false});}
+ stop(){this.active=false;this.life++;if(this.interval)clearInterval(this.interval);for(const c of this.controllers)c.abort();this.controllers.clear();this.retryOperation=undefined;this.publish({catalog:null,plan:null,candidates:[],suppressed:true,loading:false});}
  private async request(path:string,method='GET',body?:unknown):Promise<unknown>{
   const c=new AbortController(),life=this.life;this.controllers.add(c);const timer=setTimeout(()=>c.abort(),method==='GET'?15000:110000);
   try{const result=await this.api.request<unknown>(path,method,body,c.signal);if(!this.active||life!==this.life)throw new Error('Subtitle scope retired.');return result;}finally{clearTimeout(timer);this.controllers.delete(c);}
@@ -170,7 +178,7 @@ export class SubtitleService {
  private acceptPlan(raw:unknown){const p=validateSubtitlePlan(raw);if(this.target.generation===undefined||p.sessionId!==this.target.sessionId||p.generation<this.target.generation)invalid();
  if(p.presentation&&p.generation!==this.target.generation){if(!this.transport||!this.transport.install(p.presentation))throw new Error('Subtitle playback scope retired.');}
  if(p.generation!==this.target.generation){if(!p.presentation)invalid();this.target={itemId:this.target.itemId,sessionId:p.sessionId,generation:p.generation};}if(this.state.plan&&p.revision<this.state.plan.revision)return this.state.plan;this.publish({plan:p});return p;}
- private async plan(){return this.acceptPlan(await this.request(this.selectionPath()));}
+ private async plan(){return this.acceptPlan(await this.request(this.planPath()));}
  private fail(e:unknown){
   if(!this.active)return;const problem=e as {status?:number;code?:string};
   const denied=problem.status===401||problem.status===403,conflict=problem.status===409;
@@ -189,20 +197,6 @@ export class SubtitleService {
  remote(name:string,format:SubtitleFormat,language:string,title:string,rights:string,scope:'personal'|'shared') {const payload={operationId:this.operationId(),sourceId:this.sourceId,name,format,language,title,rights,scope};return this.enqueue(async()=>{this.receipt(await this.request(this.path('/remote'),'POST',payload));});}
  retry(){if(this.retryOperation)return this.enqueue(this.retryOperation);return this.refresh();}
 
- choose(resource:SubtitleResource|null,offsetUs=resource?.offsetUs??'0',rendering?:SubtitleRendering){
-  if(this.target.sourceId!==undefined)return Promise.reject(new Error('Start playback to select subtitles.'));
-  if(!decimal(offsetUs,600000000,true))return Promise.reject(new Error('Subtitle offset must be within ten minutes.'));
-  const choice=++this.choice,op=this.operationId();let payload:Record<string,unknown>|undefined;
-  // Text overlays can turn off immediately. Burned cues remain until the committed video replacement.
-  if(!resource&&this.state.plan?.renderer!=='burn_in')this.publish({suppressed:true});
-  return this.enqueue(async()=>{if(choice!==this.choice)return;if(!payload){const current=await this.plan();payload={operationId:op,generation:this.target.generation,expectedRevision:current.revision,mode:resource?'track':'off',...(resource?{resourceId:resource.id,resourceRevision:resource.revision,...(rendering?{rendering}:{})}:{}),offsetUs:resource?offsetUs:'0',positionUs:this.transport?.positionUs()??'0'};if(this.transport?.reserve)payload=await this.transport.reserve(payload);}const raw=payload.control&&this.transport?.select?await this.transport.select(this.selectionPath(),payload):await this.request(this.selectionPath(),'PUT',payload);if(choice===this.choice){this.acceptPlan(raw);this.publish({suppressed:false});}});
- }
- import(track:SubtitleDiscovery){
-  if(this.target.sourceId!==undefined)return Promise.reject(new Error('Start playback to select subtitles.'));
-  const resource=this.state.plan?.resources.find(r=>r.discoveryId===track.id&&r.sourceId===track.sourceId);
-  if(!resource)return Promise.reject(new Error(subtitleReason(track.reason)));
-  return this.choose(resource);
- }
 
  private receipt(v:unknown):SubtitleReceipt{if(!record(v)||!id(v.operationId)||!id(v.resourceId)||!integer(v.revision)||!integer(v.catalogRevision)||v.deleted!==undefined&&typeof v.deleted!=='boolean')invalid();return Object.freeze({...v}) as SubtitleReceipt;}
  save(input:{content?:string;data?:string;companion?:string;default?:boolean;forced?:boolean;format:SubtitleFormat;language:string;title:string;rights:string;scope:'personal'|'shared';offsetUs:string},resource?:SubtitleResource){

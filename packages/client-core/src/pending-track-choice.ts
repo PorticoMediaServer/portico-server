@@ -1,4 +1,6 @@
 import {sameLanguage} from './presentation/language.ts';
+import {subtitleTrackNames} from './presentation/title-files.ts';
+import type {MessageId, MessageValues} from '../../i18n/src/index.ts';
 
 /**
  * Pick before play (Spec — Title Pages §1): the audio track and subtitles chosen on a title page,
@@ -7,7 +9,11 @@ import {sameLanguage} from './presentation/language.ts';
  * - Audio goes first. With an audio plan the rendition switches in place. Without one, naming a
  *   track asks for the title again (a new session).
  * - Subtitles are chosen on the session that is left standing — never on one an audio choice is
- *   about to replace — and by language, since a file says "fra" where a subtitle plan says "fr".
+ *   about to replace. A track picked from the title's own list (playback options, one entry per
+ *   track: unknown-language, SDH and forced tracks each their own) is named by its resource id and
+ *   chosen exactly: if the session does not offer that very track nothing else is picked in its
+ *   place. Only a choice made without a track list names a language, matched loosely since a file
+ *   says "fra" where a subtitle plan says "fr".
  *
  * A choice never outlives one play.
  */
@@ -90,4 +96,17 @@ export function advancePendingChoice(progress: PendingChoiceProgress, session: P
   }
   const spent = choice.audioStreamIndex === undefined && choice.subtitle === undefined;
   return {...(spent ? {} : {choice}), ...(restart ? {restart} : {})};
+}
+
+/** One pre-play subtitle entry: the track's resource id (what `subtitle.resourceId` names) and its menu name. */
+export type PreplaySubtitle = Readonly<{id: string; label: string}>;
+
+/**
+ * The pre-play subtitle list for one version (`PlaybackOptions.versions[].subtitles`): every
+ * track the server lists, in its order, each under its own name. Two tracks in one language stay
+ * two entries, and a track with no language is listed by its title (or "Track n").
+ */
+export function preplaySubtitles(tracks: readonly Readonly<{id: string; language?: string; title?: string; format?: string; forced: boolean; sdh: boolean}>[], t: (id: MessageId, values?: MessageValues) => string, locale?: string): readonly PreplaySubtitle[] {
+  const names = subtitleTrackNames(tracks.map(x => ({id: x.id, language: x.language, title: x.title, format: x.format, forced: x.forced, hearingImpaired: x.sdh})), t, locale);
+  return Object.freeze(tracks.map(x => Object.freeze({id: x.id, label: names.get(x.id) ?? x.id})));
 }

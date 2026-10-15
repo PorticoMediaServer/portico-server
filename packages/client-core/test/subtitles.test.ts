@@ -45,16 +45,6 @@ function api(fn:(path:string,method:string,body:unknown,signal?:AbortSignal)=>Pr
  for(const response of [new Response(json),new Response(json,{status:403}),new Response(json,{headers:{'Content-Type':'application/json','Content-Length':'8388609'}}),new Response(new Uint8Array([0xff]),{headers:{'Content-Type':'application/json'}})])await assert.rejects(readSubtitleDocument(response,c.signal));
  c.abort();await assert.rejects(readSubtitleDocument(new Response(json,{headers:{'Content-Type':'application/json'}}),c.signal));
  });
- test('Off wins over an in-flight selection of a discovered resource without importing it',async()=>{
- const pending=deferred<unknown>();const writes:{method:string;body:any}[]=[];let current={...plan(),resources:[{...resource,discoveryId:'discovered'}]};
- const s=new SubtitleService(api(async(p,m,b)=>{if(m==='GET')return p.includes('/playback/')?current:catalog();assert(!p.endsWith('/import'));writes.push({method:m,body:b});if(writes.length===1)return pending.promise;current={...plan(current.revision+1),resources:current.resources};return current;}),target,(()=>{let n=0;return()=>`op${++n}`;})());
- try{await ready(s);const selected=s.import({id:'discovered',sourceId:'source',revision:1,origin:'sidecar',format:'vtt',language:'en',title:'English',default:false,forced:false,enabled:true});await flush();const off=s.choose(null);assert.equal(s.getSnapshot().suppressed,true);pending.resolve({...plan(2,resource),resources:current.resources});await selected;await off;assert.equal(writes.length,2);assert.equal(writes[1].body.mode,'off');assert.equal(s.getSnapshot().plan?.mode,'off');}finally{s.stop();}
- });
- test('ambiguous selection response retries identical operation and CAS payload without rebasing',async()=>{
- let current=plan(),failOnce=true;const writes:any[]=[];
- const s=new SubtitleService(api(async(p,m,b)=>{if(m==='GET')return p.includes('/playback/')?current:catalog();writes.push(structuredClone(b));current=plan(2,resource);if(failOnce){failOnce=false;throw new Error('network lost after commit');}return {...current,appliedRevision:2};}),target,()=> 'fixedOp');
- try{await ready(s);await s.choose(resource);assert.equal(s.getSnapshot().canRetry,true);await s.retry();assert.deepEqual(writes[0],writes[1]);assert.equal(writes[1].expectedRevision,1);assert.equal(s.getSnapshot().plan?.mode,'track');}finally{s.stop();}
- });
  test('scope retirement rejects late responses even when the transport ignores abort',async()=>{
  const d=deferred<unknown>();const s=new SubtitleService(api(async()=>d.promise),target,()=> 'op');s.start();s.stop();d.resolve(plan());await flush();assert.equal(s.getSnapshot().plan,null);assert.equal(s.getSnapshot().catalog,null);
  });
@@ -64,17 +54,17 @@ function api(fn:(path:string,method:string,body:unknown,signal?:AbortSignal)=>Pr
  try{await ready(s);await s.save({format:'vtt',language:'fr',title:'French',rights:'own',scope:'personal',offsetUs:'0'},resource);await flush();assert.equal(s.getSnapshot().plan?.selected?.revision,1);assert.equal(s.getSnapshot().plan?.selected?.retired,true);await s.remove({...resource,revision:2});await flush();assert.equal(s.getSnapshot().plan?.mode,'track');assert.equal(writes[0].expectedRevision,1);assert.equal(writes[1].expectedRevision,2);denied=true;await s.refresh();assert.equal(s.getSnapshot().catalog,null);assert.equal(s.getSnapshot().plan,null);assert(!JSON.stringify(s.getSnapshot()).includes('private transport'));}finally{s.stop();}
  });
  test('CAS conflict requires review rather than offering an automatic mutation retry',async()=>{
- const s=new SubtitleService(api(async(p,m)=>{if(m==='GET')return p.includes('/playback/')?plan():catalog();throw Object.assign(new Error('conflict'),{status:409});}),target,()=> 'op');try{await ready(s);await s.choose(resource);assert.equal(s.getSnapshot().canRetry,false);assert.match(s.getSnapshot().error!,/Refresh and review/);}finally{s.stop();}
+ const s=new SubtitleService(api(async(p,m)=>{if(m==='GET')return p.includes('/playback/')?plan():catalog();throw Object.assign(new Error('conflict'),{status:409});}),target,()=> 'op');try{await ready(s);await s.save({format:'vtt',language:'fr',title:'French',rights:'own',scope:'personal',offsetUs:'0'},resource);assert.equal(s.getSnapshot().canRetry,false);assert.match(s.getSnapshot().error!,/Refresh and review/);}finally{s.stop();}
  });
 
  test('invalid upload requires correction rather than retrying the same bad payload',async()=>{
  const s=new SubtitleService(api(async(p,m)=>{if(m==='GET')return p.includes('/playback/')?plan():catalog();throw Object.assign(new Error('unsupported'),{status:422});}),target,()=> 'op');try{await ready(s);await s.save({content:'invalid',format:'srt',language:'en',title:'English',rights:'own',scope:'personal',offsetUs:'0'});assert.equal(s.getSnapshot().canRetry,false);assert.match(s.getSnapshot().error!,/plain SRT/);}finally{s.stop();}
  });
 
-test('media editor reads catalog without a playback session and cannot select a track',async()=>{
+test('media editor reads catalog without a playback session',async()=>{
  const paths:string[]=[];
  const service=new SubtitleService(api(async(p)=>{paths.push(p);return catalog();}),{itemId:'item',sourceId:'source'},()=> 'op');
- try{await ready(service);assert.equal(service.sourceId,'source');assert.equal(service.getSnapshot().plan,null);assert.equal(service.getSnapshot().catalog?.itemId,'item');await assert.rejects(service.choose(resource),/Start playback/);await assert.rejects(service.import({id:'discovered',sourceId:'source',revision:1,origin:'sidecar',format:'vtt',language:'en',title:'English',default:false,forced:false,enabled:true}),/Start playback/);assert.deepEqual(paths,['/v1/items/item/subtitles']);}finally{service.stop();}
+ try{await ready(service);assert.equal(service.sourceId,'source');assert.equal(service.getSnapshot().plan,null);assert.equal(service.getSnapshot().catalog?.itemId,'item');assert.deepEqual(paths,['/v1/items/item/subtitles']);}finally{service.stop();}
 });
 test('media editor saves against its selected source and retries ambiguous writes unchanged',async()=>{
  const writes:any[]=[];let failed=false;

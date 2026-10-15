@@ -109,6 +109,8 @@ export type DownloadClientLogRequest = {  };
 export type DownloadClientLogResponse = { "accountId": string; "appVersion"?: string; "body"?: string; "bytes": number; "deviceClass": string; "deviceId": string; "id": string; "platform": string; "profileId": string; "receivedAt": string };
 export type EmptyMissingTitlesRequest = { "libraryId"?: string };
 export type EmptyMissingTitlesResponse = { "files": number; "more": boolean; "titles": number };
+export type ForgetPlaybackTrackMemoryRequest = {  };
+export type ForgetPlaybackTrackMemoryResponse = {  };
 export type GetAdminAccessDevicesRequest = {  };
 export type GetAdminAccessDevicesResponse = { "approvalRequired": boolean; "items": Array<{ "accountId": string; "app": string; "appVersion": string; "firstSeenAt": string; "id": string; "lastSeenAt": string; "name": string; "platform": string; "profileId"?: string; "revision": number; "trust": string; "username": string }>; "limit": number; "nextCursor"?: string };
 export type GetAdminAccessInvitationsRequest = {  };
@@ -1105,8 +1107,6 @@ export type PutShowsIdMetadataTvdbRequest = { "expectedRevision": number; "order
 export type PutShowsIdMetadataTvdbResponse = { "showId": string; "status": string };
 export type PutStorageSourcesWebdavIdRequest = { "expectedGeneration"?: number; "insecureLocal": boolean; "keepConnection"?: boolean; "keepPassword"?: boolean; "name": string; "operationId": string; "password": string; "root": string; "username": string };
 export type PutStorageSourcesWebdavIdResponse = { "receipt": { "accepted": boolean; "operationId": string; "removed": boolean; "source": { "credentialPresent": boolean; "errorCode"?: string; "generation": number; "id": string; "insecureLocal": boolean; "kind": string; "mountId"?: string; "name": string; "origin"?: string; "rangeSupport": string; "rootPath": string; "state": string } }; "scope": { "serverId": string; "viewerFence": string } };
-export type PutV1ItemsItemIdPlaybackSessionSubtitlesRequest = { "control"?: unknown; "expectedRevision": number; "generation": number; "mode": string; "offsetUs": string; "operationId": string; "positionUs"?: string; "rendering"?: string; "resourceId"?: string; "resourceRevision"?: number };
-export type PutV1ItemsItemIdPlaybackSessionSubtitlesResponse = { "appliedRevision"?: number; "catalogRevision": number; "discovered": Array<{ "default": boolean; "enabled": boolean; "forced": boolean; "format": string; "hearingImpaired": boolean; "id": string; "language": string; "origin": string; "reason"?: string; "revision": number; "sourceId": string; "title": string }>; "documentUrl"?: string; "generation": number; "mode": string; "offAvailable": boolean; "offsetUs": string; "presentation"?: { "generation": number; "mode": string; "positionUs": string; "sessionId": string; "streamUrl": string }; "renderer": string; "resources": Array<{ "attribution"?: string; "canManage": boolean; "default": boolean; "deliveries": Array<{ "companionUrl"?: string; "fontsUrl"?: string; "format": string; "url"?: string }>; "discoveryId"?: string; "enabled": boolean; "forced": boolean; "format": string; "hearingImpaired": boolean; "id": string; "language": string; "manifestName"?: string; "offsetUs": string; "origin": string; "pinned"?: boolean; "provider"?: string; "reason"?: string; "renderer": string; "retired"?: boolean; "revision": number; "rights": string; "scope": string; "sourceId": string; "title": string }>; "revision": number; "selected": { "attribution"?: string; "canManage": boolean; "default": boolean; "deliveries": Array<{ "companionUrl"?: string; "fontsUrl"?: string; "format": string; "url"?: string }>; "discoveryId"?: string; "enabled": boolean; "forced": boolean; "format": string; "hearingImpaired": boolean; "id": string; "language": string; "manifestName"?: string; "offsetUs": string; "origin": string; "pinned"?: boolean; "provider"?: string; "reason"?: string; "renderer": string; "retired"?: boolean; "revision": number; "rights": string; "scope": string; "sourceId": string; "title": string } | null; "sessionId": string; "sourceId": string; "version": number };
 export type PutV1ItemsItemIdSubtitlesResourceRequest = { "companion"?: string; "content"?: string; "data"?: string; "default"?: boolean; "expectedRevision": number; "forced"?: boolean; "format": string; "language": string; "offsetUs": string; "operationId": string; "render"?: string; "resourceId"?: string; "rights": string; "scope": string; "sourceId": string; "title": string };
 export type PutV1ItemsItemIdSubtitlesResourceResponse = { "catalogRevision": number; "deleted": boolean; "operationId": string; "resourceId": string; "revision": number };
 export type QueryTitlesRequest = {  };
@@ -1299,6 +1299,7 @@ export type RouteContracts = {
 "delete_webhook": { request: DeleteWebhookRequest; response: DeleteWebhookResponse };
 "download_client_log": { request: DownloadClientLogRequest; response: DownloadClientLogResponse };
 "empty_missing_titles": { request: EmptyMissingTitlesRequest; response: EmptyMissingTitlesResponse };
+"forget_playback_track_memory": { request: ForgetPlaybackTrackMemoryRequest; response: ForgetPlaybackTrackMemoryResponse };
 "get_admin_access_devices": { request: GetAdminAccessDevicesRequest; response: GetAdminAccessDevicesResponse };
 "get_admin_access_invitations": { request: GetAdminAccessInvitationsRequest; response: GetAdminAccessInvitationsResponse };
 "get_admin_access_members": { request: GetAdminAccessMembersRequest; response: GetAdminAccessMembersResponse };
@@ -1797,7 +1798,6 @@ export type RouteContracts = {
 "put_shows_id_metadata_screen_season": { request: PutShowsIdMetadataScreenSeasonRequest; response: PutShowsIdMetadataScreenSeasonResponse };
 "put_shows_id_metadata_tvdb": { request: PutShowsIdMetadataTvdbRequest; response: PutShowsIdMetadataTvdbResponse };
 "put_storage_sources_webdav_id": { request: PutStorageSourcesWebdavIdRequest; response: PutStorageSourcesWebdavIdResponse };
-"put_v1_items_itemId_playback_session_subtitles": { request: PutV1ItemsItemIdPlaybackSessionSubtitlesRequest; response: PutV1ItemsItemIdPlaybackSessionSubtitlesResponse };
 "put_v1_items_itemId_subtitles_resource": { request: PutV1ItemsItemIdSubtitlesResourceRequest; response: PutV1ItemsItemIdSubtitlesResourceResponse };
 "query_titles": { request: QueryTitlesRequest; response: QueryTitlesResponse };
 "refresh_items_metadata": { request: RefreshItemsMetadataRequest; response: RefreshItemsMetadataResponse };

@@ -294,6 +294,26 @@ func TestPlaybackV1RemembersTrackChoices(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("%d profiles remembered a choice only one made", count)
 	}
+	// Another profile's forget leaves this one's choice alone (here it cannot
+	// see the film at all); the profile's own forget clears it, and the next
+	// start is the default again.
+	if w := f.raw("DELETE", "/v1/items/"+f.items[0]+"/playback-memory", member, nil, nil); w.Code != 204 && w.Code != 404 {
+		t.Fatalf("another profile's forget: %d %s", w.Code, w.Body.String())
+	}
+	_ = f.db.QueryRow(`SELECT count(*) FROM playback_track_memory`).Scan(&count)
+	if count != 1 {
+		t.Fatalf("another profile's forget removed %d choices", 1-count)
+	}
+	f.call("DELETE", "/v1/items/"+f.items[0]+"/playback-memory", nil, nil, 204, nil)
+	_ = f.db.QueryRow(`SELECT count(*) FROM playback_track_memory`).Scan(&count)
+	if count != 0 {
+		t.Fatalf("forget left %d choices", count)
+	}
+	f.call("GET", "/v1/items/"+f.items[0]+"/playback-options", nil, nil, 200, &options)
+	if options.Preferred == nil || options.Preferred.AudioID != "a1" || options.Preferred.Reason == "last_used" {
+		t.Fatalf("options after forget %+v", options.Preferred)
+	}
+	f.call("DELETE", "/v1/items/"+f.items[0]+"/playback-memory", nil, nil, 204, nil)
 }
 
 // The viewer's overrides travel in the capability document and change the plan.

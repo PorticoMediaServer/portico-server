@@ -29,13 +29,12 @@ type Service struct {
 	cacheWorkers chan struct{}
 	cacheDone    sync.WaitGroup
 
-	ControlSelection func(context.Context, *dbwork.Write, identity.Principal, string, SelectRequest, bool) (int64, error)
-	db               *sql.DB
-	objects          *mediaartifact.Store
-	storage          *storage.Client
-	authorize        Authorize
-	helper, ffmpeg   string
-	provider         Provider
+	db             *sql.DB
+	objects        *mediaartifact.Store
+	storage        *storage.Client
+	authorize      Authorize
+	helper, ffmpeg string
+	provider       Provider
 	// Serializes object sealing/publication with garbage collection, never source
 	// or provider I/O. DB authority remains the actual cross-process CAS fence.
 	publication  sync.Mutex
