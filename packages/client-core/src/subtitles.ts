@@ -2,6 +2,7 @@ import {encodedRoutePath, routePattern} from "../../contracts/src/routes.ts";
 import {enUS,type MessageId} from '../../i18n/src/index.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';
+import {serviceText} from './presentation/service-text.ts';
 import type {LibraryContentApi} from './library-content.ts';
 
 export type SubtitleFormat='srt'|'vtt'|'ass'|'ssa'|'pgs'|'sup'|'vobsub'|'idx'|'dvb'|'smi'|'sami'|'ttml'|'dfxp';
@@ -179,7 +180,7 @@ export class SubtitleService {
   const invalidInput=problem.status===400||problem.status===422,missing=problem.status===404;
   const invalidData=problem.code==='invalid_subtitles';
   const canRetry=!denied&&!conflict&&!invalidInput&&!missing&&!invalidData;
-  this.publish({error:denied?'You no longer have access to these subtitles.':conflict?'Subtitles changed. Refresh and review the current revision before retrying.':invalidInput?'Check the language, file and timing. Use plain SRT/WebVTT or supported rich/bitmap subtitles within the size and cue limits.':missing?'This subtitle is no longer available. Refresh the current choices.':invalidData?unreadableServerResponse:'Subtitles could not be updated. Refresh, or retry the same operation.',canRetry,suppressed:denied||invalidData||!this.state.plan,...(denied?{catalog:null,plan:null,candidates:[]}: {})});
+  this.publish({error:denied?serviceText('subtitles.error.denied'):conflict?serviceText('subtitles.error.changed'):invalidInput?serviceText('subtitles.error.invalidInput'):missing?serviceText('subtitles.error.missing'):invalidData?unreadableServerResponse:serviceText('subtitles.error.failed'),canRetry,suppressed:denied||invalidData||!this.state.plan,...(denied?{catalog:null,plan:null,candidates:[]}: {})});
   if(!canRetry)this.retryOperation=undefined;
  }
  async refresh(){if(!this.active||this.queued)return;const life=this.life;this.publish({loading:true});try{const [raw]=await Promise.all([this.request(this.path()),this.target.sourceId===undefined?this.plan():Promise.resolve(null)]);if(!this.active||life!==this.life||this.queued)return;const catalog=validateSubtitleCatalog(raw);if(catalog.itemId!==this.target.itemId||this.target.sourceId!==undefined&&!catalog.sources.some(source=>source.id===this.target.sourceId))invalid();if(!this.state.catalog||catalog.revision>=this.state.catalog.revision)this.publish({catalog});this.publish({loading:false,error:null,suppressed:false});}catch(e){if(life===this.life){this.publish({loading:false});this.fail(e);}}}

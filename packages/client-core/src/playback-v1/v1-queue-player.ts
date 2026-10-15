@@ -34,6 +34,7 @@
  * Not here yet: live channels (phase 6).
  */
 import type {PlaybackService, PlaybackSession} from '../index.ts';
+import {serviceText} from '../presentation/service-text.ts';
 import {playbackUserMessage} from '../playback-messages.ts';
 import {ListeningService, loadListeningSelection, type ListeningTarget} from '../listening.ts';
 import type {QueueAdvanceMode, QueuePostPlay} from '../post-play.ts';
@@ -119,14 +120,14 @@ const message = (e: unknown, fallback: string): string => {
   if (e instanceof PlaybackApiError) {
     switch (e.code) {
       case 'conversion_capacity': return playbackUserMessage(e);
-      case 'queue_too_large': return 'This queue is too long. Remove some of it or start a new one.';
-      case 'queue_building': return 'This part of the queue is still loading. Try again in a moment.';
-      case 'queue_ended': return 'The queue has ended.';
-      case 'not_found': return 'This item isn’t available.';
-      case 'stream_limit_reached': return 'This account is already playing as many streams as it is allowed.';
-      case 'transcode_not_allowed': return 'This title needs converting, and converting is turned off for this account.';
-      case 'unsupported_media': return 'This title can’t be played on this device.';
-      case 'connection_too_slow': return 'Your connection to this server is too slow for this quality. Choose a lower quality or Automatic.';
+      case 'queue_too_large': return serviceText('error.queueTooLarge');
+      case 'queue_building': return serviceText('queuePlayer.queueBuilding');
+      case 'queue_ended': return serviceText('queuePlayer.queueEnded');
+      case 'not_found': return serviceText('queuePlayer.notFound');
+      case 'stream_limit_reached': return serviceText('queuePlayer.streamLimit');
+      case 'transcode_not_allowed': return serviceText('queuePlayer.transcodeNotAllowed');
+      case 'unsupported_media': return serviceText('queuePlayer.unsupported');
+      case 'connection_too_slow': return serviceText('queuePlayer.connectionTooSlow');
     }
   }
   return fallback;
@@ -389,7 +390,7 @@ export class V1QueuePlayer implements QueueController {
       if (generation === this.generation) this.publish({phase: 'ready'});
     } catch (e) {
       if (generation !== this.generation) return;
-      this.fail(entry?.itemId ?? '', e, 'Playback could not start. Try again.');
+      this.fail(entry?.itemId ?? '', e, serviceText('queuePlayer.startFailed'));
     }
   }
 
@@ -516,7 +517,7 @@ export class V1QueuePlayer implements QueueController {
       if (generation === this.generation) this.publish({phase: 'ready'});
     } catch (e) {
       if (generation !== this.generation) return;
-      this.fail(first, e, 'Playback could not start. Try again.');
+      this.fail(first, e, serviceText('queuePlayer.startFailed'));
     }
   }
 
@@ -650,7 +651,7 @@ export class V1QueuePlayer implements QueueController {
     } catch (e) {
       if (generation !== this.generation) return;
       if (e instanceof PlaybackApiError && e.status === 412) { await this.refresh().catch(() => {}); }
-      this.fail(current?.itemId ?? '', e, 'The queue couldn’t move on. Try again.');
+      this.fail(current?.itemId ?? '', e, serviceText('queuePlayer.moveFailed'));
       throw e;
     }
   }
@@ -730,7 +731,7 @@ export class V1QueuePlayer implements QueueController {
       await this.refresh();
     } catch (e) {
       if (e instanceof PlaybackApiError && e.status === 412) await this.refresh().catch(() => {});
-      this.publishQueue({phase: 'ready', error: message(e, 'The queue couldn’t be changed. Try again.')});
+      this.publishQueue({phase: 'ready', error: message(e, serviceText('queuePlayer.changeFailed'))});
       throw e;
     }
   }
@@ -798,7 +799,7 @@ export class V1QueuePlayer implements QueueController {
     const at = same ? this.playback.recoveryTarget() : undefined, choices = same ? this.playback.playbackChoices() : undefined;
     const generation = ++this.generation;
     const intent = this.playback.beginQueueIntent(item);
-    try { await this.startEntry(h.id, h.current.entryId, intent, at, generation, choices); } catch (e) { if (generation === this.generation) this.fail('', e, 'Playback could not start. Try again.'); }
+    try { await this.startEntry(h.id, h.current.entryId, intent, at, generation, choices); } catch (e) { if (generation === this.generation) this.fail('', e, serviceText('queuePlayer.startFailed')); }
   }
 
   async cancel(_invalidateSelection = true): Promise<void> { ++this.generation; ++this.epoch; this.prepared = undefined; this.audioReadyToken = undefined; this.publish({phase: 'ready'}); }
