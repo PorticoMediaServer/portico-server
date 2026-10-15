@@ -33,20 +33,21 @@ For HDR10/HLG/Dolby Vision 5/7/8, TrueHD/DTS-HD/Atmos, PGS/VobSub/DVB, HE-AAC/SB
 On Ubuntu use JDK 17, Android SDK/platform/build-tools 36, NDK 27.1.12297006, CMake 3.22.1, network/cached dependencies, adb and checked-in Gradle 9 wrapper. Check copied packages from native root with `PORTICO_SERVER_REPO=/absolute/candidate-server node scripts/shared-packages.mjs --check`. From the native repo:
 
 ```sh
+third_party/media-engine/build-android.sh   # from the native repository root; builds the mpv engine (see its README)
 cd apps/native
 npm ci --legacy-peer-deps
 cd android
-./gradlew :portico-mpv:fetchLibmpv
+./gradlew :portico-mpv:checkMediaEngine
 ./gradlew :app:assembleGoogleDebug -PreactNativeArchitectures=x86_64
 ./gradlew :app:assembleFiretvDebug -PreactNativeArchitectures=x86_64
 ./gradlew :app:assembleGoogleRelease :app:assembleFiretvRelease -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
 ```
 
-Google APK serves phones/tablets and Android TV; Fire TV is its own flavor/minimum API 25 (Google minimum 24). These Release builds currently use debug signing and embedded JS, suitable for testing, not store-signing evidence. Select the actual device serial with `adb -s SERIAL install -r app/build/outputs/apk/google/release/app-google-release.apk` or corresponding firetv path. Both flavors share application ID, so use separate device state/snapshots for comparison. Debug requires Metro on 19424 (`npm start` in apps/native; use a verified private route/adb reverse); Release must launch without it. Inspect APK with unzip -l: lib/<abi>/libmpv.so and libporticompv.so exactly once for each selected ABI, RN/Hermes and embedded release bundle. Inspect merged launcher/services, Google-handheld-only Cast metadata and cleartext/system-TLS policy.
+Google APK serves phones/tablets and Android TV; Fire TV is its own flavor/minimum API 25 (Google minimum 24). These Release builds currently use debug signing and embedded JS, suitable for testing, not store-signing evidence. Select the actual device serial with `adb -s SERIAL install -r app/build/outputs/apk/google/release/app-google-release.apk` or corresponding firetv path. Both flavors share application ID, so use separate device state/snapshots for comparison. Debug requires Metro on 19424 (`npm start` in apps/native; use a verified private route/adb reverse); Release must launch without it. Inspect APK with unzip -l: each engine library (libmpv.so, libavcodec.so, libssl.so and the rest listed in third_party/media-engine/verify.py) and libporticompv.so exactly once for each selected ABI, RN/Hermes and embedded release bundle. Inspect merged launcher/services, Google-handheld-only Cast metadata and cleartext/system-TLS policy.
 
 | First error | Response |
 | --- | --- |
-| Fetch/checksum mismatch | Inspect exact locked archive/digest; do not accept replacement digest automatically. Intentional local LGPL build uses -PporticoLibmpvDir=/absolute/path containing each selected <abi>/libmpv.so. |
+| Engine missing or source checksum mismatch | Run `third_party/media-engine/build-android.sh`, then `python3 third_party/media-engine/verify.py android`; never accept a replacement digest automatically. A build kept elsewhere is used with -PporticoLibmpvDir=/absolute/path/to/out/android (holding lib/<abi>/*.so, include/mpv/ and notices/). |
 | CMake imported lib absent | Confirm fetch dependency precedes configure/link and correct ABI directory; imported mpv target links porticompv. |
 | Missing/duplicate packaged .so | Inspect AAR/APK; add exactly one jniLibs directory only if import packaging absent, remove duplication if both supply it. |
 | Unresolved JNI/mpv | Match pinned header/binary, kept PorticoMpvNative/Listener JNI symbols and Surface/event signatures; do not guess extra helper/libc++ dependencies (later review found none for these binaries). |

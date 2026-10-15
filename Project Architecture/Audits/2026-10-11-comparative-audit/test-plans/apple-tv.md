@@ -30,6 +30,16 @@ For HDR10/HLG/Dolby Vision 5/7/8, TrueHD/DTS-HD/Atmos, PGS/VobSub/DVB, HE-AAC/SB
 
 ## Build or install
 
+### First: build the media engine
+
+The mpv engine is no longer downloaded (MPVKit is gone). Portico builds it from pinned source as separate LGPL 2.1 dynamic frameworks; the package and its full instructions are `third_party/media-engine/README.md` in the native repository. Do this once per candidate, before anything below:
+
+1. **Prerequisites:** Xcode 16+ selected (`xcode-select -p`) with the iOS and tvOS platforms installed; `rustup` with the toolchain `sources.lock.json` names (`rustup toolchain install 1.99.0` if `rustc --version` differs); `brew install pkgconf`; about 15 GB free.
+2. **Build:** from the native repository root run `third_party/media-engine/build-apple.sh` (about an hour the first time). It stops early and says why if Xcode, an SDK, a tool, a deployment target or a checksum is wrong, and finishes by running `verify.py apple`.
+3. **First verify run:** `manifest/apple.json` was derived from the Android build. If `verify.py` reports differences in that file only, check each framework loads only other engine frameworks and Apple system libraries; if so, run `python3 third_party/media-engine/verify.py apple --update-expected` and commit the file. Any other failure is a real defect: record it and stop.
+4. Continue with the build below. In Xcode, `PorticoMediaEngine` appears under Package Dependencies as a local package; "missing binary target" means step 2 did not finish. The tvOS simulator slice is Apple-silicon only.
+5. **First device checks for the engine:** Player = mpv; H.264 MP4, HEVC 10-bit HDR MKV, AV1 (software), an HLS stream from the server; styled ASS, a PGS track and a non-UTF-8 SRT (Cyrillic or Chinese) displayed correctly; Dolby Vision profile 8 (and 5 if available) on HDR and SDR screens; seek, background pause, audio-track switch, 5.1 over HDMI/AirPlay; no `dyld` "Library not loaded" at launch; archive Release and run Validate App (bundle ids, minimum OS, every embedded framework's privacy manifest).
+
 On a Mac use Node/npm, CocoaPods and Xcode 16.1+ with iOS/tvOS SDKs and installed runtimes; also archive/launch with the currently chosen shipping SDK (the later review named Xcode 27). Record the actual SDK. From the native repository check copied packages: `PORTICO_SERVER_REPO=/absolute/candidate-server node scripts/shared-packages.mjs --check`. Drift needs the integrated copied packages reviewed/synchronized on a qualification copy, not an arbitrary old server dependency. From apps/native:
 
 ```sh
@@ -41,14 +51,14 @@ xcodebuild -workspace Portico.xcworkspace -scheme Portico -configuration Debug -
 xcodebuild -workspace Portico.xcworkspace -scheme Portico -configuration Release -destination 'generic/platform=DEVICE' -derivedDataPath /tmp/portico-accept-release CODE_SIGNING_ALLOWED=NO build
 ```
 
-Replace PLATFORM with ios or tvos, SIMULATOR with iOS Simulator or tvOS Simulator, DEVICE with iOS or tvOS. Use separate derived-data paths for each platform. Resolve exact pinned MPVKit 1.1.0-n9.0.2, import Libmpv and link the full MPVKit product/transitive frameworks. Then open the workspace, set the approved team/profiles and existing App Group/Sign in with Apple capabilities, build/archive signed Release and install on the actual device. Debug needs Metro (`npm start` in apps/native, port 19424); Release must run with Metro absent. Simulator compilation is a gate before physical compilation, never playback qualification.
+Replace PLATFORM with ios or tvos, SIMULATOR with iOS Simulator or tvOS Simulator, DEVICE with iOS or tvOS. Use separate derived-data paths for each platform. The Swift engine imports `Libmpv` from the local `PorticoMediaEngine` package built in the step above; every engine framework must be embedded and signed. Then open the workspace, set the approved team/profiles and existing App Group/Sign in with Apple capabilities, build/archive signed Release and install on the actual device. Debug needs Metro (`npm start` in apps/native, port 19424); Release must run with Metro absent. Simulator compilation is a gate before physical compilation, never playback qualification.
 
 First-build failure checklist:
 
 | Error or symptom | Concrete response |
 | --- | --- |
 | No React module / bridging-header failure | Run that platform’s pod install, open the workspace, keep inherited search/link settings and clock/subtitle/playback imports. |
-| Libmpv missing or Player row absent | Resolve pinned artifacts, inspect correct simulator/device slices and full MPVKit target linkage; canImport may hide implementation despite a clean build. Require available=true at runtime. |
+| Libmpv missing or Player row absent | Resolve pinned artifacts, inspect correct simulator/device slices and that every `PorticoMediaEngine` framework is linked and embedded; canImport may hide implementation despite a clean build. Require available=true at runtime. |
 | FFmpeg/libass/Vulkan/MoltenVK unresolved | Link full package transitive products; do not substitute a differently licensed product or ignore checksum. |
 | Swift pointer/enum/CFDictionary/callback import mismatch | Compare selected Libmpv/SDK header: command uses mutable outer nullable const-char pointers with null terminator; dictionary keys String/Int32 dimensions and nullable cue/status bridges. Inspect explicit NS_SWIFT_NAME subtitle helpers; retain semantics. |
 | Swift actor/Sendable errors | Confirm Swift 5.0 target setting; a separate Swift 6 ownership migration cannot be replaced with blanket unchecked Sendable. |
@@ -56,7 +66,7 @@ First-build failure checklist:
 | Availability/scene launch/privacy error | Retain iOS/tvOS 15.1 floor and guarded SDK APIs; inspect current scene manifest/AppDelegate integration, app and TopShelf privacy bundles and real archive validation. Later source contains scene manifests; do not assume the earlier unresolved note still describes it. |
 | mpv option startup error | Inspect named errorDetail and exact pinned backend; scope/protocol/GPU/audio errors cannot be silently skipped. Compare Metal API Validation off only as diagnostics, never HDR proof. |
 
-The test source apps/native/test/PorticoMpvTests.swift currently has eight test methods including a Libmpv-conditional controller test. If schemes lack a test bundle, add a qualification-only iOS/tvOS Unit Testing Bundle PorticoNativeTests, host Portico, Debug testability, app bridging/search paths and full MPVKit, add that source and the bundle to scheme Test. Run `xcodebuild -workspace Portico.xcworkspace -scheme Portico -configuration Debug -destination 'platform=SIMULATOR,name=INSTALLED_DEVICE' -only-testing:PorticoNativeTests/PorticoMpvTests test`. Replace destination with an installed simulator. All eight must run; seven means the engine test was excluded. Standalone Mac guard: from apps/native run `xcrun --sdk macosx clang -fobjc-arc -framework Foundation test/native-download-attempt-tests.m -o /tmp/portico-download-attempt-tests`, then that executable. The three Foundation/Security contract commands are in .github/workflows/ci.yml’s apple-contracts job; use their exact includes. This target wiring is qualification setup, not a claim the app shipped a runnable test scheme.
+The test source apps/native/test/PorticoMpvTests.swift currently has eight test methods including a Libmpv-conditional controller test. If schemes lack a test bundle, add a qualification-only iOS/tvOS Unit Testing Bundle PorticoNativeTests, host Portico, Debug testability, app bridging/search paths and the `PorticoMediaEngine` package, add that source and the bundle to scheme Test. Run `xcodebuild -workspace Portico.xcworkspace -scheme Portico -configuration Debug -destination 'platform=SIMULATOR,name=INSTALLED_DEVICE' -only-testing:PorticoNativeTests/PorticoMpvTests test`. Replace destination with an installed simulator. All eight must run; seven means the engine test was excluded. Standalone Mac guard: from apps/native run `xcrun --sdk macosx clang -fobjc-arc -framework Foundation test/native-download-attempt-tests.m -o /tmp/portico-download-attempt-tests`, then that executable. The three Foundation/Security contract commands are in .github/workflows/ci.yml’s apple-contracts job; use their exact includes. This target wiring is qualification setup, not a claim the app shipped a runnable test scheme.
 
 From native repository root, run the three Mac-only contract helpers (outputs stay private):
 
