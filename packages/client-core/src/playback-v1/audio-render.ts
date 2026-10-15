@@ -43,7 +43,12 @@ export type AudioRenderV2 = Readonly<{
   downmixed?: boolean;
   trim?: AudioTrim;
   gain?: AudioGain;
+  /** `direct` in a container with no seek index (MP3, ADTS, Ogg): where a part-way start reads
+   * from instead (`?fromFrame=N`), lossless FLAC at `sampleRate`, so its frames are the plan's. */
+  deepStart?: AudioDeepStart;
 }>;
+
+export type AudioDeepStart = Readonly<{url: string; container: string; codec: string; sampleRate: number; channels: number; bitDepth?: number}>;
 
 /** A plan an engine can play: direct or converted, with everything gapless needs. */
 export type PlayableAudioRender = AudioRenderV2 & Readonly<{mode: 'direct' | 'converted'; url: string; container: string; codec: string; sampleRate: number; channels: number; durationFrames: number; trim: AudioTrim}>;
@@ -67,6 +72,10 @@ export function parseAudioRenderV2(v: unknown): AudioRenderV2 | undefined {
   const trim = isObj(v.trim) ? v.trim : undefined;
   const startFrames = count(trim?.startFrames), endFrames = count(trim?.endFrames);
   const gain = isObj(v.gain) ? v.gain : undefined;
+  const deep = mode === 'direct' && isObj(v.deepStart) ? v.deepStart : undefined;
+  const deepStart = deep && text(deep.url) && text(deep.container, 32) && text(deep.codec, 32) && count(deep.sampleRate, 768_000) && count(deep.channels, 32) && deep.sampleRate === v.sampleRate
+    ? Object.freeze({url: deep.url as string, container: deep.container as string, codec: deep.codec as string, sampleRate: deep.sampleRate as number, channels: deep.channels as number, ...(count(deep.bitDepth, 64) ? {bitDepth: deep.bitDepth as number} : {})})
+    : undefined;
   const plan = {
     version: 2 as const, mode, id: v.id,
     ...(reason ? {reason} : {}),
@@ -86,6 +95,7 @@ export function parseAudioRenderV2(v: unknown): AudioRenderV2 | undefined {
       ...(finite(gain.albumPeak, 1e-6, 64) !== undefined ? {albumPeak: gain.albumPeak as number} : {}),
       source: text(gain.source, 32) ?? '',
     })} : {}),
+    ...(deepStart ? {deepStart} : {}),
   };
   if (!plan.url || !plan.container || !plan.codec || !plan.sampleRate || !plan.channels || !plan.durationFrames || !plan.trim) {
     return Object.freeze({version: 2, mode: 'unavailable', id: v.id, ...(reason ? {reason} : {})});
