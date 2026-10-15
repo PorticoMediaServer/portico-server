@@ -764,7 +764,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
         setBusy(false);
       }
     },
-    [busy, pin, directOrigin, acceptDirect],
+    [busy, pin, directOrigin, finishDirectSignIn],
   );
 
   const chooseProfile = useCallback(
@@ -1090,7 +1090,7 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
       signOut,
       disconnectServer,
     }),
-    [restoring, restoreMessage, signInHint, offline, scope, api, system, central, account, local, servers, dropped, serversStatus, serversError, refreshServers, attachedServer, error, busy, directOrigin, pin, inspect, signInDirect, directStep, continueSignIn, cancelStep, pending, chooseProfile, cancelPending, openProfileChooser, reloadProfiles, pairedApi, acceptIssued, porticoConnect, acceptPortico, refreshServerList, listCheckedAt, acceptCustody, signOutAccount, signOut, disconnectServer, invalidateSelection],
+    [restoring, restoreMessage, signInHint, offline, scope, api, system, central, account, local, servers, dropped, serversStatus, serversError, refreshServers, attachedServer, error, busy, directOrigin, pin, inspect, signInDirect, directStep, continueSignIn, cancelStep, pending, chooseProfile, cancelPending, openProfileChooser, reloadProfiles, pairedApi, acceptIssued, porticoConnect, acceptPortico, refreshServerList, listCheckedAt, acceptCustody, accountId, signOutAccount, signOut, disconnectServer, invalidateSelection],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

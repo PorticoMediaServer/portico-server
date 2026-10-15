@@ -93,7 +93,7 @@ test('the periodic subtitle reload sends its validator and treats 304 as authori
  await assert.rejects(fetchSubtitleDocument(revoked,'https://server.test/doc','"res.3"',new AbortController().signal));
 });
 
-test('CD-21: external_text accepts ass/ssa alongside srt/vtt; bitmap stays refused',()=>{
+test('CD-21: external_text accepts ass/ssa alongside srt/vtt; bitmap stays refused (the selected track refuses the plan; a listed one is left out)',()=>{
  for(const format of ['ass','ssa'] as const){
   const pinned={...resource,format};
   assert.equal(validateSubtitlePlan(plan(2,{...pinned,pinned:true})).selected?.format,format);
@@ -101,6 +101,15 @@ test('CD-21: external_text accepts ass/ssa alongside srt/vtt; bitmap stays refus
  }
  for(const format of ['pgs','sup','vobsub','idx','dvb'] as const){
   assert.throws(()=>validateSubtitlePlan(plan(2,{...resource,format,pinned:true} as any)));
-  assert.throws(()=>validateSubtitleCatalog({...catalog(),resources:[{...resource,format}]}));
+  assert.deepEqual(validateSubtitleCatalog({...catalog(),resources:[{...resource,format},{...resource,id:'kept'}]}).resources.map(r=>r.id),['kept']);
  }
+});
+
+// B-16.10: a track in a format or from an origin newer than this app costs only that track, never the whole list.
+test('a subtitle row this app cannot read is left out and the others are still offered',()=>{
+ const listed=validateSubtitleCatalog({...catalog(),resources:[{...resource,id:'future',format:'webvtt2'},resource]});
+ assert.deepEqual(listed.resources.map(r=>r.id),[resource.id]);
+ const planned=validateSubtitlePlan({...plan(2,{...resource,pinned:true}),resources:[{...resource,id:'future',origin:'satellite'},resource]});
+ assert.deepEqual(planned.resources.map(r=>r.id),[resource.id]);
+ assert.throws(()=>validateSubtitlePlan(plan(2,{...resource,format:'webvtt2',pinned:true} as any)),'the selected track itself stays exact');
 });

@@ -26,11 +26,12 @@ export type FieldSpec = {field: string; label: string; group?: string; type: Fie
 type Data = RepairData & {schema?: readonly FieldSpec[]; artworkRoles?: readonly string[]};
 type Tab = 'general' | 'artwork' | 'tags' | 'people' | 'matching' | 'history';
 
-const fallbackLabels: Record<string, string> = {title: 'Title', description: 'Summary', year: 'Year', author: 'Author', narrator: 'Narrator', number: 'Season number', sortTitle: 'Sort title', originalTitle: 'Original title', edition: 'Edition', tagline: 'Tagline', releaseDate: 'Release date', contentRating: 'Content rating', studio: 'Studio', network: 'Network', country: 'Country', seasonNumber: 'Season number', episodeNumber: 'Episode number', trackNumber: 'Track number', discNumber: 'Disc number', partNumber: 'Part number', series: 'Series', seriesIndex: 'Series index', label: 'Label', tags: 'Tags', labels: 'Labels'}; // lint-strings-allow: schema fallback field-label map (server labels win at runtime; t() blanks unknown ids, so this cannot go through the catalogue without server label IDs)
+/** The editor's own name for a field the server sent without a label (its labels win whenever they are there). */
+const fallbackLabels: Readonly<Record<string, MessageId>> = {title: 'web.metadata.field.title', description: 'web.metadata.field.description', year: 'web.metadata.field.year', author: 'web.metadata.field.author', narrator: 'web.metadata.field.narrator', number: 'web.metadata.field.number', sortTitle: 'web.metadata.field.sortTitle', originalTitle: 'web.metadata.field.originalTitle', edition: 'web.metadata.field.edition', tagline: 'web.metadata.field.tagline', releaseDate: 'web.metadata.field.releaseDate', contentRating: 'web.metadata.field.contentRating', studio: 'web.metadata.field.studio', network: 'web.metadata.field.network', country: 'web.metadata.field.country', seasonNumber: 'web.metadata.field.seasonNumber', episodeNumber: 'web.metadata.field.episodeNumber', trackNumber: 'web.metadata.field.trackNumber', discNumber: 'web.metadata.field.discNumber', partNumber: 'web.metadata.field.partNumber', series: 'web.metadata.field.series', seriesIndex: 'web.metadata.field.seriesIndex', label: 'web.metadata.field.label', tags: 'web.metadata.field.tags', labels: 'web.metadata.field.labels'};
 const fallbackOrder = ['title', 'sortTitle', 'originalTitle', 'edition', 'year', 'releaseDate', 'contentRating', 'studio', 'network', 'country', 'seasonNumber', 'episodeNumber', 'trackNumber', 'discNumber', 'partNumber', 'author', 'narrator', 'series', 'seriesIndex', 'label', 'number', 'tagline', 'description', 'tags', 'labels'];
-function fallbackSchema(data: RepairData): FieldSpec[] {
+function fallbackSchema(data: RepairData, t: I18n['t']): FieldSpec[] {
   const keys = Object.keys(data.snapshot.fields).sort((a, b) => (fallbackOrder.indexOf(a) + 1 || 99) - (fallbackOrder.indexOf(b) + 1 || 99));
-  return keys.map(field => ({field, label: fallbackLabels[field] ?? field.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()), type: field === 'description' || field === 'tagline' ? 'multiline' : /number|year|index/i.test(field) ? 'integer' : field === 'releaseDate' ? 'date' : field === 'tags' || field === 'labels' ? 'list' : 'text', bulk: !['title', 'sortTitle', 'originalTitle', 'edition', 'tagline', 'seasonNumber', 'episodeNumber', 'trackNumber', 'discNumber', 'partNumber', 'number', 'seriesIndex'].includes(field)}));
+  return keys.map(field => ({field, label: fallbackLabels[field] ? t(fallbackLabels[field]) : field.replace(/([A-Z])/g, ' $1').replace(/^./, c => c.toUpperCase()), type: field === 'description' || field === 'tagline' ? 'multiline' : /number|year|index/i.test(field) ? 'integer' : field === 'releaseDate' ? 'date' : field === 'tags' || field === 'labels' ? 'list' : 'text', bulk: !['title', 'sortTitle', 'originalTitle', 'edition', 'tagline', 'seasonNumber', 'episodeNumber', 'trackNumber', 'discNumber', 'partNumber', 'number', 'seriesIndex'].includes(field)}));
 }
 const tabs: readonly {id: Tab; label: MessageId; icon: IconName}[] = [
   {id: 'general', label: 'web.metadata.tabGeneral', icon: 'edit'}, {id: 'artwork', label: 'web.metadata.tabArtwork', icon: 'film'}, {id: 'tags', label: 'web.metadata.tabTags', icon: 'category'}, {id: 'people', label: 'web.metadata.tabPeople', icon: 'people'}, {id: 'matching', label: 'web.librarySettings.matching', icon: 'link'}, {id: 'history', label: 'web.metadata.tabHistory', icon: 'clock'},
@@ -168,7 +169,7 @@ export function validateRepairList(spec: FieldSpec, values: readonly string[]): 
 export function GeneralTab({data, busy, onSave, onClose}: {data: Data; busy: boolean; onSave: (fields: Record<string, FieldEdit>) => Promise<boolean>; onClose: () => void}) {
   const i18n = useI18n();
   const t = i18n.t;
-  const schema = data.schema ?? fallbackSchema(data);
+  const schema = data.schema ?? fallbackSchema(data, t);
   const [values, setValues] = useState<Record<string, string>>({});
   const [locks, setLocks] = useState<Record<string, boolean>>({});
   const [automatic, setAutomatic] = useState<Set<string>>(new Set());
@@ -593,9 +594,9 @@ function BulkEditor({targets, onSaved, onClose}: {targets: readonly RepairTarget
   useEffect(() => {
     let cancelled = false;
     const probe = new MetadataRepairService({api, scope});
-    void probe.load(targets[0]).then(() => { const d = probe.getSnapshot().data as Data | null; if (!cancelled && d) setSchema((d.schema ?? fallbackSchema(d)).filter(f => f.bulk)); probe.dispose(); });
+    void probe.load(targets[0]).then(() => { const d = probe.getSnapshot().data as Data | null; if (!cancelled && d) setSchema((d.schema ?? fallbackSchema(d, t)).filter(f => f.bulk)); probe.dispose(); });
     return () => { cancelled = true; probe.dispose(); };
-  }, [api, scope, targets]);
+  }, [api, scope, targets, t]);
   if (kinds.size > 1) return <><Notice tone="warning">{t('web.metadata.bulkOneKind')}</Notice><Footer copy="" busy={false} onClose={onClose} /></>;
   const fieldChanges = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== ''));
   const adds = genresAdd.split(',').map(v => v.trim()).filter(Boolean);

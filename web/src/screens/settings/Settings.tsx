@@ -61,7 +61,7 @@ function SettingsFrame({address}: {address?: string}) {
       audioPassthrough: false,
       hdr: hdrScreen(),
     },
-  }), [session.owner, session.session, registry, local, manageAccount, session.local?.hostedAccountId, session.local?.canManage, session.local?.managementFamily, session.hosted, downloads.state.unavailable]);
+  }), [session.owner, session.session, registry, local, manageAccount, session.local?.hostedAccountId, session.hosted, downloads.state.unavailable]);
   const [query, setQuery] = useState('');
   const matches = useMemo(() => searchSettings(structure, query, t), [structure, query, t]);
   const current = address || !narrow ? findSettingsPage(structure, address) : undefined;

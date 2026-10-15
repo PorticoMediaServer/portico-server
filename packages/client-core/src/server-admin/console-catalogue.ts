@@ -1,8 +1,7 @@
 /**
- * The console's words for tasks, alerts, scans and feedback, from the catalogue. `console-words`
- * and `panel-logic` hold the older English-only tables; a screen that draws through these shows
- * the viewer's language, and for a code this client has no word for, a general word instead of
- * the code itself.
+ * The console's words for tasks, alerts, scans and feedback, from the catalogue: every client
+ * names a job, a job's state and an alert through these, in the viewer's language, and for a code
+ * this client has no word for, a general word instead of the code itself.
  */
 import type {MessageId, MessageValues} from '../../../i18n/src/index.ts';
 import {sentence} from './console-words.ts';

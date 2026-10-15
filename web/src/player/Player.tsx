@@ -7,7 +7,7 @@ import {useI18n} from '../app/i18n';
 import {syncRate} from '../bridge/sync-rate';
 import {FeedbackDialog} from '../screens/shared/FeedbackDialog';
 import {subtitleTrackNames, trackName} from '@core/presentation/index.ts';
-import React, {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import React, {useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {playbackUserMessage} from '@core/playback-messages.ts';
 import {playbackFailure} from './failure';
 import {SubtitleSurface} from './subtitle-surface';
@@ -582,7 +582,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
    * (client-core `pending-track-choice`): audio first, then subtitles on the session left standing. */
   const pendingChoice = useRef<PendingChoiceProgress>({});
   useEffect(() => { pendingChoice.current = {choice: state.itemId ? takePendingTrackChoice(state.itemId) : undefined}; }, [state.itemId]);
-  useEffect(() => {
+  // Advances on the changes listed below; the subtitle client and the failure notice are read as they are when it does.
+  const advanceChoice = useEffectEvent(() => {
     if (!state.session || pendingChoice.current.choice?.itemId !== state.itemId) return;
     pendingChoice.current = advancePendingChoice(pendingChoice.current, {
       sessionId: state.session.id,
@@ -594,7 +595,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       selectTrack: stream => { void service.selectAudioTrack(stream); },
       chooseSubtitle: id => { const resource = id ? subtitlePlan?.resources.find(r => r.id === id) : null; if (resource === null) void subtitles.turnOff().catch(subtitleChangeFailed); else if (resource) void subtitles.choose(resource).catch(subtitleChangeFailed); },
     });
-  }, [state.session?.id, state.itemId, audioPlan.plan, audioPlan.availability, state.audioTracks, subtitlePlan, subtitles.service, subtitles.snapshot.busy, service]);
+  });
+  useEffect(() => { advanceChoice(); }, [state.session?.id, state.itemId, audioPlan.plan, audioPlan.availability, state.audioTracks, subtitlePlan, subtitles.service, subtitles.snapshot.busy, service]);
   /* Quality. Original is the default; Automatic starts at Original and moves down, and back up,
      as the connection requires; then the fixed qualities below the source. A choice re-plans the
      playing session where it is (the queue is untouched) and holds for this viewing; the saved

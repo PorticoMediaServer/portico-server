@@ -1,5 +1,6 @@
 import {routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
+import {oneOfOr} from './tolerant.ts';
 /** Versioned, renderer-independent linear feature DTOs. Credentials are write-only. */
 import type {ChannelApi} from './channel-guide';
 export const LINEAR_PROTOCOL='1.0' as const;
@@ -17,10 +18,11 @@ export const utcInstant=(v:unknown):v is string=>typeof v==='string'&&/^\d{4}-\d
 export function envelope(v:unknown,serverId:string):Record<string,unknown>{if(!isRecord(v)||v.serverId!==serverId)throw new Error(unreadableServerResponse);return v}
 function bad():never{throw new Error(unreadableServerResponse)}
 export function parseRemoteSourcePreview(raw:unknown,serverId:string):RemoteSourcePreview{
- const v=envelope(raw,serverId).remotePreview;if(!isRecord(v)||!boundedText(v.previewId,48)||v.previewId.length!==48||!isRecord(v.preview)||!safeCounter(v.preview.channels,100000)||v.preview.channels<1||!safeCounter(v.preview.programmes,10000000)||!boundedText(v.preview.availableStart,64)||!boundedText(v.preview.availableEnd,64)||!Array.isArray(v.preview.names)||v.preview.names.length!==Math.min(100,v.preview.channels)||v.preview.names.some(x=>!boundedText(x,256))||!safeCounter(v.discoveredCapacity,256)||!['defaulted','discovered','configured'].includes(String(v.capacityMode))||!utcInstant(v.expiresAt)||!Array.isArray(v.mappingKeys)||v.mappingKeys.length!==v.preview.names.length)bad();
+ const v=envelope(raw,serverId).remotePreview;if(!isRecord(v)||!boundedText(v.previewId,48)||v.previewId.length!==48||!isRecord(v.preview)||!safeCounter(v.preview.channels,100000)||v.preview.channels<1||!safeCounter(v.preview.programmes,10000000)||!boundedText(v.preview.availableStart,64)||!boundedText(v.preview.availableEnd,64)||!Array.isArray(v.preview.names)||v.preview.names.length!==Math.min(100,v.preview.channels)||v.preview.names.some(x=>!boundedText(x,256))||!safeCounter(v.discoveredCapacity,256)||!utcInstant(v.expiresAt)||!Array.isArray(v.mappingKeys)||v.mappingKeys.length!==v.preview.names.length)bad();
  const keys=new Set<string>();for(const k of v.mappingKeys){if(!isRecord(k)||!boundedText(k.channelKey,256)||!k.channelKey||keys.has(k.channelKey)||!boundedText(k.name,256)||!boundedText(k.guideKey,256))bad();keys.add(k.channelKey)}
  const d=v.preview.diagnostics;if(!isRecord(d)||!safeCounter(d.skippedChannels,100000000)||!safeCounter(d.skippedProgrammes,100000000)||!safeCounter(d.adjustedProgrammes,100000000)||!Array.isArray(d.examples)||d.examples.length>10||d.examples.some(x=>!boundedText(x,256)))bad();
- return v as unknown as RemoteSourcePreview;
+ // How the capacity was decided is descriptive: a way this app does not know reads as the default.
+ return {...v,capacityMode:oneOfOr('remote-source-preview','capacityMode',v.capacityMode,['defaulted','discovered','configured'] as const,'defaulted')} as unknown as RemoteSourcePreview;
 }
 export async function previewRemoteSource(api:ChannelApi,serverId:string,draft:RemoteSourceDraft,signal?:AbortSignal){return parseRemoteSourcePreview(await api.request(routePath("preview_remote_live_source"),'POST',draft,signal),serverId)}
 export function linearError(error:unknown,fallback='The request did not finish. Try again.'):string{

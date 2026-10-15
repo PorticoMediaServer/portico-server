@@ -11,6 +11,8 @@ import {fetchHomeRow, type HomeApi, type HomeRow} from './home.ts';
 import {mergeRevalidatedList} from './freshness-actions.ts';
 
 export const HOME_ROW_PAGE_LIMIT = 60;
+/** How many pages a quiet refresh reads again, at most: what a viewer scrolls through, bounded. */
+export const REVALIDATE_PAGES = 5;
 
 export type HomeRowPageSnapshot = Readonly<{
   phase: 'loading' | 'ready' | 'error';
@@ -65,19 +67,34 @@ export class HomeRowPager {
   }
   retry = (): Promise<void> => this.load();
   /**
-   * Read the first page again without a loading state and merge it into what is shown: new and
-   * changed entries appear in place, and pages already scrolled into stay. A failed read rejects
-   * and changes nothing.
+   * Read what is shown again without a loading state and merge it into the list: new and changed
+   * entries appear in place, and one removed from deep in the list goes too, because every page
+   * the viewer has scrolled into is read again (up to REVALIDATE_PAGES of them; past that, the
+   * pages beyond stay as they were until the list is reopened). A failed read rejects and changes
+   * nothing; a cursor refused on the way keeps what the pages read so far say.
    */
   async revalidate(context?: {signal?: AbortSignal; settle?: () => Promise<void>}): Promise<void> {
     if (this.disposed || this.state.phase !== 'ready' || this.state.paging) return;
     const mine = this.generation;
+    const shown = this.state.entries.length;
     const row = await fetchHomeRow(this.api, this.rowId, {limit: this.limit}, context?.signal);
+    const fresh = [...row.entries];
+    let cursor = row.nextCursor;
+    for (let pages = 1; cursor && fresh.length < shown && pages < REVALIDATE_PAGES; pages++) {
+      let page: HomeRow;
+      try { page = await fetchHomeRow(this.api, this.rowId, {limit: this.limit, cursor}, context?.signal); } catch (e) {
+        if (codeOf(e) === 'stale_continuation' || codeOf(e) === 'invalid_cursor') break;
+        throw e;
+      }
+      const seen = new Set(fresh.map(e => e.id));
+      fresh.push(...page.entries.filter(e => !seen.has(e.id)));
+      cursor = page.nextCursor === cursor ? '' : page.nextCursor;
+    }
     await context?.settle?.();
     if (this.disposed || mine !== this.generation || context?.signal?.aborted || this.state.phase !== 'ready' || this.state.paging) return;
-    const entries = mergeRevalidatedList(this.state.entries, row.entries, e => e.id, {complete: !row.nextCursor, same: (a, b) => JSON.stringify(a) === JSON.stringify(b)});
-    const keptTail = entries.length > row.entries.length;
-    this.publish({row, entries: entries === this.state.entries ? entries : Object.freeze([...entries]), total: row.total, nextCursor: keptTail ? this.state.nextCursor : row.nextCursor});
+    const entries = mergeRevalidatedList(this.state.entries, fresh, e => e.id, {complete: !cursor, same: (a, b) => JSON.stringify(a) === JSON.stringify(b)});
+    const keptTail = entries.length > fresh.length;
+    this.publish({row, entries: entries === this.state.entries ? entries : Object.freeze([...entries]), total: row.total, nextCursor: keptTail ? this.state.nextCursor : cursor});
   }
   /** The next page, once per cursor. A stale cursor restarts from the first page. */
   async more(): Promise<void> {

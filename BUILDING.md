@@ -6,7 +6,7 @@ should install a package from the [latest release](https://github.com/PorticoMed
 ## Requirements
 
 - Go at the version declared in `server/go.mod`
-- Node.js 24 and npm
+- Node.js 24 and npm (CI, releases and the container image use exactly the release in `.node-version`; `scripts/check-node-version.mjs` keeps them together)
 - Make
 - FFmpeg and FFprobe for playback and transcoding tests
 

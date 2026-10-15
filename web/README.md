@@ -22,6 +22,21 @@ For a focused type check, use `(cd web && npx tsc --noEmit)`. The broader
 `npm run check --workspace portico-web` also regenerates tokens, runs design,
 preference and string checks, and runs the web tests; it is not just a type check.
 
+## Supported browsers
+
+Chrome and Edge 111, Firefox 113, and Safari 16.4 (iOS and iPadOS 16.4) or
+newer, on any platform. This is the floor the build targets (`browserFloor` in
+`vite.config.ts`): the app's syntax is written for these engines and its
+styles rely on what they support (colour mixing above all). An older browser
+is told so plainly by `browser-check.js`, which runs before the app, rather
+than being shown an empty or half-drawn page. Change the floor in both places
+and in this paragraph together.
+
+Two features are added where a supported browser lacks them: `AbortSignal.any`
+and `AbortSignal.timeout` (some television browsers), and, on a plain-HTTP page,
+`crypto.randomUUID`, a tab-local stand-in for Web Locks, and the server identity check's cryptography
+(`src/app/polyfills.ts`).
+
 ## Layout
 
 | Path | Role |
@@ -33,6 +48,11 @@ preference and string checks, and runs the web tests; it is not just a type chec
 | `src/player/` | Playback engine bound to the device queue, Now Playing surfaces, option popovers/sheet, mini bar. |
 | `src/admin/` | Console client hooks and label maps shared by the server screens. |
 | `docs/administration.md` | The administration information architecture and the rules every settings page follows. |
+
+`npm run lint:hooks` (oxlint, React's hook rules only) fails the check when a
+hook is called conditionally or its dependency list is incomplete. A deliberate
+exception carries `// eslint-disable-line react-hooks/exhaustive-deps -- why`
+on the line it excuses.
 
 `scripts/lint-design.mjs` fails the build if hex/rgb colours, font families or
 z-index values appear outside `src/ui` and `src/bridge`. Use semantic tokens

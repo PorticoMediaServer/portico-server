@@ -62,7 +62,7 @@ export function HomeScreen() {
     };
     window.addEventListener(CONTINUE_REMOVED, on);
     return () => window.removeEventListener(CONTINUE_REMOVED, on);
-  }, []);
+  }, [t]);
   useEffect(() => {
     if (!removal || removal.phase === 'pending') return;
     const id = setTimeout(() => setRemoval(current => (current === removal ? undefined : current)), 10000);

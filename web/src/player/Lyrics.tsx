@@ -8,7 +8,9 @@ import {useI18n} from '../app/i18n';
 export function Lyrics({api,scope,service,libraryId,className}:{api:HttpLocalApi;scope:ContentScope;service:PlaybackService;libraryId:string;/** The column beside the cover on Now Playing; without it the lyrics are a short strip. */className?:string}) {
  const {t}=useI18n();
  const playback=useSyncExternalStore(service.subscribe,service.getSnapshot);
- const reader=useMemo(()=>playback.session&&playback.itemId?new LyricsService(api,scope,{libraryId,itemId:playback.itemId,sessionId:playback.session.id,sessionGeneration:playback.session.generation}):null,[api,scope.serverId,scope.viewerId,libraryId,playback.itemId,playback.session?.id,playback.session?.generation]);
+ // Keyed on the values, not the objects: a new snapshot of the same session keeps its reader.
+ const {serverId,viewerId}=scope;const itemId=playback.itemId,sessionId=playback.session?.id,sessionGeneration=playback.session?.generation;
+ const reader=useMemo(()=>sessionId!==undefined&&sessionGeneration!==undefined&&itemId?new LyricsService(api,{serverId,viewerId},{libraryId,itemId,sessionId,sessionGeneration}):null,[api,serverId,viewerId,libraryId,itemId,sessionId,sessionGeneration]);
  const phase=useRef(playback.phase);phase.current=playback.phase;
  useEffect(()=>{if(!reader)return;const refresh=()=>{if(!['ended','error','idle'].includes(phase.current))void reader.refresh();};refresh();const timer=setInterval(refresh,30000);return()=>{clearInterval(timer);reader.dispose();};},[reader]);
  const data=useSyncExternalStore(reader?.subscribe??(()=>()=>{}),reader?.getSnapshot??(()=>null));

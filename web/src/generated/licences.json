@@ -1836,7 +1836,7 @@
  ],
  "inputs": {
   "LICENSE": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
-  "package-lock.json": "2aa202c37f0e26df03ac450843256bdadd16d8a110b6c80b3a8b0b869c4a604f",
+  "package-lock.json": "f8aa6774c494ce8d7334edee357c67a38b92866114d07e4039e29d2d3edcc921",
   "packages/design/LICENSE-LUCIDE": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
   "server/go.mod": "000177569c5901354a6bd54c4a6f541b7ba05cb6a142da0bdaef041e3d0cfc09",
   "server/go.sum": "f92a0cfb1c086af46d56dbc8b3a5198687e84efa34433f9029bfeb6f55417fdf",
