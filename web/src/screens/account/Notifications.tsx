@@ -3,7 +3,8 @@ import {useNavigate} from '@tanstack/react-router';
 import {useI18n, type I18n} from '../../app/i18n';
 import {AccountNotificationsClient, ACCOUNT_SECURITY_EVENTS, runAccountExport, type AccountNotification, type NotificationPreferences} from '@core/account-notifications.ts';
 import {saveJSON} from '../../app/account-notifications';
-import {accountApi, type AccountScope} from '../../bridge/account-api';
+import type {AccountScope} from '../../bridge/account-api';
+import {useAccountApi} from './account-hooks';
 import {ErrorNotice, errorText} from '../../app/errors';
 import {Button, Loading, Notice, SettingsGroup, SettingsPage, SettingsRow, StateView, Switch, relative, type IconName} from '../../ui';
 
@@ -35,7 +36,8 @@ export function Notifications({scope, onUnread}: {scope: AccountScope; onUnread:
   const i18n = useI18n();
   const {t} = i18n;
   const navigate = useNavigate();
-  const client = useMemo(() => new AccountNotificationsClient(accountApi(scope).request), [scope.accountId, scope.familyId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const api = useAccountApi(scope);
+  const client = useMemo(() => new AccountNotificationsClient(api.request), [api]);
   const [items, setItems] = useState<AccountNotification[]>([]);
   const [cursor, setCursor] = useState<string>();
   const [unread, setUnread] = useState(0);
@@ -121,7 +123,8 @@ function NotificationPrefs({client}: {client: AccountNotificationsClient}) {
 /** "Download your data": request the export, wait while it's prepared, then save the JSON. No email, no link. */
 export function DataExport({scope}: {scope: AccountScope}) {
   const {t} = useI18n();
-  const client = useMemo(() => new AccountNotificationsClient(accountApi(scope).request), [scope.accountId, scope.familyId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const api = useAccountApi(scope);
+  const client = useMemo(() => new AccountNotificationsClient(api.request), [api]);
   const [phase, setPhase] = useState<'idle' | 'working' | 'pending' | 'done'>('idle');
   const [error, setError] = useState('');
   const operation = useRef<string>(undefined);

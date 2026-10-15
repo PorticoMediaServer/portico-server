@@ -81,6 +81,8 @@ export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libra
     firedCursor.current = key;
     onMore();
   }, [onMore, section.id, section.nextCursor]);
+  // Above the empty return: a row that empties and fills again keeps the same hooks.
+  const arrived = useArrivals(section.entries);
   if (!section.entries.length) return null;
   const first = section.entries[0]!;
   // A mixed row takes the poster density (its square art is fitted into poster frames).
@@ -88,7 +90,6 @@ export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libra
   // WEB-HOME-01: one geometry per row. Square art (albums) in a row of posters sits
   // inside a poster frame instead of a shorter square card.
   const rowShape = section.entries.every(e => shapeFor(e.kind, inShow ? 'showWorkspace' : 'shelf') === 'square') ? 'square' : undefined;
-  const arrived = useArrivals(section.entries);
   const card = (entry: ContentEntry) => <EntryCard key={entry.id} entry={entry} arrived={arrived.has(entry.id)} siblings={siblings} inShow={inShow} libraryId={libraryId} selectable={selectable} noSelect={noSelect} rowShape={rowShape ?? (inShow ? undefined : 'poster')} origin={origin} resume={isContinueRow(section.id)} />;
   if (section.type === 'list') {
     return (

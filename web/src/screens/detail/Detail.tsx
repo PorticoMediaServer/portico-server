@@ -220,6 +220,7 @@ export function DetailScreen() {
         <TitleHero
           onBack={back}
           loading={!item}
+          pageKey={item?.id}
           backdrop={item?.backdropUrl}
           artwork={{path: item?.posterUrl, shape: item?.song || item?.bookFile ? 'square' : 'poster', icon: item?.song ? 'music' : item?.bookFile ? 'book' : 'film'}}
           context={parent}

@@ -14,3 +14,9 @@
 .initial { font-weight: 700; font-size: 1.6em; color: var(--text-secondary); }
 .progress { position: absolute; left: 0; right: 0; bottom: 0; height: 4px; background: color-mix(in srgb, var(--color-ink) 60%, transparent); }
 .progress > i { display: block; height: 100%; background: var(--accent); }
+
+/* Forced colours drop background fills: the watched bar is drawn in system colours so it stays visible. */
+@media (forced-colors: active) {
+  .progress { forced-color-adjust: none; background: Canvas; outline: 1px solid CanvasText; }
+  .progress > i { background: Highlight; }
+}

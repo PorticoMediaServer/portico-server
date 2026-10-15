@@ -10,7 +10,8 @@ import {useI18n} from '../../app/i18n';
 export function FeedbackDialog({open, onOpenChange, itemId, playbackSessionId, title}: {open: boolean; onOpenChange: (open: boolean) => void; itemId?: string; playbackSessionId?: string; title?: string}) {
   const {t} = useI18n();
   const {api} = useSession();
-  const service = useMemo(() => new FeedbackService(api), [api, open]);
+  // One client for the dialog's life: each opening reloads what can be reported (`open()` starts from loading).
+  const service = useMemo(() => new FeedbackService(api), [api]);
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
   const [draft, setDraft] = useState<FeedbackDraft>({kind: '', category: '', message: '', attachDiagnostics: true});
   useEffect(() => { if (open) void service.open(); }, [open, service]);

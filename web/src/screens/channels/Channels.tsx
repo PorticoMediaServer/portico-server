@@ -166,7 +166,7 @@ function GuideScreen({entry, name, library, sources, picker, search}: {entry: st
   const makeQuery = useCallback((): GuideQuery => ({entry, timezone: format.zone, sort, ...(search.group ? {group: search.group} : {}), ...(search.favorites ? {favorites: true} : {}), ...(showHidden ? {includeHidden: true} : {})}), [entry, format.zone, sort, search.group, search.favorites, showHidden]);
   // The current data source is kept for the per-channel timeline (§6), which reads one channel by time.
   const sourceRef = useRef<GuideDataSource | null>(null);
-  const newSource = () => (sourceRef.current = channelGuideSource(api, serverId, makeQuery()));
+  const newSource = useCallback(() => (sourceRef.current = channelGuideSource(api, serverId, makeQuery())), [api, serverId, makeQuery]);
   const store = useMemo(() => new GuideWindowStore({source: newSource()}), [api, serverId]); // eslint-disable-line react-hooks/exhaustive-deps
   const queryKey = JSON.stringify(makeQuery());
   const firstQuery = useRef(queryKey);
@@ -233,7 +233,7 @@ function GuideScreen({entry, name, library, sources, picker, search}: {entry: st
       await saveChannelPreference(api, serverId, c, await channelOperationId(() => Promise.resolve(crypto.randomUUID())), values);
       forgetGuideReads(); store.reset(newSource());
     } catch (e) { setToast({text: errorText(e, 'live', 'save')}); }
-  }, [api, serverId, store, makeQuery]);
+  }, [api, serverId, store, newSource]);
 
   const range = useMemo(() => {
     const scoped = entry === ALL ? sources : sources.filter(x => x.id === entry);

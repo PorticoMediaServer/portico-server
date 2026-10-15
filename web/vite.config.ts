@@ -2,6 +2,7 @@ import {defineConfig, type Plugin} from 'vite';
 import react from '@vitejs/plugin-react';
 import {createReadStream, readdirSync, readFileSync, statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
+import {enUS} from '../packages/i18n/src/catalog/en-US.ts';
 const at = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 /*
@@ -51,8 +52,33 @@ function vendoredFiles(): Plugin {
   };
 }
 
+/*
+ * The browser floor, stated in README.md. The build writes its syntax for these engines, and
+ * `browser-check.js` (served as `/browser-check.js`, before the app) tells an older one plainly
+ * that it cannot run Portico rather than leaving the page empty.
+ */
+const browserFloor = ['chrome111', 'edge111', 'firefox113', 'safari16.4', 'ios16.4'];
+function browserCheck(): Plugin {
+  const source = () => readFileSync(at('./browser-check.js'), 'utf8')
+    .replace('__PORTICO_UNSUPPORTED_TITLE__', JSON.stringify(enUS['web.browser.unsupportedTitle']))
+    .replace('__PORTICO_UNSUPPORTED_BODY__', JSON.stringify(enUS['web.browser.unsupportedBody']));
+  return {
+    name: 'portico-browser-check',
+    configureServer(server) {
+      server.middlewares.use((request, response, next) => {
+        if ((request.url ?? '').split('?')[0] !== '/browser-check.js') return next();
+        response.setHeader('Content-Type', 'text/javascript');
+        response.end(source());
+      });
+    },
+    generateBundle() {
+      this.emitFile({type: 'asset', fileName: 'browser-check.js', source: source()});
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), vendoredFiles()],
+  plugins: [react(), vendoredFiles(), browserCheck()],
   resolve: {
     alias: {'@core': at('../packages/client-core/src'), '@design': at('../packages/design/src/index.ts'), '@i18n': at('../packages/i18n/src/index.ts'), '@': at('./src')},
     dedupe: ['react', 'react-dom'],
@@ -65,5 +91,5 @@ export default defineConfig({
       '/v2': {target: process.env.PORTICO_DEV_SERVER_URL ?? 'http://127.0.0.1:32500', changeOrigin: false},
     },
   },
-  build: {sourcemap: true},
+  build: {sourcemap: true, target: browserFloor, cssTarget: browserFloor},
 });

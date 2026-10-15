@@ -16,6 +16,9 @@ export const ArtworkContext = createContext<ArtworkStore | null>(null);
 export function useArtworkUrl(path?: string, priority: 'high' | 'normal' = 'normal', place?: ArtworkPlace, options: {large?: boolean} = {}): {url?: string; failed: boolean} {
   const store = useContext(ArtworkContext);
   const [state, setState] = useState<{path?: string; url?: string; failed: boolean}>({path, url: path ? store?.peek(path) : undefined, failed: false});
+  // Where the artwork sits is a scheduling hint read when a load starts; a new place alone does not restart it.
+  const placed = useRef(place);
+  placed.current = place;
   useEffect(() => {
     if (!path || !store) {
       setState({path, failed: false});
@@ -33,7 +36,7 @@ export function useArtworkUrl(path?: string, priority: 'high' | 'normal' = 'norm
     // store; this promise simply resolves later when the server catches up.
     const controller = new AbortController();
     setState({path, failed: false});
-    store.load(path, {signal: controller.signal, priority, order: place?.order, group: place?.group, large: options.large}).then(url => active && setState({path, url, failed: false})).catch(() => active && setState({path, failed: true}));
+    store.load(path, {signal: controller.signal, priority, order: placed.current?.order, group: placed.current?.group, large: options.large}).then(url => active && setState({path, url, failed: false})).catch(() => active && setState({path, failed: true}));
     return () => {
       active = false;
       controller.abort();

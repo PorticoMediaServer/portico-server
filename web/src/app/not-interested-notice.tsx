@@ -1,14 +1,13 @@
-import {useEffect, useMemo, useSyncExternalStore} from 'react';
+import {useCallback, useEffect, useSyncExternalStore} from 'react';
 import {Inset, Notice} from '../ui';
 import {currentI18n} from './i18n';
 import {useViewerScope} from './viewer-scope';
-import {currentNotInterestedNotice, dismissNotInterested, hiddenNotInterested, notInterestedVersion, recommendationViewer, subscribeNotInterested, undoNotInterested} from './not-interested';
+import {currentNotInterestedNotice, dismissNotInterested, hiddenNotInterestedSnapshot, notInterestedVersion, recommendationViewer, subscribeNotInterested, undoNotInterested} from './not-interested';
 
 /** All mounted recommendation screens read the same viewer-scoped decisions. */
 export function useNotInterested(): {hidden: ReadonlySet<string>} {
   const viewer = recommendationViewer(useViewerScope());
-  const version = useSyncExternalStore(subscribeNotInterested, notInterestedVersion);
-  const hidden = useMemo(() => hiddenNotInterested(viewer), [viewer, version]);
+  const hidden = useSyncExternalStore(subscribeNotInterested, useCallback(() => hiddenNotInterestedSnapshot(viewer), [viewer]));
   return {hidden};
 }
 

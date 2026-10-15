@@ -1,5 +1,6 @@
 import React, {forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore} from 'react';
 import type {Slot, WindowedCollection} from '@core/collections/index.ts';
+import {compressedPosition} from './compressed-scroll';
 import {cx} from './cx';
 import {settledPitch} from './settled-pitch';
 import {useCardSize} from './Grid';
@@ -74,33 +75,28 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
   // Browsers cap an element's height (Chrome ≈ 33.5 M px, Firefox ≈ 17.9 M px), and a
   // 10 M-item grid is far taller. Past MAX_HEIGHT the window maps scroll position to a
   // virtual position: wheel, keys and small scrolls move 1:1 from where you are, a
-  // scrollbar drag or a jump maps proportionally, and the ends always line up.
+  // scrollbar drag or a jump maps proportionally, and the ends line up without a jump
+  // (`compressedPosition`).
   const virtual = useRef({top: 0, scrolled: 0, pitch: 0, cols: 1});
 
   const update = useCallback(() => {
     const el = container.current;
     if (!el) return;
-    const top = el.getBoundingClientRect().top;
     const viewport = window.innerHeight;
     const pitch = layout.pitch || estimateRowHeight;
-    const scrolled = stickyOffset - top;
+    const scrolled = stickyOffset - el.getBoundingClientRect().top;
     let v = scrolled;
+    let top = scrolled;
     if (compressed) {
-      const maxScrolled = Math.max(1, height - viewport);
-      const maxVirtual = Math.max(1, realHeight - viewport);
       // A new layout (resize, columns) keeps the same first item on screen.
       let from = virtual.current.top;
       if (virtual.current.pitch && (virtual.current.pitch !== pitch || virtual.current.cols !== layout.cols)) {
         const anchor = Math.floor(from / virtual.current.pitch) * virtual.current.cols;
         from = Math.floor(anchor / layout.cols) * pitch;
       }
-      const delta = scrolled - virtual.current.scrolled;
-      if (scrolled <= 0) v = scrolled;
-      else if (scrolled >= maxScrolled) v = maxVirtual + (scrolled - maxScrolled);
-      else if (Math.abs(delta) < viewport * 3) v = Math.min(maxVirtual, Math.max(0, from + delta));
-      else v = (scrolled / maxScrolled) * maxVirtual;
+      ({position: v, top} = compressedPosition({from, scrolled, previousScrolled: virtual.current.scrolled, maxScrolled: height - viewport, maxVirtual: Math.max(1, realHeight - viewport), jump: viewport * 3}));
     }
-    virtual.current = {top: v, scrolled, pitch, cols: layout.cols};
+    virtual.current = {top, scrolled, pitch, cols: layout.cols};
     const firstRow = Math.max(0, Math.floor(v / pitch) - overscanRows);
     const lastRow = Math.max(firstRow, Math.min(Math.max(0, totalRows - 1), Math.ceil((v + viewport - stickyOffset) / pitch) + overscanRows));
     const offset = firstRow * pitch - v + scrolled;

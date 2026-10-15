@@ -141,8 +141,12 @@ export function runEventFeed(events: EventsClient, hub: FreshnessHub | undefined
 
 /** What `sharedStreamOpener` needs of the browser: a named exclusive lock and a channel between windows. */
 export type SharedStreamEnvironment = Readonly<{
-  /** Runs `work` while holding the lock `name`; resolves when `work` does. Rejects if `signal` aborts first. (Web Locks.) */
-  lock(name: string, signal: AbortSignal, work: () => Promise<void>): Promise<void>;
+  /**
+   * Runs `work` while holding the lock `name`; resolves when `work` does. Rejects if `signal` aborts
+   * first. (Web Locks, or leases where a plain-HTTP page has none.) A lock that can be lost while
+   * held (a lease another window took over) aborts `held`, and the holder stops.
+   */
+  lock(name: string, signal: AbortSignal, work: (held?: AbortSignal) => Promise<void>): Promise<void>;
   /** A channel every window of this browser on this origin can post to and hear. (BroadcastChannel.) */
   channel(name: string): {post(message: unknown): void; listen(listener: (message: unknown) => void): () => void; close(): void};
 }>;
@@ -200,15 +204,26 @@ export function sharedStreamOpener(name: string, open: StreamOpener, env: Shared
       // says so, and this call ends as a lost stream would: every window then knows the feed is down.
       const dropped = new Promise<void>(resolve => { lost = resolve; });
       channel.post({kind: 'who'});
-      const held = env.lock(name, inner.signal, async () => {
+      const held = env.lock(name, inner.signal, async lease => {
         if (inner.signal.aborted) return;
         holding = true;
+        // The stream ends with this call, or when the lock is lost to another window.
+        const stream = new AbortController();
+        const end = () => stream.abort();
+        const taken = () => { if (!inner.signal.aborted) failed = failure('event_stream_lock'); stream.abort(); };
+        inner.signal.addEventListener('abort', end, {once: true});
+        lease?.addEventListener('abort', taken, {once: true});
         try {
-          channel.post({kind: 'open', cursor: last});
-          await open(last, event => { channel.post({kind: 'event', event}); heard(event); }, inner.signal);
+          if (lease?.aborted) taken();
+          else {
+            channel.post({kind: 'open', cursor: last});
+            await open(last, event => { if (!stream.signal.aborted) { channel.post({kind: 'event', event}); heard(event); } }, stream.signal);
+          }
         } catch (error) {
-          failed = error ?? failure('event_stream_failed');
+          failed ??= error ?? failure('event_stream_failed');
         } finally {
+          inner.signal.removeEventListener('abort', end);
+          lease?.removeEventListener('abort', taken);
           holding = false;
           channel.post({kind: 'lost'});
         }

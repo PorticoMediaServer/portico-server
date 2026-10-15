@@ -118,8 +118,14 @@ export function EngineResults({collection, onRefresh, libraryId, libraryKind, li
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, range, snapshot]);
   useSelectionSection('browse', visible);
-  const siblings = useCallback(() => visible, [visible]);
+  // Read on demand (a shift-click range), so the cells need not redraw each time the window moves.
+  const visibleNow = useRef(visible);
+  useLayoutEffect(() => { visibleNow.current = visible; }, [visible]);
+  const siblings = useCallback(() => visibleNow.current, []);
   const density = square ? 'square' : 'poster';
+  // Stable renderers: each page of cells is memoised, and a new function every render would redraw them all.
+  const renderItem = useCallback((entry: ContentEntry) => (card ? card(entry) : <EntryCard entry={entry} siblings={siblings} libraryId={libraryId} selectable={selectable} />), [card, siblings, libraryId, selectable]);
+  const renderPlaceholder = useCallback(() => <CardPlaceholder square={square} />, [square]);
   // Before the first page the grid itself shows placeholders (and asks for that page): never gate it on `total`.
   if (snapshot.status === 'error' && !snapshot.total) return <ErrorState error={snapshot.error} context="library" retry={() => active.retry()} refresh={onRefresh} />;
   // WEB-LIB-02: "no match" only when a filter is doing the excluding.
@@ -136,7 +142,6 @@ export function EngineResults({collection, onRefresh, libraryId, libraryKind, li
         : pivot === 'series'
           ? <StateView icon="collection" title={t('library.emptySeries')} body={t('library.emptySeriesBody')} />
           : <StateView icon={iconFor(libraryKind)} title={t('library.emptyLibrary')} body={emptyCopy.body} action={emptyCopy.action} />;
-  const shape = square ? 'square' : 'poster';
   // M20: the rail follows anchor presence for default browsing (behind
   // presence for older servers), not the sort. An ad hoc query (a filter or
   // search) has no anchors and never shows the rail.
@@ -157,12 +162,16 @@ export function EngineResults({collection, onRefresh, libraryId, libraryKind, li
             estimateRowHeight={square ? 240 : 300}
             label={t('web.library.titlesLabel')}
             onFirstVisible={onFirstVisible}
-            renderItem={entry => (card ? card(entry) : <EntryCard entry={entry} siblings={siblings} libraryId={libraryId} selectable={selectable} />)}
-            renderPlaceholder={() => <div aria-hidden><Skeleton style={{aspectRatio: shape === 'square' ? '1 / 1' : '2 / 3', width: '100%'}} /><Skeleton height={14} width="70%" style={{marginTop: 8}} /></div>}
+            renderItem={renderItem}
+            renderPlaceholder={renderPlaceholder}
           />
         )}
       </div>
       {rail ? <AlphabetRail index={anchors} current={current} sortField={sortField} onJump={key => { const index = active.indexOfLetter(key) ?? anchors.find(a => a.key === key)?.index; if (index !== undefined) grid.current?.scrollToIndex(index); }} /> : null}
     </div>
   );
+}
+
+function CardPlaceholder({square}: {square: boolean}) {
+  return <div aria-hidden><Skeleton style={{aspectRatio: square ? '1 / 1' : '2 / 3', width: '100%'}} /><Skeleton height={14} width="70%" style={{marginTop: 8}} /></div>;
 }

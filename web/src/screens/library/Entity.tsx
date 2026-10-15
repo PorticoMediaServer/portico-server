@@ -184,6 +184,7 @@ export function EntityScreen() {
         <TitleHero
           onBack={back}
           loading={!entity}
+          pageKey={entity?.id}
           backdrop={entity?.backdropUrl}
           artwork={{path: entity?.posterUrl ?? entity?.backdropUrl, shape: heroShape === 'landscape' ? 'poster' : heroShape, icon: iconFor(entity?.kind ?? view), initial: heroShape === 'circle' ? entity?.title.replace(/^(the|an?)\s+/i, '').slice(0, 1) : undefined, mosaic: heroMosaic}}
           title={entity?.title ?? title ?? projection?.heading.fallback}

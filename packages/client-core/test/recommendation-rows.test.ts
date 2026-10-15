@@ -155,3 +155,23 @@ test('stale cursor restart keeps the grid on screen until its replacement first 
   assert.deepEqual(pager.getSnapshot().entries.map(card => card.id), ['fresh']);
   pager.dispose();
 });
+
+// Deep-list refresh: a title removed from a page the viewer scrolled into goes on the next quiet refresh.
+test('a quiet refresh reads every page scrolled into again, so a title removed deep in the row goes', async () => {
+  let removed = false;
+  const api = {request: async <T,>(path: string) => {
+    if (path.includes('cursor=c1')) return row({entries: removed ? [entry('m3')] : [entry('m3'), entry('m4')], nextCursor: 'c2'}) as T;
+    if (path.includes('cursor=c2')) return row({entries: [entry('m5')], nextCursor: ''}) as T;
+    return row() as T;
+  }};
+  const pager = new HomeRowPager(api, 'for_you:genre:drama');
+  await pager.load();
+  await pager.more();
+  assert.deepEqual(pager.getSnapshot().entries.map(e => e.id), ['m1', 'm2', 'm3', 'm4']);
+  removed = true;
+  await pager.revalidate();
+  assert.deepEqual(pager.getSnapshot().entries.map(e => e.id), ['m1', 'm2', 'm3', 'm5'], 'm4 is gone; the next page now begins where the re-read ended');
+  assert.equal(pager.getSnapshot().nextCursor, '');
+  assert.equal(pager.getSnapshot().phase, 'ready');
+  pager.dispose();
+});

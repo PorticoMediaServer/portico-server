@@ -1,11 +1,11 @@
 .hero { position: relative; display: flex; flex-direction: column; justify-content: flex-end; min-height: clamp(360px, 52vh, 620px); padding: 48px var(--page-gutter) 28px; max-width: min(720px, 100%); gap: 10px; }
-.eyebrow { font-size: 12px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
-.title { font-size: clamp(30px, 4.6vw, 54px); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; text-shadow: 0 2px 24px color-mix(in srgb, var(--color-ink) 70%, transparent); }
-.meta { font-size: 15px; color: var(--text-secondary); }
-.overview { font-size: 15px; line-height: 1.5; color: var(--text-secondary); max-width: 58ch; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.eyebrow { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-tertiary); }
+.title { font-size: clamp(1.875rem, 4.6vw, 3.375rem); font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; text-shadow: 0 2px 24px color-mix(in srgb, var(--color-ink) 70%, transparent); }
+.meta { font-size: 0.9375rem; color: var(--text-secondary); }
+.overview { font-size: 0.9375rem; line-height: 1.5; color: var(--text-secondary); max-width: 58ch; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
 .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 .words { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.line { font-size: 17px; font-weight: 600; color: var(--text-primary); }
+.line { font-size: 1.0625rem; font-weight: 600; color: var(--text-primary); }
 .progress { max-width: 320px; margin-top: 4px; }
 /* A hero with no wide artwork (a song, an audiobook, a title without a backdrop): the cover stands beside the words over a softened copy of itself. */
 .withCover { flex-direction: row; align-items: flex-end; justify-content: flex-start; gap: 28px; max-width: min(960px, 100%); }
