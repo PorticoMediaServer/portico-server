@@ -250,6 +250,7 @@ function WindowedRows<T extends {id: string}>({items, estimateRowHeight, columnM
   const store = React.useMemo(() => createStaticCollection<T>({keyOf: e => e.id}), []);
   React.useEffect(() => { store.setItems(items); }, [store, items]);
   React.useEffect(() => () => store.collection.dispose(), [store]);
+  const placeholder = useCallback(() => <div style={{height: estimateRowHeight, padding: '8px 16px'}}><Skeleton height={estimateRowHeight - 16} /></div>, [estimateRowHeight]);
   return (
     <WindowedGrid
       collection={store.collection}
@@ -257,7 +258,7 @@ function WindowedRows<T extends {id: string}>({items, estimateRowHeight, columnM
       columnMin={columnMin}
       label={label}
       renderItem={renderItem}
-      renderPlaceholder={() => <div style={{height: estimateRowHeight, padding: '8px 16px'}}><Skeleton height={estimateRowHeight - 16} /></div>}
+      renderPlaceholder={placeholder}
     />
   );
 }

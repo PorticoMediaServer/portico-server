@@ -1,4 +1,4 @@
-import React, {forwardRef, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import React, {forwardRef, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {useNavigate} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {WindowedCollection} from '@core/collections/index.ts';
@@ -51,11 +51,13 @@ export const TitlesTable = forwardRef(function TitlesTable({collection, libraryI
   const columns = tracks ? TRACK_COLUMNS : TITLE_COLUMNS;
   // A song plays on through the list in the order shown, as every music player does: the songs
   // already loaded after it are the queue (bounded; nothing is fetched to build it).
-  const playFrom = (index: number) => {
+  const playFrom = useCallback((index: number) => {
     const queue: ContentEntry[] = [];
     for (let i = index; i < index + QUEUE_AHEAD; i++) { const item = collection.itemAt(i); if (!item) break; if (item.playback) queue.push(item); }
     if (queue.length) player.playSequence(queue, 0, 0);
-  };
+  }, [collection, player]);
+  // Stable renderers keep each memoised page of rows from redrawing with every render of the table.
+  const renderItem = useCallback((entry: ContentEntry, index: number) => <TitleRow entry={entry} rowIndex={index + 2} libraryId={libraryId} tracks={tracks} onPlayTrack={tracks ? playFrom : undefined} />, [libraryId, tracks, playFrom]);
   const press = (column: Column) => {
     const cap = sorts.find(x => x.id === column.sort);
     if (!cap || !onSort) return;
@@ -84,14 +86,16 @@ export const TitlesTable = forwardRef(function TitlesTable({collection, libraryI
         label={t('web.library.titlesLabel')}
         semantics="none"
         onFirstVisible={onFirstVisible}
-        renderItem={(entry, index) => <TitleRow entry={entry} rowIndex={index + 2} libraryId={libraryId} tracks={tracks} onPlayTrack={tracks ? () => playFrom(index) : undefined} />}
-        renderPlaceholder={() => <div style={{height: 64, padding: '8px 16px'}}><Skeleton height={48} /></div>}
+        renderItem={renderItem}
+        renderPlaceholder={rowPlaceholder}
       />
     </div>
   );
 });
 
-const TitleRow = React.memo(function TitleRow({entry, rowIndex, libraryId, tracks, onPlayTrack}: {entry: ContentEntry; /** The row's place in the whole table (the header is row 1), since only the rows in view are drawn. */ rowIndex: number; libraryId: string; tracks?: boolean; onPlayTrack?: () => void}) {
+const rowPlaceholder = () => <div style={{height: 64, padding: '8px 16px'}}><Skeleton height={48} /></div>;
+
+const TitleRow = React.memo(function TitleRow({entry, rowIndex, libraryId, tracks, onPlayTrack}: {entry: ContentEntry; /** The row's place in the whole table (the header is row 1), since only the rows in view are drawn. */ rowIndex: number; libraryId: string; tracks?: boolean; /** Plays on from this row's index in the whole list. */ onPlayTrack?: (index: number) => void}) {
   const i18n = useI18n();
   const {t} = i18n;
   const open = useOpenEntry();
@@ -102,7 +106,7 @@ const TitleRow = React.memo(function TitleRow({entry, rowIndex, libraryId, track
   const shape = shapeFor(entry.kind, 'list');
   const anchor = (el: Element): MenuAnchor => { const r = el.getBoundingClientRect(); return {x: r.left, y: r.top, width: r.width, height: r.height}; };
   // A track plays where it is; everything else opens its page.
-  const activate = () => (tracks && entry.playback && onPlayTrack ? onPlayTrack() : open(entry, 'open', libraryId));
+  const activate = () => (tracks && entry.playback && onPlayTrack ? onPlayTrack(rowIndex - 2) : open(entry, 'open', libraryId));
   const library = entry.libraryId ?? libraryId;
   const caption = tracks ? undefined : entry.kind === 'movie' || entry.kind === 'show' ? undefined : cardCaption(entry, t, {locale: i18n.locale});
   return (
