@@ -144,9 +144,10 @@ export const enUS = {
   // What a screen reader hears in place of artwork that could not be shown.
   'a11y.artwork.unavailable': 'Artwork unavailable',
   'a11y.artwork.unavailableFor': '{title}, artwork unavailable',
-  // A saved view larger than one play request can hold.
-  'saved.view.gathering': 'Getting the rest of this view…',
-  'saved.view.partial': 'This view has more than {count, number} titles. The first {count, number} are playing.',
+  // After an entry is taken out of a playlist or a collection, with Undo while the server offers it.
+  'saved.removal.fromPlaylist': 'Removed “{title}” from the playlist.',
+  'saved.removal.fromCollection': 'Removed “{title}” from the collection.',
+  'saved.removal.undoFailed': 'That couldn’t be undone. “{title}” stays removed.',
   'link.openFailed': 'That page couldn’t be opened. Open it on another device: {address}',
   'action.save': 'Save',
   'action.continue': 'Continue',

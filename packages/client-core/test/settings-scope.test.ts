@@ -46,7 +46,7 @@ test('the Player setting is offered only where there is a second player to choos
   const i18n = createI18n({locale: 'en-US'} as Parameters<typeof createI18n>[0]);
   assert.equal(i18n.t('settings.row.player'), 'Player');
   assert.equal(i18n.t('settings.player.automatic'), 'Automatic (recommended)');
-  assert.equal(i18n.t('saved.view.partial', {count: 1000}), 'This view has more than 1,000 titles. The first 1,000 are playing.');
+  assert.equal(i18n.t('saved.removal.fromPlaylist', {title: 'Dune'}), 'Removed “Dune” from the playlist.');
   assert.equal(i18n.t('player.cannotPlay.gone', {title: 'Dune'}), 'Dune is no longer on this server.');
 });
 

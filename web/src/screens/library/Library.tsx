@@ -14,6 +14,7 @@ import {categoryDestination, libraryTab, libraryTabForPivot, libraryTabSort, lib
 import {SaveViewDialog} from './SaveView';
 import b from './BrowseFilters.module.css';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
+import {viewSequence} from '../../app/container-play';
 import type {ContentRoute, ContentSeeAll, ContentView} from '@core/library-content.ts';
 import {useContent} from '../../app/content';
 import {browseCountLabel, seeAllTarget} from '../../app/content';
@@ -264,7 +265,7 @@ export function LibraryScreen() {
       ) : null}
       {active.shows === 'playlists' ? <LibraryPlaylists sort={search.sort ? {field: search.sort, direction: search.direction ?? 'asc'} : undefined} onSort={chooseSort} /> : null}
       {engine && capabilityError ? <Inset><Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => window.location.reload()}}>{capabilityError}</Notice></Inset> : null}
-      {engine && browse.collection ? <EngineResults unmatched={tab === 'unmatched'} collection={browse.collection} onRefresh={browse.refresh} filtered={chosenPredicates.length > 0} onClearFilters={() => setSearch({filters: undefined})} pivot={pivot} libraryId={libraryId} libraryKind={library?.kind ?? ''} list={(view === 'list' && viewChoice) || active.shows === 'tracks'} tracks={active.shows === 'tracks'} sort={sort} sorts={capabilities?.sorts ?? []} onSort={chooseSort} sortField={sort.field} square={square} scanning={scan.scanning} card={active.shows === 'genres' ? entry => <GenreCard libraryId={libraryId} entry={entry} onOpen={() => openGroup(entry.title)} /> : undefined} empty={active.shows === 'genres' ? <StateView icon="category" title={t('library.genres.empty')} body={t('library.genres.emptyBody')} /> : undefined} listKey={listWindowKey({serverId: scope.serverId, viewerId: scope.viewerId, libraryId, pivot, query: JSON.stringify([search.filters ?? null, sort])})} /> : engine && !capabilityError ? <LoadingGrid density={square ? 'square' : 'poster'} /> : null}
+      {engine && browse.collection ? <EngineResults sequence={viewSequence({libraryId, pivot, predicates, sort})} unmatched={tab === 'unmatched'} collection={browse.collection} onRefresh={browse.refresh} filtered={chosenPredicates.length > 0} onClearFilters={() => setSearch({filters: undefined})} pivot={pivot} libraryId={libraryId} libraryKind={library?.kind ?? ''} list={(view === 'list' && viewChoice) || active.shows === 'tracks'} tracks={active.shows === 'tracks'} sort={sort} sorts={capabilities?.sorts ?? []} onSort={chooseSort} sortField={sort.field} square={square} scanning={scan.scanning} card={active.shows === 'genres' ? entry => <GenreCard libraryId={libraryId} entry={entry} onOpen={() => openGroup(entry.title)} /> : undefined} empty={active.shows === 'genres' ? <StateView icon="category" title={t('library.genres.empty')} body={t('library.genres.emptyBody')} /> : undefined} listKey={listWindowKey({serverId: scope.serverId, viewerId: scope.viewerId, libraryId, pivot, query: JSON.stringify([search.filters ?? null, sort])})} /> : engine && !capabilityError ? <LoadingGrid density={square ? 'square' : 'poster'} /> : null}
       {!engine && !custom && tab === 'browse' && sorts.length ? (
         <Inset>
           <Row>

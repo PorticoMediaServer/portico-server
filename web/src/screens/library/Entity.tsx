@@ -9,7 +9,7 @@ import {activeYearsLabel, artistReleaseGroups, captionFor, formatClock, formatDu
 import {mosaicPaths} from '../../app/title-layout';
 import {albumHeroFacts, artistHeroFacts, discNumberFromSubtitle, trackSubtitleForAlbum, type T as WordsT} from '../../app/library-words';
 import {useOpenEntry} from '../../app/open';
-import {sequenceContainer} from '../../app/container-play';
+import {groupSequence, sequenceContainer} from '../../app/container-play';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
 import {useDownloads} from '../../app/downloads';
@@ -96,13 +96,11 @@ export function EntityScreen() {
     if (!queue.length) return;
     player.playSequence(queue, 0, queue[0]!.playback!.startSeconds ?? 0, container);
   };
-  // A sorted or filtered song list plays on in the order shown, as the Songs tab does: the songs loaded after the one pressed.
+  // A sorted or filtered song list plays on in the order shown, as the Songs tab does: the whole
+  // list, from the server's query, starting at the song pressed.
   const playSorted = (index: number) => {
-    const list = songGroup.collection;
-    if (!list) return;
-    const queue: ContentEntry[] = [];
-    for (let i = index; i < index + 200; i++) { const item = list.itemAt(i); if (!item) break; if (item.playback) queue.push(item); }
-    if (queue.length) player.playSequence(queue, 0, 0);
+    const pressed = songGroup.collection?.itemAt(index);
+    if (pressed?.playback) player.playSequence([pressed], 0, 0, groupSequence(songGroup));
   };
   // An album, book or artist keeps its own personal state on the container route (O(1)): the
   // watched default for a book, and Favorite for all three. Music has no "watched" at all. Other
