@@ -76,12 +76,12 @@ from `base.css` (`--surface-*`, `--text-*`, `--layer-*`) instead.
 The player draws styled (ASS) and image (PGS, VobSub, DVB) subtitles on a canvas over the
 video. Some surfaces show the video without the page:
 
-- **Picture in Picture.** Chrome and Edge open a window of the page's own (document Picture in
-  Picture), and the video and its subtitle canvas move there together. Elsewhere (Safari) the
-  browser's video-only window is used: while it is open the subtitle is asked for the ordinary way
-  (text for a styled track the server has as text, otherwise burned into the picture) and drawn on
-  the page again when the picture comes back. Firefox's own Picture in Picture toggle is not
-  reachable from the page and shows text tracks only.
+- **Picture in Picture.** The browser's own window shows the video. A subtitle burned into the
+  picture stays in it. Styled and image subtitles drawn on the page's canvas are not shown there;
+  they come back when the picture returns to the page. A plain text track is the video element's
+  own, so a browser that shows text tracks in its window (Safari) shows it, and one that does not
+  (Chrome, Edge) does not. Opening Picture in Picture never asks the server for anything: no
+  conversion, no reload. Firefox's own Picture in Picture toggle is not reachable from the page.
 - **iPhone full screen.** An iPhone cannot make a page full screen; the system's full-screen player
   is used, with its own controls. It shows text subtitles in the system's caption style (the
   player's size and background settings do not apply). A drawn styled track is shown there as

@@ -872,8 +872,6 @@ export const webMessages = {
   'web.player.pip': 'Picture in Picture',
   'title.directedByLabel': 'Directed by',
   'title.writtenByLabel': 'Written by',
-  'web.player.pipShowing': 'Playing in Picture in Picture',
-  'web.player.pipReturn': 'Back to the player',
   'web.player.fullscreen': 'Fullscreen',
   'web.player.exitFullscreen': 'Leave fullscreen',
   'web.player.reconnecting': 'Reconnecting…',

@@ -102,25 +102,10 @@ class PlayerBoundary extends React.Component<{title: string; body: string; retry
 }
 
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
-/** Picture in Picture of either kind: the page's own window, or the browser's video-only one. */
-const pipAvailable = typeof document !== 'undefined' && (document.pictureInPictureEnabled || (typeof window !== 'undefined' && 'documentPictureInPicture' in window));
+/** Picture in Picture: the browser's own window, with the video alone. Subtitles burned into the
+ * picture stay in it; drawn ones are not shown there and come back when the picture does. */
+const pipAvailable = typeof document !== 'undefined' && !!document.pictureInPictureEnabled;
 
-/** The page's styles, for a window of its own: rules copied where they can be read, linked otherwise. */
-function copyStyles(from: Document, to: Document) {
-  for (const sheet of Array.from(from.styleSheets)) {
-    try {
-      const style = to.createElement('style');
-      style.textContent = Array.from(sheet.cssRules).map(rule => rule.cssText).join('\n');
-      to.head.append(style);
-    } catch {
-      if (!sheet.href) continue;
-      const link = to.createElement('link');
-      link.rel = 'stylesheet';
-      link.href = sheet.href;
-      to.head.append(link);
-    }
-  }
-}
 const noQueue = () => () => {};
 const sleepChoices: readonly SleepChoice[] = ['off', 15, 30, 45, 60, 90, 'item'];
 /** One film frame, for stepping while paused (the file's own rate is not known to the page). */
@@ -182,12 +167,10 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     const made = SubtitleSurface.supported(el) ? new SubtitleSurface(el, {companion: drawn ?? undefined}) : null;
     setSurface(made);
     setOverlay(drawn);
-    const unmount = engine.playback.mount(el, made ?? drawn ?? undefined, () => (document.pictureInPictureElement === el || el.ownerDocument !== document ? 'pip' : undefined));
+    const unmount = engine.playback.mount(el, made ?? drawn ?? undefined, () => (document.pictureInPictureElement === el ? 'pip' : undefined));
     return () => { unmount(); made?.dispose(); drawn?.dispose(); setSurface(null); setOverlay(null); };
   }, [engine.playback]);
   const stage = useRef<HTMLDivElement>(null);
-  const pictureHome = useRef<HTMLDivElement>(null);
-  const picture = useRef<HTMLDivElement>(null);
   const resourceKey = webPlaybackResourceKey(state);
   const [notice, setNotice] = useState('');
   const [buffering, setBuffering] = useState(false);
@@ -216,13 +199,11 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const defaultSpeed = prefs.value<number>('playback.defaultSpeed', 1);
   const skipModes: Record<string, SkipMode> = {intro: prefs.value('playback.introSkip', 'ask'), credits: prefs.value('playback.creditsSkip', 'ask'), recap: prefs.value('playback.recapSkip', 'ask'), outro: prefs.value('playback.creditsSkip', 'ask'), commercial: 'ask'};
   const trickplay = useTrickplay(api, scope, item, offers.data?.current?.sourceId, !isAudio && !state.channel);
-  /* Where the picture is. A Picture in Picture window of the page's own (Chrome and Edge's document
-     Picture in Picture) carries the page's subtitle canvas with the video; the browser's video-only
-     window and an iPhone's full-screen player do not, so a drawn subtitle is handed to them the
-     ordinary way while they last (see usePlayerSubtitles). */
-  const [pictureAway, setPictureAway] = useState<'none' | 'element' | 'document'>('none');
+  /* An iPhone's full-screen player shows the video and its text track only: a drawn subtitle is
+     handed to it as text while it lasts (see usePlayerSubtitles). Picture in Picture hands nothing
+     over and starts no conversion. */
   const [systemFullscreen, setSystemFullscreen] = useState(false);
-  const subtitles = usePlayerSubtitles(api, scope, service, surface, resourceKey, isAudio, overlay, pictureAway === 'element' ? 'window' : systemFullscreen ? 'system' : false);
+  const subtitles = usePlayerSubtitles(api, scope, service, surface, resourceKey, isAudio, overlay, systemFullscreen);
   /* Forced only (an image track's forced lines alone) is a choice for the track playing now: it starts
      off and holds for this playback. Settings' "Show subtitles: Forced only" picks forced tracks themselves. */
   const [forcedOnly, setForcedOnly] = usePlaybackChoice('forcedOnly', state.playbackRun, false);
@@ -435,40 +416,11 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       setNotice(i18n.t('web.player.fullscreenUnavailable'));
     }
   }
-  /* Picture in Picture. Where the browser lets the page open a window of its own (Chrome and Edge),
-     the picture moves there with its subtitle canvas, so drawn subtitles stay on it; elsewhere the
-     browser's video-only window is used. The picture comes home when the window closes. */
-  const pipWindow = useRef<Window | null>(null);
+  /* Picture in Picture: the browser's own video window. */
   async function pip() {
-    const el = video.current, holder = picture.current;
+    const el = video.current;
     try {
-      if (pipWindow.current) { pipWindow.current.close(); return; }
       if (document.pictureInPictureElement) { await document.exitPictureInPicture(); return; }
-      const documentPip = (window as Window & {documentPictureInPicture?: {requestWindow(o: {width: number; height: number}): Promise<Window>}}).documentPictureInPicture;
-      if (documentPip && el && holder && pictureHome.current) {
-        const ratio = el.videoWidth > 0 && el.videoHeight > 0 ? el.videoWidth / el.videoHeight : 16 / 9;
-        const win = await documentPip.requestWindow({width: 480, height: Math.round(480 / ratio)});
-        copyStyles(document, win.document);
-        win.document.documentElement.style.background = '#000'; // lint-design-allow: player-canvas black per PC-VISUAL 4.3
-        win.document.body.style.margin = '0';
-        win.document.body.append(holder);
-        holder.classList.add(s.pictureAway);
-        pipWindow.current = win;
-        setPictureAway('document');
-        const relayout = () => overlay?.relayout();
-        win.addEventListener('resize', relayout);
-        win.requestAnimationFrame(relayout);
-        win.addEventListener('pagehide', () => {
-          holder.classList.remove(s.pictureAway);
-          pictureHome.current?.append(holder);
-          pipWindow.current = null;
-          setPictureAway('none');
-          requestAnimationFrame(() => overlay?.relayout());
-          // Leaving the window is not a pause; a picture that stopped while moving plays on.
-          if (service.getSnapshot().intent === 'playing' && el.paused) void el.play().catch(() => {});
-        }, {once: true});
-        return;
-      }
       if (el?.requestPictureInPicture) await el.requestPictureInPicture();
     } catch {
       setNotice(i18n.t('web.player.pipFailed'));
@@ -477,18 +429,14 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   useEffect(() => {
     const el = video.current;
     if (!el) return;
-    const enter = () => setPictureAway('element'), leave = () => setPictureAway(now => (now === 'element' ? 'none' : now));
-    /* Safari also moves the picture from its own controls (the Picture in Picture button of an
-       iPhone's full-screen player, the system's swipe home), and says so as a presentation mode. */
+    /* Safari moves the picture from its own controls too (an iPhone's full-screen player, its
+       Picture in Picture button, the swipe home) and says so as a presentation mode. */
     const mode = () => {
       const now = (el as HTMLVideoElement & {webkitPresentationMode?: string}).webkitPresentationMode;
-      if (now === 'picture-in-picture') enter(); else if (now !== undefined) leave();
       if (now !== undefined) setSystemFullscreen(now === 'fullscreen' && !document.fullscreenElement);
     };
-    el.addEventListener('enterpictureinpicture', enter);
-    el.addEventListener('leavepictureinpicture', leave);
     el.addEventListener('webkitpresentationmodechanged', mode);
-    return () => { el.removeEventListener('enterpictureinpicture', enter); el.removeEventListener('leavepictureinpicture', leave); el.removeEventListener('webkitpresentationmodechanged', mode); pipWindow.current?.close(); };
+    return () => el.removeEventListener('webkitpresentationmodechanged', mode);
   }, []);
   /* The subtitle chosen here goes to the television with the title. It cannot draw styled or image
      subtitles itself, so the server burns those into its picture (text stays text). Before the
@@ -760,10 +708,6 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   return (
     <div ref={stage} className={cx(s.stage, isAudio && s.audio, hidden && s.hidden)} hidden={!visible} aria-label={i18n.t('player.stageLabel', {title: identity.title})} role="region" onPointerMove={e => { if (e.pointerType === 'mouse') reveal(); }} onPointerDown={e => { pointerKind.current = e.pointerType || 'mouse'; hiddenAtDown.current = chromeHidden && canHide; reveal(); }} tabIndex={-1}>
       {isAudio ? <Backdrop path={identity.backdropUrl ?? identity.posterUrl} height="100%" opacity={0.35} position="center" /> : null}
-      {/* The picture: the video and its subtitle canvas, together, so a Picture in Picture window
-          of the page's own takes both. The outer box stays where React put it; only the inner one moves. */}
-      <div ref={pictureHome} className={s.pictureHome}>
-      <div ref={picture} className={s.picture}>
       <video
         ref={video}
         className={cx(s.video, fill && !isAudio && s.fill)}
@@ -778,9 +722,6 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       />
       {/* Always in the page, like the video element: the overlay is made once for the player's life. Hidden unless a drawn subtitle is on. */}
       <canvas ref={subtitleCanvas} className={s.subtitleCanvas} aria-hidden />
-      </div>
-      </div>
-      {pictureAway === 'document' ? <div className={s.errorState}><StateView icon="pip" title={i18n.t('web.player.pipShowing')} action={{label: i18n.t('web.player.pipReturn'), onClick: () => pipWindow.current?.close()}} /></div> : null}
       {!isAudio ? <div className={s.tap} onClick={tap} onDoubleClick={() => { if (pointerKind.current === 'mouse') { clearTimeout(clickTimer.current); void toggleFullscreen(); } }} onWheel={e => { if (!openBox && e.deltaY !== 0) changeVolume(e.deltaY < 0 ? 0.05 : -0.05); }} aria-hidden /> : null}
       {(buffering || state.recovering) && state.intent === 'playing' && !state.error ? <div className={s.spinner} aria-hidden /> : null}
       {!isAudio ? <PostPlay engine={engine} onClose={close} /> : null}

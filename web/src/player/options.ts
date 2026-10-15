@@ -96,20 +96,20 @@ function useSessionFacts(playback: PlaybackService): SessionFacts {
  * Choices are made on the playing session itself (`PATCH` of the session, through
  * `PlaybackService.changePlayback`): the session then knows the track and how it is delivered, so
  * a change of quality or audio, or a re-plan after the player failed, comes back with the same
- * subtitle drawn the same way, and the choice is remembered for the next episode. That is the only
+ * subtitle drawn the same way, and the choice carries to the next episode of this playback. That is the only
  * way a choice, "off" or a timing correction is made: a session that refuses is the answer, and
  * the subtitles stay as they were. The subtitle routes are read here (the catalogue, the plan,
  * the cue documents and the originals) and used to manage files; they are not asked to select.
  */
 /**
- * `elsewhere`: the picture is on a surface the page cannot draw over. A drawn track is handed to
- * the session the ordinary way while it lasts, and drawn on the page again when the picture comes
- * back. In the browser's own Picture in Picture window ('window') that is text for a styled track
- * the server has as text, otherwise the subtitle burned into the picture. In an iPhone's
- * full-screen player ('system') only text is asked for: a new picture would end the full-screen
- * player, so a track that would have to be burned in waits for the page.
+ * `systemPlayer`: the picture is in an iPhone's full-screen player, which shows the video and its
+ * text track only. A drawn track the server has as text is handed to the session as text while it
+ * lasts, and drawn on the page again when the picture comes back. Nothing is burned in for it: a
+ * new picture would end the full-screen player, so a track that would have to be burned in waits
+ * for the page. Picture in Picture hands nothing over: a burned-in subtitle is in the picture, a
+ * drawn one is not shown there, and opening it never starts a conversion.
  */
-export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, surface: SubtitleSurface | null, resourceKey: string, audio: boolean, overlay: SubtitleOverlay | null = null, elsewhere: false | 'window' | 'system' = false) {
+export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playback: PlaybackService, surface: SubtitleSurface | null, resourceKey: string, audio: boolean, overlay: SubtitleOverlay | null = null, systemPlayer = false) {
   const state = useSessionFacts(playback);
   const available = !audio && !!state.sessionId && state.generation !== undefined && !!state.itemId && !state.channel && !['error', 'ended', 'idle'].includes(state.phase);
   const service = useMemo(() => available ? new SubtitleService(api, {itemId: state.itemId!, sessionId: state.sessionId!, generation: state.generation!}, () => crypto.randomUUID(), {install: p => playback.getSnapshot().intentId === state.intentId && playback.installSubtitlePresentation(p)}) : null, [api, scope.serverId, scope.viewerId, available, state.itemId, state.intentId, state.sessionId, state.generation]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -149,8 +149,8 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
   const draws = useMemo(() => (overlay ? subtitleRenderingKinds() : ['text']), [overlay]);
   const undrawable = useRef(new Set<string>());
   const upgraded = useRef(new Set<string>());
-  const away = useRef(elsewhere);
-  away.current = elsewhere;
+  const away = useRef(systemPlayer);
+  away.current = systemPlayer;
   const renderingFor = (resource: {id: string}) => (undrawable.current.has(resource.id) || away.current ? undefined : drawnRenderingFor(resource, draws));
   type Track = NonNullable<SubtitleSnapshot['plan']>['resources'][number];
   /**
@@ -248,22 +248,22 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
     })();
   }, [api, overlay, service, originalKey, plan?.offsetUs]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => () => { drawRun.current++; drawnKey.current = ''; overlay?.clear(); }, [overlay, service]);
-  /* The picture went where the page cannot draw: the drawn track is asked for the ordinary way,
-     and drawn again once the picture is back on the page (the same track, if it is still chosen). */
+  /* The picture went to the iPhone's full-screen player: the drawn track is asked for as text, and
+     drawn again once the picture is back on the page (the same track, if it is still chosen). */
   const handedOver = useRef<string | null>(null);
   const [forcedChoice, setForcedChoice] = useState(false);
   useEffect(() => {
     const selected = plan?.selected;
-    if (!service || !overlay || !selected || plan?.mode !== 'track' || subtitles.suppressed) { if (!elsewhere) handedOver.current = null; return; }
-    if (elsewhere && selectedSubtitleOriginal(plan) && handedOver.current !== selected.id && (elsewhere === 'window' || selected.renderer !== 'burn_in')) {
+    if (!service || !overlay || !selected || plan?.mode !== 'track' || subtitles.suppressed) { if (!systemPlayer) handedOver.current = null; return; }
+    if (systemPlayer && selectedSubtitleOriginal(plan) && handedOver.current !== selected.id && selected.renderer !== 'burn_in') {
       handedOver.current = selected.id;
       void select(selected, undefined, plan.offsetUs).catch(() => { handedOver.current = null; });
-    } else if (!elsewhere && handedOver.current === selected.id) {
+    } else if (!systemPlayer && handedOver.current === selected.id) {
       handedOver.current = null;
       const rendering = renderingFor(selected);
       if (rendering && !selectedSubtitleOriginal(plan)) void select(selected, rendering, plan.offsetUs).catch(() => {});
     }
-  }, [elsewhere, service, overlay, selectedId, plan?.mode, plan?.renderer, subtitles.suppressed]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [systemPlayer, service, overlay, selectedId, plan?.mode, plan?.renderer, subtitles.suppressed]); // eslint-disable-line react-hooks/exhaustive-deps
   const choose = (resource: Track, offsetUs?: string): Promise<void> => select(resource, renderingFor(resource), offsetUs);
   const turnOff = (): Promise<void> => select(null, undefined);
   /** Turns on a track the server found beside the file but has not listed among the choices yet: it is selected like any other, on the session. */
