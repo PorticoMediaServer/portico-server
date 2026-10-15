@@ -290,7 +290,7 @@ func TestPlaybackV1SaveAsPlaylistStopsWhenTheQueueChanges(t *testing.T) {
 	var big playbackv1.QueueReply
 	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "save-queue-chg-00001"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("collection", f.names["big"].Public)}}}, 201, &big)
 	svc := f.v1
-	svc.PauseQueueBuilds = true
+	svc.HoldQueueBuilds()
 	path := "/v1/queues/" + big.Queue.ID + ":save-as-playlist"
 	headers := map[string]string{"Idempotency-Key": "save-playlist-chg01"}
 	var saved playbackv1.SavedPlaylist
@@ -321,7 +321,7 @@ func TestPlaybackV1SaveAsPlaylistSurvivesARevisionThatKeepsTheOrder(t *testing.T
 	bigCollection(t, f, 1001)
 	var big playbackv1.QueueReply
 	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "save-queue-rep-00001"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("collection", f.names["big"].Public)}}}, 201, &big)
-	f.v1.PauseQueueBuilds = true
+	f.v1.HoldQueueBuilds()
 	path := "/v1/queues/" + big.Queue.ID + ":save-as-playlist"
 	headers := map[string]string{"Idempotency-Key": "save-playlist-rep01"}
 	var saved playbackv1.SavedPlaylist
