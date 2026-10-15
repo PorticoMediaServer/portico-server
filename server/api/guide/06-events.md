@@ -51,7 +51,8 @@ and owner/admin visibility. Known hints include:
   delivery log), `members`, `invitations`, `devices`, `clientReports`,
   `feedback`, `downloads`, `remoteSources`, `liveSources` (with refresh state),
   `tuners`, `recordingGroups`, `recordingStorage`, `libraryChannels` and
-  `playbackProblems`. A member hears `accessTokens` for their own tokens.
+  `playbackProblems`. A profile hears `accessTokens` for its own tokens and
+  `togetherGroups` for the Watch Together rooms it is in.
 
 Treat hints as coalescible invalidations, not a complete change log or a payload
 for mutating local records. Ignore unknown event types safely. Source:

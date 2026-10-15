@@ -138,11 +138,12 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 		subs.key = strings.TrimSpace(*in.OpenSubtitlesAPIKey)
 	}
 	if in.OpenSubtitlesUsername != nil {
-		subs.username = strings.TrimSpace(*in.OpenSubtitlesUsername)
-		// A different account never keeps the previous account's password.
-		if subs.username == "" {
+		username := strings.TrimSpace(*in.OpenSubtitlesUsername)
+		// A different account (or none) never keeps the previous account's password.
+		if username != subs.username {
 			subs.password = ""
 		}
+		subs.username = username
 	}
 	if in.OpenSubtitlesPassword != nil {
 		subs.password = *in.OpenSubtitlesPassword
