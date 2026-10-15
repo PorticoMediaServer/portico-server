@@ -30,6 +30,10 @@ func TestFilteredRangesMatchEveryAdvertisedOrderAndContinuation(t *testing.T) {
 	}
 	viewer := Viewer{Profile: "p", Fence: "range", Libraries: []string{"a"}}
 	for _, sort := range caps.Sorts {
+		if sort.RequiresGroup {
+			// A group's own order needs a group; TestGroupOrderSurvivesFiltersAndPages ranges it.
+			continue
+		}
 		for _, direction := range sort.Directions {
 			t.Run(sort.ID+"/"+direction, func(t *testing.T) {
 				selection := BrowseSortSelection{Field: sort.ID, Direction: direction}
