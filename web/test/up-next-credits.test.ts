@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
 import {upNextCountdown, upNextOffer} from '../src/player/up-next.ts';
 
 const credits = {id: 'c1', kind: 'credits', startSeconds: 1290, endSeconds: 1380, automaticSafe: true};
@@ -31,13 +32,27 @@ test('the next title is offered while the closing credits run, and only then', (
   assert.equal(upNextOffer(base)?.marker?.id, 'c1');
 });
 
-test('the countdown starts the next title early only for credits the server is sure of, with autoplay on', () => {
+test('the countdown starts the next title early only when the viewer allows it, for credits the server is sure of, with autoplay on', () => {
   const sure = {id: 'marker:c1', marker: credits}, unsure = {id: 'marker:c2', marker: {...credits, id: 'c2', automaticSafe: false}}, tail = {id: 'tail'};
-  const at = {positionSeconds: 1300, durationSeconds: 1380, rate: 1, autoplay: true, countdownSeconds: 10, elapsedSeconds: 3.2};
+  const at = {positionSeconds: 1300, durationSeconds: 1380, rate: 1, autoplay: true, countdownSeconds: 10, elapsedSeconds: 3.2, startDuringCredits: true};
   assert.deepEqual(upNextCountdown({...at, offer: sure}), {automatic: true, seconds: 7});
   assert.deepEqual(upNextCountdown({...at, offer: sure, elapsedSeconds: 12}), {automatic: true, seconds: 0});
+  // "Start the next episode during the credits" is off by default (Justin, 15 Oct): the card still
+  // says when the next title starts, but nothing starts before this title ends.
+  const {startDuringCredits: _on, ...byDefault} = at;
+  assert.deepEqual(upNextCountdown({...byDefault, offer: sure, elapsedSeconds: 12}), {automatic: false, seconds: 90});
+  assert.deepEqual(upNextCountdown({...at, startDuringCredits: false, offer: sure, elapsedSeconds: 12}), {automatic: false, seconds: 90});
   // Otherwise the count is what is left of this title, at its speed, plus the end card's countdown.
   assert.deepEqual(upNextCountdown({...at, offer: unsure}), {automatic: false, seconds: 90});
   assert.deepEqual(upNextCountdown({...at, offer: tail, rate: 2}), {automatic: false, seconds: 50});
   assert.equal(upNextCountdown({...at, offer: sure, autoplay: false}), null);
+});
+
+test('the credits card starts the next title itself only on an automatic countdown, fed by the viewer preference', () => {
+  const source = readFileSync(new URL('../src/player/UpNextCredits.tsx', import.meta.url), 'utf8');
+  // The preference reaches the countdown from the queue's post-play policy, and absent counts as off.
+  assert.match(source, /startDuringCredits: postPlay\?\.startDuringCredits === true/);
+  // Only a countdown that is automatic and has run out leaves the title early.
+  assert.match(source, /const due = countdown\?\.automatic && countdown\.seconds <= 0;/);
+  assert.match(source, /if \(due\) leave\(true\)/);
 });

@@ -302,7 +302,7 @@ export class V1QueuePlayer implements QueueController {
     const following = at >= 0 ? this.window[at + 1] : undefined;
     const reason: 'ready' | 'end' | 'unavailable' = header.next?.reason ?? (following ? (following.available ? 'ready' : 'unavailable') : header.repeat === 'all' && header.total > 0 ? 'ready' : 'end');
     const next = Object.freeze({entryId: header.next?.entryId ?? following?.entryId ?? null, available: header.next?.available ?? reason === 'ready', reason});
-    const postPlay: QueuePostPlay = Object.freeze({nextEntryId: next.entryId, available: next.available, reason, countdownSeconds: header.postPlay?.countdownSeconds as 0|5|10|15 ?? 10, autoplay: header.postPlay?.autoplay ?? true, passoutCheckDue: header.postPlay?.passoutCheckDue ?? false, automaticAdvances: header.postPlay?.automaticAdvances ?? 0});
+    const postPlay: QueuePostPlay = Object.freeze({nextEntryId: next.entryId, available: next.available, reason, countdownSeconds: header.postPlay?.countdownSeconds as 0|5|10|15 ?? 10, autoplay: header.postPlay?.autoplay ?? true, passoutCheckDue: header.postPlay?.passoutCheckDue ?? false, automaticAdvances: header.postPlay?.automaticAdvances ?? 0, startDuringCredits: header.postPlay?.startDuringCredits ?? false});
     const queue: QueueSnapshot = Object.freeze({
       id: header.id, scope: this.scope, revision: header.revision, highestSeenSequence: '0', replayWindow: Object.freeze({results: 256, bodies: 32}),
       repeat: header.repeat, shuffled: !!header.shuffle, currentEntryId: current?.entryId ?? null, currentPlaybackId: this.session?.id ?? null, entries: Object.freeze(entries),

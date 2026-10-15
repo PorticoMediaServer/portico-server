@@ -32,6 +32,10 @@ test('post-play must agree with the queue next entry and publish server preferen
  assert.throws(()=>parseQueuePostPlay(postPlay({passoutAfterEpisodes:3})));
  const due=parseQueuePostPlay(postPlay({passoutCheckDue:true,automaticAdvances:3}));
  assert.equal(due.passoutCheckDue,true);
+ // Starting the next title during the credits is the viewer's choice, off unless the server says on.
+ assert.equal(parsed.startDuringCredits,false);
+ assert.equal(parseQueuePostPlay(postPlay({startDuringCredits:true})).startDuringCredits,true);
+ assert.throws(()=>parseQueuePostPlay(postPlay({startDuringCredits:'yes'})));
 });
 test('the passout refusal code',()=>{
  assert.equal(passoutCheckRequired,'passout_check_required');

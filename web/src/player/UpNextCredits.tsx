@@ -12,8 +12,9 @@ type NextTitle = Readonly<{title: string; kind: string; posterUrl?: string; stil
 /**
  * The next title, offered in a corner while the credits run, with its artwork and a countdown.
  * "Play now" goes straight to it; "Watch credits" puts the card away for this title. The count
- * starts the next title by itself only where `upNextCountdown` says so (autoplay on, credits the
- * server is sure of); otherwise it says when the end card will start it.
+ * starts the next title by itself only where `upNextCountdown` says so (the viewer's "Start the next
+ * episode during the credits", off by default, with autoplay on and credits the server is sure of);
+ * otherwise it says when the end card will start it.
  */
 export function useUpNextDuringCredits(engine: PlayerEngine, markers: readonly ClosingMarker[] | undefined, mode: SkipMode, enabled: boolean) {
   const {queue, state} = engine;
@@ -28,7 +29,7 @@ export function useUpNextDuringCredits(engine: PlayerEngine, markers: readonly C
   return {offer: shown, next, postPlay: view?.postPlay, dismiss: () => { if (offer) setDismissed(offer.id); }};
 }
 
-export function UpNextCredits({engine, offer, next, postPlay, rate, onDismiss}: {engine: PlayerEngine; offer: UpNextOffer; next: NextTitle; postPlay?: Readonly<{autoplay: boolean; countdownSeconds: number}>; rate: number; onDismiss: () => void}) {
+export function UpNextCredits({engine, offer, next, postPlay, rate, onDismiss}: {engine: PlayerEngine; offer: UpNextOffer; next: NextTitle; postPlay?: Readonly<{autoplay: boolean; countdownSeconds: number; startDuringCredits?: boolean}>; rate: number; onDismiss: () => void}) {
   const {t} = useI18n();
   const {state} = engine;
   // Seconds of this offer spent playing: a pause holds the count where it is.
@@ -41,7 +42,7 @@ export function UpNextCredits({engine, offer, next, postPlay, rate, onDismiss}: 
     const id = setInterval(() => { const now = Date.now(); setElapsed(e => e + (now - last) / 1000); last = now; }, 250);
     return () => clearInterval(id);
   }, [playing, offer.id]);
-  const countdown = upNextCountdown({offer, positionSeconds: state.positionSeconds, durationSeconds: state.duration, rate, autoplay: postPlay?.autoplay ?? true, countdownSeconds: postPlay?.countdownSeconds ?? 10, elapsedSeconds: elapsed});
+  const countdown = upNextCountdown({offer, positionSeconds: state.positionSeconds, durationSeconds: state.duration, rate, autoplay: postPlay?.autoplay ?? true, countdownSeconds: postPlay?.countdownSeconds ?? 10, startDuringCredits: postPlay?.startDuringCredits === true, elapsedSeconds: elapsed});
   const moved = useRef('');
   const leave = (automatic: boolean) => {
     if (moved.current === offer.id) return;

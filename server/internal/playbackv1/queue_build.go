@@ -48,7 +48,7 @@ type queueStart struct {
 	AnchorItem string `json:"anchorItem,omitempty"`
 	// AnchorAt is a playlist occurrence's source position the scan hadn't reached.
 	AnchorAt *int64 `json:"anchorAt,omitempty"`
-	Seed       int64  `json:"seed,omitempty"`
+	Seed     int64  `json:"seed,omitempty"`
 	// Base is the source position of this snapshot's first entry when the
 	// queue was created (segments before it).
 	Base int64 `json:"base"`
@@ -569,13 +569,27 @@ func (s *Service) resumeOnce() {
 }
 
 // ResumeQueueBuilds continues any snapshot left building (e.g. by a restart),
-// and removes what a crashed large create left staged.
+// and removes what a crashed large create left staged. Called directly, it
+// also stands for the lazy resume: the first queue request after it starts
+// nothing more.
 func (s *Service) ResumeQueueBuilds() {
+	s.build.resume.Do(func() {})
 	s.SweepQueues(context.Background())
 	s.build.mu.Lock()
 	s.PauseQueueBuilds = false
 	s.build.mu.Unlock()
 	s.build.kick(s)
+}
+
+// HoldQueueBuilds stops background builds and saves from taking another step
+// until ResumeQueueBuilds (tests). The lazy resume after a start is spent, so
+// the next queue request cannot release the hold behind the caller's back;
+// a builder already running stops before its next snapshot or save step.
+func (s *Service) HoldQueueBuilds() {
+	s.build.resume.Do(func() {})
+	s.build.mu.Lock()
+	s.PauseQueueBuilds = true
+	s.build.mu.Unlock()
 }
 
 // requestBudget is how much of a selection a request snapshots itself.
@@ -603,6 +617,14 @@ func (b *builder) kick(s *Service) {
 
 func (b *builder) run(s *Service) {
 	for {
+		// A hold (tests) stops the builder between steps; ResumeQueueBuilds kicks it again.
+		b.mu.Lock()
+		if s.PauseQueueBuilds {
+			b.running, b.again = false, false
+			b.mu.Unlock()
+			return
+		}
+		b.mu.Unlock()
 		var id string
 		err := s.DB.QueryRow(`SELECT id FROM queue_v1_snapshots WHERE state='building' ORDER BY rowid LIMIT 1`).Scan(&id)
 		if err == nil {

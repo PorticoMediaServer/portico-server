@@ -6022,6 +6022,7 @@ CREATE INDEX playback_personal_fences_item_id_fk ON playback_personal_fences(ite
 CREATE INDEX playback_sessions_asset_id_fk ON playback_sessions(asset_id);
 CREATE INDEX playback_sessions_item_id_fk ON playback_sessions(item_id);
 CREATE INDEX profile_show_activity_show_id_fk ON profile_show_activity(show_id);
+CREATE INDEX saved_entry_undo_item_id_fk ON saved_entry_undo(item_id);
 CREATE INDEX saved_resource_entries_item_id_fk ON saved_resource_entries(item_id);
 CREATE INDEX subtitle_provider_candidates_item_id_fk ON subtitle_provider_candidates(item_id);
 CREATE INDEX subtitle_resources_source_id_fk ON subtitle_resources(source_id);

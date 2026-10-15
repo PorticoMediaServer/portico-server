@@ -50,6 +50,7 @@ export const settingsMessages = {
   'settings.row.porticoAccount': 'Portico Account',
   'settings.row.autoplayNext': 'Play the next episode automatically',
   'settings.row.countdown': 'Wait before the next episode',
+  'settings.row.startNextDuringCredits': 'Start the next episode during the credits',
   'settings.row.stillWatching': 'Ask “Still watching?”',
   'settings.help.stillWatching': 'Pauses after several episodes in a row when no one has touched the controls.',
   'settings.row.stillWatchingAfter': 'Ask after',

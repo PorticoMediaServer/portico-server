@@ -127,6 +127,17 @@
             "labelKey": "preferences.playback.upNextCountdownSeconds"
           },
           {
+            "consumer": "client.playback.continuation",
+            "key": "playback.startNextDuringCredits",
+            "type": "boolean",
+            "default": false,
+            "scopes": [
+              "profile-server"
+            ],
+            "group": "playback",
+            "labelKey": "preferences.playback.startNextDuringCredits"
+          },
+          {
             "consumer": "server.playback.queue_completion",
             "key": "playback.passoutProtection",
             "type": "boolean",
@@ -711,6 +722,7 @@
         "playback.skipBackSeconds": 10,
         "playback.skipForwardSeconds": 30,
         "playback.sleepTimerMinutes": 0,
+        "playback.startNextDuringCredits": false,
         "playback.startedThresholdPercent": 5,
         "playback.subtitleBackground": "translucent",
         "playback.subtitleMode": "forced",
@@ -754,6 +766,7 @@
         "playback.skipBackSeconds": "default",
         "playback.skipForwardSeconds": "default",
         "playback.sleepTimerMinutes": "default",
+        "playback.startNextDuringCredits": "default",
         "playback.startedThresholdPercent": "default",
         "playback.subtitleBackground": "default",
         "playback.subtitleMode": "default",

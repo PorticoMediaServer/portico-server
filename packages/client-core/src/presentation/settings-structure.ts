@@ -210,6 +210,7 @@ const accountPages: readonly AuthoredPage[] = [
       {id: 'next', title: 'settings.section.nextEpisode', rows: [
         toggle('playback.autoplayNext', 'settings.row.autoplayNext', {help: 'pref.help.playback.autoplayNext'}),
         pref('playback.upNextCountdownSeconds', 'settings.row.countdown', {type: 'choice', choices: [{value: 0, label: 'pref.value.playback.upNextCountdownSeconds.0'}, ...seconds(5, 10, 15)]}, {when: {key: 'playback.autoplayNext', equals: true}}),
+        toggle('playback.startNextDuringCredits', 'settings.row.startNextDuringCredits', {help: 'pref.help.playback.startNextDuringCredits', when: {key: 'playback.autoplayNext', equals: true}}),
         toggle('playback.passoutProtection', 'settings.row.stillWatching', {help: 'settings.help.stillWatching'}),
         pref('playback.passoutAfterEpisodes', 'settings.row.stillWatchingAfter', {type: 'choice', choices: [2, 3, 4, 5].map(value => ({value, label: 'pref.unit.episodes' as MessageId, labelValues: {count: value}}))}, {when: {key: 'playback.passoutProtection', equals: true}}),
       ]},

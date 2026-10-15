@@ -14,11 +14,9 @@ func querySource(library string, sort string) map[string]any {
 
 func TestPlaybackV1QueueQueryCapturesBeyond500AndKeepsItsSnapshot(t *testing.T) {
 	f := newV1Fixture(t, 520)
-	f.v1.PauseQueueBuilds = true
-	// Prevent the lazy restart hook from unpausing this deliberately held build.
-	f.v1.ResumeQueueBuilds()
-	time.Sleep(10 * time.Millisecond)
-	f.v1.PauseQueueBuilds = true
+	// Hold the background build: the request answers with its first batch, and
+	// the rest is built only after the catalogue changes below.
+	f.v1.HoldQueueBuilds()
 	var q playbackv1.QueueReply
 	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "whole-query-000001"}, map[string]any{"selector": querySource(f.library, "desc"), "startPlayback": map[string]any{"state": "playing"}}, 201, &q)
 	if q.Queue.Total != 256 || q.Session == nil || q.Session.ItemID != f.items[519] || len(q.Queue.Segments) != 1 || q.Queue.Segments[0].SourceRevision == "" {

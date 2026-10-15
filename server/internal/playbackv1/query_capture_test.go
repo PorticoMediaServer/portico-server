@@ -94,8 +94,7 @@ func TestQueryCaptureDoesNotMixRevisionsAfterRestart(t *testing.T) {
 func TestGrowingQueryShuffleKeepsTheSameSeededOrder(t *testing.T) {
 	s, c, snap := queryBuildFixture(t)
 	s.releaseCapture(snap.id)
-	s.build.resume.Do(func() {})
-	s.PauseQueueBuilds = true
+	s.HoldQueueBuilds()
 	who := Caller{DeviceID: "shuffle_device", Principal: identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"}}}
 	var previous []string
 	for n := 0; n < 2; n++ {

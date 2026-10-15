@@ -32,6 +32,8 @@ export const preferenceMessages = {
   'pref.label.playback.upNextCountdownSeconds': 'Up Next countdown',
   'pref.help.playback.upNextCountdownSeconds': 'How long the next episode waits before starting.',
   'pref.value.playback.upNextCountdownSeconds.0': 'Immediately',
+  'pref.label.playback.startNextDuringCredits': 'Start the next episode during the credits',
+  'pref.help.playback.startNextDuringCredits': 'When the credits are clearly marked, count down and start the next episode without waiting for them to end. Off: the next episode starts when this one ends.',
   'pref.label.playback.passoutProtection': 'Still watching check',
   'pref.help.playback.passoutProtection': 'Pause autoplay after several episodes with no one using the remote.',
   'pref.label.playback.passoutAfterEpisodes': 'Ask after',

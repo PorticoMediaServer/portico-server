@@ -171,7 +171,8 @@ type Service struct {
 	QueueKeyLimit int64
 	// QueueScanBudget and QueueCountBudget override how many keys a request
 	// snapshots itself and how long a large shuffle's count may take (tests);
-	// PauseQueueBuilds holds background builds until ResumeQueueBuilds (tests).
+	// PauseQueueBuilds holds background builds until ResumeQueueBuilds (tests);
+	// set it before the first request, or call HoldQueueBuilds once requests run.
 	QueueScanBudget  int64
 	QueueCountBudget time.Duration
 	PauseQueueBuilds bool

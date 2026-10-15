@@ -140,7 +140,7 @@ func TestPlaybackV1QueueLargeShuffleWaitsWhenTheCountRunsLong(t *testing.T) {
 	want := bigCollection(t, f, 20_000)
 	f.v1.QueueScanBudget = 1024
 	f.v1.QueueCountBudget = time.Nanosecond
-	f.v1.PauseQueueBuilds = true
+	f.v1.HoldQueueBuilds()
 	var q playbackv1.QueueReply
 	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "big-waiting-000001"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("collection", f.names["big"].Public), "order": map[string]any{"mode": "shuffle", "seed": "5"}}}, "startPlayback": map[string]any{"state": "playing"}}, 201, &q)
 	if q.Session != nil || q.Queue.Current != nil || q.Queue.Segments[0].State != "building" {
@@ -165,7 +165,7 @@ func TestPlaybackV1QueueDeepAnchorWaitsForTheBuild(t *testing.T) {
 	f := newV1Fixture(t, 1)
 	want := bigCollection(t, f, 20_000)
 	f.v1.QueueScanBudget = 1024
-	f.v1.PauseQueueBuilds = true
+	f.v1.HoldQueueBuilds()
 	var q playbackv1.QueueReply
 	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "big-anchor-0000001"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("collection", f.names["big"].Public), "anchor": map[string]any{"itemId": want[15_000]}}}}, 201, &q)
 	if q.Queue.Current != nil || q.Queue.Total != 1024 || q.Queue.Segments[0].State != "building" {
@@ -232,7 +232,7 @@ func TestPlaybackV1QueueShufflePendingEntriesWhileBuilding(t *testing.T) {
 	f := newV1Fixture(t, 1)
 	want := bigCollection(t, f, 20_000)
 	f.v1.QueueScanBudget = 1024
-	f.v1.PauseQueueBuilds = true
+	f.v1.HoldQueueBuilds()
 	var q playbackv1.QueueReply
 	f.call("POST", "/v1/queues", map[string]string{"Idempotency-Key": "big-pending-000001"}, map[string]any{"segments": []any{map[string]any{"source": containerSource("collection", f.names["big"].Public), "order": map[string]any{"mode": "shuffle", "seed": "3"}}}}, 201, &q)
 	if q.Queue.Total != int64(len(want)) || q.Queue.Current == nil || q.Queue.Segments[0].State != "building" {

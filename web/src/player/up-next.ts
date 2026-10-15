@@ -34,8 +34,9 @@ export function upNextOffer(input: Readonly<{
 
 /**
  * The countdown on the Up next card, when the next title will start without anyone pressing a
- * thing. With the server's autoplay on and credits it is sure of (`automaticSafe`), the card
- * counts the viewer's post-play countdown and the next title starts when it reaches zero, as Plex
+ * thing. Only when the viewer has turned on "Start the next episode during the credits" (off by
+ * default), with autoplay on and credits the server is sure of (`automaticSafe`), does the card
+ * count the viewer's post-play countdown and start the next title when it reaches zero, as Plex
  * does. Otherwise nothing starts early: the count is the rest of this title, at its speed, plus the
  * countdown the end card will run. With autoplay off there is no count.
  */
@@ -43,10 +44,12 @@ export type UpNextCountdown = Readonly<{automatic: boolean; seconds: number}>;
 export function upNextCountdown(input: Readonly<{
   offer: UpNextOffer; positionSeconds: number; durationSeconds: number; rate: number;
   autoplay: boolean; countdownSeconds: number; elapsedSeconds: number;
+  /** The viewer's `playback.startNextDuringCredits`; absent means off. */
+  startDuringCredits?: boolean;
 }>): UpNextCountdown | null {
   if (!input.autoplay) return null;
   const countdown = Math.max(0, input.countdownSeconds);
-  if (input.offer.marker?.automaticSafe) return {automatic: true, seconds: Math.max(0, Math.ceil(countdown - input.elapsedSeconds))};
+  if (input.startDuringCredits === true && input.offer.marker?.automaticSafe) return {automatic: true, seconds: Math.max(0, Math.ceil(countdown - input.elapsedSeconds))};
   const left = Math.max(0, input.durationSeconds - input.positionSeconds) / Math.max(0.25, input.rate || 1);
   return {automatic: false, seconds: Math.ceil(left + countdown)};
 }

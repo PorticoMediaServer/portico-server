@@ -9,6 +9,7 @@ var preferenceConsumers = func() map[string]string {
 		"playback.skipForwardSeconds":         "client.playback.controls",
 		"playback.autoplayNext":               "client.playback.continuation",
 		"playback.upNextCountdownSeconds":     "client.playback.continuation",
+		"playback.startNextDuringCredits":     "client.playback.continuation",
 		"playback.passoutProtection":          "server.playback.queue_completion",
 		"playback.passoutAfterEpisodes":       "server.playback.queue_completion",
 		"playback.introSkip":                  "client.playback.markers",
