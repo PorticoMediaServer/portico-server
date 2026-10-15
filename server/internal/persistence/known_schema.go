@@ -493,6 +493,7 @@ index remote_listing_retention
 index retained_title_identities_state
 index retained_title_state_profile
 index saved_entry_undo_expiry
+index saved_entry_undo_item_id_fk
 index saved_entry_undo_list
 index saved_pin_order_position
 index saved_resource_entries_item_id_fk
