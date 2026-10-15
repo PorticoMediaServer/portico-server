@@ -25,14 +25,12 @@ import {useViewerScope} from '../../app/viewer-scope';
 import {useFreshDocument} from '../../app/freshness';
 import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {useI18n, type I18n} from '../../app/i18n';
-import type {BrowseNode} from '@core/browse.ts';
-import {spanningGroup, titlePivot, useGroupBrowse, useGroupLibraries, type GroupChoice} from '../../app/group-browse';
-import {GroupBar, GroupGrid, GroupLibraryChips} from '../shared/GroupBrowse';
+import {acrossGroup, useGroupBrowse, type GroupChoice} from '../../app/group-browse';
+import {GroupBar, GroupGrid} from '../shared/GroupBrowse';
 import {LoadingGrid} from '../shared/Sections';
 
 type State = {phase: 'loading' | 'ready' | 'error'; page?: PersonPage; error?: unknown};
 /** People are credited on films and shows: the libraries a person's titles can be sorted and filtered in. */
-const creditPivot = (libraryKind: string) => (libraryKind === 'movie' || libraryKind === 'tv' || libraryKind === 'anime' ? titlePivot(libraryKind) : undefined);
 
 /**
  * A person: portrait, life dates, biography, "known for" and every credit on
@@ -76,15 +74,13 @@ export function PersonScreen() {
   // A person's titles follow the libraries while the page is open: a title that arrives, goes or is watched updates in place.
   useFreshDocument(personDependencies, context => credits.revalidate({fetchPage: personCreditsSource(api, scope, personId, role), hold: context.settle}), () => credits.getSnapshot().total !== undefined);
   const creditsSnapshot = useSyncExternalStore(credits.subscribe, credits.getSnapshot);
-  // The library's sort and filters on this person's titles. A person's credits span libraries and a
-  // library's vocabulary is its own, so with titles in several the viewer picks one. The server's
-  // person condition covers every credit, so the toolbar is offered under All, not under Cast or Crew.
-  const base = useMemo<readonly BrowseNode[]>(() => [{field: 'person', operator: 'equals', value: personId}], [personId]);
-  const held = useGroupLibraries(role === 'all' ? base : undefined, creditPivot);
-  const scoped = useMemo(() => spanningGroup(held.libraries, address.library, base, 'default'), [held.libraries, address.library, base]);
-  const choose = useCallback((next: {library?: string} & GroupChoice) => void navigate({to: '/person/$personId', params: {personId}, search: next, replace: true, resetScroll: false}), [navigate, personId]);
-  const group = useGroupBrowse(scoped.spec, {sort: address.sort, direction: address.direction, filters: address.filters}, useCallback((next: GroupChoice) => choose({library: scoped.chosen, ...next}), [choose, scoped.chosen]));
-  const chooseRole = (next: PersonRole) => { setRole(next); if (next !== 'all' && (address.library || address.sort || address.filters)) choose({}); };
+  // The library's sort and filters on this person's titles, across every library they are in, as one
+  // list. Cast and Crew keep the toolbar: the server's cast and crew conditions are the same split.
+  const spec = useMemo(() => acrossGroup(role === 'all' ? 'person' : role, personId), [role, personId]);
+  const choose = useCallback((next: GroupChoice) => void navigate({to: '/person/$personId', params: {personId}, search: next, replace: true, resetScroll: false}), [navigate, personId]);
+  const group = useGroupBrowse(spec, {sort: address.sort, direction: address.direction, filters: address.filters}, choose);
+  // The sort and filters carry over from one role to another.
+  const chooseRole = (next: PersonRole) => setRole(next);
   const open = useOpenEntry();
   const homeward = useNavigate();
   const back = useBack(() => void homeward({to: '/'}));
@@ -117,13 +113,12 @@ export function PersonScreen() {
         </Row>
       </Inset>
       <Inset><Chips>{(['all', 'cast', 'crew'] as const).map(r => <Chip key={r} label={r === 'all' ? t('web.search.all') : r === 'cast' ? t('web.person.cast') : t('web.person.crew')} pressed={role === r} onClick={() => chooseRole(r)} />)}</Chips></Inset>
-      {role === 'all' && scoped.choose ? <Inset><GroupLibraryChips libraries={held.libraries} value={scoped.chosen} onChange={library => choose(library ? {library} : {})} /></Inset> : null}
-      {role === 'all' && scoped.spec ? <Inset><GroupBar group={group} /></Inset> : null}
+      <Inset><GroupBar group={group} /></Inset>
       {state.phase === 'error' && person ? <Inset><ErrorNotice error={state.error} context="person" retry={() => void load()} /></Inset> : null}
       {state.phase === 'loading' && !person ? <Grid density="poster">{Array.from({length: 12}).map((_, i) => <Skeleton key={i} style={{aspectRatio: '2 / 3', width: '100%'}} />)}</Grid>
       : state.phase === 'ready' && total === 0 ? <StateView inline icon="people" title={t('web.person.noCredits')} body={role === 'all' ? t('web.person.noCreditsBody') : role === 'cast' ? t('web.person.noCast') : t('web.person.noCrew')} />
-      : role === 'all' && group.pending ? <LoadingGrid />
-      : role === 'all' && group.active ? <GroupGrid group={group} square={false} />
+      : group.pending ? <LoadingGrid />
+      : group.active ? <GroupGrid group={group} square={false} />
       : <CreditsGrid collection={credits} status={creditsSnapshot.status} error={creditsSnapshot.error} retry={() => credits.retry()} />}
     </Page>
   );

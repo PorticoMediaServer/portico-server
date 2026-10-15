@@ -4,7 +4,7 @@ import {createWindowedCollection, type FetchPage, type WindowedCollection} from 
 import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {usePooled} from './freshness';
 import type {ContentEntry} from '@core/library-content.ts';
-import {parseBrowseCapabilities, parseBrowseFacets, type BrowseCapabilities, type BrowseFacetValue, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
+import {acrossLibraries, browseCapabilitiesPath, browseFacetsPath, parseBrowseCapabilities, parseBrowseFacets, type BrowseCapabilities, type BrowseFacetValue, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
 import {appliedFilterLabel, browseNameId} from '@core/presentation/index.ts';
 import type {MessageId} from '@i18n';
 import {sessionIdentity, useSession} from './session';
@@ -35,7 +35,7 @@ export function useBrowseCapabilities(libraryId: string | undefined, pivot: stri
   const key = libraryId && pivot ? `${libraryId}:${pivot}` : undefined;
   useEffect(() => {
     if (!libraryId || !pivot || !key) { setState({}); return; }
-    return capabilityCache.use(who, key, () => api.request<unknown>(`/v1/libraries/${encodeURIComponent(libraryId)}/browse-capabilities?pivot=${encodeURIComponent(pivot)}`, 'GET').then(parseBrowseCapabilities), {
+    return capabilityCache.use(who, key, () => api.request<unknown>(browseCapabilitiesPath(libraryId, pivot), 'GET').then(parseBrowseCapabilities), {
       value: capabilities => setState({capabilities, key}),
       error: e => setState({error: errorText(e, 'library', 'load'), key}),
     });
@@ -78,7 +78,8 @@ export function useBrowseCollection(input: {libraryId?: string; pivot?: string; 
       service,
       document: {
         // The titles, their order, and this profile's marks on them.
-        dependencies: titlesWithPersonalState(libraryId),
+        // A list across libraries follows them all.
+        dependencies: titlesWithPersonalState(libraryId === acrossLibraries ? undefined : libraryId),
         hasContent: () => collection.getSnapshot().total !== undefined,
         // The same list read again behind the one on screen (a new reading has a new revision), swapped in whole at the same place.
         revalidate: context => collection.revalidate({fetchPage: service.source?.(), hold: context.settle}),
@@ -109,7 +110,7 @@ export function useFacets(libraryId: string | undefined) {
     if (!libraryId) return [];
     const params = new URLSearchParams({field, limit: '100'});
     if (q) params.set('q', q);
-    const raw = await api.request<unknown>(`/v1/libraries/${encodeURIComponent(libraryId)}/facets?${params}`, 'GET');
+    const raw = await api.request<unknown>(`${browseFacetsPath(libraryId)}?${params}`, 'GET');
     return parseBrowseFacets(raw, field).values;
   }, [api, libraryId]);
 }

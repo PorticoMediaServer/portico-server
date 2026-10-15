@@ -77,6 +77,8 @@ export function savedSequence(id: string, o: {shuffle?: boolean} = {}): Sequence
 export function viewSequence(view: Readonly<{libraryId?: string; pivot?: string; base?: readonly BrowseNode[]; predicates?: readonly BrowseNode[]; sort?: BrowseSortSelection}>, o: {shuffle?: boolean} = {}): SequenceContainer | undefined {
   if (!view.libraryId || !view.pivot) return undefined;
   const all = [...(view.base ?? []), ...(view.predicates ?? [])];
+  // A Home row is what Home shows now, which a queue cannot name: its titles play from the list on screen.
+  if (all.some(node => 'field' in node && node.field === 'homeRow')) return undefined;
   return {kind: 'query', query: {libraryId: view.libraryId, pivot: view.pivot, ...(all.length ? {query: {all}} : {}), ...(view.sort ? {sort: [view.sort]} : {})}, ...(o.shuffle ? {shuffle: true} : {})};
 }
 

@@ -66,6 +66,9 @@ type pageShape struct {
 	summary    browseSummary
 	seekKeys   []string
 	seekAnchor string
+	// group is the group's own order as (id, pos) SQL, for groupOrder.
+	group     string
+	groupArgs []any
 }
 
 func (p pageShape) primary() (browseSort, bool) {
@@ -104,6 +107,9 @@ func (s *Service) browsePage(p pageShape) ([]browseRow, error) {
 		return []browseRow{}, nil
 	}
 	primary, desc := p.primary()
+	if primary.Ordering == -3 {
+		return s.groupOrderPage(p)
+	}
 	if p.request.Query != nil && p.start > 0 && len(p.seekKeys) == 0 {
 		return s.filteredRangePage(p)
 	}

@@ -27,6 +27,8 @@ import {getContainerState} from '@core/container-state.ts';
 import {useI18n, type I18n} from '../../app/i18n';
 import {GroupBar, GroupRows} from '../shared/GroupBrowse';
 import {useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-browse';
+import type {BrowseNode} from '@core/browse.ts';
+import {episodeGroupCondition} from '@core/presentation/browse-groups.ts';
 import {groupSequence} from '../../app/container-play';
 import {useQuietRefresh} from '../../app/quiet-refresh';
 
@@ -147,8 +149,9 @@ export function ShowScreen() {
   const showSearch = useCallback((extra: Partial<ShowSearch> = {}): ShowSearch => ({library: search.library, ...(search.title ? {title: search.title} : {}), ...(seasonParam ? {season: seasonParam} : {}), ...(search.sort ? {sort: search.sort, direction: search.direction} : {}), ...(search.filters ? {filters: search.filters} : {}), ...extra}), [search.library, search.title, seasonParam, search.sort, search.direction, search.filters]);
   // The library's sort and filters on the episodes on screen: the season's, or the whole show's when it has no seasons. An owner's episode ranges are their own lists and keep their order.
   const libraryKind: string = show?.libraryKind ?? '';
-  const episodeMembers = selected?.group ? undefined : selected?.seasonId ?? show?.id;
-  const episodeSpec = useMemo<GroupSpec | undefined>(() => (show && episodeMembers && (libraryKind === 'tv' || libraryKind === 'anime') ? {libraryId: show.libraryId, libraryKind, pivot: 'episodes', base: [{field: 'memberOf', operator: 'equals', value: episodeMembers}], own: 'season'} : undefined), [show, episodeMembers, libraryKind]);
+  // A season's episodes, or one of a flat show's groups (its whole list, its specials, a range of a hundred).
+  const episodeBase = useMemo<BrowseNode | undefined>(() => (!show ? undefined : selected?.group ? episodeGroupCondition(show.id, selected.group) : {field: 'memberOf', operator: 'equals', value: selected?.seasonId ?? show.id}), [show, selected?.group, selected?.seasonId]);
+  const episodeSpec = useMemo<GroupSpec | undefined>(() => (show && episodeBase && (libraryKind === 'tv' || libraryKind === 'anime') ? {libraryId: show.libraryId, libraryKind, pivot: 'episodes', base: [episodeBase], own: 'season'} : undefined), [show, episodeBase, libraryKind]);
   const episodeGroup = useGroupBrowse(episodeSpec, {sort: search.sort, direction: search.direction, filters: search.filters}, useCallback((next: GroupChoice) => void navigate({to: params.episodeId ? '/show/$showId/episode/$episodeId' : '/show/$showId', params: {showId, ...(params.episodeId ? {episodeId: params.episodeId} : {})}, search: showSearch({sort: next.sort, direction: next.direction, filters: next.filters}), replace: true, resetScroll: false}), [navigate, showId, params.episodeId, showSearch]));
   // A sorted or filtered list plays on in the order shown: the whole list, from the server's query,
   // starting at the episode pressed.

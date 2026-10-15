@@ -78,3 +78,10 @@ test('a group plays its query only while it shows a sorted or filtered list', ()
   assert.equal(groupSequence({active: false, spec, predicates: [], sort}), undefined);
   assert.deepEqual(groupSequence({active: true, spec, predicates: [], sort}, {shuffle: true}), {kind: 'query', query: {libraryId: 'lib', pivot: 'episodes', query: {all: spec.base}, sort: [sort]}, shuffle: true});
 });
+
+test('a list across libraries plays as the server query it is, in its own order; a Home row plays from the screen', async () => {
+  const {groupSequence, viewSequence} = await import('../src/app/container-play.ts');
+  const spec = {libraryId: '*', pivot: 'items', base: [{field: 'list', operator: 'equals' as const, value: 'p1'}]};
+  assert.deepEqual(groupSequence({active: true, spec, predicates: [{field: 'year', operator: 'at-least', value: 2000}], sort: {field: 'groupOrder', direction: 'asc'}}), {kind: 'query', query: {libraryId: '*', pivot: 'items', query: {all: [{field: 'list', operator: 'equals', value: 'p1'}, {field: 'year', operator: 'at-least', value: 2000}]}, sort: [{field: 'groupOrder', direction: 'asc'}]}});
+  assert.equal(viewSequence({libraryId: '*', pivot: 'titles', base: [{field: 'homeRow', operator: 'equals', value: 'recommended'}]}), undefined);
+});

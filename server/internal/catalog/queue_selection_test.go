@@ -12,7 +12,7 @@ func TestQueueKeysMatchEveryBrowseOrder(t *testing.T) {
 	db, s, _ := browseFixture(t)
 	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}
 	for _, definition := range browseSorts {
-		if !containsString(definition.ApplicableKinds, "movie") {
+		if !containsString(definition.ApplicableKinds, "movie") || definition.Ordering == -3 {
 			continue
 		}
 		for _, direction := range definition.Directions {

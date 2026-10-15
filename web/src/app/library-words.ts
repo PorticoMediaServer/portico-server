@@ -131,11 +131,21 @@ export function trackSubtitleForAlbum(trackSubtitle: string | undefined, albumAr
   return artist;
 }
 
-/** The disc a song subtitle belongs to ("Disc 2 · Track 1 · …" → 2); none when unnumbered. */
-export function discNumberFromSubtitle(subtitle: string | undefined): number | undefined {
-  if (!subtitle) return undefined;
-  const hit = subtitle.split(' · ').find(p => /^Disc \d+$/.test(p));
-  return hit ? Number(hit.slice(5)) : undefined;
+/**
+ * An album's tracks under their discs, from the disc number the server gives each track (B-18.23),
+ * in the order the tracks come; undefined for an album on one disc (or with no disc numbers),
+ * which has no headings. Tracks without a number gather under 0, drawn without a heading.
+ */
+export function discGroups<E extends Readonly<{discNumber?: number}>>(entries: readonly E[]): Map<number, Array<{entry: E; index: number}>> | undefined {
+  if (new Set(entries.map(e => e.discNumber ?? 0)).size < 2) return undefined;
+  const groups = new Map<number, Array<{entry: E; index: number}>>();
+  entries.forEach((entry, index) => {
+    const disc = entry.discNumber ?? 0;
+    const list = groups.get(disc) ?? [];
+    list.push({entry, index});
+    groups.set(disc, list);
+  });
+  return groups;
 }
 
 /** Album hero facts: "Album · 2011 · 11 songs · 48 min" (year/duration omitted when unknown). */

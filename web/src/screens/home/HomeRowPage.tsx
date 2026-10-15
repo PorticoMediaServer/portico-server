@@ -1,5 +1,5 @@
-import {useEffect, useMemo, useSyncExternalStore} from 'react';
-import {useNavigate, useParams} from '@tanstack/react-router';
+import {useCallback, useEffect, useMemo, useSyncExternalStore} from 'react';
+import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import {HomeRowPager} from '@core/home-row-page.ts';
 import {homeRowTitle} from '../../app/home';
 import {useSession} from '../../app/session';
@@ -13,6 +13,8 @@ import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 
 import {Inset, Page, PageHeader} from '../../ui';
 import {LoadingGrid, SectionView} from '../shared/Sections';
+import {GroupBar, GroupGrid} from '../shared/GroupBrowse';
+import {acrossGroup, useGroupBrowse, type GroupChoice} from '../../app/group-browse';
 import {useI18n} from '../../app/i18n';
 
 /**
@@ -20,13 +22,19 @@ import {useI18n} from '../../app/i18n';
  * you rows as a paged grid, read from the row's own endpoint (`HomeRowPager`: the whole row, a
  * stale cursor starts again from the first page). Its cards are recommendations, so they offer
  * Not interested and leave the grid when turned down.
+ *
+ * The library's sort and filters apply to the row's titles across libraries (`homeRow`): the row's
+ * own order stands until a sort or filter is chosen, and stays the order under a filter.
  */
 const rowDependencies = Object.freeze([dependsOn.libraries, ...titlesWithPersonalState()]);
 
 export function HomeRowPageScreen() {
   const {t} = useI18n();
   const {rowId} = useParams({from: '/app/home/rows/$rowId'});
+  const address = useSearch({from: '/app/home/rows/$rowId'});
   const navigate = useNavigate();
+  const spec = useMemo(() => acrossGroup('homeRow', rowId, 'row'), [rowId]);
+  const group = useGroupBrowse(spec, {sort: address.sort, direction: address.direction, filters: address.filters}, useCallback((next: GroupChoice) => void navigate({to: '/home/rows/$rowId', params: {rowId}, search: next, replace: true, resetScroll: false}), [navigate, rowId]));
   const {api} = useSession();
   const viewer = recommendationViewer(useViewerScope());
   const libraries = useLibrariesContext();
@@ -52,7 +60,8 @@ export function HomeRowPageScreen() {
       {state.phase === 'loading' && !state.entries.length ? <LoadingGrid density={row?.artworkShape === 'square' ? 'square' : 'poster'} /> : null}
       {state.phase === 'error' && !row ? <ErrorState error={state.error} context="home" retry={() => void pager.load()} refresh={() => void pager.load()} /> : null}
       {state.error && row ? <Inset><ErrorNotice error={state.error} context="home" retry={() => void pager.more()} refresh={() => void pager.load()} /></Inset> : null}
-      {row ? (
+      {row && state.entries.length ? <Inset><GroupBar group={group} total={state.total} /></Inset> : null}
+      {group.pending ? <LoadingGrid /> : group.active ? <GroupGrid group={group} square={row?.artworkShape === 'square'} /> : row ? (
         <SectionView
           section={{id: row.id, type: 'grid', heading: {key: row.id, fallback: title}, entries, totalCount: state.total, nextCursor: state.nextCursor}}
           libraryId={row.libraryId}

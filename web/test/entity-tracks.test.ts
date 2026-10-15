@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {defaultI18n} from '@i18n';
-import {albumHeroFacts, artistHeroFacts, discNumberFromSubtitle, seeAllTarget, songArtistFromSubtitle, trackSubtitleForAlbum} from '../src/app/library-words.ts';
+import {albumHeroFacts, artistHeroFacts, discGroups, seeAllTarget, songArtistFromSubtitle, trackSubtitleForAlbum} from '../src/app/library-words.ts';
 
 const t = defaultI18n.t;
 
@@ -16,10 +16,12 @@ test('WEB-DETAIL-10: song artist parsing (guest artists only)', () => {
   assert.equal(trackSubtitleForAlbum('Disc 1 · Track 3', 'Adele'), undefined);
 });
 
-test('WEB-DETAIL-10: disc numbers for multi-disc subheadings', () => {
-  assert.equal(discNumberFromSubtitle('Disc 2 · Track 1 · Adele'), 2);
-  assert.equal(discNumberFromSubtitle('Track 1 · Adele'), undefined);
-  assert.equal(discNumberFromSubtitle(undefined), undefined);
+test('B-18.23: disc headings come from the disc number of each track, not its subtitle', () => {
+  const groups = discGroups([{discNumber: 1, subtitle: 'Disque 1'}, {discNumber: 2, subtitle: 'Adele'}, {discNumber: 1}]);
+  assert.deepEqual([...groups!.keys()], [1, 2]);
+  assert.deepEqual(groups!.get(1)!.map(x => x.index), [0, 2]);
+  assert.equal(discGroups([{discNumber: 1, subtitle: 'Disc 2 · Track 1'}, {discNumber: 1}]), undefined);
+  assert.equal(discGroups([{subtitle: 'Disc 1 · Track 1'}, {subtitle: 'Disc 2 · Track 1'}]), undefined);
 });
 
 test('WEB-DETAIL-10: album and artist hero facts', () => {

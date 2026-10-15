@@ -1,6 +1,7 @@
 import type {BrowsePositionAnchor} from './browse.ts';
 
 /** Bucket re-anchoring after a publication (W1, decision A).
+ * For a title sort, pass the entry's `sortLetter` when it has one (`titleBucketValue`). 
  * A range with a stale revision and an `anchorId` on a non-title sort answers
  * 409 `stale_continuation` without ranking the library. The client then
  * re-navigates through the maintained bucket rails: it reads the fresh first
@@ -53,6 +54,9 @@ export function bucketIndexFor(
     if (typeof value !== 'string' || !value) {
       return byKey.has('') ? byKey.get('') : undefined;
     }
+    // The server's own letter for the entry (`sortLetter`, its sort title's: "The Wire" under W,
+    // an owner's sort title honoured) is the key itself (B-07.10). A display title is only a guess.
+    if (byKey.has(value)) return byKey.get(value);
     const folded=value.trim().normalize('NFD').replace(/\p{M}/gu,'').normalize('NFC').replace(/^[^\p{L}\p{N}]+/u,'');
     const first=[...folded][0]?.toUpperCase()??'#';
     const key = /\p{L}/u.test(first) ? first : '#';
@@ -141,4 +145,10 @@ export function bucketIndexFor(
   const asString = typeof value === 'string' || typeof value === 'number' ? String(value) : undefined;
   if (asString !== undefined && byKey.has(asString)) return byKey.get(asString);
   return undefined;
+}
+
+/** What a title-sorted entry is matched to the letter rail by: the server's letter for it when the
+ * page says (`sortLetter`), else its title. */
+export function titleBucketValue(entry: Readonly<{title?: unknown; sortLetter?: unknown}>): unknown {
+  return typeof entry.sortLetter === 'string' && entry.sortLetter ? entry.sortLetter : entry.title;
 }

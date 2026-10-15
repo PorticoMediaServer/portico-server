@@ -1981,6 +1981,805 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "BrowseAcrossRequest": {
+    "properties": {
+      "cursor": {
+        "type": "string"
+      },
+      "limit": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "pivot": {
+        "type": "string"
+      },
+      "query": {},
+      "range": {
+        "nullable": true,
+        "properties": {
+          "anchorId": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "start": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "start"
+        ],
+        "type": "object"
+      },
+      "seek": {
+        "nullable": true,
+        "properties": {
+          "prefix": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "prefix"
+        ],
+        "type": "object"
+      },
+      "sort": {
+        "items": {
+          "properties": {
+            "direction": {
+              "type": "string"
+            },
+            "field": {
+              "type": "string"
+            },
+            "seed": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "field",
+            "direction"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "pivot",
+      "query",
+      "sort",
+      "limit",
+      "cursor",
+      "range",
+      "seek"
+    ],
+    "type": "object"
+  },
+  "BrowseAcrossResponse": {
+    "properties": {
+      "applied": {
+        "properties": {
+          "query": {
+            "additionalProperties": false,
+            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+            "nullable": true,
+            "properties": {
+              "all": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "any": {
+                "items": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "maxItems": 40,
+                "minItems": 1,
+                "type": "array"
+              },
+              "field": {
+                "type": "string"
+              },
+              "not": {
+                "additionalProperties": {},
+                "properties": {},
+                "required": [],
+                "type": "object"
+              },
+              "operator": {
+                "type": "string"
+              },
+              "value": {}
+            },
+            "required": [],
+            "type": "object"
+          },
+          "seek": {
+            "properties": {
+              "prefix": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "prefix"
+            ],
+            "type": "object"
+          },
+          "sort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "query",
+          "sort"
+        ],
+        "type": "object"
+      },
+      "entries": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "absoluteNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "activeBeginYear": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "activeEndYear": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "addedAt": {
+              "nullable": true,
+              "type": "string"
+            },
+            "airDate": {
+              "type": "string"
+            },
+            "album": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "albumType": {
+              "type": "string"
+            },
+            "artist": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "artworkPaths": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "author": {
+              "type": "string"
+            },
+            "available": {
+              "type": "boolean"
+            },
+            "backdropUrl": {
+              "type": "string"
+            },
+            "contentRating": {
+              "type": "string"
+            },
+            "count": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "country": {
+              "type": "string"
+            },
+            "discNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "episodeNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "genres": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "hidden": {
+              "nullable": true,
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            },
+            "latestEpisode": {
+              "properties": {
+                "airDate": {
+                  "type": "string"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "episodeNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "airDate",
+                "episodeNumber",
+                "count"
+              ],
+              "type": "object"
+            },
+            "libraryId": {
+              "type": "string"
+            },
+            "media": {
+              "properties": {
+                "absoluteNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "activeBeginYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "activeEndYear": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "addedAt": {
+                  "nullable": true,
+                  "type": "string"
+                },
+                "airDate": {
+                  "type": "string"
+                },
+                "album": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "albumType": {
+                  "type": "string"
+                },
+                "artist": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name"
+                  ],
+                  "type": "object"
+                },
+                "artworkPaths": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "author": {
+                  "type": "string"
+                },
+                "available": {
+                  "type": "boolean"
+                },
+                "backdropUrl": {
+                  "type": "string"
+                },
+                "contentRating": {
+                  "type": "string"
+                },
+                "count": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "country": {
+                  "type": "string"
+                },
+                "discNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "episodeNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "genres": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "label": {
+                  "type": "string"
+                },
+                "latestEpisode": {
+                  "properties": {
+                    "airDate": {
+                      "type": "string"
+                    },
+                    "count": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "episodeNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "seasonNumber": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "airDate",
+                    "episodeNumber",
+                    "count"
+                  ],
+                  "type": "object"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "missing": {
+                  "type": "boolean"
+                },
+                "navigation": {
+                  "properties": {
+                    "category": {
+                      "type": "string"
+                    },
+                    "entityId": {
+                      "type": "string"
+                    },
+                    "view": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "view"
+                  ],
+                  "type": "object"
+                },
+                "overview": {
+                  "type": "string"
+                },
+                "overviewSource": {
+                  "type": "string"
+                },
+                "overviewSourceUrl": {
+                  "type": "string"
+                },
+                "playback": {
+                  "properties": {
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "startMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId"
+                  ],
+                  "type": "object"
+                },
+                "plays": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "progressMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "rating": {
+                  "type": "number"
+                },
+                "resolution": {
+                  "type": "string"
+                },
+                "role": {
+                  "type": "string"
+                },
+                "seasonNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "sortLetter": {
+                  "type": "string"
+                },
+                "stillUrl": {
+                  "type": "string"
+                },
+                "subtitle": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "totalAtLeast": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "trackNumber": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "unwatchedCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "userRating": {
+                  "maximum": 10,
+                  "minimum": 0,
+                  "nullable": true,
+                  "type": "integer"
+                },
+                "watched": {
+                  "type": "boolean"
+                },
+                "watchedCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "watchlisted": {
+                  "type": "boolean"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "missing",
+                "id",
+                "kind",
+                "title",
+                "addedAt"
+              ],
+              "type": "object"
+            },
+            "missing": {
+              "type": "boolean"
+            },
+            "navigation": {
+              "properties": {
+                "category": {
+                  "type": "string"
+                },
+                "entityId": {
+                  "type": "string"
+                },
+                "view": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "view"
+              ],
+              "type": "object"
+            },
+            "overview": {
+              "type": "string"
+            },
+            "overviewSource": {
+              "type": "string"
+            },
+            "overviewSourceUrl": {
+              "type": "string"
+            },
+            "playback": {
+              "properties": {
+                "itemId": {
+                  "type": "string"
+                },
+                "startMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId"
+              ],
+              "type": "object"
+            },
+            "plays": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "progressMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "rating": {
+              "type": "number"
+            },
+            "resolution": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "seasonNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "sortLetter": {
+              "type": "string"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
+            "subtitle": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "totalAtLeast": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "trackNumber": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "unwatchedCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "userRating": {
+              "maximum": 10,
+              "minimum": 0,
+              "nullable": true,
+              "type": "integer"
+            },
+            "watched": {
+              "type": "boolean"
+            },
+            "watchedCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "watchlisted": {
+              "type": "boolean"
+            },
+            "year": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "id",
+            "kind"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "pageInfo": {
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "revision": {
+            "type": "string"
+          },
+          "start": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "start",
+          "total",
+          "totalIsLowerBound",
+          "revision",
+          "hasMore",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "pivot": {
+        "type": "string"
+      },
+      "positionIndex": {
+        "items": {
+          "properties": {
+            "index": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "key": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "key",
+            "index"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "pivot",
+      "applied",
+      "entries",
+      "pageInfo",
+      "positionIndex"
+    ],
+    "type": "object"
+  },
   "BrowseLibraryRequest": {
     "properties": {
       "cursor": {
@@ -2523,6 +3322,9 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "sortLetter": {
+                  "type": "string"
+                },
                 "stillUrl": {
                   "type": "string"
                 },
@@ -2650,6 +3452,9 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "sortLetter": {
+              "type": "string"
             },
             "stillUrl": {
               "type": "string"
@@ -22047,6 +22852,532 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetBrowseCapabilitiesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetBrowseCapabilitiesResponse": {
+    "properties": {
+      "fields": {
+        "items": {
+          "properties": {
+            "allowedValues": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "applicableKinds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "complexity": {
+              "type": "string"
+            },
+            "controlHint": {
+              "type": "string"
+            },
+            "cost": {
+              "type": "string"
+            },
+            "facetSource": {
+              "properties": {
+                "endpoint": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "endpoint",
+                "field"
+              ],
+              "type": "object"
+            },
+            "id": {
+              "type": "string"
+            },
+            "labelKey": {
+              "type": "string"
+            },
+            "operators": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "type": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "labelKey",
+            "type",
+            "operators",
+            "controlHint",
+            "complexity",
+            "cost",
+            "applicableKinds"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "library": {
+        "properties": {
+          "defaultView": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "pinned": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "defaultView",
+          "id",
+          "name",
+          "kind",
+          "pinned"
+        ],
+        "type": "object"
+      },
+      "pivots": {
+        "items": {
+          "properties": {
+            "aggregate": {
+              "type": "string"
+            },
+            "browsable": {
+              "type": "boolean"
+            },
+            "defaultSort": {
+              "items": {
+                "properties": {
+                  "direction": {
+                    "type": "string"
+                  },
+                  "field": {
+                    "type": "string"
+                  },
+                  "seed": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "field",
+                  "direction"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "entityKinds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "filters": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "labelKey": {
+              "type": "string"
+            },
+            "members": {
+              "type": "boolean"
+            },
+            "paging": {
+              "type": "string"
+            },
+            "sorts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "supportedViews": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "labelKey",
+            "entityKinds",
+            "defaultSort",
+            "supportedViews",
+            "browsable",
+            "sorts",
+            "filters",
+            "paging"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "queryLimits": {
+        "properties": {
+          "cursorTtlSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "defaultLimit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maximumBytes": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maximumClauses": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maximumDepth": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maximumLimit": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maximumSorts": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "maximumDepth",
+          "maximumClauses",
+          "maximumBytes",
+          "maximumSorts",
+          "defaultLimit",
+          "maximumLimit",
+          "cursorTtlSeconds"
+        ],
+        "type": "object"
+      },
+      "quickFilters": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "labelKey": {
+              "type": "string"
+            },
+            "query": {
+              "additionalProperties": false,
+              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "nullable": true,
+              "properties": {
+                "all": {
+                  "items": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "maxItems": 40,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "any": {
+                  "items": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "maxItems": 40,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "not": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "operator": {
+                  "type": "string"
+                },
+                "value": {}
+              },
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "labelKey",
+            "query"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "resolvedPivot": {
+        "properties": {
+          "aggregate": {
+            "type": "string"
+          },
+          "browsable": {
+            "type": "boolean"
+          },
+          "defaultSort": {
+            "items": {
+              "properties": {
+                "direction": {
+                  "type": "string"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "seed": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "field",
+                "direction"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "entityKinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "filters": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "id": {
+            "type": "string"
+          },
+          "labelKey": {
+            "type": "string"
+          },
+          "members": {
+            "type": "boolean"
+          },
+          "paging": {
+            "type": "string"
+          },
+          "sorts": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "supportedViews": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "labelKey",
+          "entityKinds",
+          "defaultSort",
+          "supportedViews",
+          "browsable",
+          "sorts",
+          "filters",
+          "paging"
+        ],
+        "type": "object"
+      },
+      "sorts": {
+        "items": {
+          "properties": {
+            "applicableKinds": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "defaultDirection": {
+              "type": "string"
+            },
+            "directions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "expensive": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "labelKey": {
+              "type": "string"
+            },
+            "requiresGroup": {
+              "type": "boolean"
+            },
+            "seeded": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "labelKey",
+            "directions",
+            "defaultDirection",
+            "expensive",
+            "seeded",
+            "requiresGroup",
+            "applicableKinds"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "surfaces": {
+        "items": {
+          "properties": {
+            "endpoint": {
+              "type": "string"
+            },
+            "filters": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": "string"
+            },
+            "membershipField": {
+              "type": "string"
+            },
+            "paging": {
+              "type": "string"
+            },
+            "sorts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "id",
+            "endpoint",
+            "sorts",
+            "filters",
+            "paging"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "surfaces",
+      "library",
+      "pivots",
+      "fields",
+      "sorts",
+      "quickFilters",
+      "queryLimits"
+    ],
+    "type": "object"
+  },
+  "GetBrowseFacetsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetBrowseFacetsResponse": {
+    "properties": {
+      "field": {
+        "type": "string"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "values": {
+        "items": {
+          "properties": {
+            "count": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "label": {
+              "type": "string"
+            },
+            "value": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "value",
+            "label",
+            "count"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "field",
+      "total",
+      "values"
+    ],
+    "type": "object"
+  },
   "GetCapabilitiesRequest": {
     "properties": {},
     "required": [],
@@ -29913,6 +31244,9 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "sortLetter": {
+                              "type": "string"
+                            },
                             "stillUrl": {
                               "type": "string"
                             },
@@ -30040,6 +31374,9 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "sortLetter": {
+                          "type": "string"
                         },
                         "stillUrl": {
                           "type": "string"
@@ -30812,6 +32149,9 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "sortLetter": {
+                        "type": "string"
+                      },
                       "stillUrl": {
                         "type": "string"
                       },
@@ -30939,6 +32279,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "sortLetter": {
+                    "type": "string"
                   },
                   "stillUrl": {
                     "type": "string"
@@ -31763,6 +33106,9 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "sortLetter": {
+                        "type": "string"
+                      },
                       "stillUrl": {
                         "type": "string"
                       },
@@ -31890,6 +33236,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "sortLetter": {
+                    "type": "string"
                   },
                   "stillUrl": {
                     "type": "string"
@@ -32662,6 +34011,9 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "sortLetter": {
+                  "type": "string"
+                },
                 "stillUrl": {
                   "type": "string"
                 },
@@ -32789,6 +34141,9 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "sortLetter": {
+              "type": "string"
             },
             "stillUrl": {
               "type": "string"
@@ -34173,6 +35528,9 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "sortLetter": {
+                        "type": "string"
+                      },
                       "stillUrl": {
                         "type": "string"
                       },
@@ -34300,6 +35658,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "sortLetter": {
+                    "type": "string"
                   },
                   "stillUrl": {
                     "type": "string"
@@ -35623,6 +36984,9 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "sortLetter": {
+                            "type": "string"
+                          },
                           "stillUrl": {
                             "type": "string"
                           },
@@ -35750,6 +37114,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "sortLetter": {
+                        "type": "string"
                       },
                       "stillUrl": {
                         "type": "string"
@@ -39453,6 +40820,9 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "sortLetter": {
+                              "type": "string"
+                            },
                             "stillUrl": {
                               "type": "string"
                             },
@@ -39580,6 +40950,9 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "sortLetter": {
+                          "type": "string"
                         },
                         "stillUrl": {
                           "type": "string"
@@ -40352,6 +41725,9 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "sortLetter": {
+                        "type": "string"
+                      },
                       "stillUrl": {
                         "type": "string"
                       },
@@ -40479,6 +41855,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "sortLetter": {
+                    "type": "string"
                   },
                   "stillUrl": {
                     "type": "string"
@@ -42867,6 +44246,9 @@ export const schemas = {
             "labelKey": {
               "type": "string"
             },
+            "members": {
+              "type": "boolean"
+            },
             "paging": {
               "type": "string"
             },
@@ -43059,6 +44441,9 @@ export const schemas = {
           "labelKey": {
             "type": "string"
           },
+          "members": {
+            "type": "boolean"
+          },
           "paging": {
             "type": "string"
           },
@@ -43115,6 +44500,9 @@ export const schemas = {
             "labelKey": {
               "type": "string"
             },
+            "requiresGroup": {
+              "type": "boolean"
+            },
             "seeded": {
               "type": "boolean"
             }
@@ -43126,6 +44514,7 @@ export const schemas = {
             "defaultDirection",
             "expensive",
             "seeded",
+            "requiresGroup",
             "applicableKinds"
           ],
           "type": "object"
@@ -44051,6 +45440,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "sortLetter": {
+                "type": "string"
+              },
               "stillUrl": {
                 "type": "string"
               },
@@ -44178,6 +45570,9 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "sortLetter": {
+            "type": "string"
           },
           "stillUrl": {
             "type": "string"
@@ -44836,6 +46231,9 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "sortLetter": {
+                        "type": "string"
+                      },
                       "stillUrl": {
                         "type": "string"
                       },
@@ -44963,6 +46361,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "sortLetter": {
+                    "type": "string"
                   },
                   "stillUrl": {
                     "type": "string"
@@ -45564,6 +46965,9 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "sortLetter": {
+                        "type": "string"
+                      },
                       "stillUrl": {
                         "type": "string"
                       },
@@ -45691,6 +47095,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "sortLetter": {
+                    "type": "string"
                   },
                   "stillUrl": {
                     "type": "string"
@@ -46747,6 +48154,9 @@ export const schemas = {
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
+                  "sortLetter": {
+                    "type": "string"
+                  },
                   "stillUrl": {
                     "type": "string"
                   },
@@ -46874,6 +48284,9 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "sortLetter": {
+                "type": "string"
               },
               "stillUrl": {
                 "type": "string"
@@ -47532,6 +48945,9 @@ export const schemas = {
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "sortLetter": {
+                            "type": "string"
+                          },
                           "stillUrl": {
                             "type": "string"
                           },
@@ -47659,6 +49075,9 @@ export const schemas = {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "sortLetter": {
+                        "type": "string"
                       },
                       "stillUrl": {
                         "type": "string"
@@ -48246,6 +49665,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "sortLetter": {
+                "type": "string"
+              },
               "stillUrl": {
                 "type": "string"
               },
@@ -48373,6 +49795,9 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "sortLetter": {
+            "type": "string"
           },
           "stillUrl": {
             "type": "string"
@@ -52501,6 +53926,9 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "sortLetter": {
+                      "type": "string"
+                    },
                     "stillUrl": {
                       "type": "string"
                     },
@@ -52628,6 +54056,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "sortLetter": {
+                  "type": "string"
                 },
                 "stillUrl": {
                   "type": "string"
@@ -53100,6 +54531,9 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "sortLetter": {
+                      "type": "string"
+                    },
                     "stillUrl": {
                       "type": "string"
                     },
@@ -53227,6 +54661,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "sortLetter": {
+                  "type": "string"
                 },
                 "stillUrl": {
                   "type": "string"
@@ -53831,6 +55268,9 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "sortLetter": {
+                      "type": "string"
+                    },
                     "stillUrl": {
                       "type": "string"
                     },
@@ -53958,6 +55398,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "sortLetter": {
+                  "type": "string"
                 },
                 "stillUrl": {
                   "type": "string"
@@ -55923,6 +57366,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "sortLetter": {
+                "type": "string"
+              },
               "stillUrl": {
                 "type": "string"
               },
@@ -56050,6 +57496,9 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "sortLetter": {
+            "type": "string"
           },
           "stillUrl": {
             "type": "string"
@@ -56708,6 +58157,9 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "sortLetter": {
+                        "type": "string"
+                      },
                       "stillUrl": {
                         "type": "string"
                       },
@@ -56835,6 +58287,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "sortLetter": {
+                    "type": "string"
                   },
                   "stillUrl": {
                     "type": "string"
@@ -58253,6 +59708,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "sortLetter": {
+                "type": "string"
+              },
               "stillUrl": {
                 "type": "string"
               },
@@ -58380,6 +59838,9 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "sortLetter": {
+            "type": "string"
           },
           "stillUrl": {
             "type": "string"
@@ -59038,6 +60499,9 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "sortLetter": {
+                        "type": "string"
+                      },
                       "stillUrl": {
                         "type": "string"
                       },
@@ -59165,6 +60629,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "sortLetter": {
+                    "type": "string"
                   },
                   "stillUrl": {
                     "type": "string"
@@ -59867,6 +61334,9 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "sortLetter": {
+                      "type": "string"
+                    },
                     "stillUrl": {
                       "type": "string"
                     },
@@ -59994,6 +61464,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "sortLetter": {
+                  "type": "string"
                 },
                 "stillUrl": {
                   "type": "string"
@@ -60498,6 +61971,9 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "sortLetter": {
+                      "type": "string"
+                    },
                     "stillUrl": {
                       "type": "string"
                     },
@@ -60625,6 +62101,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "sortLetter": {
+                  "type": "string"
                 },
                 "stillUrl": {
                   "type": "string"
@@ -63059,6 +64538,9 @@ export const schemas = {
                               "minimum": -9007199254740991,
                               "type": "integer"
                             },
+                            "sortLetter": {
+                              "type": "string"
+                            },
                             "stillUrl": {
                               "type": "string"
                             },
@@ -63186,6 +64668,9 @@ export const schemas = {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "sortLetter": {
+                          "type": "string"
                         },
                         "stillUrl": {
                           "type": "string"
@@ -63958,6 +65443,9 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "sortLetter": {
+                        "type": "string"
+                      },
                       "stillUrl": {
                         "type": "string"
                       },
@@ -64085,6 +65573,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "sortLetter": {
+                    "type": "string"
                   },
                   "stillUrl": {
                     "type": "string"
@@ -66179,6 +67670,9 @@ export const schemas = {
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "sortLetter": {
+                      "type": "string"
+                    },
                     "stillUrl": {
                       "type": "string"
                     },
@@ -66306,6 +67800,9 @@ export const schemas = {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "sortLetter": {
+                  "type": "string"
                 },
                 "stillUrl": {
                   "type": "string"
@@ -101703,6 +103200,9 @@ export const schemas = {
                         "minimum": -9007199254740991,
                         "type": "integer"
                       },
+                      "sortLetter": {
+                        "type": "string"
+                      },
                       "stillUrl": {
                         "type": "string"
                       },
@@ -101830,6 +103330,9 @@ export const schemas = {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "sortLetter": {
+                    "type": "string"
                   },
                   "stillUrl": {
                     "type": "string"

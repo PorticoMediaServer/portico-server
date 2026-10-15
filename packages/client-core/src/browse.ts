@@ -1,4 +1,5 @@
 import {unreadableServerResponse} from './server-messages.ts';
+import {routePath} from '../../contracts/src/routes.ts';
 /** Browse engine contract. The server owns the vocabulary, the query grammar and
  * every count; this module only parses what it publishes and refuses to send a
  * query the published capabilities cannot execute. No client-side filtering,
@@ -21,12 +22,15 @@ export type BrowseNode=
 export type BrowseSortSelection=Readonly<{field:string;direction:BrowseDirection;seed?:number}>;
 export type BrowseFacetSource=Readonly<{endpoint:string;field:string}>;
 export type BrowseFieldCapability=Readonly<{id:string;labelKey:string;type:BrowseValueType;operators:readonly BrowseOperator[];controlHint:BrowseControlHint;complexity:BrowseComplexity;cost:BrowseCost;applicableKinds:readonly string[];allowedValues?:readonly string[];facetSource?:BrowseFacetSource}>;
-export type BrowseSortCapability=Readonly<{id:string;labelKey:string;directions:readonly BrowseDirection[];defaultDirection:BrowseDirection;expensive:boolean;seeded?:boolean;applicableKinds:readonly string[]}>;
-export type BrowsePivotCapability=Readonly<{id:string;labelKey:string;entityKinds:readonly string[];defaultSort:readonly BrowseSortSelection[];supportedViews:readonly string[];browsable:boolean;aggregate?:string;sorts?:readonly string[];filters?:readonly string[];paging?:'keyset'}>;
+/** `requiresGroup`: the group's own order (a playlist's, a season's, an album's), offered on a group's page and never on a library tab. */
+export type BrowseSortCapability=Readonly<{id:string;labelKey:string;directions:readonly BrowseDirection[];defaultDirection:BrowseDirection;expensive:boolean;seeded?:boolean;requiresGroup?:boolean;applicableKinds:readonly string[]}>;
+/** `members`: a pivot read within one group (a book's parts), never a library tab. Paging is by key in a library and by position across libraries. */
+export type BrowsePivotCapability=Readonly<{id:string;labelKey:string;entityKinds:readonly string[];defaultSort:readonly BrowseSortSelection[];supportedViews:readonly string[];browsable:boolean;aggregate?:string;members?:boolean;sorts?:readonly string[];filters?:readonly string[];paging?:BrowsePaging}>;
+export type BrowsePaging='keyset'|'offset';
 export type BrowseQuickFilter=Readonly<{id:string;labelKey:string;query:BrowseNode}>;
 export type BrowseQueryLimits=Readonly<{maximumDepth:number;maximumClauses:number;maximumBytes:number;maximumSorts:number;defaultLimit:number;maximumLimit:number;cursorTtlSeconds:number}>;
 export type BrowseLibraryScope=Readonly<{id:string;name:string;kind:string;defaultView:string;pinned:boolean}>;
-export type BrowseSurfaceCapability=Readonly<{id:string;endpoint:string;membershipField?:string;sorts:readonly string[];filters:readonly string[];paging:'keyset'}>;
+export type BrowseSurfaceCapability=Readonly<{id:string;endpoint:string;membershipField?:string;sorts:readonly string[];filters:readonly string[];paging:BrowsePaging}>;
 export type BrowseCapabilities=Readonly<{surfaces?:readonly BrowseSurfaceCapability[];library:BrowseLibraryScope;pivots:readonly BrowsePivotCapability[];resolvedPivot:BrowsePivotCapability|null;fields:readonly BrowseFieldCapability[];sorts:readonly BrowseSortCapability[];quickFilters:readonly BrowseQuickFilter[];queryLimits:BrowseQueryLimits}>;
 export type BrowsePositionAnchor=Readonly<{key:string;index:number}>;
 /** `totalIsLowerBound`: a filter matched more titles than the server counts (10,000); `total` then
@@ -51,6 +55,21 @@ const str=(v:unknown,max=4096):v is string=>typeof v==='string'&&v.length<=max&&
 const id=(v:unknown):v is string=>str(v,256)&&v.length>0&&!/[\r\n]/.test(v);
 const count=(v:unknown):v is number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0;
 const finite=(v:unknown):v is number=>typeof v==='number'&&Number.isFinite(v);
+/**
+ * The library a browse reads, or `acrossLibraries` for a group that spans the viewer's libraries
+ * (a person's titles, a playlist, a personal collection, a Home row, My List, Favorites, the
+ * history): those are read from `/v1/browse`, with the same vocabulary.
+ */
+export const acrossLibraries='*';
+/** Where a browse page is read. */
+export const browsePath=(libraryId:string):string=>libraryId===acrossLibraries?routePath('browse_across'):routePath('browse_library',{id:libraryId});
+/** Where a browse vocabulary is read, narrowed to one pivot. */
+export const browseCapabilitiesPath=(libraryId:string,pivot:string):string=>`${libraryId===acrossLibraries?routePath('get_browse_capabilities'):routePath('get_libraries_id_browse_capabilities',{id:libraryId})}?pivot=${encodeURIComponent(pivot)}`;
+/** Where a filter's counted values are read (`?field=…`). */
+export const browseFacetsPath=(libraryId:string):string=>libraryId===acrossLibraries?routePath('get_browse_facets'):routePath('get_library_facets',{id:libraryId});
+/** The sorts a library tab offers: every published sort but a group's own order. */
+export const libraryTabSorts=<S extends Readonly<{requiresGroup?:boolean}>>(sorts:readonly S[]):S[]=>sorts.filter(sort=>!sort.requiresGroup);
+
 function bad(message=unreadableServerResponse):never{throw Object.assign(new Error(message),{code:'invalid_browse'});}
 function rows(v:unknown,max:number):unknown[]{if(!Array.isArray(v)||v.length>max)bad();return v;}
 /** The names in a published list that this app can read (and knows, when `allowed` is given), each once. The list's bound is exact; a list the server leaves out is empty. */
@@ -109,14 +128,16 @@ export function parseBrowseNode(v:unknown,depth=0,path='query'):BrowseNode{
 export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  if(!obj(raw)||!obj(raw.library)||!obj(raw.queryLimits))bad();
  const library=raw.library;
- if(!id(library.id)||!str(library.name??'',512)||!id(library.kind)||!str(library.defaultView??'',64))bad();
+ // A vocabulary across libraries names no library.
+ const across=(library.id===''||library.id===undefined)&&(library.kind===''||library.kind===undefined);
+ if(!across&&(!id(library.id)||!id(library.kind))||!str(library.name??'',512)||!str(library.defaultView??'',64))bad();
  const limits=raw.queryLimits;
  for(const key of ['maximumDepth','maximumClauses','maximumBytes','maximumSorts','defaultLimit','maximumLimit','cursorTtlSeconds'])if(!count(limits[key]))bad();
  if((limits.defaultLimit as number)<1||(limits.maximumLimit as number)<(limits.defaultLimit as number))bad();
  const pivot=(v:unknown):BrowsePivotCapability=>{
   if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
   // A pivot that does not say it can be queried is not queried.
-  return {id:v.id,labelKey:v.labelKey,entityKinds:known('pivot.entityKinds',v.entityKinds,32),defaultSort:keepReadable('browse','pivot.defaultSort',rows(v.defaultSort??[],3),sortSelection),supportedViews:known('pivot.supportedViews',v.supportedViews,8),sorts:known('pivot.sorts',v.sorts,64),filters:known('pivot.filters',v.filters,128),...(v.paging==='keyset'?{paging:'keyset' as const}:{}),browsable:v.browsable===true,...(v.aggregate===undefined?{}:{aggregate:id(v.aggregate)?v.aggregate:bad()})};
+  return {id:v.id,labelKey:v.labelKey,entityKinds:known('pivot.entityKinds',v.entityKinds,32),defaultSort:keepReadable('browse','pivot.defaultSort',rows(v.defaultSort??[],3),sortSelection),supportedViews:known('pivot.supportedViews',v.supportedViews,8),sorts:known('pivot.sorts',v.sorts,64),filters:known('pivot.filters',v.filters,128),...(v.paging==='keyset'||v.paging==='offset'?{paging:v.paging}:{}),browsable:v.browsable===true,...(v.members===true?{members:true}:{}),...(v.aggregate===undefined?{}:{aggregate:id(v.aggregate)?v.aggregate:bad()})};
  };
  const pivots=firstOfEach('browse','pivots',keepReadable('browse','pivots',rows(raw.pivots,32),pivot),p=>p.id);
  const fields=firstOfEach('browse','fields',keepReadable('browse','fields',rows(raw.fields,128),v=>{
@@ -134,7 +155,7 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
   // A sort with no direction this app knows is not offered; a default it does not know is the first direction offered.
   if(!directions.length)bad();
   const defaultDirection=directions.includes(v.defaultDirection as BrowseDirection)?v.defaultDirection as BrowseDirection:directions[0];
-  return {id:v.id,labelKey:v.labelKey,directions,defaultDirection,expensive:v.expensive===true,seeded:v.seeded===true,applicableKinds:known('sort.applicableKinds',v.applicableKinds,64)};
+  return {id:v.id,labelKey:v.labelKey,directions,defaultDirection,expensive:v.expensive===true,seeded:v.seeded===true,...(v.requiresGroup===true?{requiresGroup:true}:{}),applicableKinds:known('sort.applicableKinds',v.applicableKinds,64)};
  }),v=>v.id);
  const quickFilters=keepReadable('browse','quickFilters',rows(raw.quickFilters??[],32),v=>{
   if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
@@ -144,10 +165,10 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  const resolved=raw.resolvedPivot===undefined||raw.resolvedPivot===null?null:pivot(raw.resolvedPivot);
  if(resolved&&!pivots.some(p=>p.id===resolved.id))bad();
  return freeze({
-  library:{id:library.id,name:(library.name??'') as string,kind:library.kind,defaultView:(library.defaultView??'') as string,pinned:library.pinned===true},
+  library:{id:across?acrossLibraries:library.id as string,name:(library.name??'') as string,kind:across?'':library.kind as string,defaultView:(library.defaultView??'') as string,pinned:library.pinned===true},
   surfaces:keepReadable('browse','surfaces',rows(raw.surfaces??[],32),v=>{
-   if(!obj(v)||!id(v.id)||!str(v.endpoint,256)||v.paging!=='keyset')bad();
-   return {id:v.id,endpoint:v.endpoint,paging:'keyset' as const,sorts:known('surface.sorts',v.sorts,64),filters:known('surface.filters',v.filters,128),...(v.membershipField===undefined?{}:{membershipField:id(v.membershipField)?v.membershipField:bad()})};
+   if(!obj(v)||!id(v.id)||!str(v.endpoint,256)||(v.paging!=='keyset'&&v.paging!=='offset'))bad();
+   return {id:v.id,endpoint:v.endpoint,paging:v.paging as BrowsePaging,sorts:known('surface.sorts',v.sorts,64),filters:known('surface.filters',v.filters,128),...(v.membershipField===undefined?{}:{membershipField:id(v.membershipField)?v.membershipField:bad()})};
   }),pivots,resolvedPivot:resolved,fields,sorts,quickFilters,
   queryLimits:{maximumDepth:limits.maximumDepth as number,maximumClauses:limits.maximumClauses as number,maximumBytes:limits.maximumBytes as number,maximumSorts:limits.maximumSorts as number,defaultLimit:limits.defaultLimit as number,maximumLimit:limits.maximumLimit as number,cursorTtlSeconds:limits.cursorTtlSeconds as number},
  });

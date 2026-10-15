@@ -91,7 +91,7 @@ const filtersParam = (raw: unknown): string | undefined => (typeof raw === 'stri
 const groupSearch = (raw: Record<string, unknown>): GroupSearch => ({sort: str(raw.sort), direction: oneOf(raw.direction, ['asc', 'desc'] as const), filters: filtersParam(raw.filters)});
 export const home = createRoute({getParentRoute: () => app, path: '/', component: HomeScreen});
 /** A Home row's See all (Recommended, Trending now, a personal row): the row as a paged grid. */
-export const homeRow = createRoute({getParentRoute: () => app, path: '/home/rows/$rowId', component: HomeRowPageScreen});
+export const homeRow = createRoute({getParentRoute: () => app, path: '/home/rows/$rowId', validateSearch: (raw: Record<string, unknown>): GroupSearch => groupSearch(raw), component: HomeRowPageScreen});
 export const library = createRoute({
   getParentRoute: () => app,
   path: '/library/$libraryId',

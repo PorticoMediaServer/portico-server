@@ -1,11 +1,13 @@
 import type {BrowseNode, BrowseSortSelection} from '@core/browse.ts';
+import {acrossLibraries} from '@core/browse.ts';
+import {acrossCondition, acrossOwnOrder, acrossPivot, groupSurfaces, type AcrossGroup} from '@core/presentation/browse-groups.ts';
 
 /**
  * A group of titles the library's sort and filter controls apply to: a library, the pivot that
  * holds the group's members, and the condition that keeps the list to them. Pure: which groups a
  * page has is decided here, apart from the screens that draw them.
  */
-export type GroupOrder = 'playlist' | 'collection' | 'season' | 'default';
+export type GroupOrder = 'playlist' | 'collection' | 'season' | 'row' | 'history' | 'parts' | 'default';
 export type GroupSpec = Readonly<{
   libraryId: string;
   libraryKind: string;
@@ -20,7 +22,7 @@ export type GroupSpec = Readonly<{
 }>;
 
 /** The surface the server advertises for a group's kind of membership (`browse-capabilities` → `surfaces`). */
-const SURFACES: Readonly<Record<string, string>> = {collection: 'collection-titles', memberOf: 'container-titles', person: 'person-titles', list: 'list-titles', search: 'search-results'};
+const SURFACES = groupSurfaces;
 
 /**
  * Whether a library's published vocabulary can express a group: every condition that keeps the
@@ -38,21 +40,14 @@ export function groupOffered(spec: GroupSpec, capabilities: Readonly<{fields: re
   return true;
 }
 
-/** One library's part of a list that spans libraries (a person's titles, a playlist, My List), with how many it holds. */
-export type GroupLibrary = Readonly<{id: string; name: string; kind: string; pivot: string; total: number}>;
-
 /**
- * Sort and filters are a library's: its vocabulary, its values. A list that spans libraries is
- * therefore sorted and filtered one library at a time.
- * - Held by one library only: that library's toolbar sits on the page's own list.
- * - Held by several: the viewer picks a library (`chosen`) and gets its toolbar over that library's
- *   part; with none picked the page's own list stands as it is, with no toolbar.
+ * A group that spans the viewer's libraries (a person's titles, a playlist, a personal collection, a
+ * Home row, My List, Favorites, the history), sorted and filtered as one list across them. `own`
+ * names the order the page shows until the viewer picks another; with no order of its own on the
+ * server the page's own list stands until a sort or filter is chosen.
  */
-export function spanningGroup(libraries: readonly GroupLibrary[], chosen: string | undefined, base: readonly BrowseNode[], own: GroupOrder): Readonly<{spec?: GroupSpec; /** Offer the libraries to pick from. */ choose: boolean; chosen?: string}> {
-  if (libraries.length === 1) { const only = libraries[0]!; return {spec: {libraryId: only.id, libraryKind: only.kind, pivot: only.pivot, base, own}, choose: false}; }
-  const picked = libraries.find(library => library.id === chosen);
-  if (!picked) return {choose: libraries.length > 1};
-  return {spec: {libraryId: picked.id, libraryKind: picked.kind, pivot: picked.pivot, base, always: true}, choose: true, chosen: picked.id};
+export function acrossGroup(group: AcrossGroup, value: string | undefined, own: GroupOrder = 'default'): GroupSpec {
+  return {libraryId: acrossLibraries, libraryKind: '', pivot: acrossPivot(group), base: [acrossCondition(group, value)], own: acrossOwnOrder(group) || own !== 'default' ? own : 'default'};
 }
 
 /** The pivot that lists a library's titles themselves: what a collection or a person's page is made of. */
@@ -81,8 +76,7 @@ const member = (id: string): BrowseNode => ({field: 'memberOf', operator: 'equal
 
 /**
  * The groups an entity page lists, by the entity's kind: which pivot holds its members and the
- * condition that keeps the list to them. A kind with no pivot of its own (a book's parts, a disc)
- * has none and keeps the page's own list.
+ * condition that keeps the list to them.
  */
 export function entityGroups(libraryId: string, libraryKind: string, entity: Readonly<{kind: string; id: string}> | undefined): Readonly<{titles?: GroupSpec; songs?: GroupSpec}> {
   if (!entity || !libraryId) return {};
@@ -91,7 +85,14 @@ export function entityGroups(libraryId: string, libraryKind: string, entity: Rea
     case 'collection': return {titles: of(titlePivot(libraryKind), {field: 'collection', operator: 'equals', value: entity.id}, {own: 'collection'})};
     case 'artist': return libraryKind === 'music' ? {titles: of('albums', member(entity.id), {own: 'default'}), songs: of('songs', member(entity.id), {own: 'default'})} : {};
     case 'album': return libraryKind === 'music' ? {songs: of('songs', member(entity.id), {opening: {field: 'trackNumber', direction: 'asc'}})} : {};
+    // One disc of an album ("<album id>:disc:<n>"): the album's songs on that disc.
+    case 'disc': {
+      const disc = /^(.+):disc:(\d+)$/.exec(entity.id);
+      return libraryKind === 'music' && disc ? {songs: {libraryId, libraryKind, pivot: 'songs', base: [member(disc[1]!), {field: 'discNumber', operator: 'equals', value: Number(disc[2])}], opening: {field: 'trackNumber', direction: 'asc'}}} : {};
+    }
     case 'author': return libraryKind === 'audiobook' ? {titles: of('books', member(entity.id), {own: 'default'})} : {};
+    // A book's parts, read as the library's parts pivot within the book.
+    case 'book': return libraryKind === 'audiobook' ? {titles: of('parts', member(entity.id), {own: 'parts'})} : {};
     default: return {};
   }
 }

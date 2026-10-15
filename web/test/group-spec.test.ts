@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {entityGroups, itemPivot, titlePivot} from '../src/app/group-spec.ts';
+import {acrossGroup, entityGroups, itemPivot, titlePivot} from '../src/app/group-spec.ts';
 import {browsePageSource} from '../src/app/browse-page-source.ts';
 
 test('a collection lists the library\'s titles, kept to the collection, in its own order first', () => {
@@ -22,10 +22,11 @@ test('an album opens in track order, which the server can sort by, so it needs n
   assert.deepEqual(groups.songs, {libraryId: 'lib', libraryKind: 'music', pivot: 'songs', base: [{field: 'memberOf', operator: 'equals', value: 'al'}], opening: {field: 'trackNumber', direction: 'asc'}});
 });
 
-test('an author lists books; a kind with no pivot of its own has no toolbar', () => {
+test('an author lists books, a book its parts; a kind with no pivot of its own has no toolbar', () => {
   assert.equal(entityGroups('lib', 'audiobook', {kind: 'author', id: 'w'}).titles?.pivot, 'books');
-  assert.deepEqual(entityGroups('lib', 'audiobook', {kind: 'book', id: 'b'}), {});
+  assert.deepEqual(entityGroups('lib', 'audiobook', {kind: 'book', id: 'b'}).titles, {libraryId: 'lib', libraryKind: 'audiobook', pivot: 'parts', base: [{field: 'memberOf', operator: 'equals', value: 'b'}], own: 'parts'});
   assert.deepEqual(entityGroups('lib', 'music', {kind: 'disc', id: 'd'}), {});
+  assert.deepEqual(entityGroups('lib', 'music', {kind: 'disc', id: 'alb:disc:2'}).songs?.base, [{field: 'memberOf', operator: 'equals', value: 'alb'}, {field: 'discNumber', operator: 'equals', value: 2}]);
   assert.deepEqual(entityGroups('lib', 'unknown', {kind: 'collection', id: 'c'}), {titles: undefined});
   assert.deepEqual(entityGroups('', 'movie', {kind: 'collection', id: 'c'}), {});
   assert.deepEqual(entityGroups('lib', 'movie', undefined), {});
@@ -56,31 +57,6 @@ test('a library tab with no filters still sends no query', async () => {
   assert.equal('query' in (sent[0] as object), false);
 });
 
-import {spanningGroup} from '../src/app/group-spec.ts';
-
-const films = {id: 'films', name: 'Films', kind: 'movie', pivot: 'movies', total: 8};
-const shows = {id: 'tv', name: 'Television', kind: 'tv', pivot: 'shows', total: 3};
-const personBase = [{field: 'person', operator: 'equals' as const, value: 'p1'}];
-
-test('a list held by one library takes that library\'s toolbar on its own list', () => {
-  assert.deepEqual(spanningGroup([films], undefined, personBase, 'default'), {spec: {libraryId: 'films', libraryKind: 'movie', pivot: 'movies', base: personBase, own: 'default'}, choose: false});
-  // A library named in an old address is not needed, and is not required to match.
-  assert.equal(spanningGroup([films], 'tv', personBase, 'default').spec?.libraryId, 'films');
-});
-
-test('a list held by several libraries is sorted and filtered one library at a time', () => {
-  // Nothing picked: the page's own list, with the libraries to pick from and no toolbar.
-  assert.deepEqual(spanningGroup([films, shows], undefined, personBase, 'playlist'), {choose: true});
-  // One picked: its toolbar over its part of the list, which the page has no list of its own for.
-  assert.deepEqual(spanningGroup([films, shows], 'tv', personBase, 'playlist'), {spec: {libraryId: 'tv', libraryKind: 'tv', pivot: 'shows', base: personBase, always: true}, choose: true, chosen: 'tv'});
-  // A library that holds nothing of the list (or is gone) is not a choice.
-  assert.deepEqual(spanningGroup([films, shows], 'music', personBase, 'playlist'), {choose: true});
-});
-
-test('a list no library holds has no toolbar and nothing to pick', () => {
-  assert.deepEqual(spanningGroup([], undefined, personBase, 'default'), {choose: false});
-});
-
 import {groupOffered} from '../src/app/group-spec.ts';
 
 test('a group is offered a toolbar only where the library\'s vocabulary can express it', () => {
@@ -96,4 +72,13 @@ test('a group is offered a toolbar only where the library\'s vocabulary can expr
   assert.equal(groupOffered({libraryId: 'm', libraryKind: 'music', pivot: 'albums', base: [{field: 'person', operator: 'equals', value: 'p'}]}, {fields: [{id: 'artist', operators: ['equals']}]}), false);
   // A saved view's own query is not a membership: nothing to check.
   assert.equal(groupOffered({libraryId: 'l', libraryKind: 'movie', pivot: 'movies', base: [{all: [{field: 'year', operator: 'at-least', value: 2000}]}]}, {fields: []}), true);
+});
+
+test('a group that spans libraries is one list across them, in its own order where the server keeps one', () => {
+  assert.deepEqual(acrossGroup('list', 'p1', 'playlist'), {libraryId: '*', libraryKind: '', pivot: 'items', base: [{field: 'list', operator: 'equals', value: 'p1'}], own: 'playlist'});
+  assert.deepEqual(acrossGroup('watchlist', undefined), {libraryId: '*', libraryKind: '', pivot: 'titles', base: [{field: 'watchlisted', operator: 'equals', value: true}], own: 'default'});
+  assert.equal(acrossGroup('cast', 'person').base[0] && 'field' in acrossGroup('cast', 'person').base[0]! ? (acrossGroup('cast', 'person').base[0] as {field: string}).field : '', 'cast');
+  // The across vocabulary names the group by its surface, as a library's does.
+  assert.equal(groupOffered(acrossGroup('savedCollection', 'c'), {fields: [{id: 'savedCollection', operators: ['equals']}], surfaces: [{id: 'saved-collection-titles', membershipField: 'savedCollection'}]}), true);
+  assert.equal(groupOffered(acrossGroup('savedCollection', 'c'), {fields: [{id: 'savedCollection', operators: ['equals']}], surfaces: [{id: 'list-titles', membershipField: 'list'}]}), false);
 });

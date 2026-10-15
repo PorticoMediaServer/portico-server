@@ -1,10 +1,10 @@
-import {useCallback, useEffect, useMemo, useState, useSyncExternalStore} from 'react';
-import {parseBrowseResult, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
+import {useCallback, useEffect, useMemo, useRef, useSyncExternalStore} from 'react';
+import type {BrowseSortSelection} from '@core/browse.ts';
 import {BROWSE_PAGE, decodePredicates, encodePredicates, useBrowseCapabilities, useBrowseCollection, useShuffled, type Predicate} from './browse';
-import {groupOffered, type GroupLibrary, type GroupSpec} from './group-spec.ts';
-import {useLibrariesContext} from './libraries';
-import {useSession} from './session';
-export {entityGroups, itemPivot, spanningGroup, titlePivot, type GroupLibrary, type GroupOrder, type GroupSpec} from './group-spec.ts';
+import {groupOffered, type GroupSpec} from './group-spec.ts';
+import {groupMemoryId, groupMemoryTab, groupOrderSort, offersGroupOrder} from '@core/presentation/browse-groups.ts';
+import {useGroupMemory} from './library-memory';
+export {acrossGroup, entityGroups, itemPivot, titlePivot, type GroupOrder, type GroupSpec} from './group-spec.ts';
 
 /**
  * The library's sort and filter controls on a group of titles: a collection, an artist's albums,
@@ -23,6 +23,18 @@ const noSubscribe = () => () => {};
 const titleOrder: BrowseSortSelection = {field: 'title', direction: 'asc'};
 
 export function useGroupBrowse(spec: GroupSpec | undefined, choice: GroupChoice, onChoice: (next: GroupChoice) => void) {
+  // A group reopens with the sort and filters it was left with, unless the address names its own.
+  const memory = useGroupMemory();
+  const memoryId = spec ? groupMemoryId(spec.libraryId, spec.pivot, spec.base) : undefined;
+  const restored = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!memoryId || restored.current === memoryId) return;
+    restored.current = memoryId;
+    if (choice.sort || choice.filters) return;
+    const left = memory.recall(memoryId)?.tabs[groupMemoryTab];
+    if (left?.sort || left?.filters?.length) onChoice({...(left.sort ? {sort: left.sort.field, direction: left.sort.direction} : {}), filters: encodePredicates((left.filters ?? []) as readonly Predicate[])});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [memoryId, memory]);
   const read = useBrowseCapabilities(spec?.libraryId, spec?.pivot);
   // A library whose vocabulary cannot express the group offers no toolbar for it.
   const capabilities = read.capabilities && spec && groupOffered(spec, read.capabilities) ? read.capabilities : undefined;
@@ -35,49 +47,28 @@ export function useGroupBrowse(spec: GroupSpec | undefined, choice: GroupChoice,
   const offered = choice.sort ? capabilities?.sorts.find(x => x.id === choice.sort) : undefined;
   const opening = useMemo<BrowseSortSelection>(() => {
     const own = spec?.opening && capabilities?.sorts.some(x => x.id === spec.opening!.field) ? spec.opening : undefined;
-    return own ?? capabilities?.resolvedPivot?.defaultSort[0] ?? titleOrder;
-  }, [spec?.opening, capabilities]);
+    // A group with an order of its own keeps it under a filter: the server sorts by it (groupOrder).
+    const server = spec?.own && offersGroupOrder(capabilities?.sorts) ? {field: groupOrderSort, direction: 'asc' as const} : undefined;
+    return own ?? server ?? capabilities?.resolvedPivot?.defaultSort[0] ?? titleOrder;
+  }, [spec?.opening, spec?.own, capabilities]);
   const chosen = useMemo<BrowseSortSelection | undefined>(() => (offered ? {field: offered.id, direction: choice.direction && offered.directions.includes(choice.direction) ? choice.direction : offered.defaultDirection} : undefined), [offered, choice.direction]);
   const sort = useShuffled(chosen ?? opening);
   const filtered = predicates.length > 0;
   // The page's own list stands until something is chosen that it cannot show.
   const sameAsOpening = !!chosen && chosen.field === opening.field && chosen.direction === opening.direction;
   const active = !!spec && !!capabilities && (!!spec.always || filtered || (!!chosen && (!!spec.own || !sameAsOpening)));
-  const ownSelected = !!spec?.own && !spec.always && !chosen && !filtered;
+  // Under a filter the own order is still the one in use when the server keeps it (groupOrder).
+  const ownSelected = !!spec?.own && !spec.always && !chosen && (!filtered || opening.field === groupOrderSort);
   // One library's part of a wider list has nothing to show until that library's vocabulary has been read.
   const pending = !!spec?.always && !capabilities && !error;
   const browse = useBrowseCollection({libraryId: spec?.libraryId, pivot: spec?.pivot, base: spec?.base, predicates, sort, enabled: active, pageSize: capabilities ? Math.min(BROWSE_PAGE, capabilities.queryLimits.maximumLimit) : undefined});
   const total = useSyncExternalStore(browse.collection?.subscribe ?? noSubscribe, () => browse.collection?.getSnapshot().total);
   const totalIsLowerBound = useSyncExternalStore(browse.collection?.subscribe ?? noSubscribe, () => browse.collection?.getSnapshot().totalIsLowerBound ?? false);
-  const setPredicates = useCallback((next: readonly Predicate[]) => onChoice({...choice, filters: encodePredicates(next)}), [choice, onChoice]);
-  const setSort = useCallback((next: BrowseSortSelection) => onChoice({...choice, sort: next.field, direction: next.direction}), [choice, onChoice]);
+  const setPredicates = useCallback((next: readonly Predicate[]) => { if (memoryId) memory.rememberFilters(memoryId, groupMemoryTab, next); onChoice({...choice, filters: encodePredicates(next)}); }, [choice, onChoice, memory, memoryId]);
+  const setSort = useCallback((next: BrowseSortSelection) => { if (memoryId) memory.rememberSort(memoryId, groupMemoryTab, {field: next.field, direction: next.direction}); onChoice({...choice, sort: next.field, direction: next.direction}); }, [choice, onChoice, memory, memoryId]);
   /** Back to the page's own order (filters stay as they are). */
-  const ownOrder = useCallback(() => onChoice({filters: choice.filters}), [choice.filters, onChoice]);
-  const clearFilters = useCallback(() => onChoice({...choice, filters: undefined}), [choice, onChoice]);
+  const ownOrder = useCallback(() => { if (memoryId) memory.rememberSort(memoryId, groupMemoryTab, undefined); onChoice({filters: choice.filters}); }, [choice.filters, onChoice, memory, memoryId]);
+  const clearFilters = useCallback(() => { if (memoryId) memory.rememberFilters(memoryId, groupMemoryTab, []); onChoice({...choice, filters: undefined}); }, [choice, onChoice, memory, memoryId]);
   return {spec, capabilities, error, predicates, sort, opening, filtered, active, pending, ownSelected, collection: active ? browse.collection : undefined, refresh: browse.refresh, total: active ? total : undefined, totalIsLowerBound: active && totalIsLowerBound, setPredicates, setSort, ownOrder, clearFilters};
 }
 export type GroupBrowse = ReturnType<typeof useGroupBrowse>;
-
-/**
- * Which libraries hold part of a list that spans them (a person's titles, a playlist, My List),
- * and how much: one small read per library the viewer has, asked once when the page opens. A
- * library whose vocabulary cannot express the list (a person in a music library) is left out.
- */
-export function useGroupLibraries(base: readonly BrowseNode[] | undefined, pivotOf: (libraryKind: string) => string | undefined): {libraries: readonly GroupLibrary[]; ready: boolean} {
-  const {api} = useSession();
-  const {items} = useLibrariesContext();
-  const key = base ? JSON.stringify([base, items.map(library => library.id)]) : '';
-  const [state, setState] = useState<{key: string; libraries: readonly GroupLibrary[]}>({key: '', libraries: []});
-  useEffect(() => {
-    if (!base || !key) return;
-    let live = true;
-    const candidates = items.flatMap(library => { const pivot = pivotOf(library.kind); return pivot ? [{id: library.id, name: library.name, kind: library.kind, pivot}] : []; });
-    void Promise.all(candidates.map(library => api.request<unknown>(`/v1/libraries/${encodeURIComponent(library.id)}/browse`, 'POST', {pivot: library.pivot, query: {all: base}, limit: 1}).then(
-      raw => { try { return {...library, total: parseBrowseResult(raw).pageInfo.total}; } catch { return {...library, total: 0}; } },
-      () => ({...library, total: 0}),
-    ))).then(found => { if (live) setState({key, libraries: found.filter(library => library.total > 0)}); });
-    return () => { live = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, key]);
-  return state.key === key && key ? {libraries: state.libraries, ready: true} : {libraries: [], ready: false};
-}

@@ -77,6 +77,10 @@ type ContentEntityRef struct {
 	Name string `json:"name"`
 }
 type ContentEntry struct {
+	// SortLetter is the letter the server files a browse entry under (its
+	// sort title's, articles and an owner's sort title already applied): the
+	// key of the page's positionIndex it belongs to.
+	SortLetter     string        `json:"sortLetter,omitempty"`
 	DiscNumber     *int          `json:"discNumber,omitempty"`
 	Missing        bool          `json:"missing"`
 	WatchedCount   *int64        `json:"watchedCount,omitempty"`
