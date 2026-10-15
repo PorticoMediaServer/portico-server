@@ -136,6 +136,51 @@ func TestPlaybackV1AudioPresentationSaysHowTheClientDecodes(t *testing.T) {
 	}
 }
 
+// B-10.11: Apple's own renderer has no Opus. Under a bitrate limit below a
+// lossless file's, it is given AAC-LC (ADTS) within that limit, with the
+// encoder's 1024-frame priming as the trim, instead of no plan at all; a limit
+// below what AAC is encoded at is respected by not converting.
+func TestPlaybackV1LimitedAppleListeningConvertsToAAC(t *testing.T) {
+	f, _ := renderingFixture(t, 3)
+	// The songs are 44.1 kHz FLAC at about 900 kbps.
+	if _, err := f.db.Exec(`UPDATE audio_render_facts SET container='flac',codec='flac',bit_depth=16,bit_rate=900000,decoder_config='',start_frames=0,end_frames=0,raw_frames=duration_frames,trim_source='flac'`); err != nil {
+		t.Fatal(err)
+	}
+	declareDecode(t, f,
+		map[string]any{"codec": "flac", "containers": []string{"flac"}, "maxSampleRate": 192000, "maxChannels": 8, "maxBitDepth": 24, "via": "ExtAudioFile"},
+		map[string]any{"codec": "aac", "containers": []string{"mp4", "adts"}, "maxSampleRate": 48000, "maxChannels": 2, "maxBitDepth": 16, "via": "ExtAudioFile"})
+	start := func(i int, key string, kbps int) *playbackv1.AudioRender {
+		t.Helper()
+		var s playbackv1.SessionView
+		f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": key}, startBody(f.items[i], map[string]any{"quality": map[string]any{"mode": "limit", "maxAudioBitrateKbps": kbps}}), 201, &s)
+		return s.Presentation.AudioRender
+	}
+	plan := start(0, "aac-limit-000000001", 256)
+	if plan == nil || plan.Mode != "converted" || plan.Codec != "aac" || plan.Container != "adts" || plan.SampleRate != 44100 || plan.Channels != 2 || plan.DurationFrames != 26460000 ||
+		plan.Trim == nil || plan.Trim.StartFrames != 1024 || plan.Trim.Source != "aac-priming" || (1024+plan.DurationFrames+plan.Trim.EndFrames)%1024 != 0 || !strings.HasSuffix(plan.URL, "/audio-converted") {
+		t.Fatalf("limited Apple plan %+v trim %+v", plan, plan.Trim)
+	}
+	stored := func(p *playbackv1.AudioRender) string {
+		t.Helper()
+		var raw string
+		if err := f.db.QueryRow(`SELECT plan_json FROM playback_audio_plans WHERE json_extract(plan_json,'$.id')=?`, p.ID).Scan(&raw); err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	if raw := stored(plan); !strings.Contains(raw, `"bitrateBps":192000`) {
+		t.Fatalf("the AAC rate stays within the limit: %s", raw)
+	}
+	plan = start(1, "aac-limit-000000002", 96)
+	if raw := stored(plan); plan.Codec != "aac" || !strings.Contains(raw, `"bitrateBps":96000`) {
+		t.Fatalf("a lower limit lowers the AAC rate: %+v %s", plan, raw)
+	}
+	// Within the limit nothing is converted: the FLAC file plays as it is.
+	if plan = start(2, "aac-limit-000000003", 2000); plan.Mode != "direct" || plan.Codec != "flac" {
+		t.Fatalf("an unlimited Apple plan %+v", plan)
+	}
+}
+
 // renderingFixture: songs the device decodes (direct plans), converting
 // allowed, for spec §18.
 func renderingFixture(t *testing.T, songs int) (*v1Fixture, *playback.Service) {

@@ -27,7 +27,7 @@ type AudioDecodeCap struct {
 }
 
 // AudioPlan is the version 2 audio render plan (spec §18.1): the client decodes
-// the original file (direct) or a FLAC/Opus conversion (converted) with the
+// the original file (direct) or a FLAC/Opus/AAC conversion (converted) with the
 // server's exact trim and gains. Pinned to one presentation.
 type AudioPlan struct {
 	Version        int              `json:"version"`
@@ -81,6 +81,30 @@ type AudioConversion struct {
 
 // OpusPreSkip is libopus's pre-skip at 48 kHz; Opus frames are 20 ms (960).
 const OpusPreSkip, opusFrame = 312, 960
+
+// AACPriming is FFmpeg's AAC encoder delay (its initial padding): the first
+// 1024 decoded frames of a converted AAC stream are not the track. AAC-LC
+// frames are 1024 samples. A converted AAC stream is ADTS, which carries no
+// priming of its own, so the plan's trim is the only statement of it.
+const AACPriming, aacFrame = 1024, 1024
+
+// minimumAACBitrate is the lowest rate Portico encodes AAC at; a viewer's limit
+// below it is respected by not converting, never by quietly exceeding it.
+const minimumAACBitrate = 16000
+
+// aacRate is the AAC target's rate: the source's when it is a usual AAC rate
+// the device accepts, else 48 kHz, else 44.1 kHz; 0 when neither is accepted.
+func aacRate(c AudioDecodeCap, source int) int {
+	if (source == 44100 || source == 48000) && capAllowsRate(c, source) {
+		return source
+	}
+	for _, r := range []int{48000, 44100} {
+		if capAllowsRate(c, r) {
+			return r
+		}
+	}
+	return 0
+}
 
 var errAudioPlan = errors.New("audio plan unavailable")
 
@@ -198,6 +222,10 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 	flacCap, canFLAC := findCap(v1.AudioDecode, "flac", "flac")
 	opusCap, canOpus := findCap(v1.AudioDecode, "opus", "ogg")
 	useOpus := canOpus && capAllowsRate(opusCap, 48000) && (limited || !canFLAC)
+	// B-10.11: a device without Opus (Apple's own renderer) gets AAC-LC within
+	// its bitrate limit instead of no plan at all.
+	aacCap, canAAC := findCap(v1.AudioDecode, "aac", "adts")
+	useAAC := !useOpus && canAAC && aacRate(aacCap, f.SampleRate) > 0 && (limited || !canFLAC)
 	conv := &AudioConversion{SourceRate: f.SampleRate, SourceStart: f.StartFrames, SourceFrames: f.DurationFrames}
 	switch {
 	case useOpus:
@@ -211,6 +239,20 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 		}
 		p.Container, p.Codec = "ogg", "opus"
 		p.Reason = "Portico converts this track to Opus for this device."
+	case useAAC:
+		conv.Codec, conv.Rate, conv.Channels = "aac", aacRate(aacCap, f.SampleRate), min(f.Channels, 2)
+		if aacCap.MaxChannels > 0 {
+			conv.Channels = min(conv.Channels, aacCap.MaxChannels)
+		}
+		conv.BitrateBPS = 192000 * conv.Channels / 2
+		if v1.Limit && v1.MaxAudioBitrateBPS > 0 {
+			conv.BitrateBPS = min(conv.BitrateBPS, v1.MaxAudioBitrateBPS)
+		}
+		if conv.BitrateBPS < minimumAACBitrate {
+			conv = nil
+		}
+		p.Container, p.Codec = "adts", "aac"
+		p.Reason = "Portico converts this track to AAC for this device."
 	case canFLAC && !limited:
 		conv.Codec, conv.Rate, conv.Channels = "flac", convertedRate(flacCap, f.SampleRate), f.Channels
 		if flacCap.MaxChannels > 0 {
@@ -245,6 +287,11 @@ func (s *Service) pinAudioPlan(ctx context.Context, tx *sql.Tx, session Session,
 		p.BitDepth = 0
 		total := (OpusPreSkip + frames + opusFrame - 1) / opusFrame * opusFrame
 		p.Trim = &AudioTrim{StartFrames: OpusPreSkip, EndFrames: total - OpusPreSkip - frames, Source: "opus-preskip"}
+	}
+	if conv.Codec == "aac" {
+		p.BitDepth = 0
+		total := (AACPriming + frames + aacFrame - 1) / aacFrame * aacFrame
+		p.Trim = &AudioTrim{StartFrames: AACPriming, EndFrames: total - AACPriming - frames, Source: "aac-priming"}
 	}
 	p.Gain = gain
 	p.PrefetchBytes = 4 << 20

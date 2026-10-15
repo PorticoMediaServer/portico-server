@@ -132,7 +132,7 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 	}
 	d.httpHandle(mux, "GET /v1/media/{grant}/audio", serveDirect)
 	d.httpHandle(mux, "HEAD /v1/media/{grant}/audio", serveDirect)
-	// Converted: FLAC or Ogg Opus, exact (spec §18.1). ?fromFrame=N starts at
+	// Converted: FLAC, Ogg Opus or ADTS AAC, exact (spec §18.1). ?fromFrame=N starts at
 	// output frame N; before commit only from frame 0, within prefetchBytes.
 	d.httpHandle(mux, "GET /v1/media/{grant}/audio-converted", func(w http.ResponseWriter, r *http.Request) {
 		_, aid, item, session, plan, private, ok := d.audioGrant(w, r, "converted")
@@ -168,6 +168,12 @@ func (d Dependencies) audioDecodeRoutes(mux *http.ServeMux) {
 			total := (playback.OpusPreSkip + out + 959) / 960 * 960
 			start, end = playback.OpusPreSkip, total-playback.OpusPreSkip-out
 			w.Header().Set("Content-Type", "audio/ogg")
+		}
+		if c.Codec == "aac" {
+			spec.Kind, spec.AudioBitrate = "audio_aac", c.BitrateBPS
+			total := (playback.AACPriming + out + 1023) / 1024 * 1024
+			start, end = playback.AACPriming, total-playback.AACPriming-out
+			w.Header().Set("Content-Type", "audio/aac")
 		}
 		w.Header().Set("X-Audio-Trim-Start", strconv.FormatInt(start, 10))
 		w.Header().Set("X-Audio-Trim-End", strconv.FormatInt(end, 10))
