@@ -53,7 +53,7 @@ These were decided, or arose, while you were away. Each one has an alternative i
 - **The TV owner Dashboard is read-only, following your answer.** As a result, a TV no longer offers the owner Stop playback, Acknowledge or task actions it had before.
 - **Licences to review before distribution:**
   - Browser subtitle rendering uses libass compiled to WebAssembly. It includes FriBidi, which is LGPL, and needs the `wasm-unsafe-eval` allowance in the web content policy.
-  - Apple's mpv engine is the LGPL MPVKit build.
+  - Apple's mpv engine is the LGPL MPVKit build. Checked against MPVKit's build script at the pinned `1.1.0-n9.0.2`: its FFmpeg is configured with `--enable-version3` (so LGPL version 3, not 2.1) and linked statically, and it bundles GMP, Nettle and GnuTLS. LGPL version 3 plus static linking is the hardest combination for the App Store; building our own FFmpeg and mpv as LGPL 2.1 dynamic frameworks (no `--enable-version3`, no GMP, Apple's own TLS) would remove it.
   - Android's libmpv contains LGPL version 3 FFmpeg.
 - **Apple apps allow plain HTTP to any address.** This follows "HTTP from anywhere", but it is one broad app-wide setting rather than a narrower per-address rule.
 - **Vega's sign-in works, with the redirect risk you accepted.** If a server redirects, the SDK may send credentials before Portico can detect it. Portico then rejects the response, signs out and tries to revoke the session.
