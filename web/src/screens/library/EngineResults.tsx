@@ -12,6 +12,7 @@ import {EntryCard} from '../shared/Sections';
 import {Inset, Skeleton, StateView, WindowedGrid, createStaticCollection, gridColumnMin, type WindowedGridHandle} from '../../ui';
 import {AlphabetRail} from './BrowseFilters';
 import {TitlesTable} from './LibraryViews';
+import type {SequenceContainer} from '../../app/container-play';
 import b from './BrowseFilters.module.css';
 
 const EMPTY: readonly ContentEntry[] = [];
@@ -26,7 +27,7 @@ const EMPTY: readonly ContentEntry[] = [];
  * requests before paint — the remembered window renders from memory at its
  * scroll offset while the live collection revalidates behind it.
  */
-export function EngineResults({collection, onRefresh, libraryId, libraryKind, list, tracks, unmatched, sort, sorts, onSort, sortField, square, filtered, onClearFilters, pivot, listKey, scanning, card, empty}: {tracks?: boolean; /** The owner's Unmatched tab: empty is good news. */ unmatched?: boolean; sort: BrowseSortSelection; sorts: readonly BrowseSortCapability[]; /** Choosing a column header's order in the list view. */ onSort?: (next: BrowseSortSelection) => void; collection: WindowedCollection<ContentEntry>; onRefresh: () => void; libraryId: string; libraryKind: string; list: boolean; sortField: string; square: boolean; filtered: boolean; onClearFilters?: () => void; pivot?: string; listKey: string; scanning?: boolean; /** Cards that draw themselves (a genre's covers). They are not selectable. */ card?: (entry: ContentEntry) => React.ReactNode; /** What an empty list says when no filter is doing the excluding; the library's own words otherwise. */ empty?: React.ReactNode}) {
+export function EngineResults({collection, onRefresh, libraryId, libraryKind, list, tracks, unmatched, sort, sorts, onSort, sortField, square, filtered, onClearFilters, pivot, listKey, scanning, card, empty, sequence}: {/** The list as the server's query, for a row of the list view to play it on from there. */ sequence?: SequenceContainer; tracks?: boolean; /** The owner's Unmatched tab: empty is good news. */ unmatched?: boolean; sort: BrowseSortSelection; sorts: readonly BrowseSortCapability[]; /** Choosing a column header's order in the list view. */ onSort?: (next: BrowseSortSelection) => void; collection: WindowedCollection<ContentEntry>; onRefresh: () => void; libraryId: string; libraryKind: string; list: boolean; sortField: string; square: boolean; filtered: boolean; onClearFilters?: () => void; pivot?: string; listKey: string; scanning?: boolean; /** Cards that draw themselves (a genre's covers). They are not selectable. */ card?: (entry: ContentEntry) => React.ReactNode; /** What an empty list says when no filter is doing the excluding; the library's own words otherwise. */ empty?: React.ReactNode}) {
   const {t} = useI18n();
   const emptyCopy = useEmptyLibraryCopy();
   const remembered = useMemo(() => recallListWindow<ContentEntry>(listKey), [listKey]);
@@ -117,8 +118,14 @@ export function EngineResults({collection, onRefresh, libraryId, libraryKind, li
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, range, snapshot]);
   useSelectionSection('browse', visible);
-  const siblings = useCallback(() => visible, [visible]);
+  // Read on demand (a shift-click range), so the cells need not redraw each time the window moves.
+  const visibleNow = useRef(visible);
+  useLayoutEffect(() => { visibleNow.current = visible; }, [visible]);
+  const siblings = useCallback(() => visibleNow.current, []);
   const density = square ? 'square' : 'poster';
+  // Stable renderers: each page of cells is memoised, and a new function every render would redraw them all.
+  const renderItem = useCallback((entry: ContentEntry) => (card ? card(entry) : <EntryCard entry={entry} siblings={siblings} libraryId={libraryId} selectable={selectable} />), [card, siblings, libraryId, selectable]);
+  const renderPlaceholder = useCallback(() => <CardPlaceholder square={square} />, [square]);
   // Before the first page the grid itself shows placeholders (and asks for that page): never gate it on `total`.
   if (snapshot.status === 'error' && !snapshot.total) return <ErrorState error={snapshot.error} context="library" retry={() => active.retry()} refresh={onRefresh} />;
   // WEB-LIB-02: "no match" only when a filter is doing the excluding.
@@ -135,7 +142,6 @@ export function EngineResults({collection, onRefresh, libraryId, libraryKind, li
         : pivot === 'series'
           ? <StateView icon="collection" title={t('library.emptySeries')} body={t('library.emptySeriesBody')} />
           : <StateView icon={iconFor(libraryKind)} title={t('library.emptyLibrary')} body={emptyCopy.body} action={emptyCopy.action} />;
-  const shape = square ? 'square' : 'poster';
   // M20: the rail follows anchor presence for default browsing (behind
   // presence for older servers), not the sort. An ad hoc query (a filter or
   // search) has no anchors and never shows the rail.
@@ -147,7 +153,7 @@ export function EngineResults({collection, onRefresh, libraryId, libraryKind, li
       <div>
         {snapshot.status === 'error' ? <Inset><ErrorNotice error={snapshot.error} context="library" retry={() => active.retry()} refresh={onRefresh} /></Inset> : null}
         {list ? (
-          <TitlesTable ref={grid} collection={active} libraryId={libraryId} tracks={tracks} sort={sort} sorts={sorts} onSort={onSort} onFirstVisible={onFirstVisible} />
+          <TitlesTable ref={grid} collection={active} libraryId={libraryId} tracks={tracks} sort={sort} sorts={sorts} onSort={onSort} onFirstVisible={onFirstVisible} sequence={sequence} />
         ) : (
           <WindowedGrid
             ref={grid}
@@ -156,12 +162,16 @@ export function EngineResults({collection, onRefresh, libraryId, libraryKind, li
             estimateRowHeight={square ? 240 : 300}
             label={t('web.library.titlesLabel')}
             onFirstVisible={onFirstVisible}
-            renderItem={entry => (card ? card(entry) : <EntryCard entry={entry} siblings={siblings} libraryId={libraryId} selectable={selectable} />)}
-            renderPlaceholder={() => <div aria-hidden><Skeleton style={{aspectRatio: shape === 'square' ? '1 / 1' : '2 / 3', width: '100%'}} /><Skeleton height={14} width="70%" style={{marginTop: 8}} /></div>}
+            renderItem={renderItem}
+            renderPlaceholder={renderPlaceholder}
           />
         )}
       </div>
       {rail ? <AlphabetRail index={anchors} current={current} sortField={sortField} onJump={key => { const index = active.indexOfLetter(key) ?? anchors.find(a => a.key === key)?.index; if (index !== undefined) grid.current?.scrollToIndex(index); }} /> : null}
     </div>
   );
+}
+
+function CardPlaceholder({square}: {square: boolean}) {
+  return <div aria-hidden><Skeleton style={{aspectRatio: square ? '1 / 1' : '2 / 3', width: '100%'}} /><Skeleton height={14} width="70%" style={{marginTop: 8}} /></div>;
 }

@@ -1,5 +1,6 @@
 import type {BrowseNode, BrowseSortSelection} from '../browse.ts';
 import {validateSubtitleDelivery} from '../subtitles.ts';
+import {apiRoot} from '../../../contracts/src/routes.ts';
 /**
  * Playback v1 resource shapes and tolerant readers (style guide amendment 3): unknown fields are
  * ignored, unknown open-enum values map to a fallback, absent arrays read as empty. Strict only
@@ -217,9 +218,11 @@ export type QueueHeader = Readonly<{
 
 /** A private preparation of the next entry's audio (spec §18.2): frame 0 only until committed. */
 export type PreparedNext = Readonly<{token: string; expiresAt: string; entryId: string; itemId: string; presentation: Presentation}>;
-export type QueueEntry = Readonly<{entryId: string; position: number; itemId: string; kind: string; title: string; durationMs?: number; available: boolean; artwork?: unknown;
+export type QueueEntry = Readonly<{entryId: string; position: number; itemId: string; kind: string; title: string; durationMs?: number; available: boolean;
   /** A song's album (a book file's book), with its disc and track (spec §18.5); absent when unknown. */
-  albumId?: string; disc?: number; track?: number}>;
+  albumId?: string; disc?: number; track?: number;
+  /** The title's poster (inherited from its season, show, album or book) and an episode's own still, when they exist. */
+  posterUrl?: string; stillUrl?: string}>;
 
 /**
  * Whether `next` follows `current` on the same album, so the engine joins them gaplessly rather
@@ -248,12 +251,16 @@ export function parseQueue(v: unknown): QueueHeader {
   });
 }
 
+/** An artwork address on this server's API, as the queue window gives it. */
+const artworkPath = (v: unknown): boolean => typeof v === 'string' && v.length <= 512 && v.startsWith(apiRoot) && !/[\s\\]/.test(v);
+
 export function parseEntry(v: unknown): QueueEntry {
   if (!obj(v)) throw new ContractError('queue entry');
   const available = v.available !== false;
   // A placeholder carries no item: one that became unavailable, or (kind "pending") one still
   // being snapshotted in a large queue that fills in shortly (P16).
-  return Object.freeze({entryId: id(v.entryId, 'entry id'), position: num(v.position), itemId: available ? id(v.itemId, 'item id') : typeof v.itemId === 'string' ? v.itemId : '', kind: str(v.kind, 'other'), title: str(v.title), durationMs: optNum(v.durationMs), available, artwork: v.artwork,
+  return Object.freeze({entryId: id(v.entryId, 'entry id'), position: num(v.position), itemId: available ? id(v.itemId, 'item id') : typeof v.itemId === 'string' ? v.itemId : '', kind: str(v.kind, 'other'), title: str(v.title), durationMs: optNum(v.durationMs), available,
+    ...(artworkPath(v.posterUrl) ? {posterUrl: v.posterUrl as string} : {}), ...(artworkPath(v.stillUrl) ? {stillUrl: v.stillUrl as string} : {}),
     ...(typeof v.albumId === 'string' && v.albumId ? {albumId: v.albumId} : {}), ...(optNum(v.disc) ? {disc: v.disc as number} : {}), ...(optNum(v.track) ? {track: v.track as number} : {})});
 }
 

@@ -26,7 +26,7 @@ import {sourceFactsOf, type SourceFacts} from '@core/presentation/index.ts';
 import {musicAudioEffects, musicQueueDefaults} from '@core/music-preferences.ts';
 import {noteTunedChannel} from './live';
 import {useServerPreferences} from '../app/server-preferences';
-import type {SequenceContainer} from '../app/container-play';
+import {containerPlay, type SequenceContainer} from '../app/container-play';
 import {browserNativeHlsPolicy} from '../playback-v1/native-hls';
 export type {SequenceContainer};
 
@@ -293,8 +293,9 @@ export function PlayerProvider({children}: {children: React.ReactNode}) {
     setQualityChoice(undefined);
     v1.player.listening.interact();
     // A container plays as one server-snapshotted request, however large.
-    if (container) {
-      void v1.player.playSelector({container: {kind: container.kind, id: container.id}}, {shuffle: container.shuffle, ...(container.shuffle ? {} : {anchor: {itemId: first.playback.itemId}}), startSeconds}).catch(() => startSingle(first.playback!.itemId, startSeconds, first));
+    const plan = containerPlay(container, first.playback.itemId, startSeconds);
+    if (plan) {
+      void v1.player.playSelector(plan.selector, plan.options).catch(() => startSingle(first.playback!.itemId, startSeconds, first));
       return;
     }
     void v1.player.playEntries(playable.map(e => queueItemInput(e.playback!.itemId)), {startSeconds}).catch(() => startSingle(first.playback!.itemId, startSeconds, first));

@@ -52,12 +52,15 @@ export type SavedProjection = Readonly<Omit<ContentProjection, 'scope' | 'sectio
 export type SavedRestore = Readonly<{ cursor?: string | null; history?: readonly (string | null)[]; scope?: SavedScope }>;
 export type SavedActor = Readonly<{ authority: 'local' | 'hosted'; accountId: string; profileId: string }>;
 export type PlaylistResource = Readonly<{ serverId: string; viewerFence: string; id: string; name: string; summary: string; revision: number; pinned:boolean;pinRevision:number;role: 'owner' | 'editor' | 'viewer'; entryCount: number; actions: readonly string[]; limits: Readonly<{ maxEntries?: number; maxShares: number; maxReorderEntries: number }>; shares?: readonly Readonly<SavedActor & { role: 'viewer' | 'editor'; displayName: string }>[] }>;
-export type SavedReceipt = Readonly<{ serverId: string; viewerFence: string; operationId: string; playlistId: string; revision: number; entryId?: string; deleted: boolean }>;
+/** `undoToken`/`undoUntil`: a removal can be undone until then with `{action: 'restore', undoToken}`. */
+export type SavedReceipt = Readonly<{ serverId: string; viewerFence: string; operationId: string; playlistId: string; revision: number; entryId?: string; deleted: boolean; undoToken?: string; undoUntil?: string }>;
 export type SavedIntent = Readonly<
  | { action: 'create'; name: string; summary?: string;itemIds?:readonly string[] }
  | { action: 'rename'; name?: string; summary?: string }
  | { action: 'add'; itemId: string }
  | { action: 'remove'; entryId: string }
+ /** Undo of a removal: puts the removed occurrence back where it was (its receipt's `undoToken`). */
+ | { action: 'restore'; undoToken: string }
  /** Windowed reorder: 1–200 distinct occurrence ids. Omit
   * `afterEntryId` to permute just the selected occurrences in their existing
   * slots; supply an occurrence id to move them after it, or `""` to prepend.
@@ -197,6 +200,7 @@ function intent(v: SavedIntent): SavedIntent {
   case 'rename': if (v.name === undefined && v.summary === undefined || v.name !== undefined && (!prose(v.name, 200) || !v.name.trim()) || v.summary !== undefined && !prose(v.summary, 4000, true)) break; return freeze({ action: v.action, ...(v.name === undefined ? {} : { name: v.name }), ...(v.summary === undefined ? {} : { summary: v.summary }) });
   case 'add': if (id(v.itemId)) return freeze({ action: v.action, itemId: v.itemId }); break;
   case 'remove': if (id(v.entryId)) return freeze({ action: v.action, entryId: v.entryId }); break;
+  case 'restore': if (id(v.undoToken)) return freeze({ action: v.action, undoToken: v.undoToken }); break;
   // Windowed reorder: 1–200 distinct occurrence ids; `afterEntryId` may be an
   // occurrence id, `""` (prepend) or omitted (in-place permute). The anchor
   // cannot be among the moved ids.
@@ -321,7 +325,7 @@ export class SavedService {
   if (command.action === 'create') { if (this.state.route?.view !== 'playlists' || this.state.phase !== 'ready' || !this.state.projection?.actions?.includes('create_playlist')) throw new Error('Open Playlists before creating a playlist.'); return; }
   const p = this.state.playlist;
   if (!p || this.state.phase !== 'ready') throw new Error('Load the current playlist before changing it.');
-  const required = command.action === 'unshare' ? 'share' : command.action === 'rename' && command.name === undefined ? 'summary' : command.action;
+  const required = command.action === 'unshare' ? 'share' : command.action === 'restore' ? 'remove' : command.action === 'rename' && command.name === undefined ? 'summary' : command.action;
   if (!p.actions.includes(required) || command.action === 'rename' && command.summary !== undefined && !p.actions.includes('summary')) throw new Error('This playlist action is not available.');
   if (command.action === 'add' && p.limits.maxEntries !== undefined && p.entryCount >= p.limits.maxEntries) throw new Error('This playlist is at its entry limit.');
   if (command.action === 'reorder') {
@@ -385,6 +389,7 @@ export class SavedService {
     case 'pin': path=encodedRoutePath("put_saved_pins_kind_id", {"kind": "playlist", "id": encodeURIComponent(this.state.playlist!.id)});method='PUT';body.pinned=value.pinned;break;
     case 'create': case 'rename': if(value.action==='create'&&value.itemIds)body.itemIds=value.itemIds;if (value.action === 'rename') method = 'PATCH'; if (value.name !== undefined) body.name = value.name; if (value.summary !== undefined) body.summary = value.summary; break;
     case 'add': path = encodedRoutePath('post_playlists_id_entries',{id:encodeURIComponent((selected as {playlistId:string}).playlistId)}); body.itemId = value.itemId; break;
+    case 'restore': path = encodedRoutePath('post_playlists_id_entries',{id:encodeURIComponent((selected as {playlistId:string}).playlistId)}); body.undoToken = value.undoToken; break;
     case 'remove': path=encodedRoutePath('delete_playlists_id_entries_entryId',{id:encodeURIComponent((selected as {playlistId:string}).playlistId),entryId:encodeURIComponent(value.entryId)}); method = 'DELETE'; break;
     case 'reorder': path=encodedRoutePath('reorder_playlist_window',{id:encodeURIComponent((selected as {playlistId:string}).playlistId)}); method = 'PUT'; body.entryIds = value.entryIds; if (value.afterEntryId !== undefined) body.afterEntryId = value.afterEntryId; break;
     case 'delete':path=encodedRoutePath('delete_playlists_id',{id:encodeURIComponent((selected as {playlistId:string}).playlistId)}); method = 'DELETE'; break;
@@ -392,8 +397,8 @@ export class SavedService {
    }
    const raw = await this.deadline(api.request<unknown>(path, method, body, controller.signal), controller);
    if (this.disposed || generation !== this.generation) return;
-   if (!record(raw) || raw.serverId !== this.bound.serverId || raw.viewerFence !== fence || raw.operationId !== c.operationId || !id(raw.playlistId) || selected.view === 'playlist' && raw.playlistId !== selected.playlistId || !int(raw.revision) || typeof raw.deleted !== 'boolean' || raw.entryId !== undefined && !id(raw.entryId)) invalid();
-   const receipt: SavedReceipt = freeze({ serverId: this.bound.serverId, viewerFence: fence, operationId: c.operationId, playlistId: raw.playlistId, revision: raw.revision, deleted: raw.deleted, ...(raw.entryId === undefined ? {} : { entryId: raw.entryId as string }) });
+   if (!record(raw) || raw.serverId !== this.bound.serverId || raw.viewerFence !== fence || raw.operationId !== c.operationId || !id(raw.playlistId) || selected.view === 'playlist' && raw.playlistId !== selected.playlistId || !int(raw.revision) || typeof raw.deleted !== 'boolean' || raw.entryId !== undefined && !id(raw.entryId) || raw.undoToken !== undefined && (!id(raw.undoToken) || !text(raw.undoUntil, 64))) invalid();
+   const receipt: SavedReceipt = freeze({ serverId: this.bound.serverId, viewerFence: fence, operationId: c.operationId, playlistId: raw.playlistId, revision: raw.revision, deleted: raw.deleted, ...(raw.entryId === undefined ? {} : { entryId: raw.entryId as string }), ...(raw.undoToken === undefined ? {} : { undoToken: raw.undoToken as string, undoUntil: raw.undoUntil as string }) });
    this.candidateController?.abort(); this.candidateGeneration++; this.orderController?.abort(); this.orderGeneration++;
    this.commands.shift(); this.publish({ lastReceipt: receipt, mutationError: null, candidates: null, candidatesLoading: false, order: null, orderLoading: false, orderError: null });
    if (receipt.deleted && selected.view === 'playlist') { for (const pending of this.commands) pending.resolve(); this.commands = []; this.lastFailure = undefined; this.readController?.abort(); this.readGeneration++; this.publish({ phase: 'ready', projection: null, playlist: null, pagination: { cursor: null, history: [], canPrevious: false, next: [] } }); c.resolve(); }

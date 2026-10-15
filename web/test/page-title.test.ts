@@ -7,10 +7,10 @@ import {componentModule} from './helpers/component-harness.mjs';
 const src = (path: string) => readFileSync(new URL('../src/' + path, import.meta.url), 'utf8');
 const pageTitle = () => componentModule(new URL('../src/app/page-title.tsx', import.meta.url), {react: {default: {}}}) as Promise<typeof import('../src/app/page-title.tsx')>;
 /** A document whose main region holds this one element (or nothing). */
-const page = (found?: {attribute?: string; text?: string; provisional?: boolean}) => ({
+const page = (found?: {attribute?: string; text?: string; provisional?: boolean; key?: string}) => ({
   querySelector: (selector: string) => {
     assert.equal(selector, 'main [data-page-title], main h1', 'only the main region names the page: never the player or a dialog');
-    return found ? {getAttribute: (name: string) => (name === 'data-page-title' ? found.attribute ?? null : name === 'data-provisional' && found.provisional ? 'true' : null), textContent: found.text ?? ''} : null;
+    return found ? {getAttribute: (name: string) => (name === 'data-page-title' ? found.attribute ?? null : name === 'data-provisional' && found.provisional ? 'true' : name === 'data-page-key' ? found.key ?? null : null), textContent: found.text ?? ''} : null;
   },
 });
 
@@ -26,7 +26,7 @@ test('a page is named by its heading, or by the name it gives itself', async () 
   assert.equal(name({text: 'Library', provisional: true}), '', 'a stand-in heading shown before the real name is known is not the page’s name');
   assert.match(src('screens/home/Home.tsx'), /data-page-title=\{t\('web\.shell\.home'\)\}/);
   assert.match(src('screens/library/Library.tsx'), /provisional=\{!library\?\.name && !projection\?\.heading\.fallback\}/, 'the library page marks its stand-in title');
-  assert.match(src('ui/Page.tsx'), /<h1 className=\{s\.title\} data-provisional=\{provisional \|\| undefined\}>/);
+  assert.match(src('ui/Page.tsx'), /<h1 className=\{s\.title\} data-provisional=\{provisional \|\| undefined\} data-page-key=\{pageKey\}>/);
 });
 
 test('a destination is announced once, after it has a name of its own, and never on first load or for an unchanged address', async () => {
@@ -86,33 +86,44 @@ test('a change of viewer announces nothing and never passes on what the previous
 /** Mounts the component with just enough of React, the router, the document and the clock to run its effect. */
 async function mounted(t: import('node:test').TestContext) {
   t.mock.timers.enable({apis: ['setTimeout']});
-  const world = {pathname: '/', scope: {viewerId: 'viewer-1', serverId: 'srv'}, heading: undefined as {attribute?: string; text?: string; provisional?: boolean; element?: object} | undefined, title: 'Portico'};
+  const world = {pathname: '/', scope: {viewerId: 'viewer-1', serverId: 'srv'}, heading: undefined as {attribute?: string; text?: string; provisional?: boolean; key?: string; element?: object} | undefined, title: 'Portico'};
   const observers: (() => void)[] = [];
   const fakeDocument = {
     body: {}, get title() { return world.title; }, set title(v: string) { world.title = v; },
-    querySelector: () => (world.heading ? Object.assign(world.heading.element ??= {}, {getAttribute: (name: string) => (name === 'data-page-title' ? world.heading!.attribute ?? null : name === 'data-provisional' && world.heading!.provisional ? 'true' : null), textContent: world.heading.text ?? ''}) : null),
+    querySelector: () => (world.heading ? Object.assign(world.heading.element ??= {}, {getAttribute: (name: string) => (name === 'data-page-title' ? world.heading!.attribute ?? null : name === 'data-provisional' && world.heading!.provisional ? 'true' : name === 'data-page-key' ? world.heading!.key ?? null : null), textContent: world.heading.text ?? ''}) : null),
   };
   const had = ['document', 'MutationObserver'].map(name => [name, Object.getOwnPropertyDescriptor(globalThis, name)] as const);
   Object.defineProperty(globalThis, 'document', {configurable: true, value: fakeDocument});
   Object.defineProperty(globalThis, 'MutationObserver', {configurable: true, value: class { fn: () => void; constructor(fn: () => void) { this.fn = fn; } observe() { observers.push(this.fn); } disconnect() { const i = observers.indexOf(this.fn); if (i >= 0) observers.splice(i, 1); } }});
   t.after(() => { for (const [name, descriptor] of had) { if (descriptor) Object.defineProperty(globalThis, name, descriptor); else delete (globalThis as Record<string, unknown>)[name]; } });
-  const slots: any[] = []; let cursor = 0, effect: {deps: unknown[]; cleanup?: () => void} | undefined;
+  const slots: any[] = []; let cursor = 0;
   const react = {
     createElement: (type: unknown, props: object, ...children: unknown[]) => ({type, props: {...props, children}}),
     useRef: (v: unknown) => (slots[cursor++] ??= {current: v}),
     useState: (v: unknown) => { const n = cursor++; if (!(n in slots)) slots[n] = v; return [slots[n], (next: unknown) => { slots[n] = next; }]; },
-    useEffect: (run: () => (() => void) | void, deps: unknown[]) => { if (effect && deps.every((d, i) => d === effect!.deps[i])) return; effect?.cleanup?.(); effect = {deps, cleanup: run() || undefined}; },
+    useEffect: (run: () => (() => void) | void, deps: unknown[]) => {
+      const n = cursor++;
+      const effect = slots[n] as {deps: unknown[]; cleanup?: () => void} | undefined;
+      if (effect && deps.every((d, i) => d === effect.deps[i])) return;
+      effect?.cleanup?.();
+      slots[n] = {deps, cleanup: run() || undefined};
+    },
   };
+  // The router tells the component when a navigation begins (before the next page draws).
+  const navigating = new Set<() => void>();
+  const router = {subscribe: (event: string, fn: () => void) => { assert.equal(event, 'onBeforeNavigate'); navigating.add(fn); return () => navigating.delete(fn); }};
   const module = await componentModule(new URL('../src/app/page-title.tsx', import.meta.url), {
     react: {default: react, ...react},
-    '@tanstack/react-router': {useRouterState: ({select}: {select: (s: unknown) => unknown}) => select({location: {pathname: world.pathname}})},
+    '@tanstack/react-router': {useRouter: () => router, useRouterState: ({select}: {select: (s: unknown) => unknown}) => select({location: {pathname: world.pathname}})},
     './i18n': {currentI18n: () => ({t: (_id: string, v: {page: string; product: string}) => v.page + ' · ' + v.product})},
     './viewer-scope': {useViewerScope: () => world.scope},
   }) as typeof import('../src/app/page-title.tsx');
   const render = () => { cursor = 0; return (module.PageTitle as unknown as () => {props: {children: unknown[]}})().props.children[0] as string; };
   /** Something on the page changed, and `ms` passed. Returns what the live region says now. */
   const after = (ms: number) => { render(); for (const notify of [...observers]) notify(); t.mock.timers.tick(ms); return render(); };
-  return {world, render, after};
+  /** A navigation begins: the router says so while the old page is still up. */
+  const navigate = (pathname: string) => { for (const fn of [...navigating]) fn(); world.pathname = pathname; };
+  return {world, render, after, navigate};
 }
 
 test('the announcement waits for the destination’s own name, however late it arrives', async t => {
@@ -158,4 +169,45 @@ test('the browser tab names the page and falls back to the product name', async 
   assert.equal(documentTitle('Settings', 'Portico', t), 'Settings · Portico');
   assert.equal(documentTitle('', 'Portico', t), 'Portico');
   assert.match(src('app/router.tsx'), /<Outlet \/>\n\s*<PageTitle \/>/, 'mounted once for every route, signed in or not');
+});
+
+test('quick navigation never announces a page that was only passed through', async t => {
+  const {world, after, navigate, render} = await mounted(t);
+  world.heading = {text: 'Home'};
+  after(300);
+  // Home → a library → a film, faster than the page is looked at: the library drew its heading but was never read.
+  navigate('/library/lib_1');
+  render();
+  world.heading = {text: 'Films'};
+  navigate('/media/a');
+  assert.equal(after(300), '', 'the library passed through is not announced as the film');
+  assert.equal(after(2000), '');
+  world.heading = {text: 'Dune'};
+  assert.equal(after(300), 'Dune');
+});
+
+test('two titles with the same name are each announced', async t => {
+  const {pageTitleMoved, pageTitleRead} = await pageTitle();
+  const hero = {};
+  const us = {element: hero, name: 'The Office', key: 'show_us'}, uk = {element: hero, name: 'The Office', key: 'show_uk'};
+  let step = pageTitleRead(pageTitleMoved(undefined, 'v', '/show/us', us), us);
+  // Same page, same heading element, same words: what it is the heading of tells them apart.
+  step = pageTitleRead(pageTitleMoved(step.state, 'v', '/show/uk', us), us);
+  assert.equal(step.announce, '', 'still the first show while the second loads');
+  step = pageTitleRead(step.state, uk);
+  assert.equal(step.announce, 'The Office', 'the second show is announced by name');
+  // A heading without a key: a stand-in in between is enough to know the name that returns is the new page's.
+  const plain = {element: hero, name: 'Settings'};
+  step = pageTitleRead(pageTitleMoved(step.state, 'v', '/settings', plain), plain);
+  step = pageTitleRead(pageTitleMoved(step.state, 'v', '/server/settings', plain), plain);
+  assert.equal(step.announce, '');
+  step = pageTitleRead(step.state, {element: hero, name: ''});
+  step = pageTitleRead(step.state, plain);
+  assert.equal(step.announce, 'Settings');
+});
+
+test('title heroes and page headers say what they are the heading of', () => {
+  assert.match(src('ui/TitleHero.tsx'), /data-page-key=\{pageKey\}/);
+  assert.match(src('ui/Page.tsx'), /data-page-key=\{pageKey\}/);
+  for (const screen of ['screens/detail/Detail.tsx', 'screens/detail/Show.tsx', 'screens/library/Entity.tsx', 'screens/people/Person.tsx', 'screens/saved/Resource.tsx']) assert.match(src(screen), /pageKey=\{/, screen);
 });

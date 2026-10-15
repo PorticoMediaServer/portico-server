@@ -3,6 +3,7 @@ import {Link, useNavigate, useSearch} from '@tanstack/react-router';
 import {useI18n} from '../../app/i18n';
 import {AccountSessionReviewService} from '@core/account-sessions';
 import {accountApi, type AccountScope} from '../../bridge/account-api';
+import {useAccountApi} from './account-hooks';
 import {useSession} from '../../app/session';
 import {AccountNotificationsClient} from '@core/account-notifications.ts';
 import {DataExport, Notifications} from './Notifications';
@@ -119,7 +120,7 @@ export const revokeAllOtherSessions = async (service: RevokeAllService): Promise
 function Sessions({scope}: {scope: AccountScope}) {
   const i18n = useI18n();
   const {t} = i18n;
-  const api = useMemo(() => accountApi(scope), [scope.accountId, scope.familyId]);
+  const api = useAccountApi(scope);
   const service = useService(() => new AccountSessionReviewService({scope, api}), [api]);
   const state = useSyncExternalStore(service.subscribe, service.getSnapshot);
   const [devices, setDevices] = useState<Record<string, AccountDevice>>({});
@@ -129,7 +130,7 @@ function Sessions({scope}: {scope: AccountScope}) {
   const [done, setDone] = useState('');
   const refresh = () => void service.refresh().catch(() => {});
   useEffect(() => {
-    refresh();
+    void service.refresh().catch(() => {});
     // Names are a courtesy on top of the sign-in list; without them the list still works.
     api.request<{items?: AccountDevice[]}>('/v1/account/devices').then(list => setDevices(Object.fromEntries((list.items ?? []).filter(d => d.familyId).map(d => [d.familyId, d]))), () => {});
   }, [service, api]);

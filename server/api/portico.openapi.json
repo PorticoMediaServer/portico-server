@@ -597,6 +597,42 @@
                       "decoderConfig": {
                         "type": "string"
                       },
+                      "deepStart": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "container": {
+                            "type": "string"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "container",
+                          "codec",
+                          "sampleRate",
+                          "channels"
+                        ],
+                        "type": "object"
+                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -1105,6 +1141,12 @@
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "stillUrl": {
+                  "type": "string"
                 },
                 "title": {
                   "type": "string"
@@ -1368,6 +1410,42 @@
                       "decoderConfig": {
                         "type": "string"
                       },
+                      "deepStart": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "container": {
+                            "type": "string"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "container",
+                          "codec",
+                          "sampleRate",
+                          "channels"
+                        ],
+                        "type": "object"
+                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -1876,6 +1954,12 @@
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "stillUrl": {
+                  "type": "string"
                 },
                 "title": {
                   "type": "string"
@@ -4247,6 +4331,42 @@
                   "decoderConfig": {
                     "type": "string"
                   },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
+                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -4965,6 +5085,42 @@
                       "decoderConfig": {
                         "type": "string"
                       },
+                      "deepStart": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "container": {
+                            "type": "string"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "container",
+                          "codec",
+                          "sampleRate",
+                          "channels"
+                        ],
+                        "type": "object"
+                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -5473,6 +5629,12 @@
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "stillUrl": {
+                  "type": "string"
                 },
                 "title": {
                   "type": "string"
@@ -8266,6 +8428,42 @@
                       "decoderConfig": {
                         "type": "string"
                       },
+                      "deepStart": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "container": {
+                            "type": "string"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "container",
+                          "codec",
+                          "sampleRate",
+                          "channels"
+                        ],
+                        "type": "object"
+                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -8774,6 +8972,12 @@
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "stillUrl": {
+                  "type": "string"
                 },
                 "title": {
                   "type": "string"
@@ -10362,6 +10566,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -10389,6 +10596,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -10450,6 +10663,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -10477,6 +10693,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -10538,6 +10760,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -10565,6 +10790,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -10728,6 +10959,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -10823,6 +11057,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -10990,6 +11230,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -11085,6 +11328,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -56765,6 +57014,42 @@
                   "decoderConfig": {
                     "type": "string"
                   },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
+                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -59568,6 +59853,12 @@
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "stillUrl": {
+                  "type": "string"
                 },
                 "title": {
                   "type": "string"
@@ -73615,6 +73906,12 @@
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "stillUrl": {
+                  "type": "string"
+                },
                 "title": {
                   "type": "string"
                 },
@@ -74145,6 +74442,42 @@
                       "decoderConfig": {
                         "type": "string"
                       },
+                      "deepStart": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "container": {
+                            "type": "string"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "container",
+                          "codec",
+                          "sampleRate",
+                          "channels"
+                        ],
+                        "type": "object"
+                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -74653,6 +74986,12 @@
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "stillUrl": {
+                  "type": "string"
                 },
                 "title": {
                   "type": "string"
@@ -76472,6 +76811,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -76499,6 +76841,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -76883,6 +77231,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -76978,6 +77329,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -92673,6 +93030,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -92700,6 +93060,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -92761,6 +93127,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -92788,6 +93157,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -93318,6 +93693,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -93413,6 +93791,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -95003,6 +95387,42 @@
                   },
                   "decoderConfig": {
                     "type": "string"
+                  },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
                   },
                   "downmixed": {
                     "type": "boolean"
@@ -102311,6 +102731,9 @@
           },
           "summary": {
             "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
           }
         },
         "required": [
@@ -102338,6 +102761,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -102631,6 +103060,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -102726,6 +103158,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -102893,6 +103331,9 @@
           "summary": {
             "type": "string"
           },
+          "undoToken": {
+            "type": "string"
+          },
           "visibility": {
             "type": "string"
           }
@@ -102988,6 +103429,12 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
               }
             },
             "required": [
@@ -104193,6 +104640,42 @@
                       "decoderConfig": {
                         "type": "string"
                       },
+                      "deepStart": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "container": {
+                            "type": "string"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "container",
+                          "codec",
+                          "sampleRate",
+                          "channels"
+                        ],
+                        "type": "object"
+                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -104702,6 +105185,12 @@
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "stillUrl": {
+                  "type": "string"
+                },
                 "title": {
                   "type": "string"
                 },
@@ -104782,6 +105271,12 @@
             "type": "integer"
           },
           "serverId": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
             "type": "string"
           },
           "viewerFence": {
@@ -115758,6 +116253,42 @@
                   "decoderConfig": {
                     "type": "string"
                   },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
+                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -116713,6 +117244,42 @@
                       "decoderConfig": {
                         "type": "string"
                       },
+                      "deepStart": {
+                        "properties": {
+                          "bitDepth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "channels": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "codec": {
+                            "type": "string"
+                          },
+                          "container": {
+                            "type": "string"
+                          },
+                          "sampleRate": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url",
+                          "container",
+                          "codec",
+                          "sampleRate",
+                          "channels"
+                        ],
+                        "type": "object"
+                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -117221,6 +117788,12 @@
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "posterUrl": {
+                  "type": "string"
+                },
+                "stillUrl": {
+                  "type": "string"
                 },
                 "title": {
                   "type": "string"
@@ -244807,6 +245380,42 @@
                             "decoderConfig": {
                               "type": "string"
                             },
+                            "deepStart": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "container": {
+                                  "type": "string"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "url",
+                                "container",
+                                "codec",
+                                "sampleRate",
+                                "channels"
+                              ],
+                              "type": "object"
+                            },
                             "downmixed": {
                               "type": "boolean"
                             },
@@ -245510,6 +246119,42 @@
                             },
                             "decoderConfig": {
                               "type": "string"
+                            },
+                            "deepStart": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "container": {
+                                  "type": "string"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "url",
+                                "container",
+                                "codec",
+                                "sampleRate",
+                                "channels"
+                              ],
+                              "type": "object"
                             },
                             "downmixed": {
                               "type": "boolean"
@@ -246259,6 +246904,42 @@
                             },
                             "decoderConfig": {
                               "type": "string"
+                            },
+                            "deepStart": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "container": {
+                                  "type": "string"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "url",
+                                "container",
+                                "codec",
+                                "sampleRate",
+                                "channels"
+                              ],
+                              "type": "object"
                             },
                             "downmixed": {
                               "type": "boolean"
@@ -247237,6 +247918,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -247272,6 +247956,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -247400,6 +248090,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -247435,6 +248128,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -247741,6 +248440,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -247776,6 +248478,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -249548,6 +250256,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -249583,6 +250294,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -249719,6 +250436,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -249754,6 +250474,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -250017,6 +250743,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -250292,6 +251024,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -250327,6 +251062,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -250453,6 +251194,9 @@
                   },
                   "summary": {
                     "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
                   }
                 },
                 "required": [
@@ -250488,6 +251232,12 @@
                       "type": "integer"
                     },
                     "serverId": {
+                      "type": "string"
+                    },
+                    "undoToken": {
+                      "type": "string"
+                    },
+                    "undoUntil": {
                       "type": "string"
                     },
                     "viewerFence": {
@@ -251983,6 +252733,42 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
+                                "deepStart": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "container": {
+                                      "type": "string"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "container",
+                                    "codec",
+                                    "sampleRate",
+                                    "channels"
+                                  ],
+                                  "type": "object"
+                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -252491,6 +253277,12 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "posterUrl": {
+                            "type": "string"
+                          },
+                          "stillUrl": {
+                            "type": "string"
                           },
                           "title": {
                             "type": "string"
@@ -253114,6 +253906,42 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
+                                "deepStart": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "container": {
+                                      "type": "string"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "container",
+                                    "codec",
+                                    "sampleRate",
+                                    "channels"
+                                  ],
+                                  "type": "object"
+                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -253623,6 +254451,12 @@
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "posterUrl": {
+                            "type": "string"
+                          },
+                          "stillUrl": {
+                            "type": "string"
+                          },
                           "title": {
                             "type": "string"
                           },
@@ -253779,6 +254613,12 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "posterUrl": {
+                            "type": "string"
+                          },
+                          "stillUrl": {
+                            "type": "string"
                           },
                           "title": {
                             "type": "string"
@@ -254134,6 +254974,42 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
+                                "deepStart": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "container": {
+                                      "type": "string"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "container",
+                                    "codec",
+                                    "sampleRate",
+                                    "channels"
+                                  ],
+                                  "type": "object"
+                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -254642,6 +255518,12 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "posterUrl": {
+                            "type": "string"
+                          },
+                          "stillUrl": {
+                            "type": "string"
                           },
                           "title": {
                             "type": "string"
@@ -254988,6 +255870,42 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
+                                "deepStart": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "container": {
+                                      "type": "string"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "container",
+                                    "codec",
+                                    "sampleRate",
+                                    "channels"
+                                  ],
+                                  "type": "object"
+                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -255496,6 +256414,12 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "posterUrl": {
+                            "type": "string"
+                          },
+                          "stillUrl": {
+                            "type": "string"
                           },
                           "title": {
                             "type": "string"
@@ -255974,6 +256898,42 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
+                                "deepStart": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "container": {
+                                      "type": "string"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "container",
+                                    "codec",
+                                    "sampleRate",
+                                    "channels"
+                                  ],
+                                  "type": "object"
+                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -256483,6 +257443,12 @@
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "posterUrl": {
+                            "type": "string"
+                          },
+                          "stillUrl": {
+                            "type": "string"
+                          },
                           "title": {
                             "type": "string"
                           },
@@ -256639,6 +257605,12 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "posterUrl": {
+                            "type": "string"
+                          },
+                          "stillUrl": {
+                            "type": "string"
                           },
                           "title": {
                             "type": "string"
@@ -257007,6 +257979,42 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
+                                "deepStart": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "container": {
+                                      "type": "string"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "container",
+                                    "codec",
+                                    "sampleRate",
+                                    "channels"
+                                  ],
+                                  "type": "object"
+                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -257515,6 +258523,12 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "posterUrl": {
+                            "type": "string"
+                          },
+                          "stillUrl": {
+                            "type": "string"
                           },
                           "title": {
                             "type": "string"
@@ -257858,6 +258872,42 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
+                                "deepStart": {
+                                  "properties": {
+                                    "bitDepth": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "channels": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "codec": {
+                                      "type": "string"
+                                    },
+                                    "container": {
+                                      "type": "string"
+                                    },
+                                    "sampleRate": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url",
+                                    "container",
+                                    "codec",
+                                    "sampleRate",
+                                    "channels"
+                                  ],
+                                  "type": "object"
+                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -258367,6 +259417,12 @@
                             "minimum": -9007199254740991,
                             "type": "integer"
                           },
+                          "posterUrl": {
+                            "type": "string"
+                          },
+                          "stillUrl": {
+                            "type": "string"
+                          },
                           "title": {
                             "type": "string"
                           },
@@ -258530,6 +259586,42 @@
                             },
                             "decoderConfig": {
                               "type": "string"
+                            },
+                            "deepStart": {
+                              "properties": {
+                                "bitDepth": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "channels": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "codec": {
+                                  "type": "string"
+                                },
+                                "container": {
+                                  "type": "string"
+                                },
+                                "sampleRate": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "url",
+                                "container",
+                                "codec",
+                                "sampleRate",
+                                "channels"
+                              ],
+                              "type": "object"
                             },
                             "downmixed": {
                               "type": "boolean"
@@ -262644,6 +263736,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -262747,6 +263842,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -262981,6 +264082,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -263084,6 +264188,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -263584,6 +264694,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -263687,6 +264800,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -265581,6 +266700,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -265684,6 +266806,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -266053,6 +267181,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -266156,6 +267287,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -266388,6 +267525,9 @@
                   "summary": {
                     "type": "string"
                   },
+                  "undoToken": {
+                    "type": "string"
+                  },
                   "visibility": {
                     "type": "string"
                   }
@@ -266491,6 +267631,12 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
                         }
                       },
                       "required": [

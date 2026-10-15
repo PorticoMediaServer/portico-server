@@ -27,7 +27,7 @@
 #    (server/internal/mediaexec). PORTICO_DECODER_SANDBOX=required
 #    makes media jobs fail instead; =off skips the sandbox.
 
-FROM node:24-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS web
+FROM node:24.21.0-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714d5eb3300a36157add0 AS web
 WORKDIR /src
 COPY package.json package-lock.json ./
 COPY web ./web

@@ -23,6 +23,17 @@ export const subscribeNotInterested = (listener: () => void) => { listeners.add(
 export const notInterestedVersion = () => version;
 export const recommendationViewer = (scope: {viewerId: string; serverId: string}) => JSON.stringify([scope.serverId, scope.viewerId]);
 export const hiddenNotInterested = (viewer: string): ReadonlySet<string> => new Set([...targets.get(viewer) ?? []].filter(([, value]) => value.hidden).map(([key]) => key));
+const hiddenSnapshots = new Map<string, {version: number; hidden: ReadonlySet<string>}>();
+/** The viewer's hidden titles as one object until the next change: a snapshot for `useSyncExternalStore`. */
+export const hiddenNotInterestedSnapshot = (viewer: string): ReadonlySet<string> => {
+  const known = hiddenSnapshots.get(viewer);
+  if (known?.version === version) return known.hidden;
+  // A browser holds a handful of viewers at most; the record is kept that small.
+  if (!known && hiddenSnapshots.size >= 8) hiddenSnapshots.clear();
+  const hidden = hiddenNotInterested(viewer);
+  hiddenSnapshots.set(viewer, {version, hidden});
+  return hidden;
+};
 export const currentNotInterestedNotice = (viewer: string) => notices.get(viewer);
 const current = (viewer: string, key: string, operation: string) => targets.get(viewer)?.get(key)?.operation === operation;
 const announce = (viewer: string, notice: NotInterestedNotice) => { notices.set(viewer, notice); emit(); };

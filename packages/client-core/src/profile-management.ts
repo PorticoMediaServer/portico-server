@@ -1,7 +1,6 @@
 import {routePath as developmentRoutePath} from "../../contracts/src/development/routes.ts";
 import {routeBody} from "../../contracts/src/routes.ts";
 import type {RouteResponse} from "../../contracts/src/routes.ts";
-import {routePath as optionalRoutePath} from "../../contracts/src/optional/routes.ts";
 import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
 import {CodedError,unreadableServerResponse} from './server-messages.ts';
 import {parseLocalSession,currentUTCTimestamp} from './local-session.ts';
@@ -131,42 +130,32 @@ export function trustScopeKey(scope:ProfileScope&{profileId:string;installationI
  return JSON.stringify(['portico-profile-trust-v1',scope.authority,scope.accountId,scope.serverId,scope.profileId,scope.installationId]);
 }
 /** Validation and revision-bound mutations are shared by web, iOS and tvOS. */
+/**
+ * The profiles of a local account, managed on its own server. (Hosted Portico Account profiles
+ * have no API of their own: an account's profiles are each server's, so they are managed here.)
+ */
 export class ManagedProfilesClient {
  readonly api:ProfileAPI;readonly scope:ProfileScope;
- constructor(api:ProfileAPI,scope:ProfileScope){if(!text(scope.accountId,128)||!['local','hosted'].includes(scope.authority)||(scope.authority==='local'&&!text(scope.serverId,128)))throw new Error('An account profile scope is required.');this.api=api;this.scope=Object.freeze({...scope});}
- private path(profileId?:string,action:'list'|'create'|'edit'|'delete'|'order'|'preview'='list'):string{
-  if(this.scope.authority==='local'){
-   if(action==='list')return routePath("get_direct_account");
-   if(action==='create')return routePath("post_direct_profiles");
-   if(action==='order')return routePath("put_direct_profiles_order");
-   if(!profileId)throw new Error('A profile is required.');
-   if(action==='edit')return routePath("patch_direct_profiles_id",{id:profileId});
-   if(action==='delete')return routePath("delete_direct_profiles_id",{id:profileId});
-   return routePath("get_direct_profiles_id_deletion_preview",{id:profileId});
-  }
-  if(action==='list')return optionalRoutePath("get_account_profiles");
-  if(action==='create')return optionalRoutePath("create_account_profile");
-  if(action==='order')return optionalRoutePath("order_account_profiles");
+ constructor(api:ProfileAPI,scope:ProfileScope){if(scope.authority!=='local'||!text(scope.accountId,128)||!text(scope.serverId,128))throw new Error('An account profile scope is required.');this.api=api;this.scope=Object.freeze({...scope});}
+ private path(profileId:string|undefined,action:'create'|'edit'|'delete'|'order'|'preview'):string{
+  if(action==='create')return routePath("post_direct_profiles");
+  if(action==='order')return routePath("put_direct_profiles_order");
   if(!profileId)throw new Error('A profile is required.');
-  if(action==='edit')return optionalRoutePath("edit_account_profile",{id:profileId});
-  if(action==='delete')return optionalRoutePath("delete_account_profile",{id:profileId});
-  return optionalRoutePath("preview_account_profile_deletion",{id:profileId});
+  if(action==='edit')return routePath("patch_direct_profiles_id",{id:profileId});
+  if(action==='delete')return routePath("delete_direct_profiles_id",{id:profileId});
+  return routePath("get_direct_profiles_id_deletion_preview",{id:profileId});
  }
- async list(signal?:AbortSignal):Promise<readonly ManagedProfile[]>{const raw=await this.api.request<RouteResponse<"get_direct_account"> & Record<string,unknown>>(this.scope.authority==='local'?routePath("get_direct_account"):this.path(),'GET',undefined,signal);if(this.scope.authority==='local')return parseDirectSnapshot(raw,this.scope,true).profiles;if(!obj(raw)||raw.accountId!==this.scope.accountId||raw.maxProfiles!==8)invalid();return parseManagedProfiles(raw.profiles,true);}
+ async list(signal?:AbortSignal):Promise<readonly ManagedProfile[]>{const raw=await this.api.request<RouteResponse<"get_direct_account">>(routePath("get_direct_account"),'GET',undefined,signal);return parseDirectSnapshot(raw,this.scope,true).profiles;}
  async create(name:string,art:ProfileArt='blue',signal?:AbortSignal):Promise<void>{if(!text(name.trim(),120)||!PROFILE_ART.includes(art))throw new Error('Enter a profile name.');await this.api.request(this.path(undefined,'create'),'POST',{name:name.trim(),art},signal);}
  async edit(profile:ManagedProfile,change:{name?:string;art?:ProfileArt;pin?:string;policy?:ProfilePolicy},signal?:AbortSignal):Promise<void>{
   if(change.pin!==undefined&&change.pin!==''&&!/^\d{4}$/.test(change.pin))throw new Error('Use exactly four numeric digits for the profile PIN.');
   if(change.name!==undefined&&!text(change.name.trim(),120))throw new Error('Enter a profile name.');
-  if(change.policy){if(this.scope.authority==='local'&&change.policy.serverId!==this.scope.serverId)throw new Error('This profile belongs to a different server.');if(change.policy.allowedLibraries!==null)ids(change.policy.allowedLibraries);}
-  const policy=change.policy?(this.scope.authority==='local'?{allowedLibraries:change.policy.allowedLibraries}:change.policy):undefined;
+  if(change.policy){if(change.policy.serverId!==this.scope.serverId)throw new Error('This profile belongs to a different server.');if(change.policy.allowedLibraries!==null)ids(change.policy.allowedLibraries);}
+  const policy=change.policy?{allowedLibraries:change.policy.allowedLibraries}:undefined;
   await this.api.request(this.path(profile.id,'edit'),'PATCH',{...change,...(policy?{policy}:{}),expectedRevision:profile.revision},signal);
  }
  async order(profiles:readonly ManagedProfile[],signal?:AbortSignal):Promise<void>{await this.api.request(this.path(undefined,'order'),'PUT',{profiles:profiles.map(p=>({id:p.id,revision:p.revision}))},signal);}
- async forgetTrust(profileId:string,signal?:AbortSignal):Promise<void>{await this.api.request(this.scope.authority==='local'?routePath("delete_direct_trust"):optionalRoutePath("forget_account_profile_trust",{id:profileId}),'DELETE',this.scope.authority==='local'?{profileId}:undefined,signal);}
- async policies(profileId:string,signal?:AbortSignal):Promise<readonly ProfilePolicy[]>{
-  if(this.scope.authority==='local'){const rows=await this.list(signal);const p=rows.find(v=>v.id===profileId);if(!p)invalid();return[{serverId:this.scope.serverId!,allowedLibraries:p.allowedLibraries??null}];}
-  const raw=await this.api.request<unknown>(optionalRoutePath("get_account_profile_policies",{id:profileId}),'GET',undefined,signal);if(!obj(raw)||!Array.isArray(raw.items)||raw.items.length>1000)invalid();return raw.items.map(v=>{if(!obj(v)||!text(v.serverId,128))invalid();return Object.freeze({serverId:v.serverId,allowedLibraries:v.allowedLibraries===null?null:ids(v.allowedLibraries)});});
- }
+ async forgetTrust(profileId:string,signal?:AbortSignal):Promise<void>{await this.api.request(routePath("delete_direct_trust"),'DELETE',{profileId},signal);}
  async previewDelete(profile:ManagedProfile,signal?:AbortSignal):Promise<ProfileDeletion>{
   if(profile.primary)throw new Error('The primary profile is managed through account settings.');const raw=await this.api.request<unknown>(this.path(profile.id,'preview'),'GET',undefined,signal);
   if(!obj(raw)||raw.profileId!==profile.id||!revision(raw.revision)||raw.primary!==false)invalid();return raw as ProfileDeletion;
@@ -174,7 +163,6 @@ export class ManagedProfilesClient {
  async delete(preview:ProfileDeletion,signal?:AbortSignal):Promise<ProfileDeletion|undefined>{
   if(preview.primary||!revision(preview.revision))throw new Error('Preview this profile deletion first.');return this.api.request<ProfileDeletion|undefined>(this.path(preview.profileId,'delete'),'DELETE',{expectedRevision:preview.revision,deleteSavedResources:true},signal);
  }
- async deletionStatus(id:string,signal?:AbortSignal):Promise<ProfileDeletion>{if(this.scope.authority!=='hosted'||!text(id,128))invalid();const raw=await this.api.request<ProfileDeletion>(optionalRoutePath("get_account_profile_deletion",{id}),'GET',undefined,signal);if(raw.id!==id)invalid();return raw;}
 }
 
 /** Retire a temporary account sign-in only after a distinct viewer family was accepted.

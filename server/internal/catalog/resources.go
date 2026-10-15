@@ -73,7 +73,10 @@ type SavedResourceMutation struct {
 	Definition       *SavedViewDefinition `json:"definition,omitempty"`
 	AddItemIDs       []string             `json:"addItemIds,omitempty"`
 	RemoveEntryIDs   []string             `json:"removeEntryIds,omitempty"`
-	Authority        string               `json:"authority,omitempty"`
+	// UndoToken puts back the entries a removal just took out (the removal's
+	// receipt carries it), in place of adding or removing.
+	UndoToken string `json:"undoToken,omitempty"`
+	Authority string `json:"authority,omitempty"`
 	AccountID        string               `json:"accountId,omitempty"`
 	ProfileID        string               `json:"profileId,omitempty"`
 	Role             string               `json:"role,omitempty"`
@@ -84,6 +87,9 @@ type SavedResourceReceipt struct {
 	Revision    int64          `json:"revision"`
 	Deleted     bool           `json:"deleted"`
 	Entries     *EntryOutcomes `json:"entries,omitempty"`
+	// A removal can be undone until UndoUntil by sending UndoToken back.
+	UndoToken string `json:"undoToken,omitempty"`
+	UndoUntil string `json:"undoUntil,omitempty"`
 }
 
 func actorKey(a ResourceActor) string {
@@ -457,6 +463,9 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 	if m.Visibility != nil && *m.Visibility != "private" && *m.Visibility != "server" {
 		return out, requestinput.New("collection visibility must be private or server")
 	}
+	if m.UndoToken != "" && (action != "entries" || m.AddItemIDs != nil || m.RemoveEntryIDs != nil || !personalOperation.MatchString(m.UndoToken)) {
+		return out, requestinput.New("an undo token undoes a removal on its own")
+	}
 	if m.Kind != "" && action != "create" || (m.Name != nil || m.Summary != nil || m.Definition != nil || m.Visibility != nil) && action != "create" && action != "update" || (m.AddItemIDs != nil || m.RemoveEntryIDs != nil) && action != "entries" || (m.Authority != "" || m.AccountID != "" || m.ProfileID != "") && action != "share" && action != "unshare" || m.Role != "" && action != "share" {
 		return out, requestinput.New("fields do not apply to resource operation")
 	}
@@ -568,13 +577,32 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 		}
 		out.Deleted = true
 	case "entries":
-		if kind != "collection" || len(m.AddItemIDs)+len(m.RemoveEntryIDs) == 0 {
+		if kind != "collection" || len(m.AddItemIDs)+len(m.RemoveEntryIDs) == 0 && m.UndoToken == "" {
 			return out, requestinput.New("collection membership changes are required")
 		}
 		// Membership is reported per item: an item that vanished between the
 		// client's read and this write must not discard the rest of the batch.
 		outcomes := newEntryOutcomes()
 		e = nil
+		if m.UndoToken != "" {
+			// The same entries return under their own ids, so each keeps its place.
+			var removed []removedEntry
+			if removed, e = takeEntryUndo(tx, actorKey(a), "collection", id, m.UndoToken); e != nil {
+				return out, e
+			}
+			for _, r := range removed {
+				var result sql.Result
+				if result, e = tx.Exec(`INSERT INTO saved_resource_entries(id,resource_id,item_id) VALUES(?,?,?) ON CONFLICT DO NOTHING`, r.entry, id, r.item); e != nil {
+					return out, e
+				}
+				if n, _ := result.RowsAffected(); n == 1 {
+					outcomes.Added = append(outcomes.Added, r.entry)
+				} else {
+					outcomes.Unchanged = append(outcomes.Unchanged, r.entry)
+				}
+			}
+		}
+		var removed []removedEntry
 		for _, item := range m.AddItemIDs {
 			var entityID int64
 			if err := tx.QueryRow(`SELECT id FROM catalog_entities WHERE public_id=pid_blob(?) AND retired=0`, item).Scan(&entityID); errors.Is(err, sql.ErrNoRows) {
@@ -597,15 +625,22 @@ func (s *Service) MutateSavedResource(a ResourceActor, id, action string, m Save
 			outcomes.Added = append(outcomes.Added, item)
 		}
 		for _, entry := range m.RemoveEntryIDs {
-			result, err := tx.Exec(`DELETE FROM saved_resource_entries WHERE resource_id=? AND id=?`, id, entry)
-			if err != nil {
-				return out, err
-			}
-			if n, _ := result.RowsAffected(); n == 0 {
+			r := removedEntry{entry: entry}
+			err := tx.QueryRow(`DELETE FROM saved_resource_entries WHERE resource_id=? AND id=? RETURNING item_id`, id, entry).Scan(&r.item)
+			if errors.Is(err, sql.ErrNoRows) {
 				outcomes.fail(entry, "not_found")
 				continue
 			}
+			if err != nil {
+				return out, err
+			}
 			outcomes.Removed = append(outcomes.Removed, entry)
+			removed = append(removed, r)
+		}
+		if len(m.RemoveEntryIDs) > 0 {
+			if out.UndoToken, out.UndoUntil, e = captureEntryUndo(tx, actorKey(a), "collection", id, removed); e != nil {
+				return out, e
+			}
 		}
 		out.Entries = &outcomes
 	case "share", "unshare":

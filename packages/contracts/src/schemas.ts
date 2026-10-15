@@ -590,6 +590,42 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
+                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -1098,6 +1134,12 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "stillUrl": {
+              "type": "string"
             },
             "title": {
               "type": "string"
@@ -1361,6 +1403,42 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
+                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -1869,6 +1947,12 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "stillUrl": {
+              "type": "string"
             },
             "title": {
               "type": "string"
@@ -4034,6 +4118,42 @@ export const schemas = {
               "decoderConfig": {
                 "type": "string"
               },
+              "deepStart": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url",
+                  "container",
+                  "codec",
+                  "sampleRate",
+                  "channels"
+                ],
+                "type": "object"
+              },
               "downmixed": {
                 "type": "boolean"
               },
@@ -4752,6 +4872,42 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
+                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -5260,6 +5416,12 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "stillUrl": {
+              "type": "string"
             },
             "title": {
               "type": "string"
@@ -7447,6 +7609,42 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
+                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -7955,6 +8153,12 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "stillUrl": {
+              "type": "string"
             },
             "title": {
               "type": "string"
@@ -9519,6 +9723,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -9546,6 +9753,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -9607,6 +9820,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -9634,6 +9850,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -9695,6 +9917,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -9722,6 +9947,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -9879,6 +10110,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -9974,6 +10208,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -10135,6 +10375,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -10230,6 +10473,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -54588,6 +54837,42 @@ export const schemas = {
               "decoderConfig": {
                 "type": "string"
               },
+              "deepStart": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url",
+                  "container",
+                  "codec",
+                  "sampleRate",
+                  "channels"
+                ],
+                "type": "object"
+              },
               "downmixed": {
                 "type": "boolean"
               },
@@ -57317,6 +57602,12 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "stillUrl": {
+              "type": "string"
             },
             "title": {
               "type": "string"
@@ -68782,6 +69073,12 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "posterUrl": {
+              "type": "string"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
             "title": {
               "type": "string"
             },
@@ -69312,6 +69609,42 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
+                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -69820,6 +70153,12 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "stillUrl": {
+              "type": "string"
             },
             "title": {
               "type": "string"
@@ -71591,6 +71930,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -71618,6 +71960,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -71986,6 +72334,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -72081,6 +72432,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -87620,6 +87977,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -87647,6 +88007,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -87708,6 +88074,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -87735,6 +88104,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -88253,6 +88628,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -88348,6 +88726,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -89938,6 +90322,42 @@ export const schemas = {
               },
               "decoderConfig": {
                 "type": "string"
+              },
+              "deepStart": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url",
+                  "container",
+                  "codec",
+                  "sampleRate",
+                  "channels"
+                ],
+                "type": "object"
               },
               "downmixed": {
                 "type": "boolean"
@@ -97120,6 +97540,9 @@ export const schemas = {
       },
       "summary": {
         "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
       }
     },
     "required": [
@@ -97147,6 +97570,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -97434,6 +97863,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -97529,6 +97961,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -97690,6 +98128,9 @@ export const schemas = {
       "summary": {
         "type": "string"
       },
+      "undoToken": {
+        "type": "string"
+      },
       "visibility": {
         "type": "string"
       }
@@ -97785,6 +98226,12 @@ export const schemas = {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "undoUntil": {
+            "type": "string"
           }
         },
         "required": [
@@ -98984,6 +99431,42 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
+                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -99493,6 +99976,12 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
+            "posterUrl": {
+              "type": "string"
+            },
+            "stillUrl": {
+              "type": "string"
+            },
             "title": {
               "type": "string"
             },
@@ -99573,6 +100062,12 @@ export const schemas = {
         "type": "integer"
       },
       "serverId": {
+        "type": "string"
+      },
+      "undoToken": {
+        "type": "string"
+      },
+      "undoUntil": {
         "type": "string"
       },
       "viewerFence": {
@@ -109895,6 +110390,42 @@ export const schemas = {
               "decoderConfig": {
                 "type": "string"
               },
+              "deepStart": {
+                "properties": {
+                  "bitDepth": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "channels": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "codec": {
+                    "type": "string"
+                  },
+                  "container": {
+                    "type": "string"
+                  },
+                  "sampleRate": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "url",
+                  "container",
+                  "codec",
+                  "sampleRate",
+                  "channels"
+                ],
+                "type": "object"
+              },
               "downmixed": {
                 "type": "boolean"
               },
@@ -110850,6 +111381,42 @@ export const schemas = {
                   "decoderConfig": {
                     "type": "string"
                   },
+                  "deepStart": {
+                    "properties": {
+                      "bitDepth": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "channels": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "codec": {
+                        "type": "string"
+                      },
+                      "container": {
+                        "type": "string"
+                      },
+                      "sampleRate": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url",
+                      "container",
+                      "codec",
+                      "sampleRate",
+                      "channels"
+                    ],
+                    "type": "object"
+                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -111358,6 +111925,12 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "posterUrl": {
+              "type": "string"
+            },
+            "stillUrl": {
+              "type": "string"
             },
             "title": {
               "type": "string"

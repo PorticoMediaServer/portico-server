@@ -14,6 +14,7 @@ import {categoryDestination, libraryTab, libraryTabForPivot, libraryTabSort, lib
 import {SaveViewDialog} from './SaveView';
 import b from './BrowseFilters.module.css';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
+import {viewSequence} from '../../app/container-play';
 import type {ContentRoute, ContentSeeAll, ContentView} from '@core/library-content.ts';
 import {useContent} from '../../app/content';
 import {browseCountLabel, seeAllTarget} from '../../app/content';
@@ -38,6 +39,7 @@ import {isRecommendationRow} from '@core/recommendation-feedback.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {withoutHidden} from '../../app/not-interested';
 import {useI18n, type I18n} from '../../app/i18n';
+import {useQuietRefresh} from '../../app/quiet-refresh';
 
 const SORT_NAMES = new Set(['title', 'added', 'year', 'duration', 'last_played', 'rating', 'episode', 'track', 'artist', 'album', 'author', 'release', 'random']);
 const sortLabel = (t: I18n['t'], key: string): string => {
@@ -123,6 +125,8 @@ export function LibraryScreen() {
   const content = useMemo<ContentRoute>(() => (search.row || custom ? {libraryId, view: 'discover'} : ({libraryId, view: tab as ContentView, ...(search.category ? {category: search.category} : {}), ...(search.sort ? {sort: search.sort, direction: search.direction} : {})})), [libraryId, tab, custom, search.row, search.category, search.sort, search.direction]);
   /* The authored content route still serves Discover, categories and the tab strip; browsable pivots read the engine. */
   const {snapshot, retry, refresh, next} = useContent(engine ? {libraryId, view: 'discover'} : content);
+  // Read again quietly when the server says the page changed; the notice is for one that stays refused.
+  const changedStuck = useQuietRefresh(!engine && !custom && snapshot.phase === 'refresh-required', refresh);
   const projection = snapshot.projection;
   // PERF-S02: section "More" appends inside its own section; the page's other
   // sections stay rendered.
@@ -253,7 +257,7 @@ export function LibraryScreen() {
         setSearch({view: id as Tab, category: undefined, row: undefined, sort: kept?.sort?.field, direction: kept?.sort?.direction, filters: kept?.filters?.length ? encodePredicates(kept.filters as readonly Predicate[]) : undefined});
       }} size="large" label={t('web.library.viewsLabel')} />
       {search.row ? (
-        <RowView libraryId={libraryId} rowId={search.row} snapshot={snapshot} retry={retry} refresh={refresh} next={next} onBack={() => setSearch({row: undefined})} list={view === 'list'} square={square} />
+        <RowView libraryId={libraryId} rowId={search.row} snapshot={snapshot} changedStuck={changedStuck} retry={retry} refresh={refresh} next={next} onBack={() => setSearch({row: undefined})} list={view === 'list'} square={square} />
       ) : (
       <>
       {engine && capabilities ? (
@@ -264,7 +268,7 @@ export function LibraryScreen() {
       ) : null}
       {active.shows === 'playlists' ? <LibraryPlaylists sort={search.sort ? {field: search.sort, direction: search.direction ?? 'asc'} : undefined} onSort={chooseSort} /> : null}
       {engine && capabilityError ? <Inset><Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => window.location.reload()}}>{capabilityError}</Notice></Inset> : null}
-      {engine && browse.collection ? <EngineResults unmatched={tab === 'unmatched'} collection={browse.collection} onRefresh={browse.refresh} filtered={chosenPredicates.length > 0} onClearFilters={() => setSearch({filters: undefined})} pivot={pivot} libraryId={libraryId} libraryKind={library?.kind ?? ''} list={(view === 'list' && viewChoice) || active.shows === 'tracks'} tracks={active.shows === 'tracks'} sort={sort} sorts={capabilities?.sorts ?? []} onSort={chooseSort} sortField={sort.field} square={square} scanning={scan.scanning} card={active.shows === 'genres' ? entry => <GenreCard libraryId={libraryId} entry={entry} onOpen={() => openGroup(entry.title)} /> : undefined} empty={active.shows === 'genres' ? <StateView icon="category" title={t('library.genres.empty')} body={t('library.genres.emptyBody')} /> : undefined} listKey={listWindowKey({serverId: scope.serverId, viewerId: scope.viewerId, libraryId, pivot, query: JSON.stringify([search.filters ?? null, sort])})} /> : engine && !capabilityError ? <LoadingGrid density={square ? 'square' : 'poster'} /> : null}
+      {engine && browse.collection ? <EngineResults sequence={viewSequence({libraryId, pivot, predicates, sort})} unmatched={tab === 'unmatched'} collection={browse.collection} onRefresh={browse.refresh} filtered={chosenPredicates.length > 0} onClearFilters={() => setSearch({filters: undefined})} pivot={pivot} libraryId={libraryId} libraryKind={library?.kind ?? ''} list={(view === 'list' && viewChoice) || active.shows === 'tracks'} tracks={active.shows === 'tracks'} sort={sort} sorts={capabilities?.sorts ?? []} onSort={chooseSort} sortField={sort.field} square={square} scanning={scan.scanning} card={active.shows === 'genres' ? entry => <GenreCard libraryId={libraryId} entry={entry} onOpen={() => openGroup(entry.title)} /> : undefined} empty={active.shows === 'genres' ? <StateView icon="category" title={t('library.genres.empty')} body={t('library.genres.emptyBody')} /> : undefined} listKey={listWindowKey({serverId: scope.serverId, viewerId: scope.viewerId, libraryId, pivot, query: JSON.stringify([search.filters ?? null, sort])})} /> : engine && !capabilityError ? <LoadingGrid density={square ? 'square' : 'poster'} /> : null}
       {!engine && !custom && tab === 'browse' && sorts.length ? (
         <Inset>
           <Row>
@@ -281,7 +285,7 @@ export function LibraryScreen() {
       ) : null}
       {!engine && !custom && snapshot.phase === 'loading' && !snapshot.sections.length ? (tab === 'browse' ? <LoadingGrid density={square ? 'square' : 'poster'} /> : <LoadingShelves density={square ? 'square' : 'poster'} />) : null}
       {!engine && !custom && snapshot.phase === 'error' && !snapshot.sections.length ? <ErrorState error={snapshot.error} context="library" retry={retry} refresh={refresh} /> : null}
-      {!engine && !custom && snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="library" refresh={refresh} /></Inset> : null}
+      {changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="library" refresh={refresh} /></Inset> : null}
       {!engine && !custom ? (appendedSections.map(raw => {
         // P5: Discover's recommendation rows offer Not interested and drop a card turned down.
         const recommendation = tab === 'discover' && isRecommendationRow(raw);
@@ -308,7 +312,7 @@ function categoryName(id: string): string {
  * projection (the row pages through its own cursor, exactly like the inline
  * rail), rendered as a grid with the row's title and a way back.
  */
-function RowView({libraryId, rowId, snapshot, retry, refresh, next, onBack, list, square}: {libraryId: string; rowId: string; snapshot: LibraryContentSnapshot; retry: () => void; refresh: () => void; next: (sectionId: string) => void; onBack: () => void; list: boolean; square: boolean}) {
+function RowView({libraryId, rowId, snapshot, changedStuck, retry, refresh, next, onBack, list, square}: {libraryId: string; rowId: string; snapshot: LibraryContentSnapshot; changedStuck: boolean; retry: () => void; refresh: () => void; next: (sectionId: string) => void; onBack: () => void; list: boolean; square: boolean}) {
   const i18n = useI18n();
   const {t} = i18n;
   const notInterested = useNotInterested();
@@ -339,7 +343,7 @@ function RowView({libraryId, rowId, snapshot, retry, refresh, next, onBack, list
   return (
     <>
       <PageHeader title={sectionHeading(i18n, section.heading)} onBack={onBack} backLabel={t('action.back')} />
-      {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="library" refresh={refresh} /></Inset> : null}
+      {changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="library" refresh={refresh} /></Inset> : null}
       <SectionView section={presented} libraryId={libraryId} hideTitle origin={recommendation ? 'recommendation' : undefined} onMore={section.nextCursor ? () => next(section.id) : undefined} />
     </>
   );

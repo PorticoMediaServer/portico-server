@@ -8,6 +8,7 @@ import {readPerson, type PersonCredit, type PersonPage, type PersonRole} from '@
 import type {CollectionStatus, WindowedCollection} from '@core/collections/index.ts';
 import {createWindowedCollection} from '@core/collections/index.ts';
 import {PERSON_CREDIT_PAGE, PERSON_CREDIT_RESIDENT_PAGES, personCreditsSource} from './person-credits';
+import {personCredits, rememberedPerson} from './person-memory';
 import {captionFor, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {useEntryHref, useOpenEntry} from '../../app/open';
 import {useSession} from '../../app/session';
@@ -50,24 +51,28 @@ export function PersonScreen() {
   const scope = useViewerScope();
   const address = useSearch({from: '/app/person/$personId'});
   const navigate = useNavigate();
-  const [role, setRole] = useState<PersonRole>('all');
-  const [state, setState] = useState<State>({phase: 'loading'});
+  // Back to a person shows what was there: kept for the last few people visited (person-memory).
+  const kept = useMemo(() => rememberedPerson(api, scope, personId), [api, scope, personId]);
+  const [role, setRoleState] = useState<PersonRole>(kept.role);
+  const setRole = (next: PersonRole) => { kept.role = next; setRoleState(next); };
+  const [state, setState] = useState<State>(() => (kept.page ? {phase: 'ready', page: kept.page} : {phase: 'loading'}));
   const load = useCallback(async () => {
     setState(prev => ({phase: 'loading', page: prev.page}));
     try {
       // The header only: one credit keeps the request small; the grid pages the rest.
       const page = await readPerson(api, scope, personId, {role, limit: 1});
+      if (role === kept.role) kept.page = page;
       setState({phase: 'ready', page});
     } catch (e) {
       setState(prev => ({phase: 'error', page: prev.page, error: e}));
     }
-  }, [api, scope, personId, role]);
+  }, [api, scope, personId, role, kept]);
   useEffect(() => { void load(); }, [load]);
+  // The grid is the kept one (the memory releases it when the person is pushed out).
   const credits = useMemo<WindowedCollection<PersonCredit>>(
-    () => createWindowedCollection<PersonCredit>({fetchPage: personCreditsSource(api, scope, personId, role), pageSize: PERSON_CREDIT_PAGE, maxResidentPages: PERSON_CREDIT_RESIDENT_PAGES, keyOf: c => `${c.media.id}:${c.role}:${c.character}`}),
-    [api, scope, personId, role],
+    () => personCredits(kept, role, () => createWindowedCollection<PersonCredit>({fetchPage: personCreditsSource(api, scope, personId, role), pageSize: PERSON_CREDIT_PAGE, maxResidentPages: PERSON_CREDIT_RESIDENT_PAGES, keyOf: c => `${c.media.id}:${c.role}:${c.character}`})),
+    [api, scope, personId, role, kept],
   );
-  useEffect(() => () => credits.dispose(), [credits]);
   // A person's titles follow the libraries while the page is open: a title that arrives, goes or is watched updates in place.
   useFreshDocument(personDependencies, context => credits.revalidate({fetchPage: personCreditsSource(api, scope, personId, role), hold: context.settle}), () => credits.getSnapshot().total !== undefined);
   const creditsSnapshot = useSyncExternalStore(credits.subscribe, credits.getSnapshot);
@@ -92,7 +97,7 @@ export function PersonScreen() {
   const knownFor = person && role === 'all' && total > person.knownFor.length ? person.knownFor : [];
   return (
     <Page>
-      <PageHeader onBack={back} title={person?.name ?? (state.phase === 'loading' ? <Skeleton style={{width: 220, height: 32}} /> : t('web.person.fallback'))} eyebrow={person?.roles.join(' · ')} subtitle={dates || undefined} />
+      <PageHeader onBack={back} pageKey={person?.id} title={person?.name ?? (state.phase === 'loading' ? <Skeleton style={{width: 220, height: 32}} /> : t('web.person.fallback'))} eyebrow={person?.roles.join(' · ')} subtitle={dates || undefined} />
       {state.phase === 'error' && !person ? <ErrorState error={state.error} context="person" retry={() => void load()} /> : null}
       {person ? (
         <Inset>
@@ -124,9 +129,13 @@ export function PersonScreen() {
   );
 }
 
+const creditPlaceholder = () => <div aria-hidden><Skeleton style={{aspectRatio: '2 / 3', width: '100%'}} /><Skeleton height={14} width="70%" style={{marginTop: 8}} /></div>;
+
 function CreditsGrid({collection, status, error, retry}: {collection: WindowedCollection<PersonCredit>; status: CollectionStatus; error: unknown; retry: () => void}) {
   const {t} = useI18n();
   const open = useOpenEntry();
+  // Stable renderers: each page of credits is memoised and redraws only when its own page changes.
+  const renderCredit = useCallback((c: PersonCredit) => <EntryCard key={`${c.media.id}:${c.role}:${c.character}`} entry={c.media} caption={c.creditKind === 'cast' ? (c.character ? t('web.person.as', {character: c.character}) : c.role) : c.role || c.department} onOpen={() => open(c.media)} onPlay={c.media.playback ? () => open(c.media, 'play') : undefined} onMore={anchor => open(c.media, 'more', undefined, anchor)} />, [t, open]);
   return (
     <>
       {status === 'error' ? <Inset><ErrorNotice error={error} context="person" retry={retry} /></Inset> : null}
@@ -135,8 +144,8 @@ function CreditsGrid({collection, status, error, retry}: {collection: WindowedCo
         columnMin={gridColumnMin('poster')}
         estimateRowHeight={300}
         label={t('web.person.credits')}
-        renderItem={c => <EntryCard key={`${c.media.id}:${c.role}:${c.character}`} entry={c.media} caption={c.creditKind === 'cast' ? (c.character ? t('web.person.as', {character: c.character}) : c.role) : c.role || c.department} onOpen={() => open(c.media)} onPlay={c.media.playback ? () => open(c.media, 'play') : undefined} onMore={anchor => open(c.media, 'more', undefined, anchor)} />}
-        renderPlaceholder={() => <div aria-hidden><Skeleton style={{aspectRatio: '2 / 3', width: '100%'}} /><Skeleton height={14} width="70%" style={{marginTop: 8}} /></div>}
+        renderItem={renderCredit}
+        renderPlaceholder={creditPlaceholder}
       />
     </>
   );

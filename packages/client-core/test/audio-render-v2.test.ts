@@ -26,6 +26,14 @@ test('§18.1 v2: a direct plan reads whole; unknown versions and malformed plans
   assert.deepEqual(unavailable, {version: 2, mode: 'unavailable', id: 'm2', reason: 'The owner doesn’t allow converting audio.'});
 });
 
+test('a direct plan with no seek index says where a part-way start reads from; only at the plan’s own rate', () => {
+  const deepStart = {url: '/v1/media/g/audio-converted', container: 'flac', codec: 'flac', sampleRate: 44100, channels: 2, bitDepth: 16};
+  assert.deepEqual(parseAudioRenderV2({...direct, deepStart})?.deepStart, deepStart);
+  assert.equal(parseAudioRenderV2({...direct, deepStart: {...deepStart, sampleRate: 48000}})?.deepStart, undefined, 'other frames than the plan’s would misplace the start');
+  assert.equal(parseAudioRenderV2({...direct, deepStart: {...deepStart, url: 7}})?.deepStart, undefined);
+  assert.equal(parseAudioRenderV2({...direct, mode: 'converted', deepStart})?.deepStart, undefined);
+});
+
 test('§18.1 v2: a presentation carries the v2 plan as `audio`', () => {
   const p = parsePresentation({generation: 1, mode: 'direct', url: '/v1/media/g/file', startPositionMs: 0, subtitles: [], decision: {}, audioRender: direct});
   assert.equal(p.audio?.mode, 'direct');

@@ -212,6 +212,22 @@ test('a holder whose stream fails hands on: the next window tries, and a window 
   assert.equal((settled[0] as PromiseRejectedResult).reason.code, 'network');
 });
 
+test('a holder that loses its lease (a plain-HTTP page) stops its stream and ends as a lost lock', async () => {
+  const lease = new AbortController();
+  const env: SharedStreamEnvironment = {
+    lock: (_name, _signal, work) => work(lease.signal),
+    channel: () => ({post: () => {}, listen: () => () => {}, close: () => {}}),
+  };
+  let streamSignal: AbortSignal | undefined;
+  const real: StreamOpener = (_last, _on, signal) => new Promise<void>(resolve => { streamSignal = signal; signal.addEventListener('abort', () => resolve(), {once: true}); });
+  const run = sharedStreamOpener('feed', real, env)(undefined, () => {}, new AbortController().signal);
+  await tick();
+  assert.ok(streamSignal && !streamSignal.aborted);
+  lease.abort();
+  await assert.rejects(run, (error: {code?: string}) => error.code === 'event_stream_lock');
+  assert.ok(streamSignal!.aborted, 'the stream this window held is closed');
+});
+
 test('an overlapping SSE reconnect retries streaming without falling back to polling', async () => {
  const timers: (() => void)[]=[];
  let opened=0, polls=0;

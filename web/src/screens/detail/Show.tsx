@@ -27,6 +27,8 @@ import {getContainerState} from '@core/container-state.ts';
 import {useI18n, type I18n} from '../../app/i18n';
 import {GroupBar, GroupRows} from '../shared/GroupBrowse';
 import {useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-browse';
+import {groupSequence} from '../../app/container-play';
+import {useQuietRefresh} from '../../app/quiet-refresh';
 
 type ShowSearch = {library?: string; season?: string; episode?: string; title?: string; sort?: string; direction?: 'asc' | 'desc'; filters?: string};
 /** Up to this many seasons show as tabs; beyond it, a menu (Spec — Title Pages §2). */
@@ -76,6 +78,8 @@ export function ShowScreen() {
   const seasonIdParam = seasonParam && !/^\d+$/.test(seasonParam) ? seasonParam : undefined;
   const route = useMemo<ShowWorkspaceRoute>(() => ({libraryId, ...(showId !== 'season' ? {showId} : {}), ...(seasonIdParam ? {seasonId: seasonIdParam} : {})}), [libraryId, showId, seasonIdParam]);
   const {snapshot, selectSeason, selectGroup, nextSeasons, previousSeasons, retry} = useShowWorkspace(route);
+  // A show the server says changed is read again quietly; the notice is for one that stays refused.
+  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', retry);
   const recommendations = useShowRecommendations(showId);
   const notInterested = useNotInterested();
   const recommendationRows = relatedRowsForPage((recommendations.data?.rows ?? []).map(row => withoutHidden(row, notInterested.hidden)));
@@ -146,16 +150,12 @@ export function ShowScreen() {
   const episodeMembers = selected?.group ? undefined : selected?.seasonId ?? show?.id;
   const episodeSpec = useMemo<GroupSpec | undefined>(() => (show && episodeMembers && (libraryKind === 'tv' || libraryKind === 'anime') ? {libraryId: show.libraryId, libraryKind, pivot: 'episodes', base: [{field: 'memberOf', operator: 'equals', value: episodeMembers}], own: 'season'} : undefined), [show, episodeMembers, libraryKind]);
   const episodeGroup = useGroupBrowse(episodeSpec, {sort: search.sort, direction: search.direction, filters: search.filters}, useCallback((next: GroupChoice) => void navigate({to: params.episodeId ? '/show/$showId/episode/$episodeId' : '/show/$showId', params: {showId, ...(params.episodeId ? {episodeId: params.episodeId} : {})}, search: showSearch({sort: next.sort, direction: next.direction, filters: next.filters}), replace: true, resetScroll: false}), [navigate, showId, params.episodeId, showSearch]));
-  // A sorted or filtered list plays on in the order shown: the episodes loaded after the one pressed.
+  // A sorted or filtered list plays on in the order shown: the whole list, from the server's query,
+  // starting at the episode pressed.
   const playListed = useCallback((episode: ContentEntry, startSeconds?: number) => {
-    const list = episodeGroup.collection;
-    const queue: ContentEntry[] = [];
-    const total = list?.getSnapshot().total ?? 0;
-    let at = -1;
-    for (let i = 0; list && i < total && i < 2000; i++) { const item = list.itemAt(i); if (at < 0) { if (item?.id === episode.id) at = i; else continue; } if (!item || queue.length >= 200) break; if (item.playback) queue.push(item); }
-    if (!queue.length && episode.playback) queue.push(episode);
-    if (queue.length) player.playSequence(queue, 0, startSeconds ?? episode.playback?.startSeconds ?? episode.progressSeconds ?? 0);
-  }, [episodeGroup.collection, player]);
+    if (!episode.playback) return;
+    player.playSequence([episode], 0, startSeconds ?? episode.playback.startSeconds ?? episode.progressSeconds ?? 0, groupSequence(episodeGroup));
+  }, [episodeGroup, player]);
   const openedHere = useRef(false);
   const openEpisode = useCallback((episode: ContentEntry) => {
     openedHere.current = true;
@@ -190,6 +190,17 @@ export function ShowScreen() {
   // A mark (or its Undo, or a mark from a card's menu) re-reads the page, so every episode's tick follows.
   const showWatched = useContainerWatched(api, show ? 'show' : undefined, show?.id, {title: show?.title, onChanged: retry});
   const seasonWatched = useContainerWatched(api, selected?.seasonId ? 'season' : undefined, selected?.seasonId ?? undefined, {title: show && markedSeason ? `${show.title} · ${seasonName(t, markedSeason)}` : show?.title, onChanged: retry});
+  // Stable cell renderers: each page of the windowed episode list is memoised, and a fresh function
+  // every render would redraw every episode on screen with each render of this page.
+  const moreEpisode = useCallback((e: ContentEntry, el: Element) => player.more(e, anchorOf(el)), [player]);
+  const allSeasons = !selected?.seasonId;
+  const renderGroupEpisode = useCallback((episode: ContentEntry) => layout === 'grid'
+    ? <EpisodeCard episode={episode} onPlay={playListed} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId} />
+    : <EpisodeRow episode={episode} showSeason={allSeasons} onPlay={playListed} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId} />, [layout, playListed, openEpisode, moreEpisode, episodeId, allSeasons]);
+  const renderEpisode = useCallback((episode: ContentEntry) => layout === 'grid'
+    ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId} />
+    : <EpisodeRow episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId} />, [layout, playEpisode, openEpisode, moreEpisode, episodeId]);
+  const renderEpisodePlaceholder = useCallback(() => layout === 'grid' ? <EpisodePlaceholder /> : <div className={s.episodeRowPlaceholderRow} aria-hidden />, [layout]);
   if ((snapshot.phase === 'error' && !data) || missing) {
     return (
       <div style={{position: 'relative'}}>
@@ -245,6 +256,7 @@ export function ShowScreen() {
         <TitleHero
           onBack={back}
           loading={!show}
+          pageKey={show?.id}
           backdrop={show?.backdropUrl}
           artwork={{path: show?.posterUrl, shape: 'poster', icon: 'tv'}}
           logo={show?.logoUrl}
@@ -269,7 +281,7 @@ export function ShowScreen() {
       <Page>
         <div style={{position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', gap: 32}}>
           {snapshot.phase === 'error' && data ? <Inset><ErrorNotice error={snapshot.error} context="show" retry={retry} /></Inset> : null}
-          {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="show" refresh={retry} /></Inset> : null}
+          {changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="show" refresh={retry} /></Inset> : null}
           <Section title={t('title.episodes')}>
             <div className={s.seasonBar}>
               <SeasonSwitcher
@@ -307,10 +319,8 @@ export function ShowScreen() {
                 estimateRowHeight={layout === 'grid' ? 240 : 112}
                 className={layout === 'list' ? s.episodeList : undefined}
                 wrap={list => <div style={placeholderTint(show?.id)} onKeyDown={layout === 'list' ? episodeListKeys : undefined}>{list}</div>}
-                renderItem={episode => layout === 'grid'
-                  ? <EpisodeCard episode={episode} onPlay={playListed} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />
-                  : <EpisodeRow episode={episode} showSeason={!selected?.seasonId} onPlay={playListed} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />}
-                renderPlaceholder={() => layout === 'grid' ? <EpisodePlaceholder /> : <div className={s.episodeRowPlaceholderRow} aria-hidden />}
+                renderItem={renderGroupEpisode}
+                renderPlaceholder={renderEpisodePlaceholder}
               />
             ) : episodes ? (
               <div style={placeholderTint(show?.id)} onKeyDown={layout === 'list' ? episodeListKeys : undefined}>
@@ -321,10 +331,8 @@ export function ShowScreen() {
                 estimateRowHeight={layout === 'grid' ? 240 : 112}
                 className={layout === 'list' ? s.episodeList : undefined}
                 label={selectedSeason ? `${seasonName(t, selectedSeason)} · ${t('title.episodes')}` : t('title.episodes')}
-                renderItem={episode => layout === 'grid'
-                  ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />
-                  : <EpisodeRow episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={episode.id === episodeId} />}
-                renderPlaceholder={() => layout === 'grid' ? <EpisodePlaceholder /> : <div className={s.episodeRowPlaceholderRow} aria-hidden />}
+                renderItem={renderEpisode}
+                renderPlaceholder={renderEpisodePlaceholder}
               />
               </div>
             ) : data && !firstPage?.entries.length ? (

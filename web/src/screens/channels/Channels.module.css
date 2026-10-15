@@ -18,13 +18,13 @@
 .grid { --ch: 220px; --row: 72px; --ruler: 40px; position: relative; margin: 0 var(--page-gutter) 16px; border: 1px solid var(--line-soft); border-radius: var(--radius-surface); background: var(--surface-slate); overflow: hidden; }
 .scroller { position: relative; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; outline: none; }
 .ruler { position: sticky; top: 0; z-index: var(--layer-sticky); display: flex; height: var(--ruler); background: var(--surface-slate); border-bottom: 1px solid var(--line-soft); }
-.rulerCorner { width: var(--ch); flex-shrink: 0; display: flex; align-items: center; padding: 0 12px; border-right: 1px solid var(--line-soft); font-size: 12px; font-weight: 600; color: var(--text-tertiary); }
+.rulerCorner { width: var(--ch); flex-shrink: 0; display: flex; align-items: center; padding: 0 12px; border-right: 1px solid var(--line-soft); font-size: 0.75rem; font-weight: 600; color: var(--text-tertiary); }
 .rulerLane { position: relative; flex: 1; overflow: hidden; }
-.tick { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 8px; font-size: 12px; color: var(--text-tertiary); white-space: nowrap; border-left: 1px solid var(--line-soft); font-variant-numeric: tabular-nums; }
+.tick { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; padding-left: 8px; font-size: 0.75rem; color: var(--text-tertiary); white-space: nowrap; border-left: 1px solid var(--line-soft); font-variant-numeric: tabular-nums; }
 .tickHour { color: var(--text-secondary); font-weight: 600; }
 .tickDay { color: var(--text-primary); font-weight: 700; }
-.nowTab { position: absolute; top: 9px; transform: translateX(-50%); padding: 2px 7px; border-radius: var(--radius-pill); background: var(--accent); color: var(--text-on-action); font-size: 11px; font-weight: 700; white-space: nowrap; pointer-events: none; z-index: 1; }
-.edge { position: absolute; top: 6px; z-index: 1; display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 8px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--surface-raised) 92%, transparent); border: 1px solid var(--line-soft); color: var(--text-secondary); font-size: 12px; font-weight: 600; }
+.nowTab { position: absolute; top: 9px; transform: translateX(-50%); padding: 2px 7px; border-radius: var(--radius-pill); background: var(--accent); color: var(--text-on-action); font-size: 0.6875rem; font-weight: 700; white-space: nowrap; pointer-events: none; z-index: 1; }
+.edge { position: absolute; top: 6px; z-index: 1; display: inline-flex; align-items: center; gap: 2px; height: 28px; padding: 0 8px; border-radius: var(--radius-pill); background: color-mix(in srgb, var(--surface-raised) 92%, transparent); border: 1px solid var(--line-soft); color: var(--text-secondary); font-size: 0.75rem; font-weight: 600; }
 .edge:hover { color: var(--text-primary); background: var(--surface-raised); }
 .edgeLeft { left: 6px; }
 .edgeRight { right: 6px; }
@@ -36,12 +36,12 @@
 .channelMain { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; height: 100%; text-align: left; border-radius: var(--radius-small); }
 .channelMain:hover .channelName { color: var(--text-primary); }
 .channelMain:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; }
-.logo { width: 40px; height: 40px; flex-shrink: 0; border-radius: 8px; display: grid; place-items: center; overflow: hidden; background: var(--surface-raised); color: var(--text-primary); font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.logo { width: 40px; height: 40px; flex-shrink: 0; border-radius: 8px; display: grid; place-items: center; overflow: hidden; background: var(--surface-raised); color: var(--text-primary); font-size: 0.8125rem; font-weight: 700; letter-spacing: 0.02em; }
 .logo img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
 .channelCopy { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
-.channelName { font-size: 13.5px; font-weight: 600; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 5px; }
+.channelName { font-size: 0.84375rem; font-weight: 600; color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: flex; align-items: center; gap: 5px; }
 .channelName > span:first-child { overflow: hidden; text-overflow: ellipsis; }
-.channelMeta { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; overflow: hidden; }
+.channelMeta { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-tertiary); font-variant-numeric: tabular-nums; min-width: 0; white-space: nowrap; overflow: hidden; }
 .star { color: var(--accent); flex-shrink: 0; }
 .libraryMark { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; flex-shrink: 0; border-radius: 5px; background: var(--accent-tint); color: var(--accent-strong); }
 .channelMore { opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); flex-shrink: 0; }
@@ -56,11 +56,11 @@
 .cellPast .cellTitle, .cellPast .cellSub { color: var(--text-tertiary); }
 .cellDim { opacity: 0.4; }
 .cellSliver { padding: 0; }
-.cellTitle { display: flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.cellTitle { display: flex; align-items: center; gap: 6px; font-size: 0.84375rem; font-weight: 600; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .cellTitle > span { overflow: hidden; text-overflow: ellipsis; }
-.cellSub { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }
+.cellSub { display: flex; align-items: center; gap: 6px; font-size: 0.75rem; color: var(--text-secondary); white-space: nowrap; overflow: hidden; font-variant-numeric: tabular-nums; }
 .clip { color: var(--text-tertiary); font-weight: 400; flex-shrink: 0; }
-.flag { flex-shrink: 0; padding: 1px 6px; border-radius: var(--radius-pill); font-size: 10.5px; font-weight: 700; letter-spacing: 0.02em; background: var(--accent-tint); color: var(--accent-strong); }
+.flag { flex-shrink: 0; padding: 1px 6px; border-radius: var(--radius-pill); font-size: 0.65625rem; font-weight: 700; letter-spacing: 0.02em; background: var(--accent-tint); color: var(--accent-strong); }
 .flagLive { background: color-mix(in srgb, var(--color-record) 22%, transparent); color: var(--text-primary); }
 .flagDot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex-shrink: 0; }
 .recDot { width: 8px; height: 8px; border-radius: 50%; background: var(--color-record); flex-shrink: 0; }
@@ -68,7 +68,7 @@
 .gap { background: transparent; border: 1px dashed var(--line-strong); color: var(--text-tertiary); }
 .gap .cellTitle { font-weight: 500; color: var(--text-tertiary); }
 .loadingBar { position: absolute; top: 5px; bottom: 5px; left: 0; right: 0; }
-.failedBand { position: absolute; inset: 5px 0; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 6px; border: 1px dashed var(--line-strong); color: var(--text-secondary); font-size: 12.5px; }
+.failedBand { position: absolute; inset: 5px 0; display: flex; align-items: center; gap: 10px; padding: 0 12px; border-radius: 6px; border: 1px dashed var(--line-strong); color: var(--text-secondary); font-size: 0.78125rem; }
 .nowLine { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; z-index: 0; }
 
 /* ── The list view ── */
@@ -79,12 +79,12 @@
 .listMain { flex: 1; min-width: 0; display: flex; align-items: center; gap: 14px; height: 100%; text-align: left; }
 .listMain:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; border-radius: var(--radius-small); }
 .listCopy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.listNow { display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--text-secondary); min-width: 0; }
+.listNow { display: flex; align-items: center; gap: 10px; font-size: 0.8125rem; color: var(--text-secondary); min-width: 0; }
 .listNow > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .listProgress { width: 120px; flex-shrink: 0; height: 3px; border-radius: 2px; background: var(--line-soft); overflow: hidden; }
 .listProgress > i { display: block; height: 100%; background: var(--accent); }
-.listLeft { flex-shrink: 0; font-size: 12px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
-.listNext { font-size: 12px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.listLeft { flex-shrink: 0; font-size: 0.75rem; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.listNext { font-size: 0.75rem; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 @media (max-width: 720px) {
   .listRow { gap: 8px; padding: 0 6px 0 12px; }
   .listNow { flex-wrap: wrap; row-gap: 4px; }
@@ -104,11 +104,11 @@
 /* ── A channel's timeline (§6) ── */
 .timeline { display: flex; flex-direction: column; gap: 4px; max-height: min(70vh, 720px); overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
 .timelineDay { display: flex; flex-direction: column; gap: 4px; }
-.timelineHeader { position: sticky; top: 0; z-index: 1; margin: 0; padding: 10px 2px 6px; background: var(--surface-overlay); font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-tertiary); }
+.timelineHeader { position: sticky; top: 0; z-index: 1; margin: 0; padding: 10px 2px 6px; background: var(--surface-overlay); font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-tertiary); }
 .timelineRow { position: relative; display: flex; gap: 12px; align-items: flex-start; padding: 10px 10px; border-radius: 8px; text-align: left; color: var(--text-primary); }
 .timelineRow:hover { background: var(--surface-translucent); }
 .timelineRow:focus-visible { outline: 2px solid var(--line-focus); outline-offset: -2px; }
 .timelineNow { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-.timelineTime { width: 64px; flex-shrink: 0; padding-top: 1px; font-size: 12.5px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.timelineTime { width: 64px; flex-shrink: 0; padding-top: 1px; font-size: 0.78125rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
 .timelineCopy { display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1; }
 .timelineLoading { display: flex; flex-direction: column; gap: 6px; padding: 6px 0; }

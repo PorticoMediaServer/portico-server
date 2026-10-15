@@ -9,7 +9,9 @@ import {useService} from '../../app/content';
 import {captionFor, formatDuration, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {mosaicPaths} from '../../app/title-layout';
 import {useEntryHref, useOpenEntry} from '../../app/open';
-import {sequenceContainer} from '../../app/container-play';
+import {groupSequence, occurrenceSequence, savedSequence, sequenceContainer, type SequenceContainer} from '../../app/container-play';
+import {RemovalUndoToast, type Removal} from './RemovalUndo';
+import type {ContentEntry} from '@core/library-content.ts';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {useSession} from '../../app/session';
 import {AnchoredMenu, Artwork, Button, Card, ConfirmDialog, Grid, Inset, ListRow, Menu, MenuRow, Notice, Page, PageHeader, Skeleton, StateView, Surface, Switch, WindowedGrid, anchorOf, createStaticCollection, type MenuAnchor, type MenuItem} from '../../ui';
@@ -28,6 +30,12 @@ import {GroupBar, GroupGrid, GroupLibraryChips, GroupRows} from '../shared/Group
 
 const requestId = () => Promise.resolve(crypto.randomUUID());
 type Visible = Extract<PlaylistOccurrence, {hidden: false}>;
+
+/** The first playable title a sorted or filtered list has loaded: what a Play of the whole list starts on. */
+function firstLoaded(list: {itemAt(index: number): ContentEntry | undefined} | undefined): ContentEntry | undefined {
+  for (let i = 0; list && i < 50; i++) { const item = list.itemAt(i); if (!item) return undefined; if (item.playback) return item; }
+  return undefined;
+}
 
 /** One playlist or personal collection: identity, Play, then its ordered entries, and (WEB-SAVED-02)
  * the management the server offers for it: rename, reorder, remove and delete. */
@@ -57,6 +65,8 @@ export function SavedResourceScreen() {
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState('');
   const [entryMenu, setEntryMenu] = useState<{id: string; anchor: MenuAnchor} | null>(null);
+  const [removal, setRemoval] = useState<Removal | null>(null);
+  const closeRemoval = useCallback(() => setRemoval(null), []);
   const last = useRef('');
   useEffect(() => {
     const key = JSON.stringify(route);
@@ -98,6 +108,11 @@ export function SavedResourceScreen() {
   }, [definition, libraries]);
   const choose = useCallback((next: {library?: string} & GroupChoice) => void navigate({to: '/saved/$kind/$resourceId', params: {kind, resourceId}, search: {...(title ? {title} : {}), ...next}, replace: true, resetScroll: false}), [navigate, kind, resourceId, title]);
   const group = useGroupBrowse(playlist ? listScope.spec : viewSpec, {sort: address.sort, direction: address.direction, filters: address.filters}, useCallback((next: GroupChoice) => choose({library: playlist ? listScope.chosen : undefined, ...next}), [choose, playlist, listScope.chosen]));
+  // Sorted or filtered, Play and Shuffle play that list (the server's query, however long); a row
+  // plays it from that row. Otherwise the page's own list plays, whole, from the server.
+  const sortedFirst = group.active ? firstLoaded(group.collection) : undefined;
+  const playSorted = (entry: ContentEntry, shuffle = false) => player.playSequence([entry], 0, shuffle ? 0 : entry.playback?.startSeconds ?? 0, groupSequence(group, {shuffle}));
+  const playOwn = (list: readonly ContentEntry[], container: SequenceContainer | undefined) => { if (list.length) player.playSequence(list, 0, 0, container); };
 
   if (playlist) {
     const snap = savedBinding.snapshot;
@@ -134,12 +149,16 @@ export function SavedResourceScreen() {
       if (can('remove')) items.push({id: 'remove', label: t('web.saved.removeFromPlaylist'), icon: 'minus', destructive: true, separatorBefore: true});
       // PERF-S06: a row plays the playlist from here — one v1 container request anchored at the
       // pressed entry, never the loaded page.
-      const playFromHere = () => player.playSequence(media.map(x => x.media), media.indexOf(e), e.media.playback?.startSeconds ?? 0, sequenceContainer('playlist', resourceId));
+      const playFromHere = () => player.playSequence(media.map(x => x.media), media.indexOf(e), e.media.playback?.startSeconds ?? 0, occurrenceSequence(resourceId, e.id));
       return <ListRow key={e.id} index={i + 1} title={e.media.title} subtitle={cardCaptionOf(e.media)} meta={formatDuration(e.media.duration)} art={{path: e.media.posterUrl, icon: iconFor(e.media.kind), progress: progressFor(e.media)}} artShape={shapeFor(e.media.kind)} onClick={() => (e.media.playback ? playFromHere() : open(e.media))} actions={<Menu label={t('web.dvr.actionsFor', {title: e.media.title})} trigger={<Button variant="ghost" icon="more" size="sm" aria-label={t('web.dvr.actionsFor', {title: e.media.title})} disabled={busy} />} items={items} onSelect={id => {
         if (id === 'open') open(e.media);
         else if (id === 'up') move(index, -1);
         else if (id === 'down') move(index, 1);
-        else if (id === 'remove') void change(() => service.mutate({action: 'remove', entryId: e.id}));
+        else if (id === 'remove') void change(async () => {
+          await service.mutate({action: 'remove', entryId: e.id});
+          const receipt = service.getSnapshot().lastReceipt;
+          if (receipt?.undoToken && receipt.undoUntil) setRemoval({token: receipt.undoToken, until: receipt.undoUntil, title: e.media.title, from: 'playlist'});
+        });
       }} />} />;
     };
     const pageMenu: MenuItem[] = [];
@@ -151,10 +170,15 @@ export function SavedResourceScreen() {
     const mosaic = mosaicPaths({}, media.map(e => e.media));
     return (
       <Page>
-        <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={t('web.saved.playlist')} title={name} titleAdornment={<HeroMosaic paths={mosaic ?? []} />} subtitle={p ? [p.entryCount > 0 ? t('web.saved.items', {count: p.entryCount}) : undefined, p.summary].filter(Boolean).join(' · ') || undefined : undefined} actions={<>
+        <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={t('web.saved.playlist')} pageKey={p?.id} title={name} titleAdornment={<HeroMosaic paths={mosaic ?? []} />} subtitle={p ? [p.entryCount > 0 ? t('web.saved.items', {count: p.entryCount}) : undefined, p.summary].filter(Boolean).join(' · ') || undefined : undefined} actions={<>
           {/* PERF-S06: Play and Shuffle send one v1 playlist-container request, however large. */}
-          {first ? <Button variant="primary" icon="play" label={t('action.play')} onClick={() => player.playSequence(media.map(e => e.media), 0, 0, sequenceContainer('playlist', resourceId))} /> : null}
-          {media.filter(e => e.media.playback).length > 1 ? <Button variant="secondary" icon="shuffle" label={t('title.shuffle')} onClick={() => player.playSequence(media.map(e => e.media), 0, 0, sequenceContainer('playlist', resourceId, {shuffle: true}))} /> : null}
+          {group.active ? (sortedFirst ? <>
+            <Button variant="primary" icon="play" label={t('action.play')} onClick={() => playSorted(sortedFirst)} />
+            <Button variant="secondary" icon="shuffle" label={t('title.shuffle')} onClick={() => playSorted(sortedFirst, true)} />
+          </> : null) : <>
+            {first ? <Button variant="primary" icon="play" label={t('action.play')} onClick={() => playOwn(media.map(e => e.media), sequenceContainer('playlist', resourceId))} /> : null}
+            {media.filter(e => e.media.playback).length > 1 ? <Button variant="secondary" icon="shuffle" label={t('title.shuffle')} onClick={() => playOwn(media.map(e => e.media), sequenceContainer('playlist', resourceId, {shuffle: true}))} /> : null}
+          </>}
           {pageMenu.length ? <Menu label={t('web.saved.playlistOptions')} trigger={<Button variant="ghost" icon="more" aria-label={t('web.saved.playlistOptions')} />} items={pageMenu} onSelect={id => (id === 'rename' ? setRenaming(true) : setDeleting(true))} /> : null}
         </>} />
         {snap.phase === 'error' ? <Inset><ErrorNotice error={snap.error} context="playlist" retry={() => void service.retry().catch(() => {})} /></Inset> : null}
@@ -168,7 +192,7 @@ export function SavedResourceScreen() {
           <GroupRows group={group} context="playlist" label={name} estimateRowHeight={72}
             // The same framed rows as Playlist order; the frame supplies the page's gutter, so the list inside it has none of its own.
             wrap={list => <Inset><Surface padless><div style={{'--page-gutter': '0px'} as React.CSSProperties}>{list}</div></Surface></Inset>}
-            renderItem={entry => <ListRow title={entry.title} subtitle={cardCaptionOf(entry)} meta={formatDuration(entry.duration)} art={{path: entry.posterUrl, icon: iconFor(entry.kind), progress: progressFor(entry)}} artShape={shapeFor(entry.kind)} onClick={() => open(entry, entry.playback ? 'play' : 'open')} actions={<Button variant="ghost" icon="more" size="sm" aria-label={t('card.more', {title: entry.title})} onClick={(e: React.MouseEvent<HTMLElement>) => open(entry, 'more', undefined, anchorOf(e.currentTarget))} />} />}
+            renderItem={entry => <ListRow title={entry.title} subtitle={cardCaptionOf(entry)} meta={formatDuration(entry.duration)} art={{path: entry.posterUrl, icon: iconFor(entry.kind), progress: progressFor(entry)}} artShape={shapeFor(entry.kind)} onClick={() => (entry.playback ? playSorted(entry) : open(entry))} actions={<Button variant="ghost" icon="more" size="sm" aria-label={t('card.more', {title: entry.title})} onClick={(e: React.MouseEvent<HTMLElement>) => open(entry, 'more', undefined, anchorOf(e.currentTarget))} />} />}
             renderPlaceholder={() => <div style={{height: 72, padding: '8px 16px'}}><Skeleton height={56} /></div>} />
         ) : media.length > SECTION_WINDOW_AT ? (
           <WindowedRows items={media} estimateRowHeight={72} label={name} renderItem={(e, i) => playlistRow(e, i)} />
@@ -179,6 +203,7 @@ export function SavedResourceScreen() {
         {(pageable || loadingMore) && !group.active && !group.pending ? <ScrollSentinel cursor={pageable?.nextCursor ?? ''} disabled={snap.phase !== 'ready'} onMore={() => { const at = savedBinding.snapshot.projection?.sections.find(s => s.nextCursor); if (at) void service.next(at.id).catch(() => {}); }} /> : null}
         <NameDialog open={renaming} title={t('web.saved.renamePlaylist')} action={t('action.save')} context="playlist" initialName={p?.name} initialSummary={p?.summary} onClose={() => setRenaming(false)} onSave={(n, summary) => service.mutate({action: 'rename', name: n, ...(can('summary') ? {summary} : {})})} />
         <ConfirmDialog open={deleting} onOpenChange={o => !o && setDeleting(false)} title={t('web.saved.deleteTitle', {name})} body={t('web.saved.deletePlaylistBody')} confirmLabel={t('web.saved.deletePlaylistAction')} destructive busy={busy} error={problem || undefined} onConfirm={() => void change(() => service.mutate({action: 'delete'}), () => { setDeleting(false); directory(); })} />
+        <RemovalUndoToast removal={removal} onUndo={r => service.mutate({action: 'restore', undoToken: r.token}).then(() => true)} onClose={closeRemoval} />
       </Page>
     );
   }
@@ -199,10 +224,25 @@ export function SavedResourceScreen() {
   const pageMenu: MenuItem[] = [];
   if (can('update')) pageMenu.push({id: 'rename', label: t('web.saved.rename'), icon: 'edit'});
   if (can('delete')) pageMenu.push({id: 'delete', label: view ? t('web.saved.deleteView') : t('web.saved.deleteCollection'), icon: 'trash', destructive: true, separatorBefore: pageMenu.length > 0});
+  // A saved view or collection plays whole, from the server, in the order it is shown.
+  const ownPlayable = items.flatMap(e => (e.media?.playback ? [e.media] : []));
+  const remove = (id: string) => void change(async () => {
+    const title = items.find(x => x.id === id)?.media?.title ?? '';
+    await done(service.mutate({action: 'entries', removeEntryIds: [id]}));
+    const undo = service.getSnapshot().result?.undo;
+    if (undo) setRemoval({token: undo.token, until: undo.until, title, from: 'collection'});
+  });
   return (
     <Page>
-      <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={view ? t('web.saved.savedView') : r?.visibility === 'server' ? t('web.saved.sharedCollection') : t('web.saved.collection')} title={name} titleAdornment={<HeroMosaic paths={collectionMosaic ?? []} />} subtitle={r?.summary} actions={<>
+      <PageHeader onBack={back} backLabel={t('web.saved.title')} eyebrow={view ? t('web.saved.savedView') : r?.visibility === 'server' ? t('web.saved.sharedCollection') : t('web.saved.collection')} pageKey={r?.id} title={name} titleAdornment={<HeroMosaic paths={collectionMosaic ?? []} />} subtitle={r?.summary} actions={<>
         {r?.kind === 'collection' && r.role === 'owner' && can('update') ? <Switch label={t('web.saved.visibleToAll')} checked={r.visibility === 'server'} disabled={snap.pending} onCheckedChange={v => void service.mutate({action: 'update', visibility: v ? 'server' : 'private'}).catch(() => {})} /> : null}
+        {group.active ? (sortedFirst ? <>
+          <Button variant="primary" icon="play" label={t('action.play')} onClick={() => playSorted(sortedFirst)} />
+          <Button variant="secondary" icon="shuffle" label={t('title.shuffle')} onClick={() => playSorted(sortedFirst, true)} />
+        </> : null) : ownPlayable.length ? <>
+          <Button variant="primary" icon="play" label={t('action.play')} onClick={() => playOwn(ownPlayable, savedSequence(resourceId))} />
+          {ownPlayable.length > 1 ? <Button variant="secondary" icon="shuffle" label={t('title.shuffle')} onClick={() => playOwn(ownPlayable, savedSequence(resourceId, {shuffle: true}))} /> : null}
+        </> : null}
         {pageMenu.length ? <Menu label={t('web.saved.collectionOptions')} trigger={<Button variant="ghost" icon="more" aria-label={t('web.saved.collectionOptions')} />} items={pageMenu} onSelect={id => (id === 'rename' ? setRenaming(true) : setDeleting(true))} /> : null}
       </>} />
       {snap.error ? <Inset><ErrorNotice error={snap.error} context="collection" retry={() => void service.refresh().catch(() => {})} /></Inset> : null}
@@ -218,10 +258,11 @@ export function SavedResourceScreen() {
       {(snap.nextCursor || loadingMore) && !group.active ? <ScrollSentinel cursor={snap.nextCursor} disabled={snap.loading} onMore={() => void service.next().catch(() => {})} /> : null}
       <AnchoredMenu anchor={entryMenu?.anchor} open={!!entryMenu} onOpenChange={o => !o && setEntryMenu(null)} label={t('web.saved.collectionOptions')}>
         <MenuRow icon="info" label={t('web.saved.goToItem')} onSelect={() => { const m = items.find(x => x.id === entryMenu?.id)?.media; setEntryMenu(null); if (m) open(m); }} />
-        <MenuRow icon="minus" destructive label={t('web.saved.removeFromCollection')} onSelect={() => { const id = entryMenu!.id; setEntryMenu(null); void change(() => done(service.mutate({action: 'entries', removeEntryIds: [id]}))); }} />
+        <MenuRow icon="minus" destructive label={t('web.saved.removeFromCollection')} onSelect={() => { const id = entryMenu!.id; setEntryMenu(null); remove(id); }} />
       </AnchoredMenu>
       <NameDialog open={renaming} title={view ? t('web.saved.renameView') : t('web.saved.renameCollection')} action={t('action.save')} context="collection" initialName={r?.name} initialSummary={r?.summary} onClose={() => setRenaming(false)} onSave={(n, summary) => done(service.mutate({action: 'update', name: n, summary}))} />
       <ConfirmDialog open={deleting} onOpenChange={o => !o && setDeleting(false)} title={t('web.saved.deleteTitle', {name})} body={view ? t('web.saved.deleteViewBody') : t('web.saved.deleteCollectionBody')} confirmLabel={view ? t('web.saved.deleteViewAction') : t('web.saved.deleteCollectionAction')} destructive busy={busy} error={problem || undefined} onConfirm={() => void change(() => done(service.mutate({action: 'delete'})), () => { setDeleting(false); directory(); })} />
+      <RemovalUndoToast removal={removal} onUndo={r => service.mutate({action: 'entries', undoToken: r.token})} onClose={closeRemoval} />
     </Page>
   );
 }
@@ -250,6 +291,7 @@ function WindowedRows<T extends {id: string}>({items, estimateRowHeight, columnM
   const store = React.useMemo(() => createStaticCollection<T>({keyOf: e => e.id}), []);
   React.useEffect(() => { store.setItems(items); }, [store, items]);
   React.useEffect(() => () => store.collection.dispose(), [store]);
+  const placeholder = useCallback(() => <div style={{height: estimateRowHeight, padding: '8px 16px'}}><Skeleton height={estimateRowHeight - 16} /></div>, [estimateRowHeight]);
   return (
     <WindowedGrid
       collection={store.collection}
@@ -257,7 +299,7 @@ function WindowedRows<T extends {id: string}>({items, estimateRowHeight, columnM
       columnMin={columnMin}
       label={label}
       renderItem={renderItem}
-      renderPlaceholder={() => <div style={{height: estimateRowHeight, padding: '8px 16px'}}><Skeleton height={estimateRowHeight - 16} /></div>}
+      renderPlaceholder={placeholder}
     />
   );
 }

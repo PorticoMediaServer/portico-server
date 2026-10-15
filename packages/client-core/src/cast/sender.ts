@@ -9,7 +9,7 @@ import {routePath} from "../../../contracts/src/routes.ts";
  */
 import type {MessageId} from '../../../i18n/src/index.ts';
 import {serviceProblem, serviceText} from '../presentation/service-text.ts';
-import {CAST_PAIR_TIMEOUT_MS, CAST_PROTOCOL_VERSION, CAST_TAKEOVER_WINDOW_MS, castMetadataFields, parseCastEvent, type CastCommand, type CastEvent, type CastMetadata, type CastTrack} from './protocol.ts';
+import {CAST_PAIR_TIMEOUT_MS, CAST_PROTOCOL_VERSION, CAST_TAKEOVER_WINDOW_MS, castChoiceFields, castMetadataFields, parseCastEvent, type CastChoices, type CastCommand, type CastEvent, type CastMetadata, type CastTrack} from './protocol.ts';
 
 /** One open session with one receiver, over the `urn:x-cast:tv.getportico.cast` namespace. */
 export interface CastTransport {
@@ -113,7 +113,7 @@ export class CastController {
   cancelConnecting() { if (this.state.phase === 'connecting') this.publish({phase: 'off'}); }
 
   /** Pair with the TV on `transport` and start `itemId` there. True once the TV has the title. */
-  async start(transport: CastTransport, itemId: string, meta: CastMetadata, startSeconds: number): Promise<boolean> {
+  async start(transport: CastTransport, itemId: string, meta: CastMetadata, startSeconds: number, choices?: CastChoices): Promise<boolean> {
     this.release(false);
     this.transport = transport;
     this.detach.push(transport.onMessage(raw => { const e = parseCastEvent(raw); if (e) this.receive(e); }));
@@ -124,7 +124,7 @@ export class CastController {
       const code = issued?.bootstrap?.code;
       if (typeof code !== 'string' || !code) throw new CastFailure('cast.error.noCode');
       await this.exchange({type: 'pair', code, origin: this.origin, displayName: this.displayName});
-      await transport.send({type: 'load', itemId, startSeconds: Math.max(0, startSeconds), ...castMetadataFields(meta)});
+      await transport.send({type: 'load', itemId, startSeconds: Math.max(0, startSeconds), ...castMetadataFields(meta), ...castChoiceFields(choices)});
       this.publish({phase: 'casting', itemId, positionSeconds: Math.max(0, startSeconds), paused: false});
       return true;
     } catch (e) {

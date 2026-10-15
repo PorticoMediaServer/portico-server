@@ -21,10 +21,10 @@
 .watched { width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--color-ink) 70%, transparent); color: var(--status-healthy); display: grid; place-items: center; margin-left: auto; }
 .copy { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 2px; }
 /* Two lines at most (a long audiobook title would run to four); the full title is the element's tooltip. */
-.title { font-size: 14px; font-weight: 600; line-height: 1.3; color: var(--text-primary); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.caption { font-size: 12.5px; line-height: 1.35; color: var(--text-tertiary); }
+.title { font-size: 0.875rem; font-weight: 600; line-height: 1.3; color: var(--text-primary); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.caption { font-size: 0.78125rem; line-height: 1.35; color: var(--text-tertiary); }
 .unavailable .artButton { opacity: 0.55; }
-.unavailableMark { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--color-ink) 78%, transparent); color: var(--text-primary); font-size: 11.5px; font-weight: 600; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+.unavailableMark { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--color-ink) 78%, transparent); color: var(--text-primary); font-size: 0.71875rem; font-weight: 600; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .person { align-items: center; text-align: center; }
 .person .art { width: 76%; }
 .banner { border-radius: var(--radius-surface); overflow: hidden; }
@@ -41,3 +41,8 @@
 .selecting .artButton { cursor: pointer; }
 .selected .art { box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px var(--glow-strong); }
 .selected .art::after { content: ''; position: absolute; inset: 0; border-radius: var(--radius-artwork); background: color-mix(in srgb, var(--accent) 18%, transparent); pointer-events: none; }
+
+/* Forced colours remove box shadows, so a focused card is outlined in the system's focus colour. */
+@media (forced-colors: active) {
+  .card:has(:focus-visible) .art { outline: 2px solid Highlight; outline-offset: 2px; }
+}

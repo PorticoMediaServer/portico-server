@@ -586,3 +586,47 @@ func TestPlaybackV1QueueEntriesPlaceSongsOnTheirAlbum(t *testing.T) {
 		t.Fatalf("entries %+v", page.Items)
 	}
 }
+
+// An MP3 (ADTS, Ogg) played direct has no index a client can seek by, so its
+// plan says how to start part-way: the converted route from that frame, FLAC at
+// the file's own rate. Only when converting is allowed and the device decodes
+// FLAC at that rate; a plan in an indexed container has none.
+func TestPlaybackV1DirectPlanOffersADeepStartForUnindexedFiles(t *testing.T) {
+	f := musicFixture(t, 4)
+	if _, err := f.db.Exec(`UPDATE audio_render_facts SET container='mp3',codec='mp3',decoder_config='',start_frames=1105,end_frames=0,raw_frames=1105+duration_frames,trim_source='lame'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.db.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=1`); err != nil {
+		t.Fatal(err)
+	}
+	mp3 := map[string]any{"codec": "mp3", "containers": []string{"mp3"}}
+	start := func(i int, key string) *playbackv1.AudioRender {
+		var s playbackv1.SessionView
+		f.call("POST", "/v1/playback/sessions", map[string]string{"Idempotency-Key": key}, startBody(f.items[i], nil), 201, &s)
+		return s.Presentation.AudioRender
+	}
+	declareDecode(t, f, mp3, map[string]any{"codec": "flac", "containers": []string{"flac"}, "maxSampleRate": 96000})
+	plan := start(0, "deep-start-00000001")
+	if plan.Mode != "direct" || plan.DeepStart == nil || !strings.HasSuffix(plan.DeepStart.URL, "/audio-converted") || plan.DeepStart.Codec != "flac" || plan.DeepStart.SampleRate != 44100 || plan.DeepStart.Channels != 2 || plan.DeepStart.BitDepth != 16 {
+		t.Fatalf("deep start %+v", plan.DeepStart)
+	}
+	// The grant serves the part-way start (this fixture has no converter: unavailable, not unknown).
+	if w := f.raw("GET", plan.DeepStart.URL+"?fromFrame=441000", "", nil, nil); w.Code != 503 || !strings.Contains(w.Body.String(), "conversion_unavailable") {
+		t.Fatalf("deep start route: %d %s", w.Code, w.Body.String())
+	}
+	// No FLAC on the device, or no converting: no deep start.
+	declareDecode(t, f, mp3)
+	if plan = start(1, "deep-start-00000002"); plan.Mode != "direct" || plan.DeepStart != nil {
+		t.Fatalf("no FLAC: %+v", plan.DeepStart)
+	}
+	declareDecode(t, f, mp3, map[string]any{"codec": "flac", "containers": []string{"flac"}})
+	if _, err := f.db.Exec(`UPDATE playback_owner_policy SET transcoding_enabled=0`); err != nil {
+		t.Fatal(err)
+	}
+	if plan = start(2, "deep-start-00000003"); plan.Mode != "direct" || plan.DeepStart != nil {
+		t.Fatalf("converting off: %+v", plan.DeepStart)
+	}
+	if w := f.raw("GET", strings.TrimSuffix(plan.URL, "/audio")+"/audio-converted?fromFrame=441000", "", nil, nil); w.Code != 404 {
+		t.Fatalf("a direct plan without a deep start is not served converted: %d", w.Code)
+	}
+}

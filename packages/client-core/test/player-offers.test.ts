@@ -103,3 +103,5 @@ test('quiet retry of an unreadable new title cannot resurrect the previous title
  assert.equal(s.getSnapshot().data,null);
  s.dispose();
 });
+// B-16.10: a stream of a kind newer than this app (an attachment, a data track) costs only that stream.
+test('a stream this app cannot read is left out and the offer stays usable',async()=>{const d=data();d.sources[0].streams.push({index:7,type:'attachment',codec:'ttf',default:false,forced:false,enabled:false,reason:'track_selection_unavailable'});const s=service(async()=>d);await s.select(q);assert.equal(s.getSnapshot().phase,'ready');assert.deepEqual(s.getSnapshot().data!.sources[0].streams.map(x=>x.index),[1]);s.dispose();});

@@ -19,12 +19,13 @@ export type PersonalResourceEntry=Readonly<{id:string;hidden:boolean;media?:Cont
 export type PersonalSavedIntent=Readonly<
  {action:'create';kind:PersonalResourceKind;name:string;summary?:string;visibility?:PersonalVisibility;definition?:SavedDefinition}|
  {action:'update';name?:string;summary?:string;visibility?:PersonalVisibility;definition?:SavedDefinition}|
- {action:'entries';addItemIds?:readonly string[];removeEntryIds?:readonly string[]}|
+ /** `undoToken` alone: put back the entries a removal took out (its result's `undo.token`). */
+ {action:'entries';addItemIds?:readonly string[];removeEntryIds?:readonly string[];undoToken?:string}|
  {action:'delete'}|{action:'pin';pinned:boolean}|
  {action:'share';actor:SavedActor;role:'viewer'|'editor'}|{action:'unshare';actor:SavedActor}|
  {action:'clear-history'|'reset-viewing-activity'}>;
 export type PersonalSavedError=Readonly<{code:string;message:string;conflict:boolean}>;
-export type PersonalSavedSnapshot=Readonly<{route:SavedRoute|null;loading:boolean;error:PersonalSavedError|null;mutationError:PersonalSavedError|null;pending:boolean;retryPending:boolean;resources:readonly PersonalResource[];resource:PersonalResource|null;entries:readonly PersonalResourceEntry[];browse:BrowseResult|null;revision:number;viewerFence:string;cursor:string|null;history:readonly (string|null)[];nextCursor:string;result:Readonly<{resourceId?:string;deleted:boolean;entries?:EntryOutcomes}>|null;candidates:readonly Readonly<SavedActor&{id:string;displayName:string}>[];candidateCursor:string;libraries:readonly Readonly<{id:string;name:string;kind:string}>[]}>;
+export type PersonalSavedSnapshot=Readonly<{route:SavedRoute|null;loading:boolean;error:PersonalSavedError|null;mutationError:PersonalSavedError|null;pending:boolean;retryPending:boolean;resources:readonly PersonalResource[];resource:PersonalResource|null;entries:readonly PersonalResourceEntry[];browse:BrowseResult|null;revision:number;viewerFence:string;cursor:string|null;history:readonly (string|null)[];nextCursor:string;result:Readonly<{resourceId?:string;deleted:boolean;entries?:EntryOutcomes;/** A removal can be undone until `until` with this token. */undo?:Readonly<{token:string;until:string}>}>|null;candidates:readonly Readonly<SavedActor&{id:string;displayName:string}>[];candidateCursor:string;libraries:readonly Readonly<{id:string;name:string;kind:string}>[]}>;
 const obj=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const str=(v:unknown,max=4096):v is string=>typeof v==='string'&&v.length<=max&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v);
 const id=(v:unknown):v is string=>str(v,256)&&v.length>0&&!/[\r\n]/.test(v);
@@ -218,7 +219,7 @@ export class PersonalSavedService{
    switch(intent.action){
     case 'update':path=encodedRoutePath('patch_saved_resources_id',{id:resourceId});method='PATCH';Object.assign(body,{...(intent.name!==undefined?{name:intent.name}:{}),...(intent.summary!==undefined?{summary:intent.summary}:{}),...(intent.visibility!==undefined?{visibility:visibility(intent.visibility)}:{}),...(intent.definition?{definition:definition(intent.definition)}:{})});break;
     case 'delete':path=encodedRoutePath('delete_saved_resources_id',{id:resourceId});method='DELETE';break;
-    case 'entries':method='PUT';path=encodedRoutePath('put_saved_resources_id_entries',{id:resourceId});if((intent.addItemIds?.length??0)>100||(intent.removeEntryIds?.length??0)>100||intent.addItemIds?.some(x=>!id(x))||intent.removeEntryIds?.some(x=>!id(x)))throw new Error('Invalid collection entries.');Object.assign(body,{addItemIds:intent.addItemIds??[],removeEntryIds:intent.removeEntryIds??[]});break;
+    case 'entries':method='PUT';path=encodedRoutePath('put_saved_resources_id_entries',{id:resourceId});if(intent.undoToken!==undefined){if(!id(intent.undoToken)||intent.addItemIds?.length||intent.removeEntryIds?.length)throw new Error('Invalid collection entries.');body.undoToken=intent.undoToken;break;}if((intent.addItemIds?.length??0)>100||(intent.removeEntryIds?.length??0)>100||intent.addItemIds?.some(x=>!id(x))||intent.removeEntryIds?.some(x=>!id(x)))throw new Error('Invalid collection entries.');Object.assign(body,{addItemIds:intent.addItemIds??[],removeEntryIds:intent.removeEntryIds??[]});break;
     case 'share':case 'unshare':path=encodedRoutePath(intent.action==='share'?'put_saved_resources_id_shares':'delete_saved_resources_id_shares',{id:resourceId});method=intent.action==='share'?'PUT':'DELETE';Object.assign(body,actor(intent.actor));if(intent.action==='share')body.role=intent.role;break;
     case 'pin':path=encodedRoutePath("put_saved_pins_kind_id", {"kind": r.kind, "id": encodeURIComponent(r.id)});method='PUT';body={expectedRevision:r.pinRevision,pinned:intent.pinned};break;
    }
@@ -232,7 +233,8 @@ export class PersonalSavedService{
    if(c.intent.action!=='create'&&!activity&&receipt.resourceId!==this.state.resource?.id)bad();
    const deleted=obj(raw.current)&&raw.current.resourceId===receipt.resourceId&&typeof raw.current.deleted==='boolean'?raw.current.deleted:receipt.deleted===true;
    const entries=c.intent.action==='entries'&&receipt.entries!==undefined?parseEntryOutcomes(receipt.entries):undefined;
-   this.command=undefined;this.publish({pending:false,retryPending:false,mutationError:null,result:{...(entries?{entries}:{}),...(typeof receipt.resourceId==='string'?{resourceId:receipt.resourceId}:{}),deleted},candidates:[],candidateCursor:''});
+   const undo=c.intent.action==='entries'&&id(receipt.undoToken)&&str(receipt.undoUntil,64)?{undo:{token:receipt.undoToken,until:receipt.undoUntil}}:{};
+   this.command=undefined;this.publish({pending:false,retryPending:false,mutationError:null,result:{...(entries?{entries}:{}),...undo,...(typeof receipt.resourceId==='string'?{resourceId:receipt.resourceId}:{}),deleted},candidates:[],candidateCursor:''});
    if(!deleted)await this.refresh();return this.alive(g);
   }catch(e){if(!this.alive(g))return false;const error=info(e);this.publish({pending:false,retryPending:true,mutationError:error});if(error.conflict)await this.refresh();return false;}
  }

@@ -19,6 +19,21 @@ export type CastMetadata = Readonly<{title: string; subtitle?: string; seriesTit
 
 export type CastTrack = Readonly<{id: number; language: string; name: string}>;
 
+/**
+ * The viewer's choices carried to the TV with `load`: the subtitle track chosen on the sender
+ * (`null` for off). The TV starts its own session with it, and the server delivers that track as
+ * the TV can show it: text, or burned into the picture for an image or styled track the TV cannot
+ * draw itself. Absent: the profile's usual choice.
+ */
+export type CastChoices = Readonly<{subtitleTrackId?: string | null}>;
+const trackIdPattern = /^[A-Za-z0-9._:-]{1,128}$/;
+/** `load` fields for `choices`: `subtitleTrackId` is a track id, or "off". */
+export function castChoiceFields(choices: CastChoices | undefined): Record<string, string> {
+  if (!choices || choices.subtitleTrackId === undefined) return {};
+  if (choices.subtitleTrackId === null) return {subtitleTrackId: 'off'};
+  return trackIdPattern.test(choices.subtitleTrackId) ? {subtitleTrackId: choices.subtitleTrackId} : {};
+}
+
 /** Sender → receiver. */
 export type CastCommand =
   | {type: 'pair'; code: string; origin: string; displayName: string}

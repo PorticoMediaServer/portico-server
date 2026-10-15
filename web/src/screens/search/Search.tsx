@@ -18,6 +18,7 @@ import {useFreshDocument} from '../../app/freshness';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 
 import {useI18n, type I18n} from '../../app/i18n';
+import {useQuietRefresh} from '../../app/quiet-refresh';
 
 type ChipId = SearchGroup | 'all';
 /** The type chips, in the one authored order (client-core `search-model.ts`); result sections follow it. */
@@ -70,6 +71,7 @@ export function SearchScreen() {
   useFreshDocument(searchDependencies, context => mem.service.revalidate(context), () => mem.service.getSnapshot().phase === 'ready');
   const service = mem.service;
   const snapshot: SearchSnapshot = useSyncExternalStore(service.subscribe, service.getSnapshot);
+  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', () => service.refresh());
   const address = useSearch({from: '/app/search'});
   const navigate = useNavigate();
   // A linked search (`?q=`) wins over the remembered one.
@@ -194,7 +196,7 @@ export function SearchScreen() {
       ) : null}
       {!hasQuery && !recent.length ? (!libraries.items.length && !libraries.loading ? <NoLibraries where="search" /> : <StateView icon="search" title={t('web.search.emptyTitle')} body={t('web.search.emptyBody')} />) : null}
       {snapshot.phase === 'error' ? <Inset><ErrorNotice error={snapshot.error} context="search" retry={() => void service.retry().catch(() => {})} refresh={() => void service.refresh().catch(() => {})} /></Inset> : null}
-      {snapshot.phase === 'refresh-required' ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="search" refresh={() => void service.refresh().catch(() => {})} /></Inset> : null}
+      {changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="search" refresh={() => void service.refresh().catch(() => {})} /></Inset> : null}
       {snapshot.phase === 'loading' && !snapshot.groups.length ? <LoadingShelves /> : null}
       {failed.length && snapshot.phase === 'ready' ? <Inset><Notice tone="warning" action={{label: t('action.tryAgain'), onClick: () => void service.refresh().catch(() => {})}}>{t('web.search.partial', {groups: i18n.list(failed.map(g => t(searchGroupLabel(g.id))))})}</Notice></Inset> : null}
       {snapshot.phase === 'ready' && !sections.length && hasQuery ? <StateView icon="search" title={t('web.search.noMatches', {query})} body={group ? t('web.search.nothingIn', {group: chips(t).find(c => c.id === group)?.label ?? group}) : t('web.search.noMatchesBody')} action={group ? {label: t('web.search.everything'), onClick: () => setChip('all')} : undefined} /> : null}

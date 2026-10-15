@@ -76,9 +76,12 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with: {ref: '${{ inputs.ref }}'}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        # One Node for CI, the release build and the container image: `.node-version` (the Dockerfile's
+        # web stage names the same release; scripts/check-node-version.mjs keeps them together).
         with:
-          node-version: '22.22.2'
+          node-version-file: .node-version
           cache: npm
+      - run: node scripts/check-node-version.mjs
       - run: npm ci
       - run: node --experimental-strip-types --test packages/contracts/test/*.test.ts
       - run: npm run build --prefix packages/contracts

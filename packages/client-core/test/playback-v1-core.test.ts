@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  AdminSessionsClient, CapabilityPublisher, CommandRouter, DeviceCommandsClient, EventsClient, NowPlayingStore, PlaybackApiError,
+  AdminSessionsClient, CapabilityPublisher, EventsClient, NowPlayingStore, PlaybackApiError,
   PlaybackOptionsClient, PlaybackSessionController, QUEUE_WINDOW_MAX, QueueClient, QueueView, SessionsClient, ShufflePermutation,
-  commandHandler, defaultSelection, markerAt, parseCommand, seekNeedsServer, summarizePlan,
+  defaultSelection, markerAt, seekNeedsServer, summarizePlan,
   type MediaPlayer, type PlayerEvent, type PlayerObservation, type PlayerSource, type ServerEvent,
 } from '../src/playback-v1/index.ts';
 import {FakePlaybackServer, fakeHttp} from '../src/playback-v1/testing/fake-server.ts';
@@ -315,68 +315,6 @@ test('queue: advance moves the current entry and starts the next session; repeat
   q = (await client.update(q.id, q.revision, {repeat: 'all'})).queue;
   const wrapped = await client.advance(q.id, q.revision, 'completion');
   assert.equal(wrapped.queue.current?.position, 0);
-});
-
-// ── Commands and transfers (§9) ────────────────────────────────────
-test('commands: sent through the server, delivered once to the target even when redelivered', async () => {
-  const server = new FakePlaybackServer({devices: [{id: 'phone', name: 'Phone', form: 'phone'}, {id: 'tv', name: 'Living room', form: 'tv'}], deviceId: 'phone'});
-  const phone = new DeviceCommandsClient(fakeHttp(server), key);
-  const devices = await phone.controllable();
-  assert.deepEqual(devices.map(d => d.id), ['tv']);
-  const got: string[] = [];
-  const router = new CommandRouter({onCommand: c => { got.push(c.type); }});
-  const id = await phone.send('tv', {type: 'seek', positionMs: 5000});
-  assert.ok(id);
-  const event = server.eventLog().at(-1) as ServerEvent;
-  assert.equal(router.handle(event), true);
-  assert.equal(router.handle(event), false, 'a redelivered command is ignored');
-  await router.settled();
-  assert.deepEqual(got, ['seek']);
-  assert.equal(parseCommand({commandId: 'c', type: 'setVolume', level: 3}), undefined, 'out-of-range values are refused');
-  assert.equal(parseCommand({commandId: 'c', type: 'teleport'}), undefined, 'unknown types are ignored');
-});
-
-test('commands: the default handler drives a session controller', async () => {
-  const calls: string[] = [];
-  const target = {
-    play: () => calls.push('play'), pause: () => calls.push('pause'), stop: async () => { calls.push('stop'); },
-    seek: (ms: number) => calls.push('seek:' + ms), setAudio: (id: string) => calls.push('audio:' + id), setSubtitles: (id: string | null) => calls.push('subs:' + id),
-    setQuality: () => calls.push('quality'), start: async (t: {itemId: string} | {transferId: string}) => { calls.push('start:' + ('itemId' in t ? t.itemId : t.transferId)); },
-  };
-  const next: string[] = [];
-  const handle = commandHandler(target, {next: () => next.push('next')});
-  for (const c of [{type: 'pause'}, {type: 'resume'}, {type: 'seek', positionMs: 10}, {type: 'setTracks', audio: 'a2', subtitles: null}, {type: 'play', target: {itemId: 'm'}}, {type: 'next'}] as const)
-    await handle({...c, commandId: 'x'} as never);
-  assert.deepEqual(calls, ['pause', 'play', 'seek:10', 'audio:a2', 'subs:null', 'start:m']);
-  assert.deepEqual(next, ['next']);
-});
-
-test('transfer: the source keeps playing until the target reports playing, then the server ends it', async () => {
-  const c = clockwork();
-  const server = new FakePlaybackServer({now: c.now, devices: [{id: 'phone', name: 'Phone', form: 'phone'}, {id: 'tv', name: 'TV', form: 'tv'}], deviceId: 'phone'});
-  const phonePlayer = new FakePlayer();
-  const ended: string[] = [];
-  const phone = new PlaybackSessionController({http: fakeHttp(server), player: phonePlayer, timers: c, key, onServerEnded: s => ended.push(s.id)});
-  const source = (await phone.start({itemId: 'movie-1'}))!;
-  phonePlayer.positionMs = 300_000; phonePlayer.emit('time');
-  await server.handle({method: 'POST', path: `/v1/playback/sessions/${source.id}/timeline`, body: {seq: 1, generation: 1, state: 'playing', positionMs: 300_000}});
-  const transferId = await new DeviceCommandsClient(fakeHttp(server), key).offerTransfer(source.id, 'tv');
-  // The TV hears the offer and starts from the transfer.
-  const offers: string[] = [];
-  const router = new CommandRouter({onTransferOffered: o => offers.push(o.transferId)});
-  for (const e of server.eventLog()) router.handle(e as ServerEvent);
-  assert.deepEqual(offers, [transferId]);
-  const tvServer = server.asDevice('tv');
-  const tvPlayer = new FakePlayer();
-  const tv = new PlaybackSessionController({http: fakeHttp(tvServer), player: tvPlayer, timers: c, key});
-  const target = (await tv.start({transferId}))!;
-  assert.equal(target.presentation.startPositionMs, 300_000);
-  assert.equal(server.session(source.id)!.ended, false, 'not committed until the target plays');
-  await tvServer.handle({method: 'POST', path: `/v1/playback/sessions/${target.id}/timeline`, body: {seq: 1, generation: 1, state: 'playing', positionMs: 301_000}});
-  assert.equal(server.session(source.id)!.ended, true);
-  await phone.sessionUpdated(source.id);
-  assert.deepEqual(ended, [source.id]);
-  phone.dispose(); tv.dispose();
 });
 
 // ── Events (§15) ───────────────────────────────────────────────────

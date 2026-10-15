@@ -14,26 +14,26 @@
 .close { flex-shrink: 0; }
 
 .menu { z-index: var(--layer-menu); min-width: 220px; max-width: 320px; padding: var(--menu-padding); background: var(--surface-overlay); border: 1px solid var(--line-soft); border-radius: var(--radius-panel); box-shadow: var(--shadow-overlay); animation: pop var(--motion-quick) var(--ease-out); outline: none; }
-.menuItem { display: flex; align-items: center; gap: var(--menu-row-gap); min-height: var(--menu-row-min); padding: 4px var(--menu-row-padding-x); border-radius: var(--radius-control); font-size: 14px; color: var(--text-primary); cursor: default; outline: none; user-select: none; }
+.menuItem { display: flex; align-items: center; gap: var(--menu-row-gap); min-height: var(--menu-row-min); padding: 4px var(--menu-row-padding-x); border-radius: var(--radius-control); font-size: 0.875rem; color: var(--text-primary); cursor: default; outline: none; user-select: none; }
 .menuItem[data-highlighted] { background: color-mix(in srgb, var(--accent) 16%, transparent); color: var(--text-primary); }
 .menuItem[data-disabled] { opacity: 0.45; }
 .menuItem.destructive { color: var(--status-danger); }
 .menuItem .check { margin-left: auto; color: var(--accent); }
 .menuHeader { display: flex; align-items: center; gap: 10px; padding: 10px 12px 8px; min-width: 220px; }
-.menuLabel { padding: 8px 12px 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
+.menuLabel { padding: 8px 12px 4px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); }
 .separator { height: 1px; margin: 4px 4px; background: var(--line-soft); }
 .menuIcon { color: var(--text-secondary); }
-.menuMeta { margin-left: auto; font-size: 12px; color: var(--text-tertiary); }
+.menuMeta { margin-left: auto; font-size: 0.75rem; color: var(--text-tertiary); }
 .menuTrailing { margin-left: auto; color: var(--text-tertiary); }
 .menuButton { width: 100%; border: 0; background: none; font: inherit; text-align: left; }
 .menuButton:hover, .menuButton:focus-visible { background: color-mix(in srgb, var(--accent) 16%, transparent); outline: none; }
 .menuButton:disabled { opacity: 0.45; }
 .menuHeading { display: flex; flex-direction: column; gap: 2px; padding: 8px 12px 4px; }
-.menuTitle { font-size: 14px; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.menuCaption { font-size: 12px; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menuTitle { font-size: 0.875rem; font-weight: 600; color: var(--text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.menuCaption { font-size: 0.75rem; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .popover { z-index: var(--layer-menu); background: var(--surface-overlay); border: 1px solid var(--line-soft); border-radius: var(--radius-panel); box-shadow: var(--shadow-overlay); padding: 14px; animation: pop var(--motion-quick) var(--ease-out); outline: none; max-width: min(360px, calc(100vw - 24px)); }
-.tooltip { z-index: var(--layer-notice); padding: 6px 10px; border-radius: 6px; background: var(--surface-bright); color: var(--text-primary); font-size: 12.5px; box-shadow: var(--shadow-overlay); animation: fade var(--motion-quick) var(--ease-out); }
+.tooltip { z-index: var(--layer-notice); padding: 6px 10px; border-radius: 6px; background: var(--surface-bright); color: var(--text-primary); font-size: 0.78125rem; box-shadow: var(--shadow-overlay); animation: fade var(--motion-quick) var(--ease-out); }
 
 /* Right-side panel: full height, slides in from the trailing edge. */
 .side { top: 0; bottom: 0; left: auto; right: 0; transform: none; width: min(var(--dialog-width, 480px), 100vw); max-height: none; height: 100vh; border-radius: var(--radius-overlay) 0 0 var(--radius-overlay); border-right: 0; animation: slideIn var(--motion-standard) var(--ease-out); }
@@ -60,3 +60,9 @@
 
 /* Touch: menu rows are 44 high (component spec). */
 @media (pointer: coarse) { .menuItem { min-height: var(--menu-row-min-touch); } }
+
+/* Forced colours: the highlighted menu row is marked in system colours rather than a tint. */
+@media (forced-colors: active) {
+  .menuItem[data-highlighted] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .menuButton:focus-visible { outline: 2px solid Highlight; outline-offset: -2px; }
+}

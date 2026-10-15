@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useI18n} from '../../app/i18n';
-import {accountApi, type AccountScope} from '../../bridge/account-api';
+import type {AccountScope} from '../../bridge/account-api';
+import {useAccountApi} from './account-hooks';
 import {useSession} from '../../app/session';
 import {ErrorNotice, errorText} from '../../app/errors';
 import {Button, ConfirmDialog, Loading, Notice, SettingsGroup, SettingsPage, SettingsRow, StateView, relative} from '../../ui';
@@ -54,7 +55,7 @@ export const leaveAccountServer = async (request: AccountRequest, serverId: stri
 export function Servers({scope}: {scope: AccountScope}) {
   const {t} = useI18n();
   const session = useSession();
-  const api = useMemo(() => accountApi(scope), [scope.accountId, scope.familyId]);
+  const api = useAccountApi(scope);
   const [servers, setServers] = useState<AccountServer[]>();
   const [error, setError] = useState<unknown>();
   const [notice, setNotice] = useState('');
