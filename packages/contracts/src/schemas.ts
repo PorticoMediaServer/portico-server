@@ -112295,6 +112295,26 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "StartAppSetupRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "StartAppSetupResponse": {
+    "properties": {
+      "serverId": {
+        "type": "string"
+      },
+      "setupToken": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "serverId",
+      "setupToken"
+    ],
+    "type": "object"
+  },
   "StartBrowserSetupRequest": {
     "properties": {},
     "required": [],

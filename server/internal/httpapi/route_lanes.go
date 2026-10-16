@@ -573,6 +573,7 @@ var routeLanes = map[string]string{
 	"POST /v1/receivers/{id}/heartbeat":                                          "default",
 	"POST /v1/saved-resources":                                                   "default",
 	"POST /v1/setup":                                                             "auth",
+	"POST /v1/setup/app":                                                         "default",
 	"POST /v1/setup/browser":                                                     "default",
 	"POST /v1/setup/finish":                                                      "auth",
 	"POST /v1/setup/remote-recovery":                                             "auth",
