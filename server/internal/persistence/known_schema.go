@@ -68,6 +68,8 @@ index catalog_asset_issues_asset
 index catalog_asset_links_asset
 index catalog_asset_links_available_seek
 index catalog_asset_links_order
+index catalog_assets_duration
+index catalog_assets_height
 index catalog_attribute_ambiguous_restrictions
 index catalog_book_context_author
 index catalog_book_context_series
@@ -162,6 +164,7 @@ index catalog_collection_visible_edges_pair
 index catalog_collections_name
 index catalog_container_added_item
 index catalog_credits_department
+index catalog_credits_name
 index catalog_credits_person
 index catalog_credits_provider_person
 index catalog_credits_role
@@ -178,6 +181,7 @@ index catalog_facet_members_previous_group
 index catalog_identities_public
 index catalog_item_attribute_edges_first
 index catalog_item_attribute_edges_term
+index catalog_item_version_counts_value
 index catalog_missing_titles_library
 index catalog_missing_titles_time
 index catalog_movie_category_member_id
@@ -659,6 +663,7 @@ table catalog_content_eligible_jobs
 table catalog_content_eligible_rows
 table catalog_content_eligible_state
 table catalog_credit_labels
+table catalog_credit_names
 table catalog_credits
 table catalog_dataset_tags
 table catalog_dataset_vocabulary
@@ -685,6 +690,7 @@ table catalog_item_attribute_edges
 table catalog_item_availability
 table catalog_item_availability_previous
 table catalog_item_details
+table catalog_item_version_counts
 table catalog_kinds
 table catalog_libraries
 table catalog_missing_title_counts
@@ -1453,6 +1459,9 @@ trigger catalog_content_eligible_show_update
 trigger catalog_content_eligible_song_delete
 trigger catalog_content_eligible_song_insert
 trigger catalog_content_eligible_song_update
+trigger catalog_credit_names_join
+trigger catalog_credit_names_leave
+trigger catalog_credit_names_move
 trigger catalog_dataset_vocabulary_bound_check
 trigger catalog_dataset_vocabulary_bound_delete
 trigger catalog_dataset_vocabulary_bound_insert
@@ -1485,6 +1494,9 @@ trigger catalog_home_buckets_retain_update
 trigger catalog_item_availability_retain_delete
 trigger catalog_item_availability_retain_insert
 trigger catalog_item_availability_retain_update
+trigger catalog_item_version_counts_join
+trigger catalog_item_version_counts_leave
+trigger catalog_item_version_counts_move
 trigger catalog_library_insert
 trigger catalog_library_update
 trigger catalog_metric_rating_delete

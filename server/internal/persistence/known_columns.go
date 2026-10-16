@@ -810,6 +810,8 @@ catalog_content_eligible_state.id
 catalog_content_eligible_state.turn
 catalog_credit_labels.id
 catalog_credit_labels.label
+catalog_credit_names.credits
+catalog_credit_names.name
 catalog_credits.credit_id
 catalog_credits.credited_name
 catalog_credits.department_id
@@ -974,6 +976,8 @@ catalog_item_details.release_date
 catalog_item_details.studio
 catalog_item_details.tagline
 catalog_item_details.tags
+catalog_item_version_counts.item_id
+catalog_item_version_counts.versions
 catalog_kinds.browsable
 catalog_kinds.container
 catalog_kinds.id

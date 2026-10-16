@@ -96,6 +96,29 @@ CREATE TABLE catalog_asset_links(
  PRIMARY KEY(entity_id,asset_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_asset_links_order ON catalog_asset_links(entity_id,part_index,asset_id);
 CREATE INDEX catalog_asset_links_asset ON catalog_asset_links(asset_id,entity_id);
+-- Filters on a file's length or picture size start from the files that have
+-- the value, not from every title.
+CREATE INDEX catalog_assets_duration ON catalog_assets(duration);
+CREATE INDEX catalog_assets_height ON catalog_assets(height);
+-- A title's versions (its files of part 0), kept by the link writes, so a
+-- versions filter starts from the titles with that many.
+CREATE TABLE catalog_item_version_counts(
+ item_id INTEGER PRIMARY KEY,
+ versions INTEGER NOT NULL) STRICT;
+CREATE INDEX catalog_item_version_counts_value ON catalog_item_version_counts(versions,item_id);
+CREATE TRIGGER catalog_item_version_counts_join AFTER INSERT ON catalog_asset_links WHEN NEW.part_index=0 BEGIN
+ INSERT INTO catalog_item_version_counts(item_id,versions) VALUES(NEW.entity_id,1) ON CONFLICT(item_id) DO UPDATE SET versions=versions+1;
+END;
+CREATE TRIGGER catalog_item_version_counts_leave AFTER DELETE ON catalog_asset_links WHEN OLD.part_index=0 BEGIN
+ UPDATE catalog_item_version_counts SET versions=versions-1 WHERE item_id=OLD.entity_id;
+ DELETE FROM catalog_item_version_counts WHERE item_id=OLD.entity_id AND versions<=0;
+END;
+CREATE TRIGGER catalog_item_version_counts_move AFTER UPDATE OF entity_id,part_index ON catalog_asset_links
+ WHEN (OLD.entity_id,OLD.part_index=0) IS NOT (NEW.entity_id,NEW.part_index=0) BEGIN
+ UPDATE catalog_item_version_counts SET versions=versions-1 WHERE OLD.part_index=0 AND item_id=OLD.entity_id;
+ DELETE FROM catalog_item_version_counts WHERE OLD.part_index=0 AND item_id=OLD.entity_id AND versions<=0;
+ INSERT INTO catalog_item_version_counts(item_id,versions) SELECT NEW.entity_id,1 WHERE NEW.part_index=0 ON CONFLICT(item_id) DO UPDATE SET versions=versions+1;
+END;
 
 -- Descriptive facts of items and containers that have them.
 CREATE TABLE catalog_item_details(
@@ -371,6 +394,24 @@ CREATE TABLE catalog_credits(
  PRIMARY KEY(entity_id,ord)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_credits_person ON catalog_credits(person_id,entity_id);
 CREATE INDEX catalog_credits_provider_person ON catalog_credits(provider,provider_person_id,entity_id) WHERE provider_person_id<>'';
+-- The names credits carry, each once with how many credits carry it, so a
+-- filter on a credited name tests each name once and then reads its credits.
+CREATE INDEX catalog_credits_name ON catalog_credits(credited_name,entity_id);
+CREATE TABLE catalog_credit_names(
+ name TEXT PRIMARY KEY,
+ credits INTEGER NOT NULL) WITHOUT ROWID, STRICT;
+CREATE TRIGGER catalog_credit_names_join AFTER INSERT ON catalog_credits BEGIN
+ INSERT INTO catalog_credit_names(name,credits) VALUES(NEW.credited_name,1) ON CONFLICT(name) DO UPDATE SET credits=credits+1;
+END;
+CREATE TRIGGER catalog_credit_names_leave AFTER DELETE ON catalog_credits BEGIN
+ UPDATE catalog_credit_names SET credits=credits-1 WHERE name=OLD.credited_name;
+ DELETE FROM catalog_credit_names WHERE name=OLD.credited_name AND credits<=0;
+END;
+CREATE TRIGGER catalog_credit_names_move AFTER UPDATE OF credited_name ON catalog_credits WHEN OLD.credited_name IS NOT NEW.credited_name BEGIN
+ UPDATE catalog_credit_names SET credits=credits-1 WHERE name=OLD.credited_name;
+ DELETE FROM catalog_credit_names WHERE name=OLD.credited_name AND credits<=0;
+ INSERT INTO catalog_credit_names(name,credits) VALUES(NEW.credited_name,1) ON CONFLICT(name) DO UPDATE SET credits=credits+1;
+END;
 -- A person's credits counted per library and department, kept by the credit
 -- writes themselves: the people list and search say how many credits a person
 -- has, and in which departments, without reading every credit.

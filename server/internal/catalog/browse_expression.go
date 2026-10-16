@@ -986,7 +986,20 @@ type drivenSource struct {
 	// case trimmed text, which folds the same as the values, so a text
 	// condition is first tested once per term.
 	termKey bool
+	// nameKey is the vocabulary column holding exactly the value of the
+	// field's own expression (keyOf): the condition is tested once per
+	// vocabulary entry before its rows are read.
+	nameKey, keyOf string
+	// value, when set, is the field's value expression the condition is
+	// written over, and column the indexed expression standing for it on the
+	// value side. absent is the value of a member item the value side has no
+	// row for: if the condition holds for it, the value side cannot select.
+	value, column, absent string
 }
+
+// resolutionClasses are the picture classes of the resolution field as height
+// ranges, so a class is read from the files' height index.
+const resolutionClasses = `(SELECT 'sd' AS cls,-9223372036854775808 AS lo,700 AS hi UNION ALL SELECT '720p',700,1000 UNION ALL SELECT '1080p',1000,2000 UNION ALL SELECT '4k',2000,9223372036854775807) rc`
 
 const attributeJoinPrefix = `JOIN catalog_item_attribute_edges ca ON ca.item_id=bei.item_id JOIN catalog_attribute_terms ca_term ON ca_term.id=ca.term_id AND ca_term.field_id=(SELECT id FROM catalog_attribute_fields WHERE field='`
 
@@ -1025,6 +1038,18 @@ func drivenMemberSource(field browseField) (drivenSource, bool) {
 			providers = "'metacritic','rottentomatoes'"
 		}
 		return drivenSource{from: `metadata_ratings mr`, scope: `mr.provider IN(` + providers + `)`, item: "mr.item_id"}, true
+	case "versions":
+		return drivenSource{from: `catalog_item_version_counts vc INDEXED BY catalog_item_version_counts_value`, scope: "1", item: "vc.item_id", value: field.Value, column: "vc.versions", absent: "0"}, true
+	case "durationMs":
+		return drivenSource{from: `catalog_assets ast INDEXED BY catalog_assets_duration CROSS JOIN catalog_asset_links ia INDEXED BY catalog_asset_links_asset ON ia.asset_id=ast.id`, scope: "1", item: "ia.entity_id"}, true
+	case "resolution":
+		return drivenSource{from: resolutionClasses + ` CROSS JOIN catalog_assets ast INDEXED BY catalog_assets_height ON ast.height>=rc.lo AND ast.height<rc.hi CROSS JOIN catalog_asset_links ia INDEXED BY catalog_asset_links_asset ON ia.asset_id=ast.id`,
+			scope: "1", item: "ia.entity_id", value: field.Value, column: "rc.cls"}, true
+	case "actor", "director", "writer":
+		// Credited names are a vocabulary: the condition is tested once per
+		// name, then the name's credits are read from its index.
+		labels := strings.TrimPrefix(field.Join, `JOIN catalog_credits cc ON cc.entity_id=bei.item_id `)
+		return drivenSource{from: `catalog_credit_names cn CROSS JOIN catalog_credits cc INDEXED BY catalog_credits_name ON cc.credited_name=cn.name ` + labels, scope: "1", item: "cc.entity_id", nameKey: "cn.name", keyOf: "cc.credited_name"}, true
 	}
 	if rest, ok := strings.CutPrefix(field.Join, attributeJoinPrefix); ok && strings.HasSuffix(rest, "')") && field.Value == "ca.source_value" {
 		name := strings.TrimSuffix(rest, "')")
@@ -1049,7 +1074,26 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 		c.args = c.args[:before]
 		return "", false, nil
 	}
+	if source.value != "" {
+		if source.absent != "" {
+			// A member item with no value-side row has the absent value.
+			holds, err := c.count(`SELECT count(*) WHERE (`+strings.ReplaceAll(body, source.value, source.absent)+`)`, c.args[before:]...)
+			if err != nil {
+				return "", false, err
+			}
+			if holds > 0 {
+				c.args = c.args[:before]
+				return "", false, nil
+			}
+		}
+		body = strings.ReplaceAll(body, source.value, source.column)
+	}
 	where := source.scope
+	if source.nameKey != "" && strings.Contains(body, source.keyOf) {
+		operands := append([]any(nil), c.args[before:]...)
+		c.args = append(c.args[:before], append(operands, operands...)...)
+		where += " AND " + strings.ReplaceAll(body, source.keyOf, source.nameKey)
+	}
 	if source.termKey && strings.Contains(body, "portico_fold_text(ca.source_value)") {
 		// The same condition over the term's key, with its own copy of the
 		// operands, runs once per term before the term's edges are read.
