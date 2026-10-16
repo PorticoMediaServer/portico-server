@@ -2,7 +2,6 @@ import {BroadcastButton} from './MaintenanceWindows';
 import {feedbackCategoryName, feedbackStatusName} from '@core/server-admin/console-catalogue.ts';
 import {useState} from 'react';
 import type {FeedbackReport, FeedbackStatus} from '@core/console.ts';
-export {feedbackCategoryLabel} from '@core/server-admin/panel-logic.ts';
 import {sendFresh, useAction, useConsole, useRead, when} from '../../admin/console';
 import {devicePlatform} from '@core/server-admin/people-words.ts';
 import {Badge, Button, Dialog, Freshness, Notice, Select, SettingsEmpty, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Text, TextArea} from '../../ui';

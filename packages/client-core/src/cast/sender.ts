@@ -15,6 +15,8 @@ import {CAST_PAIR_TIMEOUT_MS, CAST_PROTOCOL_VERSION, CAST_TAKEOVER_WINDOW_MS, ca
 export interface CastTransport {
   /** The device's friendly name ("Living Room TV"). */
   readonly deviceName: string;
+  /** The Cast SDK's own id for the device, when the platform gives one: two televisions with one name keep separate pairing proofs. */
+  readonly deviceId?: string;
   send(message: CastCommand): Promise<void>;
   /** Receiver messages, as the SDK delivers them (JSON string or decoded object). Returns an unsubscribe. */
   onMessage(listener: (raw: unknown) => void): () => void;
@@ -83,7 +85,7 @@ export class CastController {
   private clearTimer: (timer: unknown) => void;
   private disposed = false;
   private controllerStorage?:CastControllerOptions['controllerStorage'];
-  private controllerKey(){return 'portico.cast.controller:'+this.origin+':'+(this.transport?.deviceName??'');}
+  private controllerKey(){const t=this.transport;return 'portico.cast.controller:'+this.origin+':'+(t?.deviceId?'id:'+t.deviceId:(t?.deviceName??''));}
   private controllerToken(){try{return this.controllerStorage?.get(this.controllerKey());}catch{return undefined;}}
 
   constructor(options: CastControllerOptions) {
