@@ -658,8 +658,88 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 		}
 		return clause + ")", nil
 	}
+	if field.ID == "title" {
+		candidates, err := c.titleGramCandidates(node)
+		if err != nil {
+			return "", err
+		}
+		clause, err := c.comparison(field, field.Entity, node.Operator, node.Value)
+		if err != nil || candidates == "" {
+			return clause, err
+		}
+		return "(" + candidates + clause + ")", nil
+	}
 
 	return c.comparison(field, field.Entity, node.Operator, node.Value)
+}
+
+// titleGramCandidates bounds a title condition that matches few titles to the
+// rows whose folded title holds every trigram of the typed text
+// (catalog_title_grams); the condition itself is still tested, on those rows
+// only. It returns a clause to put before the condition, or "" when the text
+// is too short for a trigram, the operator is negative, or the rows are too
+// many to name (a broad text fills its pages early anyway).
+func (c *browseCompiler) titleGramCandidates(node BrowseNode) (string, error) {
+	if c.count == nil || c.ids == nil {
+		return "", nil
+	}
+	values := []any{node.Value}
+	switch node.Operator {
+	case "contains", "starts-with", "equals":
+	case "in":
+		values, _ = node.Value.([]any)
+	default:
+		return "", nil
+	}
+	arms, args := []string{}, []any{}
+	for _, value := range values {
+		text, _ := value.(string)
+		match := titleGramMatch(sorttext.Fold(text))
+		if match == "" {
+			return "", nil
+		}
+		arms = append(arms, `SELECT rowid AS id FROM catalog_title_grams WHERE catalog_title_grams MATCH ?`)
+		args = append(args, match)
+	}
+	if len(arms) == 0 {
+		return "", nil
+	}
+	candidates := strings.Join(arms, " UNION ")
+	found, err := c.count(`SELECT count(*) FROM (`+candidates+` LIMIT `+strconv.Itoa(drivenMaximum+1)+`)`, args...)
+	if err != nil || found > drivenMaximum {
+		return "", err
+	}
+	if found == 0 {
+		return "0 AND ", nil
+	}
+	ids, err := c.ids(candidates, args...)
+	if err != nil {
+		return "", err
+	}
+	raw, _ := json.Marshal(ids)
+	c.args = append(c.args, string(raw))
+	return `e.entity_id IN(SELECT value FROM json_each(?)) AND `, nil
+}
+
+// titleGramMatch is the full-text query naming every distinct trigram of
+// folded text (each quoted as one token), or "" for text shorter than three
+// characters.
+func titleGramMatch(folded string) string {
+	runes := []rune(folded)
+	if len(runes) < 3 {
+		return ""
+	}
+	seen := map[string]bool{}
+	terms := []string{}
+	for i := 0; i+3 <= len(runes); i++ {
+		gram := string(runes[i : i+3])
+		if seen[gram] {
+			continue
+		}
+		seen[gram] = true
+		terms = append(terms, `"`+strings.ReplaceAll(gram, `"`, `""`)+`"`)
+	}
+	return strings.Join(terms, " AND ")
 }
 
 // exists wraps a member-item condition. Profile placeholders inside the join are
@@ -740,12 +820,25 @@ func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (stri
 		}
 		return "NOT " + clause, nil
 	}
+	if field.ID == "versions" && c.itemPivot && (node.Operator == "is-present" || node.Operator == "is-missing") {
+		// A title's version count is never missing (no file is 0), and a
+		// playable title is its own member: present for every row.
+		if node.Operator == "is-present" {
+			return "1", nil
+		}
+		return "0", nil
+	}
 	switch node.Operator {
 	case "not-equals", "not-in", "is-missing":
 		positive := map[string]string{"not-equals": "equals", "not-in": "in", "is-missing": "is-present"}[node.Operator]
 		candidates, err := c.genrelessCandidates(field, node)
 		if err != nil {
 			return "", err
+		}
+		if candidates == "" {
+			if candidates, err = c.factGapCandidates(field, node); err != nil {
+				return "", err
+			}
 		}
 		clause, err := c.exists(field, func() (string, error) {
 			return c.comparison(field, field.Value, positive, node.Value)
@@ -1081,17 +1174,15 @@ func drivenMemberSource(field browseField) (drivenSource, bool) {
 // drivenExists selects the matching member items once and maps them to their
 // browse entities through the membership index. The viewer's restriction
 // still applies to the exact member item that supplied the match. A value
-// matching more than drivenMaximum member items, and presence, which matches
-// nearly every title, are left to the per-title test (driven=false).
+// matching more than drivenMaximum member items is left to the per-title test
+// (driven=false); so is presence where the value side is that broad, while a
+// field few titles have (subtitles, credits in a sparse library) is selected
+// from its few values.
 func (c *browseCompiler) drivenExists(field browseField, source drivenSource, condition func() (string, error)) (clause string, driven bool, err error) {
 	before := len(c.args)
 	body, err := condition()
 	if err != nil {
 		return "", false, err
-	}
-	if strings.HasSuffix(body, " IS NOT NULL") {
-		c.args = c.args[:before]
-		return "", false, nil
 	}
 	if source.value != "" {
 		if source.absent != "" {
@@ -1176,12 +1267,70 @@ func (c *browseCompiler) genrelessCandidates(field browseField, node BrowseNode)
 	}
 	arms := []string{}
 	for _, kind := range c.kinds {
+		if kind == int(compactcatalog.Artist) || kind == int(compactcatalog.Album) {
+			// Artists and albums seldom carry a genre of their own; their
+			// songs do. One lacks a genre only if a song of it lacks one.
+			arms = append(arms, `SELECT DISTINCT bei.entity_id AS id FROM catalog_entities song INDEXED BY catalog_entities_genreless CROSS JOIN catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=song.id
+ WHERE song.genre_sources=0 AND song.kind=`+strconv.Itoa(int(compactcatalog.Track)))
+			continue
+		}
 		if kind == int(compactcatalog.Episode) {
 			arms = append(arms, `SELECT ep.entity_id AS id FROM catalog_entities sh INDEXED BY catalog_entities_genreless CROSS JOIN catalog_episodes ep ON ep.show_id=sh.id
  JOIN catalog_entities episode ON episode.id=ep.entity_id AND episode.genre_sources=0 WHERE sh.genre_sources=0 AND sh.kind=`+strconv.Itoa(int(compactcatalog.Show)))
 			continue
 		}
 		arms = append(arms, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_genreless WHERE genre_sources=0 AND kind=`+strconv.Itoa(kind))
+	}
+	candidates := strings.Join(arms, " UNION ALL ")
+	found, err := c.count(`SELECT count(*) FROM (` + candidates + ` LIMIT ` + strconv.Itoa(drivenMaximum+1) + `)`)
+	if err != nil || found > drivenMaximum {
+		return "", err
+	}
+	if found == 0 {
+		return "0 AND ", nil
+	}
+	ids, err := c.ids(candidates)
+	if err != nil {
+		return "", err
+	}
+	raw, _ := json.Marshal(ids)
+	c.args = append(c.args, string(raw))
+	return `e.entity_id IN(SELECT value FROM json_each(?)) AND `, nil
+}
+
+// factGaps are the member-item fields whose absence a maintained counter on
+// catalog_entities answers (asset_links, acting_credits, directing_credits,
+// writing_credits), as bits of factGapSQL, the expression the
+// catalog_entities_fact_gaps index is built on.
+var factGaps = map[string]int{"durationMs": 1, "actor": 2, "director": 4, "writer": 8}
+
+const factGapSQL = `(asset_links=0)+(acting_credits=0)*2+(directing_credits=0)*4+(writing_credits=0)*8`
+
+// factGapCandidates bounds "is missing" on a field nearly every title has
+// (duration, cast, directors, writers) to the playable titles that can lack
+// it: those whose counter is zero (a file always has a length, so a title
+// lacks one only when it links no file). The exact condition is still tested
+// on them. It returns a clause to put before the condition, or "" when the
+// pivot holds containers or the candidates are too many to name.
+func (c *browseCompiler) factGapCandidates(field browseField, node BrowseNode) (string, error) {
+	bit, ok := factGaps[field.ID]
+	if !ok || node.Operator != "is-missing" || c.count == nil || c.ids == nil || len(c.kinds) == 0 {
+		return "", nil
+	}
+	masks := []string{}
+	for mask := 1; mask < 16; mask++ {
+		if mask&bit != 0 {
+			masks = append(masks, strconv.Itoa(mask))
+		}
+	}
+	arms := []string{}
+	for _, kind := range c.kinds {
+		switch compactcatalog.Kind(kind) {
+		case compactcatalog.Movie, compactcatalog.Episode, compactcatalog.Track, compactcatalog.Part:
+		default:
+			return "", nil
+		}
+		arms = append(arms, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_fact_gaps WHERE kind=`+strconv.Itoa(kind)+` AND `+factGapSQL+` IN(`+strings.Join(masks, ",")+`)`)
 	}
 	candidates := strings.Join(arms, " UNION ALL ")
 	found, err := c.count(`SELECT count(*) FROM (` + candidates + ` LIMIT ` + strconv.Itoa(drivenMaximum+1) + `)`)

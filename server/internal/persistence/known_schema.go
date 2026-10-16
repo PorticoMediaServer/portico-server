@@ -170,6 +170,7 @@ index catalog_credits_person
 index catalog_credits_provider_person
 index catalog_credits_role
 index catalog_entities_added
+index catalog_entities_fact_gaps
 index catalog_entities_genreless
 index catalog_entities_library
 index catalog_entities_parent
@@ -482,6 +483,8 @@ index prepared_media_object_refs
 index prepared_media_readers
 index prepared_media_work
 index profile_show_activity_show_id_fk
+index profile_show_partials_item
+index profile_show_partials_show
 index profile_show_recent
 index progress_home_active
 index progress_home_profile_recent
@@ -774,6 +777,11 @@ table catalog_song_artists
 table catalog_songs
 table catalog_term_sources
 table catalog_terms
+table catalog_title_grams
+table catalog_title_grams_config
+table catalog_title_grams_data
+table catalog_title_grams_docsize
+table catalog_title_grams_idx
 table catalog_visibility_sort_buckets
 table catalog_visibility_sort_edges
 table catalog_visibility_sort_entity_jobs
@@ -1132,6 +1140,7 @@ table profile_avatar_objects
 table profile_avatars
 table profile_restrictions
 table profile_show_activity
+table profile_show_partials
 table progress
 table progress_activity
 table provider_evidence
@@ -1508,6 +1517,12 @@ trigger catalog_credit_names_move
 trigger catalog_dataset_vocabulary_bound_check
 trigger catalog_dataset_vocabulary_bound_delete
 trigger catalog_dataset_vocabulary_bound_insert
+trigger catalog_entities_asset_links_join
+trigger catalog_entities_asset_links_leave
+trigger catalog_entities_asset_links_move
+trigger catalog_entities_credit_roles_join
+trigger catalog_entities_credit_roles_leave
+trigger catalog_entities_credit_roles_move
 trigger catalog_entities_genre_sources_join
 trigger catalog_entities_genre_sources_leave
 trigger catalog_entities_genre_sources_move
@@ -1662,6 +1677,9 @@ trigger catalog_sort_catalog_songs_update
 trigger catalog_sort_plays_delete
 trigger catalog_sort_plays_insert
 trigger catalog_sort_plays_update
+trigger catalog_title_grams_delete
+trigger catalog_title_grams_insert
+trigger catalog_title_grams_update
 trigger catalog_visibility_sort_browse_delete
 trigger catalog_visibility_sort_browse_insert
 trigger catalog_visibility_sort_browse_update
@@ -2174,6 +2192,10 @@ trigger prepared_media_source_insert
 trigger prepared_media_source_update
 trigger prepared_media_versions_retention_delete
 trigger prepared_media_versions_retention_insert
+trigger profile_show_partials_delete
+trigger profile_show_partials_episode_move
+trigger profile_show_partials_insert
+trigger profile_show_partials_update
 trigger profile_show_personal_insert
 trigger profile_show_personal_update
 trigger profile_show_progress_insert
