@@ -35,10 +35,13 @@ type Field struct {
 	Message string `json:"message"`
 }
 type Error struct {
-	Code              string  `json:"code"`
-	Message           string  `json:"message"`
-	Retry             Retry   `json:"retry"`
-	RetryAfterSeconds int     `json:"retryAfterSeconds,omitempty"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+	Retry   Retry  `json:"retry"`
+	// RetryAfterSeconds drives the HTTP Retry-After header, which is whole
+	// seconds by standard; the body carries the same wait as RetryAfterMs.
+	RetryAfterSeconds int     `json:"-"`
+	RetryAfterMs      int64   `json:"retryAfterMs,omitempty"`
 	Fields            []Field `json:"fields,omitempty"`
 	Current           any     `json:"current,omitempty"`
 	// Reason refines Code for clients that act on it (e.g. prepared_canceled's
@@ -140,6 +143,7 @@ func (r *Registry) Write(w http.ResponseWriter, requestID string, err error) {
 	}
 	if out.RetryAfterSeconds > 0 {
 		w.Header().Set("Retry-After", strconv.Itoa(out.RetryAfterSeconds))
+		out.RetryAfterMs = int64(out.RetryAfterSeconds) * 1000
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Cache-Control", "no-store")
