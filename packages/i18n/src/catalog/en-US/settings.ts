@@ -5,9 +5,6 @@
  */
 export const settingsMessages = {
  'settings.server.ffmpegPath': 'FFmpeg location',
- 'settings.server.ffmpegPathHelp': 'Use another FFmpeg build. It is checked before use and takes effect after restarting the server.',
- 'settings.server.sessionStorageMiB': 'Working space per playback session (MiB)',
- 'settings.server.sessionStorageMiBHelp': 'Older played segments are removed first when a session reaches this limit.',
 
   'settings.heading.account': 'Account',
   'settings.heading.server': 'Server',
@@ -359,7 +356,6 @@ export const settingsMessages = {
   'server.people.deleteChanged': 'This person’s account changed while you were looking. Check it again before deleting.',
   'settings.server.sessionSpace': 'Working space for each stream',
   'settings.server.sessionSpaceHelp': 'How much disk a stream being converted may use for its working files. When it is reached, the parts already played are removed first.',
-  'settings.server.ffmpegOwnHelp': 'Leave empty to use the FFmpeg that comes with Portico. To use another build, give its full path: Portico checks it when the server restarts and uses it only if it passes. If this still says it is waiting for a restart after one, the build did not pass and Portico’s own is in use.',
   'server.live.limits': 'Guide and line-up limits',
   'server.live.limitsLede': 'The most one playlist or guide may bring in. Anything beyond a limit is left out and the rest is used.',
   'server.live.limitChannels': 'Most channels from one source',
@@ -458,7 +454,6 @@ export const settingsMessages = {
   'server.reports.lede': 'Logs an app sent after something went wrong. They can name titles and devices, so delete them when you are done.',
   'server.reports.none': 'No reports.',
   'server.reports.read': 'Read',
-  'server.reports.actions': 'More for this report',
   'server.reports.title': 'Client report',
   'server.reports.unknownSender': 'An app',
   'server.reports.empty': 'This report is empty.',
@@ -542,7 +537,6 @@ export const settingsMessages = {
   'server.health.loadNotMeasured': 'Processor, memory and network load are not measured on this system.',
   'scan.monitorChanges': 'Watch for library changes',
   'scan.monitorChanges.help': 'Pick up files and local metadata when they change. Periodic scans cover folders that cannot be watched.',
-  'scan.issues': 'Files and folders skipped',
   'scan.issue.directory_changed': 'This folder changed during the scan. Its files were kept and will be checked again.',
   'scan.issue.directory_unreadable': 'This folder could not be read. Its existing files were kept.',
   'scan.issue.entry_unreadable': 'This file could not be read. Its existing entry was kept.',
@@ -595,7 +589,6 @@ export const settingsMessages = {
   'server.metadata.adultHelp': 'Off unless you turn it on.',
   'server.metadata.artwork': 'Artwork',
   'server.metadata.artworkHelp': 'How much space posters and other images from your own media folders may take. When it is full, new ones wait until you raise the limit. Images already kept go on working.',
-  'server.metadata.artworkUsage': 'All artwork on this server takes {size} now. That includes artwork fetched online, which this limit does not count.',
   'server.metadata.artworkUsed': '{used} of {limit} used',
   'server.metadata.limitProblem': 'Enter the limit in gigabytes, as a number of 0.1 or more.',
   'settings.unit.gb': 'GB',
