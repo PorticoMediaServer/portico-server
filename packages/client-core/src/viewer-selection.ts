@@ -34,6 +34,11 @@ export function parseSelectedViewerRecord(raw:unknown):SelectedViewerRecord|null
  // A saved selection may have expired since; the server decides that when it is verified.
  return selectedViewerRecord(raw.serverUrl,raw.session,true);
 }
+/** The same sign-in: one server and one session family. A refreshed access token is still the same
+ * sign-in, so nothing here ever retires a family because its bearer string changed. */
+export function sameSignIn(a:SelectedViewerRecord|null|undefined,b:SelectedViewerRecord|null|undefined):boolean {
+ return !!a&&!!b&&a.serverUrl===b.serverUrl&&a.session.sessionFamilyId===b.session.sessionFamilyId;
+}
 /** One device handoff at a time. An unused candidate is always explicitly retired.
  * Account proof and server/profile proof must be checked by the caller's scope guard.
  * A storage/verification failure never publishes a candidate or logs out the account.
@@ -47,8 +52,7 @@ export class ViewerSelectionCommit {
    // A duplicated UI submission can carry the same established credential. It
    // is not an unused family and must not retire the handoff already using it.
    let current:SelectedViewerRecord|null=null;try{current=h.current();}catch{}
-   const same=(v:SelectedViewerRecord|null|undefined)=>v?.serverUrl===candidate.serverUrl&&v.session.accessToken===candidate.session.accessToken;
-   if(!same(this.candidate)&&!same(current))await h.revoke(candidate).catch(()=>h.cleanupFailed?.(candidate));
+   if(!sameSignIn(this.candidate,candidate)&&!sameSignIn(current,candidate))await h.revoke(candidate).catch(()=>h.cleanupFailed?.(candidate));
    throw new Error('Another profile selection is being saved.');
   }
   this.active=true;this.candidate=candidate;const generation=++this.generation,abort=new AbortController();this.abort=abort;
@@ -71,7 +75,7 @@ export class ViewerSelectionCommit {
      if(generation===this.generation){
       h.assertCurrent();
       // Rebuild the previous viewer without restarting its player.
-      if(old&&previous?.session.accessToken===old.session.accessToken)h.restore?.(old);
+      if(old&&sameSignIn(previous,old))h.restore?.(old);
      }
     }catch{
      // A failed rollback cannot leave either credential eligible for recovery.
@@ -83,8 +87,10 @@ export class ViewerSelectionCommit {
    throw error;
   }finally{
    clearTimeout(timer);this.abort=undefined;this.candidate=undefined;this.active=false;finish();
-   if(!published&&candidate.session.accessToken!==old?.session.accessToken)void h.revoke(candidate).catch(()=>h.cleanupFailed?.(candidate));
-   if(published&&old&&old.session.accessToken!==candidate.session.accessToken){const prior=old;void h.revoke(prior).catch(()=>h.cleanupFailed?.(prior));}
+   // Retirement is by sign-in (server and family): an unused candidate of the family already in
+   // use, or a previous viewer that is the candidate's own family refreshed, is never revoked.
+   if(!published&&!sameSignIn(candidate,old))void h.revoke(candidate).catch(()=>h.cleanupFailed?.(candidate));
+   if(published&&old&&!sameSignIn(old,candidate)){const prior=old;void h.revoke(prior).catch(()=>h.cleanupFailed?.(prior));}
   }
  }
  /** Linearizes sign-out after any in-flight storage write.

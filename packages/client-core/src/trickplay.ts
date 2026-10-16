@@ -25,6 +25,8 @@ export type TrickplaySet = Readonly<{
   revision: string;
   tilesUrl: string;
   thumbnailsUrl: string;
+  /** A download's sheets, as files on the device, by tile; they stand in for `tilesUrl`. */
+  tileUrls?: readonly string[];
 }>;
 export type TrickplayScope = Readonly<{
   serverId: string;
@@ -121,6 +123,11 @@ export function parseTrickplay(raw: unknown, serverId: string, target: Trickplay
 export function trickplayTileUrl(set: TrickplaySet, tileIndex: number): string {
   if (!Number.isSafeInteger(tileIndex) || tileIndex < 0 || tileIndex >= set.tileCount) {
     throw new Error('Trickplay tile is outside this set.');
+  }
+  if (set.tileUrls) {
+    const local = set.tileUrls[tileIndex];
+    if (!local) throw new Error('Trickplay tile is outside this set.');
+    return local;
   }
   return set.tilesUrl + '/' + tileIndex + '.jpg';
 }

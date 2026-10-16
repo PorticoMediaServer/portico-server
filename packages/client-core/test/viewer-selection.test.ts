@@ -142,3 +142,12 @@ test('a store that can compare and remove in one step is asked to',async()=>{
  await new ViewerSelectionCommit(storage).clear(record('previous').session);
  assert.deepEqual(asked,['family-previous']);
 });
+test('a refreshed token of the sign-in in use is the same family: neither the old nor a failed candidate is retired',async()=>{
+ const rotated=(r:SelectedViewerRecord,token:string)=>selectedViewerRecord(r.serverUrl,{...r.session,accessToken:token,expiresAt:new Date(Date.now()+3600000).toISOString()});
+ const f=fixture(),fresh=rotated(f.previous,'previous-rotated');
+ await f.commit.commit(fresh,f.h);await tick();
+ assert.equal(f.current(),fresh);assert.deepEqual(f.revoked,[]);
+ const g=fixture(),failing=rotated(g.previous,'previous-rotated');g.h.verify=async()=>{throw new Error('offline');};
+ await assert.rejects(g.commit.commit(failing,g.h),/offline/);await tick();
+ assert.deepEqual(g.revoked,[]);assert.equal(g.current(),g.previous);
+});

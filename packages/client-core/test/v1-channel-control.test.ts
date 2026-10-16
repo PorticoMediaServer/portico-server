@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {PlaybackService, tunerHandover} from '../src/index.ts';
-import {V1ChannelControl, channelEndMessage, v1ChannelId} from '../src/playback-v1/channel-control.ts';
+import {V1ChannelControl, channelEndMessage, parseChannelSession, v1ChannelId} from '../src/playback-v1/channel-control.ts';
 import type {V1Http, V1Request} from '../src/playback-v1/http.ts';
 import type {ChannelReference} from '../src/playback/linear-protocol.ts';
 
@@ -152,4 +152,17 @@ test('v1 channels: a tuner deadline counts down, then the channel stops once wit
     await settle();
     assert.equal(server.log.length, reads, 'nothing polls or retries after the stop');
   } finally { playback.leave(); }
+});
+
+// N18: the countdown runs on server time. A device clock five minutes slow still sees the tuner
+// go ninety seconds after the server said so.
+test('v1 channels: a tuner deadline is moved onto this device clock with the server clock sent beside it', () => {
+  const server = 1_800_000_000_000, device = server - 300_000;
+  const raw = {id: 's', revision: '1', state: 'playing', presentation: {generation: 1, url: '/x', linear: {name: 'One', originMs: 0, windowStartMs: 0, windowEndMs: 0, liveEdgeMs: 0, state: 'live', reservationRequiredAtMs: server + 90_000, nowMs: server}}};
+  const parsed = parseChannelSession(raw, () => device);
+  assert.equal(parsed.presentation.linear?.reservationRequiredAtMs, device + 90_000);
+  assert.deepEqual(tunerHandover(parsed.presentation.linear?.reservationRequiredAtMs, device + 30_000), {kind: 'countdown', secondsLeft: 60});
+  // Without the server clock, the deadline is taken as sent.
+  const {nowMs: _n, ...plain} = raw.presentation.linear;
+  assert.equal(parseChannelSession({...raw, presentation: {...raw.presentation, linear: plain}}, () => device).presentation.linear?.reservationRequiredAtMs, server + 90_000);
 });

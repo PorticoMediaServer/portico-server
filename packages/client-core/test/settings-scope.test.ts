@@ -61,3 +61,10 @@ test('secondary local profiles retain their profile controls without account sec
   assert(primary.includes(id), id+' remains available to the primary profile');
  }
 });
+
+test('the TV-declared HDR and surround switches appear only where the device cannot detect them', () => {
+  const ids = (capabilities: Record<string, unknown>) => settingsStructure({platform: 'tv', owner: false, capabilities} as Parameters<typeof settingsStructure>[0])
+    .headings.flatMap(h => h.pages.flatMap(p => p.sections.flatMap(s => s.rows))).flatMap(r => (r.kind === 'composite' ? [r.id] : []));
+  assert.ok(!ids({}).includes('tvHdr'));
+  assert.deepEqual(ids({declaredOutputs: true}).filter(id => id === 'tvHdr' || id === 'tvSurround'), ['tvHdr', 'tvSurround']);
+});

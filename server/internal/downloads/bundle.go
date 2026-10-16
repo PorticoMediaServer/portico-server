@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
+	"portico.local/server/internal/playback"
 	"portico.local/server/internal/preparedmedia"
 	"portico.local/server/internal/segmentmarkers"
 )
@@ -43,6 +44,46 @@ type BundleChapter struct {
 	Title        string  `json:"title"`
 	StartSeconds float64 `json:"startSeconds"`
 	EndSeconds   float64 `json:"endSeconds"`
+	// Image is the chapter's thumbnail, when the library makes them. A device
+	// that is told it is missing simply shows the chapter without one.
+	Image *BundleFile `json:"image,omitempty"`
+}
+
+// BundleTrickplay is the scrubbing preview set of the downloaded file: sprite
+// sheets of frames every IntervalSeconds, TileWidth by TileHeight each, Columns
+// by Rows to a sheet, and the WebVTT track that places each frame in time.
+type BundleTrickplay struct {
+	ID              string  `json:"id"`
+	TileWidth       int     `json:"tileWidth"`
+	TileHeight      int     `json:"tileHeight"`
+	Columns         int     `json:"columns"`
+	Rows            int     `json:"rows"`
+	IntervalSeconds float64 `json:"intervalSeconds"`
+	FrameCount      int     `json:"frameCount"`
+	// DurationSeconds is the title's length the frames cover; SourceOffsetSeconds
+	// is where the title begins inside the captured file (frames are indexed
+	// from the file's start).
+	DurationSeconds     float64      `json:"durationSeconds"`
+	SourceOffsetSeconds float64      `json:"sourceOffsetSeconds"`
+	Thumbnails          BundleFile   `json:"thumbnails"`
+	Tiles               []BundleFile `json:"tiles"`
+}
+
+// MaxBundleTrickplayTiles bounds the sheets a download carries (a sheet holds
+// up to a hundred frames, so this is hours of video at the usual interval).
+const MaxBundleTrickplayTiles = 128
+
+// MaxBundleChapterImages bounds the chapter thumbnails a download carries.
+const MaxBundleChapterImages = 200
+
+// TrickplayThumbnailsPath, TrickplayTilePath and ChapterImagePath are where a
+// download's previews are fetched, relative to the transfer address.
+func TrickplayThumbnailsPath(set string) string { return "trickplay/" + set + "/thumbnails.vtt" }
+func TrickplayTilePath(set string, tile int) string {
+	return "trickplay/" + set + "/tiles/" + strconv.Itoa(tile) + ".jpg"
+}
+func ChapterImagePath(source string, index int) string {
+	return "chapters/" + source + "/" + strconv.Itoa(index) + "/image"
 }
 
 // BundleMarker is a stretch a viewer may skip: an intro, a recap, credits.
@@ -105,6 +146,8 @@ type Bundle struct {
 	Markers       []BundleMarker   `json:"markers"`
 	Audio         []BundleAudio    `json:"audio"`
 	Subtitles     []BundleSubtitle `json:"subtitles"`
+	// Trickplay is the file's scrubbing previews, when the library makes them.
+	Trickplay *BundleTrickplay `json:"trickplay,omitempty"`
 	// SourceID names the library file the chapters, markers and subtitles
 	// belong to. The routes layer uses it to list subtitle tracks.
 	SourceID string `json:"-"`
@@ -213,6 +256,20 @@ func (s *Service) Bundle(ctx context.Context, p identity.Principal, id string) (
 	}
 	if out.Chapters, e = readChapters(ctx, tx, entity, asset, out.Title.Kind); e != nil {
 		return out, e
+	}
+	// A film's or episode's chapter thumbnails travel with it (a book's chapters have none).
+	if out.Title.Kind != "audiobook_file" && out.Title.Kind != "song" && len(out.Chapters) > 0 {
+		images, err := playback.ChapterThumbnails(ctx, tx, asset)
+		if err != nil {
+			return out, err
+		}
+		carried := 0
+		for i := range out.Chapters {
+			if c := out.Chapters[i]; images[c.Index] && carried < MaxBundleChapterImages {
+				out.Chapters[i].Image = &BundleFile{Path: ChapterImagePath(asset, c.Index), ContentType: "image/jpeg"}
+				carried++
+			}
+		}
 	}
 	if out.Markers, e = readMarkers(ctx, tx, asset); e != nil {
 		return out, e
