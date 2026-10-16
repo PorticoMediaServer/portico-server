@@ -104,6 +104,14 @@ func (s *Service) readySource(ctx context.Context, job string, source *catalog.L
 func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.LibrarySource) error {
 	var relative string
 	err := s.db.QueryRowContext(ctx, `SELECT relative_path FROM inventory_directories WHERE job_id=? AND state='pending' ORDER BY relative_path LIMIT 1`, job).Scan(&relative)
+	if err == nil && !s.storage.IsRemote(source.ResolvedPath) {
+		// Small folders — one per film, season or album — are listed and
+		// published several at a time. Anything the batch can't take is left
+		// to the one-folder path below, which handles every failure.
+		if done, e := s.inventoryFolders(ctx, job, source); e != nil || done {
+			return e
+		}
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		var mode string
 		if e := s.db.QueryRowContext(ctx, `SELECT scan_mode FROM inventory_runs WHERE job_id=?`, job).Scan(&mode); e != nil {
@@ -145,6 +153,73 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 	return s.excludeDirectory(ctx, job, relative, reason)
 
 }
+
+// inventoryFolders lists and publishes the next pending folders of a local
+// source together: one helper lists them all, one transaction publishes them,
+// up to about one page of entries in all. It reports false, having published
+// nothing, when fewer than two folders could be taken (the first folder's
+// listing failed, was unstable or is the only one pending), or when the
+// shared publication failed; the caller then takes the first folder alone.
+func (s *Service) inventoryFolders(ctx context.Context, job string, source catalog.LibrarySource) (bool, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT relative_path,cursor,revision FROM inventory_directories WHERE job_id=? AND state='pending' ORDER BY relative_path LIMIT ?`, job, storage.MaxInventoryBatch)
+	if err != nil {
+		return false, err
+	}
+	var writes []catalog.InventoryPageWrite
+	var requests []storage.InventoryRequest
+	limit := s.inventoryBatch(ctx)
+	for rows.Next() {
+		var w catalog.InventoryPageWrite
+		var revision string
+		if err = rows.Scan(&w.Relative, &w.Cursor, &revision); err != nil {
+			rows.Close()
+			return false, err
+		}
+		writes = append(writes, w)
+		requests = append(requests, storage.InventoryRequest{Root: source.ResolvedPath, RelativePath: w.Relative, RootIdentity: source.RootIdentity, DirectoryRevision: revision, Cursor: w.Cursor, Limit: limit, FollowSymlinks: source.FollowSymlinks})
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil || len(requests) < 2 {
+		return false, err
+	}
+	pages, errs := make([]storage.InventoryPage, len(requests)), make([]error, len(requests))
+	if s.storage != nil {
+		if pages, errs, err = s.storage.InventoryPages(ctx, source.ID, requests); err != nil {
+			return false, ctx.Err()
+		}
+	} else {
+		for i, r := range requests {
+			pages[i], errs[i] = storage.LocalInventoryPage(r)
+		}
+	}
+	// Take folders in order up to the first that needs the one-folder path,
+	// and stop at about one full page of entries.
+	entries, taken := 0, 0
+	for i := range writes {
+		if errs[i] != nil || pages[i].Unstable || i > 0 && entries+len(pages[i].Entries) > 2*limit {
+			break
+		}
+		writes[i].Page = pages[i]
+		entries += len(pages[i].Entries)
+		taken++
+	}
+	if taken < 2 {
+		return false, nil
+	}
+	writes = writes[:taken]
+	if err = s.catalog.CommitInventoryPages(ctx, job, writes); err != nil {
+		if ctx.Err() != nil {
+			return false, ctx.Err()
+		}
+		return false, nil
+	}
+	for _, w := range writes {
+		s.noteDirectoryPage(job, w.Relative, w.Cursor, w.Page)
+	}
+	return true, nil
+}
+
 func (s *Service) readDirectoryPage(ctx context.Context, job string, source catalog.LibrarySource, relative string) error {
 	var cursor, revision string
 	if err := s.db.QueryRowContext(ctx, `SELECT cursor,revision FROM inventory_directories WHERE job_id=? AND relative_path=? AND state='pending'`, job, relative).Scan(&cursor, &revision); err != nil {
@@ -238,7 +313,23 @@ func (s *Service) verifyPage(ctx context.Context, job string, source catalog.Lib
 	if err != nil {
 		return err
 	}
-	for _, d := range dirs {
+	// A local source's folders are checked by one helper; if that can't run,
+	// each folder is checked on its own as before.
+	var checked []storage.Snapshot
+	var checkErrs []error
+	if s.storage != nil && !s.storage.IsRemote(source.ResolvedPath) && len(dirs) > 1 {
+		requests := make([]storage.InventoryRequest, len(dirs))
+		for i, d := range dirs {
+			requests[i] = storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, RelativePath: d.path, FollowSymlinks: source.FollowSymlinks}
+		}
+		if checked, checkErrs, err = s.storage.InventoryDirectories(ctx, source.ID, requests); err != nil {
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			checked, checkErrs = nil, nil
+		}
+	}
+	for i, d := range dirs {
 		if s.storage.IsRemote(source.ResolvedPath) {
 			verifier, ok := s.storage.Remote.(storage.RemoteInventoryVerifier)
 			if !ok {
@@ -256,7 +347,9 @@ func (s *Service) verifyPage(ctx context.Context, job string, source catalog.Lib
 		}
 		req := storage.InventoryRequest{Root: source.ResolvedPath, RootIdentity: source.RootIdentity, RelativePath: d.path, FollowSymlinks: source.FollowSymlinks}
 		var v storage.Snapshot
-		if s.storage != nil {
+		if checked != nil {
+			v, err = checked[i], checkErrs[i]
+		} else if s.storage != nil {
 			v, err = s.storage.InventoryDirectory(ctx, source.ID, req)
 		} else {
 			v, err = storage.LocalInventoryDirectory(req)
@@ -529,7 +622,7 @@ func (s *Service) verificationBatch(source catalog.LibrarySource) int {
 	if s.storage.IsRemote(source.ResolvedPath) {
 		return 1
 	}
-	return 8
+	return storage.MaxInventoryBatch
 }
 func (s *Service) reconciliationBatch(source catalog.LibrarySource) int {
 	// One potentially remote parent proof per turn prevents partial verification

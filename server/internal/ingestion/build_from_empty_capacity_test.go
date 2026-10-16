@@ -15,6 +15,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storage"
 )
 
 // Building a library from nothing must be quick: the time from an empty
@@ -26,7 +27,8 @@ import (
 // with wall and CPU time.
 //
 // PORTICO_PERFORMANCE_TIER=release|deep runs it; PORTICO_BUILD_FILES sizes it
-// (default 4,000). TMPDIR places the media tree and database.
+// (default 4,000). TMPDIR places the media tree and database;
+// PORTICO_BUILD_PROFILE prints the costliest statements.
 func TestBuildLibraryFromEmpty(t *testing.T) {
 	switch os.Getenv("PORTICO_PERFORMANCE_TIER") {
 	case "release", "deep":
@@ -42,6 +44,15 @@ func TestBuildLibraryFromEmpty(t *testing.T) {
 	t.Cleanup(func() { db.Close() })
 	c := catalog.New(db)
 	s := New(db, c, assets.Probe{})
+	// Folders are listed through the storage helper, a child process, as the
+	// server lists them (PORTICO_BUILD_IN_PROCESS lists them in the test).
+	if os.Getenv("PORTICO_BUILD_IN_PROCESS") == "" {
+		binary, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.SetStorage(storage.New(binary))
+	}
 	type library struct{ id, root string }
 	var libraries []library
 	for _, kind := range []string{"movie", "tv"} {
@@ -108,6 +119,17 @@ func TestBuildLibraryFromEmpty(t *testing.T) {
 		defer close(idle)
 		w := compactcatalog.NewWorker(db)
 		w.PaceToHold(compactcatalog.BatchHoldTarget)
+		// PORTICO_BUILD_SCAN_FIRST holds derived work until the scan is done,
+		// to read the scan's own cost.
+		for os.Getenv("PORTICO_BUILD_SCAN_FIRST") != "" {
+			mu.Lock()
+			done := scanDone
+			mu.Unlock()
+			if done {
+				break
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
 		for {
 			began := time.Now()
 			n, err := w.Step(scanCtx, compactcatalog.BatchMax)
@@ -169,16 +191,19 @@ func TestBuildLibraryFromEmpty(t *testing.T) {
 			}
 		}
 	}()
-	var scanWall, scanBusy time.Duration
+	// The scanner runs as the server runs it: its own loop, one quantum after
+	// another, pacing itself against foreground work.
+	scanning, stopScan := context.WithCancel(ctx)
+	scanStopped := make(chan struct{})
+	go func() { s.Run(scanning); close(scanStopped) }()
+	var scanWall time.Duration
 	for _, lib := range libraries {
 		job, err := s.Queue(lib.id)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for quanta := 0; ; quanta++ {
-			began := time.Now()
-			s.processQuantum(ctx, job.ID, lib.id)
-			scanBusy += time.Since(began)
+		for waited := 0; ; waited++ {
+			time.Sleep(50 * time.Millisecond)
 			state, err := s.Get(job.ID)
 			if err != nil {
 				t.Fatal(err)
@@ -189,11 +214,13 @@ func TestBuildLibraryFromEmpty(t *testing.T) {
 			if state.Status == "failed" {
 				t.Fatalf("scan failed: %+v", state)
 			}
-			if quanta > 100*files {
+			if waited > 40*files {
 				t.Fatal("scan did not finish")
 			}
 		}
 	}
+	stopScan()
+	<-scanStopped
 	scanWall = time.Since(start)
 	mu.Lock()
 	scanDone = true
@@ -226,6 +253,6 @@ func TestBuildLibraryFromEmpty(t *testing.T) {
 		}
 		t.Logf("BUILD_COST ms=%.0f calls=%d %.300s", entry.Millis(), entry.Count, entry.Shape)
 	}
-	t.Logf("BUILD files=%d titles=%d scan_s=%.1f scan_busy_s=%.1f derive_busy_s=%.1f first_visible_s=%.1f half_visible_s=%.1f all_visible_s=%.1f all_searchable_s=%.1f idle_s=%.1f cpu_s=%.1f derived_units=%d ms_per_file=%.2f",
-		files, titles, seconds(scanWall), seconds(scanBusy), seconds(busy), seconds(firstVisible), seconds(halfVisible), seconds(allVisible), seconds(allSearchable), seconds(total), seconds(cpu(cpuEnd)-cpu(cpuStart)), units, float64(total)/float64(time.Millisecond)/float64(files))
+	t.Logf("BUILD files=%d titles=%d scan_s=%.1f derive_busy_s=%.1f first_visible_s=%.1f half_visible_s=%.1f all_visible_s=%.1f all_searchable_s=%.1f idle_s=%.1f cpu_s=%.1f derived_units=%d ms_per_file=%.2f",
+		files, titles, seconds(scanWall), seconds(busy), seconds(firstVisible), seconds(halfVisible), seconds(allVisible), seconds(allSearchable), seconds(total), seconds(cpu(cpuEnd)-cpu(cpuStart)), units, float64(total)/float64(time.Millisecond)/float64(files))
 }

@@ -88,6 +88,13 @@ func init() {
 		}
 		return done, nil
 	}, Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
+		// While every browse row is being rebuilt, each member's sort facts
+		// are derived from its album and artist as they are now: walking
+		// every album's and artist's members as well did all that work twice.
+		var rows bool
+		if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_derivations WHERE domain=? AND rebuilding=1)`, DomainBrowseRows).Scan(&rows); err != nil || rows {
+			return nil, err
+		}
 		return scanIDs(ctx, tx, `SELECT id FROM catalog_entities WHERE id>? AND kind IN(5,6) ORDER BY id LIMIT ?`, after, limit)
 	}})
 }
