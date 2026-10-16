@@ -10,8 +10,6 @@ D="${PORTICO_DEV_DIR:?set PORTICO_DEV_DIR to a state directory (never a server y
 export PATH=/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin
 export PORTICO_STATE_DIR="$D/state"
 export PORTICO_BIND="${PORTICO_BIND:-0.0.0.0:32500}"
-# web.getportico.tv and cast.getportico.tv are built in; the server's own address is same-origin.
-export PORTICO_ALLOWED_ORIGINS="${PORTICO_ALLOWED_ORIGINS:-}"
 export PORTICO_WEB_DIR="${PORTICO_WEB_DIR:-$ROOT/web/dist}"
 export PORTICO_CACHE_DIR="$D/cache"
 export PORTICO_BACKUP_DIR="$D/backups"
