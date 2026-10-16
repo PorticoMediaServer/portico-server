@@ -60,7 +60,7 @@ October implementation reconciliation. Report inventory read at 2026-10-13 12:56
 
 ## Identity, API and networking
 
-- **accounts-security:** Restricted profiles still manage devices/approve TV; prune failed-attempt ledger; remove residual Hosted authority branches; investigate historical Apple sign-outs; country/per-library unrated policy and label/tag parity; device-approval records without installation IDs. Client permission/hours/device handling needs acceptance. Keys restored from backup are an explicit disclosed exception, not an assumed scrub task. Source: [accounts-security](../../_program/reports/accounts-security.md).
+- **accounts-security:** Restricted profiles still manage devices/approve TV; prune failed-attempt ledger; remove residual Hosted authority branches; investigate historical Apple sign-outs; device-approval records without installation IDs. Client permission/hours/device handling needs acceptance. Keys restored from backup are an explicit disclosed exception, not an assumed scrub task. Source: [accounts-security](../../_program/reports/accounts-security.md).
 
 - **review-accounts-security:** Independent five findings fixed. Reconcile all new route restriction/visibility matrices and client propagation/real proxy/Hosted/crash acceptance. Later base-health reports matrix fixes; verify against the final integrated revision rather than reopen that older count blindly. Source: [review-accounts-security](../../_program/reports/review-accounts-security.md).
 

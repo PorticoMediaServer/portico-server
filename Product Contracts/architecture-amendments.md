@@ -8,7 +8,7 @@ Hosted owns global account sign-in and profile identity. The selected server own
 
 Local sessions use bearer access/rotating refresh credentials and installation records, not possession keys. TV approval carries the approver role. Cast pairing issues separate playback-only member authority. Remote admission uses home networks and account policy on every creation path. Learned terminal Hosted signer revocation retires only affected admitted descendants. Direct/recovery families remain independent.
 
-The owner sees permanent play history even when a viewer pauses/clears personal history. Member deletion retains plays without names. Restricted-profile device powers, failed-attempt retention, country/per-library rating policy and some legacy authority branches remain unfinished. No consumer push or email is approved; residual Hosted mail flows require reconciliation. Sources: [accounts/security](../../_program/reports/accounts-security.md), [review](../../_program/reports/review-accounts-security.md).
+The owner sees permanent play history even when a viewer pauses/clears personal history. Member deletion retains plays without names. Restricted-profile device powers, failed-attempt retention and some legacy authority branches remain unfinished. Country rating tables, a per-library unrated or allow-list kids mode, and unifying profile label rules with account label/tag rules are not planned (dropped by Justin, 15 Oct 2026). No consumer push or email is approved; residual Hosted mail flows require reconciliation. Sources: [accounts/security](../../_program/reports/accounts-security.md), [review](../../_program/reports/review-accounts-security.md).
 
 ## Networking and Hosted coordination
 
