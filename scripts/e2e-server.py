@@ -636,7 +636,7 @@ class Exercise:
         found=queue.Queue()
         item=self.movies['Arrival']
         # Start after existing events, then hold a real streaming response open.
-        page=a.get('/v1/events?waitSeconds=0')
+        page=a.get('/v1/events?waitMs=0')
         cursor=page['nextAfter']
         def reader():
             try:
