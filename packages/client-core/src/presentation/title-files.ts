@@ -130,7 +130,20 @@ export type NamedMediaVersion = Readonly<{id: string; label: string; edition?: s
  * rate, else size, else "Version 2"). A version with nothing to say is "Version 1".
  */
 export function mediaVersionNames(versions: readonly NamedMediaVersion[], t: Translate): ReadonlyMap<string, string> {
-  const headline = (v: NamedMediaVersion) => [v.label, v.video[0]?.height ? t('quality.height', {height: v.video[0].height}) : '', v.container?.toUpperCase() ?? ''].filter(Boolean).join(' · ');
+  // The server's label already names the resolution and container ("720p · MKV"): a fact it
+  // states is not said twice, and the picture height goes before the container.
+  const headline = (v: NamedMediaVersion) => {
+    const parts = v.label.split(' · ').map(part => part.trim()).filter(Boolean);
+    const has = (word: string) => parts.some(part => part.toLowerCase() === word.toLowerCase());
+    const container = v.container?.toUpperCase() ?? '';
+    const height = v.video[0]?.height ? t('quality.height', {height: v.video[0].height}) : '';
+    if (height && !has(height)) {
+      const at = container ? parts.findIndex(part => part.toLowerCase() === container.toLowerCase()) : -1;
+      parts.splice(at < 0 ? parts.length : at, 0, height);
+    }
+    if (container && !has(container)) parts.push(container);
+    return parts.join(' · ');
+  };
   const facts: Record<string, VersionFacts> = {};
   for (const v of versions) facts[v.id] = {...(v.edition && v.edition !== v.label ? {edition: v.edition} : {}), ...(v.bitrateKbps ? {bitRate: v.bitrateKbps * 1000} : {}), ...(v.sizeBytes ? {size: v.sizeBytes} : {})};
   const named = versionNames(versions.map(v => ({id: v.id, label: headline(v)})), facts, t);

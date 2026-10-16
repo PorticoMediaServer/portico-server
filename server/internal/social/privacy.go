@@ -11,6 +11,7 @@ import (
 func watchTogetherVisible(alias string) string {
 	return `COALESCE((SELECT json_extract(d.body,'$."privacy.includeInWatchTogether"') FROM console_documents d WHERE d.scope='profile:'||json_array(` + alias + `.authority,` + alias + `.account_id,` + alias + `.profile_id)),1)<>0`
 }
+
 // activityPrivacy is one member's name as the room sees it and whether they
 // share their activity.
 type activityPrivacy struct {
@@ -61,4 +62,3 @@ func projectActivityWith(room map[string]activityPrivacy, payload json.RawMessag
 	}
 	return json.Marshal(body)
 }
-

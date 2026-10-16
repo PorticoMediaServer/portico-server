@@ -18,6 +18,7 @@ func directoryRevision(q personalReader, a ResourceActor) (ContentRevision, erro
 func resourceEnvelope(r ContentRequest, title string) ContentEnvelope {
 	return ContentEnvelope{Scope: ContentScope{r.ServerID, "", "mixed", r.View, r.EntityID, r.ViewerFence}, Heading: ContentHeading{Key: "saved." + r.View, Fallback: title}, Query: ContentQuery{Sort: r.Sort, Direction: r.Direction, Limit: r.Limit, SearchMode: "none"}, Navigation: savedNavigation(), Sorts: []ContentSort{}, Filters: []ContentFilter{}, Sections: []ContentSection{}}
 }
+
 // playlistDirectorySorts are the orders a list of playlists offers: by name,
 // by when each was made or last changed, and by how many entries it holds.
 // Each is a key over the playlist row itself, so a page costs the viewer's

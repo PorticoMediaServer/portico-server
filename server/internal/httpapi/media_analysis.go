@@ -10,6 +10,7 @@ import (
 
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/lyrics"
 	"portico.local/server/internal/mediaanalysis"
 )
 
@@ -34,7 +35,8 @@ func analysisFailure(w http.ResponseWriter, e error) {
 		status, code = 422, "analysis_clock_unavailable"
 	case errors.Is(e, mediaanalysis.ErrConflict):
 		status, code = 409, "analysis_conflict"
-	case errors.Is(e, mediaanalysis.ErrInput):
+	case errors.Is(e, mediaanalysis.ErrInput), errors.Is(e, lyrics.ErrInput):
+		// The analysis routes read their bodies with the lyrics routes' strict decoder.
 		status, code = 400, "invalid_analysis"
 	case errors.Is(e, mediaanalysis.ErrBudget):
 		status, code = 422, "analysis_budget_exceeded"
