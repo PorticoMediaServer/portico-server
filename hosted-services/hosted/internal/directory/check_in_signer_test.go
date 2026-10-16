@@ -23,7 +23,7 @@ func (*checkInRepo) CaptureServerAuthority(context.Context, []byte) (ServerAutho
 }
 func (r *checkInRepo) ServerHeartbeat(context.Context, ServerAuthority, CheckInReport) (Heartbeat, error) {
 	r.checkIns++
-	return Heartbeat{HeartbeatAfterSeconds: 60}, nil
+	return Heartbeat{HeartbeatAfterMs: 60000}, nil
 }
 func (*checkInRepo) PushMembers(context.Context, ServerAuthority, MemberPush) (MemberPushResult, error) {
 	return MemberPushResult{}, ErrDenied
@@ -59,7 +59,7 @@ func TestCheckInSurvivesAnUnusableSigner(t *testing.T) {
 	}
 	keys.Certificate = expired
 	out, e = s.ServerHeartbeat(context.Background(), ServerAuthority{}, CheckInReport{})
-	if e != nil || out.SigningCertificate != nil || out.HeartbeatAfterSeconds != 60 || repo.checkIns != 2 {
+	if e != nil || out.SigningCertificate != nil || out.HeartbeatAfterMs != 60000 || repo.checkIns != 2 {
 		t.Fatal("expired signer refused or advertised", out.SigningCertificate, e)
 	}
 	keys.Certificate = valid

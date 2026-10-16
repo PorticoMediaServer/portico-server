@@ -70,9 +70,9 @@ type Heartbeat struct {
 	// Root-signed current documents certificate, carried by existing check-ins.
 	// Servers verify and persist its monotonic revocations before admission.
 	// Null when no current root-verified certificate is available.
-	SigningCertificate    *trust.Certificate `json:"signingCertificate"`
-	HeartbeatAfterSeconds int                `json:"heartbeatAfterSeconds"`
-	PresenceExpiresAt     time.Time          `json:"presenceExpiresAt"`
+	SigningCertificate *trust.Certificate `json:"signingCertificate"`
+	HeartbeatAfterMs   int64              `json:"heartbeatAfterMs"`
+	PresenceExpiresAt  time.Time          `json:"presenceExpiresAt"`
 	// RouteLabel is the server's current members-only label (A86). A member
 	// removal rotates it, and the rotation wakes the server, whose check-in
 	// then picks it up; there is no periodic contact.

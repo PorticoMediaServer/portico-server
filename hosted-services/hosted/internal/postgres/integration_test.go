@@ -398,7 +398,7 @@ func TestCheckInAcknowledgesWakesMonotonically(t *testing.T) {
 		t.Fatal(e)
 	}
 	result, e := f.dir.ServerHeartbeat(ctx, authority, directory.CheckInReport{WakeRevision: 5})
-	if e != nil || result.HeartbeatAfterSeconds != int(directory.CheckInUnreachable/time.Second) || result.CleanupPending {
+	if e != nil || result.HeartbeatAfterMs != directory.CheckInUnreachable.Milliseconds() || result.CleanupPending {
 		t.Fatal(result, e)
 	}
 	// A server Hosted cannot wake checks in daily; its presence window covers that with slack.
