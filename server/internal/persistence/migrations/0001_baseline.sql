@@ -3750,6 +3750,8 @@ CREATE TABLE catalog_personal_sort_rows(
 CREATE INDEX catalog_personal_order_rating ON catalog_personal_sort_rows(profile_id,library_id,kind,rating,entity_id);
 CREATE INDEX catalog_personal_order_last ON catalog_personal_sort_rows(profile_id,library_id,kind,last_played_at,entity_id);
 CREATE INDEX catalog_personal_order_plays ON catalog_personal_sort_rows(profile_id,library_id,kind,play_count,entity_id);
+-- The viewing history across libraries, most recent first, for its own order.
+CREATE INDEX catalog_personal_history ON catalog_personal_sort_rows(profile_id,last_played_at,entity_id) WHERE last_played_at<>'';
 CREATE TABLE catalog_personal_sort_buckets(
  profile_id TEXT NOT NULL,library_id INTEGER NOT NULL,kind INTEGER NOT NULL,
  axis INTEGER NOT NULL CHECK(axis BETWEEN 7 AND 9),value TEXT NOT NULL,total INTEGER NOT NULL CHECK(total>=0),

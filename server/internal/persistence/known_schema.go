@@ -192,6 +192,7 @@ index catalog_movie_category_visible_poster
 index catalog_movie_category_visible_rank
 index catalog_people_identity
 index catalog_people_name
+index catalog_personal_history
 index catalog_personal_order_last
 index catalog_personal_order_plays
 index catalog_personal_order_rating

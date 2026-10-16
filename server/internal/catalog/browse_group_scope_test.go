@@ -281,6 +281,10 @@ func TestBrowseAcrossLibraries(t *testing.T) {
 			t.Fatalf("%s names library %q", entry.Title, entry.LibraryID)
 		}
 	}
+	lettered, err := s.BrowseAcross(v, AcrossRequest{Pivot: "titles", Query: &myList, Sort: []BrowseSortSelection{{Field: "title", Direction: "asc"}}, Limit: 1})
+	if err != nil || fmt.Sprint(lettered.PositionIndex) != "[{A 0} {K 1} {M 2} {Z 3}]" {
+		t.Fatalf("letter index across libraries: %v %v", lettered.PositionIndex, err)
+	}
 	limited := v
 	limited.Restrictions, limited.Fence = classesRestrictionOf(classesCeiling(13), false), "limited"
 	filtered := walkAcross(t, s, limited, AcrossRequest{Pivot: "titles", Query: &BrowseNode{All: []BrowseNode{myList, {Field: "year", Operator: "at-least", Value: float64(2000)}}}, Sort: []BrowseSortSelection{{Field: "year", Direction: "desc"}}, Limit: 1})
@@ -463,5 +467,45 @@ func TestQueuePlaysAHomeRowSnapshot(t *testing.T) {
 	}
 	if _, err := keys(BrowseSortSelection{Field: "groupOrder", Direction: "asc"}, nil); err == nil {
 		t.Fatal("a Home row nobody resolved was played")
+	}
+}
+
+// The history across libraries pages in its own order past the totals limit,
+// its total an open lower bound that grows as pages are read.
+func TestHistoryAcrossLibrariesRunsPastTheTotalsLimit(t *testing.T) {
+	c := catalogtest.Open(t)
+	movies := c.Library("m", "Movies", "movie", "/m")
+	tv := c.Library("t", "TV", "tv", "/t")
+	film := c.Movie(movies, "/m/a.mkv", "Zulu", 2001)
+	other := c.Movie(movies, "/m/b.mkv", "Alpha", 1999)
+	third := c.Movie(movies, "/m/c.mkv", "Mike", 2005)
+	show := c.Show(tv, "Kilo", 2003)
+	episode := c.Episode(show, c.Season(show, 1), 1, "/t/e1.mkv")
+	owner := identity.PersonalKey(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"})
+	for at, id := range []int64{other.ID, episode.ID, third.ID, film.ID} {
+		c.Exec(`INSERT INTO personal_items(profile_id,item_id,last_played_at,revision) VALUES(?,?,?,1)`, owner, id, fmt.Sprintf("2026-10-0%dT00:00:00Z", at+1))
+	}
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: owner, Fence: "f", Libraries: []string{"m", "t"}}
+	history := BrowseNode{Field: "lastPlayedAt", Operator: "is-present"}
+	got := walkAcross(t, s, v, AcrossRequest{Pivot: "titles", Query: &history, Sort: []BrowseSortSelection{{Field: "groupOrder", Direction: "asc"}}, Limit: 1})
+	if titles := entryTitles(got); !reflect.DeepEqual(titles, []string{"Zulu", "Mike", "Kilo", "Alpha"}) {
+		t.Fatalf("history across libraries: %v", titles)
+	}
+	before := browseTotalThreshold
+	browseTotalThreshold = 2
+	defer func() { browseTotalThreshold = before }()
+	first, err := s.BrowseAcross(v, AcrossRequest{Pivot: "titles", Query: &history, Sort: []BrowseSortSelection{{Field: "groupOrder", Direction: "asc"}}, Limit: 1})
+	if err != nil || first.PageInfo.Total != 2 || !first.PageInfo.TotalIsLowerBound || first.PageInfo.NextCursor == "" {
+		t.Fatalf("first page past the limit: %+v %v", first.PageInfo, err)
+	}
+	deep, err := s.BrowseAcross(v, AcrossRequest{Pivot: "titles", Query: &history, Sort: []BrowseSortSelection{{Field: "groupOrder", Direction: "asc"}}, Limit: 1, Range: &BrowseRange{Start: 3}})
+	if err != nil || len(deep.Entries) != 1 || deep.Entries[0].Title != "Alpha" || deep.PageInfo.HasMore {
+		t.Fatalf("a page past the counted limit: %+v %+v %v", deep.Entries, deep.PageInfo, err)
+	}
+	all := walkAcross(t, s, v, AcrossRequest{Pivot: "items", Query: &BrowseNode{All: []BrowseNode{history, {Field: "year", Operator: "at-least", Value: float64(2000)}}}, Sort: []BrowseSortSelection{{Field: "groupOrder", Direction: "desc"}}, Limit: 1})
+	if titles := entryTitles(all); !reflect.DeepEqual(titles, []string{"Mike", "Zulu"}) {
+		t.Fatalf("filtered history, oldest first: %v", titles)
 	}
 }
