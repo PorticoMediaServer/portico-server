@@ -21,7 +21,7 @@ import {sortDirectionKind} from '@core/presentation/index.ts';
 import {acrossGroup, useGroupBrowse, type GroupChoice} from '../../app/group-browse';
 import type {AcrossGroup} from '@core/presentation/browse-groups.ts';
 import {GroupBar, GroupGrid} from '../shared/GroupBrowse';
-import {useQuietRefresh} from '../../app/quiet-refresh';
+import {useRefreshRequiredRetry} from '../../app/quiet-refresh';
 
 type SavedTab = 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history';
 const NO_SECTIONS: NonNullable<SavedSnapshot['projection']>['sections'] = [];
@@ -180,7 +180,7 @@ export function SavedScreen() {
 }
 
 function SavedView({tab, filter, onShowAll, snapshot, onRetry, onRefresh, onNext, onPrevious}: {tab: Exclude<SavedTab, 'history' | 'collections'>; filter?: string; onShowAll: () => void; snapshot: SavedSnapshot; onRetry: () => void; onRefresh: () => void; onNext: (id: string) => void; onPrevious: () => void}) {
-  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', onRefresh);
+  const changedStuck = useRefreshRequiredRetry(snapshot.phase === 'refresh-required', onRefresh);
   const {t} = useI18n();
   const navigate = useNavigate();
   const sections = snapshot.projection?.sections ?? NO_SECTIONS;

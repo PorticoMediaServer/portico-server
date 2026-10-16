@@ -25,7 +25,7 @@ import {useLibrariesContext} from '../../app/libraries';
 import body from '../detail/Detail.module.css';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
-import {useQuietRefresh} from '../../app/quiet-refresh';
+import {useRefreshRequiredRetry} from '../../app/quiet-refresh';
 
 /**
  * Generic entity workspace: artist, album, collection, category, author,
@@ -48,7 +48,7 @@ export function EntityScreen() {
   const downloads = useDownloads();
   const content = useMemo<ContentRoute>(() => ({libraryId, view: view as Exclude<ContentView, 'home'>, entityId}), [libraryId, view, entityId]);
   const {snapshot, retry, refresh, next} = useContent(content);
-  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', refresh);
+  const changedStuck = useRefreshRequiredRetry(snapshot.phase === 'refresh-required', refresh);
   const [reordering, setReordering] = useState(false);
   useSelectionRefresh(refresh);
   // PERF-S02: section "More" appends inside its own section; the page's other

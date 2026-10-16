@@ -16,6 +16,7 @@ sorts and filters; do not build a second client-side visibility rule.
 | `GET /v1/libraries/{id}/browse-capabilities` | The library's fields, operators, sorts, quick filters and bounds. |
 | `GET /v1/libraries/{id}/facets` | Available facet values and counts. |
 | `POST /v1/libraries/{id}/browse` | Structured browse expressions and ordered, paged entries. |
+| `POST /v1/browse` | The same, for one group across the viewer's libraries: a person's titles, a playlist, a personal collection, a Home row, My List, Favorites or History. The query must name the group. |
 
 For structured browse, read capabilities first. An example request:
 
@@ -27,6 +28,14 @@ The response has `entries`, the applied query, `pageInfo` and optional letter
 anchors in `positionIndex`. Use `pageInfo.nextCursor` for the next page or the
 returned revision with a positional range. Do not use a page index from another
 revision. Source: `internal/httpapi/browse_routes.go` and the browse engine.
+
+Totals are exact up to 10,000. A filter that matches more says
+`pageInfo.totalIsLowerBound: true` with `total: 10000`; show it as "10,000+"
+and keep paging with `nextCursor` (or a positional range past 10,000) until
+`hasMore` is false. A grouping entry whose count passed the threshold carries
+`totalAtLeast`. A group's own order (playlist position, collection order,
+episode or track order) is the sort `groupOrder`, and it stays in force under
+a filter.
 
 Content screens publish their allowed sort/filter choices, including grouped
 screens. Use those choices for genres, collections, series, people and other

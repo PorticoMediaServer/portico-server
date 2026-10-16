@@ -39,7 +39,7 @@ import {isRecommendationRow} from '@core/recommendation-feedback.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {withoutHidden} from '../../app/not-interested';
 import {useI18n, type I18n} from '../../app/i18n';
-import {useQuietRefresh} from '../../app/quiet-refresh';
+import {useRefreshRequiredRetry} from '../../app/quiet-refresh';
 
 const SORT_NAMES = new Set(['title', 'added', 'year', 'duration', 'last_played', 'rating', 'episode', 'track', 'artist', 'album', 'author', 'release', 'random']);
 const sortLabel = (t: I18n['t'], key: string): string => {
@@ -126,7 +126,7 @@ export function LibraryScreen() {
   /* The authored content route still serves Discover, categories and the tab strip; browsable pivots read the engine. */
   const {snapshot, retry, refresh, next} = useContent(engine ? {libraryId, view: 'discover'} : content);
   // Read again quietly when the server says the page changed; the notice is for one that stays refused.
-  const changedStuck = useQuietRefresh(!engine && !custom && snapshot.phase === 'refresh-required', refresh);
+  const changedStuck = useRefreshRequiredRetry(!engine && !custom && snapshot.phase === 'refresh-required', refresh);
   const projection = snapshot.projection;
   // PERF-S02: section "More" appends inside its own section; the page's other
   // sections stay rendered.
