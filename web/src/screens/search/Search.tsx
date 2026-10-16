@@ -220,6 +220,8 @@ function isContent(entry: SearchEntry): entry is ContentEntry {
 }
 /** PERF-28: memoised on the entry, so typing (which re-renders the page) doesn't re-render every card. */
 const ResultCard = React.memo(function ResultCard({entry}: {entry: SearchEntry}) {
+  // Captions come from catalogue helpers: reading the catalogue here redraws the card in a new language.
+  useI18n();
   const open = useOpenEntry();
   const hrefOf = useEntryHref();
   const router = useRouter();

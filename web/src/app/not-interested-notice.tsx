@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useSyncExternalStore} from 'react';
 import {Inset, Notice} from '../ui';
-import {currentI18n} from './i18n';
+import {useI18n} from './i18n';
 import {useViewerScope} from './viewer-scope';
 import {currentNotInterestedNotice, dismissNotInterested, hiddenNotInterestedSnapshot, notInterestedVersion, recommendationViewer, subscribeNotInterested, undoNotInterested} from './not-interested';
 
@@ -14,6 +14,7 @@ export function useNotInterested(): {hidden: ReadonlySet<string>} {
 /** Rendered once in Shell, so two mounted screens cannot offer duplicate Undo actions. */
 export function NotInterestedNotice() {
   const viewer = recommendationViewer(useViewerScope());
+  const {t} = useI18n();
   useSyncExternalStore(subscribeNotInterested, notInterestedVersion);
   const notice = currentNotInterestedNotice(viewer);
   useEffect(() => {
@@ -22,7 +23,6 @@ export function NotInterestedNotice() {
     return () => clearTimeout(id);
   }, [viewer, notice]);
   if (!notice) return null;
-  const t = currentI18n().t;
   return <Inset>{notice.error
     ? <Notice tone="error" compact>{t(notice.error === 'undo' ? 'entry.notInterestedUndoFailed' : 'entry.notInterestedFailed', {title: notice.title})}</Notice>
     : <Notice tone="info" compact action={{label: t('action.undo'), onClick: () => void undoNotInterested(viewer, notice)}}>{t('entry.notInterestedDone', {title: notice.title})}</Notice>
