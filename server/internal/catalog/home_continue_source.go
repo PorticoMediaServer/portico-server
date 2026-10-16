@@ -72,7 +72,7 @@ func (s *Service) homeContinueSource(r HomeRequest, libraries, cutoffs, premiere
 // shows Continue Watching considers. A restricted viewer may be refused most
 // of a long history; the row then shows what this many recent shows offer,
 // at the same cost in any library.
-const continueShowWindow = 2048
+const continueShowWindow = 512
 
 // showActivityAfter is the key of the last show in the slice of size n that
 // starts after the given key (the n-th newest from there), or sql.ErrNoRows
