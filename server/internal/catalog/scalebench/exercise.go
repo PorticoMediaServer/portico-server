@@ -323,6 +323,28 @@ func exerciseCatalog(db *sql.DB, s *catalog.Service, samples int, matrix, writes
 			return results, err
 		}
 	}
+	// A title condition matching few titles (a rare run of digits, none)
+	// next to a broad one, on a film and a song list, both viewers.
+	pg13 := v
+	age := 13
+	pg13.Profile, pg13.Fence, pg13.Restrictions = "viewer-pg13", "scale-pg13", identity.ContentRestrictions{MaximumAge: &age, BlockUnrated: true}
+	for _, viewer := range []struct {
+		name   string
+		viewer catalog.Viewer
+	}{{"open", v}, {"pg13", pg13}} {
+		for _, list := range [][2]string{{"movies", "movies"}, {"music", "songs"}} {
+			for _, text := range []string{"Title", "0001234", "zzz"} {
+				viewer, list, text := viewer, list, text
+				node := catalog.BrowseNode{Field: "title", Operator: "contains", Value: text}
+				if err := add("title-filter/"+viewer.name+"/"+list[0]+"/"+list[1]+"/"+text, func(_ context.Context, s *catalog.Service) error {
+					_, err := s.BrowseEntities(viewer.viewer, catalog.BrowseRequest{Library: list[0], Pivot: list[1], Query: &node, Limit: 40})
+					return err
+				}); err != nil {
+					return results, err
+				}
+			}
+		}
+	}
 	// Non-relevance search sorts rank every match of the typed words.
 	for _, sortID := range []string{"title", "releaseYear", "dateAdded"} {
 		for _, query := range []string{"Ti", "Title", "Title 000000"} {
