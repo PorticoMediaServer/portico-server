@@ -183,15 +183,15 @@ export function EntityScreen() {
   const barredSection = kind === 'book' ? (onePart ? undefined : parts) : legacySections[0];
   const titleBar = groups.titles && snapshot.sections.length && (kind !== 'book' || barredSection) ? <Inset><GroupBar group={titleGroup} total={isArtist ? releases?.totalCount : barredSection?.totalCount} /></Inset> : null;
   // The owner arranges a library collection's own order here (only while it is shown in that order).
+  // A collection page carries no entity projection: the collection is the route's own id.
   const ownOrderShown = kind === 'collection' && !address.sort && !address.filters;
-  const canReorder = (owner || administrator) && ownOrderShown && !!entity && (titleGroup.total ?? 0) > 1;
+  const canReorder = (owner || administrator) && ownOrderShown && (titleGroup.total ?? 0) > 1;
   const refreshTitles = titleGroup.refresh;
   const moveTitle = useCallback(async (request: Readonly<{entryId: string; afterEntryId: string}>) => {
-    if (!entity) return;
-    await moveCollectionTitle(<T,>(path: string, method: 'GET' | 'PUT', body?: unknown) => api.request<T>(path, method, body), entity.id, request.entryId, request.afterEntryId);
+    await moveCollectionTitle(<T,>(path: string, method: 'GET' | 'PUT', body?: unknown) => api.request<T>(path, method, body), entityId, request.entryId, request.afterEntryId);
     // The rows in view are read again; the move stays shown until they arrive.
     refreshTitles?.();
-  }, [api, entity, refreshTitles]);
+  }, [api, entityId, refreshTitles]);
   return (
     <div style={{position: 'relative'}}>
         <TitleHero
@@ -267,7 +267,7 @@ export function EntityScreen() {
             <Section title={isArtist ? t('title.albums') : barredSection ? sectionHeading(i18n, barredSection.heading) : undefined}>
               {canReorder || reordering ? <Inset><Button variant={reordering ? 'primary' : 'secondary'} icon={reordering ? 'check' : 'list'} label={reordering ? t('order.done') : t('order.reorder')} aria-pressed={reordering} onClick={() => setReordering(on => !on)} /></Inset> : null}
               {reordering && canReorder ? null : titleBar}
-              {reordering && canReorder ? <Inset><Surface padless>{titleGroup.collection ? <WindowedOrderList collection={titleGroup.collection} label={entity?.title ?? ''} onMove={moveTitle} /> : null}</Surface></Inset> : <GroupGrid group={titleGroup} square={libraryKind === 'music' || libraryKind === 'audiobook'} />}
+              {reordering && canReorder ? <Inset><Surface padless>{titleGroup.collection ? <WindowedOrderList collection={titleGroup.collection} label={entity?.title ?? title ?? ''} onMove={moveTitle} /> : null}</Surface></Inset> : <GroupGrid group={titleGroup} square={libraryKind === 'music' || libraryKind === 'audiobook'} />}
             </Section>
           ) : null}
           {/* Releases by type: Albums, Singles & EPs, Compilations, Appears on (client-core `artistReleaseGroups`). */}
