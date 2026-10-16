@@ -81,9 +81,9 @@ var normalizedTables = map[string]string{
 	"catalog_rec_member_counts":    `SELECT work_id,` + artistFacet + `,total,eligible FROM catalog_rec_member_counts`,
 	"catalog_rec_postings":         `SELECT ` + artistFacet + `,library_id,quality,entity_id FROM catalog_rec_postings`,
 	"catalog_rec_df":               `SELECT ` + artistFacet + `,sum(works) FROM catalog_rec_df GROUP BY 1`,
-	"catalog_search_prefix_terms":  `SELECT prefix,terminal FROM catalog_search_prefix_terms`,
-	"catalog_search_prefix_rows":   `SELECT t.prefix,t.terminal,r.entity_id,r.kind,r.library_id,r.tier,r.container,r.rating_key,r.label_key FROM catalog_search_prefix_rows r JOIN catalog_search_prefix_terms t ON t.id=r.term_id`,
-	"catalog_search_prefix_counts": `SELECT t.prefix,t.terminal,c.kind,c.library_id,c.container,c.rating_key,c.label_key,c.total FROM catalog_search_prefix_counts c JOIN catalog_search_prefix_terms t ON t.id=c.term_id`,
+	"catalog_search_prefix_terms":  `SELECT prefix FROM catalog_search_prefix_terms`,
+	"catalog_search_prefix_rows":   `SELECT t.prefix,r.entity_id,r.kind,r.library_id,r.tier,r.container,r.rating_key,r.label_key FROM catalog_search_prefix_rows r JOIN catalog_search_prefix_terms t ON t.id=r.term_id`,
+	"catalog_search_prefix_counts": `SELECT t.prefix,c.kind,c.library_id,c.container,c.rating_key,c.label_key,c.total FROM catalog_search_prefix_counts c JOIN catalog_search_prefix_terms t ON t.id=c.term_id`,
 }
 
 // derivedTables are the tables derived work writes. Queues, cursors, the
