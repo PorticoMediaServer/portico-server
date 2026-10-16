@@ -7,7 +7,8 @@ import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
 import {groupOrderSort} from '@core/presentation/browse-groups.ts';
 import {BrowseBar} from '../library/BrowseFilters';
-import {FacetGroupContext, facetGroupOf} from '../../app/browse';
+import {FacetGroupContext} from '../../app/browse';
+import {facetGroupOf} from '@core/browse.ts';
 import {EngineResults} from '../library/EngineResults';
 import {Inset, StateView, WindowedGrid} from '../../ui';
 

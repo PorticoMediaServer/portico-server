@@ -4,7 +4,7 @@ import {createWindowedCollection, type FetchPage, type WindowedCollection} from 
 import {titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {usePooled} from './freshness';
 import type {ContentEntry} from '@core/library-content.ts';
-import {acrossLibraries, browseCapabilitiesPath, browseFacetsPath, facetGroupOf, parseBrowseCapabilities, parseBrowseFacets, type BrowseCapabilities, type BrowseFacetValue, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
+import {acrossLibraries, browseCapabilitiesPath, browseFacetsPath, parseBrowseCapabilities, parseBrowseFacets, type BrowseCapabilities, type BrowseFacetValue, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
 import {appliedFilterLabel, browseNameId} from '@core/presentation/index.ts';
 import type {MessageId} from '@i18n';
 import {sessionIdentity, useSession} from './session';
@@ -105,7 +105,6 @@ export function useBrowseCollection(input: {libraryId?: string; pivot?: string; 
 }
 
 /** The group a list across libraries is (its person, playlist, collection, Home row, My List, Favorites or history), so its filter choices count that list's own titles. */
-export {facetGroupOf};
 export const FacetGroupContext = createContext<Readonly<{group: string; value: string}> | undefined>(undefined);
 
 export function useFacets(libraryId: string | undefined) {
