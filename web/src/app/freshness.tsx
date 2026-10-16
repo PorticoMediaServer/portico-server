@@ -128,11 +128,11 @@ export function usePooledService<S extends QuietService & Store<T>, T>(key: stri
  * retried quietly). Returns `markCurrent`, for when the screen has just read it itself.
  */
 /**
- * For a list the server sends no hint for (the guide, recordings, downloads): the same quiet
- * read, asked for every `everyMs` while the tab is in front, as well as when one of
- * `dependencies` moves. The hub decides when it actually runs (the screen open, input paused) and
- * retries a failed read by itself; nothing is read while the tab is hidden, and one read catches
- * up when it is shown again.
+ * A screen kept current by its server hints (`dependencies`) and, where something on it moves
+ * with no hint (a download's progress), by a clock every `everyMs` while the tab is in front;
+ * `everyMs: 0` keeps no clock. The hub decides when a read actually runs (the screen open, input
+ * paused) and retries a failed read by itself; nothing is read while the tab is hidden, and one
+ * read catches up when it is shown again.
  */
 export function useQuietRefresh(name: string, revalidate: FreshDocumentOptions['revalidate'], hasContent: () => boolean = () => true, options: {dependencies?: readonly FreshnessDependency[]; everyMs?: number} = {}): () => void {
   const {hub} = useFreshness();
@@ -142,6 +142,7 @@ export function useQuietRefresh(name: string, revalidate: FreshDocumentOptions['
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const dependencies = useMemo(() => [clock, ...(key ? key.split('\n') : [])], [clock, key]);
   useEffect(() => {
+    if (everyMs <= 0) return;
     const timer = setInterval(() => { if (hub.isActive()) hub.note(clock); }, everyMs);
     return () => clearInterval(timer);
   }, [hub, clock, everyMs]);

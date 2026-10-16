@@ -26,7 +26,7 @@ import {useI18n} from '../../app/i18n';
  * The library's sort and filters apply to the row's titles across libraries (`homeRow`): the row's
  * own order stands until a sort or filter is chosen, and stays the order under a filter.
  */
-const rowDependencies = Object.freeze([dependsOn.libraries, ...titlesWithPersonalState()]);
+const rowDependencies = Object.freeze([dependsOn.libraries, dependsOn.list('recommendations'), ...titlesWithPersonalState()]);
 
 export function HomeRowPageScreen() {
   const {t} = useI18n();

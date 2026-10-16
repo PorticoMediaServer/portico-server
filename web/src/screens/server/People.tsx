@@ -1,8 +1,8 @@
 import {useEffect, useState} from 'react';
 import {deleteMember, parseAccessMember, parseLimitsDocument, previewMemberDeletion, type AccessMember, type AccessTier, type MemberDeletionPreview, type MemberLimits} from '@core/server-administration.ts';
-import {memberOffLine, type DirectMember} from '@core/server-admin/panel-logic.ts';
+import {memberOffLine, readAccessRecord, type DirectMember} from '@core/server-admin/panel-logic.ts';
 import {problem, sendFresh, useAction, useRead} from '../../admin/console';
-import {findInPages, nextCursorOf, useCursorList} from '../../admin/cursor-read';
+import {nextCursorOf, useCursorList} from '../../admin/cursor-read';
 import {roleLabel} from '@core/server-admin/people-words.ts';
 import {isStaleAnswer, rebaseDraft} from '@core/freshness-actions.ts';
 import {createOperationIds} from './operation-ids';
@@ -53,7 +53,7 @@ function AdministeredAccounts() {
   const open = (id?: string) => void navigate({to: '.', search: id ? {id} : {}});
   const selected = search.id ? members.find(m => m.accountId === search.id) : undefined;
   if (search.id && selected) return <AccountDetail administered member={administered(selected)} access={selected} libraries={libraries.items} onBack={() => open()} onChanged={access.reload} onDeleted={() => { open(); access.reload(); }}
-    readMember={async () => { const now = await findInPages(accessPage, a => a.accountId === selected.accountId); return now ? administered(now) : undefined; }} readAccess={() => findInPages(accessPage, a => a.accountId === selected.accountId)} />;
+    readMember={async () => { const now = await readAccessRecord(api, 'members', selected.accountId, parseAccessMember); return now ? administered(now) : undefined; }} readAccess={() => readAccessRecord(api, 'members', selected.accountId, parseAccessMember)} />;
   return (
     <SettingsGroup title={t('web.people.accountsTitle')} description={t('web.people.accountsLede')}>
       {access.error ? <SettingsNote><Notice tone={access.data ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: access.reload}}>{access.error}</Notice></SettingsNote> : null}
@@ -86,7 +86,7 @@ function OwnerAccounts() {
   const open = (id?: string) => void navigate({to: '.', search: id ? {id} : {}});
   const selected = search.id ? members.find(m => m.id === search.id) : undefined;
   if (search.id && selected) return <AccountDetail member={selected} access={access.data?.find(a => a.accountId === selected.id)} libraries={libraries.items} onBack={() => open()} onChanged={() => { read.reload(); access.reload(); }} onDeleted={() => { open(); read.reload(); access.reload(); }}
-    readMember={async () => (await api.request<{items: DirectMember[]}>('/v1/direct/members')).items.find(m => m.id === selected.id)} readAccess={() => findInPages(accessPage, a => a.accountId === selected.id)} />;
+    readMember={async () => (await api.request<{items: DirectMember[]}>('/v1/direct/members')).items.find(m => m.id === selected.id)} readAccess={() => readAccessRecord(api, 'members', selected.id, parseAccessMember)} />;
   return (
     <>
       <SettingsGroup title={t('web.people.accountsTitle')} description={t('web.people.accountsLede')} action={<Button size="sm" variant="secondary" icon="plus" label={t('web.people.addAccount')} onClick={() => { action.clear(); setAdding(true); }} />}>

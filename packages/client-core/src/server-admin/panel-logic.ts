@@ -123,6 +123,19 @@ export function regenerationBody(channel: {revision: number; replacementBoundary
 /** CD-07: the server allows at most 100 rows a page; every list stays on that limit and follows nextCursor. */
 export const accessLists = {members: routePath("get_admin_access_members"), invitations: routePath("get_admin_access_invitations"), devices: routePath("get_admin_access_devices"), apiKeys: routePath("list_api_keys")} as const;
 export const accessListPath = (list: keyof typeof accessLists, cursor = '') => `${accessLists[list]}?limit=100${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`;
+/** One member, invitation or device read by its id, as its list shows it. */
+export const accessRecordPath = (kind: 'members' | 'invitations' | 'devices', id: string) => kind === 'members' ? routePath('get_admin_access_member', {id}) : kind === 'invitations' ? routePath('get_admin_access_invitation', {id}) : routePath('get_admin_access_device', {id});
+/**
+ * Reads one access record again, for a change the server said was made against an older copy of
+ * it. A record that is gone (404) is `undefined`, so the change ends with the server's first answer.
+ */
+export async function readAccessRecord<T>(api: {request<R>(path: string): Promise<R>}, kind: 'members' | 'invitations' | 'devices', id: string, parse: (raw: unknown) => T): Promise<T | undefined> {
+  try { return parse(await api.request<unknown>(accessRecordPath(kind, id))); } catch (error) {
+    const e = error as {status?: unknown; code?: unknown} | null;
+    if (e?.status === 404 || e?.code === 'not_found') return undefined;
+    throw error;
+  }
+}
 export const tierLabels: Readonly<Record<AccessTier, string>> = {owner: 'Owner', admin: 'Administrator', member: 'Member'};
 /** A key's access, as the simple picker offers it: four ready-made choices of scopes. */
 export const scopeLabels: Readonly<Record<ApiScopePreset, string>> = {read: 'Read only', playback: 'Playback', library: 'Library management', admin: 'Full access'};

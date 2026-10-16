@@ -1,13 +1,13 @@
 import {useEffect, useState} from 'react';
 import {parseRatingSystems, type RatingSystem} from '@core/identity-restrictions.ts';
-import {contentRatings, parseAccessDevicePage, parseInvitation, type AccessDevice, type AccessTier, type Invitation, type MemberLimits} from '@core/server-administration.ts';
-import {accessListPath} from '@core/server-admin/panel-logic.ts';
+import {contentRatings, parseAccessDevice, parseAccessDevicePage, parseInvitation, type AccessDevice, type AccessTier, type Invitation, type MemberLimits} from '@core/server-administration.ts';
+import {accessListPath, readAccessRecord} from '@core/server-admin/panel-logic.ts';
 export {accessListPath, accessLists} from '@core/server-admin/panel-logic.ts';
 import {VIEWING_HOURS_MAX, dayChoiceOf, daysOfChoice, deviceFacts, newViewingHours, roleLabel, trustApplies, type DayChoice} from '@core/server-admin/people-words.ts';
 import {clockMinutes, clockText} from '@core/server-admin/panel-logic.ts';
 import {sendFresh, useAction} from '../../admin/console';
 import {createOperationIds} from './operation-ids';
-import {findInPages, nextCursorOf, useCursorList} from '../../admin/cursor-read';
+import {nextCursorOf, useCursorList} from '../../admin/cursor-read';
 import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
 import {Button, ConfirmDialog, Dialog, Input, Notice, Select, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch, Text, TextArea, relative} from '../../ui';
@@ -123,7 +123,7 @@ export function InvitationsPanel() {
   const revoke = (invitation: Invitation) => action.run(async () => {
     await sendFresh(invitation,
       i => api.request(`/v1/admin/access/invitations/${encodeURIComponent(i.id)}/revoke`, 'POST', {expectedRevision: i.revision, operationId: opIds.forPayload(JSON.stringify({id: i.id, revision: i.revision}))}),
-      () => findInPages(page, i => i.id === invitation.id),
+      () => readAccessRecord(api, 'invitations', invitation.id, parseInvitation),
       // Used or already revoked in the meantime: there is nothing left to revoke.
       now => (now.state === 'pending' ? true : 'done'));
     opIds.release(); setRevoking(undefined); read.reload();
@@ -180,7 +180,7 @@ export function AccountDevices({accountId}: {/** Absent: everyone's devices, mos
   const trust = (device: AccessDevice, next: 'approved' | 'blocked') => action.run(async () => {
     await sendFresh(device,
       d => api.request(`/v1/admin/access/devices/${encodeURIComponent(d.id)}/trust`, 'PUT', {expectedRevision: d.revision, operationId: opIds.forPayload(JSON.stringify({id: d.id, revision: d.revision, trust: next})), trust: next}),
-      () => findInPages(page, d => d.id === device.id),
+      () => readAccessRecord(api, 'devices', device.id, parseAccessDevice),
       now => trustApplies(now, next));
     opIds.release(); setBlocking(undefined); read.reload();
   }, t(next === 'approved' ? 'server.people.deviceApproved' : 'server.people.deviceBlocked'));
