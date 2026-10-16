@@ -78,7 +78,7 @@ export type ApiCredential=Readonly<{id:string;kind:ApiCredentialKind;name:string
 /** The answer to a create. `secret` is present only the first time the request is answered. */
 export type IssuedApiCredential=Readonly<{credential:ApiCredential;secret?:string}>;
 export type ApiCredentialPage=Readonly<{items:readonly ApiCredential[];limit:number;nextCursor?:string}>;
-export type ApiAccessOptions=Readonly<{scopes:readonly ApiScope[];maximumKeys:number;maximumTokens:number;tokensAllowed:boolean;requestsPerMinute:number}>;
+export type ApiAccessOptions=Readonly<{scopes:readonly ApiScope[];maximumKeys:number;maximumTokens:number;tokensAllowed:boolean;requestsPerMinute:number;/** The query parameter a key or token may travel in on a GET, for an address that works on its own. */queryParameter:string}>;
 export type NewApiCredential=Readonly<{operationId:string;name:string;scopes:readonly ApiScope[];expiresAt?:string}>;
 
 export function parseApiCredential(raw:unknown):ApiCredential{
@@ -108,7 +108,7 @@ export function parseApiAccessOptions(raw:unknown):ApiAccessOptions{
  if(!object(raw))return invalid('api access options');
  // A scope this app does not know is not offered; the ones it knows still are.
  const scopes=Object.freeze(firstOfEach('api-access','options.scopes',keepReadable('api-access','options.scopes',list(raw.scopes,16,v=>v,'scopes'),v=>object(v)?oneOf(v.id,apiScopes,'scope id'):invalid('scope')),scope=>scope));
- return Object.freeze({scopes,maximumKeys:whole(raw.maximumKeys,'maximumKeys'),maximumTokens:whole(raw.maximumTokens,'maximumTokens'),tokensAllowed:flag(raw.tokensAllowed,'tokensAllowed'),requestsPerMinute:whole(raw.requestsPerMinute,'requestsPerMinute')});
+ return Object.freeze({scopes,maximumKeys:whole(raw.maximumKeys,'maximumKeys'),maximumTokens:whole(raw.maximumTokens,'maximumTokens'),tokensAllowed:flag(raw.tokensAllowed,'tokensAllowed'),requestsPerMinute:whole(raw.requestsPerMinute,'requestsPerMinute'),queryParameter:filled(raw.queryParameter,32,'queryParameter')});
 }
 
 const API_KEYS=routePath("list_api_keys"),MEMBER_TOKENS=routePath("list_member_access_tokens"),MY_TOKENS=routePath("list_access_tokens"),OPTIONS=routePath("get_api_access_options");

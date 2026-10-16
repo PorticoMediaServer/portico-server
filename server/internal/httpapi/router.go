@@ -1175,6 +1175,9 @@ func New(d Dependencies) http.Handler {
 	routeMuxMu.Unlock()
 	d.self.h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = detachCanceledConnection(w, r)
+		// A key in the address is taken out of it before anything else reads
+		// the request: no handler, log or error ever sees it there.
+		r = liftQueryCredential(r)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		// 'wasm-unsafe-eval' lets the page compile WebAssembly (the subtitle renderer the web player

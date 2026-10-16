@@ -90,7 +90,8 @@ func TestAPIKeyIsShownOnceAndAuthenticatesWithinItsScopes(t *testing.T) {
 		{"POST", "/v1/direct/profile-switch", `{}`, "session_required"},
 		{"POST", "/v1/quick-connect/decision", `{}`, "session_required"},
 		{"POST", "/v1/direct/password", `{}`, "session_required"},
-		{"GET", "/v1/devices", ``, "session_required"},
+		{"GET", "/v1/devices", ``, "insufficient_scope"},
+		{"POST", "/v1/direct/profiles", `{"name":"Kids"}`, "insufficient_scope"},
 		{"POST", "/v1/auth/refresh", `{}`, "session_required"},
 	} {
 		w = f.call(refused.method, refused.path, key.Secret, refused.body)
@@ -604,4 +605,74 @@ func TestScopesDoNotIncludeOneAnotherExceptAdmin(t *testing.T) {
 		t.Fatal("session or open can be granted")
 	}
 	var _ = http.MethodGet
+}
+
+// A key at admin scope does the member's own account work (profiles, members,
+// devices, sessions) as the member, from a header or from the address of a
+// GET; it still never signs in, changes a password or makes a key.
+func TestAdminKeyManagesTheAccountButNeverCredentials(t *testing.T) {
+	f := administrationFixtureNew(t)
+	key := issueCredential(t, f, "/v1/admin/api-keys", f.owner, `{"operationId":"key-account-1","name":"House script","scopes":["admin"]}`)
+	for _, allowed := range []struct{ method, path, body string }{
+		{"GET", "/v1/direct", ``},
+		{"POST", "/v1/direct/profiles", `{"name":"Kids"}`},
+		{"GET", "/v1/direct/members", ``},
+		{"GET", "/v1/devices", ``},
+		{"GET", "/v1/direct/sessions", ``},
+		{"GET", "/v1/admin/access/devices", ``},
+	} {
+		if w := f.call(allowed.method, allowed.path, key.Secret, allowed.body); w.Code >= 300 {
+			t.Fatalf("%s %s with an admin key: %d %s", allowed.method, allowed.path, w.Code, w.Body)
+		}
+	}
+	for _, refused := range []struct{ method, path, body string }{
+		{"POST", "/v1/admin/api-keys", `{"operationId":"key-account-2","name":"Wider","scopes":["admin"]}`},
+		{"GET", "/v1/me/access-tokens", ``},
+		{"POST", "/v1/direct/password", `{}`},
+		{"POST", "/v1/direct/two-factor/enrol", `{}`},
+		{"POST", "/v1/direct/ownership", `{}`},
+		{"POST", "/v1/direct/sign-in", `{}`},
+		{"POST", "/v1/direct/profiles/x/select", `{}`},
+		{"POST", "/v1/auth/remembered-accounts", `{}`},
+	} {
+		if w := f.call(refused.method, refused.path, key.Secret, refused.body); w.Code != 403 || registryErrorCode(t, w) != "session_required" {
+			t.Fatalf("%s %s with an admin key: %d %s", refused.method, refused.path, w.Code, w.Body)
+		}
+	}
+	// The same key in the address of a GET.
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/v1/me?apiKey="+key.Secret, nil)
+	f.handler.ServeHTTP(w, r)
+	if w.Code != 200 || !strings.Contains(w.Body.String(), `"accountId":"owner"`) || strings.Contains(w.Body.String(), key.Secret) {
+		t.Fatalf("a key in the address: %d %s", w.Code, w.Body)
+	}
+	// Not on a change, and not a session token.
+	w = httptest.NewRecorder()
+	f.handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/direct/profiles?apiKey="+key.Secret, strings.NewReader(`{"name":"Guests"}`)))
+	if w.Code != 401 {
+		t.Fatalf("a key in the address of a POST: %d %s", w.Code, w.Body)
+	}
+	w = httptest.NewRecorder()
+	f.handler.ServeHTTP(w, httptest.NewRequest("GET", "/v1/me?apiKey="+f.owner, nil))
+	if w.Code != 401 {
+		t.Fatalf("a session token in the address: %d %s", w.Code, w.Body)
+	}
+}
+
+func TestQueryCredentialLeavesTheAddress(t *testing.T) {
+	r := httptest.NewRequest("GET", "/v1/items/x/artwork?b=2&apiKey=pk.secret-value&a=1", nil)
+	out := liftQueryCredential(r)
+	if strings.Contains(out.URL.RawQuery, "secret") || strings.Contains(out.RequestURI, "secret") || out.URL.RawQuery != "b=2&a=1" {
+		t.Fatalf("address after lifting: %q %q", out.URL.RawQuery, out.RequestURI)
+	}
+	if out.Header.Get("Authorization") != "Bearer pk.secret-value" || r.Header.Get("Authorization") != "" {
+		t.Fatalf("header: %q (original %q)", out.Header.Get("Authorization"), r.Header.Get("Authorization"))
+	}
+	post := liftQueryCredential(httptest.NewRequest("POST", "/v1/x?apiKey=pk.secret-value", nil))
+	if post.Header.Get("Authorization") != "" || strings.Contains(post.URL.RawQuery, "secret") {
+		t.Fatalf("a POST kept the key: %q %q", post.Header.Get("Authorization"), post.URL.RawQuery)
+	}
+	if plain := httptest.NewRequest("GET", "/v1/x?a=1", nil); liftQueryCredential(plain) != plain {
+		t.Fatal("a request with no key was copied")
+	}
 }

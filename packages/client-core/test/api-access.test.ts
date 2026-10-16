@@ -41,11 +41,11 @@ test('scope presets map to exact scope sets and back', () => {
  assert.equal(presetOf(['admin']),'admin');
  assert.equal(presetOf(['library']),undefined);
  assert.deepEqual(apiScopePresets.library,['read','playback','library']);
- const options=parseApiAccessOptions({scopes:[{id:'read'},{id:'playback'},{id:'library'},{id:'admin'}],maximumKeys:100,maximumTokens:25,tokensAllowed:false,requestsPerMinute:600});
+ const options=parseApiAccessOptions({scopes:[{id:'read'},{id:'playback'},{id:'library'},{id:'admin'}],maximumKeys:100,maximumTokens:25,tokensAllowed:false,requestsPerMinute:600,queryParameter:'apiKey'});
  assert.equal(options.tokensAllowed,false);
  // A scope this app does not know is not offered; a list of keys holding one is refused whole, never shown with a guessed scope.
- assert.deepEqual([...parseApiAccessOptions({scopes:[{id:'session'},{id:'read'},{id:'read'}],maximumKeys:1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1}).scopes],['read']);
- assert.throws(()=>parseApiAccessOptions({scopes:[{id:'read'}],maximumKeys:-1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1}));
+ assert.deepEqual([...parseApiAccessOptions({scopes:[{id:'session'},{id:'read'},{id:'read'}],maximumKeys:1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1,queryParameter:'apiKey'}).scopes],['read']);
+ assert.throws(()=>parseApiAccessOptions({scopes:[{id:'read'}],maximumKeys:-1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1,queryParameter:'apiKey'}));
 });
 
 test('credential services call the documented routes', async () => {

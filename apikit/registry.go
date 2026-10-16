@@ -42,10 +42,21 @@ const (
 //	playback — play, control playback, and change the caller's own watch
 //	           state, lists, preferences and recordings.
 //	library  — scan, match, edit and delete what is in the libraries.
-//	admin    — everything else the member behind the credential may administer.
-//	session  — only a signed-in session may call it. Signing in and out,
-//	           changing passwords, approving devices and creating keys or
-//	           tokens are here: a credential can never mint or widen another.
+//	admin    — everything else the member behind the credential may administer:
+//	           server settings, profiles, members, devices and sessions.
+//	session  — only a signed-in session may call it, each for its own reason:
+//	           signing in and out, renewing and registering (a credential is
+//	           not a sign-in); passwords, two-factor and PIN recovery (a
+//	           credential must not change what proves the person); creating,
+//	           listing and ending keys and tokens, ownership and pairing a
+//	           screen or a TV code (a credential never mints or widens
+//	           another); accepting an invitation (the invitee's own sign-up);
+//	           remembered accounts and choosing a profile (sign-in screens on
+//	           one device); the networking claim and identity proofs.
+//
+// A key or token also travels as the apiKey query parameter on a GET or HEAD,
+// so an address can work on its own; the server takes it out of the address
+// before anything reads the request.
 type Scope string
 
 const (

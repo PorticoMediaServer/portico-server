@@ -22101,6 +22101,9 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "queryParameter": {
+        "type": "string"
+      },
       "requestsPerMinute": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -22129,7 +22132,8 @@ export const schemas = {
       "maximumKeys",
       "maximumTokens",
       "tokensAllowed",
-      "requestsPerMinute"
+      "requestsPerMinute",
+      "queryParameter"
     ],
     "type": "object"
   },

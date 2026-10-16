@@ -23530,6 +23530,9 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "queryParameter": {
+            "type": "string"
+          },
           "requestsPerMinute": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -23558,7 +23561,8 @@
           "maximumKeys",
           "maximumTokens",
           "tokensAllowed",
-          "requestsPerMinute"
+          "requestsPerMinute",
+          "queryParameter"
         ],
         "type": "object"
       },
@@ -121012,7 +121016,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/admin/access/invitations": {
@@ -165956,7 +165960,7 @@
           "target_unavailable"
         ],
         "x-lane": "default",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/cast/reconnect": {
@@ -170189,7 +170193,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "post": {
         "operationId": "post_device",
@@ -170413,7 +170417,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "patch": {
         "operationId": "patch_device",
@@ -170575,7 +170579,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/devices/{id}/approval": {
@@ -170733,7 +170737,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/devices/{id}/sessions": {
@@ -170795,7 +170799,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/devices/{id}/sessions/bind": {
@@ -171020,7 +171024,7 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1576960,
-        "x-scope": "session"
+        "x-scope": "playback"
       }
     },
     "/v1/direct": {
@@ -171205,7 +171209,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "read"
       }
     },
     "/v1/direct/members": {
@@ -171322,7 +171326,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "post": {
         "operationId": "post_direct_members",
@@ -171470,7 +171474,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/members/{id}": {
@@ -171556,7 +171560,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "patch": {
         "operationId": "patch_direct_members_id",
@@ -171661,7 +171665,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/members/{id}/deletion-preview": {
@@ -171787,7 +171791,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/ownership": {
@@ -172644,7 +172648,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/avatars": {
@@ -172962,7 +172966,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/{id}": {
@@ -173050,7 +173054,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "patch": {
         "operationId": "patch_direct_profiles_id",
@@ -173287,7 +173291,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/{id}/avatar": {
@@ -173350,7 +173354,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "post": {
         "operationId": "post_direct_profiles_id_avatar",
@@ -173488,7 +173492,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 5242880,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/{id}/deletion-preview": {
@@ -173592,7 +173596,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/{id}/pin-reset": {
@@ -173809,7 +173813,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/{id}/restrictions": {
@@ -174833,7 +174837,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/sessions/sign-out-everywhere": {
@@ -174952,7 +174956,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/sign-in": {
@@ -234169,6 +234173,9 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "queryParameter": {
+                      "type": "string"
+                    },
                     "requestsPerMinute": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -234197,7 +234204,8 @@
                     "maximumKeys",
                     "maximumTokens",
                     "tokensAllowed",
-                    "requestsPerMinute"
+                    "requestsPerMinute",
+                    "queryParameter"
                   ],
                   "type": "object"
                 }
