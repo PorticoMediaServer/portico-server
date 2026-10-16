@@ -7977,7 +7977,7 @@ export const routes = [
     "id": "merge_titles",
     "method": "POST",
     "path": "/v1/admin/titles/merge",
-    "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions and everyone's state combined",
+    "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book or artist: its songs, files or albums) and everyone's state combined",
     "access": "owner",
     "requires": "library",
     "lane": "default",

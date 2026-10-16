@@ -23,8 +23,9 @@ var ErrNotMergeable = requestinput.New("titles of different kinds or libraries c
 
 // MergeTitlesTx makes from part of into and removes from. Both must be of one
 // kind in one library. A show takes the other show's seasons and episodes
-// (same-numbered ones merge in turn); a film, episode, track or book part
-// takes the other's files as versions.
+// (same-numbered ones merge in turn); an album, book or artist takes the
+// other's songs, files or albums (container_merge.go); a film, episode,
+// track or book part takes the other's files as versions.
 func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 	if from == into {
 		return nil
@@ -47,6 +48,8 @@ func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 		}
 	case compactcatalog.Season:
 		return fmt.Errorf("%w: seasons merge with their shows", ErrNotMergeable)
+	case compactcatalog.Album, compactcatalog.Book, compactcatalog.Artist:
+		return mergeContainerTx(ctx, tx, from, into, fromKind)
 	case compactcatalog.Movie, compactcatalog.Episode, compactcatalog.Track, compactcatalog.Part, compactcatalog.Extra:
 	default:
 		return fmt.Errorf("%w: kind %d", ErrNotMergeable, fromKind)
@@ -78,6 +81,11 @@ func absorbTx(ctx context.Context, tx *sql.Tx, from, into int64, kind compactcat
 	for _, p := range identities {
 		if err := compactcatalog.RecordProviderIdentityTx(ctx, tx, into, p); err != nil {
 			if errors.Is(err, compactcatalog.ErrIdentityConflict) {
+				// Two editions of an album, two printings of a book, are matched to
+				// different releases: the one that stays keeps its own match.
+				if isContainerKind(kind) {
+					continue
+				}
 				return fmt.Errorf("%w: provider identities differ", ErrNotMergeable)
 			}
 			return err
