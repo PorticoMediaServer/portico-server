@@ -49,7 +49,7 @@ const capabilities = (pivot: string): BrowseCapabilities => ({
   resolvedPivot: {id: pivot, labelKey: 'x', entityKinds: [], defaultSort: [], supportedViews: [], browsable: true},
   fields: [], sorts: [],
   quickFilters: [{id: 'unwatched', labelKey: 'filter.unwatched', query: {field: 'playState', operator: 'equals', value: 'unplayed'}}, {id: 'in-progress', labelKey: 'filter.inProgress', query: {field: 'playState', operator: 'equals', value: 'in-progress'}}, {id: 'favorites', labelKey: 'filter.favorites', query: {field: 'favorite', operator: 'equals', value: true}}],
-  queryLimits: {maximumDepth: 4, maximumClauses: 20, maximumBytes: 4096, maximumSorts: 1, defaultLimit: 60, maximumLimit: 200, cursorTtlSeconds: 60},
+  queryLimits: {maximumDepth: 4, maximumClauses: 20, maximumBytes: 4096, maximumSorts: 1, defaultLimit: 60, maximumLimit: 200, cursorTtlMs: 60000},
 });
 
 test('music has no "watched" on any of its tabs, the Genres tab included', () => {

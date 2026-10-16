@@ -41,7 +41,7 @@ function fakeFetch(routes: Map<string, RouteBody>, log: LoggedRequest[]): typeof
 function row(id: string, entries: unknown[]) {
   return {
     id, title: `Row ${id}`, kind: 'recent', artworkShape: 'poster', endpoint: `/v1/home/rows/${id}`,
-    libraryId: 'lib-0', viewerFence: 'fence', privacySensitivity: 'catalog', policyState: 'available', priority: 100, cacheTtlSeconds: 120,
+    libraryId: 'lib-0', viewerFence: 'fence', privacySensitivity: 'catalog', policyState: 'available', priority: 100, cacheTtlMs: 120000,
     required: false, hideable: true, reorderable: true, critical: false, cursorCapable: true,
     entries, total: entries.length, start: 0, limit: entries.length, hasMore: false, nextCursor: '',
     revision: {catalog: 1, viewer: 1},
@@ -76,7 +76,7 @@ function projection(libraryId: string, view: string, entryCount: number) {
 function capabilities(libraryId: string) {
   return {
     library: {id: libraryId, name: libraryId, kind: 'movie', defaultView: 'discover'},
-    queryLimits: {maximumDepth: 4, maximumClauses: 8, maximumBytes: 8192, maximumSorts: 3, defaultLimit: 20, maximumLimit: 60, cursorTtlSeconds: 300},
+    queryLimits: {maximumDepth: 4, maximumClauses: 8, maximumBytes: 8192, maximumSorts: 3, defaultLimit: 20, maximumLimit: 60, cursorTtlMs: 300000},
     pivots: [{id: 'movies', labelKey: 'k', entityKinds: ['movie'], defaultSort: [{field: 'title', direction: 'asc'}], supportedViews: ['browse'], browsable: true}],
     resolvedPivot: null,
     fields: [{id: 'title', labelKey: 'k', type: 'string', operators: ['contains'], controlHint: 'text', complexity: 'standard', cost: 'indexed', applicableKinds: ['movie']}],

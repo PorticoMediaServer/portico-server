@@ -36,7 +36,7 @@ func effectiveLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v 
 	}
 	sort.Strings(v.Analysis)
 	geometry := p.Trickplay.Normalized()
-	v.Navigation = GeneratedNavigation{TrickplayIntervalSeconds: geometry.IntervalSeconds, TrickplayTileWidth: geometry.TileWidth, TrickplayMaxTiles: geometry.MaxTiles, ChapterThumbnailMode: "embedded", VideoPreviewSeconds: 30}
+	v.Navigation = GeneratedNavigation{TrickplayIntervalMs: geometry.IntervalSeconds * 1000, TrickplayTileWidth: geometry.TileWidth, TrickplayMaxTiles: geometry.MaxTiles, ChapterThumbnailMode: "embedded", VideoPreviewMs: 30000}
 	if p.Allows("chapter_images") {
 		v.Navigation.ChapterThumbnailMode = "generated"
 	}
@@ -64,13 +64,13 @@ func applyLibraryPolicy(ctx context.Context, tx *sql.Tx, id, kind string, v Libr
 			seen[op] = true
 		}
 	}
-	if v.Navigation.VideoPreviewEnabled || v.Navigation.VideoPreviewSeconds != 30 {
+	if v.Navigation.VideoPreviewEnabled || v.Navigation.VideoPreviewMs != 30000 {
 		return invalid("settings.navigation.videoPreviewEnabled")
 	}
 	if (v.Navigation.ChapterThumbnailMode == "generated") != seen["chapter_images"] || v.Navigation.ChapterThumbnailMode == "none" {
 		return invalid("settings.navigation.chapterThumbnailMode")
 	}
-	p := catalog.ScanPolicy{Tier: "custom", Operations: ops, Trickplay: catalog.TrickplaySettings{IntervalSeconds: v.Navigation.TrickplayIntervalSeconds, TileWidth: v.Navigation.TrickplayTileWidth, MaxTiles: v.Navigation.TrickplayMaxTiles}}
+	p := catalog.ScanPolicy{Tier: "custom", Operations: ops, Trickplay: catalog.TrickplaySettings{IntervalSeconds: v.Navigation.TrickplayIntervalMs / 1000, TileWidth: v.Navigation.TrickplayTileWidth, MaxTiles: v.Navigation.TrickplayMaxTiles}}
 	if err := catalog.ApplyScanPolicyTx(ctx, tx, id, p); err != nil {
 		return invalid("settings.analysis", "settings.navigation")
 	}

@@ -18,7 +18,7 @@ func TestTranscodingSettingsDefaultsRoundTripAndReject(t *testing.T) {
 	defaults := DefaultSettings()
 	if before.Effective.HardwareBackend != defaults.HardwareBackend || before.Effective.X264Preset != defaults.X264Preset ||
 		before.Effective.PlanningPolicy != defaults.PlanningPolicy || !before.Effective.DirectStreamRemux ||
-		before.Effective.ThrottleBufferSeconds != 60 || before.Effective.PlayedRetentionSeconds != 180 {
+		before.Effective.ThrottleBufferMs != 60000 || before.Effective.PlayedRetentionMs != 180000 {
 		t.Fatal("registry defaults not published", before.Effective)
 	}
 
@@ -75,8 +75,8 @@ func TestTranscodingNumericSettingsClampInsteadOfFailing(t *testing.T) {
 		t.Fatal(e)
 	}
 	v := before.Requested
-	v.ThrottleBufferSeconds = 2
-	v.PlayedRetentionSeconds = 99999
+	v.ThrottleBufferMs = 2000
+	v.PlayedRetentionMs = 99999999
 	v.MaxConcurrentSessions = -4
 	v.MaxHardwareSessions = 50000
 	v.MaxSoftwareSessions = 0
@@ -85,7 +85,7 @@ func TestTranscodingNumericSettingsClampInsteadOfFailing(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if after.Effective.ThrottleBufferSeconds != 10 || after.Effective.PlayedRetentionSeconds != 3600 ||
+	if after.Effective.ThrottleBufferMs != 10000 || after.Effective.PlayedRetentionMs != 3600000 ||
 		after.Effective.MaxConcurrentSessions != 0 || after.Effective.MaxHardwareSessions != 1000 ||
 		after.Effective.MaxSoftwareSessions != 0 || after.Effective.MaxBackgroundSessions != 3 {
 		t.Fatal("numeric transcoding controls must clamp to the published bounds", after.Effective)
@@ -98,7 +98,7 @@ func TestRegistryPublishesEveryTranscodingFieldWithItsBounds(t *testing.T) {
 		published[f.ID] = f
 	}
 	for _, id := range []string{"hardwareBackend", "hardwareDevice", "hdrToneMapping", "hdrToneMappingAlgorithm",
-		"x264Preset", "directStreamRemux", "planningPolicy", "throttleBufferSeconds", "playedRetentionSeconds",
+		"x264Preset", "directStreamRemux", "planningPolicy", "throttleBufferMs", "playedRetentionMs",
 		"temporaryDirectory", "maxConcurrentSessions", "maxHardwareSessions", "maxSoftwareSessions", "maxBackgroundSessions"} {
 		f, ok := published[id]
 		if !ok {

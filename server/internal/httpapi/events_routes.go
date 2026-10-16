@@ -76,11 +76,11 @@ func (d Dependencies) eventAuthority(r *http.Request) (identity.Principal, bool,
 
 func (d Dependencies) events(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
-	if err := consoleQuery(r, "after", "waitSeconds"); err != nil {
+	if err := consoleQuery(r, "after", "waitMs"); err != nil {
 		eventFailure(w, 400, "invalid_request", "This event query cannot be used.")
 		return
 	}
-	longPoll := r.URL.Query().Has("waitSeconds")
+	longPoll := r.URL.Query().Has("waitMs")
 	if !longPoll && r.URL.Query().Has("after") {
 		eventFailure(w, 400, "invalid_request", "Stream resumes with Last-Event-ID.")
 		return
@@ -94,11 +94,11 @@ func (d Dependencies) events(w http.ResponseWriter, r *http.Request) {
 		eventFailure(w, 400, "invalid_cursor", "Use a non-negative numeric event cursor.")
 		return
 	}
-	wait := 25
+	wait := 25000
 	if longPoll {
-		wait, err = strconv.Atoi(r.URL.Query().Get("waitSeconds"))
-		if err != nil || wait < 0 || wait > 25 {
-			eventFailure(w, 400, "invalid_request", "waitSeconds must be between 0 and 25.")
+		wait, err = strconv.Atoi(r.URL.Query().Get("waitMs"))
+		if err != nil || wait < 0 || wait > 25000 {
+			eventFailure(w, 400, "invalid_request", "waitMs must be between 0 and 25000.")
 			return
 		}
 	}
@@ -126,7 +126,7 @@ func (d Dependencies) events(w http.ResponseWriter, r *http.Request) {
 
 func (d Dependencies) eventLongPoll(w http.ResponseWriter, r *http.Request, p identity.Principal, wake <-chan struct{}, page eventfeed.Page, wait int) {
 	if len(page.Events) == 0 && wait > 0 {
-		timer := time.NewTimer(time.Duration(wait) * time.Second)
+		timer := time.NewTimer(time.Duration(wait) * time.Millisecond)
 		defer timer.Stop()
 		for len(page.Events) == 0 {
 			if !page.More {

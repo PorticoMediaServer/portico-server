@@ -44,14 +44,14 @@ type Sidecars struct {
 
 // DVRDefaults is the server-wide recording document.
 type DVRDefaults struct {
-	PrePaddingSeconds  int                 `json:"prePaddingSeconds"`
-	PostPaddingSeconds int                 `json:"postPaddingSeconds"`
-	Keep               KeepPolicy          `json:"keepPolicy"`
-	Conversion         RecordingConversion `json:"conversion"`
-	FolderTemplate     string              `json:"folderTemplate"`
-	MovieTemplate      string              `json:"movieFolderTemplate"`
-	RecordingProfile   string              `json:"recordingProfile"`
-	Sidecars           Sidecars            `json:"sidecars"`
+	PrePaddingMs     int                 `json:"prePaddingMs"`
+	PostPaddingMs    int                 `json:"postPaddingMs"`
+	Keep             KeepPolicy          `json:"keepPolicy"`
+	Conversion       RecordingConversion `json:"conversion"`
+	FolderTemplate   string              `json:"folderTemplate"`
+	MovieTemplate    string              `json:"movieFolderTemplate"`
+	RecordingProfile string              `json:"recordingProfile"`
+	Sidecars         Sidecars            `json:"sidecars"`
 	// TunerPreference decides which tuner a new recording takes when several
 	// could serve it.
 	TunerPreference string `json:"tunerPreference"`
@@ -73,16 +73,16 @@ var (
 // DefaultDVRDefaults is the answer before any owner write.
 func DefaultDVRDefaults() DVRDefaults {
 	return DVRDefaults{
-		PrePaddingSeconds:  60,
-		PostPaddingSeconds: 180,
-		Keep:               KeepPolicy{Mode: "keep-all"},
-		Conversion:         RecordingConversion{Mode: "none"},
-		FolderTemplate:     "",
-		MovieTemplate:      "",
-		RecordingProfile:   "original",
-		Sidecars:           Sidecars{},
-		TunerPreference:    "first-available",
-		LiveTunerConflict:  livechannels.KeepWatching,
+		PrePaddingMs:      60000,
+		PostPaddingMs:     180000,
+		Keep:              KeepPolicy{Mode: "keep-all"},
+		Conversion:        RecordingConversion{Mode: "none"},
+		FolderTemplate:    "",
+		MovieTemplate:     "",
+		RecordingProfile:  "original",
+		Sidecars:          Sidecars{},
+		TunerPreference:   "first-available",
+		LiveTunerConflict: livechannels.KeepWatching,
 	}
 }
 
@@ -189,8 +189,8 @@ func validateDVRDefaults(v *DVRDefaults) error {
 	if len(fields) > 0 {
 		return invalid(fields...)
 	}
-	clampInt(&v.PrePaddingSeconds, 0, 1800)
-	clampInt(&v.PostPaddingSeconds, 0, 7200)
+	clampInt(&v.PrePaddingMs, 0, 1800000)
+	clampInt(&v.PostPaddingMs, 0, 7200000)
 	clampInt(&v.Keep.KeepCount, 0, 1000)
 	clampInt(&v.Keep.KeepDays, 0, 3650)
 	return nil
@@ -410,12 +410,12 @@ type RecordingGroup struct {
 // GroupOptions overrides the server defaults for one group. A nil field
 // inherits.
 type GroupOptions struct {
-	PrePaddingSeconds  *int        `json:"prePaddingSeconds"`
-	PostPaddingSeconds *int        `json:"postPaddingSeconds"`
-	Keep               *KeepPolicy `json:"keepPolicy"`
-	NewEpisodesOnly    bool        `json:"newEpisodesOnly"`
-	Priority           int         `json:"priority"`
-	FolderTemplate     string      `json:"folderTemplate"`
+	PrePaddingMs    *int        `json:"prePaddingMs"`
+	PostPaddingMs   *int        `json:"postPaddingMs"`
+	Keep            *KeepPolicy `json:"keepPolicy"`
+	NewEpisodesOnly bool        `json:"newEpisodesOnly"`
+	Priority        int         `json:"priority"`
+	FolderTemplate  string      `json:"folderTemplate"`
 }
 
 // RecordingGroupPage is one page of the groups listing.
@@ -458,11 +458,11 @@ func validateGroup(c *RecordingGroupChange) error {
 	if c.Options.FolderTemplate != "" && !validTemplate(c.Options.FolderTemplate) {
 		fields = append(fields, "options.folderTemplate")
 	}
-	if c.Options.PrePaddingSeconds != nil && (*c.Options.PrePaddingSeconds < 0 || *c.Options.PrePaddingSeconds > 1800) {
-		fields = append(fields, "options.prePaddingSeconds")
+	if c.Options.PrePaddingMs != nil && (*c.Options.PrePaddingMs < 0 || *c.Options.PrePaddingMs > 1800000) {
+		fields = append(fields, "options.prePaddingMs")
 	}
-	if c.Options.PostPaddingSeconds != nil && (*c.Options.PostPaddingSeconds < 0 || *c.Options.PostPaddingSeconds > 7200) {
-		fields = append(fields, "options.postPaddingSeconds")
+	if c.Options.PostPaddingMs != nil && (*c.Options.PostPaddingMs < 0 || *c.Options.PostPaddingMs > 7200000) {
+		fields = append(fields, "options.postPaddingMs")
 	}
 	if len(fields) > 0 {
 		return invalid(fields...)

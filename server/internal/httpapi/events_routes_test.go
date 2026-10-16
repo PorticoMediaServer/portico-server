@@ -20,15 +20,15 @@ func TestEventsLongPollEnforcesProfileScope(t *testing.T) {
 	d.Events = eventfeed.New(d.DB)
 	mux := http.NewServeMux()
 	d.foundationRoutes(mux)
-	if got := notificationRequest(mux, "GET", "", "/v1/events?waitSeconds=0", ""); got.Code != 401 {
+	if got := notificationRequest(mux, "GET", "", "/v1/events?waitMs=0", ""); got.Code != 401 {
 		t.Fatalf("anonymous: %d %s", got.Code, got.Body.String())
 	}
-	if got := notificationRequest(mux, "GET", member.AccessToken, "/v1/events?after=bad&waitSeconds=0", ""); got.Code != 400 {
+	if got := notificationRequest(mux, "GET", member.AccessToken, "/v1/events?after=bad&waitMs=0", ""); got.Code != 400 {
 		t.Fatalf("bad cursor: %d %s", got.Code, got.Body.String())
 	}
 	raiseNotice(t, d, notify.ProfileScope("local", "owner", "owner-profile"), "owner-only", "Owner only")
 	raiseNotice(t, d, notify.ProfileScope("local", "member", "member-profile"), "member-only", "Member only")
-	request := httptest.NewRequest("GET", "/v1/events?after=0&waitSeconds=0", nil)
+	request := httptest.NewRequest("GET", "/v1/events?after=0&waitMs=0", nil)
 	request.Header.Set("Authorization", "Bearer "+member.AccessToken)
 	w := httptest.NewRecorder()
 	mux.ServeHTTP(w, request)
@@ -39,7 +39,7 @@ func TestEventsLongPollEnforcesProfileScope(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), &page); err != nil || len(page.Events) != 1 || page.Events[0].ID != "2" || page.NextAfter != "2" {
 		t.Fatalf("member event scope: %+v %v", page, err)
 	}
-	w = notificationRequest(mux, "GET", owner.AccessToken, "/v1/events?after=0&waitSeconds=0", "")
+	w = notificationRequest(mux, "GET", owner.AccessToken, "/v1/events?after=0&waitMs=0", "")
 	if w.Code != 200 {
 		t.Fatalf("owner: %d %s", w.Code, w.Body.String())
 	}
@@ -64,7 +64,7 @@ func TestEventsLongPollReadsCanonicalDeviceRing(t *testing.T) {
 	if err = tx.Commit(); err != nil {
 		t.Fatal(err)
 	}
-	w := notificationRequest(mux, "GET", member.AccessToken, "/v1/events?after=0&waitSeconds=0", "")
+	w := notificationRequest(mux, "GET", member.AccessToken, "/v1/events?after=0&waitMs=0", "")
 	if w.Code != 200 {
 		t.Fatalf("canonical ring: %d %s", w.Code, w.Body.String())
 	}

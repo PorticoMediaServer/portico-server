@@ -40,6 +40,7 @@ func (r *Registry) MountHTTP(mux *http.ServeMux, pattern string, handler http.Ha
 		r.bound[d.ID] = true
 		m := d.Metadata
 		names := pathNames(d.Path)
+		refs := r.bodyRefPaths(d.Request)
 		serve := func(w http.ResponseWriter, q *http.Request) {
 			if r.scopes != nil {
 				if err := r.scopes(q, m.Requires); err != nil {
@@ -54,6 +55,8 @@ func (r *Registry) MountHTTP(mux *http.ServeMux, pattern string, handler http.Ha
 					}
 				}
 			}
+			r.rewriteQuery(q)
+			r.rewriteHTTPBody(q, m.BodyLimit, refs)
 			handler.ServeHTTP(w, q)
 		}
 		r.handlers[i] = serve

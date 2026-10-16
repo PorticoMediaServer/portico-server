@@ -61,7 +61,9 @@ export type DownloadGrant = Readonly<{preparationId: string; itemId: string; url
 /** One file that travels with a download; use the server's relative bundle path
  * under the download grant, independently of live subtitle media addresses. */
 export type DownloadBundleFile = Readonly<{path: string; contentType: string}>;
-export type DownloadBundleSubtitle = Readonly<{id: string; revision: number; language: string; title: string; default: boolean; forced: boolean; files: Readonly<Record<string, DownloadBundleFile>>}>;
+export type DownloadBundleSubtitle = Readonly<{id: string; revision: number; language: string; title: string; default: boolean; forced: boolean; files: Readonly<Record<string, DownloadBundleFile>>;
+  /** An image track's line count and how many are forced (PGS, VobSub), as `/lines` answers it while streaming. */
+  lines?: Readonly<{forced: number; total: number}>}>;
 export type DownloadBundleChapter = Readonly<{index: number; title: string; startSeconds: number; endSeconds: number; /** The chapter's thumbnail, when the library makes them. */ image?: DownloadBundleFile}>;
 /** The file's scrubbing previews: sprite sheets (`tiles`, in order) of frames every `intervalSeconds`. */
 export type DownloadBundleTrickplay = Readonly<{id: string; tileWidth: number; tileHeight: number; columns: number; rows: number; intervalSeconds: number; frameCount: number; durationSeconds: number; sourceOffsetSeconds: number; thumbnails: DownloadBundleFile; tiles: readonly DownloadBundleFile[]}>;
@@ -142,7 +144,8 @@ function nullableCount(v: unknown): number|null { if (v === null || v === undefi
 const seconds = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v) && v >= 0;
 function optionalCount(v: unknown): number|null { if (v === undefined || v === null) return null; if (!Number.isSafeInteger(v)) invalid(); return v as number; }
 
-export function parseDownloadTitle(raw: unknown): DownloadTitle {
+export function parseDownloadTitle(wire: unknown): DownloadTitle {
+  const raw: unknown = wireDurations(wire, {durationSeconds: 'durationMs'});
   if (!object(raw) || !text(raw.kind ?? '', 64) || !text(raw.title ?? '', 1024) || typeof raw.onServer !== 'boolean') invalid();
   for (const field of ['parentTitle','groupTitle','artist'] as const) if (!text(raw[field] ?? '', 1024)) invalid();
   for (const field of ['parentId','groupId'] as const) if (raw[field] !== undefined && raw[field] !== '' && !id(raw[field])) invalid();
@@ -171,7 +174,7 @@ function progress(v: unknown): DownloadProgress {
   if (typeof v.percent !== 'number' || !Number.isFinite(v.percent) || v.percent < 0 || v.percent > 100) invalid();
   // CD-26: an estimate can be overtaken; reject overshoot only for exact totals.
   if (v.bytesTotal > 0 && v.bytesDone > v.bytesTotal && v.bytesTotalEstimated === false) invalid();
-  const eta = nullableCount(v.etaSeconds);
+  const eta = v.etaMs === null || v.etaMs === undefined ? null : count(v.etaMs) ? Math.round(v.etaMs / 1000) : invalid();
   return Object.freeze({bytesDone: v.bytesDone, bytesTotal: v.bytesTotal, bytesTotalEstimated: v.bytesTotalEstimated, percent: v.percent, etaSeconds: eta});
 }
 /** Progress is only shown. When it cannot be read the row is kept and shows none, rather than the row being lost with its actions. */
@@ -236,11 +239,11 @@ export function parseDownloadGrant(raw: unknown): DownloadGrant {
   // and an absolute URL here would be an attempt to redirect the transfer.
   if (typeof raw.url !== 'string' || !raw.url.startsWith(routePrefix("get_download_artifact", 3)) || raw.url.includes('..')) invalid();
   if (raw.url !== encodedRoutePath("get_download_artifact", {"grant": raw.token})) invalid();
-  if (!instant(raw.issuedAt) || !instant(raw.expiresAt) || !count(raw.renewAfterSeconds) || raw.renewAfterSeconds < 1 || typeof raw.renewed !== 'boolean') invalid();
+  if (!instant(raw.issuedAt) || !instant(raw.expiresAt) || !count(raw.renewAfterMs) || raw.renewAfterMs < 1000 || typeof raw.renewed !== 'boolean') invalid();
   if (Date.parse(raw.expiresAt) <= Date.parse(raw.issuedAt)) invalid();
   const bytes = artifact(raw.artifact);
   if (bytes.sha256 === '') invalid();
-  return Object.freeze({preparationId: raw.preparationId, itemId: raw.itemId, url: raw.url, token: raw.token, issuedAt: raw.issuedAt, expiresAt: raw.expiresAt, renewAfterSeconds: raw.renewAfterSeconds, renewed: raw.renewed, artifact: bytes});
+  return Object.freeze({preparationId: raw.preparationId, itemId: raw.itemId, url: raw.url, token: raw.token, issuedAt: raw.issuedAt, expiresAt: raw.expiresAt, renewAfterSeconds: raw.renewAfterMs / 1000, renewed: raw.renewed, artifact: bytes});
 }
 
 /** A path relative to a grant's address: plain segments, nothing that could leave it. */
@@ -266,21 +269,24 @@ export function parseDownloadBundle(raw: unknown, preparationId: string): Downlo
     const file = bundleFile(v);
     return Object.freeze({role: v.role, path: file.path, contentType: file.contentType});
   });
-  const chapters = keepReadable('downloads', 'bundle.chapters', array(raw.chapters, 2000), v => {
+  const chapters = keepReadable('downloads', 'bundle.chapters', array(raw.chapters, 2000), wire => {
+    const v: unknown = wireDurations(wire, {startSeconds: 'startMs', endSeconds: 'endMs'});
     if (!object(v) || !count(v.index) || !text(v.title ?? '', 1024) || !seconds(v.startSeconds) || !seconds(v.endSeconds) || v.endSeconds <= v.startSeconds) invalid();
     return Object.freeze({index: v.index, title: String(v.title ?? ''), startSeconds: v.startSeconds, endSeconds: v.endSeconds, ...chapterImage(v.image)});
   });
   // Previews are an extra: a set that does not read is left out, the rest of the bundle stands.
   let trickplay: DownloadBundleTrickplay | undefined;
   if (raw.trickplay !== undefined) {
-    trickplay = keepReadable('downloads', 'bundle.trickplay', [raw.trickplay], v => {
+    trickplay = keepReadable('downloads', 'bundle.trickplay', [raw.trickplay], wire => {
+      const v: unknown = wireDurations(wire, {intervalSeconds: 'intervalMs', durationSeconds: 'durationMs', sourceOffsetSeconds: 'sourceOffsetMs'});
       if (!object(v) || !id(v.id) || ![v.tileWidth, v.tileHeight, v.columns, v.rows, v.frameCount].every(n => count(n) && n > 0) || !seconds(v.intervalSeconds) || !(v.intervalSeconds as number > 0) || !seconds(v.durationSeconds) || !seconds(v.sourceOffsetSeconds)) invalid();
       const tiles = array(v.tiles, 128).map(bundleFile);
       if (!tiles.length || tiles.length < Math.ceil((v.frameCount as number) / ((v.columns as number) * (v.rows as number)))) invalid();
       return Object.freeze({id: v.id as string, tileWidth: v.tileWidth as number, tileHeight: v.tileHeight as number, columns: v.columns as number, rows: v.rows as number, intervalSeconds: v.intervalSeconds as number, frameCount: v.frameCount as number, durationSeconds: v.durationSeconds as number, sourceOffsetSeconds: v.sourceOffsetSeconds as number, thumbnails: bundleFile(v.thumbnails), tiles: Object.freeze(tiles)});
     })[0];
   }
-  const markers = keepReadable('downloads', 'bundle.markers', array(raw.markers, 256), v => {
+  const markers = keepReadable('downloads', 'bundle.markers', array(raw.markers, 256), wire => {
+    const v: unknown = wireDurations(wire, {startSeconds: 'startMs', endSeconds: 'endMs'});
     if (!object(v) || !id(v.kind) || !seconds(v.startSeconds) || !seconds(v.endSeconds) || v.endSeconds <= v.startSeconds || typeof v.automatic !== 'boolean') invalid();
     return Object.freeze({kind: v.kind, startSeconds: v.startSeconds, endSeconds: v.endSeconds, automatic: v.automatic});
   });
@@ -295,7 +301,8 @@ export function parseDownloadBundle(raw: unknown, preparationId: string): Downlo
     // A styled track brings its script, its plain-text reading and up to sixteen fonts.
     if (forms.length > 24) invalid();
     for (const form of forms) { if (!/^[a-z0-9]{1,16}$/.test(form)) invalid(); files[form] = bundleFile(v.files[form]); }
-    return Object.freeze({id: v.id, revision: v.revision, language: String(v.language ?? ''), title: String(v.title ?? ''), default: v.default, forced: v.forced, files: Object.freeze(files)});
+    const lines = object(v.lines) && count(v.lines.forced) && count(v.lines.total) && v.lines.forced <= v.lines.total ? Object.freeze({forced: v.lines.forced, total: v.lines.total}) : undefined;
+    return Object.freeze({id: v.id, revision: v.revision, language: String(v.language ?? ''), title: String(v.title ?? ''), default: v.default, forced: v.forced, files: Object.freeze(files), ...(lines ? {lines} : {})});
   });
   return Object.freeze({
     preparationId, itemId: raw.itemId, quality: raw.quality, qualityLabel: String(raw.qualityLabel ?? ''), title: parseDownloadTitle(raw.title), overview: String(raw.overview ?? ''),
@@ -419,7 +426,7 @@ export function parseReceiptOutcomes(raw: unknown): readonly ReceiptOutcome[] {
     const refused = v.outcome === 'refused';
     if (refused ? v.receipt != null || !v.code : v.receipt == null) invalid();
     if (v.titleOnServer !== undefined && typeof v.titleOnServer !== 'boolean') invalid();
-    const viewing = v.viewing;
+    const viewing = v.viewing === undefined ? undefined : wireDurations(v.viewing, {positionSeconds: 'positionMs'});
     if (viewing !== undefined && (!object(viewing) || !seconds(viewing.positionSeconds) || typeof viewing.watched !== 'boolean')) invalid();
     return Object.freeze({
       preparationId: String(v.preparationId ?? ''), receiptId: String(v.receiptId ?? ''),

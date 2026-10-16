@@ -267,7 +267,7 @@ func (s *Store) InputTx(ctx context.Context, tx *sql.Tx, sourceID, channelID, ge
 	if e != nil {
 		return in, e
 	}
-	in.StreamBufferSeconds, in.RetryWindowSeconds = d.StreamBufferSeconds, d.RetryWindowSeconds
+	in.StreamBufferSeconds, in.RetryWindowSeconds = d.StreamBufferMs/1000, d.RetryWindowMs/1000
 	in.Policy.UserAgent = d.UserAgent
 	in.Policy.ReadTimeout = 15 * time.Second
 	return in, nil

@@ -323,6 +323,8 @@ asset_subtitle_facts.revision
 asset_subtitle_facts.size
 asset_subtitle_facts.status
 asset_subtitle_facts.timing_known
+asset_subtitle_languages.language
+asset_subtitle_languages.tracks
 asset_subtitles.asset_id
 asset_subtitles.format
 asset_subtitles.hearing_impaired
@@ -661,6 +663,7 @@ catalog_browse_item_metrics.item_id
 catalog_browse_item_metrics.rating
 catalog_browse_member_links.available
 catalog_browse_member_links.entity_id
+catalog_browse_member_links.members
 catalog_browse_member_links.unavailable
 catalog_browse_member_metrics.added
 catalog_browse_member_metrics.air_key
@@ -810,6 +813,8 @@ catalog_content_eligible_state.id
 catalog_content_eligible_state.turn
 catalog_credit_labels.id
 catalog_credit_labels.label
+catalog_credit_names.credits
+catalog_credit_names.name
 catalog_credits.credit_id
 catalog_credits.credited_name
 catalog_credits.department_id
@@ -848,6 +853,7 @@ catalog_dirty.domain
 catalog_dirty.entity_id
 catalog_dirty.revision
 catalog_entities.added_ms
+catalog_entities.genre_sources
 catalog_entities.id
 catalog_entities.kind
 catalog_entities.library_id
@@ -974,6 +980,8 @@ catalog_item_details.release_date
 catalog_item_details.studio
 catalog_item_details.tagline
 catalog_item_details.tags
+catalog_item_version_counts.item_id
+catalog_item_version_counts.versions
 catalog_kept_apart.entity_id
 catalog_kinds.browsable
 catalog_kinds.container
@@ -1091,6 +1099,10 @@ catalog_people_names_docsize.sz
 catalog_people_names_idx.pgno
 catalog_people_names_idx.segid
 catalog_people_names_idx.term
+catalog_person_credit_counts.credits
+catalog_person_credit_counts.department_id
+catalog_person_credit_counts.library_id
+catalog_person_credit_counts.person_id
 catalog_personal_play_totals.entity_id
 catalog_personal_play_totals.profile_id
 catalog_personal_play_totals.total
@@ -1270,7 +1282,6 @@ catalog_search_prefix_rows_next.term_id
 catalog_search_prefix_rows_next.tier
 catalog_search_prefix_terms.id
 catalog_search_prefix_terms.prefix
-catalog_search_prefix_terms.terminal
 catalog_search_titles.catalog_search_titles
 catalog_search_titles.kind
 catalog_search_titles.rank
@@ -3253,6 +3264,7 @@ networking_server_identities.public_key
 networking_server_identities.server_id
 networking_web_claims.operation_id
 networking_web_claims.request
+networking_web_claims.watch
 notice_broadcast_work.created
 notice_broadcast_work.delivered
 notice_broadcast_work.digest

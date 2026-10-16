@@ -39,7 +39,7 @@ test('CD-49: a bare HDHomeRun host becomes an explicit http URL; bad schemes are
 
 test('CD-49: selecting guide-only clears both the guide pointer and the stream buffer', async () => {
   const {guideOnlyPatch} = await extras();
-  assert.deepEqual(guideOnlyPatch('xmltv-guide'), {kind: 'xmltv-guide', guideSourceId: '', streamBufferSeconds: null}, 'null/omitted, not zero');
+  assert.deepEqual(guideOnlyPatch('xmltv-guide'), {kind: 'xmltv-guide', guideSourceId: '', streamBufferMs: null}, 'null/omitted, not zero');
   assert.deepEqual(guideOnlyPatch('playlist'), {kind: 'playlist'});
 });
 

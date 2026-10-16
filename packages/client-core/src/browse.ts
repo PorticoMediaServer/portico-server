@@ -20,6 +20,13 @@ export type BrowseNode=
  |Readonly<{not:BrowseNode}>
  |Readonly<{field:string;operator:BrowseOperator;value:BrowseScalar|readonly BrowseScalar[]|null}>;
 export type BrowseSortSelection=Readonly<{field:string;direction:BrowseDirection;seed?:number}>;
+/** Every field a query's conditions name, however deep. */
+export function browseFields(nodes:readonly BrowseNode[]):string[]{
+ const out:string[]=[];
+ const walk=(n:BrowseNode)=>{if('all' in n)n.all.forEach(walk);else if('any' in n)n.any.forEach(walk);else if('not' in n)walk(n.not);else if('field' in n)out.push(n.field);};
+ nodes.forEach(walk);
+ return out;
+}
 export type BrowseFacetSource=Readonly<{endpoint:string;field:string}>;
 export type BrowseFieldCapability=Readonly<{id:string;labelKey:string;type:BrowseValueType;operators:readonly BrowseOperator[];controlHint:BrowseControlHint;complexity:BrowseComplexity;cost:BrowseCost;applicableKinds:readonly string[];allowedValues?:readonly string[];facetSource?:BrowseFacetSource}>;
 /** `requiresGroup`: the group's own order (a playlist's, a season's, an album's), offered on a group's page and never on a library tab. */
@@ -28,7 +35,7 @@ export type BrowseSortCapability=Readonly<{id:string;labelKey:string;directions:
 export type BrowsePivotCapability=Readonly<{id:string;labelKey:string;entityKinds:readonly string[];defaultSort:readonly BrowseSortSelection[];supportedViews:readonly string[];browsable:boolean;aggregate?:string;members?:boolean;sorts?:readonly string[];filters?:readonly string[];paging?:BrowsePaging}>;
 export type BrowsePaging='keyset'|'offset';
 export type BrowseQuickFilter=Readonly<{id:string;labelKey:string;query:BrowseNode}>;
-export type BrowseQueryLimits=Readonly<{maximumDepth:number;maximumClauses:number;maximumBytes:number;maximumSorts:number;defaultLimit:number;maximumLimit:number;cursorTtlSeconds:number}>;
+export type BrowseQueryLimits=Readonly<{maximumDepth:number;maximumClauses:number;maximumBytes:number;maximumSorts:number;defaultLimit:number;maximumLimit:number;cursorTtlMs:number}>;
 export type BrowseLibraryScope=Readonly<{id:string;name:string;kind:string;defaultView:string;pinned:boolean}>;
 export type BrowseSurfaceCapability=Readonly<{id:string;endpoint:string;membershipField?:string;sorts:readonly string[];filters:readonly string[];paging:BrowsePaging}>;
 export type BrowseCapabilities=Readonly<{surfaces?:readonly BrowseSurfaceCapability[];library:BrowseLibraryScope;pivots:readonly BrowsePivotCapability[];resolvedPivot:BrowsePivotCapability|null;fields:readonly BrowseFieldCapability[];sorts:readonly BrowseSortCapability[];quickFilters:readonly BrowseQuickFilter[];queryLimits:BrowseQueryLimits}>;
@@ -67,6 +74,15 @@ export const browsePath=(libraryId:string):string=>libraryId===acrossLibraries?r
 export const browseCapabilitiesPath=(libraryId:string,pivot:string):string=>`${libraryId===acrossLibraries?routePath('get_browse_capabilities'):routePath('get_libraries_id_browse_capabilities',{id:libraryId})}?pivot=${encodeURIComponent(pivot)}`;
 /** Where a filter's counted values are read (`?field=…`). */
 export const browseFacetsPath=(libraryId:string):string=>libraryId===acrossLibraries?routePath('get_browse_facets'):routePath('get_library_facets',{id:libraryId});
+/** The group a list across libraries is (a person, playlist, collection, Home row, My List, Favorites, the history), from the conditions it always applies: its filter choices are counted over that list's own titles (`?group=…&value=…` on the facets path). */
+export function facetGroupOf(base:readonly BrowseNode[]):Readonly<{group:string;value:string}>|undefined{
+  for(const node of base){
+    if(!('field' in node))continue;
+    if(['person','cast','crew','list','savedCollection','homeRow'].includes(node.field)&&typeof node.value==='string')return {group:node.field,value:node.value};
+    if(['watchlisted','favorite','lastPlayedAt'].includes(node.field))return {group:node.field,value:''};
+  }
+  return undefined;
+}
 /** The sorts a library tab offers: every published sort but a group's own order. */
 export const libraryTabSorts=<S extends Readonly<{requiresGroup?:boolean}>>(sorts:readonly S[]):S[]=>sorts.filter(sort=>!sort.requiresGroup);
 
@@ -132,7 +148,7 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  const across=(library.id===''||library.id===undefined)&&(library.kind===''||library.kind===undefined);
  if(!across&&(!id(library.id)||!id(library.kind))||!str(library.name??'',512)||!str(library.defaultView??'',64))bad();
  const limits=raw.queryLimits;
- for(const key of ['maximumDepth','maximumClauses','maximumBytes','maximumSorts','defaultLimit','maximumLimit','cursorTtlSeconds'])if(!count(limits[key]))bad();
+ for(const key of ['maximumDepth','maximumClauses','maximumBytes','maximumSorts','defaultLimit','maximumLimit','cursorTtlMs'])if(!count(limits[key]))bad();
  if((limits.defaultLimit as number)<1||(limits.maximumLimit as number)<(limits.defaultLimit as number))bad();
  const pivot=(v:unknown):BrowsePivotCapability=>{
   if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
@@ -170,7 +186,7 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
    if(!obj(v)||!id(v.id)||!str(v.endpoint,256)||(v.paging!=='keyset'&&v.paging!=='offset'))bad();
    return {id:v.id,endpoint:v.endpoint,paging:v.paging as BrowsePaging,sorts:known('surface.sorts',v.sorts,64),filters:known('surface.filters',v.filters,128),...(v.membershipField===undefined?{}:{membershipField:id(v.membershipField)?v.membershipField:bad()})};
   }),pivots,resolvedPivot:resolved,fields,sorts,quickFilters,
-  queryLimits:{maximumDepth:limits.maximumDepth as number,maximumClauses:limits.maximumClauses as number,maximumBytes:limits.maximumBytes as number,maximumSorts:limits.maximumSorts as number,defaultLimit:limits.defaultLimit as number,maximumLimit:limits.maximumLimit as number,cursorTtlSeconds:limits.cursorTtlSeconds as number},
+  queryLimits:{maximumDepth:limits.maximumDepth as number,maximumClauses:limits.maximumClauses as number,maximumBytes:limits.maximumBytes as number,maximumSorts:limits.maximumSorts as number,defaultLimit:limits.defaultLimit as number,maximumLimit:limits.maximumLimit as number,cursorTtlMs:limits.cursorTtlMs as number},
  });
 }
 

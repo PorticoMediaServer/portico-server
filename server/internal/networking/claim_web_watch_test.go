@@ -102,6 +102,83 @@ func TestWebClaimWatchBelongsToTheServer(t *testing.T) {
 	}
 }
 
+// A pending approval is waited on again after a restart, under the asking
+// owner's guard rebuilt from the note the wait saved.
+func TestWebClaimWatchResumesAfterRestart(t *testing.T) {
+	_, h, _ := handlerFixture(t)
+	httpTr, e := NewHTTPTransport("https://hosted.example", &credentialFixture{})
+	if e != nil {
+		t.Fatal(e)
+	}
+	t.Cleanup(httpTr.CloseIdleConnections)
+	var streams atomic.Int32
+	release := make(chan string, 2)
+	httpTr.client.Transport = claimRoundTrip(func(r *http.Request) (*http.Response, error) {
+		switch r.URL.Path {
+		case "/v1/server-claims/pending":
+			code := strings.Repeat("a", 49)
+			return reply(200, `{"code":"`+code+`","serverId":"s","name":"Test server","address":"https://web.example","requestedAt":"2026-10-15T00:00:00Z","expiresAt":"2026-10-15T00:10:00Z","status":"pending"}`), nil
+		case "/v1/server-claims/events":
+			streams.Add(1)
+			select {
+			case answer := <-release:
+				if answer == "" {
+					return reply(502, `{}`), nil
+				}
+				return reply(200, answer), nil
+			case <-r.Context().Done():
+				return nil, r.Context().Err()
+			}
+		}
+		t.Errorf("unexpected Hosted call %s", r.URL.Path)
+		return reply(500, `{}`), nil
+	})
+	h.transport = httpTr
+	owner := h.authorize
+	var guard ClaimRequestGuard
+	h.authorize = func(r *http.Request) (ClaimRequestOwner, error) {
+		o, e := owner(r)
+		o.Resume, guard = "the-owner", o.Guard
+		return o, e
+	}
+
+	s, code := handlerCall(t, h, "GET", "/v1/networking/claim", nil)
+	if code != 200 {
+		t.Fatalf("initial: %d", code)
+	}
+	body := json.RawMessage(`{"expected":{"serverId":"` + s.Identity.ServerID + `","localGeneration":"` + strconv.FormatInt(s.Identity.LocalGeneration, 10) + `"}}`)
+	if s, code = handlerCall(t, h, "POST", "/v1/networking/claim/prepare", body); code != 200 || s.Operation == nil {
+		t.Fatalf("prepare: %d %+v", code, s)
+	}
+	expected := struct {
+		Expected ClaimExpected `json:"expected"`
+	}{*s.Operation}
+	if s, code = handlerCall(t, h, "POST", "/v1/networking/claim/web-approval", expected); code != 200 || s.ClaimCode == "" {
+		t.Fatalf("web approval: %d %+v", code, s)
+	}
+	operation := s.Operation.OperationID
+	waitFor(t, func() bool { return streams.Load() == 1 })
+	// The server stops: its wait ends with no decision.
+	release <- ""
+	waitFor(t, func() bool { _, running := h.webWatches.Load(operation); return !running })
+
+	var notes []string
+	h.ResumeWebClaims(t.Context(), func(note string) ClaimRequestGuard { notes = append(notes, note); return guard })
+	if len(notes) != 1 || notes[0] != "the-owner" {
+		t.Fatalf("resume notes %v", notes)
+	}
+	waitFor(t, func() bool { return streams.Load() == 2 })
+	current, ok := h.webWatches.Load(operation)
+	if !ok {
+		t.Fatal("no wait after the restart")
+	}
+	release <- `{"status":"closed"}`
+	<-current.(*webClaimWatch).done
+	if a := string(current.(*webClaimWatch).answer); a != `{"state":"approval_closed"}` {
+		t.Fatalf("answer %q", a)
+	}
+}
+
 func waitFor(t *testing.T, ok func() bool) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)

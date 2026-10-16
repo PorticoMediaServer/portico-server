@@ -24,7 +24,7 @@
     "limits": {
       "bulkJobsActiveMax": 32,
       "downloadBatchMax": 100,
-      "longPollSecondsMax": 25,
+      "longPollMaxMs": 25000,
       "pageSizeMax": 100,
       "playlistWriteMax": 200,
       "queueKeysMax": 10000000,

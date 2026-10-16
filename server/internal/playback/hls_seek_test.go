@@ -229,10 +229,10 @@ func TestHLSSeekRestartsConversionAndKeepsConvertedSegments(t *testing.T) {
 			t.Fatal("remux re-encoded a stream", stream)
 		}
 	}
-	if delivery.ConvertedThroughSeconds <= 0 {
-		t.Fatal("converted progress not published", delivery.ConvertedThroughSeconds)
+	if delivery.ConvertedThroughMs <= 0 {
+		t.Fatal("converted progress not published", delivery.ConvertedThroughMs)
 	}
-	if delivery.PlayedRetentionSeconds != 0 || delivery.ThrottleBufferSecondsMax != cfg.ThrottleBufferSeconds {
+	if delivery.PlayedRetentionMs != 0 || delivery.ThrottleBufferMs != int64(cfg.ThrottleBufferSeconds)*1000 {
 		t.Fatal("owner settings not reflected in the diagnostic", delivery)
 	}
 }

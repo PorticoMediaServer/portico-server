@@ -20,3 +20,10 @@ export async function resumeServerSetup(api:HttpLocalApi,store:SetupDraftStore,s
  return parseLocalSession(await api.request(routePath("post_setup_resume"),'POST',routeBody("post_setup_resume", {requestId:draft.requestId,setupToken:draft.setupToken}),signal),{serverId:id,authority:'local'});
 }
 export async function completeServerSetupDraft(api:HttpLocalApi,store:SetupDraftStore){const id=serverId(api);await store.change(old=>old?.serverId===id?undefined:old);}
+/** First run from an app (phone or tablet): the server's one-time setup secret. Browsers use
+ * `start_browser_setup` from the server's own page; this route refuses any browser. */
+export async function startAppSetup(api:HttpLocalApi,signal?:AbortSignal):Promise<{serverId:string;setupToken:string}>{
+ const raw=await api.request<{serverId?:unknown;setupToken?:unknown}>(routePath("start_app_setup"),'POST',{},signal);
+ if(typeof raw?.serverId!=='string'||typeof raw.setupToken!=='string'||raw.serverId!==serverId(api))throw new Error('The setup answer did not match this server.');
+ return {serverId:raw.serverId,setupToken:raw.setupToken};
+}

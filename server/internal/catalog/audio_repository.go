@@ -548,11 +548,21 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		if len(names) == 0 {
 			names = []string{performer}
 		}
+		// An album the owner moved to an artist of its own ("Not this artist")
+		// keeps its songs there: a song that names the artist the album left
+		// credits the one it went to.
+		var filedUnder int64
+		if err = tx.QueryRow(`SELECT artist_id FROM catalog_albums WHERE entity_id=?`, album).Scan(&filedUnder); err != nil {
+			return err
+		}
 		credited := make([]int64, 0, len(names))
 		for _, name := range names {
 			artistID, e := s.artist(ctx, tx, handle, name)
 			if e != nil {
 				return e
+			}
+			if artistID == albumArtistID && filedUnder != 0 && filedUnder != albumArtistID {
+				artistID = filedUnder
 			}
 			if len(names) == 1 && (artistID != albumArtistID || firstTag(f.Tags, "album_artist_sort") == "") {
 				if name := firstTag(f.Tags, "artist_sort"); name != "" {

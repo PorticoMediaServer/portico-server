@@ -35,6 +35,16 @@ type mergeTitlesResponse struct {
 	ItemID string `json:"itemId"`
 }
 
+type separateArtistRequest struct {
+	// AlbumIDs are albums of one artist (at most 100) that are by someone
+	// else of the same name.
+	AlbumIDs []string `json:"albumIds" ref:"title"`
+}
+
+type separateArtistResponse struct {
+	ArtistID string `json:"artistId"`
+}
+
 type removeLibraryRequest struct {
 	// Confirmation is the library's name, typed back.
 	Confirmation     string `json:"confirmation"`
@@ -164,12 +174,19 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 				}
 			}
 		})
-	v1Route(r, apikit.Metadata{Admission: laneAdminHeavy, ID: "merge_titles", Method: "POST", Path: "/v1/admin/titles/merge", Summary: "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book or artist: its songs, files or albums) and everyone's state combined",
+	v1Route(r, apikit.Metadata{Admission: laneAdminHeavy, ID: "merge_titles", Method: "POST", Path: "/v1/admin/titles/merge", Summary: "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book, artist or author: its songs, files, albums or books) and everyone's state combined",
 		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 4096, Status: 200, Errors: ownerErrors},
 		func(ctx context.Context, q *http.Request, in mergeTitlesRequest) (mergeTitlesResponse, error) {
 			p, _ := d.foundationCaller(q)
 			err := d.Catalog.MergeTitles(ctx, in.FromID, in.IntoID, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 			return mergeTitlesResponse{ItemID: in.IntoID}, identityRouteError(err)
+		})
+	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "separate_artist", Method: "POST", Path: "/v1/admin/titles/separate-artist", Summary: "Say that some albums are not by the artist they are filed under: they move, with their songs' credits, to a new artist of the same name that is never joined back automatically; at least one album stays",
+		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 8192, Status: 200, Errors: ownerErrors},
+		func(ctx context.Context, q *http.Request, in separateArtistRequest) (separateArtistResponse, error) {
+			p, _ := d.foundationCaller(q)
+			artist, err := d.Catalog.SeparateArtist(ctx, in.AlbumIDs, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+			return separateArtistResponse{ArtistID: artist}, identityRouteError(err)
 		})
 	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "remove_library", Method: "DELETE", Path: "/v1/admin/libraries/{id}", Summary: "Remove a library: it disappears at once and is taken apart in the background; files on disk are not touched and each profile's state is kept in case its titles return",
 		Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4096, Status: 202, Errors: append([]string{"revision_mismatch", "confirmation_mismatch", "administration_unavailable"}, ownerErrors...)},

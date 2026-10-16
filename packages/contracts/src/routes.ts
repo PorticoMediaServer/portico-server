@@ -2887,7 +2887,7 @@ export const routes = [
     "id": "get_browse_facets",
     "method": "GET",
     "path": "/v1/browse/facets",
-    "summary": "Read counted facet choices across the viewer's libraries",
+    "summary": "Read counted facet choices across the viewer's libraries, or within one list's titles",
     "access": "device",
     "requires": "read",
     "lane": "browsing",
@@ -2896,7 +2896,9 @@ export const routes = [
     "query": [
       "field",
       "q",
-      "limit"
+      "limit",
+      "group",
+      "value"
     ],
     "errors": [
       "invalid_request",
@@ -3864,7 +3866,7 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "after",
-      "waitSeconds"
+      "waitMs"
     ],
     "errors": [
       "unauthorized",
@@ -8198,7 +8200,7 @@ export const routes = [
     "id": "merge_titles",
     "method": "POST",
     "path": "/v1/admin/titles/merge",
-    "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book or artist: its songs, files or albums) and everyone's state combined",
+    "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book, artist or author: its songs, files, albums or books) and everyone's state combined",
     "access": "owner",
     "requires": "library",
     "lane": "default",
@@ -13372,6 +13374,26 @@ export const routes = [
     "admission": "expensive"
   },
   {
+    "id": "separate_artist",
+    "method": "POST",
+    "path": "/v1/admin/titles/separate-artist",
+    "summary": "Say that some albums are not by the artist they are filed under: they move, with their songs' credits, to a new artist of the same name that is never joined back automatically; at least one album stays",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 8192,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "set_container_personal_state",
     "method": "PUT",
     "path": "/v1/containers/{kind}/{id}/personal-state",
@@ -14264,7 +14286,7 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 0,
     "query": [
-      "waitSeconds"
+      "waitMs"
     ],
     "errors": [
       "unauthorized",
@@ -15697,6 +15719,26 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "start_app_setup",
+    "method": "POST",
+    "path": "/v1/setup/app",
+    "summary": "Start first-run setup from an app",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "rate_limited",
+      "setup_already_complete",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "default"
+  },
+  {
     "id": "start_browser_setup",
     "method": "POST",
     "path": "/v1/setup/browser",
@@ -16495,6 +16537,7 @@ export const routePaths = {
   "save_live_source": "/v1/admin/live-sources",
   "save_queue_as_playlist": "/v1/queues/{id}:save-as-playlist",
   "search": "/v1/search",
+  "separate_artist": "/v1/admin/titles/separate-artist",
   "set_container_personal_state": "/v1/containers/{kind}/{id}/personal-state",
   "set_live_settings": "/v1/admin/live/settings",
   "set_live_source_configuration": "/v1/admin/live-sources/{id}/configuration",
@@ -16536,6 +16579,7 @@ export const routePaths = {
   "social_post_v1_receivers_id_grants_grantId_decision": "/v1/receivers/{id}/grants/{grantId}/decision",
   "social_post_v1_receivers_id_heartbeat": "/v1/receivers/{id}/heartbeat",
   "social_put_v1_cast_configuration": "/v1/cast/configuration",
+  "start_app_setup": "/v1/setup/app",
   "start_browser_setup": "/v1/setup/browser",
   "start_playback_session": "/v1/playback/sessions",
   "stop_playback_session": "/v1/playback/sessions/{id}",

@@ -22,30 +22,65 @@ const (
 	OrderDuration
 	OrderRating
 	OrderRandom
+	// The fact orders, kept on catalog_browse_blocks only (an unrestricted
+	// viewer's direct positions), for the kinds each applies to.
+	OrderRelease
+	OrderLatestAired
+	OrderCritic
+	OrderEpisodeCount
+	OrderAlbum
+	OrderArtist
+	OrderTrack
+	OrderFileSize
+	OrderResolution
 	orderCount
 )
+
+// visibilityOrderCount is how many orderings a visibility class keeps blocks
+// for: title through random.
+const visibilityOrderCount = OrderRandom + 1
 
 // BlockOrderKeys are the browse rows' key expressions for each ordering, over
 // the alias e, exactly as the blocks store them. A title key is lowered, which
 // orders as sort_key COLLATE NOCASE does.
 var BlockOrderKeys = [orderCount]string{
-	OrderTitle:    "lower(e.sort_key)",
-	OrderAdded:    "COALESCE(e.added_text,'')",
-	OrderYear:     "e.year",
-	OrderDuration: "COALESCE(e.duration_max,0)",
-	OrderRating:   "COALESCE(e.rating_max,0)",
-	OrderRandom:   "e.random_key",
+	OrderTitle:        "lower(e.sort_key)",
+	OrderAdded:        "COALESCE(e.added_text,'')",
+	OrderYear:         "e.year",
+	OrderDuration:     "COALESCE(e.duration_max,0)",
+	OrderRating:       "COALESCE(e.rating_max,0)",
+	OrderRandom:       "e.random_key",
+	OrderRelease:      "e.release_key",
+	OrderLatestAired:  "e.latest_aired_key",
+	OrderCritic:       "e.critic_key",
+	OrderEpisodeCount: "e.episode_count",
+	OrderAlbum:        "e.album_key",
+	OrderArtist:       "e.artist_key",
+	OrderTrack:        "e.track_key",
+	OrderFileSize:     "e.file_size",
+	OrderResolution:   "e.resolution_key",
 }
 
 // VisibilityOrderKeys are the same keys as a visibility class row (alias v)
 // carries them.
-var VisibilityOrderKeys = [orderCount]string{
+var VisibilityOrderKeys = [visibilityOrderCount]string{
 	OrderTitle:    "lower(v.sort_key)",
 	OrderAdded:    "v.added",
 	OrderYear:     "v.year",
 	OrderDuration: "v.duration",
 	OrderRating:   "v.rating",
 	OrderRandom:   "v.random_key",
+}
+
+// blockKinds limits a check to the kinds an ordering keeps blocks for, as
+// its triggers list them (every kind for the column orders).
+func blockKinds(ordering int) string {
+	kinds := map[int]string{OrderRelease: "1,2,3,4,6,8", OrderLatestAired: "2", OrderCritic: "1,2,3,4,10", OrderResolution: "1,2,3,4,10",
+		OrderEpisodeCount: "2,3", OrderAlbum: "7", OrderTrack: "7", OrderArtist: "6,7", OrderFileSize: "1,2,3,4,5,6,7,8,9,10"}[ordering]
+	if kinds == "" {
+		return ""
+	}
+	return " WHERE e.kind IN(" + kinds + ")"
 }
 
 // blockKey is a row's place in one scope's ordering.
@@ -61,8 +96,11 @@ type blockKey struct {
 func CheckBrowseBlocks(ctx context.Context, db *sql.DB) error {
 	for ordering := 0; ordering < orderCount; ordering++ {
 		if err := checkBlocks(ctx, db, "catalog_browse_blocks", []string{"library_id", "kind"},
-			`SELECT e.library_id,e.kind,`+BlockOrderKeys[ordering]+`,e.entity_id FROM catalog_browse_rows e`, ordering); err != nil {
+			`SELECT e.library_id,e.kind,`+BlockOrderKeys[ordering]+`,e.entity_id FROM catalog_browse_rows e`+blockKinds(ordering), ordering); err != nil {
 			return err
+		}
+		if ordering >= visibilityOrderCount {
+			continue
 		}
 		if err := checkBlocks(ctx, db, "compact_visibility_blocks", []string{"class_id", "generation", "library_id", "kind"},
 			`SELECT v.class_id,v.generation,v.library_id,v.kind,`+VisibilityOrderKeys[ordering]+`,v.entity_id FROM compact_visibility_rows v`, ordering); err != nil {

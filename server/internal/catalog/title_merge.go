@@ -48,7 +48,7 @@ func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 		}
 	case compactcatalog.Season:
 		return fmt.Errorf("%w: seasons merge with their shows", ErrNotMergeable)
-	case compactcatalog.Album, compactcatalog.Book, compactcatalog.Artist:
+	case compactcatalog.Album, compactcatalog.Book, compactcatalog.Artist, compactcatalog.Author:
 		return mergeContainerTx(ctx, tx, from, into, fromKind)
 	case compactcatalog.Movie, compactcatalog.Episode, compactcatalog.Track, compactcatalog.Part, compactcatalog.Extra:
 	default:
@@ -541,6 +541,35 @@ func (s *Service) SurvivingTitleID(ctx context.Context, public string) string {
 		return public
 	}
 	return survivor
+}
+
+// SurvivingTitleIDs is SurvivingTitleID for every id a request carries: it
+// returns the ids that name merged-away titles, each with the id to use. A
+// server that never merged a title answers from one probe.
+func (s *Service) SurvivingTitleIDs(ctx context.Context, public []string) map[string]string {
+	if s == nil || s.db == nil || len(public) == 0 {
+		return nil
+	}
+	db := dbwork.ReadHandle(ctx, s.db)
+	var any int
+	if err := db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_merged_ids)`).Scan(&any); err != nil || any == 0 {
+		return nil
+	}
+	var out map[string]string
+	for _, id := range public {
+		if _, done := out[id]; done {
+			continue
+		}
+		survivor, err := entityid.Survivor(ctx, db, id)
+		if err != nil || survivor == "" {
+			continue
+		}
+		if out == nil {
+			out = map[string]string{}
+		}
+		out[id] = survivor
+	}
+	return out
 }
 
 // SeparateFolder is the owner's "these are not the same album (or book)": the

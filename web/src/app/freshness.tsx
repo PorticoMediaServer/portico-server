@@ -149,17 +149,20 @@ export function useQuietRefresh(name: string, revalidate: FreshDocumentOptions['
   return useFreshDocument(dependencies, revalidate, hasContent);
 }
 
-export function useFreshDocument(dependencies: readonly FreshnessDependency[], revalidate: FreshDocumentOptions['revalidate'], hasContent: () => boolean = () => true): () => void {
+export function useFreshDocument(dependencies: readonly FreshnessDependency[] | (() => readonly FreshnessDependency[]), revalidate: FreshDocumentOptions['revalidate'], hasContent: () => boolean = () => true): () => void {
   const {hub} = useFreshness();
-  const key = dependencies.join('\n');
-  const latest = useRef({revalidate, hasContent});
-  latest.current = {revalidate, hasContent};
+  // A function is asked again each time a hint arrives (a list's titles in view change as it scrolls).
+  const dynamic = typeof dependencies === 'function';
+  const key = dynamic ? '\u0000dynamic' : dependencies.join('\n');
+  const latest = useRef({revalidate, hasContent, dependencies});
+  latest.current = {revalidate, hasContent, dependencies};
   const held = useRef<FreshDocument | undefined>(undefined);
   useEffect(() => {
-    const document = hub.document({dependencies: key ? key.split('\n') : [], revalidate: context => latest.current.revalidate(context), hasContent: () => latest.current.hasContent()});
+    const document = hub.document({dependencies: dynamic ? () => (latest.current.dependencies as () => readonly FreshnessDependency[])() : key ? key.split('\n') : [], revalidate: context => latest.current.revalidate(context), hasContent: () => latest.current.hasContent()});
     held.current = document;
     document.setOpen(true);
     return () => { document.dispose(); if (held.current === document) held.current = undefined; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hub, key]);
   return useCallback(() => held.current?.markCurrent(), []);
 }

@@ -222,6 +222,6 @@ func (d Dependencies) detailRoutes(mux *http.ServeMux) {
 			failure(w, mutationErr)
 			return
 		}
-		write(w, 200, catalog.PersonalReceipt{ServerID: d.Identity.ID(), OperationID: body.OperationID, ItemID: r.PathValue("id"), LibraryID: currentLibrary, ViewerFence: fence, Personal: personal, Current: &current, ReceiptLifetimeSeconds: 2592000})
+		write(w, 200, catalog.PersonalReceipt{ServerID: d.Identity.ID(), OperationID: body.OperationID, ItemID: r.PathValue("id"), LibraryID: currentLibrary, ViewerFence: fence, Personal: personal, Current: &current, ReceiptLifetimeMs: 2592000000})
 	})
 }

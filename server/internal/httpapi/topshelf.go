@@ -105,7 +105,7 @@ func (d Dependencies) topShelfRoutes(mux *http.ServeMux) {
 			return
 		}
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: libraries, Restrictions: restrictions}
-		document, e := d.Catalog.WithContext(r.Context()).HomeRows(catalog.HomeRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Libraries: libraries, Restrictions: restrictions, Limit: topShelfEntries})
+		document, e := d.Catalog.WithContext(r.Context()).HomeRows(catalog.HomeRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Libraries: libraries, Restrictions: restrictions, Limit: topShelfEntries, Rows: topShelfSections})
 		if e != nil {
 			failure(w, e)
 			return

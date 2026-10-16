@@ -587,6 +587,7 @@ export function decodeRevokeProfileDownloadsResponse(input: unknown): types.Revo
 export function decodeSaveLiveSourceResponse(input: unknown): types.SaveLiveSourceResponse { return decode("SaveLiveSourceResponse", input) as types.SaveLiveSourceResponse; }
 export function decodeSaveQueueAsPlaylistResponse(input: unknown): types.SaveQueueAsPlaylistResponse { return decode("SaveQueueAsPlaylistResponse", input) as types.SaveQueueAsPlaylistResponse; }
 export function decodeSearchResponse(input: unknown): types.SearchResponse { return decode("SearchResponse", input) as types.SearchResponse; }
+export function decodeSeparateArtistResponse(input: unknown): types.SeparateArtistResponse { return decode("SeparateArtistResponse", input) as types.SeparateArtistResponse; }
 export function decodeSetContainerPersonalStateResponse(input: unknown): types.SetContainerPersonalStateResponse { return decode("SetContainerPersonalStateResponse", input) as types.SetContainerPersonalStateResponse; }
 export function decodeSetLiveSettingsResponse(input: unknown): types.SetLiveSettingsResponse { return decode("SetLiveSettingsResponse", input) as types.SetLiveSettingsResponse; }
 export function decodeSetLiveSourceConfigurationResponse(input: unknown): types.SetLiveSourceConfigurationResponse { return decode("SetLiveSourceConfigurationResponse", input) as types.SetLiveSourceConfigurationResponse; }
@@ -628,6 +629,7 @@ export function decodeSocialPostV1ReceiversIdGrantsResponse(input: unknown): typ
 export function decodeSocialPostV1ReceiversIdGrantsGrantIdDecisionResponse(input: unknown): types.SocialPostV1ReceiversIdGrantsGrantIdDecisionResponse { return decode("SocialPostV1ReceiversIdGrantsGrantIdDecisionResponse", input) as types.SocialPostV1ReceiversIdGrantsGrantIdDecisionResponse; }
 export function decodeSocialPostV1ReceiversIdHeartbeatResponse(input: unknown): types.SocialPostV1ReceiversIdHeartbeatResponse { return decode("SocialPostV1ReceiversIdHeartbeatResponse", input) as types.SocialPostV1ReceiversIdHeartbeatResponse; }
 export function decodeSocialPutV1CastConfigurationResponse(input: unknown): types.SocialPutV1CastConfigurationResponse { return decode("SocialPutV1CastConfigurationResponse", input) as types.SocialPutV1CastConfigurationResponse; }
+export function decodeStartAppSetupResponse(input: unknown): types.StartAppSetupResponse { return decode("StartAppSetupResponse", input) as types.StartAppSetupResponse; }
 export function decodeStartBrowserSetupResponse(input: unknown): types.StartBrowserSetupResponse { return decode("StartBrowserSetupResponse", input) as types.StartBrowserSetupResponse; }
 export function decodeStartPlaybackSessionResponse(input: unknown): types.StartPlaybackSessionResponse { return decode("StartPlaybackSessionResponse", input) as types.StartPlaybackSessionResponse; }
 export function decodeStopPlaybackSessionResponse(input: unknown): types.StopPlaybackSessionResponse { return decode("StopPlaybackSessionResponse", input) as types.StopPlaybackSessionResponse; }

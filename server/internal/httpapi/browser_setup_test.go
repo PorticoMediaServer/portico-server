@@ -96,3 +96,66 @@ func TestBrowserSetupLocalOriginAndSingleUse(t *testing.T) {
 		t.Fatalf("initialized server exposes bootstrap: %d", w.Code)
 	}
 }
+
+func TestAppSetupWithoutOriginAndNeverFromABrowser(t *testing.T) {
+	root := t.TempDir()
+	db, err := persistence.Open(filepath.Join(root, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	id, err := identity.New(db, root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := hosted.New(db, id, "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h := New(Dependencies{DB: db, Identity: id, Catalog: catalog.New(db), Hosted: host, Origins: []string{"https://web.getportico.tv"}})
+	call := func(path string, headers map[string]string, body any) *httptest.ResponseRecorder {
+		raw, _ := json.Marshal(body)
+		r := httptest.NewRequest("POST", "http://192.168.1.20:32500"+path, bytes.NewReader(raw))
+		r.RemoteAddr = "192.168.1.30:5000"
+		r.Header.Set("Content-Type", "application/json")
+		for k, v := range headers {
+			r.Header.Set(k, v)
+		}
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w
+	}
+	// A browser always names its origin on a POST: even this server's own page is refused here
+	// (it has its own route), and so are other sites, a fetch that says it is a browser's, and a
+	// body that is not JSON.
+	for name, headers := range map[string]map[string]string{
+		"own origin":     {"Origin": "http://192.168.1.20:32500"},
+		"another site":   {"Origin": "http://evil.example"},
+		"hosted origin":  {"Origin": "https://web.getportico.tv"},
+		"browser fetch":  {"Sec-Fetch-Mode": "cors"},
+		"not JSON":       {"Content-Type": "text/plain"},
+		"cross-site tag": {"Sec-Fetch-Site": "cross-site"},
+	} {
+		if w := call("/v1/setup/app", headers, map[string]any{}); w.Code != http.StatusUnauthorized && w.Code != http.StatusForbidden && w.Code != http.StatusUnsupportedMediaType {
+			t.Fatalf("%s: got status %d", name, w.Code)
+		}
+	}
+	w := call("/v1/setup/app", nil, map[string]any{})
+	if w.Code != http.StatusOK {
+		t.Fatalf("app setup start %d: %s", w.Code, w.Body.String())
+	}
+	var start struct {
+		ServerID string `json:"serverId"`
+		Token    string `json:"setupToken"`
+	}
+	if err = json.Unmarshal(w.Body.Bytes(), &start); err != nil || start.ServerID != id.ID() || len(start.Token) != 43 {
+		t.Fatal("invalid app setup start")
+	}
+	w = call("/v1/setup", nil, map[string]any{"requestId": "44444444-4444-4444-8444-444444444444", "setupToken": start.Token, "username": "owner", "password": "A-long-local-password", "name": "Living room", "authMode": "local", "interactive": true})
+	if w.Code != 201 {
+		t.Fatalf("setup %d: %s", w.Code, w.Body.String())
+	}
+	if w = call("/v1/setup/app", nil, map[string]any{}); w.Code != 409 {
+		t.Fatalf("a set-up server still hands out its setup secret: %d", w.Code)
+	}
+}

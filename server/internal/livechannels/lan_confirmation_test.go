@@ -46,7 +46,7 @@ func TestLANSourceConfirmationFlow(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	a := testAuthority("fence", true, true)
-	draft := RemoteDraft{ID: strings.Repeat("ef", 24), Name: "Antenna", Kind: "hdhomerun", Locator: device.URL + "/", ConfirmedLANRoots: []string{}, Mappings: []ChannelMapping{}, RefreshSeconds: 3600, ViewerAccess: "owner-only"}
+	draft := RemoteDraft{ID: strings.Repeat("ef", 24), Name: "Antenna", Kind: "hdhomerun", Locator: device.URL + "/", ConfirmedLANRoots: []string{}, Mappings: []ChannelMapping{}, RefreshMs: 3600000, ViewerAccess: "owner-only"}
 	deviceRoot := "http://" + strings.TrimPrefix(device.URL, "http://") + "/"
 	otherRoot := "http://10.0.0.9:5004/"
 

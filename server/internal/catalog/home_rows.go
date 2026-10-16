@@ -64,24 +64,24 @@ type HomeRow struct {
 	Relation           string      `json:"relation,omitempty"`
 	// Family groups rows the layout arranges as one ("for_you": the personal
 	// rows, which vary with the profile and the day).
-	Family          string          `json:"family,omitempty"`
-	Provider        string          `json:"provider,omitempty"`
-	EvidenceID      string          `json:"evidenceId,omitempty"`
-	Priority        int             `json:"priority"`
-	CacheTTLSeconds int             `json:"cacheTtlSeconds"`
-	Required        bool            `json:"required"`
-	Hideable        bool            `json:"hideable"`
-	Reorderable     bool            `json:"reorderable"`
-	Critical        bool            `json:"critical"`
-	CursorCapable   bool            `json:"cursorCapable"`
-	Entries         []ContentEntry  `json:"entries"`
-	Total           int             `json:"total"`
-	Start           int             `json:"start"`
-	Limit           int             `json:"limit"`
-	HasMore         bool            `json:"hasMore"`
-	NextCursor      string          `json:"nextCursor"`
-	AnchorID        string          `json:"anchorId,omitempty"`
-	Revision        ContentRevision `json:"revision"`
+	Family        string          `json:"family,omitempty"`
+	Provider      string          `json:"provider,omitempty"`
+	EvidenceID    string          `json:"evidenceId,omitempty"`
+	Priority      int             `json:"priority"`
+	CacheTTLMs    int             `json:"cacheTtlMs"`
+	Required      bool            `json:"required"`
+	Hideable      bool            `json:"hideable"`
+	Reorderable   bool            `json:"reorderable"`
+	Critical      bool            `json:"critical"`
+	CursorCapable bool            `json:"cursorCapable"`
+	Entries       []ContentEntry  `json:"entries"`
+	Total         int             `json:"total"`
+	Start         int             `json:"start"`
+	Limit         int             `json:"limit"`
+	HasMore       bool            `json:"hasMore"`
+	NextCursor    string          `json:"nextCursor"`
+	AnchorID      string          `json:"anchorId,omitempty"`
+	Revision      ContentRevision `json:"revision"`
 	// lead is the first entry's own order value: for the Continue rows, when it
 	// was last played. Home compares the two to choose its hero.
 	lead string
@@ -194,7 +194,7 @@ type homeSource struct {
 func (spec homeRowSpec) descriptor() HomeRow {
 	return HomeRow{ID: spec.ID, Title: spec.Title, TitleText: spec.titleText(), Kind: spec.Kind, ArtworkShape: spec.ArtworkShape, Explanation: spec.Explanation,
 		SeeAll: spec.destination(), Endpoint: "/v1/home/rows/" + spec.ID, LibraryID: spec.LibraryID, PrivacySensitivity: spec.Privacy, PolicyState: spec.PolicyState,
-		Priority: spec.Priority, CacheTTLSeconds: spec.CacheTTL, Required: spec.Required, Hideable: spec.Hideable,
+		Priority: spec.Priority, CacheTTLMs: spec.CacheTTL * 1000, Required: spec.Required, Hideable: spec.Hideable,
 		Reorderable: spec.Reorderable, Critical: spec.Critical, CursorCapable: spec.Cursors, Family: spec.Family, Entries: []ContentEntry{}}
 }
 
@@ -293,6 +293,10 @@ func homeVisible(alias string) string {
 // this many entries, however long the profile's listening history is.
 const continueListeningMaximum = 40
 
+// continueListeningWindow is how much of the profile's recent unfinished
+// activity Continue Listening reads to find those entries.
+const continueListeningWindow = 1000
+
 func homeContinueBase(mode string) string {
 	kind := `k.playable=1 AND k.listening=0 AND i.kind<>11`
 	libraries := `a.library_id IN(SELECT value FROM json_each(?))`
@@ -306,7 +310,10 @@ func homeContinueBase(mode string) string {
 		// One ordered walk of the profile's unfinished activity across its music
 		// and audiobook libraries (0079). The per-library index would make SQLite
 		// sort the whole history before the row's LIMIT could stop it.
-		activity = `progress_activity a INDEXED BY progress_home_profile_recent`
+		// The walk reads at most continueListeningWindow of the profile's
+		// most recent unfinished activity, so a long history of unfinished
+		// films and episodes ahead of the music costs the same in any library.
+		activity = `(SELECT * FROM progress_activity INDEXED BY progress_home_profile_recent WHERE profile_id=? AND state!='ended' ORDER BY updated_at DESC,item_id DESC LIMIT ` + strconv.Itoa(continueListeningWindow) + `) a`
 	}
 	// id names the public id for hydration, entity the integer id for
 	// restriction predicates, ord the activity row's own column so the planner
@@ -349,7 +356,7 @@ func (s *Service) homeSourceBase(r HomeRequest, spec homeRowSpec) (homeSource, e
 		mode := "continue_movies"
 		if spec.ID == "continue_listening" {
 			mode = "continue_listening"
-			return homeSource{base: homeContinueBase(mode), args: []any{r.Profile, libraries}, cap: continueListeningMaximum}, nil
+			return homeSource{base: homeContinueBase(mode), args: []any{r.Profile, r.Profile, libraries}, cap: continueListeningMaximum}, nil
 		}
 		cutoffs, premieres, maximum, err := s.continueWatchingPolicy(r.Libraries, r.now())
 		if err != nil {
@@ -853,7 +860,22 @@ func (s *Service) HomeRows(r HomeRequest) (HomeDocument, error) {
 	for _, id := range r.HiddenRowIDs {
 		hidden[id] = true
 	}
+	composed := func() bool {
+		if r.Rows <= 0 {
+			return false
+		}
+		filled := 0
+		for _, row := range out.Rows {
+			if len(row.Entries) > 0 {
+				filled++
+			}
+		}
+		return filled >= r.Rows
+	}
 	for _, spec := range homeOrdered(specs, r.RowOrder) {
+		if composed() {
+			break
+		}
 		if spec.PolicyState != "available" {
 			continue
 		}

@@ -1,5 +1,6 @@
 import {encodedRoutePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
+import {wireDurations} from './wire-units.ts';
 /** Trickplay set descriptors and their delivery URLs.
  *
  * The server owns the geometry, the staleness decision and the published URLs;
@@ -60,7 +61,10 @@ function assertTrickplay(condition: unknown): asserts condition {
   if (!condition) throw Object.assign(new Error(unreadableServerResponse),{code:'invalid_trickplay'});
 }
 
-function parseTrickplaySet(raw: unknown, target: TrickplayTarget): TrickplaySet {
+function parseTrickplaySet(wire: unknown, target: TrickplayTarget): TrickplaySet {
+  // The wire carries milliseconds; the set is indexed in seconds like the player's clock.
+  let raw: unknown;
+  try { raw = wireDurations(wire, {intervalSeconds: 'intervalMs', durationSeconds: 'durationMs', sourceOffsetSeconds: 'sourceOffsetMs'}); } catch { raw = undefined; }
   assertTrickplay(object(raw));
   assertTrickplay(opaque(raw.id) && text(raw.sourceId, 256) && text(raw.sourceRevision, 256) && opaque(raw.revision));
   assertTrickplay(count(raw.tileWidth, 4096) && count(raw.tileHeight, 4096) && count(raw.columns, 64) && count(raw.rows, 64));

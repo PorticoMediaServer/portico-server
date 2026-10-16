@@ -15,7 +15,7 @@ import (
 // first stranger who guesses it.
 type InviteRequest struct {
 	ProtocolVersion    string `json:"protocolVersion"`
-	ExpiresInSeconds   int    `json:"expiresInSeconds"`
+	ExpiresInMs        int64  `json:"expiresInMs"`
 	MaxUses            int    `json:"maxUses"`
 	RecipientProfileID string `json:"recipientProfileId"`
 }
@@ -44,13 +44,13 @@ func (s *Store) CreateInvite(ctx context.Context, p identity.Principal, id strin
 	if req.ProtocolVersion != Protocol {
 		return out, errInvalid
 	}
-	if req.ExpiresInSeconds == 0 {
-		req.ExpiresInSeconds = InviteTTLSeconds
+	if req.ExpiresInMs == 0 {
+		req.ExpiresInMs = InviteTTLSeconds * 1000
 	}
 	if req.MaxUses == 0 {
 		req.MaxUses = InviteDefaultUses
 	}
-	if req.ExpiresInSeconds < 60 || req.ExpiresInSeconds > InviteMaxTTLSeconds || req.MaxUses < 1 || req.MaxUses > InviteMaxUses {
+	if req.ExpiresInMs < 60000 || req.ExpiresInMs > InviteMaxTTLSeconds*1000 || req.MaxUses < 1 || req.MaxUses > InviteMaxUses {
 		return out, errInvalid
 	}
 	if req.RecipientProfileID != "" && !ValidID(req.RecipientProfileID) {
@@ -84,7 +84,7 @@ func (s *Store) CreateInvite(ctx context.Context, p identity.Principal, id strin
 		return out, e
 	}
 	now := s.ms()
-	expires := now + int64(req.ExpiresInSeconds)*1000
+	expires := now + req.ExpiresInMs
 	inviteID := token("inv_")
 	if _, e = tx.ExecContext(ctx, `INSERT INTO social_group_invites(id,group_id,code_digest,created_by,recipient_profile_id,max_uses,expires_at_ms,created_at_ms) VALUES(?,?,?,?,?,?,?,?)`, inviteID, id, digest(code), m.id, req.RecipientProfileID, req.MaxUses, expires, now); e != nil {
 		return out, e

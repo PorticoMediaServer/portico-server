@@ -1,7 +1,8 @@
-import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {currentI18n} from './i18n';
 import {createWindowedCollection, type FetchPage, type WindowedCollection} from '@core/collections/index.ts';
-import {titlesWithPersonalState} from '@core/freshness-hub.ts';
+import {listedTitlesWithPersonalState, readsPersonalState, titleIdsOf} from '@core/freshness-hub.ts';
+import {browseFields} from '@core/browse.ts';
 import {usePooled} from './freshness';
 import type {ContentEntry} from '@core/library-content.ts';
 import {acrossLibraries, browseCapabilitiesPath, browseFacetsPath, parseBrowseCapabilities, parseBrowseFacets, type BrowseCapabilities, type BrowseFacetValue, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
@@ -70,6 +71,9 @@ export function useBrowseCollection(input: {libraryId?: string; pivot?: string; 
   // same list at the same place without a request. A new query is a new generation of it.
   const latest = useRef<() => FetchPage<ContentEntry>>(undefined);
   latest.current = () => browsePageSource(api, {libraryId: libraryId!, pivot: pivot!, base, predicates, sort});
+  // Whether the list's own conditions or order read this profile's state (see dependencies below).
+  const personalQuery = useRef(false);
+  personalQuery.current = readsPersonalState([...browseFields(base ?? []), ...browseFields(predicates), sort?.field]);
   const {service: store, document, memo} = usePooled<BrowseStore, unknown>(on ? `browse:${libraryId}:${pivot}:${pageSize}${baseKey}` : 'browse:idle', () => {
     if (!on) return {service: idleStore(), document: {dependencies: [], revalidate: async () => {}}};
     const collection = createWindowedCollection<ContentEntry>({fetchPage: latest.current!(), pageSize, maxResidentPages: 10, keyOf: e => e.id});
@@ -77,9 +81,9 @@ export function useBrowseCollection(input: {libraryId?: string; pivot?: string; 
     return {
       service,
       document: {
-        // The titles, their order, and this profile's marks on them.
-        // A list across libraries follows them all.
-        dependencies: titlesWithPersonalState(libraryId === acrossLibraries ? undefined : libraryId),
+        // The titles, their order, and this profile's marks on the titles it holds (all of its
+        // state when the list is filtered or ordered by it). A list across libraries follows them all.
+        dependencies: () => listedTitlesWithPersonalState(libraryId === acrossLibraries ? undefined : libraryId, titleIdsOf(collection.residentItems()), personalQuery.current),
         hasContent: () => collection.getSnapshot().total !== undefined,
         // The same list read again behind the one on screen (a new reading has a new revision), swapped in whole at the same place.
         revalidate: context => collection.revalidate({fetchPage: service.source?.(), hold: context.settle}),
@@ -104,15 +108,21 @@ export function useBrowseCollection(input: {libraryId?: string; pivot?: string; 
   return {collection, refresh};
 }
 
+/** The group a list across libraries is (its person, playlist, collection, Home row, My List, Favorites or history), so its filter choices count that list's own titles. */
+export const FacetGroupContext = createContext<Readonly<{group: string; value: string}> | undefined>(undefined);
+
 export function useFacets(libraryId: string | undefined) {
   const {api} = useSession();
+  const facetGroup = useContext(FacetGroupContext);
+  const groupField = facetGroup?.group, groupValue = facetGroup?.value;
   return useCallback(async (field: string, q = ''): Promise<readonly BrowseFacetValue[]> => {
     if (!libraryId) return [];
     const params = new URLSearchParams({field, limit: '100'});
     if (q) params.set('q', q);
+    if (groupField && libraryId === acrossLibraries) { params.set('group', groupField); params.set('value', groupValue ?? ''); }
     const raw = await api.request<unknown>(`${browseFacetsPath(libraryId)}?${params}`, 'GET');
     return parseBrowseFacets(raw, field).values;
-  }, [api, libraryId]);
+  }, [api, libraryId, groupField, groupValue]);
 }
 
 /** URL form: a JSON array of predicates, bounded so a link stays a link. */

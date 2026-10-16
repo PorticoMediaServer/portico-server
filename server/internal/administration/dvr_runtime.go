@@ -14,7 +14,7 @@ func runtimeDefaults(ctx context.Context, tx *sql.Tx) (DVRDocument, error) {
 	v := DefaultDVRDefaults()
 	var rev int64
 	var days, count int
-	err := tx.QueryRowContext(ctx, `SELECT revision,before_seconds,after_seconds,retention_days,episode_limit,live_tuner_conflict FROM dvr_defaults WHERE singleton=1`).Scan(&rev, &v.PrePaddingSeconds, &v.PostPaddingSeconds, &days, &count, &v.LiveTunerConflict)
+	err := tx.QueryRowContext(ctx, `SELECT revision,before_seconds*1000,after_seconds*1000,retention_days,episode_limit,live_tuner_conflict FROM dvr_defaults WHERE singleton=1`).Scan(&rev, &v.PrePaddingMs, &v.PostPaddingMs, &days, &count, &v.LiveTunerConflict)
 	if count > 0 {
 		v.Keep = KeepPolicy{Mode: "keep-count", KeepCount: count}
 	} else if days > 0 {
@@ -51,7 +51,7 @@ func (s *Service) saveRuntimeDVRSettings(ctx context.Context, auth Authorize, c 
 		if c.Settings.Keep.Mode == "keep-count" {
 			count = c.Settings.Keep.KeepCount
 		}
-		result, err := tx.ExecContext(ctx, `UPDATE dvr_defaults SET revision=revision+1,before_seconds=?,after_seconds=?,retention_days=?,episode_limit=?,live_tuner_conflict=? WHERE singleton=1 AND revision=?`, c.Settings.PrePaddingSeconds, c.Settings.PostPaddingSeconds, days, count, c.Settings.LiveTunerConflict, c.ExpectedRevision)
+		result, err := tx.ExecContext(ctx, `UPDATE dvr_defaults SET revision=revision+1,before_seconds=?,after_seconds=?,retention_days=?,episode_limit=?,live_tuner_conflict=? WHERE singleton=1 AND revision=?`, c.Settings.PrePaddingMs/1000, c.Settings.PostPaddingMs/1000, days, count, c.Settings.LiveTunerConflict, c.ExpectedRevision)
 		if err != nil {
 			return err
 		}
@@ -68,14 +68,14 @@ func (s *Service) saveRuntimeDVRSettings(ctx context.Context, auth Authorize, c 
 	return out, err
 }
 func groupFromRule(r dvr.Rule, o livechannels.Owner) RecordingGroup {
-	before, after := r.Config.Options.BeforeSeconds, r.Config.Options.AfterSeconds
+	before, after := r.Config.Options.BeforeMs, r.Config.Options.AfterMs
 	keep := KeepPolicy{Mode: "keep-all"}
 	if r.Config.Options.EpisodeLimit > 0 {
 		keep = KeepPolicy{Mode: "keep-count", KeepCount: r.Config.Options.EpisodeLimit}
 	} else if r.Config.Options.RetentionDays > 0 {
 		keep = KeepPolicy{Mode: "keep-days", KeepDays: r.Config.Options.RetentionDays}
 	}
-	return RecordingGroup{Owner: o, Status: r.ReconcileState, ID: r.ID, Kind: "series", Name: r.Config.Name, Match: r.Config.SeriesID, SourceID: r.Config.SourceID, Enabled: r.Config.Enabled, Revision: r.Revision, Options: GroupOptions{PrePaddingSeconds: &before, PostPaddingSeconds: &after, Keep: &keep, NewEpisodesOnly: r.Config.Episodes == "new", Priority: r.Config.Options.Priority}, UpdatedAt: r.UpdatedAt}
+	return RecordingGroup{Owner: o, Status: r.ReconcileState, ID: r.ID, Kind: "series", Name: r.Config.Name, Match: r.Config.SeriesID, SourceID: r.Config.SourceID, Enabled: r.Config.Enabled, Revision: r.Revision, Options: GroupOptions{PrePaddingMs: &before, PostPaddingMs: &after, Keep: &keep, NewEpisodesOnly: r.Config.Episodes == "new", Priority: r.Config.Options.Priority}, UpdatedAt: r.UpdatedAt}
 }
 func (s *Service) runtimeRecordingGroups(ctx context.Context, auth Authorize, token string, limit int) (RecordingGroupPage, error) {
 	out := RecordingGroupPage{Items: []RecordingGroup{}}
@@ -185,11 +185,11 @@ func (s *Service) saveRuntimeRecordingGroup(ctx context.Context, auth Authorize,
 			return err
 		}
 		opts.Priority = c.Options.Priority
-		if c.Options.PrePaddingSeconds != nil {
-			opts.BeforeSeconds = *c.Options.PrePaddingSeconds
+		if c.Options.PrePaddingMs != nil {
+			opts.BeforeMs = *c.Options.PrePaddingMs
 		}
-		if c.Options.PostPaddingSeconds != nil {
-			opts.AfterSeconds = *c.Options.PostPaddingSeconds
+		if c.Options.PostPaddingMs != nil {
+			opts.AfterMs = *c.Options.PostPaddingMs
 		}
 		if c.Options.Keep != nil {
 			opts.RetentionDays, opts.EpisodeLimit = 0, 0

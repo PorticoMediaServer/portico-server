@@ -102,6 +102,8 @@ export type WindowedCollection<T> = {
   retry(): void;
   /** Pages and items held in memory (for tests and diagnostics). */
   resident(): {pages: number; items: number};
+  /** The items of the generation on screen that are held in memory (at most maxResidentPages × pageSize). */
+  residentItems(): readonly T[];
   dispose(): void;
 };
 
@@ -388,6 +390,11 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
       for (const g of pending ? [pending, current] : [current]) for (const [page, p] of g.pages) if (p.status === 'error') g.pages.delete(page);
       pump();
       publish();
+    },
+    residentItems() {
+      const out: T[] = [];
+      for (const p of current.pages.values()) if (p.status === 'ready') out.push(...p.items);
+      return out;
     },
     resident() {
       let pages = 0, items = 0;

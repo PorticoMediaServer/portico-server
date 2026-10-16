@@ -156,7 +156,7 @@ func (d Dependencies) viewerCapabilities(r *http.Request) (CapabilitiesDocument,
 		return CapabilitiesDocument{}, foundationAuthError(err)
 	}
 	out := CapabilitiesDocument{API: APIVersion{Major: 1, Level: 1}, Features: map[string]string{}, Limits: map[string]int{
-		"pageSizeMax": catalog.BrowseMaximumLimit, "selectorIdsMax": 500, "longPollSecondsMax": 25,
+		"pageSizeMax": catalog.BrowseMaximumLimit, "selectorIdsMax": 500, "longPollMaxMs": 25000,
 		"queueKeysMax": playbackv1.MaxQueueKeys, "playlistWriteMax": catalog.MaxPlaylistEntries,
 		"bulkJobsActiveMax": catalog.MaxActiveBulkJobs, "downloadBatchMax": downloads.MaxBatchTargets,
 	}}
@@ -301,6 +301,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registry := apikit.NewContextual(d.v1Authorize, policyCatalogue())
 	registry.GateScopes(registryScopeGate)
 	registry.RewritePathValues(d.mergedTitlePath)
+	registry.RewriteRefs(apikit.Refs{Names: titleRefNames, Resolve: d.mergedTitleRefs})
 	err := apikit.Register(registry, apikit.Route[struct{}, ServerDocument]{Metadata: apikit.Metadata{Admission: laneDefault,
 		ID: "get_server", Method: "GET", Path: "/v1/server", Summary: "Read server identity and API level", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"},
 	}, Handler: func(context.Context, *http.Request, struct{}) (ServerDocument, error) {
@@ -659,7 +660,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	registerIdentityRoutes(registry, d)
 	// Lane C's /v1/events (886f5011) on the shared contextual registry.
 	err = apikit.Register(registry, apikit.Route[struct{}, eventfeed.Page]{Metadata: apikit.Metadata{Admission: laneRealtime,
-		ID: "get_events", Method: "GET", Path: "/v1/events", Summary: "Read the authorized event ring by long-poll or server-sent stream", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Realtime, Cost: apikit.Constant, Status: 200, SSE: true, Query: []string{"after", "waitSeconds"}, Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "stream_unavailable", "internal"},
+		ID: "get_events", Method: "GET", Path: "/v1/events", Summary: "Read the authorized event ring by long-poll or server-sent stream", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Realtime, Cost: apikit.Constant, Status: 200, SSE: true, Query: []string{"after", "waitMs"}, Errors: []string{"unauthorized", "invalid_request", "invalid_cursor", "stream_unavailable", "internal"},
 	}, RawHandler: func(w http.ResponseWriter, r *http.Request) {
 		if d.Events == nil {
 			registry.Errors().Write(w, "", &apierror.Error{Code: "internal"})

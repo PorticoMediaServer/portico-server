@@ -138,12 +138,12 @@ type ProviderSelection struct {
 
 // GeneratedNavigation controls the artifacts the player navigates with.
 type GeneratedNavigation struct {
-	TrickplayIntervalSeconds int    `json:"trickplayIntervalSeconds"`
-	TrickplayTileWidth       int    `json:"trickplayTileWidth"`
-	TrickplayMaxTiles        int    `json:"trickplayMaxTiles"`
-	ChapterThumbnailMode     string `json:"chapterThumbnailMode"`
-	VideoPreviewEnabled      bool   `json:"videoPreviewEnabled"`
-	VideoPreviewSeconds      int    `json:"videoPreviewSeconds"`
+	TrickplayIntervalMs  int    `json:"trickplayIntervalMs"`
+	TrickplayTileWidth   int    `json:"trickplayTileWidth"`
+	TrickplayMaxTiles    int    `json:"trickplayMaxTiles"`
+	ChapterThumbnailMode string `json:"chapterThumbnailMode"`
+	VideoPreviewEnabled  bool   `json:"videoPreviewEnabled"`
+	VideoPreviewMs       int    `json:"videoPreviewMs"`
 }
 
 // LibrarySettings is one library's whole administration document.
@@ -174,7 +174,7 @@ func DefaultLibrarySettings() LibrarySettings {
 		ContinueWatching:   catalog.DefaultContinueWatchingSettings(),
 		Providers:          []ProviderSelection{},
 		Analysis:           enabled,
-		Navigation:         GeneratedNavigation{TrickplayIntervalSeconds: 10, TrickplayTileWidth: 320, TrickplayMaxTiles: 400, ChapterThumbnailMode: "embedded", VideoPreviewEnabled: false, VideoPreviewSeconds: 30},
+		Navigation:         GeneratedNavigation{TrickplayIntervalMs: 10000, TrickplayTileWidth: 320, TrickplayMaxTiles: 400, ChapterThumbnailMode: "embedded", VideoPreviewEnabled: false, VideoPreviewMs: 30000},
 	}
 }
 
@@ -261,16 +261,20 @@ func validateLibrarySettings(v *LibrarySettings) error {
 			}
 		}
 	}
+	// Thumbnails are cut on whole seconds, so the interval is too.
+	if v.Navigation.TrickplayIntervalMs%1000 != 0 {
+		fields = append(fields, "settings.navigation.trickplayIntervalMs")
+	}
 	if !oneOf(v.Navigation.ChapterThumbnailMode, ChapterThumbnailModes...) {
 		fields = append(fields, "settings.navigation.chapterThumbnailMode")
 	}
 	if len(fields) > 0 {
 		return invalid(fields...)
 	}
-	clampInt(&v.Navigation.TrickplayIntervalSeconds, 1, 600)
+	clampInt(&v.Navigation.TrickplayIntervalMs, 1000, 600000)
 	clampInt(&v.Navigation.TrickplayTileWidth, 96, 640)
 	clampInt(&v.Navigation.TrickplayMaxTiles, 20, 20000)
-	clampInt(&v.Navigation.VideoPreviewSeconds, 5, 120)
+	clampInt(&v.Navigation.VideoPreviewMs, 5000, 120000)
 	return nil
 }
 

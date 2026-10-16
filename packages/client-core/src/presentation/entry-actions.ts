@@ -35,7 +35,7 @@ export type EntryActionId =
   | 'watchlist' | 'favorite' | 'watched' | 'removeFromContinueWatching' | 'notInterested' | 'rate'
   | 'addToPlaylist' | 'addToCollection' | 'download'
   | 'details'
-  | 'editMetadata' | 'refreshMetadata' | 'delete';
+  | 'editMetadata' | 'refreshMetadata' | 'separateArtist' | 'delete';
 
 export type EntryActionGroupId = 'play' | 'together' | 'personal' | 'organize' | 'open' | 'manage';
 
@@ -83,6 +83,8 @@ export type EntryCapabilities = Readonly<{
   details?: boolean;
   editMetadata?: boolean;
   refreshMetadata?: boolean;
+  /** An owner's "Not this artist…" on an album. */
+  separateArtist?: boolean;
   delete?: boolean;
 }>;
 
@@ -116,6 +118,7 @@ export function entryActions(c: EntryCapabilities): readonly EntryActionGroup[] 
   const manage: EntryAction[] = [];
   if (c.editMetadata) manage.push({id: 'editMetadata', label: 'entry.editMetadata', icon: 'edit', furtherStep: true});
   if (c.refreshMetadata) manage.push({id: 'refreshMetadata', label: 'entry.refreshMetadata', icon: 'refresh'});
+  if (c.separateArtist) manage.push({id: 'separateArtist', label: 'title.separateArtist.action', icon: 'link', furtherStep: true});
   if (c.delete) manage.push({id: 'delete', label: 'entry.delete', icon: 'trash', destructive: true, furtherStep: true});
   const groups: EntryActionGroup[] = [
     {id: 'play', actions: play},

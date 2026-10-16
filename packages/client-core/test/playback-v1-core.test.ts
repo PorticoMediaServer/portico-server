@@ -345,7 +345,7 @@ test('events: an unsupported stream (404) falls back to long-poll; an old cursor
   const c = clockwork();
   const server = new FakePlaybackServer({now: c.now, setTimer: c.setTimer, clearTimer: c.clearTimer, ring: 5});
   server.refuseStreams(404);
-  const events = new EventsClient({http: fakeHttp(server), openStream: server.openStream, waitSeconds: 25, setTimer: c.setTimer, clearTimer: c.clearTimer, cursor: '0'});
+  const events = new EventsClient({http: fakeHttp(server), openStream: server.openStream, waitMs: 25000, setTimer: c.setTimer, clearTimer: c.clearTimer, cursor: '0'});
   const seen: string[] = [];
   let resyncs = 0;
   events.on('admin.sessions', e => seen.push(e.id));

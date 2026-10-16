@@ -28,7 +28,7 @@ func (f *fakeProbes) Probe(_ context.Context, device string) []HardwareProbe {
 
 func settingsFor(t *testing.T) TranscodeSettings {
 	return TranscodeSettings{Enabled: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast",
-		DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180,
+		DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000,
 		TemporaryDirectory: t.TempDir(), MaxConcurrentSessions: 3}
 }
 

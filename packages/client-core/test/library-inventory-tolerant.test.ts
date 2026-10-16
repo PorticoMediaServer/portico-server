@@ -4,7 +4,7 @@ import {LibraryInventoryService} from '../src/library-inventory.ts';
 
 const scope = {serverId: 'server', viewerId: 'viewer'};
 const wire = {serverId: 'server', viewerFence: 'fence'};
-const source = (id: string, more: Record<string, unknown> = {}) => ({id, libraryId: 'library', kind: 'local', name: 'Folder ' + id, path: '/media/' + id, resolvedPath: '/media/' + id, classification: 'local', generation: 1, health: 'healthy', enabled: true, followSymlinks: false, identityConfirmed: true, missingGraceSeconds: 0, intervalSeconds: 0, nextScanAt: '', lastCompleteAt: '', lastProgressAt: '', ...more});
+const source = (id: string, more: Record<string, unknown> = {}) => ({id, libraryId: 'library', kind: 'local', name: 'Folder ' + id, path: '/media/' + id, resolvedPath: '/media/' + id, classification: 'local', generation: 1, health: 'healthy', enabled: true, followSymlinks: false, identityConfirmed: true, missingGraceSeconds: 0, intervalMs: 0, nextScanAt: '', lastCompleteAt: '', lastProgressAt: '', ...more});
 const object = (id: string, more: Record<string, unknown> = {}) => ({id, sourceId: 'a', assetId: 'asset-' + id, itemId: '', title: 'File ' + id, relativePath: id + '.mkv', revision: 'r1', state: 'available', size: 1, modifiedNs: 1, missingSince: '', analysisState: '', analysisError: '', unsupportedReason: '', ...more});
 
 test('a folder or file that cannot be read is left out alone, and a scan step this app does not know is not shown', async () => {

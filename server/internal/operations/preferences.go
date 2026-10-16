@@ -137,10 +137,10 @@ func qualityFields() []PreferenceField {
 
 var preferenceRegistry = func() []PreferenceField {
 	out := []PreferenceField{
-		prefIntEnum("playback.skipBackSeconds", 10, []int{5, 10, 15, 30}, ScopeProfileServer),
-		prefIntEnum("playback.skipForwardSeconds", 30, []int{10, 15, 30, 60}, ScopeProfileServer),
+		prefIntEnum("playback.skipBackMs", 10000, []int{5000, 10000, 15000, 30000}, ScopeProfileServer),
+		prefIntEnum("playback.skipForwardMs", 30000, []int{10000, 15000, 30000, 60000}, ScopeProfileServer),
 		prefBool("playback.autoplayNext", true, ScopeProfileServer),
-		prefIntEnum("playback.upNextCountdownSeconds", 10, []int{0, 5, 10, 15}, ScopeProfileServer),
+		prefIntEnum("playback.upNextCountdownMs", 10000, []int{0, 5000, 10000, 15000}, ScopeProfileServer),
 		// Off: the credits card says when the next title starts, and it starts when this one ends.
 		prefBool("playback.startNextDuringCredits", false, ScopeProfileServer),
 		prefBool("playback.passoutProtection", true, ScopeProfileServer),
@@ -170,7 +170,7 @@ var preferenceRegistry = func() []PreferenceField {
 	out = append(out, qualityFields()...)
 	out = append(out,
 		prefEnum("music.audioNormalization", "off", []string{"off", "track", "album"}, ScopeProfileServer),
-		prefInt("music.crossfadeSeconds", 0, 0, 12, ScopeProfileServer),
+		prefInt("music.crossfadeMs", 0, 0, 12000, ScopeProfileServer),
 		prefBool("music.gapless", true, ScopeProfileServer),
 
 		prefBool("privacy.pauseWatchHistory", false, ScopeProfileServer),

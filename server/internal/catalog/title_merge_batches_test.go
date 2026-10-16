@@ -78,4 +78,9 @@ func TestShowMergeRunsInBatchesAndRedirectsOldIds(t *testing.T) {
 	if got := s.SurvivingTitleID(context.Background(), intoID); got != intoID {
 		t.Fatalf("a live id was rewritten to %s", got)
 	}
+	// Request bodies and queries resolve every id they carry in one call.
+	got := s.SurvivingTitleIDs(context.Background(), []string{fromID, intoID, absorbedID, fromID, "not-an-id"})
+	if len(got) != 2 || got[fromID] != intoID || got[absorbedID] != keptID {
+		t.Fatalf("request ids resolve to %v", got)
+	}
 }

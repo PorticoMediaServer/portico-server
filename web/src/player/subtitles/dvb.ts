@@ -10,10 +10,12 @@
  * An object is usually pixels. It can also be a string of characters (character-coded objects),
  * which the receiver writes in its own font in the colours the region gives it; here that is the
  * browser's sans-serif, drawn into the region's pixels like any other object. The newer progressive
- * (compressed bitmap) objects are skipped.
+ * objects (EN 300 743 V1.6.1, for UHD services) are an 8-bit indexed bitmap as PNG keeps its
+ * pixels: filtered scanlines in a zlib stream, read with `inflate.ts`.
  */
 import {bitmapDecodeLimits, type BitmapDecodeLimits, bitmapLimits, checkedSize, finishCues, yuvToRgb, type BitmapCue, type BitmapRect, type BitmapTrack} from './bitmap.ts';
 import {readMatroskaSubtitles, type MatroskaPacket} from './matroska.ts';
+import {inflateZlib, unfilterScanlines} from './inflate.ts';
 
 /** Where an object sits in a region; a character object also names its letters' and their background's pixel codes. */
 type Placement = {id: number; x: number; y: number; fg?: number; bg?: number};
@@ -262,6 +264,22 @@ export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: reado
             const top = region.depth === 2 ? 3 : region.depth === 4 ? 15 : 255, fg = (placed.fg ?? 1) & top, bg = (placed.bg ?? 0) & top;
             for (let y = 0; y < mask.height && placed.y + y < region.height; y++)
               for (let x = 0; x < mask.width && placed.x + x < region.width; x++) region.pixels[(placed.y + y) * region.width + placed.x + x] = mask.mask[y * mask.width + x] ? fg : bg;
+          }
+          continue;
+        }
+        if (method === 2 && length >= 9) {
+          // A progressive bitmap: width, height, then that many bytes of zlib-compressed scanlines.
+          const width = view.getUint16(body + 3), height = view.getUint16(body + 5), size = view.getUint16(body + 7);
+          if (!checkedSize(width, height) || body + 9 + size > end || !work(width * height * 2)) { skipped++; continue; }
+          const raw = inflateZlib(data.subarray(body + 9, body + 9 + size), height * (width + 1));
+          const pixels = raw ? unfilterScanlines(raw, width, height) : null;
+          if (!pixels) { skipped++; continue; }
+          for (const region of regions.values()) for (const placed of region.objects) {
+            if (placed.id !== id || placed.x >= region.width || placed.y >= region.height) continue;
+            if (!work(width * height)) { skipped++; break packetsLoop; }
+            const top = region.depth === 2 ? 3 : region.depth === 4 ? 15 : 255;
+            for (let y = 0; y < height && placed.y + y < region.height; y++)
+              for (let x = 0; x < width && placed.x + x < region.width; x++) region.pixels[(placed.y + y) * region.width + placed.x + x] = pixels[y * width + x]! & top;
           }
           continue;
         }

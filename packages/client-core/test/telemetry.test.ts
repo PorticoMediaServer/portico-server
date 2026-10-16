@@ -77,7 +77,7 @@ const capacity=(overrides:Record<string,unknown>={})=>({
  hardware:{configured:'auto',effective:'software',device:'',probes:[{backend:'software',supported:true,detail:'Always available.'}]},
  sessions:{active:null,hardware:null,software:null,background:null,limits:{concurrent:0,hardware:0,software:0,background:0}},
  hdrToneMapping:{status:'disabled',detail:'HDR sources are delivered without tone mapping.'},
- directStreamRemux:true,x264Preset:'veryfast',planningPolicy:'maximum_fidelity',throttleBufferSeconds:60,playedRetentionSeconds:180,
+ directStreamRemux:true,x264Preset:'veryfast',planningPolicy:'maximum_fidelity',throttleBufferMs:60000,playedRetentionMs:180000,
  temporaryDirectory:{path:'/var/portico/hls',ready:true,freeBytes:1024},
  presets:[{id:'1080p',label:'1080p',height:1080,videoKbps:10000,audioKbps:256}],
  dependencies:{ffmpeg:{path:'/usr/bin/ffmpeg',version:'ffmpeg version 7.1',ok:true},ffprobe:{path:'/usr/bin/ffprobe',version:'ffprobe version 7.1',ok:true}},
@@ -118,7 +118,7 @@ test('capacity leaves out a probe, preset, tool or warning it cannot read and ke
  assert.deepEqual(parsed.presets.map(p=>p.id),['1080p']);
  assert.deepEqual(Object.keys(parsed.dependencies),['ffmpeg']);
  assert.deepEqual(parsed.warnings,['Disk is nearly full.']);
- assert.equal(parsed.sessions.active,null);assert.equal(parsed.throttleBufferSeconds,60);
+ assert.equal(parsed.sessions.active,null);assert.equal(parsed.throttleBufferMs,60000);
  assert.deepEqual(skippedParts().map(p=>p.document+':'+p.part+':'+p.count).sort(),['transcode-capacity:dependencies:2','transcode-capacity:hardware.probes:2','transcode-capacity:hdrToneMapping.status:1','transcode-capacity:presets:2','transcode-capacity:warnings:2']);
 });
 

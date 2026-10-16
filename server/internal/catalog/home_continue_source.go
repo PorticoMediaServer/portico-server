@@ -31,7 +31,9 @@ func (s *Service) homeContinueSource(r HomeRequest, libraries, cutoffs, premiere
 	// slot already chosen (B83). The walk never counts the profile's history.
 	shows := []homeCandidate{}
 	var after *showActivityKey
-	for slice := maximum; len(shows) < maximum; slice = min(slice*2, 1024) {
+	considered := 0
+	for slice := maximum; len(shows) < maximum && considered < continueShowWindow; slice = min(slice*2, 1024) {
+		considered += slice
 		query, args := homeShowContinuation(r, cutoffs, premieres, slice, "", after)
 		found, err := s.homeCandidates(`SELECT id,ord FROM (`+query+`)`, args...)
 		if err != nil {
@@ -65,6 +67,12 @@ func (s *Service) homeContinueSource(r HomeRequest, libraries, cutoffs, premiere
 		fingerprint:    fmt.Sprintf("%x", sha256.Sum256(raw)),
 	}, nil
 }
+
+// continueShowWindow is how many of the profile's most recently watched
+// shows Continue Watching considers. A restricted viewer may be refused most
+// of a long history; the row then shows what this many recent shows offer,
+// at the same cost in any library.
+const continueShowWindow = 512
 
 // showActivityAfter is the key of the last show in the slice of size n that
 // starts after the given key (the n-th newest from there), or sql.ErrNoRows

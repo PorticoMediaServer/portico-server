@@ -226,6 +226,23 @@ func (s *Service) SessionFamilyTx(ctx context.Context, tx *sql.Tx, p Principal) 
 	return s.sessionFamilyRecordTx(ctx, tx, p, r)
 }
 
+// PrincipalByDigestTx is the principal whose current session token has the
+// given digest, under the same family rules as authentication; ErrUnauthorized
+// once that sign-in has ended, rotated or expired.
+func (s *Service) PrincipalByDigestTx(ctx context.Context, tx *sql.Tx, hash string) (Principal, error) {
+	if tx == nil || hash == "" {
+		return Principal{}, ErrUnauthorized
+	}
+	r, err := s.familyTokenTx(ctx, tx, hash)
+	if err != nil {
+		return Principal{}, err
+	}
+	if _, err = s.sessionFamilyRecordTx(ctx, tx, r.principal, r); err != nil {
+		return Principal{}, err
+	}
+	return r.principal, nil
+}
+
 // sessionFamilyRecordTx is SessionFamilyTx with the family record already read.
 // Authentication reads it to resolve the principal and then had it read again,
 // with identical arguments, inside the same transaction — so the second read

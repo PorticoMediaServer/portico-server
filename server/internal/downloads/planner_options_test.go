@@ -45,3 +45,30 @@ func TestDownloadMenuUsesDeviceDocumentAndConverterInventory(t *testing.T) {
 		t.Fatal(view, err)
 	}
 }
+
+// A Dolby Vision profile 5 picture has no base layer a prepared copy could
+// show: only the original is offered for it.
+func TestDownloadMenuOffersOnlyTheOriginalForDolbyVisionWithoutABaseLayer(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+	before, err := h.service.Options(ctx, h.viewer, h.item, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = h.db.Exec(`INSERT OR IGNORE INTO asset_stream_facts(asset_id,revision,size,modified_ns,fingerprint) SELECT token,1,size,modified_ns,'f' FROM catalog_assets WHERE token=?`, h.asset); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = h.db.Exec(`DELETE FROM asset_streams WHERE asset_id=? AND type='video'`, h.asset); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = h.db.Exec(`INSERT INTO asset_streams(asset_id,stream_index,type,codec,language,title,channels,channel_layout,is_default,is_forced,detail_json) VALUES(?,0,'video','hevc','','',0,'',1,0,?)`, h.asset, `{"width":3840,"height":2160,"bitDepth":10,"dynamicRange":"dolby_vision","dolbyVisionProfile":5}`); err != nil {
+		t.Fatal(err)
+	}
+	view, err := h.service.Options(ctx, h.viewer, h.item, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before.Options) < 2 || len(view.Options) != 1 || view.Options[0].Quality != "original" {
+		t.Fatalf("offered before %d, for profile 5: %+v", len(before.Options), view.Options)
+	}
+}

@@ -177,3 +177,39 @@ func (TitleRow) JSONSchema() map[string]any {
 func (v *TitleRow) UnmarshalJSON(raw []byte) error {
 	return apiwire.UnmarshalDurations(raw, (*titleRowWire)(v), map[string]string{"durationSeconds": "durationMs"})
 }
+
+type librarySourceWire LibrarySource
+
+func (v LibrarySource) MarshalJSON() ([]byte, error) {
+	return apiwire.MarshalDurations(librarySourceWire(v), map[string]string{"intervalSeconds": "intervalMs"})
+}
+func (LibrarySource) JSONSchema() map[string]any {
+	return apiwire.DurationSchema(reflect.TypeFor[librarySourceWire](), map[string]string{"intervalSeconds": "intervalMs"})
+}
+func (v *LibrarySource) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*librarySourceWire)(v), map[string]string{"intervalSeconds": "intervalMs"})
+}
+
+type sourceSettingsWire SourceSettings
+
+func (v SourceSettings) MarshalJSON() ([]byte, error) {
+	return apiwire.MarshalDurations(sourceSettingsWire(v), map[string]string{"intervalSeconds": "intervalMs"})
+}
+func (SourceSettings) JSONSchema() map[string]any {
+	return apiwire.DurationSchema(reflect.TypeFor[sourceSettingsWire](), map[string]string{"intervalSeconds": "intervalMs"})
+}
+func (v *SourceSettings) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*sourceSettingsWire)(v), map[string]string{"intervalSeconds": "intervalMs"})
+}
+
+type trickplaySettingsWire TrickplaySettings
+
+func (v TrickplaySettings) MarshalJSON() ([]byte, error) {
+	return apiwire.MarshalDurations(trickplaySettingsWire(v), map[string]string{"intervalSeconds": "intervalMs"})
+}
+func (TrickplaySettings) JSONSchema() map[string]any {
+	return apiwire.DurationSchema(reflect.TypeFor[trickplaySettingsWire](), map[string]string{"intervalSeconds": "intervalMs"})
+}
+func (v *TrickplaySettings) UnmarshalJSON(raw []byte) error {
+	return apiwire.UnmarshalDurations(raw, (*trickplaySettingsWire)(v), map[string]string{"intervalSeconds": "intervalMs"})
+}

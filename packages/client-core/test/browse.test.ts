@@ -1,7 +1,7 @@
 import test from 'node:test';
 import {nextToolbarSort} from '../src/presentation/browse-toolbar.ts';
 import assert from 'node:assert/strict';
-import {parseBrowseCapabilities,parseBrowseResult,parseBrowseFacets,validateBrowseQuery,formatBrowseAnchor,BrowseQueryBuilder,BrowseQueryError,browseWithin,type BrowseCapabilities} from '../src/browse.ts';
+import {parseBrowseCapabilities,parseBrowseResult,parseBrowseFacets,validateBrowseQuery,formatBrowseAnchor,BrowseQueryBuilder,BrowseQueryError,browseWithin,facetGroupOf,type BrowseCapabilities} from '../src/browse.ts';
 import {parsePinOrder,parseLibraryNavigationPins,parsePinnedLibraries,pinOrderRequest,libraryNavigationRequest} from '../src/library-pins.ts';
 
 function capabilitiesPayload(changes: Record<string, unknown> = {}): any {
@@ -24,7 +24,7 @@ function capabilitiesPayload(changes: Record<string, unknown> = {}): any {
       {id: 'year', labelKey: 'sort.year', directions: ['asc', 'desc'], defaultDirection: 'desc', expensive: false, applicableKinds: ['movie']},
     ],
     quickFilters: [{id: 'favorites', labelKey: 'filter.favorites', query: {field: 'favorite', operator: 'equals', value: true}}],
-    queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 40, maximumLimit: 100, cursorTtlSeconds: 1800},
+    queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 3, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 1800000},
     ...changes,
   };
 }
@@ -50,7 +50,7 @@ test('capabilities parse only what the server can execute', () => {
   assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({fields: Array.from({length: 129}, (_, i) => ({id: `f${i}`, labelKey: 'k', type: 'string', operators: ['equals'], controlHint: 'text', complexity: 'quick', cost: 'indexed', applicableKinds: []}))})), {code:'invalid_browse'});
   assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({pivots: 'nope'})), {code:'invalid_browse'});
   assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({resolvedPivot: {id: 'ghost', labelKey: 'k', entityKinds: [], defaultSort: [], supportedViews: [], browsable: true}})), {code:'invalid_browse'});
-  assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 1, maximumSorts: 3, defaultLimit: 40, maximumLimit: 10, cursorTtlSeconds: 1}})), {code:'invalid_browse'});
+  assert.throws(() => parseBrowseCapabilities(capabilitiesPayload({queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 1, maximumSorts: 3, defaultLimit: 40, maximumLimit: 10, cursorTtlMs: 1000}})), {code:'invalid_browse'});
 });
 
 test('a filter, sort, pivot or quick filter this app cannot read is not offered and the rest are kept', () => {
@@ -294,4 +294,10 @@ test('a total counted only to the threshold is open-ended until the last page', 
   const exact = parseBrowseResult(resultPayload());
   assert.equal(exact.pageInfo.totalIsLowerBound, false);
   assert.equal(exact.pageInfo.total, 3);
+});
+
+test('a list across libraries names its group for its filter counts', () => {
+  assert.deepEqual(facetGroupOf([{field: 'list', operator: 'equals', value: 'pl1'}, {field: 'genre', operator: 'equals', value: 'Drama'}]), {group: 'list', value: 'pl1'});
+  assert.deepEqual(facetGroupOf([{field: 'favorite', operator: 'equals', value: true}]), {group: 'favorite', value: ''});
+  assert.equal(facetGroupOf([{field: 'genre', operator: 'equals', value: 'Drama'}]), undefined);
 });

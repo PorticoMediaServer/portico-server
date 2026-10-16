@@ -292,17 +292,24 @@ func TestSocialReadinessAggregation(t *testing.T) {
 	if joined.Group.Readiness.Aggregate != "buffering" || joined.Group.Readiness.Buffering != 1 || joined.Group.Readiness.Ready != 1 {
 		t.Fatalf("a joining member did not hold the aggregate: %+v", joined.Group.Readiness)
 	}
-	var lagging social.GroupResponse
+	var lagging social.ReadinessReceipt
 	f.decode(f.as(f.member, "POST", "/v1/groups/"+id+"/readiness", social.ReadinessRequest{ProtocolVersion: social.Protocol, PlaybackRevision: joined.Group.PlaybackRevision, Readiness: "lagging", PositionUS: "1000000"}), 200, &lagging)
-	if lagging.Group.Readiness.Aggregate != "lagging" || lagging.Group.Readiness.Lagging != 1 {
-		t.Fatalf("lagging did not dominate: %+v", lagging.Group.Readiness)
+	if lagging.Readiness.Aggregate != "lagging" || lagging.Readiness.Lagging != 1 {
+		t.Fatalf("lagging did not dominate: %+v", lagging.Readiness)
 	}
-	var ready social.GroupResponse
-	f.decode(f.as(f.member, "POST", "/v1/groups/"+id+"/readiness", social.ReadinessRequest{ProtocolVersion: social.Protocol, PlaybackRevision: joined.Group.PlaybackRevision, Readiness: "ready", PositionUS: "2000000"}), 200, &ready)
-	if ready.Group.Readiness.Aggregate != "ready" || ready.Group.Readiness.Ready != 2 {
-		t.Fatalf("all-ready did not aggregate: %+v", ready.Group.Readiness)
+	// A report answers with the room's counts, never its member list.
+	w := f.as(f.member, "POST", "/v1/groups/"+id+"/readiness", social.ReadinessRequest{ProtocolVersion: social.Protocol, PlaybackRevision: joined.Group.PlaybackRevision, Readiness: "ready", PositionUS: "2000000"})
+	if strings.Contains(w.Body.String(), `"members"`) {
+		t.Fatalf("readiness report returned the member list: %s", w.Body)
 	}
-	for _, m := range ready.Group.Members {
+	var ready social.ReadinessReceipt
+	f.decode(w, 200, &ready)
+	if ready.Readiness.Aggregate != "ready" || ready.Readiness.Ready != 2 || ready.GroupID != id || ready.PlaybackRevision != joined.Group.PlaybackRevision {
+		t.Fatalf("all-ready did not aggregate: %+v", ready)
+	}
+	var room social.GroupResponse
+	f.decode(f.as(f.member, "GET", "/v1/groups/"+id, nil), 200, &room)
+	for _, m := range room.Group.Members {
 		if m.Role == "member" && m.PositionUS != "2000000" {
 			t.Fatalf("member position not recorded: %+v", m)
 		}
@@ -1017,7 +1024,7 @@ func TestSocialReceiverInboxWait(t *testing.T) {
 	// Nothing waiting: the read is held for the wait it names, then answers empty.
 	started := time.Now()
 	var inbox social.ReceiverInbox
-	f.decode(f.as(f.token, "GET", path+"?waitSeconds=1", nil), 200, &inbox)
+	f.decode(f.as(f.token, "GET", path+"?waitMs=1000", nil), 200, &inbox)
 	if held := time.Since(started); held < 900*time.Millisecond || held > 5*time.Second {
 		t.Fatalf("an empty inbox was held for %s, not about a second", held)
 	}
@@ -1026,17 +1033,17 @@ func TestSocialReceiverInboxWait(t *testing.T) {
 	}
 	// A wait of nothing is the plain read.
 	started = time.Now()
-	f.decode(f.as(f.token, "GET", path+"?waitSeconds=0", nil), 200, &inbox)
+	f.decode(f.as(f.token, "GET", path+"?waitMs=0", nil), 200, &inbox)
 	if held := time.Since(started); held > 2*time.Second {
-		t.Fatalf("waitSeconds=0 was held for %s", held)
+		t.Fatalf("waitMs=0 was held for %s", held)
 	}
-	for _, bad := range []string{"-1", "56", "soon"} {
-		if w := f.as(f.token, "GET", path+"?waitSeconds="+bad, nil); w.Code != 400 || errorCode(t, w) != "invalid_request" {
-			t.Fatalf("waitSeconds=%s answered %d %s", bad, w.Code, w.Body.String())
+	for _, bad := range []string{"-1", "55001", "soon"} {
+		if w := f.as(f.token, "GET", path+"?waitMs="+bad, nil); w.Code != 400 || errorCode(t, w) != "invalid_request" {
+			t.Fatalf("waitMs=%s answered %d %s", bad, w.Code, w.Body.String())
 		}
 	}
 	// Another viewer cannot wait on this receiver.
-	if w := f.as(f.member, "GET", path+"?waitSeconds=1", nil); w.Code != 404 {
+	if w := f.as(f.member, "GET", path+"?waitMs=1000", nil); w.Code != 404 {
 		t.Fatalf("another viewer waited on this receiver's inbox: %d", w.Code)
 	}
 
@@ -1049,7 +1056,7 @@ func TestSocialReceiverInboxWait(t *testing.T) {
 	done := make(chan answer, 1)
 	go func() {
 		begun := time.Now()
-		w := f.as(f.token, "GET", path+"?waitSeconds=20", nil)
+		w := f.as(f.token, "GET", path+"?waitMs=20000", nil)
 		var got social.ReceiverInbox
 		_ = json.Unmarshal(w.Body.Bytes(), &got)
 		done <- answer{got, w.Code, time.Since(begun)}
@@ -1071,7 +1078,7 @@ func TestSocialReceiverInboxWait(t *testing.T) {
 
 	// Something already waiting answers at once, however long the wait asked for.
 	started = time.Now()
-	f.decode(f.as(f.token, "GET", path+"?waitSeconds=20", nil), 200, &inbox)
+	f.decode(f.as(f.token, "GET", path+"?waitMs=20000", nil), 200, &inbox)
 	if held := time.Since(started); held > 2*time.Second || len(inbox.Grants) != 1 {
 		t.Fatalf("a waiting grant was held back for %s: %+v", held, inbox)
 	}

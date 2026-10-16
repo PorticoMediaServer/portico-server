@@ -312,6 +312,8 @@ type browseCompiler struct {
 	// rows are the Home rows the request names, resolved by the caller to the
 	// row's titles in its order (homeRow).
 	rows map[string][]int64
+	// kinds are the pivot's kinds, which bound a value-side candidate list.
+	kinds []int
 }
 
 // drivenMaximum is the most matching member items a value-side selection
@@ -636,13 +638,8 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 		if terms, indexed := facettext.IndexedSearchTerms(normalized); c.groupSearch && indexed {
 			clauses := make([]string, 0, len(terms))
 			for _, term := range terms {
-				predicate := `t.terminal=0 AND t.prefix=?`
 				c.args = append(c.args, term)
-				if facettext.NumericSearchTerm(term) {
-					predicate = `(` + predicate + ` OR t.terminal=1 AND t.prefix>=? AND t.prefix<?)`
-					c.args = append(c.args, term, term+"\U0010ffff")
-				}
-				clauses = append(clauses, `EXISTS(SELECT 1 FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity JOIN catalog_search_prefix_terms t ON t.id=p.term_id WHERE p.entity_id=e.entity_id AND `+predicate+`)`)
+				clauses = append(clauses, `EXISTS(SELECT 1 FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity WHERE p.entity_id=e.entity_id AND p.term_id=(SELECT id FROM catalog_search_prefix_terms WHERE prefix=?))`)
 			}
 			return "(" + strings.Join(clauses, " AND ") + ")", nil
 		}
@@ -746,13 +743,17 @@ func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (stri
 	switch node.Operator {
 	case "not-equals", "not-in", "is-missing":
 		positive := map[string]string{"not-equals": "equals", "not-in": "in", "is-missing": "is-present"}[node.Operator]
+		candidates, err := c.genrelessCandidates(field, node)
+		if err != nil {
+			return "", err
+		}
 		clause, err := c.exists(field, func() (string, error) {
 			return c.comparison(field, field.Value, positive, node.Value)
 		})
 		if err != nil {
 			return "", err
 		}
-		return "NOT " + clause, nil
+		return candidates + "NOT " + clause, nil
 	case "contains-all":
 		values, _ := node.Value.([]any)
 		parts := make([]string, 0, len(values))
@@ -991,7 +992,23 @@ type drivenSource struct {
 	// case trimmed text, which folds the same as the values, so a text
 	// condition is first tested once per term.
 	termKey bool
+	// nameKey is the vocabulary column holding exactly the value of the
+	// field's own expression (keyOf): the condition is tested once per
+	// vocabulary entry before its rows are read.
+	nameKey, keyOf string
+	// value, when set, is the field's value expression the condition is
+	// written over, and column the indexed expression standing for it on the
+	// value side. absent is the value of a member item the value side has no
+	// row for: if the condition holds for it, the value side cannot select.
+	value, column, absent string
+	// profile is how many times the viewer's profile key is bound ahead of
+	// the condition (a scope over the viewer's own rows).
+	profile int
 }
+
+// resolutionClasses are the picture classes of the resolution field as height
+// ranges, so a class is read from the files' height index.
+const resolutionClasses = `(SELECT 'sd' AS cls,-9223372036854775808 AS lo,700 AS hi UNION ALL SELECT '720p',700,1000 UNION ALL SELECT '1080p',1000,2000 UNION ALL SELECT '4k',2000,9223372036854775807) rc`
 
 const attributeJoinPrefix = `JOIN catalog_item_attribute_edges ca ON ca.item_id=bei.item_id JOIN catalog_attribute_terms ca_term ON ca_term.id=ca.term_id AND ca_term.field_id=(SELECT id FROM catalog_attribute_fields WHERE field='`
 
@@ -999,6 +1016,16 @@ const attributeJoinPrefix = `JOIN catalog_item_attribute_edges ca ON ca.item_id=
 // one. A predicate tested once per title would otherwise walk every title of
 // the pivot (and every member of a container) to find the few that match.
 func drivenMemberSource(field browseField) (drivenSource, bool) {
+	switch field.ID {
+	case "subtitle-file":
+		return drivenSource{from: `asset_subtitle_languages sl CROSS JOIN asset_subtitles track INDEXED BY asset_subtitles_language ON track.language=sl.language
+ CROSS JOIN asset_subtitle_facts facts ON facts.asset_id=track.asset_id AND facts.status='known' CROSS JOIN catalog_assets asset ON asset.token=track.asset_id AND facts.size=asset.size AND facts.modified_ns=asset.modified_ns
+ CROSS JOIN catalog_asset_links link INDEXED BY catalog_asset_links_asset ON link.asset_id=asset.id`, scope: "1", item: "link.entity_id", nameKey: "sl.language", keyOf: "track.language"}, true
+	case "subtitle-resource":
+		// A viewer's own and the shared subtitle uploads: few, read directly.
+		return drivenSource{from: `subtitle_resources resource JOIN subtitle_revisions revision ON revision.resource_id=resource.id AND revision.revision=resource.current_revision JOIN catalog_assets asset ON asset.token=resource.source_id AND asset.size=revision.source_size AND asset.modified_ns=revision.source_modified_ns`,
+			scope: `resource.deleted=0 AND (resource.scope='shared' OR resource.owner=?)`, item: "resource.item_id", profile: 1}, true
+	}
 	if field.Profile != 0 {
 		return drivenSource{}, false
 	}
@@ -1030,6 +1057,18 @@ func drivenMemberSource(field browseField) (drivenSource, bool) {
 			providers = "'metacritic','rottentomatoes'"
 		}
 		return drivenSource{from: `metadata_ratings mr`, scope: `mr.provider IN(` + providers + `)`, item: "mr.item_id"}, true
+	case "versions":
+		return drivenSource{from: `catalog_item_version_counts vc INDEXED BY catalog_item_version_counts_value`, scope: "1", item: "vc.item_id", value: field.Value, column: "vc.versions", absent: "0"}, true
+	case "durationMs":
+		return drivenSource{from: `catalog_assets ast INDEXED BY catalog_assets_duration CROSS JOIN catalog_asset_links ia INDEXED BY catalog_asset_links_asset ON ia.asset_id=ast.id`, scope: "1", item: "ia.entity_id"}, true
+	case "resolution":
+		return drivenSource{from: resolutionClasses + ` CROSS JOIN catalog_assets ast INDEXED BY catalog_assets_height ON ast.height>=rc.lo AND ast.height<rc.hi CROSS JOIN catalog_asset_links ia INDEXED BY catalog_asset_links_asset ON ia.asset_id=ast.id`,
+			scope: "1", item: "ia.entity_id", value: field.Value, column: "rc.cls"}, true
+	case "actor", "director", "writer":
+		// Credited names are a vocabulary: the condition is tested once per
+		// name, then the name's credits are read from its index.
+		labels := strings.TrimPrefix(field.Join, `JOIN catalog_credits cc ON cc.entity_id=bei.item_id `)
+		return drivenSource{from: `catalog_credit_names cn CROSS JOIN catalog_credits cc INDEXED BY catalog_credits_name ON cc.credited_name=cn.name ` + labels, scope: "1", item: "cc.entity_id", nameKey: "cn.name", keyOf: "cc.credited_name"}, true
 	}
 	if rest, ok := strings.CutPrefix(field.Join, attributeJoinPrefix); ok && strings.HasSuffix(rest, "')") && field.Value == "ca.source_value" {
 		name := strings.TrimSuffix(rest, "')")
@@ -1054,7 +1093,26 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 		c.args = c.args[:before]
 		return "", false, nil
 	}
+	if source.value != "" {
+		if source.absent != "" {
+			// A member item with no value-side row has the absent value.
+			holds, err := c.count(`SELECT count(*) WHERE (`+strings.ReplaceAll(body, source.value, source.absent)+`)`, c.args[before:]...)
+			if err != nil {
+				return "", false, err
+			}
+			if holds > 0 {
+				c.args = c.args[:before]
+				return "", false, nil
+			}
+		}
+		body = strings.ReplaceAll(body, source.value, source.column)
+	}
 	where := source.scope
+	if source.nameKey != "" && strings.Contains(body, source.keyOf) {
+		operands := append([]any(nil), c.args[before:]...)
+		c.args = append(c.args[:before], append(operands, operands...)...)
+		where += " AND " + strings.ReplaceAll(body, source.keyOf, source.nameKey)
+	}
 	if source.termKey && strings.Contains(body, "portico_fold_text(ca.source_value)") {
 		// The same condition over the term's key, with its own copy of the
 		// operands, runs once per term before the term's edges are read.
@@ -1063,7 +1121,11 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 		where += " AND " + strings.ReplaceAll(body, "ca.source_value", "ca_term.value_key")
 	}
 	matching := `SELECT ` + source.item + ` AS item FROM ` + source.from + ` WHERE ` + where + ` AND (` + body + `)`
-	found, err := c.count(`SELECT count(*) FROM (`+matching+` LIMIT `+strconv.Itoa(drivenMaximum+1)+`)`, c.args[before:]...)
+	scoped := []any{}
+	for i := 0; i < source.profile; i++ {
+		scoped = append(scoped, c.profile)
+	}
+	found, err := c.count(`SELECT count(*) FROM (`+matching+` LIMIT `+strconv.Itoa(drivenMaximum+1)+`)`, append(append([]any{}, scoped...), c.args[before:]...)...)
 	if err != nil {
 		return "", false, err
 	}
@@ -1089,7 +1151,7 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 		join = `catalog_browse_memberships bei ON ` + source.members
 	}
 	ids, err := c.ids(`SELECT DISTINCT bei.entity_id FROM `+source.from+` CROSS JOIN `+join+members+
-		` WHERE `+where+` AND (`+body+`) AND (`+restriction+`)`, append(append([]any{}, c.args[before:]...), args...)...)
+		` WHERE `+where+` AND (`+body+`) AND (`+restriction+`)`, append(append(append([]any{}, scoped...), c.args[before:]...), args...)...)
 	if err != nil {
 		return "", false, err
 	}
@@ -1100,4 +1162,40 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 	raw, _ := json.Marshal(ids)
 	c.args = append(c.args, string(raw))
 	return `e.entity_id IN(SELECT value FROM json_each(?))`, true, nil
+}
+
+// genrelessCandidates bounds "has no genre" to the titles that can lack one:
+// those whose own entity no genre source names (catalog_entities.genre_sources,
+// kept by the term sources), and the episodes of shows none names. The exact
+// condition is still tested, on those titles only. It returns a clause to put
+// before the condition, or "" when the candidates are too many to name (the
+// condition is then tested on every title, as before).
+func (c *browseCompiler) genrelessCandidates(field browseField, node BrowseNode) (string, error) {
+	if field.ID != "genre-presence" || node.Operator != "is-missing" || c.count == nil || c.ids == nil || len(c.kinds) == 0 {
+		return "", nil
+	}
+	arms := []string{}
+	for _, kind := range c.kinds {
+		if kind == int(compactcatalog.Episode) {
+			arms = append(arms, `SELECT ep.entity_id AS id FROM catalog_entities sh INDEXED BY catalog_entities_genreless CROSS JOIN catalog_episodes ep ON ep.show_id=sh.id
+ JOIN catalog_entities episode ON episode.id=ep.entity_id AND episode.genre_sources=0 WHERE sh.genre_sources=0 AND sh.kind=`+strconv.Itoa(int(compactcatalog.Show)))
+			continue
+		}
+		arms = append(arms, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_genreless WHERE genre_sources=0 AND kind=`+strconv.Itoa(kind))
+	}
+	candidates := strings.Join(arms, " UNION ALL ")
+	found, err := c.count(`SELECT count(*) FROM (` + candidates + ` LIMIT ` + strconv.Itoa(drivenMaximum+1) + `)`)
+	if err != nil || found > drivenMaximum {
+		return "", err
+	}
+	if found == 0 {
+		return "0 AND ", nil
+	}
+	ids, err := c.ids(candidates)
+	if err != nil {
+		return "", err
+	}
+	raw, _ := json.Marshal(ids)
+	c.args = append(c.args, string(raw))
+	return `e.entity_id IN(SELECT value FROM json_each(?)) AND `, nil
 }

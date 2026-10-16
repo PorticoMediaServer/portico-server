@@ -491,20 +491,21 @@ func (s *Store) UpdateSettings(ctx context.Context, p identity.Principal, id str
 // ReportReadiness records one member's own readiness and republishes the
 // aggregate. It takes no idempotency key: a readiness report is a fact about
 // now, and the newest one always wins.
-func (s *Store) ReportReadiness(ctx context.Context, p identity.Principal, id string, req ReadinessRequest) (GroupResponse, error) {
+func (s *Store) ReportReadiness(ctx context.Context, p identity.Principal, id string, req ReadinessRequest) (ReadinessReceipt, error) {
+	var receipt ReadinessReceipt
 	if req.ProtocolVersion != Protocol {
-		return GroupResponse{}, errInvalid
+		return receipt, errInvalid
 	}
 	switch req.Readiness {
 	case "buffering", "ready", "lagging":
 	default:
-		return GroupResponse{}, errInvalid
+		return receipt, errInvalid
 	}
 	position, ok := parseCounter(req.PositionUS)
 	if (!ok || position > MaxPositionUS) && req.PositionUS != "" {
-		return GroupResponse{}, errInvalid
+		return receipt, errInvalid
 	}
-	return s.mutateTelemetry(ctx, p, id, func(tx *sql.Tx, g *record, m membership) error {
+	_, e := s.mutateGroupAs(ctx, p, id, false, &receipt, func(tx *sql.Tx, g *record, m membership) error {
 		epoch, valid := parseCounter(req.PlaybackRevision)
 		if !valid {
 			return errInvalid
@@ -561,4 +562,5 @@ func (s *Store) ReportReadiness(ctx context.Context, p identity.Principal, id st
 		g.readinessSummary = string(raw)
 		return s.publish(ctx, tx, g.id, EventReadiness, map[string]any{"memberId": m.id, "readiness": req.Readiness, "positionUs": counter(position), "reportedAt": stamp(s.ms()), "aggregate": summary})
 	})
+	return receipt, e
 }

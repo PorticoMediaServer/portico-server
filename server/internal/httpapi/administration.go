@@ -288,15 +288,15 @@ func (d Dependencies) liveAdministrationRoutes(mux *http.ServeMux) {
 	}))
 	d.httpHandle(mux, "POST /v1/admin/live-sources/discover", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		var body struct {
-			WindowSeconds int `json:"windowSeconds"`
+			WindowMs int `json:"windowMs"`
 		}
 		if err := decodeLegacyRevision(w, r, &body); err != nil {
 			return nil, errors.Join(administration.ErrInput, err)
 		}
-		if body.WindowSeconds < 0 || body.WindowSeconds > 10 {
+		if body.WindowMs < 0 || body.WindowMs > 10000 {
 			return nil, administration.ErrInput
 		}
-		return d.Administration.DiscoverTuners(ctx, d.administrationAuthority(p), time.Duration(body.WindowSeconds)*time.Second)
+		return d.Administration.DiscoverTuners(ctx, d.administrationAuthority(p), time.Duration(body.WindowMs)*time.Millisecond)
 	}))
 }
 

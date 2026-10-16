@@ -420,7 +420,7 @@ func TestATransferAddressLivesWhileItIsUsedOrRenewed(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if !strings.HasPrefix(grant.URL, "/v1/downloads/artifacts/") || grant.Token == "" || grant.Renewed || grant.RenewAfterSeconds <= 0 {
+	if !strings.HasPrefix(grant.URL, "/v1/downloads/artifacts/") || grant.Token == "" || grant.Renewed || grant.RenewAfterMs <= 0 {
 		t.Fatalf("grant %+v", grant)
 	}
 	// A replayed operationId hands back the same address.

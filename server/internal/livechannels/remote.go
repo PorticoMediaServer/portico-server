@@ -38,7 +38,7 @@ type RemoteDraft struct {
 	// These exact roots are an explicit owner confirmation, never discovery data.
 	ConfirmedLANRoots     []string         `json:"confirmedLanRoots"`
 	Mappings              []ChannelMapping `json:"mappings"`
-	RefreshSeconds        int              `json:"refreshSeconds"`
+	RefreshMs             int              `json:"refreshMs"`
 	OwnerLimit            int              `json:"ownerLimit"`
 	UseDiscoveredCapacity bool             `json:"useDiscoveredCapacity"`
 	ViewerAccess          string           `json:"viewerAccess"`
@@ -108,7 +108,7 @@ func (f SourceFetcher) config(ctx context.Context, d RemoteDraft) (remoteConfig,
 			}
 		}
 	}
-	if !opaque(d.ID) || d.ExpectedRevision < 0 || !validText(d.Name, 120) || !validLocator(d.Locator) || (d.GuideURL != "" && !validLocator(d.GuideURL)) || d.OwnerLimit < 0 || d.OwnerLimit > 256 || d.RefreshSeconds < 300 || d.RefreshSeconds > 86400 || len(d.ConfirmedLANRoots) > 8 || len(d.Mappings) > MaxChannels || len(d.Username) > 512 || len(d.Password) > 2048 || (d.ViewerAccess != "owner-only" && d.ViewerAccess != "server-members") {
+	if !opaque(d.ID) || d.ExpectedRevision < 0 || !validText(d.Name, 120) || !validLocator(d.Locator) || (d.GuideURL != "" && !validLocator(d.GuideURL)) || d.OwnerLimit < 0 || d.OwnerLimit > 256 || d.RefreshMs < 300000 || d.RefreshMs > 86400000 || len(d.ConfirmedLANRoots) > 8 || len(d.Mappings) > MaxChannels || len(d.Username) > 512 || len(d.Password) > 2048 || (d.ViewerAccess != "owner-only" && d.ViewerAccess != "server-members") {
 		return c, ErrInvalid
 	}
 	if d.Kind != "m3u" && d.Kind != "xtream" && d.Kind != "hdhomerun" {
@@ -355,7 +355,7 @@ func (s *Store) SaveRemote(ctx context.Context, a Authority, previewID, requestI
 		if _, e := tx.ExecContext(ctx, `UPDATE live_remote_save_bindings SET sealed=x'' WHERE request_id=?`, requestID); e != nil {
 			return ErrUnavailable
 		}
-		if _, err := tx.ExecContext(ctx, `INSERT INTO live_remote_configs(source_id,sealed,next_due_ms) VALUES(?,?,?) ON CONFLICT(source_id) DO UPDATE SET sealed=excluded.sealed,next_due_ms=excluded.next_due_ms,failures=0,state='healthy',error_code='',lease_token='',lease_until_ms=0`, snap.Input.ID, sealed, time.Now().Add(time.Duration(snap.Config.Draft.RefreshSeconds)*time.Second).UnixMilli()); err != nil {
+		if _, err := tx.ExecContext(ctx, `INSERT INTO live_remote_configs(source_id,sealed,next_due_ms) VALUES(?,?,?) ON CONFLICT(source_id) DO UPDATE SET sealed=excluded.sealed,next_due_ms=excluded.next_due_ms,failures=0,state='healthy',error_code='',lease_token='',lease_until_ms=0`, snap.Input.ID, sealed, time.Now().Add(time.Duration(snap.Config.Draft.RefreshMs)*time.Millisecond).UnixMilli()); err != nil {
 			return ErrUnavailable
 		}
 		physical := 0
@@ -517,8 +517,8 @@ func (s *Store) RefreshOne(ctx context.Context, f SourceFetcher) (bool, error) {
 	}
 	finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
-	next := time.Now().Add(time.Duration(c.Draft.RefreshSeconds) * time.Second)
-	if c.Draft.RefreshSeconds < 300 {
+	next := time.Now().Add(time.Duration(c.Draft.RefreshMs) * time.Millisecond)
+	if c.Draft.RefreshMs < 300000 {
 		next = time.Now().Add(5 * time.Minute)
 	}
 	// Bounded exponential retry delay; no secret/error text is persisted.

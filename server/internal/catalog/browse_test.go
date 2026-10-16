@@ -296,7 +296,7 @@ func TestBrowseCapabilitiesPublishOnlyExecutableVocabulary(t *testing.T) {
 	if strings.Join(ids, ",") != "discover,movies,collections,categories" {
 		t.Fatalf("pivots %v", ids)
 	}
-	if capabilities.QueryLimits.MaximumDepth != 5 || capabilities.QueryLimits.MaximumClauses != 40 || capabilities.QueryLimits.CursorTTLSeconds != 1800 {
+	if capabilities.QueryLimits.MaximumDepth != 5 || capabilities.QueryLimits.MaximumClauses != 40 || capabilities.QueryLimits.CursorTTLMs != 1800000 {
 		t.Fatalf("limits %+v", capabilities.QueryLimits)
 	}
 	for _, field := range capabilities.Fields {

@@ -7,10 +7,10 @@ export const LINEAR_PROTOCOL='1.0' as const;
 export type SourceKind='m3u'|'xtream'|'hdhomerun';
 export type SourceAccess='owner-only'|'server-members';
 export type ChannelMapping=Readonly<{channelKey:string;guideKey:string}>;
-export type RemoteSourceDraft={enabledGroups?:string[];enabledChannels?:string[];id:string;expectedRevision:number;name:string;kind:SourceKind;locator:string;guideUrl:string;username:string;password:string;confirmedLanRoots:string[];mappings:ChannelMapping[];refreshSeconds:number;ownerLimit:number;useDiscoveredCapacity:boolean;viewerAccess:SourceAccess};
+export type RemoteSourceDraft={enabledGroups?:string[];enabledChannels?:string[];id:string;expectedRevision:number;name:string;kind:SourceKind;locator:string;guideUrl:string;username:string;password:string;confirmedLanRoots:string[];mappings:ChannelMapping[];refreshMs:number;ownerLimit:number;useDiscoveredCapacity:boolean;viewerAccess:SourceAccess};
 export type RemoteSourcePreview=Readonly<{previewId:string;preview:{diagnostics:{skippedChannels:number;skippedProgrammes:number;adjustedProgrammes:number;examples:readonly string[]};channels:number;programmes:number;availableStart:string;availableEnd:string;names:string[]};discoveredCapacity:number;capacityMode:'defaulted'|'discovered'|'configured';mappingKeys:readonly {channelKey:string;name:string;guideKey:string}[];expiresAt:string}>;
 export type RefreshStatus=Readonly<{sourceId:string;state:'healthy'|'degraded'|'credentials-required'|'refreshing';errorCode:string;nextRefresh:string;failures:number}>;
-export function remoteSourceDraft(id:string):RemoteSourceDraft{return{id,expectedRevision:0,name:'',kind:'m3u',locator:'',guideUrl:'',username:'',password:'',confirmedLanRoots:[],mappings:[],refreshSeconds:21600,ownerLimit:0,useDiscoveredCapacity:false,viewerAccess:'owner-only'}}
+export function remoteSourceDraft(id:string):RemoteSourceDraft{return{id,expectedRevision:0,name:'',kind:'m3u',locator:'',guideUrl:'',username:'',password:'',confirmedLanRoots:[],mappings:[],refreshMs:21_600_000,ownerLimit:0,useDiscoveredCapacity:false,viewerAccess:'owner-only'}}
 export const isRecord=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 export const boundedText=(v:unknown,max=512):v is string=>typeof v==='string'&&v.length<=max&&!/[\x00-\x1f\x7f]/.test(v);
 export const safeCounter=(v:unknown,max=Number.MAX_SAFE_INTEGER):v is number=>Number.isSafeInteger(v)&&Number(v)>=0&&Number(v)<=max;

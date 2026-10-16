@@ -14,7 +14,7 @@ function row(changes: Record<string, unknown> = {}): any {
   return {
     id: 'for_you:genre:drama', title: 'Drama for you', titleText: {code: 'home.row.genreForYou', params: {genre: 'Drama'}, fallback: 'Drama for you'}, family: 'for_you',
     kind: 'recommendation', artworkShape: 'poster', endpoint: '/v1/home/rows/for_you:genre:drama', viewerFence: 'fence', privacySensitivity: 'personal', policyState: 'available',
-    priority: 61, cacheTtlSeconds: 300, required: false, hideable: true, reorderable: true, critical: false, cursorCapable: true,
+    priority: 61, cacheTtlMs: 300000, required: false, hideable: true, reorderable: true, critical: false, cursorCapable: true,
     entries: [entry('m1'), entry('m2')], total: 5, start: 0, limit: 2, hasMore: true, nextCursor: 'c1', revision: {catalog: 1, viewer: 1}, ...changes,
   };
 }

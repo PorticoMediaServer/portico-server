@@ -3,6 +3,7 @@ package social
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 
@@ -146,6 +147,19 @@ type GroupResponse struct {
 	ProtocolVersion string `json:"protocolVersion"`
 	ServerTime      string `json:"serverTime"`
 	Group           Group  `json:"group"`
+}
+
+// ReadinessReceipt answers a member's readiness report: the room's state and
+// counts, not its member list. Members learn of each other's changes from the
+// group's events, so a report costs the same in a room of 2 or 32.
+type ReadinessReceipt struct {
+	ProtocolVersion  string           `json:"protocolVersion"`
+	ServerTime       string           `json:"serverTime"`
+	GroupID          string           `json:"groupId"`
+	State            string           `json:"state"`
+	Revision         string           `json:"revision"`
+	PlaybackRevision string           `json:"playbackRevision"`
+	Readiness        ReadinessSummary `json:"readiness"`
 }
 
 type GroupListResponse struct {
@@ -614,6 +628,12 @@ func (s *Store) mutateTelemetry(ctx context.Context, p identity.Principal, id st
 	return s.mutateGroup(ctx, p, id, false, apply)
 }
 func (s *Store) mutateGroup(ctx context.Context, p identity.Principal, id string, semantic bool, apply func(*sql.Tx, *record, membership) error) (GroupResponse, error) {
+	return s.mutateGroupAs(ctx, p, id, semantic, nil, apply)
+}
+
+// mutateGroupAs is mutateGroup; with a receipt it fills that from the saved
+// room in place of the member's full projection (and returns no projection).
+func (s *Store) mutateGroupAs(ctx context.Context, p identity.Principal, id string, semantic bool, receipt *ReadinessReceipt, apply func(*sql.Tx, *record, membership) error) (GroupResponse, error) {
 	var out GroupResponse
 	gated4, e := s.begin(ctx)
 	if e != nil {
@@ -670,12 +690,21 @@ func (s *Store) mutateGroup(ctx context.Context, p identity.Principal, id string
 	if e != nil {
 		return out, e
 	}
-	m, e = loadMember(ctx, tx, id, p.Viewer)
-	if e != nil {
-		return out, e
-	}
-	if out, e = s.project(ctx, tx, p, g, m); e != nil {
-		return out, e
+	if receipt != nil {
+		summary := ReadinessSummary{}
+		if g.readinessSummary == "" || json.Unmarshal([]byte(g.readinessSummary), &summary) != nil {
+			if summary, e = s.readinessSummary(ctx, tx, g); e != nil {
+				return out, e
+			}
+		}
+		*receipt = ReadinessReceipt{ProtocolVersion: Protocol, ServerTime: stamp(s.ms()), GroupID: g.id, State: g.state, Revision: counter(g.revision), PlaybackRevision: counter(g.playbackRevision), Readiness: summary}
+	} else {
+		if m, e = loadMember(ctx, tx, id, p.Viewer); e != nil {
+			return out, e
+		}
+		if out, e = s.project(ctx, tx, p, g, m); e != nil {
+			return out, e
+		}
 	}
 	if e = gated4.Commit(); e != nil {
 		return out, e

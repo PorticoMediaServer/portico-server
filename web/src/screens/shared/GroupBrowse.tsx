@@ -7,6 +7,8 @@ import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
 import {groupOrderSort} from '@core/presentation/browse-groups.ts';
 import {BrowseBar} from '../library/BrowseFilters';
+import {FacetGroupContext} from '../../app/browse';
+import {facetGroupOf} from '@core/browse.ts';
 import {EngineResults} from '../library/EngineResults';
 import {Inset, StateView, WindowedGrid} from '../../ui';
 
@@ -28,10 +30,12 @@ export function GroupBar({group, total}: {group: GroupBrowse; /** The page's own
     if (!fixed.size) return full;
     return {...full, fields: full.fields.filter(field => !fixed.has(field.id)), quickFilters: full.quickFilters.filter(quick => !('field' in quick.query && fixed.has(quick.query.field)))};
   }, [group.capabilities, spec]);
+  // A list across libraries counts its filter choices over its own titles.
+  const facetGroup = useMemo(() => (spec ? facetGroupOf(spec.base) : undefined), [spec]);
   if (!spec || !capabilities) return null;
   // The page's own order cannot be kept through a filter (the server orders what it filters), so it is offered only while nothing is filtered.
   const ownOrder = spec.own && !spec.always && (!group.filtered || group.opening.field === groupOrderSort) ? {label: t('web.group.ownOrder', {group: spec.own}), selected: group.ownSelected, onSelect: group.ownOrder} : undefined;
-  return <BrowseBar libraryId={spec.libraryId} libraryKind={spec.libraryKind} pivot={spec.pivot} capabilities={capabilities} predicates={group.predicates} onChange={group.setPredicates} sort={group.sort} onSort={group.setSort} defaultSort={group.opening} ownOrder={ownOrder} total={group.total ?? total} totalIsLowerBound={group.total !== undefined && group.totalIsLowerBound} />;
+  return <FacetGroupContext.Provider value={facetGroup}><BrowseBar libraryId={spec.libraryId} libraryKind={spec.libraryKind} pivot={spec.pivot} capabilities={capabilities} predicates={group.predicates} onChange={group.setPredicates} sort={group.sort} onSort={group.setSort} defaultSort={group.opening} ownOrder={ownOrder} total={group.total ?? total} totalIsLowerBound={group.total !== undefined && group.totalIsLowerBound} /></FacetGroupContext.Provider>;
 }
 
 /** A group's sorted or filtered titles as cards: the library's own windowed grid, kept to the group. */

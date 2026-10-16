@@ -1,7 +1,7 @@
 import {routePath} from "../../../contracts/src/routes.ts";
 /**
  * The one event feed (spec §15; style guide amendment 8; Public API ARCH-API-07): `/v1/events` as
- * SSE, with a long-poll fallback (`GET /v1/events?after=<id>&waitSeconds=25` → `{events, nextAfter}`).
+ * SSE, with a long-poll fallback (`GET /v1/events?after=<id>&waitMs=25000` → `{events, nextAfter}`).
  *
  * - One subscription per device; features subscribe by type (`session.updated`) or prefix
  *   (`group.`), never open their own streams or poll.
@@ -29,7 +29,7 @@ export type EventsClientOptions = Readonly<{
   /** Omit to use long-poll only (constrained clients). */
   openStream?: StreamOpener;
   cursor?: string;
-  waitSeconds?: number;
+  waitMs?: number;
   backoffMs?: readonly number[];
   /** Consecutive stream failures before switching to long-poll for this run. */
   streamFailuresBeforePoll?: number;
@@ -215,9 +215,9 @@ export class EventsClient {
 
   /** One long-poll round. */
   private async pollOnce(signal: AbortSignal): Promise<number> {
-    const wait = Math.max(1, Math.min(this.o.waitSeconds ?? 25, 25));
+    const wait = Math.max(1000, Math.min(this.o.waitMs ?? 25000, 25000));
     const cursor = this.status.cursor;
-    const r = await call(this.o.http, {method: 'GET', path: routePath("get_events") + "?waitSeconds=" + (wait) + (cursor ? `&after=${encodeURIComponent(cursor)}` : ''), signal});
+    const r = await call(this.o.http, {method: 'GET', path: routePath("get_events") + "?waitMs=" + (wait) + (cursor ? `&after=${encodeURIComponent(cursor)}` : ''), signal});
     if (signal.aborted) return 0;
     const b = r.body as {events?: unknown; nextAfter?: unknown} | undefined;
     if (!b || typeof b !== 'object' || Array.isArray(b) || !Array.isArray(b.events) || b.events.length > 100 || typeof b.nextAfter !== 'string' || b.nextAfter.length > 128) throw new Error('invalid_event_page');

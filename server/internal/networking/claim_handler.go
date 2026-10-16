@@ -23,6 +23,9 @@ import (
 type ClaimRequestOwner struct {
 	Owner LocalOwner
 	Guard ClaimRequestGuard
+	// Resume rebuilds Guard after a server restart (ResumeWebClaims): an
+	// opaque note of the sign-in that asked, never a credential.
+	Resume string
 }
 type ClaimRequestAuthorizer func(*http.Request) (ClaimRequestOwner, error)
 type ClaimExpected struct {
@@ -127,7 +130,7 @@ func (h *ClaimHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// The server itself waits for the Portico Account's decision from here on, so
 	// the claim installs even when the page that asked is closed.
 	if r.URL.Path == "/v1/networking/claim/web-approval" && result.Operation != nil {
-		if _, e = h.watchWebClaim(r.Context(), *result.Operation, actor.Guard); e != nil {
+		if _, e = h.watchWebClaim(r.Context(), *result.Operation, actor.Guard, actor.Resume); e != nil {
 			log.Printf("Waiting for the Portico Account approval could not start: %v", e)
 		}
 	}

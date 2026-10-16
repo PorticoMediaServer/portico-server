@@ -148,12 +148,12 @@ type PersonalMutation struct {
 	Rating            json.RawMessage          `json:"rating,omitempty"`
 }
 type PersonalReceipt struct {
-	Current                *PersonalState `json:"current,omitempty"`
-	ReceiptLifetimeSeconds int64          `json:"receiptLifetimeSeconds"`
-	ServerID               string         `json:"serverId"`
-	OperationID            string         `json:"operationId"`
-	ItemID                 string         `json:"itemId"`
-	LibraryID              string         `json:"libraryId"`
-	ViewerFence            string         `json:"viewerFence"`
-	Personal               PersonalState  `json:"personal"`
+	Current           *PersonalState `json:"current,omitempty"`
+	ReceiptLifetimeMs int64          `json:"receiptLifetimeMs"`
+	ServerID          string         `json:"serverId"`
+	OperationID       string         `json:"operationId"`
+	ItemID            string         `json:"itemId"`
+	LibraryID         string         `json:"libraryId"`
+	ViewerFence       string         `json:"viewerFence"`
+	Personal          PersonalState  `json:"personal"`
 }

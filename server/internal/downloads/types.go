@@ -165,7 +165,7 @@ type Progress struct {
 	BytesTotal int64   `json:"bytesTotal"`
 	Estimated  bool    `json:"bytesTotalEstimated"`
 	Percent    float64 `json:"percent"`
-	ETASeconds *int64  `json:"etaSeconds"`
+	ETAMs      *int64  `json:"etaMs"`
 }
 
 // Preparation is the published view of one viewer's claim. Title is what the
