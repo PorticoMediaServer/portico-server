@@ -126,3 +126,35 @@ test('the index entry for a target is the last at or before it', () => {
   assert.equal(lastAtOrBefore([0, 10, 20], 20), 2);
   assert.equal(lastAtOrBefore([5, 10], 4), -1);
 });
+
+test('an MP3 part-way start feeds the decoder the bit reservoir: enough bytes before the frame ahead of the target', async () => {
+  const engine = browserEngine(), prior = {...WEBCODECS_SKIP[engine]};
+  const restore = installDecoder(1152, 50);
+  const fed: number[] = [];
+  const g = globalThis as any, decode = g.AudioDecoder.prototype.decode;
+  g.AudioDecoder.prototype.decode = function (chunk: {data: Uint8Array}) { fed.push(new DataView(chunk.data.buffer, chunk.data.byteOffset).getUint32(50)); return decode.call(this, chunk); };
+  try {
+    recordDecoderSkip(engine, 'mp3', 0);
+    // 32 kbit/s frames (104 bytes): the 511-byte reservoir spans several of them.
+    const small = (n: number, info = false) => { const f = new Uint8Array(104); f.set([0xff, 0xfb, 0x10, 0xc4]); if (info) f.set([0x58, 0x69, 0x6e, 0x67], 4 + 17); new DataView(f.buffer).setUint32(50, n); return f; };
+    const bytes = join([small(0, true), ...Array.from({length: 3000}, (_, i) => small(i))]);
+    const offsets: number[] = [], positions: number[] = [];
+    for (let i = 0; i < 3000; i += 115) { offsets.push(104 + i * 104); positions.push(i * 1152); }
+    const index = parseSeekIndex({version: 1, offsets, frames: positions})!;
+    const start = 1105;
+    const plan = {id: 'mp3-small', container: 'mp3', codec: 'mp3', sampleRate: 44100, channels: 1, durationFrames: 3000 * 1152 - start - 600, trim: {startFrames: start, endFrames: 600}, bytes: bytes.length};
+    for (const from of [44100 * 40 + 7, 115 * 1152 * 4 - start + 3]) {
+      fed.length = 0;
+      const got = await firstSample(plan, bytes, from, index);
+      assert.equal(got.value, start + from, `from ${from}`);
+      const targetFrame = Math.floor((start + from) / 1152);
+      // The frames fed ahead of the one before the target's hold at least 1024 bytes (twice the reservoir).
+      assert.ok((targetFrame - 1 - fed[0]!) * 104 >= 1024, `from ${from}: decoding began at frame ${fed[0]} for frame ${targetFrame}`);
+    }
+  } finally {
+    g.AudioDecoder.prototype.decode = decode;
+    restore();
+    for (const key of Object.keys(WEBCODECS_SKIP[engine])) delete (WEBCODECS_SKIP[engine] as Record<string, unknown>)[key];
+    Object.assign(WEBCODECS_SKIP[engine], prior);
+  }
+});
