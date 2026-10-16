@@ -56,22 +56,22 @@ type Service struct {
 	// SubtitleCredentials receives the owner's saved OpenSubtitles key and
 	// account whenever the settings change (empty: the server's own).
 	SubtitleCredentials func(key, username, password string)
-	LocalArtwork      func(string) (*os.File, string, error)
-	db                *sql.DB
-	token             string
-	client            *http.Client
-	base              string
-	cacheRoot         string
-	settingsMu        sync.Mutex
-	settingsRevision  int64
-	artDirMu          sync.Mutex
-	missingMu         sync.Mutex
-	missingArtwork    map[missingArtwork]struct{}
-	missingWake       worker.Broadcast
-	acoustid          AcousticProvider
-	acoustidConfig    string
-	artClient         *http.Client
-	artDirectory      *os.File
+	LocalArtwork        func(string) (*os.File, string, error)
+	db                  *sql.DB
+	token               string
+	client              *http.Client
+	base                string
+	cacheRoot           string
+	settingsMu          sync.Mutex
+	settingsRevision    int64
+	artDirMu            sync.Mutex
+	missingMu           sync.Mutex
+	missingArtwork      map[missingArtwork]struct{}
+	missingWake         worker.Broadcast
+	acoustid            AcousticProvider
+	acoustidConfig      string
+	artClient           *http.Client
+	artDirectory        *os.File
 }
 
 func New(db *sql.DB, token string) *Service {
