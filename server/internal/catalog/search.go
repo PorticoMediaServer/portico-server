@@ -161,10 +161,12 @@ func catalogOrder(sortID, kind, q string) searchOrder {
 	switch sortID {
 	case "title":
 		return searchOrder{`e.sort_key`, nil, false}
+	// The browse row's year and added date, read by key: joined instead, the
+	// serving view (two generations) is read whole.
 	case "releaseYear":
-		return searchOrder{`CAST(COALESCE(wb.year,0) AS REAL)`, nil, true}
+		return searchOrder{`CAST(COALESCE((SELECT wb.year FROM catalog_browse_rows wb WHERE wb.entity_id=e.id),0) AS REAL)`, nil, true}
 	case "dateAdded":
-		return searchOrder{`COALESCE(wb.added_text,'')`, nil, false}
+		return searchOrder{`COALESCE((SELECT wb.added_text FROM catalog_browse_rows wb WHERE wb.entity_id=e.id),'')`, nil, false}
 	}
 	return searchScore(q)
 }
@@ -587,9 +589,6 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	// Release year and date added are the browse row's, as their ordered
 	// indexes (searchWalks) hold them.
 	orderJoin := ""
-	if sortID == "releaseYear" || sortID == "dateAdded" {
-		orderJoin = ` LEFT JOIN catalog_browse_rows wb ON wb.entity_id=e.id `
-	}
 	args := append([]any{}, order.args...)
 	args = append(args, match)
 	args = append(args, filterArgs...)
