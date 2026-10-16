@@ -213,7 +213,7 @@ export function BackupsGroup() {
       {doc?.backups.map(b => (
         <SettingsRow key={b.id} icon="storage" label={(b.createdAt ? i18n.dateTime(b.createdAt) : '—')}
           help={t('web.maintenance.backupDetails', {kind: t(backupKindMessageId(b.kind)), size: i18n.bytes(b.bytes), schema: b.schemaVersion, version: b.serverVersion || '—'})}
-          meta={<span style={{display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0}}><Text variant="mono" tone="tertiary" style={{fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis'}}>{b.path}</Text><IconButton name="copy" label={t('web.twoStep.copy')} size="sm" variant="ghost" onClick={() => void navigator.clipboard?.writeText(b.path)} /></span>}
+          meta={<span style={{display: 'inline-flex', alignItems: 'center', gap: 4, minWidth: 0}}><Text variant="mono" tone="tertiary" style={{fontSize: '0.75rem', overflow: 'hidden', textOverflow: 'ellipsis'}}>{b.path}</Text><IconButton name="copy" label={t('web.twoStep.copy')} size="sm" variant="ghost" onClick={() => void navigator.clipboard?.writeText(b.path)} /></span>}
           control={<div style={{display: 'flex', gap: 8}}><Button size="sm" variant="secondary" label={t('web.maintenance.restoreBackup')} disabled={starting || !!progress || staging || restarting} onClick={() => { setRestoreError(''); action.clear(); setConfirming({kind: 'backup', backup: b}); }} /><Button size="sm" variant="ghost" icon="trash" label={t('action.delete')} disabled={starting || !!progress || staging || restarting} onClick={() => confirmDelete(b)} /></div>} />
       ))}
       {doc && !doc.backups.length ? <SettingsEmpty title={t('web.maintenance.noBackups')} /> : null}
@@ -225,7 +225,7 @@ export function BackupsGroup() {
       {/* Restore replaces what the server has now (a copy of it is kept first): asked like every other change that takes something away. */}
       <ConfirmDialog open={!!confirming} onOpenChange={o => !o && !staging && setConfirming(undefined)} title={t(confirming?.kind === 'path' ? 'web.maintenance.restoreFileTitle' : 'web.maintenance.restoreTitle')} busy={staging} error={restoreError || undefined} confirmLabel={t('web.maintenance.restoreConfirm')} onConfirm={doRestore}
         body={<div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
-          {confirming?.kind === 'backup' ? (confirming.backup.createdAt ? <Text variant="bodyStrong">{t('server.backups.restoreWhich', {when: i18n.dateTime(confirming.backup.createdAt)})}</Text> : null) : confirming ? <Text variant="mono" style={{fontSize: 12.5, overflowWrap: 'anywhere'}}>{confirming.path}</Text> : null}
+          {confirming?.kind === 'backup' ? (confirming.backup.createdAt ? <Text variant="bodyStrong">{t('server.backups.restoreWhich', {when: i18n.dateTime(confirming.backup.createdAt)})}</Text> : null) : confirming ? <Text variant="mono" style={{fontSize: '0.78125rem', overflowWrap: 'anywhere'}}>{confirming.path}</Text> : null}
           <span>{t('web.maintenance.restoreBody')}</span>
         </div>} />
       {/* Tier 2: a file goes for good. One short word to type, never the backup's id. */}

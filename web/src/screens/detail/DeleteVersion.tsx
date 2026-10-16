@@ -44,7 +44,7 @@ export function DeleteVersionDialog({itemId, title, file, summary, onClose, onDe
       {preview ? (
         <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
           <Text as="p" variant="body" tone="secondary">{t('title.deleteVersion.body', {size: preview.totalBytesText})}</Text>
-          {file.path ? <Text as="p" variant="mono" tone="tertiary" style={{fontSize: 12, overflowWrap: 'anywhere'}}>{file.path}</Text> : null}
+          {file.path ? <Text as="p" variant="mono" tone="tertiary" style={{fontSize: '0.75rem', overflowWrap: 'anywhere'}}>{file.path}</Text> : null}
           {allowed
             ? <Input label={preview.confirmationKind === 'count' ? t('deleteMedia.typeCount', {count: preview.confirmation}) : t('deleteMedia.typeTitle')} help={preview.confirmationKind === 'title' ? preview.confirmation : undefined} value={typed} onChange={e => setTyped(e.target.value)} autoFocus autoComplete="off" />
             : <Notice tone="info" compact>{t('deleteMedia.disabled')}</Notice>}

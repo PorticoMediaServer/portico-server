@@ -89,7 +89,7 @@ export function RemoteSourcesPanel() {
   const list = m.data?.mounts ?? [];
   const davs = d.sources.filter(x => x.kind === 'webdav');
   const loading = (m.phase === 'loading' && !m.data) || (d.loading && !d.sources.length);
-  const mono = (text: string) => <span style={{fontFamily: 'var(--font-mono)', fontSize: 12, overflowWrap: 'anywhere'}}>{text}</span>;
+  const mono = (text: string) => <span style={{fontFamily: 'var(--font-mono)', fontSize: '0.75rem', overflowWrap: 'anywhere'}}>{text}</span>;
   const facts = (parts: readonly React.ReactNode[]) => parts.filter(Boolean).map((part, i) => <React.Fragment key={i}>{i ? ' · ' : null}{part}</React.Fragment>);
   return (
     <>
@@ -152,7 +152,7 @@ function RcloneDialog({open, onClose, onSave, busy, error}: {open: boolean; onCl
       <Input label={t('profile.name')} value={draft.name} onChange={e => setDraft({...draft, name: e.target.value})} maxLength={100} autoFocus />
       <Input label={t('web.storage.rcloneBinary')} value={draft.executable} onChange={e => setDraft({...draft, executable: e.target.value})} mono />
       <Input label={t('web.storage.rcloneRemoteName')} value={draft.remote} onChange={e => setDraft({...draft, remote: e.target.value})} placeholder="drive:Media" mono help={t('web.storage.rcloneRemoteHelp')} />
-      <TextArea label={t('web.storage.rcloneConfig')} value={draft.config} onChange={e => setDraft({...draft, config: e.target.value})} placeholder={t('web.storage.rcloneConfigExample')} rows={6} style={{fontFamily: 'var(--font-mono)', fontSize: 12}} help={t('web.storage.rcloneConfigHelp')} />
+      <TextArea label={t('web.storage.rcloneConfig')} value={draft.config} onChange={e => setDraft({...draft, config: e.target.value})} placeholder={t('web.storage.rcloneConfigExample')} rows={6} style={{fontFamily: 'var(--font-mono)', fontSize: '0.75rem'}} help={t('web.storage.rcloneConfigHelp')} />
       {error ? <Notice tone="error" compact>{error}</Notice> : null}
     </Dialog>
   );

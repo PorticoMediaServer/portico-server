@@ -120,7 +120,7 @@ export function MessageLogGroup() {
         <Switch checked={live} onCheckedChange={setLive} label={t('guide.live')} />
         {live ? <Status tone={tailError ? 'warning' : 'healthy'}>{tailError || t('web.logs.following')}</Status> : <Freshness at={read.at} onRefresh={read.reload} refreshing={read.loading} />}
       </div>
-      <div ref={box} role="log" aria-live="off" style={{margin: '0 16px 12px', maxHeight: 360, overflow: 'auto', background: 'var(--surface-recess, var(--surface-diagnostics))', borderRadius: 10, padding: '8px 12px', fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: 12, lineHeight: 1.55}}>
+      <div ref={box} role="log" aria-live="off" style={{margin: '0 16px 12px', maxHeight: 360, overflow: 'auto', background: 'var(--surface-recess, var(--surface-diagnostics))', borderRadius: 10, padding: '8px 12px', fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: '0.75rem', lineHeight: 1.55}}>
         {lines.length ? lines.map(l => (
           <div key={l.sequence} style={{display: 'flex', gap: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word'}}>
             <span style={{color: 'var(--text-tertiary)', flexShrink: 0}}>{logTime(i18n, l.at)}</span>

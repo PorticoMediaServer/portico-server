@@ -95,7 +95,7 @@ function fixtureApi(failing: () => boolean) {
 function DeviceProfile() {
   const [text, setText] = useState('Asking the browser…');
   React.useEffect(() => { void browserClientProfile(true).then(p => setText(JSON.stringify(p, null, 2)), e => setText(String(e))); }, []);
-  return <pre style={{fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', userSelect: 'text'}}>{text}</pre>;
+  return <pre style={{fontSize: '0.75rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', userSelect: 'text'}}>{text}</pre>;
 }
 
 export function FeaturesGallery() {
