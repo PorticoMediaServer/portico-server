@@ -36,7 +36,7 @@ export const canvasText: TextRasterizer = (text, maxWidth, maxHeight) => {
   const context = new OffscreenCanvas(width, height).getContext('2d');
   if (!context) return null;
   context.font = `${size}px sans-serif`;
-  context.fillStyle = '#fff';
+  // Only the ink's coverage is read (the default fill is opaque), so no colour is chosen here.
   context.textBaseline = 'middle';
   context.fillText(text, 1, height / 2);
   const alpha = context.getImageData(0, 0, width, height).data, mask = new Uint8Array(width * height);
