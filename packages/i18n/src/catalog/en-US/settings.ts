@@ -105,6 +105,12 @@ export const settingsMessages = {
   'settings.help.disablePassthrough': 'Turn this on if Dolby or DTS titles play without sound.',
   'settings.row.disableHdr': 'Turn off HDR',
   'settings.help.disableHdr': 'Turn this on if HDR titles look grey, washed out or too dark.',
+  'settings.section.tvOutputs': 'What this TV can show and play',
+  'settings.section.tvOutputsHelp': 'This device can’t tell what your TV and sound system support, so Portico plays everything in standard range and stereo until you say otherwise.',
+  'settings.row.tvHdr': 'This TV supports HDR',
+  'settings.help.tvHdr': 'Turn on if your TV shows HDR. HDR titles are then sent as they are instead of being converted to standard range.',
+  'settings.row.tvSurround': 'This TV supports surround sound',
+  'settings.help.tvSurround': 'Turn on if your TV, or a sound system connected to it, plays 5.1 or 7.1 sound. Surround is then kept instead of being mixed down to stereo.',
 
   'settings.row.volumeLeveling': 'Volume leveling',
   'settings.help.volumeLeveling': 'Plays songs or albums at a similar loudness.',
