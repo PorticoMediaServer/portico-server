@@ -1391,10 +1391,13 @@ func (c *browseCompiler) factGapCandidates(field browseField, having bool) (stri
 		}
 		arms = append(arms, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_fact_gaps WHERE kind=`+strconv.Itoa(kind)+` AND `+factGapSQL+` IN(`+strings.Join(masks, ",")+`)`)
 	}
+	probe := presenceProbe
 	if arms == nil {
 		if !having {
 			return "", nil
 		}
+		// Through the memberships each probed row costs more: probe fewer.
+		probe = presenceProbe / 4
 		// A container has the field only if a member does: the few members
 		// that have it name their containers.
 		for _, kind := range playable {
@@ -1403,8 +1406,8 @@ func (c *browseCompiler) factGapCandidates(field browseField, having bool) (stri
 		}
 	}
 	candidates := strings.Join(arms, " UNION ALL ")
-	found, err := c.count(`SELECT count(*) FROM (` + candidates + ` LIMIT ` + strconv.Itoa(presenceProbe+1) + `)`)
-	if err != nil || found > presenceProbe {
+	found, err := c.count(`SELECT count(*) FROM (` + candidates + ` LIMIT ` + strconv.Itoa(probe+1) + `)`)
+	if err != nil || found > probe {
 		return "", err
 	}
 	if found == 0 {
