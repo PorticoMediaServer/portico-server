@@ -654,7 +654,7 @@ export const enUS = {
   'quality.automaticHelp': 'Adjusts to your connection',
   'quality.original': 'Original',
   'quality.originalHelp': 'Full quality',
-  'quality.height': '{height}p',
+  'quality.height': '{height, number, ::group-off}p',
   'quality.networkLimit': '{network} · up to {height}p',
   'quality.playingOriginal': 'Playing the original file',
   'quality.playingConverted': 'Playing a converted stream',

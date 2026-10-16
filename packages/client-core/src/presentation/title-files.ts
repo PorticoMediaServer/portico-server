@@ -120,6 +120,23 @@ export function versionNames(versions: readonly Readonly<{id: string; label: str
   });
 }
 
+/** A version as the playback options describe it (`MediaVersion`): only what its name is made of. */
+export type NamedMediaVersion = Readonly<{id: string; label: string; edition?: string; container?: string; sizeBytes?: number; bitrateKbps?: number; video: readonly Readonly<{height?: number}>[]}>;
+
+/**
+ * The names of a title's versions from its playback options, as the Version menus on phones,
+ * tablets and televisions list them: the server's label, the picture's height and the container,
+ * then the edition, with `versionNames`' rule for versions that would still read the same (bit
+ * rate, else size, else "Version 2"). A version with nothing to say is "Version 1".
+ */
+export function mediaVersionNames(versions: readonly NamedMediaVersion[], t: Translate): ReadonlyMap<string, string> {
+  const headline = (v: NamedMediaVersion) => [v.label, v.video[0]?.height ? t('quality.height', {height: v.video[0].height}) : '', v.container?.toUpperCase() ?? ''].filter(Boolean).join(' · ');
+  const facts: Record<string, VersionFacts> = {};
+  for (const v of versions) facts[v.id] = {...(v.edition && v.edition !== v.label ? {edition: v.edition} : {}), ...(v.bitrateKbps ? {bitRate: v.bitrateKbps * 1000} : {}), ...(v.sizeBytes ? {size: v.sizeBytes} : {})};
+  const named = versionNames(versions.map(v => ({id: v.id, label: headline(v)})), facts, t);
+  return new Map(named.map((x, index) => [x.id, x.label || t('mediaInfo.version', {number: index + 1})]));
+}
+
 /** A subtitle track as the menus need it named. */
 export type NamedSubtitleTrack = Readonly<{id: string; language?: string; title?: string; format?: string; forced?: boolean; hearingImpaired?: boolean}>;
 
