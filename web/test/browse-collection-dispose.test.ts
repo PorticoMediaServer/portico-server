@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {componentModule, hooks} from './helpers/component-harness.mjs';
+import {listedTitlesWithPersonalState, titlesWithPersonalState} from '../../packages/client-core/src/freshness-hub.ts';
 
 test('leaving a library keeps its list for Back; the list is the viewer\'s pooled document, read again quietly with the filters on screen', async () => {
   const cleanups: (() => void)[] = [];
@@ -10,7 +11,7 @@ test('leaving a library keeps its list for Back; the list is the viewer\'s poole
   const quiet: unknown[] = [];
   const invalidated: unknown[] = [];
   const collection = {
-    dispose: () => { disposed++; }, invalidate: (source: unknown) => { invalidated.push(source); }, itemAt: () => (disposed ? undefined : {id: 'm1'}),
+    dispose: () => { disposed++; }, invalidate: (source: unknown) => { invalidated.push(source); }, itemAt: () => (disposed ? undefined : {id: 'm1'}), residentItems: () => (disposed ? [] : [{id: 'm1'}]),
     getSnapshot: () => ({total: 1}), subscribe: () => () => {}, revalidate: async (options: unknown) => { quiet.push(options); },
   };
   const pooled: {key: string; made: any}[] = [];
@@ -19,7 +20,6 @@ test('leaving a library keeps its list for Back; the list is the viewer\'s poole
   const browse = await componentModule(new URL('../src/app/browse.ts', import.meta.url), {
     react: {...react, default: react},
     '@core/collections/index.ts': {createWindowedCollection: () => collection},
-    '@core/freshness-hub.ts': {titlesWithPersonalState: (libraryId: string) => ['content:' + libraryId, 'personal:' + libraryId]},
     './freshness': {usePooled: (key: string, make: () => any) => { const made = pooled.find(p => p.key === key)?.made ?? make(); if (!pooled.some(p => p.key === key)) pooled.push({key, made}); return {service: made.service, document: {markCurrent: () => { marked++; }}, memo}; }},
     './session': {useSession: () => ({api: {}, session: undefined}), sessionIdentity: () => 'ana'},
     './browse-page-source.ts': {browsePageSource: (_api: unknown, input: unknown) => { sources.push(input); return async () => ({items: [], total: 0}); }},
@@ -27,7 +27,10 @@ test('leaving a library keeps its list for Back; the list is the viewer\'s poole
   }) as typeof import('../src/app/browse.ts');
   const first = h.render(() => browse.useBrowseCollection({libraryId: 'movies', pivot: 'movies', predicates: [], enabled: true}));
   assert.equal(pooled[0]!.key, 'browse:movies:movies:60', 'one kept list per library and pivot');
-  assert.deepEqual(pooled[0]!.made.document.dependencies, ['content:movies', 'personal:movies']);
+  // The library's titles and order, and this profile's marks on the titles the list holds now (read each time).
+  const dependencies = pooled[0]!.made.document.dependencies as () => readonly string[];
+  assert.deepEqual(dependencies(), listedTitlesWithPersonalState('movies', ['m1'], false));
+  assert.ok(dependencies().some(d => d.endsWith(':title:m1')));
   for (const stop of cleanups) stop();
   await new Promise(resolve => setTimeout(resolve, 5));
   assert.equal(disposed, 0, 'the list is not thrown away when the screen closes');
@@ -46,4 +49,7 @@ test('leaving a library keeps its list for Back; the list is the viewer\'s poole
   h.render(() => browse.useBrowseCollection({libraryId: 'movies', pivot: 'movies', predicates: [{field: 'year', operator: 'eq', value: 1999}], enabled: true}));
   assert.equal(invalidated.length, 1);
   assert.ok(marked >= 2);
+  // A filter on the profile's own state moves the list for every personal change.
+  h.render(() => browse.useBrowseCollection({libraryId: 'movies', pivot: 'movies', predicates: [{field: 'played', operator: 'eq', value: true}], enabled: true}));
+  assert.deepEqual(dependencies(), titlesWithPersonalState('movies'));
 });
