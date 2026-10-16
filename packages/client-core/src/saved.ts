@@ -11,9 +11,13 @@ export type SavedListFilter = 'all' | 'unwatched' | 'inProgress';
 export type SavedListSort = 'title' | 'added' | 'updated' | 'year' | 'duration' | 'progress';
 export type HistoryPeriod = '24h' | '7d' | '30d' | '90d' | 'all';
 export const savedListFilters: readonly SavedListFilter[] = ['all', 'unwatched', 'inProgress'];
+/** The groups a list of playlists offers: all of them, the viewer's own, those shared with them, the pinned ones. */
+export type PlaylistListFilter = 'all' | 'mine' | 'shared' | 'pinned';
+export const playlistListFilters: readonly PlaylistListFilter[] = ['all', 'mine', 'shared', 'pinned'];
+const filterAllowed = (view: string, filter: string) => (view === 'playlists' ? (playlistListFilters as readonly string[]).includes(filter) : (view === 'watchlist' || view === 'favorites') && (savedListFilters as readonly string[]).includes(filter));
 export const savedListSorts: readonly SavedListSort[] = ['title', 'added', 'updated', 'year', 'duration', 'progress'];
 export const historyPeriods: readonly HistoryPeriod[] = ['24h', '7d', '30d', '90d', 'all'];
-export type SavedRoute = Readonly<{ view: 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history' | 'resource'; resourceId?:string; sort?: string; direction?: 'asc' | 'desc'; filter?: SavedListFilter; period?: HistoryPeriod } | { view: 'playlist'; playlistId: string }>;
+export type SavedRoute = Readonly<{ view: 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history' | 'resource'; resourceId?:string; sort?: string; direction?: 'asc' | 'desc'; filter?: SavedListFilter | PlaylistListFilter; period?: HistoryPeriod } | { view: 'playlist'; playlistId: string }>;
 /** Filters and sorts are named server policies. The client picks a published name; it never
  * evaluates the predicate or re-sorts the page it was given. */
 export function savedListPath(view: 'watchlist' | 'favorites', options: Readonly<{ filter?: SavedListFilter; sort?: SavedListSort; direction?: 'asc' | 'desc'; limit?: number; cursor?: string | null }> = {}): string {
@@ -103,8 +107,8 @@ function route(v: SavedRoute): SavedRoute {
  // CD-17: retain and validate filter when normalizing watchlist/favorites routes.
  // Only accept all/unwatched/inProgress for that view; reject filter for other views.
  if (v.filter !== undefined) {
-  if (v.view !== 'watchlist' && v.view !== 'favorites') throw new Error('Invalid Saved query.');
-  if (!savedListFilters.includes(v.filter)) throw new Error('Unknown saved list filter.');
+  if (v.view !== 'watchlist' && v.view !== 'favorites' && v.view !== 'playlists') throw new Error('Invalid Saved query.');
+  if (!filterAllowed(v.view, v.filter)) throw new Error('Unknown saved list filter.');
  }
  if (v.period !== undefined && !historyPeriods.includes(v.period)) throw new Error('Unknown history period.');
  if (v.period !== undefined && v.view !== 'history') throw new Error('Invalid Saved query.');
@@ -149,7 +153,7 @@ function projection(v: unknown, bound: SavedScope, selected: SavedRoute): SavedP
  // CD-17: preserve validated category; verify the echo matches the selected filter (default all).
  if (listView) {
   if (!savedListFilters.includes(q.category as SavedListFilter)) invalid();
-  const expected = (selected as { filter?: SavedListFilter }).filter ?? 'all';
+  const expected = (selected as { filter?: string }).filter ?? 'all';
   if (q.category !== expected) invalid();
  } else if (q.category !== '') invalid();
  if (selected.view === 'playlist' ? q.sort !== 'position' || q.direction !== 'asc' || !int(v.playlistRevision) : selected.sort !== undefined && q.sort !== selected.sort || selected.direction !== undefined && q.direction !== selected.direction) invalid();
@@ -163,8 +167,8 @@ function projection(v: unknown, bound: SavedScope, selected: SavedRoute): SavedP
  const rawSorts = list(v.sorts, 16); for (const row of rawSorts) if (record(row)) within(row.directions, 2);
  const sorts = firstOfEach('saved', 'sorts', keepReadable('saved', 'sorts', rawSorts, row => { if (!record(row) || !id(row.id) || !id(row.labelKey)) invalid(); const directions = [...new Set(list(row.directions, 2).filter((d): d is 'asc'|'desc' => d === 'asc' || d === 'desc'))]; return { id: row.id, labelKey: row.labelKey, directions }; }), row => row.id);
  // CD-17: preserve validated filter definitions/counts; do not erase server-authored filter state.
- // Only Watchlist and Favourites have filters here; ones published for another view are not read.
- const sentFilters = list(v.filters, 4), rawFilters = listView ? sentFilters : []; for (const f of rawFilters) if (record(f)) within(f.options, 8);
+ // Watchlist, Favourites and the list of playlists have filters here; ones published for another view are not read.
+ const sentFilters = list(v.filters, 4), rawFilters = listView || selected.view === 'playlists' ? sentFilters : []; for (const f of rawFilters) if (record(f)) within(f.options, 8);
  if (rawFilters.length !== sentFilters.length) noteSkipped('saved', 'filters', sentFilters.length);
  const filters = firstOfEach('saved', 'filters', keepReadable('saved', 'filters', rawFilters, f => { if (!record(f) || !id(f.id) || !id(f.labelKey)) invalid(); const options = firstOfEach('saved', 'filter.options', keepReadable('saved', 'filter.options', list(f.options, 8), o => { if (!record(o) || !id(o.id) || !prose(o.label, 120) || !int(o.count)) invalid(); return Object.freeze({ id: o.id as string, label: o.label as string, count: o.count as number }); }), k => k.id); return Object.freeze({ id: f.id as string, labelKey: f.labelKey as string, options: Object.freeze(options) }); }), k => k.id);
  // An action this app does not know is not offered; nothing is ever offered that the server did not list.
@@ -302,7 +306,7 @@ export class SavedService {
     const params = new URLSearchParams({ limit: '40' }); if (cursor) params.set('cursor', cursor);
     let path: string;
     if (selected.view === 'playlist') path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)});
-    else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) { if (!savedListFilters.includes(selected.filter)) throw new Error('Unknown saved list filter.'); params.set('filter', selected.filter); } }
+    else { path = routePath("get_saved_content"); params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) { if (!filterAllowed(selected.view, selected.filter)) throw new Error('Unknown saved list filter.'); params.set('filter', selected.filter); } }
     const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(path + '?' + params, 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<RouteResponse<"get_playlists_id">>(encodedRoutePath("get_playlists_id", {"id": encodeURIComponent(selected.playlistId)}), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
     if (this.disposed || generation !== this.generation || read !== this.readGeneration) return;
     const parsed = projection(raw, bound, selected), playlist = selected.view === 'playlist' ? resource(rawResource, bound, selected.playlistId) : null;

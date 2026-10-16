@@ -25,10 +25,10 @@ func resourceEnvelope(r ContentRequest, title string) ContentEnvelope {
 var playlistDirectorySorts = []struct {
 	id, label, key, direction string
 }{
-	{"title", "sort.title", "p.name COLLATE NOCASE", "asc"},
-	{"created", "sort.created", "p.created_at", "desc"},
-	{"updated", "sort.updated", "COALESCE(NULLIF(p.updated_at,''),p.created_at)", "desc"},
-	{"count", "sort.itemCount", "printf('%010d',p.entry_count)", "desc"},
+	{"title", "playlists.sort.title", "p.name COLLATE NOCASE", "asc"},
+	{"created", "playlists.sort.created", "p.created_at", "desc"},
+	{"updated", "playlists.sort.updated", "COALESCE(NULLIF(p.updated_at,''),p.created_at)", "desc"},
+	{"count", "playlists.sort.count", "printf('%010d',p.entry_count)", "desc"},
 }
 
 // playlistDirectoryFilters are the named groups a list of playlists offers.

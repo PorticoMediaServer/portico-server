@@ -4,11 +4,11 @@ import {useCallback, useEffect, useMemo, useState} from 'react';
 import {useNavigate, useSearch} from '@tanstack/react-router';
 import type {ContentEntry} from '@core/library-content.ts';
 import {PersonalSavedService, type PersonalSavedSnapshot} from '@core/personal-saved.ts';
-import {SavedService, historyPeriods, type HistoryPeriod, type PlaylistCard, type PlaylistOccurrence, type SavedEntry, type SavedRoute, type SavedSnapshot} from '@core/saved.ts';
+import {SavedService, historyPeriods, playlistListFilters, type HistoryPeriod, type PlaylistCard, type PlaylistOccurrence, type SavedEntry, type SavedRoute, type SavedSnapshot} from '@core/saved.ts';
 import {captionFor, iconFor, progressFor, shapeFor} from '@core/presentation/index.ts';
 import {useEntryHref, useOpenEntry} from '../../app/open';
-import {useSession} from '../../app/session';
-import {Button, Card, Chip, Chips, ConfirmDialog, Dialog, Grid, Input, Inset, ListRow, Menu, Notice, Page, PageHeader, Row, StateView, Surface, Switch, Tabs, Text, TextArea, type IconName} from '../../ui';
+import {sessionIdentity, useSession} from '../../app/session';
+import {Button, Card, Chip, Chips, ConfirmDialog, Dialog, Grid, Input, Inset, ListRow, Menu, Notice, Page, PageHeader, Row, StateView, Surface, Switch, Tabs, Text, TextArea, useCompact, type IconName} from '../../ui';
 import {LoadingGrid} from '../shared/Sections';
 import {ErrorNotice, ErrorState, changedError} from '../../app/errors';
 import {errorText} from '../../app/errors';
@@ -22,6 +22,8 @@ import {acrossGroup, useGroupBrowse, type GroupChoice} from '../../app/group-bro
 import type {AcrossGroup} from '@core/presentation/browse-groups.ts';
 import {GroupBar, GroupGrid} from '../shared/GroupBrowse';
 import {useQuietRefresh} from '../../app/quiet-refresh';
+import {usePinnedResources} from '../../app/pins';
+import {pinnedResourceIcon} from '../../shell/PinEditor';
 
 type SavedTab = 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history';
 const NO_SECTIONS: NonNullable<SavedSnapshot['projection']>['sections'] = [];
@@ -38,8 +40,19 @@ const emptyCopy = (t: I18n['t'], tab: SavedTab): {icon: IconName; title: string;
     case 'history': return {icon: 'clock', title: t('web.saved.empty.history'), body: t('web.saved.empty.historyBody')};
   }
 };
+/** The groups a list of playlists offers (all, mine, shared with me, pinned), with their counts. */
+export function PlaylistFilterControl({filters, active, onChange}: {filters: readonly Readonly<{id: string; options: readonly Readonly<{id: string; count: number}>[]}>[]; active?: string; onChange: (id: string) => void}) {
+  const {t} = useI18n();
+  const options = filters.find(f => f.id === 'filter')?.options.filter(o => (playlistListFilters as readonly string[]).includes(o.id)) ?? [];
+  if (options.length < 2) return null;
+  const current = active ?? 'all';
+  const label = (id: string) => t('playlists.filter.option', {group: id});
+  return <Menu label={t('playlists.filter')} align="start" trigger={<Chip label={label(current)} icon="filter" pressed={current !== 'all'} aria-label={t('playlists.filter')} />} items={options.map(o => ({id: o.id, label: `${label(o.id)} (${o.count})`, selected: o.id === current}))} onSelect={onChange} />;
+}
+
 /** WEB-SAVED-05: consumer names for the server's sort keys ("Updated" means last watched). */
 function sortLabel(t: I18n['t'], key: string): string {
+  if (key.startsWith('playlists.sort.')) return t('playlists.sort', {field: key.slice('playlists.sort.'.length)});
   switch (key.replace(/^sort\./, '')) {
     case 'title': return t('web.saved.sort.title');
     case 'added': return t('web.saved.sort.added');
@@ -134,7 +147,8 @@ export function SavedScreen() {
   const group = useGroupBrowse(spec, {sort, direction, filters: search.filters}, useCallback((next: GroupChoice) => void navigate({to: '/saved', search: {view: search.view, ...next}, replace: true}), [navigate, search.view]));
   // The address's sort is the toolbar's on these lists; Playlists keeps its own.
   const toolbar = !!spec;
-  const savedRoute = useMemo<SavedRoute | null>(() => (tab === 'history' || tab === 'collections' || tab === 'views' ? null : {view: tab, ...(sort && !toolbar ? {sort, direction} : {})}), [tab, sort, direction, toolbar]);
+  const playlistFilter = tab === 'playlists' && filter && (playlistListFilters as readonly string[]).includes(filter) ? filter : undefined;
+  const savedRoute = useMemo<SavedRoute | null>(() => (tab === 'history' || tab === 'collections' || tab === 'views' ? null : {view: tab, ...(sort && !toolbar ? {sort, direction} : {}), ...(playlistFilter ? {filter: playlistFilter} : {})} as SavedRoute), [tab, sort, direction, toolbar, playlistFilter]);
   const personalRoute = useMemo<SavedRoute | null>(() => (tab === 'history' ? {view: 'history', ...(period ? {period} : {})} : tab === 'collections' ? {view: 'collections'} : tab === 'views' ? {view: 'views'} : null), [tab, period]);
   const [creating, setCreating] = useState(false);
   const [creatingPlaylist, setCreatingPlaylist] = useState(false);
@@ -163,13 +177,14 @@ export function SavedScreen() {
   return (
     <Page>
       <PageHeader title={t('web.saved.title')} actions={<Button variant="ghost" icon="refresh" aria-label={t('action.refresh')} onClick={refresh} />} />
+      <PinnedShortcuts />
       <Tabs items={tabs(t)} value={tab} onChange={id => setSearch({view: id, sort: undefined, direction: undefined, filter: undefined, period: undefined, library: undefined, filters: undefined})} size="large" label={t('web.saved.sections')} />
       {toolbar ? <Inset><GroupBar group={group} /></Inset> : null}
       {tab === 'history' && !group.active ? (
         <Inset><Row style={{justifyContent: 'space-between', flexWrap: 'wrap'}}><Row><Text variant="label" tone="tertiary">{t('web.saved.period')}</Text><Chips>{historyPeriods.map(x => <Chip key={x} label={periodLabel(t, x)} pressed={(period ?? 'all') === x} onClick={() => setSearch({period: x === 'all' ? undefined : x})} />)}</Chips></Row>{personal.snapshot.entries.length ? <Button variant="ghost" size="sm" icon="trash" label={t('web.saved.clearHistory')} onClick={() => { setClearError(''); setClearing(true); }} /> : null}</Row></Inset>
       ) : null}
       {tab === 'collections' ? <Inset><Row><Button variant="secondary" size="sm" icon="plus" label={t('web.saved.newCollection')} onClick={() => setCreating(true)} /></Row></Inset> : null}
-      {tab === 'playlists' && (hasSorts || canCreatePlaylist) ? <Inset><Row>{sortControl}{canCreatePlaylist ? <Button variant="secondary" size="sm" icon="plus" label={t('web.saved.newPlaylist')} onClick={() => setCreatingPlaylist(true)} /> : null}</Row></Inset> : null}
+      {tab === 'playlists' && (hasSorts || canCreatePlaylist) ? <Inset><Row>{sortControl}<PlaylistFilterControl filters={projection?.filters ?? []} active={playlistFilter} onChange={id => setSearch({filter: id === 'all' ? undefined : id as typeof search.filter})} />{canCreatePlaylist ? <Button variant="secondary" size="sm" icon="plus" label={t('web.saved.newPlaylist')} onClick={() => setCreatingPlaylist(true)} /> : null}</Row></Inset> : null}
       <NameDialog open={creatingPlaylist} title={t('web.saved.newPlaylist')} action={t('web.saved.create')} context="playlist" onClose={() => setCreatingPlaylist(false)} onSave={async (name, summary) => { await saved.service.mutate({action: 'create', name, summary}); saved.refresh(); }} />
       <ConfirmDialog open={clearing} onOpenChange={o => !o && setClearing(false)} title={t('web.saved.clearHistoryTitle')} body={t('web.saved.clearHistoryBody')} confirmLabel={t('web.saved.clearHistoryAction')} destructive busy={clearBusy} error={clearError || undefined} onConfirm={() => void clearHistory()} />
       <NewCollectionDialog open={creating} onClose={() => setCreating(false)} onCreate={async (name, summary, visibility) => { if (!await personal.service.mutate({action: 'create', kind: 'collection', name, summary, visibility})) throw personal.service.getSnapshot().mutationError ?? new Error('not created'); }} />
@@ -189,12 +204,13 @@ function SavedView({tab, filter, onShowAll, snapshot, onRetry, onRefresh, onNext
   const copy = emptyCopy(t, tab);
   // WEB-SAVED-05: a filter that matches nothing says so and offers the way back.
   const filtered = !!filter && filter !== 'all' && (tab === 'watchlist' || tab === 'favorites');
+  const playlistsFiltered = tab === 'playlists' && !!filter && filter !== 'all';
   const list = tab === 'favorites' ? t('saved.tab.favorites') : t('saved.tab.watchlist');
   return (
     <>
       {snapshot.phase === 'error' && !sections.length ? <ErrorState error={snapshot.error} context="saved" retry={onRetry} refresh={onRefresh} /> : snapshot.phase === 'error' ? <Inset><ErrorNotice error={snapshot.error} context="saved" retry={onRetry} refresh={onRefresh} /></Inset> : changedStuck ? <Inset><ErrorNotice error={snapshot.error ?? changedError} context="saved" refresh={onRefresh} /></Inset> : null}
       {snapshot.phase === 'loading' && !sections.length ? <LoadingGrid /> : null}
-      {snapshot.phase === 'ready' && !entries.length ? (filtered ? <StateView icon="filter" title={filter === 'unwatched' ? t('web.saved.noneUnwatched', {list}) : t('web.saved.noneInProgress', {list})} action={{label: t('web.saved.showAll'), onClick: onShowAll}} /> : <StateView icon={copy.icon} title={copy.title} body={copy.body} />) : null}
+      {snapshot.phase === 'ready' && !entries.length ? (playlistsFiltered ? <StateView icon="filter" title={t('playlists.filter.none')} action={{label: t('web.saved.showAll'), onClick: onShowAll}} /> : filtered ? <StateView icon="filter" title={filter === 'unwatched' ? t('web.saved.noneUnwatched', {list}) : t('web.saved.noneInProgress', {list})} action={{label: t('web.saved.showAll'), onClick: onShowAll}} /> : <StateView icon={copy.icon} title={copy.title} body={copy.body} />) : null}
       {tab === 'playlists' ? (
         entries.filter(isPlaylistCard).length ? (
           <Inset><Surface padless>{entries.filter(isPlaylistCard).map(card => <ListRow key={card.id} icon="queue" title={card.title} subtitle={card.subtitle} meta={card.count != null ? t('web.saved.items', {count: card.count}) : undefined} trailingIcon="forward" onClick={() => void navigate({to: '/saved/$kind/$resourceId', params: {kind: 'playlist', resourceId: card.navigation.entityId}, search: {title: card.title}})} />)}</Surface></Inset>
@@ -300,5 +316,22 @@ export function NameDialog({open, title, action, context, initialName = '', init
         <TextArea label={t('web.saved.summary')} optional rows={3} value={summary} onChange={e => setSummary(e.target.value)} />
       </form>
     </Dialog>
+  );
+}
+
+/** On a phone there is no rail: pinned collections, saved views and playlists lead Saved instead. */
+function PinnedShortcuts() {
+  const {t} = useI18n();
+  const compact = useCompact();
+  const session = useSession();
+  const scope = useViewerScope();
+  const navigate = useNavigate();
+  const pins = usePinnedResources(session.api, compact ? scope.serverId : '', compact ? sessionIdentity(session.session) || undefined : undefined);
+  if (!compact || !pins.order.length) return null;
+  return (
+    <Inset>
+      <Text as="h2" variant="label" tone="tertiary">{t('pins.heading')}</Text>
+      <Surface padless>{pins.order.map(entry => <ListRow key={entry.kind + ':' + entry.id} icon={pinnedResourceIcon(entry.kind)} title={entry.name} trailingIcon="forward" onClick={() => void navigate({to: '/saved/$kind/$resourceId', params: {kind: entry.kind, resourceId: entry.id}, search: {title: entry.name}})} />)}</Surface>
+    </Inset>
   );
 }

@@ -33,6 +33,8 @@ type PinnedResource struct {
 	Kind string `json:"kind"`
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	// PinRevision is what an unpin sends as its expected revision.
+	PinRevision int64 `json:"pinRevision"`
 }
 
 // PinnedResources is the viewer's pins in their arrangement.
@@ -63,7 +65,7 @@ func (s *Service) PinOrder(a ResourceActor) (PinnedResources, error) {
 		return out, e
 	}
 	out.Revision = revision
-	rows, e := s.read().Query(`SELECT p.kind,p.resource_id,COALESCE(r.name,l.name,'') AS pin_name FROM saved_pins p
+	rows, e := s.read().Query(`SELECT p.kind,p.resource_id,COALESCE(r.name,l.name,'') AS pin_name,p.revision FROM saved_pins p
  LEFT JOIN saved_pin_order o ON o.owner_key=p.owner_key AND o.kind=p.kind AND o.resource_id=p.resource_id
  LEFT JOIN saved_resources r ON p.kind IN('collection','view') AND r.id=p.resource_id AND r.kind=p.kind AND r.deleted=0
   AND (r.owner_key=p.owner_key OR EXISTS(SELECT 1 FROM saved_resource_shares share WHERE share.resource_id=r.id AND share.authority=? AND share.account_id=? AND share.profile_id=?) OR (r.kind='collection' AND r.visibility='server'))
@@ -77,7 +79,7 @@ func (s *Service) PinOrder(a ResourceActor) (PinnedResources, error) {
 	defer rows.Close()
 	for rows.Next() {
 		var entry PinnedResource
-		if e = rows.Scan(&entry.Kind, &entry.ID, &entry.Name); e != nil {
+		if e = rows.Scan(&entry.Kind, &entry.ID, &entry.Name, &entry.PinRevision); e != nil {
 			return out, e
 		}
 		out.Order = append(out.Order, entry)

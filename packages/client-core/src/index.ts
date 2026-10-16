@@ -74,7 +74,7 @@ export type AuthRecovery = Readonly<{
   recover(rejected: string): Promise<string | undefined>;
  permissionDenied?():Promise<boolean>;
 }>;
-export type Library = { id: string; name: string; kind: string; defaultView?: import('./library-content.ts').ContentView };
+export type Library = { id: string; name: string; kind: string; defaultView?: import('./library-content.ts').ContentView; /** Pinned by this viewer: pinned libraries come first, in the viewer's order. */ pinned?: boolean };
 export type MediaItem = {
   id: string;
   libraryId: string;

@@ -32,6 +32,10 @@
 .collapsed .railLabel, .collapsed .brand span { opacity: 0; width: 0; }
 .collapsed .railItem { padding: 0 10px; justify-content: flex-start; }
 .railGroup { display: flex; flex-direction: column; gap: 2px; }
+.railHeadingRow { display: flex; align-items: center; justify-content: space-between; gap: 4px; flex-shrink: 0; }
+.railHeadingRow .railHeading { flex: 1; min-width: 0; }
+.railHeadingAction { margin-top: 6px; }
+.railDivider { height: 1px; margin: 6px 11px; background: var(--line-soft); flex-shrink: 0; }
 .railHeading { padding: 12px 11px 4px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; }
 .collapsed .railHeading { visibility: hidden; height: 12px; padding: 0; }
 .railFoot { display: flex; flex-direction: column; gap: 2px; padding-top: 8px; border-top: 1px solid var(--line-soft); }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {acrossCondition, acrossOwnOrder, acrossPivot, episodeGroupCondition, groupMemoryId, groupMemoryScope, groupSort} from '../src/presentation/browse-groups.ts';
+import {acrossCondition, acrossOwnOrder, acrossPivot, episodeGroupCondition, episodeGroupQuery, groupMemoryId, homeRowQuery, groupMemoryScope, groupSort} from '../src/presentation/browse-groups.ts';
 import {acrossLibraries, browseCapabilitiesPath, browseFacetsPath, browsePath, libraryTabSorts, parseBrowseCapabilities, parseBrowseResult} from '../src/browse.ts';
 import {bucketIndexFor, titleBucketValue} from '../src/browse-buckets.ts';
 
@@ -64,4 +64,10 @@ test('a group is remembered under a short stable name, apart from libraries', ()
   assert.notEqual(a, groupMemoryId('lib', 'movies', [{field: 'collection', operator: 'equals', value: 'c2'}]));
   assert.ok(a.length < 40);
   assert.deepEqual(groupMemoryScope({serverId: 's', viewerId: 'v'}), {serverId: 's', viewerId: 'v#groups'});
+});
+
+test('an episode group and a Home row play whole through the server, in their own order', () => {
+  assert.deepEqual(episodeGroupQuery('tv', 'show1', 'range:100'), {libraryId: 'tv', pivot: 'episodes', query: {all: [{field: 'episodeGroup', operator: 'equals', value: 'show1/range:100'}]}, sort: [{field: 'groupOrder', direction: 'asc'}]});
+  assert.equal(homeRowQuery('recent_songs', ['song', 'album']).pivot, 'items');
+  assert.deepEqual(homeRowQuery('trending_now', ['movie', 'show']), {libraryId: '*', pivot: 'titles', query: {all: [{field: 'homeRow', operator: 'equals', value: 'trending_now'}]}, sort: [{field: 'groupOrder', direction: 'asc'}]});
 });
