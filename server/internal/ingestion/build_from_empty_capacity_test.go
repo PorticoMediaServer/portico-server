@@ -100,8 +100,9 @@ func TestBuildLibraryFromEmpty(t *testing.T) {
 		dbwork.ProfileStatements(true)
 		defer dbwork.ProfileStatements(false)
 	}
-	var cpuStart syscall.Rusage
+	var cpuStart, helpersStart syscall.Rusage
 	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &cpuStart)
+	_ = syscall.Getrusage(syscall.RUSAGE_CHILDREN, &helpersStart)
 	start := time.Now()
 	scanCtx, stopWorker := context.WithCancel(ctx)
 	defer stopWorker()
@@ -229,8 +230,9 @@ func TestBuildLibraryFromEmpty(t *testing.T) {
 	<-sampled
 	sample()
 	total := time.Since(start)
-	var cpuEnd syscall.Rusage
+	var cpuEnd, helpersEnd syscall.Rusage
 	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &cpuEnd)
+	_ = syscall.Getrusage(syscall.RUSAGE_CHILDREN, &helpersEnd)
 	if workErr != nil {
 		t.Fatal(workErr)
 	}
@@ -253,6 +255,6 @@ func TestBuildLibraryFromEmpty(t *testing.T) {
 		}
 		t.Logf("BUILD_COST ms=%.0f calls=%d %.300s", entry.Millis(), entry.Count, entry.Shape)
 	}
-	t.Logf("BUILD files=%d titles=%d scan_s=%.1f derive_busy_s=%.1f first_visible_s=%.1f half_visible_s=%.1f all_visible_s=%.1f all_searchable_s=%.1f idle_s=%.1f cpu_s=%.1f derived_units=%d ms_per_file=%.2f",
-		files, titles, seconds(scanWall), seconds(busy), seconds(firstVisible), seconds(halfVisible), seconds(allVisible), seconds(allSearchable), seconds(total), seconds(cpu(cpuEnd)-cpu(cpuStart)), units, float64(total)/float64(time.Millisecond)/float64(files))
+	t.Logf("BUILD files=%d titles=%d scan_s=%.1f derive_busy_s=%.1f first_visible_s=%.1f half_visible_s=%.1f all_visible_s=%.1f all_searchable_s=%.1f idle_s=%.1f cpu_s=%.1f helper_cpu_s=%.1f derived_units=%d ms_per_file=%.2f",
+		files, titles, seconds(scanWall), seconds(busy), seconds(firstVisible), seconds(halfVisible), seconds(allVisible), seconds(allSearchable), seconds(total), seconds(cpu(cpuEnd)-cpu(cpuStart)), seconds(cpu(helpersEnd)-cpu(helpersStart)), units, float64(total)/float64(time.Millisecond)/float64(files))
 }
