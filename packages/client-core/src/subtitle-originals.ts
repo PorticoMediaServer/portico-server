@@ -18,7 +18,24 @@ export type DrawnSubtitleFormat = 'ass' | 'pgs' | 'vobsub' | 'dvb';
 export const drawnSubtitleFormats: readonly DrawnSubtitleFormat[] = Object.freeze(['ass', 'pgs', 'vobsub', 'dvb']);
 
 /** One original as the server offers it. Addresses are server paths under the playback's media grant. */
-export type SubtitleOriginal = Readonly<{format: DrawnSubtitleFormat; url: string; companionUrl?: string; fontsUrl?: string}>;
+/** `linesUrl` (PGS, VobSub): how many of the track's lines are forced, for "Forced only" (`parseSubtitleLines`). */
+export type SubtitleOriginal = Readonly<{format: DrawnSubtitleFormat; url: string; companionUrl?: string; fontsUrl?: string; linesUrl?: string}>;
+
+/** `GET …/lines`: an image subtitle's lines and how many are forced. */
+export type SubtitleLines = Readonly<{forced: number; total: number}>;
+
+/** Reads `GET …/lines`; undefined when malformed. */
+export function parseSubtitleLines(v: unknown): SubtitleLines | undefined {
+  if (!record(v)) return undefined;
+  const forced = v.forced, total = v.total;
+  if (typeof forced !== 'number' || typeof total !== 'number' || !Number.isSafeInteger(forced) || !Number.isSafeInteger(total) || forced < 0 || total < forced) return undefined;
+  return Object.freeze({forced, total});
+}
+
+/** "Forced only" changes what is shown: some lines are forced and others are not (as the web's overlay decides). */
+export function forcedChoiceOf(lines: SubtitleLines | undefined): boolean {
+  return !!lines && lines.forced > 0 && lines.forced < lines.total;
+}
 
 const record = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 const base = routePattern("get_v1_media_subtitles_grant_resource_revision")
@@ -43,9 +60,10 @@ export function subtitleOriginals(resource: unknown): readonly SubtitleOriginal[
     const root = entry.url.slice(0, entry.url.lastIndexOf('/'));
     const companionUrl = format === 'vobsub' && entry.companionUrl === root + '/original.sub' ? entry.companionUrl : undefined;
     const fontsUrl = format === 'ass' && typeof entry.fontsUrl === 'string' && fontListPath.test(entry.fontsUrl) && entry.fontsUrl === root + '/fonts' ? entry.fontsUrl : undefined;
+    const linesUrl = (format === 'pgs' || format === 'vobsub') && entry.linesUrl === root + '/lines' ? entry.linesUrl : undefined;
     // DVD subtitles are two files; without the second there is nothing to draw.
     if (format === 'vobsub' && !companionUrl) continue;
-    out.push(Object.freeze({format, url: entry.url, ...(companionUrl ? {companionUrl} : {}), ...(fontsUrl ? {fontsUrl} : {})}));
+    out.push(Object.freeze({format, url: entry.url, ...(companionUrl ? {companionUrl} : {}), ...(fontsUrl ? {fontsUrl} : {}), ...(linesUrl ? {linesUrl} : {})}));
   }
   return Object.freeze(out);
 }
@@ -58,7 +76,7 @@ export function drawnRenderingFor(resource: unknown, draws: readonly string[]): 
   // pins the track and supplies its confined URLs; capability does not need a URL yet.
   if (!record(resource) || !Array.isArray(resource.deliveries)) return undefined;
   for (const delivery of resource.deliveries.slice(0, 16)) {
-    if (!record(delivery) || delivery.url !== undefined || delivery.companionUrl !== undefined || delivery.fontsUrl !== undefined) continue;
+    if (!record(delivery) || delivery.url !== undefined || delivery.companionUrl !== undefined || delivery.fontsUrl !== undefined || delivery.linesUrl !== undefined) continue;
     const format = delivery.format as DrawnSubtitleFormat;
     if (drawnSubtitleFormats.includes(format) && draws.includes(format)) return format;
   }
