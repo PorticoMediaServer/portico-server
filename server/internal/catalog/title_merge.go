@@ -48,7 +48,7 @@ func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 		}
 	case compactcatalog.Season:
 		return fmt.Errorf("%w: seasons merge with their shows", ErrNotMergeable)
-	case compactcatalog.Album, compactcatalog.Book, compactcatalog.Artist:
+	case compactcatalog.Album, compactcatalog.Book, compactcatalog.Artist, compactcatalog.Author:
 		return mergeContainerTx(ctx, tx, from, into, fromKind)
 	case compactcatalog.Movie, compactcatalog.Episode, compactcatalog.Track, compactcatalog.Part, compactcatalog.Extra:
 	default:

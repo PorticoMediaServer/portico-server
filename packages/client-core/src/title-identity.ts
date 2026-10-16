@@ -94,9 +94,9 @@ export async function removeLibrary(api:TitleIdentityApi,libraryId:string,confir
 // ── Merging and splitting ───────────────────────────────────────────────────
 
 /** The kinds of title two of which the server will make one: a show takes the other's seasons and episodes; the rest take the other's files as versions. */
-export const MERGEABLE_KINDS:readonly string[]=Object.freeze(['movie','show','episode','song','audiobook_file','extra','album','book','artist']);
-/** The kinds whose merge moves children (an album's songs, a book's files, an artist's albums) rather than files. */
-export const CONTAINER_MERGE_KINDS:readonly string[]=Object.freeze(['album','book','artist']);
+export const MERGEABLE_KINDS:readonly string[]=Object.freeze(['movie','show','episode','song','audiobook_file','extra','album','book','artist','author']);
+/** The kinds whose merge moves children (an album's songs, a book's files, an artist's albums, an author's books) rather than files. */
+export const CONTAINER_MERGE_KINDS:readonly string[]=Object.freeze(['album','book','artist','author']);
 /** What a merge of this kind does, in words: the message id of the explanation shown before it. */
 export const mergeExplanation=(kind:string):'web.merge.body'|'web.merge.containerBody'=>CONTAINER_MERGE_KINDS.includes(kind)?'web.merge.containerBody':'web.merge.body';
 /** Whether two titles can be offered for merging: different titles of one kind, and not known to be in different libraries (a list inside one library need not name it on every entry; the server refuses a pair that is not in one library). */

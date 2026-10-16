@@ -174,7 +174,7 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 				}
 			}
 		})
-	v1Route(r, apikit.Metadata{Admission: laneAdminHeavy, ID: "merge_titles", Method: "POST", Path: "/v1/admin/titles/merge", Summary: "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book or artist: its songs, files or albums) and everyone's state combined",
+	v1Route(r, apikit.Metadata{Admission: laneAdminHeavy, ID: "merge_titles", Method: "POST", Path: "/v1/admin/titles/merge", Summary: "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book, artist or author: its songs, files, albums or books) and everyone's state combined",
 		Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Cost: apikit.PageSized, BodyLimit: 4096, Status: 200, Errors: ownerErrors},
 		func(ctx context.Context, q *http.Request, in mergeTitlesRequest) (mergeTitlesResponse, error) {
 			p, _ := d.foundationCaller(q)
