@@ -100,6 +100,29 @@ func TestBuildLibraryFromEmpty(t *testing.T) {
 		dbwork.ProfileStatements(true)
 		defer dbwork.ProfileStatements(false)
 	}
+	// The server's maintenance loop copies committed pages into the database
+	// every second or two; without it the log grows and every commit pays
+	// for copying it.
+	checkpoints, err := dbwork.NewCheckpointSchedule(ctx, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	maintained, stopMaintenance := context.WithCancel(ctx)
+	maintenanceDone := make(chan struct{})
+	go func() {
+		defer close(maintenanceDone)
+		ticker := time.NewTicker(dbwork.CheckpointPollInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-maintained.Done():
+				return
+			case <-ticker.C:
+				checkpoints.Tick(maintained)
+			}
+		}
+	}()
+	defer func() { stopMaintenance(); <-maintenanceDone }()
 	var cpuStart, helpersStart syscall.Rusage
 	_ = syscall.Getrusage(syscall.RUSAGE_SELF, &cpuStart)
 	_ = syscall.Getrusage(syscall.RUSAGE_CHILDREN, &helpersStart)

@@ -156,7 +156,7 @@ func (s *Service) inventoryPage(ctx context.Context, job string, source catalog.
 
 // inventoryFolders lists and publishes the next pending folders of a local
 // source together: one helper lists them all, one transaction publishes them,
-// up to about one page of entries in all. It reports false, having published
+// up to one page's worth of entries in all. It reports false, having published
 // nothing, when fewer than two folders could be taken (the first folder's
 // listing failed, was unstable or is the only one pending), or when the
 // shared publication failed; the caller then takes the first folder alone.
@@ -194,10 +194,11 @@ func (s *Service) inventoryFolders(ctx context.Context, job string, source catal
 		}
 	}
 	// Take folders in order up to the first that needs the one-folder path,
-	// and stop at about one full page of entries.
+	// and stop at one page's worth of entries, so the transaction holds the
+	// write gate no longer than one full folder page does.
 	entries, taken := 0, 0
 	for i := range writes {
-		if errs[i] != nil || pages[i].Unstable || i > 0 && entries+len(pages[i].Entries) > 2*limit {
+		if errs[i] != nil || pages[i].Unstable || i > 0 && entries+len(pages[i].Entries) > limit {
 			break
 		}
 		writes[i].Page = pages[i]
