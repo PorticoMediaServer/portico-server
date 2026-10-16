@@ -10,6 +10,8 @@ export function sessionEndMessage(end:Readonly<{reason:string;message?:string}>)
   case 'lease_expired':return 'The stream disconnected. Play again to continue.';
   case 'replaced':return 'This playback was replaced by a newer one.';
   case 'restored':return 'The server was restored from a backup. Play again to continue.';
+  case 'paused_timeout':return 'Playback stopped after a long pause.';
+  case 'outside_allowed_hours':return 'This account can’t be used at this time of day, so playback stopped. Try again during its allowed hours.';
   default:return 'Playback was stopped on another device.';
  }
 }

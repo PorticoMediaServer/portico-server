@@ -62,7 +62,9 @@ export type DownloadGrant = Readonly<{preparationId: string; itemId: string; url
  * under the download grant, independently of live subtitle media addresses. */
 export type DownloadBundleFile = Readonly<{path: string; contentType: string}>;
 export type DownloadBundleSubtitle = Readonly<{id: string; revision: number; language: string; title: string; default: boolean; forced: boolean; files: Readonly<Record<string, DownloadBundleFile>>}>;
-export type DownloadBundleChapter = Readonly<{index: number; title: string; startSeconds: number; endSeconds: number}>;
+export type DownloadBundleChapter = Readonly<{index: number; title: string; startSeconds: number; endSeconds: number; /** The chapter's thumbnail, when the library makes them. */ image?: DownloadBundleFile}>;
+/** The file's scrubbing previews: sprite sheets (`tiles`, in order) of frames every `intervalSeconds`. */
+export type DownloadBundleTrickplay = Readonly<{id: string; tileWidth: number; tileHeight: number; columns: number; rows: number; intervalSeconds: number; frameCount: number; durationSeconds: number; sourceOffsetSeconds: number; thumbnails: DownloadBundleFile; tiles: readonly DownloadBundleFile[]}>;
 export type DownloadBundleMarker = Readonly<{kind: string; startSeconds: number; endSeconds: number; automatic: boolean}>;
 export type DownloadBundleAudio = Readonly<{index: number; language: string; title: string; codec: string; channels: number; default: boolean}>;
 /** Everything a download needs besides its media file, so the title can be listed, shown and
@@ -73,6 +75,7 @@ export type DownloadBundle = Readonly<{
   artwork: readonly Readonly<{role: string; path: string; contentType: string}>[];
   chapters: readonly DownloadBundleChapter[]; markers: readonly DownloadBundleMarker[];
   audio: readonly DownloadBundleAudio[]; subtitles: readonly DownloadBundleSubtitle[];
+  trickplay?: DownloadBundleTrickplay;
 }>;
 export type DownloadQualityOption = Readonly<{
   quality: string; label: string; kind: 'source'|'optimized'; targetDisplayHeight: number;
@@ -247,6 +250,12 @@ function bundleFile(raw: unknown): DownloadBundleFile {
   return Object.freeze({path: raw.path, contentType: String(raw.contentType ?? '')});
 }
 
+/** A chapter's thumbnail; one that does not read leaves the chapter without it. */
+function chapterImage(v: unknown): {image?: DownloadBundleFile} {
+  if (v === undefined) return {};
+  try { return {image: bundleFile(v)}; } catch { return {}; }
+}
+
 export function parseDownloadBundle(raw: unknown, preparationId: string): DownloadBundle {
   if (!object(raw) || raw.preparationId !== preparationId || !id(raw.itemId) || !id(raw.quality) || !text(raw.qualityLabel ?? '', 128) || !text(raw.overview ?? '', 65536)) invalid();
   const media = raw.media;
@@ -259,8 +268,18 @@ export function parseDownloadBundle(raw: unknown, preparationId: string): Downlo
   });
   const chapters = keepReadable('downloads', 'bundle.chapters', array(raw.chapters, 2000), v => {
     if (!object(v) || !count(v.index) || !text(v.title ?? '', 1024) || !seconds(v.startSeconds) || !seconds(v.endSeconds) || v.endSeconds <= v.startSeconds) invalid();
-    return Object.freeze({index: v.index, title: String(v.title ?? ''), startSeconds: v.startSeconds, endSeconds: v.endSeconds});
+    return Object.freeze({index: v.index, title: String(v.title ?? ''), startSeconds: v.startSeconds, endSeconds: v.endSeconds, ...chapterImage(v.image)});
   });
+  // Previews are an extra: a set that does not read is left out, the rest of the bundle stands.
+  let trickplay: DownloadBundleTrickplay | undefined;
+  if (raw.trickplay !== undefined) {
+    trickplay = keepReadable('downloads', 'bundle.trickplay', [raw.trickplay], v => {
+      if (!object(v) || !id(v.id) || ![v.tileWidth, v.tileHeight, v.columns, v.rows, v.frameCount].every(n => count(n) && n > 0) || !seconds(v.intervalSeconds) || !(v.intervalSeconds as number > 0) || !seconds(v.durationSeconds) || !seconds(v.sourceOffsetSeconds)) invalid();
+      const tiles = array(v.tiles, 128).map(bundleFile);
+      if (!tiles.length || tiles.length < Math.ceil((v.frameCount as number) / ((v.columns as number) * (v.rows as number)))) invalid();
+      return Object.freeze({id: v.id as string, tileWidth: v.tileWidth as number, tileHeight: v.tileHeight as number, columns: v.columns as number, rows: v.rows as number, intervalSeconds: v.intervalSeconds as number, frameCount: v.frameCount as number, durationSeconds: v.durationSeconds as number, sourceOffsetSeconds: v.sourceOffsetSeconds as number, thumbnails: bundleFile(v.thumbnails), tiles: Object.freeze(tiles)});
+    })[0];
+  }
   const markers = keepReadable('downloads', 'bundle.markers', array(raw.markers, 256), v => {
     if (!object(v) || !id(v.kind) || !seconds(v.startSeconds) || !seconds(v.endSeconds) || v.endSeconds <= v.startSeconds || typeof v.automatic !== 'boolean') invalid();
     return Object.freeze({kind: v.kind, startSeconds: v.startSeconds, endSeconds: v.endSeconds, automatic: v.automatic});
@@ -282,6 +301,7 @@ export function parseDownloadBundle(raw: unknown, preparationId: string): Downlo
     preparationId, itemId: raw.itemId, quality: raw.quality, qualityLabel: String(raw.qualityLabel ?? ''), title: parseDownloadTitle(raw.title), overview: String(raw.overview ?? ''),
     media: Object.freeze({container: String(media.container ?? ''), videoCodec: String(media.videoCodec ?? ''), audioCodec: String(media.audioCodec ?? ''), width: Number(media.width ?? 0), height: Number(media.height ?? 0)}),
     artwork: Object.freeze(artwork), chapters: Object.freeze(chapters), markers: Object.freeze(markers), audio: Object.freeze(audio), subtitles: Object.freeze(subtitles),
+    ...(trickplay ? {trickplay} : {}),
   });
 }
 

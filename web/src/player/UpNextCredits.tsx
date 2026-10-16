@@ -4,7 +4,7 @@ import {useI18n} from '../app/i18n';
 import {formatClock} from '@core/presentation/index.ts';
 import type {PlayerEngine} from './engine';
 import type {SkipMode} from './SkipPrompt';
-import {upNextCountdown, upNextOffer, type ClosingMarker, type UpNextOffer} from './up-next';
+import {upNextCountdown, upNextOffer, type ClosingMarker, type UpNextOffer} from '@core/up-next.ts';
 import s from './Player.module.css';
 
 type NextTitle = Readonly<{title: string; kind: string; posterUrl?: string; stillUrl?: string}>;

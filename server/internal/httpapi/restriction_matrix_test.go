@@ -202,6 +202,9 @@ var nonSessionCredential = map[string]string{
 	"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         "download transfer grant, resolved and reauthorized by downloadExtra",
 	"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    "download transfer grant, resolved and reauthorized by downloadExtra",
 	"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": "download transfer grant, resolved and reauthorized by downloadExtra",
+	"GET /v1/downloads/artifacts/{grant}/trickplay/{set}/thumbnails.vtt":         "download transfer grant, resolved and reauthorized by downloadExtra",
+	"GET /v1/downloads/artifacts/{grant}/trickplay/{set}/tiles/{tile}":           "download transfer grant, resolved and reauthorized by downloadExtra",
+	"GET /v1/downloads/artifacts/{grant}/chapters/{source}/{index}/image":        "download transfer grant, resolved and reauthorized by downloadExtra",
 
 	"GET /v1/topshelf":                                                   "Top Shelf device token",
 	"GET /v1/topshelf/art/{id}":                                          "Top Shelf device token",
@@ -290,6 +293,9 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
 		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
 		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
+		"GET /v1/downloads/artifacts/{grant}/trickplay/{set}/thumbnails.vtt":         exempt("download transfer grant rechecked against current item and library visibility by downloadExtra and the analysis read"),
+		"GET /v1/downloads/artifacts/{grant}/trickplay/{set}/tiles/{tile}":           exempt("download transfer grant rechecked against current item and library visibility by downloadExtra and the analysis read"),
+		"GET /v1/downloads/artifacts/{grant}/chapters/{source}/{index}/image":        exempt("download transfer grant rechecked against current item and library visibility by downloadExtra and the analysis read"),
 		// The list for the session's own device (any other device is not this
 		// session's to read). A request whose container has since become hidden
 		// is checked in the download-request-security subtest.

@@ -12,8 +12,9 @@ import type {MessageId, MessageValues} from '../../i18n/src/index.ts';
  *   `PlaybackService` stops the channel itself and ends with `ended.reason` `tuner_reserved`, which
  *   players show as "Live TV stopped" with no retry loop.
  *
- * The deadline is the server's clock; a device clock a few seconds out shifts the countdown by as
- * much, and the server's own stop is what is authoritative.
+ * The deadline is set by the server's clock and moved onto this device's clock when the session
+ * arrives (`parseChannelSession`, with the server's `nowMs`), so a device clock that is out does
+ * not shift the countdown. The server's own stop is still what is authoritative.
  */
 export const TUNER_RESERVED = 'tuner_reserved';
 export const COUNTDOWN_MS = 60_000;

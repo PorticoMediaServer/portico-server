@@ -63,6 +63,8 @@ export type SettingsCapabilities = Readonly<{
   audioPassthrough?: boolean;
   /** This device or its display can show HDR. Absent: it can. */
   hdr?: boolean;
+  /** This device cannot tell what its TV and sound system take, so the viewer says whether they show HDR and play surround (Vega). Absent or false: it detects them. */
+  declaredOutputs?: boolean;
   /** This device can be laid out for a television or for touch, whatever it reports itself as (an Android device). Absent or false: its layout is fixed. */
   layoutChoice?: boolean;
   /** This member makes personal access tokens for their own scripts. Absent or false: not offered (the owner makes API keys on the Server pages instead). */
@@ -87,7 +89,7 @@ export type SettingsControl =
 export type CompositeId =
   | 'playbackMethod' | 'cardSize'
   // Kept by the device and published in its capability document (`withViewerSettings`).
-  | 'playerEngine' | 'forceStereo' | 'disablePassthrough' | 'disableHdr'
+  | 'playerEngine' | 'forceStereo' | 'disablePassthrough' | 'disableHdr' | 'tvHdr' | 'tvSurround'
   | 'libraryView' | 'reduceMotion' | 'textSize' | 'receiveFromDevices'
   // Kept by the device and read before the app draws anything (B-19.10).
   | 'layout';
@@ -269,6 +271,11 @@ const accountPages: readonly AuthoredPage[] = [
         // converting the picture, lossy sound or burned-in subtitles. Kept by the device itself,
         // and shown only where there is a second player to choose.
         {kind: 'composite', id: 'playerEngine', storage: 'device', label: 'settings.row.player', help: 'settings.help.player', scope: 'device', platforms: ['phone', 'tv'], needs: c => !!c.playerEngines, control: {type: 'choice', choices: PLAYER_ENGINE_CHOICES}},
+      ]},
+      // Where the device cannot detect them, the viewer says what the TV shows and plays. Off: standard range and stereo.
+      {id: 'tvOutputs', title: 'settings.section.tvOutputs', description: 'settings.section.tvOutputsHelp', rows: [
+        {kind: 'composite', id: 'tvHdr', storage: 'device', label: 'settings.row.tvHdr', help: 'settings.help.tvHdr', scope: 'device', needs: c => c.declaredOutputs === true, control: {type: 'switch'}},
+        {kind: 'composite', id: 'tvSurround', storage: 'device', label: 'settings.row.tvSurround', help: 'settings.help.tvSurround', scope: 'device', needs: c => c.declaredOutputs === true, control: {type: 'switch'}},
       ]},
       // The short list for when detection is wrong. Each narrows what the server plans this device as.
       {id: 'fixes', title: 'settings.section.playbackFixes', description: 'settings.section.playbackFixesHelp', rows: [

@@ -53,7 +53,7 @@ export function v1ChannelId(ref: ChannelReference): string {
 
 type Programme = Readonly<{id: string; itemId?: string; title: string; startMs: number; endMs: number}>;
 type Linear = Readonly<{
-  reservationRequiredAtMs?:number;name: string; programme?: Programme; next?: Programme; originMs: number; windowStartMs: number; windowEndMs: number; liveEdgeMs: number;
+  reservationRequiredAtMs?:number;nowMs?:number;name: string; programme?: Programme; next?: Programme; originMs: number; windowStartMs: number; windowEndMs: number; liveEdgeMs: number;
   state: string; errorCode?: string; seek?: Readonly<{id: string; live?: boolean; positionMs?: number; acknowledged: boolean; error?: string}>; confirmedPositionMs?: number;
 }>;
 type Session = Readonly<{id: string; revision: string; state: string; presentation: Readonly<{generation: number; url: string; linear?: Linear}>; end?: Readonly<{reason: string; message?: string}>}>;
@@ -68,8 +68,13 @@ function parseProgramme(v: unknown): Programme | undefined {
   return v as Programme;
 }
 
-/** Reads a v1 channel session (the fields this control uses). */
-export function parseChannelSession(v: unknown): Session {
+/**
+ * Reads a v1 channel session (the fields this control uses), as it arrives. A tuner deadline comes
+ * with the server's clock (`nowMs`); it is moved onto this device's clock here, at receipt, so
+ * every player's countdown and the automatic stop run against server time whatever this device's
+ * clock says (off only by the response's travel time).
+ */
+export function parseChannelSession(v: unknown, now: () => number = Date.now): Session {
   if (!obj(v) || typeof v.id !== 'string' || typeof v.revision !== 'string' || typeof v.state !== 'string' || !obj(v.presentation) || !int(v.presentation.generation) || typeof v.presentation.url !== 'string') throw new Error('Unreadable channel session.');
   const l = v.presentation.linear;
   if (l !== undefined) {
@@ -78,6 +83,11 @@ export function parseChannelSession(v: unknown): Session {
     parseProgramme(l.programme); parseProgramme(l.next);
     if (l.seek !== undefined && (!obj(l.seek) || typeof l.seek.id !== 'string' || typeof l.seek.acknowledged !== 'boolean' || l.seek.positionMs !== undefined && !int(l.seek.positionMs))) throw new Error('Unreadable channel seek.');
     if (l.confirmedPositionMs !== undefined && !int(l.confirmedPositionMs)) throw new Error('Unreadable channel position.');
+    if (l.nowMs !== undefined && !int(l.nowMs)) throw new Error('Unreadable server clock.');
+    if (l.reservationRequiredAtMs !== undefined && l.nowMs !== undefined) {
+      const {nowMs, ...rest} = l;
+      return {...v, presentation: {...v.presentation, linear: {...rest, reservationRequiredAtMs: Math.max(0, l.reservationRequiredAtMs - nowMs + Math.round(now()))}}} as Session;
+    }
   }
   return v as Session;
 }

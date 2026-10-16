@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
-import {upNextCountdown, upNextOffer} from '../src/player/up-next.ts';
+import {upNextCountdown, upNextOffer} from '../../packages/client-core/src/up-next.ts';
 
 const credits = {id: 'c1', kind: 'credits', startSeconds: 1290, endSeconds: 1380, automaticSafe: true};
 const opening = {id: 'o1', kind: 'credits', startSeconds: 30, endSeconds: 90, automaticSafe: true};

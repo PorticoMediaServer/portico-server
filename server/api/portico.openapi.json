@@ -852,6 +852,11 @@
                         ],
                         "type": "object"
                       },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "originMs": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -1646,6 +1651,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -5399,6 +5409,11 @@
                     ],
                     "type": "object"
                   },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "originMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -6134,6 +6149,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -9465,6 +9485,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -28140,6 +28165,21 @@
                 "endSeconds": {
                   "type": "number"
                 },
+                "image": {
+                  "properties": {
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "contentType"
+                  ],
+                  "type": "object"
+                },
                 "index": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -28336,6 +28376,94 @@
               "onServer"
             ],
             "type": "object"
+          },
+          "trickplay": {
+            "properties": {
+              "columns": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "durationSeconds": {
+                "type": "number"
+              },
+              "frameCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "intervalSeconds": {
+                "type": "number"
+              },
+              "rows": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "sourceOffsetSeconds": {
+                "type": "number"
+              },
+              "thumbnails": {
+                "properties": {
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path",
+                  "contentType"
+                ],
+                "type": "object"
+              },
+              "tileHeight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "tileWidth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "tiles": {
+                "items": {
+                  "properties": {
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "contentType"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "tileWidth",
+              "tileHeight",
+              "columns",
+              "rows",
+              "intervalSeconds",
+              "frameCount",
+              "durationSeconds",
+              "sourceOffsetSeconds",
+              "thumbnails",
+              "tiles"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -28353,6 +28481,15 @@
           "subtitles"
         ],
         "type": "object"
+      },
+      "GetDownloadChapterImageRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetDownloadChapterImageResponse": {
+        "format": "binary",
+        "type": "string"
       },
       "GetDownloadOptionsRequest": {
         "properties": {},
@@ -29106,6 +29243,24 @@
         "type": "object"
       },
       "GetDownloadSubtitleResponse": {
+        "format": "binary",
+        "type": "string"
+      },
+      "GetDownloadTrickplayThumbnailsRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetDownloadTrickplayThumbnailsResponse": {
+        "format": "binary",
+        "type": "string"
+      },
+      "GetDownloadTrickplayTileRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetDownloadTrickplayTileResponse": {
         "format": "binary",
         "type": "string"
       },
@@ -58747,6 +58902,11 @@
                     ],
                     "type": "object"
                   },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "originMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -76278,6 +76438,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -97242,6 +97407,11 @@
                     ],
                     "type": "object"
                   },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "originMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -106055,6 +106225,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -117987,6 +118162,11 @@
                     ],
                     "type": "object"
                   },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "originMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -118959,6 +119139,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -175063,6 +175248,97 @@
         "x-scope": "open"
       }
     },
+    "/v1/downloads/artifacts/{grant}/chapters/{source}/{index}/image": {
+      "get": {
+        "operationId": "get_download_chapter_image",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Fetch one chapter thumbnail that travels with a download",
+        "x-access": "public",
+        "x-admission": "media",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_download_grant",
+          "downloads_not_allowed",
+          "download_unavailable",
+          "download_not_ready",
+          "download_source_offline",
+          "downloads_unavailable",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
+      }
+    },
     "/v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt": {
       "get": {
         "operationId": "get_download_subtitle",
@@ -175235,6 +175511,180 @@
           }
         },
         "summary": "Fetch one file of a styled or picture subtitle track that travels with a download",
+        "x-access": "public",
+        "x-admission": "media",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_download_grant",
+          "downloads_not_allowed",
+          "download_unavailable",
+          "download_not_ready",
+          "download_source_offline",
+          "downloads_unavailable",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
+      }
+    },
+    "/v1/downloads/artifacts/{grant}/trickplay/{set}/thumbnails.vtt": {
+      "get": {
+        "operationId": "get_download_trickplay_thumbnails",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "set",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Fetch the scrubbing preview track that travels with a download",
+        "x-access": "public",
+        "x-admission": "media",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_download_grant",
+          "downloads_not_allowed",
+          "download_unavailable",
+          "download_not_ready",
+          "download_source_offline",
+          "downloads_unavailable",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
+      }
+    },
+    "/v1/downloads/artifacts/{grant}/trickplay/{set}/tiles/{tile}": {
+      "get": {
+        "operationId": "get_download_trickplay_tile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "set",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tile",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Fetch one scrubbing preview sheet that travels with a download",
         "x-access": "public",
         "x-admission": "media",
         "x-cost": "constant",
@@ -176586,6 +177036,21 @@
                           "endSeconds": {
                             "type": "number"
                           },
+                          "image": {
+                            "properties": {
+                              "contentType": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "contentType"
+                            ],
+                            "type": "object"
+                          },
                           "index": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -176780,6 +177245,94 @@
                         "kind",
                         "title",
                         "onServer"
+                      ],
+                      "type": "object"
+                    },
+                    "trickplay": {
+                      "properties": {
+                        "columns": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "durationSeconds": {
+                          "type": "number"
+                        },
+                        "frameCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "intervalSeconds": {
+                          "type": "number"
+                        },
+                        "rows": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "sourceOffsetSeconds": {
+                          "type": "number"
+                        },
+                        "thumbnails": {
+                          "properties": {
+                            "contentType": {
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "contentType"
+                          ],
+                          "type": "object"
+                        },
+                        "tileHeight": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "tileWidth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "tiles": {
+                          "items": {
+                            "properties": {
+                              "contentType": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "contentType"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "tileWidth",
+                        "tileHeight",
+                        "columns",
+                        "rows",
+                        "intervalSeconds",
+                        "frameCount",
+                        "durationSeconds",
+                        "sourceOffsetSeconds",
+                        "thumbnails",
+                        "tiles"
                       ],
                       "type": "object"
                     }
@@ -248647,6 +249200,11 @@
                               ],
                               "type": "object"
                             },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "originMs": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -249364,6 +249922,11 @@
                                 "endMs"
                               ],
                               "type": "object"
+                            },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "originMs": {
                               "maximum": 9007199254740991,
@@ -250127,6 +250690,11 @@
                                 "endMs"
                               ],
                               "type": "object"
+                            },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "originMs": {
                               "maximum": 9007199254740991,
@@ -255950,6 +256518,11 @@
                                   ],
                                   "type": "object"
                                 },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "originMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -257109,6 +257682,11 @@
                                   ],
                                   "type": "object"
                                 },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "originMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -258159,6 +258737,11 @@
                                   ],
                                   "type": "object"
                                 },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "originMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -259036,6 +259619,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -260046,6 +260634,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -261110,6 +261703,11 @@
                                   ],
                                   "type": "object"
                                 },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "originMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -261985,6 +262583,11 @@
                                   ],
                                   "type": "object"
                                 },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "originMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -262677,6 +263280,11 @@
                                 "endMs"
                               ],
                               "type": "object"
+                            },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "originMs": {
                               "maximum": 9007199254740991,
