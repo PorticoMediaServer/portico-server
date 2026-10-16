@@ -256,12 +256,12 @@ func RemoveTitleTx(ctx context.Context, tx *sql.Tx, entity int64) error {
 		}
 	}
 	if album.Valid {
-		if err = retireEmptiedAlbumTx(ctx, tx, album.Int64); err != nil {
+		if err = retireEmptiedAlbumTx(ctx, tx, album.Int64, 0); err != nil {
 			return err
 		}
 	}
 	if book.Valid {
-		if err = settleEmptiedBook(ctx, tx, book.Int64); err != nil {
+		if err = settleEmptiedBook(ctx, tx, book.Int64, 0); err != nil {
 			return err
 		}
 	}
