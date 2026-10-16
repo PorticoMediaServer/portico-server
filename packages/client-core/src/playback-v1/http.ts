@@ -21,7 +21,10 @@ export class PlaybackApiError extends Error {
   readonly retryAfterMs?: number;
   /** The resource's current representation, when the server sends it (412, some 409s). */
   readonly current?: unknown;
-  constructor(status: number, code: string, retry: RetryClass, current?: unknown, retryAfterMs?: number) {
+  /** The server's machine reason, when it gives one: for `connection_too_slow`, the widest fixed
+   * quality the connection carries ("720p"). */
+  readonly reason?: string;
+  constructor(status: number, code: string, retry: RetryClass, current?: unknown, retryAfterMs?: number, reason?: string) {
     super(code);
     this.name = 'PlaybackApiError';
     this.status = status;
@@ -29,6 +32,7 @@ export class PlaybackApiError extends Error {
     this.retry = retry;
     this.current = current;
     this.retryAfterMs = retryAfterMs;
+    if (reason) this.reason = reason;
   }
 }
 
@@ -55,10 +59,11 @@ export async function call(http: V1Http, request: V1Request, ok?: readonly numbe
   const r = await http.send(request);
   const good = ok ? ok.includes(r.status) : r.status >= 200 && r.status < 300;
   if (good) return r;
-  const e = (r.body as {error?: {code?: unknown; retry?: unknown; current?: unknown; retryAfterSeconds?: unknown}} | undefined)?.error;
+  const e = (r.body as {error?: {code?: unknown; retry?: unknown; current?: unknown; retryAfterSeconds?: unknown; reason?: unknown}} | undefined)?.error;
   const code = typeof e?.code === 'string' ? e.code : r.status === 404 ? 'not_found' : 'request_failed';
   const retry = (['never', 'same_request', 'after_refresh', 'after_reauth'] as const).includes(e?.retry as RetryClass) ? e!.retry as RetryClass : defaultRetry(r.status);
-  throw new PlaybackApiError(r.status, code, retry, e?.current, retryAfter(r, e));
+  const reason = typeof e?.reason === 'string' && e.reason.length <= 128 ? e.reason : undefined;
+  throw new PlaybackApiError(r.status, code, retry, e?.current, retryAfter(r, e), reason);
 }
 
 /** A fresh `Idempotency-Key` (16–128 chars, `[A-Za-z0-9_-]`, style guide §4.7.3). */

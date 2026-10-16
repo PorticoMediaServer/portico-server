@@ -852,6 +852,11 @@
                         ],
                         "type": "object"
                       },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "originMs": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -1643,6 +1648,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -5393,6 +5403,11 @@
                     ],
                     "type": "object"
                   },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "originMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -6125,6 +6140,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -9453,6 +9473,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -58723,6 +58748,11 @@
                     ],
                     "type": "object"
                   },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "originMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -76199,6 +76229,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -97157,6 +97192,11 @@
                     ],
                     "type": "object"
                   },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "originMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -105967,6 +106007,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -117896,6 +117941,11 @@
                     ],
                     "type": "object"
                   },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "originMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -118865,6 +118915,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -248410,6 +248465,11 @@
                               ],
                               "type": "object"
                             },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "originMs": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -249124,6 +249184,11 @@
                                 "endMs"
                               ],
                               "type": "object"
+                            },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "originMs": {
                               "maximum": 9007199254740991,
@@ -249884,6 +249949,11 @@
                                 "endMs"
                               ],
                               "type": "object"
+                            },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "originMs": {
                               "maximum": 9007199254740991,
@@ -255704,6 +255774,11 @@
                                   ],
                                   "type": "object"
                                 },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "originMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -256860,6 +256935,11 @@
                                   ],
                                   "type": "object"
                                 },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "originMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -257907,6 +257987,11 @@
                                   ],
                                   "type": "object"
                                 },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "originMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -258781,6 +258866,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -259788,6 +259878,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -260849,6 +260944,11 @@
                                   ],
                                   "type": "object"
                                 },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "originMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -261721,6 +261821,11 @@
                                   ],
                                   "type": "object"
                                 },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
                                 "originMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -262410,6 +262515,11 @@
                                 "endMs"
                               ],
                               "type": "object"
+                            },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "originMs": {
                               "maximum": 9007199254740991,

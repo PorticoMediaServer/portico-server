@@ -81,3 +81,15 @@ export function qualityOptionSelected(option: QualityOption, inForce: QualityInF
 export function sameQuality(a: QualityRequest, b: QualityRequest): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
+
+/**
+ * A quality change the server refused because the connection is too slow for it
+ * (`connection_too_slow`), with the widest fixed quality that would fit when the server named one
+ * (its error `reason`). Null for any other failure. Every player says the same thing with it.
+ */
+export function connectionTooSlow(error: unknown): Readonly<{fits?: (typeof qualityLadder)[number]}> | null {
+  const e = error as {code?: unknown; reason?: unknown} | null;
+  if (!e || typeof e !== 'object' || e.code !== 'connection_too_slow') return null;
+  const fits = typeof e.reason === 'string' ? qualityLadder.find(q => q.id === e.reason) : undefined;
+  return Object.freeze(fits ? {fits} : {});
+}

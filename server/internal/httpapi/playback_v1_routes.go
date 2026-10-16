@@ -12,6 +12,7 @@ import (
 
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
+	"portico.local/server/internal/access"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
@@ -118,6 +119,19 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 				return time.Duration(minutes) * time.Minute
 			}
 			return 0
+		}
+	}
+	// A member's allowed hours close while they watch: the sweeper ends their
+	// sessions with the reason, so every player says why (N20).
+	if d.Access.Access != nil && d.DB != nil {
+		db, enforcer := d.DB, d.enforcer()
+		s.OutsideHours = func(ctx context.Context, account string) bool {
+			tx, done, err := dbwork.BeginRead(ctx, db)
+			if err != nil {
+				return false
+			}
+			defer done()
+			return errors.Is(enforcer.AdmitAccount(ctx, tx, account), access.ErrSchedule)
 		}
 	}
 	// Channels on v1 sessions (§18.6): the runtime's channel sessions, its wake,
