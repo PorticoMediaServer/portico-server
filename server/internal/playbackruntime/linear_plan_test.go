@@ -12,7 +12,7 @@ func TestLinearUsesPublishedProfileAndBoundsConvertedPicture(t *testing.T) {
 	w.ClientProfile.Video[0].MaxFrameRate = 30
 	w.ClientProfile.Video[0].MaxLevel = 41
 	w.ClientProfile.Video[0].MaxHeight = 1080
-	p, e := linearPlan([]byte(`{"streams":[{"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","width":3840,"height":2160,"level":52,"avg_frame_rate":"60/1","field_order":"tt"},{"codec_type":"audio","codec_name":"aac","profile":"LC","channels":2,"sample_rate":"48000"}]}`), w)
+	p, e := linearPlan([]byte(`{"streams":[{"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","width":3840,"height":2160,"level":52,"avg_frame_rate":"60/1","field_order":"tt"},{"codec_type":"audio","codec_name":"aac","profile":"LC","channels":2,"sample_rate":"48000"}]}`), w, playback.LinearTSOnly)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -20,7 +20,7 @@ func TestLinearUsesPublishedProfileAndBoundsConvertedPicture(t *testing.T) {
 		t.Fatalf("%+v", p)
 	}
 	w.ClientProfile.Transports = nil
-	if _, e = linearPlan([]byte(`{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2}]}`), w); e == nil {
+	if _, e = linearPlan([]byte(`{"streams":[{"codec_type":"audio","codec_name":"aac","channels":2}]}`), w, playback.LinearTSOnly); e == nil {
 		t.Fatal("admitted unavailable output transport")
 	}
 }
@@ -35,14 +35,14 @@ func TestLinearPlanHonorsNarrowedProfile(t *testing.T) {
 		w.Selection.Quality.AllowLossy = true
 		return w
 	}
-	base, err := linearPlan(probe, work(playback.BaselineClientProfile()))
+	base, err := linearPlan(probe, work(playback.BaselineClientProfile()), playback.LinearTSOnly)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if base.ConvertVideo || base.VideoBitrate != 0 {
 		t.Fatalf("baseline plan changed: %+v", base)
 	}
-	capped, err := linearPlan(probe, work(playback.WithVideoBitrateCeiling(playback.BaselineClientProfile(), 3000000)))
+	capped, err := linearPlan(probe, work(playback.WithVideoBitrateCeiling(playback.BaselineClientProfile(), 3000000)), playback.LinearTSOnly)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestLinearCopiesCompatibleCodecsAndUnknownLiveRates(t *testing.T) {
 		w.Selection.Quality.Mode = "original"
 		w.Selection.Quality.AllowLossy = true
 		raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"` + codec + `","pix_fmt":"yuv420p","width":1920,"height":1080,"avg_frame_rate":"0/0","field_order":"progressive"},{"codec_type":"audio","codec_name":"ac3","channels":6,"sample_rate":"48000"}]}`)
-		plan, e := linearPlan(raw, w)
+		plan, e := linearPlan(raw, w, playback.LinearTSOnly)
 		if e != nil || plan.ConvertVideo || plan.ConvertAudio {
 			t.Fatalf("%s: %+v %v", codec, plan, e)
 		}
@@ -88,7 +88,7 @@ func TestLinearAudioConversionKeepsCopiedHDR(t *testing.T) {
 	w := playback.LinearWork{ClientProfile: p, TranscodingEnabled: true}
 	w.Selection.Quality.AllowLossy = true
 	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"hevc","pix_fmt":"yuv420p10le","color_transfer":"smpte2084","width":1920,"height":1080,"avg_frame_rate":"30/1","field_order":"progressive"},{"codec_type":"audio","codec_name":"ac3","channels":6,"sample_rate":"48000"}]}`)
-	plan, e := linearPlan(raw, w)
+	plan, e := linearPlan(raw, w, playback.LinearTSOnly)
 	if e != nil || plan.ConvertVideo || !plan.ConvertAudio || plan.HDRToSDR {
 		t.Fatalf("%+v %v", plan, e)
 	}
@@ -111,8 +111,34 @@ func TestLinearUsesSharedHEVCAndSurroundTargets(t *testing.T) {
 	w.Selection.Quality.AllowLossy = true
 	w.Selection.Quality.MaxHeight = &height
 	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"vc1","pix_fmt":"yuv420p10le","color_transfer":"smpte2084","width":3840,"height":2160,"avg_frame_rate":"24/1"},{"codec_type":"audio","codec_name":"dts","profile":"DTS-HD MA","channels":8,"sample_rate":"96000","channel_layout":"7.1"}]}`)
-	plan, err := linearPlan(raw, w)
+	plan, err := linearPlan(raw, w, playback.LinearTSOnly)
 	if err != nil || plan.Target == nil || !plan.ConvertVideo || !plan.ConvertAudio || plan.HDRToSDR || plan.Target.VideoCodec != "hevc" || plan.Target.BitDepth != 10 || plan.Target.DynamicRange != "hdr10" || plan.Target.AudioCodec != "eac3" || plan.Target.AudioChannels != 6 || plan.Target.AudioBitrateBPS != 640000 {
 		t.Fatalf("%+v %v", plan.Target, err)
+	}
+}
+
+// A live input may be published as fragmented MP4 when that is what keeps the
+// signal: lossless sound for a device that plays FLAC only in MP4, HEVC for a
+// device that takes HEVC only in MP4.
+func TestLinearPlanUsesFragmentedMP4WhereItKeepsTheSignal(t *testing.T) {
+	p := playback.BaselineClientProfile()
+	p.AudioOutput.MaxChannels = 6
+	p.Video = append(p.Video, playback.ClientVideoCodec{Codec: "hevc", BitDepths: []int{8, 10}, DynamicRanges: []string{"sdr"}, MaxWidth: 3840, MaxHeight: 2160})
+	p.Audio = append(p.Audio, playback.ClientAudioCodec{Codec: "flac", MaxChannels: 8})
+	p.Transports = append(p.Transports, playback.ClientTransport{Transport: playback.TransportHLSFMP4, Containers: []string{"fmp4"}, Video: []string{"h264", "hevc"}, Audio: []string{"aac", "flac"}})
+	w := playback.LinearWork{ClientProfile: p, TranscodingEnabled: true}
+	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"hevc","profile":"Main","pix_fmt":"yuv420p","width":1920,"height":1080,"avg_frame_rate":"25/1"},{"codec_type":"audio","codec_name":"flac","channels":2,"sample_rate":"48000"}]}`)
+	plan, err := linearPlan(raw, w, playback.LinearEither)
+	if err != nil || !plan.Fragmented || plan.ConvertVideo || plan.ConvertAudio || !plan.CopyHEVC {
+		t.Fatalf("%+v %v", plan, err)
+	}
+	// The same device on a buffer that already holds MPEG-TS is planned for MPEG-TS.
+	if plan, err = linearPlan(raw, w, playback.LinearTSOnly); err == nil && plan.Fragmented {
+		t.Fatalf("%+v", plan)
+	}
+	// An ordinary H.264/AAC input stays MPEG-TS.
+	raw = []byte(`{"streams":[{"codec_type":"video","codec_name":"h264","profile":"High","pix_fmt":"yuv420p","width":1920,"height":1080,"avg_frame_rate":"25/1"},{"codec_type":"audio","codec_name":"aac","profile":"LC","channels":2,"sample_rate":"48000"}]}`)
+	if plan, err = linearPlan(raw, w, playback.LinearEither); err != nil || plan.Fragmented {
+		t.Fatalf("%+v %v", plan, err)
 	}
 }

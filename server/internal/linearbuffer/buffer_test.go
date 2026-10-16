@@ -174,7 +174,7 @@ func TestPublisherImmutableAndAuthorityFenced(t *testing.T) {
 }
 func TestManifestRejectsPathsKeysAndUnboundedData(t *testing.T) {
 	for _, text := range []string{"#EXTM3U\n#EXTINF:4,\n../segment-000000000.ts\n", "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"http://secret\"\n#EXTINF:4,\nsegment-000000000.ts\n", "#EXTM3U\n#EXTINF:NaN,\nsegment-000000000.ts\n", "#EXTM3U\n#EXTINF:61,\nsegment-000000000.ts\n"} {
-		if _, e := parseManifest([]byte(text)); e == nil {
+		if _, e := parseManifest([]byte(text), false); e == nil {
 			t.Fatalf("accepted %q", text)
 		}
 	}

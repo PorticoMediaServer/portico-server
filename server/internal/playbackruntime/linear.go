@@ -754,12 +754,20 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 	if e != nil {
 		return e
 	}
-	plan, e := linearPlan(raw, w)
+	// A live input may publish fragmented MP4 where the device needs it; a
+	// buffer already holding media keeps its kind.
+	packaging := playback.LinearEither
+	if held, fragmented := entry.buffer.Packaging(); held && fragmented {
+		packaging = playback.LinearFragmentedOnly
+	} else if held {
+		packaging = playback.LinearTSOnly
+	}
+	plan, e := linearPlan(raw, w, packaging)
 	if e != nil {
 		return e
 	}
 	plan.HLSInput = gateway.HLS()
-	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal}, func() error { return l.checkProducerWithPatience(work, w) })
+	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal, Fragmented: plan.Fragmented}, func() error { return l.checkProducerWithPatience(work, w) })
 	if e != nil {
 		return e
 	}
@@ -822,7 +830,8 @@ func (l *LinearRuntime) produceLibrary(ctx context.Context, w playback.LinearWor
 	if e != nil {
 		return e
 	}
-	plan, e := linearPlan(raw, w)
+	// A library channel's timeline is the source's own MPEG-TS clock.
+	plan, e := linearPlan(raw, w, playback.LinearTSOnly)
 	if e != nil {
 		return e
 	}
@@ -1079,7 +1088,7 @@ func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, g
 		http.Error(w, "media authority expired", 403)
 		return
 	}
-	w.Header().Set("Content-Type", "video/mp2t")
+	w.Header().Set("Content-Type", reader.ContentType)
 	w.Header().Set("Content-Length", strconv.FormatInt(reader.Size, 10))
 	if r.Method == "HEAD" {
 		return

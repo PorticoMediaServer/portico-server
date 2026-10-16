@@ -31,7 +31,7 @@ type linearProbeStream struct {
 
 // Plan from probed elementary streams and the admitted engine's declarations.
 // A conversion must produce a supported tuple, not merely a supported codec.
-func linearPlan(raw []byte, w playback.LinearWork) (decoder.LinearEncoding, error) {
+func linearPlan(raw []byte, w playback.LinearWork, packaging playback.LinearPackaging) (decoder.LinearEncoding, error) {
 	var facts struct {
 		Streams []linearProbeStream `json:"streams"`
 		Format  struct {
@@ -59,7 +59,9 @@ func linearPlan(raw []byte, w playback.LinearWork) (decoder.LinearEncoding, erro
 	if client.Version == 0 {
 		client = playback.BaselineClientProfile()
 	}
-	if !slices.ContainsFunc(client.Transports, func(t playback.ClientTransport) bool { return t.Transport == playback.TransportHLSTS }) {
+	if !slices.ContainsFunc(client.Transports, func(t playback.ClientTransport) bool {
+		return t.Transport == playback.TransportHLSTS && packaging != playback.LinearFragmentedOnly || t.Transport == playback.TransportHLSFMP4 && packaging != playback.LinearTSOnly
+	}) {
 		return plan, channelFault("engine_transport_unavailable", 422)
 	}
 	var sourceVideo *playback.SourceVideo
@@ -95,10 +97,12 @@ func linearPlan(raw []byte, w playback.LinearWork) (decoder.LinearEncoding, erro
 		source.Audio = []playback.SourceAudio{*sourceAudio}
 	}
 	source.BitRate, _ = strconv.ParseInt(facts.Format.Bitrate, 10, 64)
-	selected, err := playback.PlanLinearDelivery(source, client, w.Selection.Quality, w.TranscodingEnabled)
+	selected, err := playback.PlanLinearDelivery(source, client, w.Selection.Quality, w.TranscodingEnabled, packaging)
 	if err != nil {
 		return plan, channelFault("engine_codec_unavailable", 422)
 	}
+	plan.Fragmented = selected.OutputContainer == "fmp4_hls"
+	plan.CopyHEVC = sourceVideo != nil && sourceVideo.Codec == "hevc" && selected.VideoAction == "copy"
 	q := w.Selection.Quality
 	plan.Video, plan.Audio = video != nil, audio != nil
 	plan.ConvertVideo, plan.ConvertAudio = selected.VideoAction == "convert", selected.AudioAction == "convert"
