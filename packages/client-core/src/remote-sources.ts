@@ -5,11 +5,13 @@ import {routePath, encodedRoutePath} from "../../contracts/src/routes.ts";
  * explicit in-flight request, never in snapshots, storage, URLs or retry queues. */
 import type {ContentScope,LibraryContentApi} from './library-content.ts';
 import {firstOfEach,keepReadable,noteSkipped,oneOfOr} from './tolerant.ts';
+import {rebaseDraft} from './freshness-actions.ts';
 export type RemoteSource=Readonly<{id:string;kind:'rclone'|'webdav';name:string;rootPath:string;generation:number;state:string;errorCode?:string;rangeSupport:'unknown'|'conditional'|'unsupported'|'sequential';origin?:string;insecureLocal:boolean;credentialPresent:boolean;mountId?:string}>;
 export type DAVConfiguration=Readonly<{name:string;root:string;username:string;password:string;keepPassword:boolean;keepConnection:boolean;insecureLocal:boolean;expectedGeneration?:number}>;
 export type RemoteReceipt=Readonly<{operationId:string;accepted:true;removed:boolean;source:RemoteSource}>;
 export type AnalysisPolicy=Readonly<{libraryId:string;enabled:boolean;revision:number;effective?:boolean;scanTier?:string}>;
-export type RemoteState=Readonly<{sources:readonly RemoteSource[];loading:boolean;busy:boolean;error:string;operationId:string|null;ambiguous:boolean;receipt:RemoteReceipt|null;mountSupported:boolean}>;
+/** `alreadyDone`: the last command found, on a fresh read, that what it asked for is already so (a share removed elsewhere). */
+export type RemoteState=Readonly<{sources:readonly RemoteSource[];loading:boolean;busy:boolean;error:string;errorCode:string;operationId:string|null;ambiguous:boolean;receipt:RemoteReceipt|null;alreadyDone:boolean;mountSupported:boolean}>;
 const record=(x:unknown):x is Record<string,unknown>=>!!x&&typeof x==='object'&&!Array.isArray(x);
 const text=(x:unknown,n=8192):x is string=>typeof x==='string'&&x.length<=n&&!/[\x00-\x1f\x7f]/.test(x);
 const integer=(x:unknown):x is number=>typeof x==='number'&&Number.isSafeInteger(x)&&x>=0;
@@ -24,9 +26,24 @@ function source(x:unknown):RemoteSource{
  return Object.freeze({id:x.id,kind:x.kind as RemoteSource['kind'],name:x.name,rootPath:x.rootPath,generation:x.generation,state:x.state,rangeSupport:oneOfOr('remote-sources','source.rangeSupport',x.rangeSupport,['unknown','conditional','unsupported','sequential'] as const,'unknown'),insecureLocal:x.insecureLocal,credentialPresent:x.credentialPresent,...(x.origin===undefined?{}:{origin:x.origin as string}),...(errorCode===undefined?{}:{errorCode}),...(x.mountId===undefined?{}:{mountId:x.mountId as string})});
 }
 const messages:Record<string,string>={remote_source_changed:'This source changed. Refresh before submitting a new configuration.',storage_command_conflict:'The source changed or this operation conflicts with a previous receipt.',storage_operation_expired:'The operation expired. Check the device clock and refresh.',remote_credentials_required:'The provider rejected the credentials. The previous configuration remains active.',remote_invalid_configuration:'Check the endpoint, approved network access and configuration.',remote_range_unsupported:'The server cannot safely range-read this provider representation.',remote_binary_changed:'The approved rclone executable changed. Reapprove it in source configuration.',remote_budget_exceeded:'This operation exceeded the configured safety budget.',remote_rate_limited:'The provider or server is busy. Check the original receipt before retrying.',unauthorized:'Owner sign-in is required.',forbidden:'This viewer cannot manage sources.'};
+const CONFLICT='storage_command_conflict';
+/**
+ * An edit carried onto the share as it is now, after someone else changed it. What the owner left
+ * alone takes the share's new value; what they changed keeps theirs. Undefined when they changed
+ * something that was also changed underneath (the one case worth telling them about). The
+ * connection is one thing: its address and whether it has a password; credentials are never read.
+ */
+export function rebaseDavEdit(base:RemoteSource,fresh:RemoteSource,input:DAVConfiguration):DAVConfiguration|undefined{
+ const connection=(x:RemoteSource)=>`${x.origin??''}|${x.credentialPresent}`;
+ const mine=!input.keepConnection||!input.keepPassword;
+ const shape=(x:RemoteSource)=>({name:x.name,insecureLocal:x.insecureLocal,connection:connection(x)});
+ const {merged,conflict}=rebaseDraft(shape(base),{name:input.name.trim(),insecureLocal:input.insecureLocal,connection:mine?'edited':connection(base)},shape(fresh));
+ if(conflict)return undefined;
+ return {...input,name:merged.name,insecureLocal:merged.insecureLocal,expectedGeneration:fresh.generation};
+}
 function safeError(e:unknown):string{const code=record(e)&&typeof e.code==='string'?e.code:'';return messages[code]??'The operation outcome is not confirmed. Check the original receipt; credentials will not be resent automatically.';}
 export class RemoteSourceService{
- private state:RemoteState={sources:[],loading:false,busy:false,error:'',operationId:null,ambiguous:false,receipt:null,mountSupported:false};
+ private state:RemoteState={sources:[],loading:false,busy:false,error:'',errorCode:'',operationId:null,ambiguous:false,receipt:null,alreadyDone:false,mountSupported:false};
  private listeners=new Set<()=>void>();private controllers=new Set<AbortController>();private epoch=0;private read=0;private disposed=false;private viewerFence?:string;
  private api:LibraryContentApi;private scope:ContentScope;private operationId:()=>Promise<string>;
  constructor(api:LibraryContentApi,scope:ContentScope,operationId:()=>Promise<string>){if(!scope.serverId||!scope.viewerId)throw new Error('Owner scope required.');this.api=api;this.scope=Object.freeze({...scope});this.operationId=operationId;}
@@ -45,9 +62,28 @@ export class RemoteSourceService{
  async revalidate(){if(this.disposed||this.state.busy||this.state.ambiguous||this.state.loading)return;const epoch=this.epoch,sequence=++this.read;const next=await this.readSources(epoch,sequence);if(next&&!this.state.busy)this.publish({...next,error:''});}
  async load(){const epoch=this.epoch,sequence=++this.read;this.publish({loading:true,error:''});try{const next=await this.readSources(epoch,sequence);if(!next)return;this.publish(next);}catch(e){if(epoch===this.epoch&&sequence===this.read)this.publish({error:safeError(e),sources:[],receipt:null,mountSupported:false});}finally{if(epoch===this.epoch&&sequence===this.read)this.publish({loading:false});}}
  private parseReceipt(raw:unknown,op:string):RemoteReceipt{this.fence(raw);if(!record(raw)||!record(raw.receipt)||raw.receipt.operationId!==op||raw.receipt.accepted!==true||typeof raw.receipt.removed!=='boolean')invalid();return Object.freeze({operationId:op,accepted:true,removed:raw.receipt.removed,source:source(raw.receipt.source)});}
- async configure(id:string|null,input:DAVConfiguration){if(this.disposed||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');if(!text(input.name,100)||!input.name.trim()||!text(input.root)||!text(input.username,1024)||!text(input.password))throw new Error('Invalid connection fields.');return this.command(routePath("post_storage_sources_webdav")+(id?'/'+encodeURIComponent(id):''),id?'PUT':'POST',input);}
- async remove(row:RemoteSource){if(this.disposed||row.kind!=='webdav'||this.state.busy||this.state.ambiguous)throw new Error('This source cannot be removed now.');return this.command(encodedRoutePath("delete_storage_sources_webdav_id", {"id": encodeURIComponent(row.id)}),'DELETE',{expectedGeneration:row.generation});}
- private async command(path:string,method:string,body:unknown){const epoch=this.epoch;this.publish({busy:true,error:'',receipt:null,operationId:null});let submitted=false;try{const op=await this.operationId();if(epoch!==this.epoch||this.disposed)return;if(!/^\d{13}-[0-9a-f-]{36}$/i.test(op))invalid();this.publish({operationId:op});submitted=true;const pending=this.request(path,method,{...(body as object),operationId:op});body=undefined;const raw=await pending;if(epoch!==this.epoch||this.disposed)return;const receipt=this.parseReceipt(raw,op);this.publish({receipt,ambiguous:false});await this.load();}catch(e){if(epoch!==this.epoch||this.disposed)return;const code=record(e)?String(e.code):'';const rejected=['storage_command_conflict','storage_operation_expired','remote_invalid_configuration','remote_credentials_required','unauthorized','forbidden'].includes(code);this.publish({ambiguous:submitted&&!rejected,error:safeError(e)});}finally{body=undefined;if(epoch===this.epoch)this.publish({busy:false});}}
+ /**
+  * Adds a share (`id` null) or changes one. `base` is the share as the edit started from it: when
+  * someone else changed the share meanwhile, it is read again and the edit, carried onto it field by
+  * field, is sent once more without a word; only a field both changed is a conflict.
+  */
+ async configure(id:string|null,input:DAVConfiguration,base?:RemoteSource){if(this.disposed||this.state.busy||this.state.ambiguous)throw new Error('Finish or recover the current source command first.');if(!text(input.name,100)||!input.name.trim()||!text(input.root)||!text(input.username,1024)||!text(input.password))throw new Error('Invalid connection fields.');
+  const path=routePath("post_storage_sources_webdav")+(id?'/'+encodeURIComponent(id):'');
+  await this.command(path,id?'PUT':'POST',input);
+  if(!id||!base||this.state.errorCode!==CONFLICT)return;
+  const fresh=await this.reread(id);if(!fresh)return;
+  const rebased=rebaseDavEdit(base,fresh,input);if(!rebased)return this.publish({error:safeError({code:CONFLICT}),errorCode:CONFLICT});
+  return this.command(path,'PUT',rebased);}
+ /** Removes a share. A share changed elsewhere is still the share the owner meant: it is read again and removed; one already gone is done. */
+ async remove(row:RemoteSource){if(this.disposed||row.kind!=='webdav'||this.state.busy||this.state.ambiguous)throw new Error('This source cannot be removed now.');
+  const path=encodedRoutePath("delete_storage_sources_webdav_id", {"id": encodeURIComponent(row.id)});
+  await this.command(path,'DELETE',{expectedGeneration:row.generation});
+  if(this.state.errorCode!==CONFLICT)return;
+  const fresh=await this.reread(row.id);if(fresh===null)return this.publish({error:'',errorCode:'',alreadyDone:true});if(!fresh)return;
+  return this.command(path,'DELETE',{expectedGeneration:fresh.generation});}
+ /** After a conflict: the share as the server has it now, null when it is gone, undefined when it could not be read (the conflict stays as it was). */
+ private async reread(id:string):Promise<RemoteSource|null|undefined>{const epoch=this.epoch,sequence=++this.read;try{const next=await this.readSources(epoch,sequence);if(!next)return undefined;this.publish(next);return next.sources.find(s=>s.id===id)??null;}catch{return undefined;}}
+ private async command(path:string,method:string,body:unknown){const epoch=this.epoch;this.publish({busy:true,error:'',errorCode:'',receipt:null,alreadyDone:false,operationId:null});let submitted=false;try{const op=await this.operationId();if(epoch!==this.epoch||this.disposed)return;if(!/^\d{13}-[0-9a-f-]{36}$/i.test(op))invalid();this.publish({operationId:op});submitted=true;const pending=this.request(path,method,{...(body as object),operationId:op});body=undefined;const raw=await pending;if(epoch!==this.epoch||this.disposed)return;const receipt=this.parseReceipt(raw,op);this.publish({receipt,ambiguous:false});await this.load();}catch(e){if(epoch!==this.epoch||this.disposed)return;const code=record(e)&&typeof e.code==='string'?e.code:'';const rejected=['storage_command_conflict','storage_operation_expired','remote_invalid_configuration','remote_credentials_required','unauthorized','forbidden'].includes(code);this.publish({ambiguous:submitted&&!rejected,error:safeError(e),errorCode:code});}finally{body=undefined;if(epoch===this.epoch)this.publish({busy:false});}}
  async recover(){if(this.state.busy||!this.state.operationId)throw new Error('No source operation to recover.');const op=this.state.operationId,epoch=this.epoch;this.publish({busy:true,error:''});try{const raw=await this.request(encodedRoutePath("get_storage_source_operations_id", {"id": encodeURIComponent(op)}));if(epoch!==this.epoch||this.disposed)return;this.publish({receipt:this.parseReceipt(raw,op),ambiguous:false});await this.load();}catch(e){if(epoch===this.epoch)this.publish({ambiguous:true,error:safeError(e)});}finally{if(epoch===this.epoch)this.publish({busy:false});}}
  async policy(libraryId:string):Promise<AnalysisPolicy>{const epoch=this.epoch,raw=await this.request(encodedRoutePath("get_libraries_id_strm_analysis_policy", {"id": encodeURIComponent(libraryId)}));if(epoch!==this.epoch||this.disposed)throw new Error('Scope changed.');return this.parsePolicy(raw,libraryId);}
  private parsePolicy(raw:unknown,id:string):AnalysisPolicy{this.fence(raw);if(!record(raw)||!record(raw.policy)||raw.policy.libraryId!==id||typeof raw.policy.enabled!=='boolean'||!integer(raw.policy.revision))invalid();if(raw.policy.effective!==undefined&&typeof raw.policy.effective!=='boolean')invalid();const scanTier=['file_list_only','basic','complete','custom'].includes(String(raw.policy.scanTier))?raw.policy.scanTier as string:undefined;if(raw.policy.scanTier!==undefined&&scanTier===undefined)noteSkipped('remote-sources','policy.scanTier');return Object.freeze({libraryId:id,enabled:raw.policy.enabled,revision:raw.policy.revision,...(raw.policy.effective===undefined?{}:{effective:raw.policy.effective as boolean}),...(scanTier===undefined?{}:{scanTier})});}

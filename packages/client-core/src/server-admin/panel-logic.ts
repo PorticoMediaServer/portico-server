@@ -5,6 +5,8 @@ import {routePath} from "../../../contracts/src/routes.ts";
  * due" is safe, how a window's time is typed. One copy, for every client.
  */
 import type {DAVConfiguration} from '../remote-sources.ts';
+import type {StorageManagementService} from '../storage-management.ts';
+import {ALREADY_DONE} from '../freshness-actions.ts';
 import type {FeedbackStatus} from '../console.ts';
 import type {AccessTier} from '../server-administration.ts';
 import {presetOf, type ApiScope, type ApiScopePreset} from '../api-access.ts';
@@ -63,8 +65,29 @@ export function stableStorageOperationId() {
 export function mountCommandSucceeded(mutation: {phase: string}): boolean {
   return mutation.phase === 'accepted';
 }
-export function davCommandSucceeded(state: {ambiguous: boolean; receipt: unknown}): boolean {
-  return !state.ambiguous && !!state.receipt;
+/**
+ * Sends a start, stop, restart or remove to an rclone mount. A mount's revision also moves as it
+ * starts and stops by itself, so a command can meet a revision that moved for no reason the owner
+ * would see: the mount is read again and the same command sent once more, silently. If it is no
+ * longer offered (or the mount is already going), it has already happened: `ALREADY_DONE`.
+ * `ids` is the command's stable operation id, released before the second send.
+ */
+export async function sendMountCommand(mounts: Pick<StorageManagementService, 'getSnapshot' | 'act' | 'remove' | 'revalidate'>, ids: {release(): void}, mountId: string, command: 'start' | 'stop' | 'restart' | 'delete'): Promise<typeof ALREADY_DONE | undefined> {
+  const send = (revision: number) => (command === 'delete' ? mounts.remove(mountId, revision) : mounts.act(mountId, command, revision));
+  const current = mounts.getSnapshot().data?.mounts.find(x => x.id === mountId);
+  if (!current) throw Object.assign(new Error('request_failed'), {code: 'storage_command_conflict'});
+  await send(current.controlRevision);
+  if (mounts.getSnapshot().mutation.phase !== 'conflict') return undefined;
+  ids.release();
+  await mounts.revalidate();
+  const fresh = mounts.getSnapshot().data?.mounts.find(x => x.id === mountId);
+  if (!fresh || fresh.removalPending) return command === 'delete' ? ALREADY_DONE : undefined;
+  if (!fresh.actions.includes(command)) return ALREADY_DONE;
+  await send(fresh.controlRevision);
+  return undefined;
+}
+export function davCommandSucceeded(state: {ambiguous: boolean; receipt: unknown; alreadyDone?: boolean}): boolean {
+  return !state.ambiguous && (!!state.receipt || state.alreadyDone === true);
 }
 export type WebDavDraft = {name: string; root: string; username: string; password: string; insecureLocal: boolean};
 /**
