@@ -7135,7 +7135,7 @@ CREATE TRIGGER catalog_browse_availability_counts_retain_insert BEFORE INSERT ON
 CREATE TRIGGER catalog_browse_availability_counts_retain_update BEFORE UPDATE ON catalog_browse_availability_counts WHEN (SELECT retaining FROM catalog_generations WHERE singleton=1)=1 BEGIN INSERT INTO catalog_browse_availability_counts_previous(generation,present,library_id,kind,availability_state,rating_key,label_key,container,total) SELECT generation,1,OLD.library_id,OLD.kind,OLD.availability_state,OLD.rating_key,OLD.label_key,OLD.container,OLD.total FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,library_id,kind,availability_state,rating_key,label_key,container) DO NOTHING; END;
 CREATE TRIGGER catalog_browse_availability_counts_retain_delete BEFORE DELETE ON catalog_browse_availability_counts WHEN (SELECT retaining FROM catalog_generations WHERE singleton=1)=1 BEGIN INSERT INTO catalog_browse_availability_counts_previous(generation,present,library_id,kind,availability_state,rating_key,label_key,container,total) SELECT generation,1,OLD.library_id,OLD.kind,OLD.availability_state,OLD.rating_key,OLD.label_key,OLD.container,OLD.total FROM catalog_generations WHERE singleton=1 ON CONFLICT(generation,library_id,kind,availability_state,rating_key,label_key,container) DO NOTHING; END;
 
-CREATE TABLE catalog_search_prefix_terms(id INTEGER PRIMARY KEY AUTOINCREMENT,prefix TEXT NOT NULL,terminal INTEGER NOT NULL DEFAULT 0 CHECK(terminal IN(0,1)),UNIQUE(prefix,terminal)) STRICT;
+CREATE TABLE catalog_search_prefix_terms(id INTEGER PRIMARY KEY AUTOINCREMENT,prefix TEXT NOT NULL UNIQUE) STRICT;
 CREATE TABLE catalog_search_prefix_rows(term_id INTEGER NOT NULL REFERENCES catalog_search_prefix_terms(id),entity_id INTEGER NOT NULL REFERENCES catalog_search_documents(entity_id) ON DELETE CASCADE,kind INTEGER NOT NULL,library_id INTEGER NOT NULL,tier INTEGER NOT NULL,container INTEGER NOT NULL,rating_key TEXT NOT NULL,label_key TEXT NOT NULL,PRIMARY KEY(term_id,kind,library_id,tier,entity_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_search_prefix_rows_entity ON catalog_search_prefix_rows(entity_id,term_id);
 CREATE TABLE catalog_search_prefix_counts(term_id INTEGER NOT NULL,kind INTEGER NOT NULL,library_id INTEGER NOT NULL,container INTEGER NOT NULL,rating_key TEXT NOT NULL,label_key TEXT NOT NULL,total INTEGER NOT NULL,PRIMARY KEY(term_id,kind,library_id,container,rating_key,label_key)) WITHOUT ROWID, STRICT;
@@ -7256,7 +7256,6 @@ CREATE TRIGGER compact_visibility_blocks_random_move AFTER UPDATE OF class_id,ge
  UPDATE compact_visibility_blocks SET total=1024 WHERE (class_id,generation,library_id,kind,ordering,sort_value,entity_id)=(SELECT class_id,generation,library_id,kind,ordering,sort_value,entity_id FROM compact_visibility_blocks INDEXED BY compact_visibility_blocks_full WHERE class_id=NEW.class_id AND generation=NEW.generation AND library_id=NEW.library_id AND kind=NEW.kind AND ordering=5 AND total>2048 LIMIT 1);
 END;
 
-CREATE INDEX catalog_search_numeric_prefix ON catalog_search_prefix_terms(terminal,prefix,id) WHERE terminal=1;
 
 CREATE INDEX catalog_attribute_ambiguous_restrictions ON catalog_attribute_terms(field_id,id) WHERE instr(value_key,'|')>0;
 

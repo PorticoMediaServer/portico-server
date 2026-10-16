@@ -636,13 +636,8 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 		if terms, indexed := facettext.IndexedSearchTerms(normalized); c.groupSearch && indexed {
 			clauses := make([]string, 0, len(terms))
 			for _, term := range terms {
-				predicate := `t.terminal=0 AND t.prefix=?`
 				c.args = append(c.args, term)
-				if facettext.NumericSearchTerm(term) {
-					predicate = `(` + predicate + ` OR t.terminal=1 AND t.prefix>=? AND t.prefix<?)`
-					c.args = append(c.args, term, term+"\U0010ffff")
-				}
-				clauses = append(clauses, `EXISTS(SELECT 1 FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity JOIN catalog_search_prefix_terms t ON t.id=p.term_id WHERE p.entity_id=e.entity_id AND `+predicate+`)`)
+				clauses = append(clauses, `EXISTS(SELECT 1 FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity WHERE p.entity_id=e.entity_id AND p.term_id=(SELECT id FROM catalog_search_prefix_terms WHERE prefix=?))`)
 			}
 			return "(" + strings.Join(clauses, " AND ") + ")", nil
 		}

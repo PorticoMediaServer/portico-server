@@ -42,8 +42,8 @@ func TestBroadPrefixesSelectBoundedScopedPages(t *testing.T) {
 				c.Exec(`INSERT INTO catalog_browse_memberships(entity_id,item_id,source) SELECT id,id,0 FROM catalog_entities WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))
 
 				c.Exec(`INSERT INTO catalog_search_documents(entity_id,title,title_fold,entity_pid,search,normalized,kind,library_id,entity_kind,rating_key) SELECT id,title,lower(title),pid(public_id),lower(title),lower(title),'k1 l'||library_id,library_id,kind,CASE WHEN id%2=0 THEN 'pg' ELSE 'r' END FROM catalog_entities WHERE id>? AND id<=?`, 1000000+off, 1000000+min(n, off+10000))
-				c.Exec(`INSERT INTO catalog_search_prefix_terms(prefix,terminal) VALUES('ti',0),('tit',0),('title',0),('longpre',0),('longprefix',0),('000000',1),('000001',1) ON CONFLICT(prefix,terminal) DO NOTHING`)
-				c.Exec(`INSERT INTO catalog_search_prefix_rows(term_id,entity_id,kind,library_id,tier,container,rating_key,label_key) SELECT p.id,d.entity_id,1,d.library_id,CASE WHEN p.terminal=1 OR p.prefix LIKE 'long%' THEN 1 ELSE 2 END,0,d.rating_key,'' FROM catalog_search_documents d CROSS JOIN catalog_search_prefix_terms p WHERE p.prefix IN('ti','tit','title','longpre','longprefix','000000','000001') AND (p.terminal=0 OR p.prefix=substr(d.title,-12,6)) AND d.entity_id>? AND d.entity_id<=?`, 1000000+off, 1000000+min(n, off+10000))
+				c.Exec(`INSERT INTO catalog_search_prefix_terms(prefix) VALUES('ti'),('tit'),('title'),('longpre'),('longprefix'),('0'),('000000') ON CONFLICT(prefix) DO NOTHING`)
+				c.Exec(`INSERT INTO catalog_search_prefix_rows(term_id,entity_id,kind,library_id,tier,container,rating_key,label_key) SELECT p.id,d.entity_id,1,d.library_id,CASE WHEN p.prefix GLOB '[0-9]*' OR p.prefix LIKE 'long%' THEN 1 ELSE 2 END,0,d.rating_key,'' FROM catalog_search_documents d CROSS JOIN catalog_search_prefix_terms p WHERE p.prefix IN('ti','tit','title','longpre','longprefix','0','000000') AND d.entity_id>? AND d.entity_id<=?`, 1000000+off, 1000000+min(n, off+10000))
 			}
 			// This fixture has published its narrow search model synchronously.
 			c.Exec(`DELETE FROM catalog_dirty`)

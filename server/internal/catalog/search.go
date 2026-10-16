@@ -162,9 +162,9 @@ func catalogOrder(sortID, kind, q string) searchOrder {
 	case "title":
 		return searchOrder{`e.sort_key`, nil, false}
 	case "releaseYear":
-		return searchOrder{`CAST(COALESCE(e.year,0) AS REAL)`, nil, true}
+		return searchOrder{`CAST(COALESCE(wb.year,0) AS REAL)`, nil, true}
 	case "dateAdded":
-		return searchOrder{`COALESCE(detail.added_text,'')`, nil, false}
+		return searchOrder{`COALESCE(wb.added_text,'')`, nil, false}
 	}
 	return searchScore(q)
 }
@@ -583,10 +583,11 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	contextJoin, subtitle := searchContext(g.kind)
 	order := catalogOrder(sortID, g.kind, r.Q)
 	// Only the columns needed to rank matches belong before the page boundary.
-	// Date-added is a wire-preserved item detail; the other sorts are narrow.
+	// Release year and date added are the browse row's, as their ordered
+	// indexes (searchWalks) hold them.
 	orderJoin := ""
-	if sortID == "dateAdded" {
-		orderJoin = ` LEFT JOIN catalog_item_details detail ON detail.entity_id=e.id `
+	if sortID == "releaseYear" || sortID == "dateAdded" {
+		orderJoin = ` LEFT JOIN catalog_browse_rows wb ON wb.entity_id=e.id `
 	}
 	args := append([]any{}, order.args...)
 	args = append(args, match)
@@ -658,26 +659,20 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		// A continuation retains its ranking model even when a growing numeric
 		// dictionary now needs the full-text selector. Its signature still binds
 		// every viewer, library, query and sort field.
-		keyPredicate := `t.terminal=0 AND t.prefix=?`
-		keyArgs := []any{prefixLead}
-		if facettext.NumericSearchTerm(prefixLead) {
-			keyPredicate = `(t.terminal=0 AND t.prefix=? OR t.terminal=1 AND t.prefix>=? AND t.prefix<?)`
-			keyArgs = []any{prefixLead, prefixLead, prefixLead + "\U0010ffff"}
-		}
-		order = searchOrder{expr: `CASE WHEN d.title_fold=? THEN 3 ELSE COALESCE((SELECT max(p.tier) FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity JOIN catalog_search_prefix_terms t ON t.id=p.term_id WHERE p.entity_id=d.entity_id AND (` + keyPredicate + `)),0) END`, numeric: true}
-		order.args = append([]any{facettext.SearchFold(r.Q)}, keyArgs...)
+		order = searchOrder{expr: `CASE WHEN d.title_fold=? THEN 3 ELSE COALESCE((SELECT max(p.tier) FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity WHERE p.entity_id=d.entity_id AND p.term_id=(SELECT id FROM catalog_search_prefix_terms WHERE prefix=?)),0) END`, numeric: true}
+		order.args = []any{facettext.SearchFold(r.Q), prefixLead}
 		args = append(append(append([]any{}, order.args...), match), filterArgs...)
 		ranked = `SELECT d.entity_id entity_id,d.entity_pid entity_pid,` + order.expr + ` ord FROM ` + candidates + ` WHERE 1` + where
 		tie = "entity_id"
 		countGroup = func() error { out.TotalCount, out.TotalCountExact = len(out.Items), false; return nil }
 	}
-	// Title order breaks ties by the internal identity, so a page taken
-	// from the title index and one ranked from the full-text matches continue
-	// each other.
+	// Title, release year and date added break ties by the internal
+	// identity, so a page taken from an ordered index and one ranked from the
+	// full-text matches continue each other.
 	internal := prefix
-	if sortID == "title" && !prefix {
+	if _, walks := searchWalks[sortID]; walks && !prefix {
 		internal, tie = true, "entity_id"
-		if walked, ok, err := s.searchTitleWalk(ctx, r, int(kind), where, filterArgs, pageSize+1, scopeHash, g, rev); err != nil {
+		if walked, ok, err := s.searchTitleWalk(ctx, r, int(kind), sortID, where, filterArgs, pageSize+1, scopeHash, g, rev); err != nil {
 			return err
 		} else if ok {
 			ranked, args = `SELECT json_extract(value,'$[0]') entity_id,json_extract(value,'$[1]') entity_pid,json_extract(value,'$[2]') ord FROM json_each(?)`, []any{walked}

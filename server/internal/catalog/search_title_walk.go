@@ -11,6 +11,25 @@ import (
 	"portico.local/server/internal/facettext"
 )
 
+// searchWalk is an ordered index a sorted search reads in its own order: the
+// key it orders by (as the ranked path computes it), the row identity (the
+// entity id, the tie break of both paths) and the library and kind scope.
+type searchWalk struct {
+	from, join, scope, kind, key, order, id string
+	numeric                                 bool
+}
+
+// searchWalks are the sorts a search can answer from an ordered index rather
+// than by ranking every match: title from the title index, release year and
+// date added from the browse rows' own indexes.
+var searchWalks = map[string]searchWalk{
+	"title": {from: `catalog_entities e INDEXED BY catalog_entities_title`, scope: "e.library_id", kind: "e.kind", key: "e.sort_key", order: "e.sort_key", id: "e.id"},
+	"releaseYear": {from: `catalog_browse_rows wb INDEXED BY catalog_browse_year`, join: ` CROSS JOIN catalog_entities e ON e.id=wb.entity_id`, scope: "wb.library_id", kind: "wb.kind",
+		key: "CAST(wb.year AS REAL)", order: "wb.year", id: "wb.entity_id", numeric: true},
+	"dateAdded": {from: `catalog_browse_rows wb INDEXED BY catalog_browse_added`, join: ` CROSS JOIN catalog_entities e ON e.id=wb.entity_id`, scope: "wb.library_id", kind: "wb.kind",
+		key: "COALESCE(wb.added_text,'')", order: "COALESCE(wb.added_text,'')", id: "wb.entity_id"},
+}
+
 // titleWalkWindow is how many titles of one library a title-sorted search
 // reads in title order before it gives up and ranks the full-text matches.
 var titleWalkWindow = 4096
@@ -27,7 +46,11 @@ var titleWalkWindow = 4096
 // The result is a JSON list of [entity id, public id, sort key] rows, the
 // union of each library's first `limit` matches after the cursor, which holds
 // the overall first `limit`.
-func (s *Service) searchTitleWalk(ctx context.Context, r SearchRequest, kind int, where string, filterArgs []any, limit int, scopeHash string, g searchGroupDefinition, rev ContentRevision) (string, bool, error) {
+func (s *Service) searchTitleWalk(ctx context.Context, r SearchRequest, kind int, sortID, where string, filterArgs []any, limit int, scopeHash string, g searchGroupDefinition, rev ContentRevision) (string, bool, error) {
+	walk, ok := searchWalks[sortID]
+	if !ok {
+		return "", false, nil
+	}
 	terms, indexed := facettext.IndexedSearchTerms(r.Q)
 	if !indexed || len(terms) == 0 || len(r.Libraries) == 0 || len(r.Libraries) > 64 {
 		return "", false, nil
@@ -54,7 +77,7 @@ func (s *Service) searchTitleWalk(ctx context.Context, r SearchRequest, kind int
 	}
 	bound, boundArgs := "", []any{}
 	if r.Cursor != "" {
-		c, err := s.decodeRevisionCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, "title"), rev)
+		c, err := s.decodeRevisionCursor(r.Cursor, s.groupCursorScope(r, g, scopeHash, sortID), rev)
 		if err != nil {
 			return "", false, nil // the ranked path reports the cursor
 		}
@@ -62,32 +85,32 @@ func (s *Service) searchTitleWalk(ctx context.Context, r SearchRequest, kind int
 		if err != nil {
 			return "", false, nil
 		}
-		bound, boundArgs = ` AND (sort_key,id)`+op+`(?,?)`, []any{c.Value, id}
+		value, err := cursorOrderValue(c.Value, walk.numeric)
+		if err != nil {
+			return "", false, nil
+		}
+		bound, boundArgs = ` AND (`+walk.key+`,`+walk.id+`)`+op+`(?,?)`, []any{value, id}
 	}
 	probes, probeArgs := []string{}, []any{}
 	for _, term := range terms {
-		predicate := `t.terminal=0 AND t.prefix=?`
 		probeArgs = append(probeArgs, term)
-		if facettext.NumericSearchTerm(term) {
-			predicate = `(` + predicate + ` OR t.terminal=1 AND t.prefix>=? AND t.prefix<?)`
-			probeArgs = append(probeArgs, term, term+"\U0010ffff")
-		}
-		probes = append(probes, `EXISTS(SELECT 1 FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity JOIN catalog_search_prefix_terms t ON t.id=p.term_id WHERE p.entity_id=e.id AND `+predicate+`)`)
+		probes = append(probes, `EXISTS(SELECT 1 FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity WHERE p.entity_id=e.id AND p.term_id=(SELECT id FROM catalog_search_prefix_terms WHERE prefix=?))`)
 	}
 	// The window's last title bounds the walk; the walk itself reads the
 	// title index in order and stops at the page, so a broad word reads a
 	// few dozen titles.
-	last := `SELECT sort_key,id FROM catalog_entities INDEXED BY catalog_entities_title WHERE library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND kind=?` + bound + ` ORDER BY sort_key ` + direction + `,id ` + direction + ` LIMIT 1 OFFSET ` + strconv.Itoa(titleWalkWindow-1)
-	query := `SELECT e.id,d.entity_pid,e.sort_key FROM catalog_entities e INDEXED BY catalog_entities_title
+	scope := walk.from + ` WHERE ` + walk.scope + `=(SELECT id FROM catalog_libraries WHERE library_id=?) AND ` + walk.kind + `=?`
+	last := `SELECT ` + walk.key + `,` + walk.id + ` FROM ` + scope + bound + ` ORDER BY ` + walk.order + ` ` + direction + `,` + walk.id + ` ` + direction + ` LIMIT 1 OFFSET ` + strconv.Itoa(titleWalkWindow-1)
+	query := `SELECT e.id,d.entity_pid,` + walk.key + ` FROM ` + walk.from + walk.join + `
  CROSS JOIN catalog_search_documents d ON d.entity_id=e.id JOIN catalog_libraries l ON l.id=e.library_id
- WHERE e.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND e.kind=?` + strings.ReplaceAll(bound, "(sort_key,id)", "(e.sort_key,e.id)") + `{window} AND ` + strings.Join(probes, " AND ") + ` AND 1` + where + ` ORDER BY e.sort_key ` + direction + `,e.id ` + direction + ` LIMIT ?`
+ WHERE ` + walk.scope + `=(SELECT id FROM catalog_libraries WHERE library_id=?) AND ` + walk.kind + `=?` + bound + `{window} AND ` + strings.Join(probes, " AND ") + ` AND 1` + where + ` ORDER BY ` + walk.order + ` ` + direction + `,` + walk.id + ` ` + direction + ` LIMIT ?`
 	inside := "<="
 	if direction == "DESC" {
 		inside = ">="
 	}
 	rows := [][3]any{}
 	for _, library := range r.Libraries {
-		var endKey string
+		var endKey any
 		var endID int64
 		capped := true
 		err := s.read().QueryRowContext(ctx, last, append([]any{library, kind}, boundArgs...)...).Scan(&endKey, &endID)
@@ -98,7 +121,7 @@ func (s *Service) searchTitleWalk(ctx context.Context, r SearchRequest, kind int
 		}
 		cap, capArgs := "", []any{}
 		if capped {
-			cap, capArgs = ` AND (e.sort_key,e.id)`+inside+`(?,?)`, []any{endKey, endID}
+			cap, capArgs = ` AND (`+walk.key+`,`+walk.id+`)`+inside+`(?,?)`, []any{endKey, endID}
 		}
 		args := append([]any{library, kind}, boundArgs...)
 		args = append(args, capArgs...)
@@ -127,7 +150,8 @@ func (s *Service) titleWalkRows(ctx context.Context, query string, args []any) (
 	out := [][3]any{}
 	for rows.Next() {
 		var id int64
-		var public, key string
+		var public string
+		var key any
 		if err = rows.Scan(&id, &public, &key); err != nil {
 			return nil, err
 		}

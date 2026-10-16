@@ -24,8 +24,11 @@ func TestShortPrefixesAreUniqueAndRankTitles(t *testing.T) {
 			t.Fatalf("%s tier=%d", prefix, values[prefix])
 		}
 	}
-	if _, duplicateNumber := values["0"]; duplicateNumber {
-		t.Fatal("numeric posting was duplicated")
+	if values["0"] != 0 || values["000"] != 0 {
+		t.Fatal("numeric prefixes are not posted")
+	}
+	if _, ok := values["0"]; !ok {
+		t.Fatal("a typed digit has no posting")
 	}
 	if _, tooLong := values["0000000"]; tooLong {
 		t.Fatal("long prefix indexed")
