@@ -1,19 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {componentModule} from './helpers/component-harness.mjs';
+import {defaultI18n} from '@i18n';
+import {feedbackCategoryName} from '../../packages/client-core/src/server-admin/console-catalogue.ts';
 
-const load = () => componentModule(new URL('../src/screens/server/Feedback.tsx', import.meta.url), {
-  react: {default: {}, useEffect: () => {}, useMemo: (f: () => unknown) => f(), useState: (v: unknown) => [v, () => {}]},
-  './MaintenanceWindows': {}, '@core/console.ts': {}, '../../admin/console': {},
-  '../../app/i18n': {},
-  '../../ui': {}, './Server': {}, './Server.module.css': {},
-}) as Promise<any>;
+// The Feedback screen names a report's category through the shared catalogue word.
+const label = (category: string) => feedbackCategoryName(defaultI18n.t, id => defaultI18n.has(id), category);
 
-test('CD-38: known categories keep their labels; unknown taxonomy leaves show as-is', async () => {
-  const {feedbackCategoryLabel} = await load();
-  assert.equal(feedbackCategoryLabel('playback'), 'Playback');
-  assert.equal(feedbackCategoryLabel('metadata'), 'Metadata');
-  assert.equal(feedbackCategoryLabel('subtitles'), 'Subtitles');
-  assert.equal(feedbackCategoryLabel('other'), 'Other');
-  assert.equal(feedbackCategoryLabel('playback.stall'), 'playback.stall');
+test('CD-38: known categories keep their labels; unknown taxonomy leaves show as-is', () => {
+  assert.equal(label('playback'), 'Playback');
+  assert.equal(label('metadata'), 'Metadata');
+  assert.equal(label('subtitles'), 'Subtitles');
+  assert.equal(label('other'), 'Other');
+  assert.equal(label('playback.stall'), 'playback.stall');
+  assert.equal(label(''), 'Other');
 });
