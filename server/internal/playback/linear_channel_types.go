@@ -218,6 +218,17 @@ type LinearMedia struct {
 	LogoURL                 string           `json:"logoUrl"`
 	// Engine is the player engine the stream was made for: "native" or "mpv".
 	Engine string `json:"engine,omitempty"`
+	// Clocks map media time to the channel's timeline, for a player that
+	// reports media time rather than program dates (mpv).
+	Clocks []LinearClock `json:"clocks,omitempty"`
+}
+
+// LinearClock is one clock epoch: over [startUs, endUs) of the channel
+// timeline, channel position = media time + offsetUs.
+type LinearClock struct {
+	StartUS  string `json:"startUs"`
+	EndUS    string `json:"endUs"`
+	OffsetUS string `json:"offsetUs"`
 }
 
 // LinearDelivery is an owned source/presentation implementation.

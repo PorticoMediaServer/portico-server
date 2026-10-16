@@ -58,6 +58,17 @@ type LinearView struct {
 	ErrorCode               string               `json:"errorCode,omitempty"`
 	Seek                    *LinearSeekView      `json:"seek,omitempty"`
 	ConfirmedPositionMs     *int64               `json:"confirmedPositionMs,omitempty"`
+	// Clocks map media time to this timeline (position = media time +
+	// offsetMs over [startMs, endMs)), for a player that reports media time
+	// rather than program dates (mpv).
+	Clocks []LinearClockView `json:"clocks,omitempty"`
+}
+
+// LinearClockView is one clock epoch of the timeline.
+type LinearClockView struct {
+	StartMs  int64 `json:"startMs"`
+	EndMs    int64 `json:"endMs"`
+	OffsetMs int64 `json:"offsetMs"`
 }
 type LinearProgrammeView struct {
 	ID      string `json:"id"`
@@ -271,6 +282,9 @@ func (s *Service) channelPresentation(r row) Presentation {
 	l := &LinearView{ReservationRequiredAtMS: st.Media.ReservationRequiredAtMS, Name: st.Name, OriginMs: st.Media.OriginMS, WindowStartMs: ms(st.Media.WindowStartUS), WindowEndMs: ms(st.Media.WindowEndUS), LiveEdgeMs: ms(st.Media.LiveEdgeUS), State: st.Media.State, ErrorCode: st.Media.ErrorCode}
 	if l.State == "" {
 		l.State = "preparing"
+	}
+	for _, c := range st.Media.Clocks {
+		l.Clocks = append(l.Clocks, LinearClockView{StartMs: ms(c.StartUS), EndMs: ms(c.EndUS), OffsetMs: ms(c.OffsetUS)})
 	}
 	if st.Programme != nil {
 		l.Programme = &LinearProgrammeView{ID: st.Programme.ID, ItemID: st.Programme.ItemID, Title: st.Programme.Title, StartMs: st.Programme.StartMS, EndMs: st.Programme.EndMS}

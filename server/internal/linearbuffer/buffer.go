@@ -65,8 +65,11 @@ type segment struct {
 	bytes                 int64
 	discontinuity         bool
 	discontinuitiesBefore int64
-	readers               int
-	expired               bool
+	// offsetUS is the segment's wall clock minus its media clock: media time
+	// plus offsetUS is the moment it shows (microseconds since the epoch).
+	offsetUS int64
+	readers  int
+	expired  bool
 }
 
 // initFile is one fragmented producer's init segment: every fragment of that
@@ -216,27 +219,44 @@ func (b *Buffer) Producers() []int64 {
 	}
 	return ids
 }
-func (b *Buffer) Playlist() ([]byte, error) {
+func (b *Buffer) Playlist() ([]byte, error) { return b.PlaylistFrom(nil) }
+
+// PlaylistFrom is the playlist starting at the segment holding a channel
+// position (microseconds from the origin): a player that cannot seek in a live
+// playlist (mpv) reopens it there instead. nil is the whole window.
+func (b *Buffer) PlaylistFrom(position *int64) ([]byte, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed || len(b.segments) == 0 {
 		return nil, ErrExpired
 	}
+	segments := b.segments
+	if position != nil {
+		at := b.options.OriginMS*1000 + *position
+		first := len(segments) - 1
+		for i, s := range segments {
+			if s.endUS > at {
+				first = i
+				break
+			}
+		}
+		segments = segments[first:]
+	}
 	var out strings.Builder
 	target := 1
-	for _, s := range b.segments {
+	for _, s := range segments {
 		n := int(math.Ceil(float64(s.endUS-s.startUS) / 1e6))
 		if n > target {
 			target = n
 		}
 	}
-	first := b.segments[0]
+	first := segments[0]
 	version := 3
 	if first.fragmented {
 		version = 7
 	}
 	fmt.Fprintf(&out, "#EXTM3U\n#EXT-X-VERSION:%d\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:%d\n#EXT-X-DISCONTINUITY-SEQUENCE:%d\n", version, target, first.sequence, first.discontinuitiesBefore)
-	if b.options.LiveDelay > 0 {
+	if b.options.LiveDelay > 0 && position == nil {
 		window := b.windowLocked(time.Now().UnixMicro())
 		offset := max(window.StartUS, window.LiveUS-2_000_000) - window.EndUS
 		fmt.Fprintf(&out, "#EXT-X-START:TIME-OFFSET=%.6f,PRECISE=YES\n", float64(offset)/1e6)
@@ -244,7 +264,7 @@ func (b *Buffer) Playlist() ([]byte, error) {
 	// A channel change/restart changes buffer generation, but a programme change
 	// stays on this resource with an explicit decoder-clock discontinuity.
 	mapped := int64(0)
-	for _, s := range b.segments {
+	for _, s := range segments {
 		if s.discontinuity {
 			out.WriteString("#EXT-X-DISCONTINUITY\n")
 		}
@@ -739,7 +759,7 @@ func (p *Publisher) publish(raw []byte) error {
 		if e = p.check(); e != nil {
 			return e
 		}
-		e = p.buffer.append(&segment{producer: p.producer.ID, fragmented: p.producer.Fragmented, path: value.path, startUS: start, endUS: end, bytes: value.bytes, discontinuity: discontinuity})
+		e = p.buffer.append(&segment{producer: p.producer.ID, fragmented: p.producer.Fragmented, path: value.path, startUS: start, endUS: end, bytes: value.bytes, discontinuity: discontinuity, offsetUS: start - minimum*1000000/90000})
 		if e != nil {
 			return e
 		}
@@ -902,4 +922,42 @@ func (b *Buffer) Packaging() (held, fragmented bool) {
 		return false, false
 	}
 	return true, b.segments[len(b.segments)-1].fragmented
+}
+
+// ClockEpoch is a stretch of the window over which one media clock maps to the
+// channel's: channel position = media time + OffsetUS (all microseconds,
+// positions from the origin). A new producer or a restarted source clock
+// starts a new epoch.
+type ClockEpoch struct{ StartUS, EndUS, OffsetUS int64 }
+
+// maxClockEpochs bounds what a snapshot carries; older epochs drop first.
+const maxClockEpochs = 32
+
+// Clocks lists the window's clock epochs, oldest first. A player that reports
+// media time rather than program dates (mpv) places itself on the channel with
+// them.
+func (b *Buffer) Clocks() []ClockEpoch {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	origin := b.options.OriginMS * 1000
+	out := []ClockEpoch{}
+	for _, s := range b.segments {
+		offset := s.offsetUS - origin
+		if n := len(out); n > 0 && !s.discontinuity && abs64(out[n-1].OffsetUS-offset) <= 1000 && s.startUS-origin <= out[n-1].EndUS+50_000 {
+			out[n-1].EndUS = s.endUS - origin
+			continue
+		}
+		out = append(out, ClockEpoch{StartUS: s.startUS - origin, EndUS: s.endUS - origin, OffsetUS: offset})
+	}
+	if len(out) > maxClockEpochs {
+		out = out[len(out)-maxClockEpochs:]
+	}
+	return out
+}
+
+func abs64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }

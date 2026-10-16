@@ -19,6 +19,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/supervise"
 	workerloop "portico.local/server/internal/worker"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -937,6 +938,10 @@ func (l *LinearRuntime) Snapshot(id string) playback.LinearMedia {
 	for _, gap := range w.Gaps {
 		result.Gaps = append(result.Gaps, playback.LinearInterval{StartUS: strconv.FormatInt(gap.StartUS, 10), EndUS: strconv.FormatInt(gap.EndUS, 10)})
 	}
+	result.Clocks = []playback.LinearClock{}
+	for _, c := range buffer.Clocks() {
+		result.Clocks = append(result.Clocks, playback.LinearClock{StartUS: strconv.FormatInt(c.StartUS, 10), EndUS: strconv.FormatInt(c.EndUS, 10), OffsetUS: strconv.FormatInt(c.OffsetUS, 10)})
+	}
 	return result
 }
 func (l *LinearRuntime) ResolveSeek(id, generation, kind string, raw *string) (string, error) {
@@ -1026,6 +1031,9 @@ func (l *LinearRuntime) MediaGrant(ctx context.Context, id, generation, token st
 	p, err := l.owner.Linear.authority.AuthorizeLinearMedia(ctx, id, gen, &selection)
 	return p, selection, err
 }
+
+var playlistStart = regexp.MustCompile(`^at=([0-9]{1,13})$`)
+
 func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, generation, token, name string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -1042,7 +1050,20 @@ func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, g
 		http.Error(w, "media busy", 429)
 		return
 	}
-	if r.Method != "GET" && r.Method != "HEAD" || r.URL.RawQuery != "" {
+	// The only query is a playlist's start (at=<milliseconds from the origin>),
+	// for a player that reopens a live playlist where it wants to be.
+	var from *int64
+	if r.URL.RawQuery != "" {
+		match := playlistStart.FindStringSubmatch(r.URL.RawQuery)
+		if match == nil || name != "index.m3u8" {
+			http.NotFound(w, r)
+			return
+		}
+		ms, _ := strconv.ParseInt(match[1], 10, 64)
+		us := ms * 1000
+		from = &us
+	}
+	if r.Method != "GET" && r.Method != "HEAD" {
 		http.NotFound(w, r)
 		return
 	}
@@ -1068,7 +1089,7 @@ func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, g
 				return
 			}
 		}
-		data, err := buffer.Playlist()
+		data, err := buffer.PlaylistFrom(from)
 		if err != nil {
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, "media preparing", 503)
