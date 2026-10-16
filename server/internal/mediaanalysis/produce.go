@@ -36,6 +36,7 @@ func (m Marker) end() int64   { n, _ := strconv.ParseInt(m.EndUS, 10, 64); retur
 func candidate(kind string, start, end int64, confidence float64, provenance string) Marker {
 	return Marker{Kind: kind, Title: strings.ToUpper(kind[:1]) + kind[1:] + " candidate", StartUS: fmt.Sprint(start), EndUS: fmt.Sprint(end), Confidence: confidence, Provenance: provenance}
 }
+
 // adder returns the function a stage stores one generated artifact with,
 // counting the stage's output against its budget.
 func (s *Service) adder(ctx context.Context, key string, out *produced) func(data []byte, kind, mime string, index int, start, end int64, w, h int) error {
