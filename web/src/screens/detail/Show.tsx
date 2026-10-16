@@ -30,7 +30,7 @@ import {useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-
 import type {BrowseNode} from '@core/browse.ts';
 import {episodeGroupCondition} from '@core/presentation/browse-groups.ts';
 import {groupSequence} from '../../app/container-play';
-import {useQuietRefresh} from '../../app/quiet-refresh';
+import {useRefreshRequiredRetry} from '../../app/quiet-refresh';
 
 type ShowSearch = {library?: string; season?: string; episode?: string; title?: string; sort?: string; direction?: 'asc' | 'desc'; filters?: string};
 /** Up to this many seasons show as tabs; beyond it, a menu (Spec — Title Pages §2). */
@@ -81,7 +81,7 @@ export function ShowScreen() {
   const route = useMemo<ShowWorkspaceRoute>(() => ({libraryId, ...(showId !== 'season' ? {showId} : {}), ...(seasonIdParam ? {seasonId: seasonIdParam} : {})}), [libraryId, showId, seasonIdParam]);
   const {snapshot, selectSeason, selectGroup, nextSeasons, previousSeasons, retry} = useShowWorkspace(route);
   // A show the server says changed is read again quietly; the notice is for one that stays refused.
-  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', retry);
+  const changedStuck = useRefreshRequiredRetry(snapshot.phase === 'refresh-required', retry);
   const recommendations = useShowRecommendations(showId);
   const notInterested = useNotInterested();
   const recommendationRows = relatedRowsForPage((recommendations.data?.rows ?? []).map(row => withoutHidden(row, notInterested.hidden)));

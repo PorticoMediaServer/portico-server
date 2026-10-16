@@ -21,7 +21,7 @@ export function quietRefreshStep(state: {tries: number; lastAt: number}, now: nu
 }
 
 /** True once quiet tries have not brought the list back: then, and only then, show the notice. */
-export function useQuietRefresh(required: boolean, refresh: () => unknown): boolean {
+export function useRefreshRequiredRetry(required: boolean, refresh: () => unknown): boolean {
   const [stuck, setStuck] = useState(false);
   const latest = useRef(refresh);
   latest.current = refresh;
