@@ -336,7 +336,8 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 					result.ErrorCode = "search_group_timeout"
 				}
 			}
-			if groupErr := failures[index]; groupErr == nil && g.source != "catalog" {
+			// Live channels count exactly; people say for themselves.
+			if groupErr := failures[index]; groupErr == nil && g.source == "live" {
 				result.TotalCountExact = true
 			}
 			results[index] = result
