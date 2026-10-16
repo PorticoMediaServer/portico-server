@@ -1176,6 +1176,7 @@ catalog_playlists.owner_profile
 catalog_playlists.revision
 catalog_playlists.summary
 catalog_playlists.token
+catalog_playlists.updated_at
 catalog_rec_df.facet
 catalog_rec_df.works
 catalog_rec_facets.entity_id

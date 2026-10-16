@@ -26,6 +26,20 @@ type PinOrder struct {
 	Revision int64           `json:"revision"`
 	Order    []PinOrderEntry `json:"order"`
 }
+
+// PinnedResource is one pinned collection, saved view or playlist as the
+// viewer's navigation shows it: what it is and its name.
+type PinnedResource struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// PinnedResources is the viewer's pins in their arrangement.
+type PinnedResources struct {
+	Revision int64            `json:"revision"`
+	Order    []PinnedResource `json:"order"`
+}
 type LibraryNavigation struct {
 	PinnedLibraryIDs []string `json:"pinnedLibraryIds"`
 	Revision         int64    `json:"revision"`
@@ -37,24 +51,33 @@ func pinOrderRevision(q personalReader, owner string) (int64, error) {
 	return revision, e
 }
 
-// PinOrder reads the viewer's arrangement. Pinned resources with no recorded
-// position are not invented here; they sort after the arranged ones by name.
-func (s *Service) PinOrder(a ResourceActor) (PinOrder, error) {
-	out := PinOrder{Order: []PinOrderEntry{}}
+// PinOrder reads the viewer's pinned collections, saved views and playlists
+// in their arrangement: every one they pinned and may still open, the arranged
+// ones first in their order, then the rest by name; at most maximumPinOrder.
+// A pin on something deleted or no longer shared is simply not listed.
+func (s *Service) PinOrder(a ResourceActor) (PinnedResources, error) {
+	out := PinnedResources{Order: []PinnedResource{}}
 	owner := actorKey(a)
 	revision, e := pinOrderRevision(s.read(), owner)
 	if e != nil {
 		return out, e
 	}
 	out.Revision = revision
-	rows, e := s.read().Query(`SELECT kind,resource_id FROM saved_pin_order WHERE owner_key=? ORDER BY position,resource_id`, owner)
+	rows, e := s.read().Query(`SELECT p.kind,p.resource_id,COALESCE(r.name,l.name,'') AS pin_name FROM saved_pins p
+ LEFT JOIN saved_pin_order o ON o.owner_key=p.owner_key AND o.kind=p.kind AND o.resource_id=p.resource_id
+ LEFT JOIN saved_resources r ON p.kind IN('collection','view') AND r.id=p.resource_id AND r.kind=p.kind AND r.deleted=0
+  AND (r.owner_key=p.owner_key OR EXISTS(SELECT 1 FROM saved_resource_shares share WHERE share.resource_id=r.id AND share.authority=? AND share.account_id=? AND share.profile_id=?) OR (r.kind='collection' AND r.visibility='server'))
+ LEFT JOIN catalog_playlists l ON p.kind='playlist' AND l.token=p.resource_id AND l.deleted=0
+  AND (l.owner_authority=? AND l.owner_account=? AND l.owner_profile=? OR EXISTS(SELECT 1 FROM playlist_shares share WHERE share.playlist_id=l.token AND share.authority=? AND share.account_id=? AND share.profile_id=?))
+ WHERE p.owner_key=? AND p.pinned=1 AND (r.id IS NOT NULL OR l.id IS NOT NULL)
+ ORDER BY o.position IS NULL,o.position,lower(pin_name),p.resource_id LIMIT ?`, a.Authority, a.AccountID, a.ProfileID, a.Authority, a.AccountID, a.ProfileID, a.Authority, a.AccountID, a.ProfileID, owner, maximumPinOrder)
 	if e != nil {
 		return out, e
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var entry PinOrderEntry
-		if e = rows.Scan(&entry.Kind, &entry.ID); e != nil {
+		var entry PinnedResource
+		if e = rows.Scan(&entry.Kind, &entry.ID, &entry.Name); e != nil {
 			return out, e
 		}
 		out.Order = append(out.Order, entry)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
@@ -334,7 +335,7 @@ func TestQueueFollowsGroupOrder(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		plan, err := s.QueueKeysTx(context.Background(), tx, v, ResourceActor{}, &QueueQuery{LibraryID: "u", Pivot: "songs", Query: query, Sort: selection}, "")
+		plan, err := s.QueueKeysTx(context.Background(), tx, v, ResourceActor{}, &QueueQuery{LibraryID: "u", Pivot: "songs", Query: query, Sort: selection}, "", nil)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -386,7 +387,7 @@ func TestQueueAcrossLibrariesFollowsTheList(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		plan, err := s.QueueKeysTx(context.Background(), tx, v, ResourceActor{}, &QueueQuery{LibraryID: AcrossLibraries, Pivot: "items", Query: query, Sort: []BrowseSortSelection{selection}}, "")
+		plan, err := s.QueueKeysTx(context.Background(), tx, v, ResourceActor{}, &QueueQuery{LibraryID: AcrossLibraries, Pivot: "items", Query: query, Sort: []BrowseSortSelection{selection}}, "", nil)
 		if err != nil {
 			done()
 			t.Fatal(err)
@@ -405,5 +406,62 @@ func TestQueueAcrossLibrariesFollowsTheList(t *testing.T) {
 		if err != nil || !reflect.DeepEqual(got, want) || len(want) != 3 {
 			t.Fatalf("%v: queue %v, list %v (%v)", selection, got, want, err)
 		}
+	}
+}
+
+// Playing a Home row plays the members the row held when Play was pressed, in
+// the row's order or sorted as its See all page shows them.
+func TestQueuePlaysAHomeRowSnapshot(t *testing.T) {
+	c := catalogtest.Open(t)
+	movies := c.Library("m", "Movies", "movie", "/m")
+	zulu := c.Movie(movies, "/m/z.mkv", "Zulu", 2001)
+	alpha := c.Movie(movies, "/m/a.mkv", "Alpha", 1999)
+	mike := c.Movie(movies, "/m/k.mkv", "Mike", 2005)
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: "profile", Fence: "f", Libraries: []string{"m"}}
+	rows := map[string][]int64{"trending_now": {zulu.ID, mike.ID, alpha.ID}}
+	query := &BrowseNode{Field: "homeRow", Operator: "equals", Value: "trending_now"}
+	keys := func(selection BrowseSortSelection, rows map[string][]int64) ([]string, error) {
+		tx, done, err := dbwork.BeginRead(context.Background(), c.DB)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer done()
+		plan, err := s.QueueKeysTx(context.Background(), tx, v, ResourceActor{}, &QueueQuery{LibraryID: AcrossLibraries, Pivot: "titles", Query: query, Sort: []BrowseSortSelection{selection}}, "", rows)
+		if err != nil {
+			return nil, err
+		}
+		found, err := tx.QueryContext(context.Background(), plan.SQL, plan.Args...)
+		if err != nil {
+			return nil, err
+		}
+		defer found.Close()
+		got := []int64{}
+		for found.Next() {
+			var id string
+			if err = found.Scan(&id); err != nil {
+				return nil, err
+			}
+			var entity int64
+			if err = c.DB.QueryRow(`SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, id).Scan(&entity); err != nil {
+				return nil, err
+			}
+			got = append(got, entity)
+		}
+		out := []string{}
+		for _, entity := range got {
+			out = append(out, map[int64]string{zulu.ID: "Zulu", alpha.ID: "Alpha", mike.ID: "Mike"}[entity])
+		}
+		return out, found.Err()
+	}
+	if got, err := keys(BrowseSortSelection{Field: "groupOrder", Direction: "asc"}, rows); err != nil || strings.Join(got, ",") != "Zulu,Mike,Alpha" {
+		t.Fatalf("row order: %v %v", got, err)
+	}
+	if got, err := keys(BrowseSortSelection{Field: "title", Direction: "asc"}, rows); err != nil || strings.Join(got, ",") != "Alpha,Mike,Zulu" {
+		t.Fatalf("sorted row: %v %v", got, err)
+	}
+	if _, err := keys(BrowseSortSelection{Field: "groupOrder", Direction: "asc"}, nil); err == nil {
+		t.Fatal("a Home row nobody resolved was played")
 	}
 }

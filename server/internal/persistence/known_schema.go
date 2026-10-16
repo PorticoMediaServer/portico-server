@@ -1532,6 +1532,7 @@ trigger catalog_playlist_entry_count_move
 trigger catalog_playlists_bound_check
 trigger catalog_playlists_bound_delete
 trigger catalog_playlists_bound_insert
+trigger catalog_playlists_updated
 trigger catalog_rec_dataset_tags_delete
 trigger catalog_rec_dataset_tags_insert
 trigger catalog_rec_entity_delete

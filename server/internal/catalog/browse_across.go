@@ -516,7 +516,7 @@ func (s *Service) FacetsAcross(viewer Viewer, request FacetRequest) (FacetPage, 
 // acrossQueue is what playing a list across libraries plays: its titles in
 // the order shown (the same members, conditions and order as its pages),
 // each title's playable items in their own order.
-func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, query *QueueQuery) (QueueSelection, error) {
+func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, query *QueueQuery, rows map[string][]int64) (QueueSelection, error) {
 	pivot, ok := acrossPivot(query.Pivot)
 	if !ok {
 		return QueueSelection{}, ErrBrowsePivot
@@ -532,7 +532,7 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 	if anchor == nil {
 		return QueueSelection{}, ErrBrowseAcrossGroup
 	}
-	members, memberArgs, ordered, err := acrossMembers(anchor, viewer.Profile, nil)
+	members, memberArgs, ordered, err := acrossMembers(anchor, viewer.Profile, rows)
 	if err != nil {
 		return QueueSelection{}, err
 	}
@@ -545,7 +545,7 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 	}
 	where := `e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(kinds)) + `)`
 	args := append([]any{idsJSON(viewer.Libraries)}, kinds...)
-	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions}
+	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
 	clause, err := compiler.compile(query.Query)
 	if err != nil {
 		return QueueSelection{}, err
@@ -570,7 +570,7 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
  LEFT JOIN catalog_songs song ON song.entity_id=i.id LEFT JOIN catalog_entities album ON album.id=song.album_id LEFT JOIN catalog_book_files part ON part.entity_id=i.id
  ORDER BY m.ordinal,COALESCE(season.number,1),COALESCE(ep.number,0),COALESCE(album.year,0),COALESCE(album.sort_key,''),COALESCE(album.id,0),COALESCE(song.disc_number,part.disc_number,1),COALESCE(song.track_number,part.part_number,0),i.id`
 	bound := append(append(append(append([]any{}, memberArgs...), orderArgs...), args...), visibleArgs...)
-	revision, err := s.acrossRevision(AcrossRequest{Query: query.Query, profile: viewer.Profile, fence: viewer.Fence, libraries: viewer.Libraries}, pivot, sorts)
+	revision, err := s.acrossRevision(AcrossRequest{Query: query.Query, Rows: rows, profile: viewer.Profile, fence: viewer.Fence, libraries: viewer.Libraries}, pivot, sorts)
 	if err != nil {
 		return QueueSelection{}, err
 	}
