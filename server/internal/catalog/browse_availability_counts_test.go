@@ -39,6 +39,13 @@ func TestAvailabilityCountersMatchRestrictedPages(t *testing.T) {
 			if err != nil || out.PageInfo.Total != expected || len(out.Entries) != expected {
 				t.Fatalf("fence=%s state=%s expected=%d out=%+v err=%v", viewer.Fence, state, expected, out, err)
 			}
+			// A direct position lands where the first page put the title.
+			for start := 1; start < expected; start++ {
+				deep, err := s.BrowseEntities(viewer, BrowseRequest{Library: "a", Pivot: "movies", Query: node, Limit: 1, Range: &BrowseRange{Start: start}})
+				if err != nil || len(deep.Entries) != 1 || deep.Entries[0].ID != out.Entries[start].ID {
+					t.Fatalf("fence=%s state=%s start=%d: %+v %v", viewer.Fence, state, start, deep.Entries, err)
+				}
+			}
 		}
 	}
 	var rollup, rows int
