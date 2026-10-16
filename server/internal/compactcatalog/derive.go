@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,7 +39,46 @@ const (
 	// DomainInheritedAttributes republishes an item's browse attributes that it
 	// inherits from its show, album or book (registered by package metadata).
 	DomainInheritedAttributes = 31
+	// DomainContainerRefresh re-derives a show's, season's, album's, artist's,
+	// book's or collection's browse row after its members changed. It waits
+	// while other derived work is queued (deferredDomains), so a container
+	// whose members arrive over many batches — a show's episodes, an artist's
+	// thousands of songs while a library is first built — is refreshed once
+	// instead of once per batch of its members.
+	DomainContainerRefresh = 35
 )
+
+// deferredDomains wait until no other domain has work, or until they have
+// waited deferredWait since they were last served, whichever is first.
+var deferredDomains = map[int]bool{DomainContainerRefresh: true}
+
+const deferredWait = 10 * time.Second
+
+// domainPriority (milliseconds) lets a domain's turn come that much before
+// the plain round robin would give it. A library being built shows its titles
+// in browse and search first; memberships and availability follow, and the
+// fanouts that summarise members into their containers run after their
+// inputs settle rather than redoing work as each member arrives. Every domain
+// with work still gets a turn at least about once a second.
+var domainPriority = map[int]int{DomainBrowseRows: 1000, DomainSearch: 1000, DomainBrowseEdges: 500, DomainAvailability: 500}
+
+// nextDomainSQL lists the domains with work in the order their turns come.
+// ?1 is the served time (ms) before which a deferred domain's wait is over.
+var nextDomainSQL = func() string {
+	deferred := []string{}
+	for d := range deferredDomains {
+		deferred = append(deferred, fmt.Sprint(d))
+	}
+	sort.Strings(deferred)
+	priority := ""
+	for _, d := range []int{DomainSearch, DomainBrowseRows, DomainBrowseEdges, DomainAvailability} {
+		priority += fmt.Sprintf(" WHEN %d THEN %d", d, domainPriority[d])
+	}
+	list := strings.Join(deferred, ",")
+	return `SELECT domain,rebuilding FROM catalog_derivations st WHERE (rebuilding=1 OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=st.domain))
+ AND (domain NOT IN(` + list + `) OR served_ms<=?1 OR NOT EXISTS(SELECT 1 FROM catalog_derivations o WHERE o.domain NOT IN(` + list + `) AND (o.rebuilding=1 OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=o.domain))))
+ ORDER BY served_ms-CASE domain` + priority + ` ELSE 0 END,domain`
+}()
 
 // BatchLimit is the fixed units per transaction of callers that do not pace
 // by time (and the first batch of a paced Worker).
@@ -471,8 +511,8 @@ func (w *Worker) retryDue() bool {
 // are not set aside, or a rebuild with more source ids. A domain
 // with neither waits behind the step workers. It answers -1 when there is none.
 func (w *Worker) workable(ctx context.Context, tx *sql.Tx) (int, int, error) {
-	const next = `SELECT domain,rebuilding FROM catalog_derivations st WHERE rebuilding=1
- OR EXISTS(SELECT 1 FROM catalog_dirty d WHERE d.domain=st.domain) ORDER BY served_ms,domain`
+	next := nextDomainSQL
+	waited := w.now().Add(-deferredWait).UnixMilli()
 	w.mu.Lock()
 	aside := map[int][]int64{}
 	for domain, ids := range w.poison {
@@ -483,14 +523,14 @@ func (w *Worker) workable(ctx context.Context, tx *sql.Tx) (int, int, error) {
 	w.mu.Unlock()
 	if len(aside) == 0 {
 		var domain, rebuilding int
-		err := tx.QueryRowContext(ctx, next+` LIMIT 1`).Scan(&domain, &rebuilding)
+		err := tx.QueryRowContext(ctx, next+` LIMIT 1`, waited).Scan(&domain, &rebuilding)
 		if errors.Is(err, sql.ErrNoRows) {
 			return -1, 0, nil
 		}
 		return domain, rebuilding, err
 	}
 	// One row per derived domain at most.
-	rows, err := tx.QueryContext(ctx, next)
+	rows, err := tx.QueryContext(ctx, next, waited)
 	if err != nil {
 		return -1, 0, err
 	}
