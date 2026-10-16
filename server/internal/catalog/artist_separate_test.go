@@ -39,6 +39,10 @@ func TestOwnerSeparatesAlbumsFromAnArtist(t *testing.T) {
 	if err != nil || separate == artist.ID {
 		t.Fatalf("new artist %s: %v", public, err)
 	}
+	// The page that opens next reads the new artist before any derivation has run.
+	if err := s.VisibleEntity(ctx, Viewer{Libraries: []string{"music"}}, "artist", public); err != nil {
+		t.Fatalf("the new artist is not visible at once: %v", err)
+	}
 	if n := rows(t, c, `SELECT count(*) FROM catalog_albums WHERE artist_id=? AND entity_id=?`, separate, sixties.ID); n != 1 {
 		t.Fatal("the album did not move")
 	}
