@@ -7,7 +7,7 @@ import {foregroundRetry} from './foreground-retry';
  * `quietRefreshStep`): tries run only while the tab is visible, and the notice shows only once
  * they have not brought the list back. True once that is so: then, and only then, show the notice.
  */
-export function useQuietRefresh(required: boolean, refresh: () => unknown): boolean {
+export function useRefreshRequiredRetry(required: boolean, refresh: () => unknown): boolean {
   const [stuck, setStuck] = useState(false);
   const latest = useRef(refresh);
   latest.current = refresh;

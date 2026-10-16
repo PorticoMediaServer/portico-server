@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -83,7 +84,19 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 		if source.Saved != nil {
 			saved = source.Saved.ID
 		}
-		return d.Catalog.QueueKeysTx(ctx, tx, viewer, catalog.ResourceActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, source.Query, saved)
+		var homeRows map[string][]int64
+		var labels map[string]string
+		if held, ok := ctx.Value(queueHomeRowsKey{}).(queueHomeRows); ok {
+			homeRows, labels = held.members, held.titles
+		}
+		selection, err := d.Catalog.QueueKeysTx(ctx, tx, viewer, catalog.ResourceActor{Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID}, source.Query, saved, homeRows)
+		if err == nil && source.Query != nil {
+			// A Home row's queue is named after the row.
+			if ids := catalog.BrowseHomeRows(source.Query.Query); len(ids) == 1 && labels[ids[0]] != "" {
+				selection.Label = labels[ids[0]]
+			}
+		}
+		return selection, err
 	}
 	s.LibraryCheck = func(ctx context.Context, tx *sql.Tx, p identity.Principal, library string) error {
 		return d.allowedLibraryTx(ctx, p, library, tx)
@@ -536,6 +549,14 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 64 << 10, Status: 201,
 		Errors: append(command, "idempotency_key_required", "idempotency_key_reused", "stream_limit_reached", "conversion_capacity", "transcode_not_allowed", "unsupported_media", "source_unavailable")},
 		func(ctx context.Context, q *http.Request, in playbackv1.CreateQueueRequest) (playbackv1.QueueReply, error) {
+			sources := []*playbackv1.Selector{in.Selector}
+			for i := range in.Segments {
+				sources = append(sources, &in.Segments[i].Source)
+			}
+			ctx, err := d.withQueueHomeRows(ctx, q, sources...)
+			if err != nil {
+				return playbackv1.QueueReply{}, err
+			}
 			out, err := d.playbackV1().CreateQueue(ctx, caller(ctx, q), q.Header.Get("Idempotency-Key"), in)
 			return reply(ctx, out, err)
 		})
@@ -597,6 +618,10 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 	v1Route(r, apikit.Metadata{Admission: lanePlayback, ID: "add_queue_segment", Method: "POST", Path: "/v1/queues/{id}/segments", Summary: "Play next, add to the queue, or insert after an entry",
 		Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Media, Cost: apikit.SelectionAsync, BodyLimit: 32 << 10, Status: 200, Errors: command},
 		func(ctx context.Context, q *http.Request, in playbackv1.AddSegmentRequest) (playbackv1.QueueReply, error) {
+			ctx, err := d.withQueueHomeRows(ctx, q, &in.Source)
+			if err != nil {
+				return playbackv1.QueueReply{}, err
+			}
 			out, err := d.playbackV1().AddSegment(ctx, caller(ctx, q), q.PathValue("id"), q.Header.Get("If-Match"), in)
 			return reply(ctx, out, err)
 		})
@@ -651,4 +676,55 @@ func registerPlaybackV1Queues(r *apikit.Registry, d Dependencies) {
 		func(ctx context.Context, q *http.Request, _ noBody) (noBody, error) {
 			return noBody{}, d.playbackV1().DeleteQueue(ctx, caller(ctx, q), q.PathValue("id"))
 		})
+}
+
+// queueHomeRowsKey carries the Home rows a queue's query selectors name,
+// resolved through Home when Play was pressed, to the selector compiler.
+type queueHomeRowsKey struct{}
+type queueHomeRows struct {
+	members map[string][]int64
+	titles  map[string]string
+}
+
+// withQueueHomeRows resolves every Home row the selectors name, as the viewer's
+// Home shows it now (its first 500 titles, as the row's See all reads it), so
+// playing a row plays exactly what the row held at that moment. A selector
+// without a Home row costs nothing here.
+func (d Dependencies) withQueueHomeRows(ctx context.Context, r *http.Request, sources ...*playbackv1.Selector) (context.Context, error) {
+	ids := []string{}
+	for _, source := range sources {
+		if source == nil || source.Query == nil {
+			continue
+		}
+		for _, id := range catalog.BrowseHomeRows(source.Query.Query) {
+			if !slices.Contains(ids, id) {
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 || d.Catalog == nil {
+		return ctx, nil
+	}
+	p, err := d.principal(r)
+	if err != nil {
+		return ctx, err
+	}
+	restrictions, _, err := d.viewerRestrictions(r, p)
+	if err != nil {
+		return ctx, err
+	}
+	request, err := d.homeRequestFor(r, p, restrictions)
+	if err != nil {
+		return ctx, err
+	}
+	held := queueHomeRows{members: map[string][]int64{}, titles: map[string]string{}}
+	cat := d.Catalog.WithContext(ctx)
+	for _, id := range ids {
+		members, title, err := cat.HomeRowSnapshot(request, id)
+		if err != nil {
+			return ctx, err
+		}
+		held.members[id], held.titles[id] = members, title
+	}
+	return context.WithValue(ctx, queueHomeRowsKey{}, held), nil
 }

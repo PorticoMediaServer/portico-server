@@ -98,12 +98,12 @@ type channelSuite struct {
 }
 
 type tl11CurrentPlaybackHTTPFixture struct {
-	d            Dependencies
-	h            http.Handler
-	token, proof string
-	t            *testing.T
-	catalog      *catalogtest.Catalog
-	item         catalogtest.Item
+	d       Dependencies
+	h       http.Handler
+	token   string
+	t       *testing.T
+	catalog *catalogtest.Catalog
+	item    catalogtest.Item
 }
 
 func tl11CurrentPlaybackHTTPWith(t *testing.T, beforeStart func(rt *playbackruntime.Runtime, db *sql.DB, state string, hostedControl *hosted.Service)) *tl11CurrentPlaybackHTTPFixture {
@@ -187,7 +187,7 @@ func tl11CurrentPlaybackHTTPWith(t *testing.T, beforeStart func(rt *playbackrunt
 		}
 	})
 	d := Dependencies{Origins: []string{"http://127.0.0.1:19412"}, DB: db, Identity: ident, Catalog: catalog.New(db), Hosted: host, Storage: store, Mounts: managed, PlaybackRuntime: rt}
-	return &tl11CurrentPlaybackHTTPFixture{d: d, h: New(d), token: session.AccessToken, proof: strings.Repeat("p", 43), t: t, catalog: c, item: item}
+	return &tl11CurrentPlaybackHTTPFixture{d: d, h: New(d), token: session.AccessToken, t: t, catalog: c, item: item}
 }
 
 func (f *tl11CurrentPlaybackHTTPFixture) call(method, path string, body any) *httptest.ResponseRecorder {

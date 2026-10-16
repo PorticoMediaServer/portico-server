@@ -75,7 +75,7 @@ export function StorageStatusPanel() {
   const action = useAction();
   const [removing, setRemoving] = useState<UpgradeCopy>();
   const s = read.data;
-  const path = (value: string) => <Text variant="mono" tone="secondary" style={{fontSize: 12, overflowWrap: 'anywhere'}}>{value}</Text>;
+  const path = (value: string) => <Text variant="mono" tone="secondary" style={{fontSize: '0.75rem', overflowWrap: 'anywhere'}}>{value}</Text>;
   return (
     <SettingsGroup title={t('server.places.title')} description={t('server.places.lede')}>
       {read.error ? <SettingsNote><Notice tone={s ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}

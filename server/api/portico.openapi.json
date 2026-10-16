@@ -63328,11 +63328,21 @@
                 },
                 "kind": {
                   "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pinRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
                 "kind",
-                "id"
+                "id",
+                "name",
+                "pinRevision"
               ],
               "type": "object"
             },
@@ -69933,6 +69943,15 @@
           "upgradeCopies"
         ],
         "type": "object"
+      },
+      "GetSubtitleFontsCjkRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetSubtitleFontsCjkResponse": {
+        "format": "binary",
+        "type": "string"
       },
       "GetSuggestionsRequest": {
         "properties": {},
@@ -266321,11 +266340,21 @@
                           },
                           "kind": {
                             "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "pinRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
                           "kind",
-                          "id"
+                          "id",
+                          "name",
+                          "pinRevision"
                         ],
                         "type": "object"
                       },
@@ -280520,6 +280549,67 @@
         "x-lane": "default",
         "x-max-body-bytes": 65536,
         "x-scope": "admin"
+      }
+    },
+    "/v1/subtitle-fonts/cjk": {
+      "get": {
+        "operationId": "get_subtitle_fonts_cjk",
+        "responses": {
+          "200": {
+            "content": {
+              "font/otf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the Chinese, Japanese and Korean font for subtitles drawn in a browser",
+        "x-access": "public",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
       }
     },
     "/v1/suggestions": {

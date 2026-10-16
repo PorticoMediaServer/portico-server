@@ -384,3 +384,68 @@ func TestPlaylistAdmissionLimitsAndExpiredCAS(t *testing.T) {
 		t.Fatal("share cap not enforced", e)
 	}
 }
+
+func TestPlaylistDirectorySortsAndFilters(t *testing.T) {
+	db, e := persistence.Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	s := New(db)
+	a := ResourceActor{"local", "owner", "p"}
+	for _, name := range []string{"Bravo", "Alpha", "Charlie"} {
+		name := name
+		if _, e = s.MutatePlaylist(a, "", "create", "", PlaylistMutation{OperationID: "create-" + name, Name: &name}, nil); e != nil {
+			t.Fatal(e)
+		}
+	}
+	phase34SettlePlaylistProjection(t, db)
+	if _, e = db.Exec(`UPDATE catalog_playlists SET entry_count=CASE name WHEN 'Alpha' THEN 1 WHEN 'Bravo' THEN 9 ELSE 4 END,created_at=CASE name WHEN 'Alpha' THEN '2026-01-03T00:00:00Z' WHEN 'Bravo' THEN '2026-01-01T00:00:00Z' ELSE '2026-01-02T00:00:00Z' END`); e != nil {
+		t.Fatal(e)
+	}
+	names := func(r ContentRequest) string {
+		t.Helper()
+		out, e := s.PlaylistDirectory(r, a)
+		if e != nil {
+			t.Fatal(e)
+		}
+		list := []string{}
+		for _, section := range out.Sections {
+			for _, entry := range section.Entries {
+				list = append(list, entry.Title)
+			}
+		}
+		return strings.Join(list, ",")
+	}
+	base := ContentRequest{ServerID: "s", Profile: "p", ViewerFence: "f", View: "playlists", Limit: 10}
+	for sort, want := range map[string]string{"title": "Alpha,Bravo,Charlie", "created": "Alpha,Charlie,Bravo", "count": "Bravo,Charlie,Alpha"} {
+		r := base
+		r.Sort = sort
+		if got := names(r); got != want {
+			t.Fatalf("%s: %s", sort, got)
+		}
+	}
+	r := base
+	r.Sort, r.Direction, r.Limit = "count", "asc", 1
+	first, e := s.PlaylistDirectory(r, a)
+	if e != nil || first.Sections[0].Entries[0].Title != "Alpha" || first.Sections[0].NextCursor == "" {
+		t.Fatal(first, e)
+	}
+	r.Cursor = first.Sections[0].NextCursor
+	if got := names(r); got != "Charlie" {
+		t.Fatalf("count cursor continued at %s", got)
+	}
+	r = base
+	r.Filter = "shared"
+	if got := names(r); got != "" {
+		t.Fatalf("shared filter listed %s", got)
+	}
+	r.Filter = "mine"
+	if got := names(r); got != "Alpha,Bravo,Charlie" {
+		t.Fatalf("mine filter listed %s", got)
+	}
+	r.Filter = "nobody"
+	if _, e = s.PlaylistDirectory(r, a); e == nil {
+		t.Fatal("an unknown filter was accepted")
+	}
+}

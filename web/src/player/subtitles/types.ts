@@ -13,7 +13,7 @@ export type SubtitleInput = Uint8Array | string;
 export type DrawnSubtitleKind = 'ass' | 'pgs' | 'vobsub' | 'dvb';
 export type DrawnSubtitleSource =
   /** `charset` names the script's encoding when it is not UTF-8; `fonts` are the fonts attached to the file. */
-  | Readonly<{kind: 'ass'; script: SubtitleInput; charset?: string; fonts?: readonly string[]}>
+  | Readonly<{kind: 'ass'; script: SubtitleInput; charset?: string; fonts?: readonly string[]; /** The server's CJK font, for a line in Chinese, Japanese or Korean the attached fonts lack. */ cjkFont?: string}>
   | Readonly<{kind: 'pgs'; data: SubtitleInput}>
   | Readonly<{kind: 'vobsub'; index: SubtitleInput; data: SubtitleInput}>
   | Readonly<{kind: 'dvb'; data: SubtitleInput}>;

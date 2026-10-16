@@ -12,6 +12,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	"portico.local/server/internal/mediaexec"
 )
 
 const webContentSecurityPolicy = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' https://www.gstatic.com/cv/js/sender/ https://www.gstatic.com/eureka/clank/ https://www.gstatic.com/cast/sdk/libs/sender/; style-src 'self'; connect-src 'self' https://*.direct.getportico.tv https://web.getportico.tv; img-src 'self' blob: data: https://*.direct.getportico.tv; media-src 'self' blob:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'none'; object-src 'none'; form-action 'self'"
@@ -46,6 +48,16 @@ func (d Dependencies) installationRoutes(mux *http.ServeMux) {
 			return
 		}
 		write(w, 200, map[string]bool{"ready": true})
+	})
+	// A browser draws styled subtitles itself and has no font with Chinese, Japanese and Korean
+	// letters. It fetches the one burned-in subtitles use, only when a subtitle needs it.
+	d.httpHandle(mux, "GET /v1/subtitle-fonts/cjk", func(w http.ResponseWriter, r *http.Request) {
+		font, tag := mediaexec.CJKFont()
+		w.Header().Set("Content-Type", "font/otf")
+		w.Header().Set("Cache-Control", "public, max-age=2592000")
+		w.Header().Set("ETag", tag)
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		http.ServeContent(w, r, "", time.Time{}, bytes.NewReader(font))
 	})
 	if d.WebDirectory == "" {
 		return

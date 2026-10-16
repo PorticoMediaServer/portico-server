@@ -29,8 +29,8 @@ import {GroupBar, GroupRows} from '../shared/GroupBrowse';
 import {useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-browse';
 import type {BrowseNode} from '@core/browse.ts';
 import {episodeGroupCondition} from '@core/presentation/browse-groups.ts';
-import {groupSequence} from '../../app/container-play';
-import {useQuietRefresh} from '../../app/quiet-refresh';
+import {episodeGroupSequence, groupSequence} from '../../app/container-play';
+import {useRefreshRequiredRetry} from '../../app/quiet-refresh';
 
 type ShowSearch = {library?: string; season?: string; episode?: string; title?: string; sort?: string; direction?: 'asc' | 'desc'; filters?: string};
 /** Up to this many seasons show as tabs; beyond it, a menu (Spec — Title Pages §2). */
@@ -81,7 +81,7 @@ export function ShowScreen() {
   const route = useMemo<ShowWorkspaceRoute>(() => ({libraryId, ...(showId !== 'season' ? {showId} : {}), ...(seasonIdParam ? {seasonId: seasonIdParam} : {})}), [libraryId, showId, seasonIdParam]);
   const {snapshot, selectSeason, selectGroup, nextSeasons, previousSeasons, retry} = useShowWorkspace(route);
   // A show the server says changed is read again quietly; the notice is for one that stays refused.
-  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', retry);
+  const changedStuck = useRefreshRequiredRetry(snapshot.phase === 'refresh-required', retry);
   const recommendations = useShowRecommendations(showId);
   const notInterested = useNotInterested();
   const recommendationRows = relatedRowsForPage((recommendations.data?.rows ?? []).map(row => withoutHidden(row, notInterested.hidden)));
@@ -140,10 +140,10 @@ export function ShowScreen() {
   const playEpisode = useCallback((episode: ContentEntry, startSeconds?: number) => {
     const list = sequenceFrom(episode).filter(e => e.playback);
     if (!list.length) return;
-    // On Playback v1 the season plays as one server request from this episode (a plain season list only; an episode group isn't a season).
-    const container = selected?.seasonId && !selected.group ? {kind: 'season' as const, id: selected.seasonId} : undefined;
+    // On Playback v1 the season plays as one server request from this episode; one of the show's other groups (a range, its specials, its whole list) plays whole as the server's query.
+    const container = selected?.group && show ? episodeGroupSequence(show.libraryId, show.id, selected.group) : selected?.seasonId ? {kind: 'season' as const, id: selected.seasonId} : undefined;
     player.playSequence(list, 0, startSeconds ?? episode.playback?.startSeconds ?? episode.progressSeconds ?? 0, container);
-  }, [player, sequenceFrom, selected?.seasonId, selected?.group]);
+  }, [player, sequenceFrom, selected?.seasonId, selected?.group, show]);
 
   // The episode list's sort and filters travel with the address, so they hold across seasons, the episode panel and Back.
   const showSearch = useCallback((extra: Partial<ShowSearch> = {}): ShowSearch => ({library: search.library, ...(search.title ? {title: search.title} : {}), ...(seasonParam ? {season: seasonParam} : {}), ...(search.sort ? {sort: search.sort, direction: search.direction} : {}), ...(search.filters ? {filters: search.filters} : {}), ...extra}), [search.library, search.title, seasonParam, search.sort, search.direction, search.filters]);

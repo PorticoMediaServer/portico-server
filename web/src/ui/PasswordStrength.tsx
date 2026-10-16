@@ -1,6 +1,6 @@
 import {passwordStrength} from '@core/password-strength.ts';
 import {cx} from './cx';
-import {currentI18n} from '../app/i18n';
+import {useI18n} from '../app/i18n';
 import s from './PasswordStrength.module.css';
 
 /**
@@ -9,7 +9,9 @@ import s from './PasswordStrength.module.css';
  * which the form checks itself.
  */
 export function PasswordStrength({password, id}: {password: string; id?: string}) {
-  if (!password) return <p id={id} className={s.hint}>{currentI18n().t('web.password.hint')}</p>;
+  // Read through the hook, so the hint and the strength words redraw when the language changes.
+  const {t} = useI18n();
+  if (!password) return <p id={id} className={s.hint}>{t('web.password.hint')}</p>;
   const r = passwordStrength(password);
   const tone = r.level <= 1 ? s.weak : r.level === 2 ? s.fair : s.good;
   return (

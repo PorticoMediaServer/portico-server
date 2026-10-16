@@ -1,5 +1,6 @@
 import type {QueueAnchor, QueueBrowseSelector, Selector} from '@core/playback-v1/index.ts';
 import type {BrowseNode, BrowseSortSelection} from '@core/browse.ts';
+import {episodeGroupQuery, homeRowQuery} from '@core/presentation/browse-groups.ts';
 
 /**
  * Container plays on Playback v1 (Client Playback Migration): a show, a season, an album, an
@@ -33,7 +34,7 @@ export type SequenceContainer =
  * A disc page names its catalog navigation id (`albumId:disc:N`); the v1 disc selector takes
  * `albumId:N`, so the id is mapped (an unmappable disc falls back to the entry list). An
  * episode group that isn't a season (an arc, a range, a year) would need the show with a range,
- * which the v1 selector can't express yet, so it falls back to the entry list. Popular tracks
+ * which a container can't express, so it plays as a query instead (`episodeGroupSequence`). Popular tracks
  * (a top-5 list) always play their own five as an item list, so callers pass no container.
  */
 export function sequenceContainer(kind: string | undefined, id: string | undefined, o: {shuffle?: boolean; group?: boolean} = {}): SequenceContainer | undefined {
@@ -77,8 +78,7 @@ export function savedSequence(id: string, o: {shuffle?: boolean} = {}): Sequence
 export function viewSequence(view: Readonly<{libraryId?: string; pivot?: string; base?: readonly BrowseNode[]; predicates?: readonly BrowseNode[]; sort?: BrowseSortSelection}>, o: {shuffle?: boolean} = {}): SequenceContainer | undefined {
   if (!view.libraryId || !view.pivot) return undefined;
   const all = [...(view.base ?? []), ...(view.predicates ?? [])];
-  // A Home row is what Home shows now, which a queue cannot name: its titles play from the list on screen.
-  if (all.some(node => 'field' in node && node.field === 'homeRow')) return undefined;
+  // A Home row is read through Home by the server when Play is pressed, so a sorted or filtered row plays as shown too.
   return {kind: 'query', query: {libraryId: view.libraryId, pivot: view.pivot, ...(all.length ? {query: {all}} : {}), ...(view.sort ? {sort: [view.sort]} : {})}, ...(o.shuffle ? {shuffle: true} : {})};
 }
 
@@ -110,4 +110,14 @@ export function containerPlay(container: SequenceContainer | undefined, firstIte
 export function groupSequence(group: Readonly<{active: boolean; spec?: Readonly<{libraryId: string; pivot: string; base: readonly BrowseNode[]}>; predicates: readonly BrowseNode[]; sort: BrowseSortSelection}>, o: {shuffle?: boolean} = {}): SequenceContainer | undefined {
   if (!group.active || !group.spec) return undefined;
   return viewSequence({libraryId: group.spec.libraryId, pivot: group.spec.pivot, base: group.spec.base, predicates: group.predicates, sort: group.sort}, o);
+}
+
+/** One of a show's episode groups that isn't a season (an arc, a range of a hundred, its specials) played whole, in the show's order. */
+export function episodeGroupSequence(libraryId: string, showId: string, group: string, o: {shuffle?: boolean} = {}): SequenceContainer {
+  return {kind: 'query', query: episodeGroupQuery(libraryId, showId, group), ...(o.shuffle ? {shuffle: true} : {})};
+}
+
+/** A Home row played whole: what the row holds when Play is pressed (its first 500 titles), in the row's order. */
+export function homeRowSequence(rowId: string, entryKinds: readonly string[], o: {shuffle?: boolean} = {}): SequenceContainer {
+  return {kind: 'query', query: homeRowQuery(rowId, entryKinds), ...(o.shuffle ? {shuffle: true} : {})};
 }

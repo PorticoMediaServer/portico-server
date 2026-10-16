@@ -482,12 +482,13 @@ export type WebProbeEnvironment={
 const mp4=(codecs:string)=>`video/mp4; codecs="${codecs}"`;
 const mp4Audio=(codecs:string)=>`audio/mp4; codecs="${codecs}"`;
 
-type VideoProbe={codec:string;contentType:string;tenBit?:string;dolbyVision?:Record<number,string>;hdr?:boolean};
+/** `uhd` (and `uhdTenBit`) name a level that covers 3840×2160: a decoder that answers by level refuses 4K at the plain probe's level 4.0. */
+type VideoProbe={codec:string;contentType:string;tenBit?:string;uhd:string;uhdTenBit?:string;dolbyVision?:Record<number,string>;hdr?:boolean};
 const videoProbes:VideoProbe[]=[
- {codec:'h264',contentType:mp4('avc1.640028'),tenBit:mp4('avc1.6e0028')},
- {codec:'hevc',contentType:mp4('hvc1.1.6.L120.90'),tenBit:mp4('hvc1.2.4.L153.B0'),dolbyVision:{5:mp4('dvh1.05.06'),8:mp4('dvh1.08.06')},hdr:true},
- {codec:'av1',contentType:mp4('av01.0.08M.08'),tenBit:mp4('av01.0.12M.10.0.110.09.16.09.0'),hdr:true},
- {codec:'vp9',contentType:'video/webm; codecs="vp09.00.40.08"',tenBit:'video/webm; codecs="vp09.02.40.10"',hdr:true},
+ {codec:'h264',contentType:mp4('avc1.640028'),tenBit:mp4('avc1.6e0028'),uhd:mp4('avc1.640033'),uhdTenBit:mp4('avc1.6e0033')},
+ {codec:'hevc',contentType:mp4('hvc1.1.6.L120.90'),tenBit:mp4('hvc1.2.4.L153.B0'),uhd:mp4('hvc1.1.6.L153.90'),dolbyVision:{5:mp4('dvh1.05.06'),8:mp4('dvh1.08.06')},hdr:true},
+ {codec:'av1',contentType:mp4('av01.0.08M.08'),tenBit:mp4('av01.0.12M.10.0.110.09.16.09.0'),uhd:mp4('av01.0.12M.08'),hdr:true},
+ {codec:'vp9',contentType:'video/webm; codecs="vp09.00.40.08"',tenBit:'video/webm; codecs="vp09.02.40.10"',uhd:'video/webm; codecs="vp09.00.51.08"',uhdTenBit:'video/webm; codecs="vp09.02.51.10"',hdr:true},
 ];
 const audioProbes:{codec:string;mse:string[];element:string[];channels:number;objectAudio?:('atmos')[]}[]=[
  {codec:'aac',mse:[mp4Audio('mp4a.40.2')],element:[mp4Audio('mp4a.40.2')],channels:6},
@@ -529,7 +530,7 @@ export async function probeWebProfile(env:WebProbeEnvironment):Promise<Capabilit
   if(probe.tenBit&&(element(probe.tenBit)||source(probe.tenBit)))entry.bitDepths=[8,10];
   // Resolution: ask about 4K and fall back to 1080p. A browser without
   // MediaCapabilities is assumed to stop at 1080p for anything but H.264.
-  const uhd=await ask({contentType:probe.tenBit&&entry.bitDepths!.includes(10)?probe.tenBit:probe.contentType,width:3840,height:2160,bitrate:40_000_000,framerate:30});
+  const uhd=await ask({contentType:probe.tenBit&&entry.bitDepths!.includes(10)?probe.uhdTenBit??probe.tenBit:probe.uhd,width:3840,height:2160,bitrate:40_000_000,framerate:30});
   if(uhd?.supported&&uhd.smooth){entry.maxWidth=4096;entry.maxHeight=2160;}
   else if(uhd===null&&probe.codec==='h264'){entry.maxWidth=4096;entry.maxHeight=2160;}
   else{entry.maxWidth=1920;entry.maxHeight=1080;}

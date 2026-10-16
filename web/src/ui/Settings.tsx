@@ -209,7 +209,7 @@ export function ConfirmDialog({open, onOpenChange, title, body, confirmLabel, ca
   const ready = !typedConfirmation || typed.trim().toLocaleLowerCase() === typedConfirmation.trim().toLocaleLowerCase();
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={title} dismissable={!busy} actions={<><Button variant="ghost" label={cancelLabel} onClick={() => onOpenChange(false)} disabled={busy} /><Button variant={destructive ? 'danger' : 'primary'} label={confirmLabel} onClick={() => void onConfirm()} disabled={!ready} loading={busy} /></>}>
-      {body ? <div style={{fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5}}>{body}</div> : null}
+      {body ? <div style={{fontSize: '0.875rem', color: 'var(--text-secondary)', lineHeight: 1.5}}>{body}</div> : null}
       {typedConfirmation ? <Input label={uiI18n().t('confirm.typeToConfirm', {token: `“${typedConfirmation}”`})} value={typed} onChange={e => setTyped(e.target.value)} autoComplete="off" spellCheck={false} /> : null}
       {error ? <Notice tone="error">{error}</Notice> : null}
     </Dialog>
