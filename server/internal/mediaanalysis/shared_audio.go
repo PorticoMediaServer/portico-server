@@ -10,7 +10,12 @@ import (
 	"sync"
 
 	"portico.local/server/internal/decoder"
+	"portico.local/server/internal/supervise"
 )
+
+// errSharedStagePanicked is a shared audio stage's error when its analysis
+// panicked (supervise.Go recovered and logged it).
+var errSharedStagePanicked = errors.New("shared audio analysis stopped unexpectedly")
 
 // One decode of a file's audio serves every audio analysis a scan wants: the
 // decoder hands over the first audio track once, as 48 kHz stereo, and the
@@ -244,12 +249,14 @@ func analyzeSharedAudio(reader io.Reader, duration int64, stages []string) (map[
 		p := &pcmStage{name: name, writer: w}
 		pcm = append(pcm, p)
 		wg.Add(1)
-		go func() {
+		supervise.Go("mediaanalysis.sharedAudio."+name, func() {
 			defer wg.Done()
+			// Unblock the writer if the analysis stopped early (a budget) or
+			// panicked; a panic leaves errSharedStagePanicked as the stage's error.
+			p.err = errSharedStagePanicked
+			defer func() { _ = r.CloseWithError(errors.Join(p.err, io.ErrClosedPipe)) }()
 			p.summary, p.err = analyzePCM(r, duration, p.name)
-			// Unblock the writer if the analysis stopped early (a budget).
-			_ = r.CloseWithError(errors.Join(p.err, io.ErrClosedPipe))
-		}()
+		})
 	}
 	var mix *downmix
 	if len(pcm) > 0 {
