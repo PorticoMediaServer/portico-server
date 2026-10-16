@@ -67,6 +67,15 @@ export const browsePath=(libraryId:string):string=>libraryId===acrossLibraries?r
 export const browseCapabilitiesPath=(libraryId:string,pivot:string):string=>`${libraryId===acrossLibraries?routePath('get_browse_capabilities'):routePath('get_libraries_id_browse_capabilities',{id:libraryId})}?pivot=${encodeURIComponent(pivot)}`;
 /** Where a filter's counted values are read (`?field=…`). */
 export const browseFacetsPath=(libraryId:string):string=>libraryId===acrossLibraries?routePath('get_browse_facets'):routePath('get_library_facets',{id:libraryId});
+/** The group a list across libraries is (a person, playlist, collection, Home row, My List, Favorites, the history), from the conditions it always applies: its filter choices are counted over that list's own titles (`?group=…&value=…` on the facets path). */
+export function facetGroupOf(base:readonly BrowseNode[]):Readonly<{group:string;value:string}>|undefined{
+  for(const node of base){
+    if(!('field' in node))continue;
+    if(['person','cast','crew','list','savedCollection','homeRow'].includes(node.field)&&typeof node.value==='string')return {group:node.field,value:node.value};
+    if(['watchlisted','favorite','lastPlayedAt'].includes(node.field))return {group:node.field,value:''};
+  }
+  return undefined;
+}
 /** The sorts a library tab offers: every published sort but a group's own order. */
 export const libraryTabSorts=<S extends Readonly<{requiresGroup?:boolean}>>(sorts:readonly S[]):S[]=>sorts.filter(sort=>!sort.requiresGroup);
 

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import {nextToolbarSort} from '../src/presentation/browse-toolbar.ts';
 import assert from 'node:assert/strict';
-import {parseBrowseCapabilities,parseBrowseResult,parseBrowseFacets,validateBrowseQuery,formatBrowseAnchor,BrowseQueryBuilder,BrowseQueryError,browseWithin,type BrowseCapabilities} from '../src/browse.ts';
+import {parseBrowseCapabilities,parseBrowseResult,parseBrowseFacets,validateBrowseQuery,formatBrowseAnchor,BrowseQueryBuilder,BrowseQueryError,browseWithin,facetGroupOf,type BrowseCapabilities} from '../src/browse.ts';
 import {parsePinOrder,parseLibraryNavigationPins,parsePinnedLibraries,pinOrderRequest,libraryNavigationRequest} from '../src/library-pins.ts';
 
 function capabilitiesPayload(changes: Record<string, unknown> = {}): any {
@@ -294,4 +294,10 @@ test('a total counted only to the threshold is open-ended until the last page', 
   const exact = parseBrowseResult(resultPayload());
   assert.equal(exact.pageInfo.totalIsLowerBound, false);
   assert.equal(exact.pageInfo.total, 3);
+});
+
+test('a list across libraries names its group for its filter counts', () => {
+  assert.deepEqual(facetGroupOf([{field: 'list', operator: 'equals', value: 'pl1'}, {field: 'genre', operator: 'equals', value: 'Drama'}]), {group: 'list', value: 'pl1'});
+  assert.deepEqual(facetGroupOf([{field: 'favorite', operator: 'equals', value: true}]), {group: 'favorite', value: ''});
+  assert.equal(facetGroupOf([{field: 'genre', operator: 'equals', value: 'Drama'}]), undefined);
 });
