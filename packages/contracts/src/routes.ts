@@ -15719,6 +15719,26 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "start_app_setup",
+    "method": "POST",
+    "path": "/v1/setup/app",
+    "summary": "Start first-run setup from an app",
+    "access": "public",
+    "requires": "session",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "invalid_request",
+      "rate_limited",
+      "setup_already_complete",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "default"
+  },
+  {
     "id": "start_browser_setup",
     "method": "POST",
     "path": "/v1/setup/browser",
@@ -16559,6 +16579,7 @@ export const routePaths = {
   "social_post_v1_receivers_id_grants_grantId_decision": "/v1/receivers/{id}/grants/{grantId}/decision",
   "social_post_v1_receivers_id_heartbeat": "/v1/receivers/{id}/heartbeat",
   "social_put_v1_cast_configuration": "/v1/cast/configuration",
+  "start_app_setup": "/v1/setup/app",
   "start_browser_setup": "/v1/setup/browser",
   "start_playback_session": "/v1/playback/sessions",
   "stop_playback_session": "/v1/playback/sessions/{id}",

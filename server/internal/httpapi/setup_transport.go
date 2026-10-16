@@ -47,23 +47,46 @@ type BrowserSetupResponse struct {
 	SetupToken string `json:"setupToken"`
 }
 
+// appSetupRequest is a request from an app (phone, tablet, television), never from a browser
+// page: browsers send Origin on every POST, and a page on another site cannot send this JSON
+// without a preflight, which the router refuses for the setup routes. Whoever can reach the
+// server may set it up from a browser at its address; an app at its address may do the same.
+func (d Dependencies) appSetupRequest(r *http.Request) bool {
+	return d.setupRequestAllowed(r) && r.Header.Get("Origin") == "" && r.Header.Get("Sec-Fetch-Mode") == ""
+}
+
+// setupStart answers a first-run setup secret once the caller has passed its route's check.
+func (d Dependencies) setupStart(ctx context.Context, r *http.Request, bucket string) (BrowserSetupResponse, error) {
+	if err := d.Identity.SetupLimit(ctx, d.setupPeerSubject(r), bucket, 10); err != nil {
+		return BrowserSetupResponse{}, setupTransportError(err)
+	}
+	token, err := d.Identity.BrowserSetupToken(ctx)
+	if err != nil {
+		return BrowserSetupResponse{}, setupTransportError(err)
+	}
+	return BrowserSetupResponse{d.Identity.ID(), token}, nil
+}
+
 func registerSetupTransport(registry *apikit.Registry, d Dependencies) error {
 	err := apikit.RegisterRaw(registry, apikit.RawRoute[identity.SetupOptions, identity.Envelope]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "setup_server", Method: "POST", Path: "/v1/setup", Summary: "Create the first owner", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 201, BodyLimit: 65536, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "internal"}}, Serve: d.serveSetup})
 	if err != nil {
 		return err
 	}
-	return apikit.Register(registry, apikit.Route[struct{}, BrowserSetupResponse]{Metadata: apikit.Metadata{Admission: laneDefault, ID: "start_browser_setup", Method: "POST", Path: "/v1/setup/browser", Summary: "Start first-run setup from this origin", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (BrowserSetupResponse, error) {
+	err = apikit.Register(registry, apikit.Route[struct{}, BrowserSetupResponse]{Metadata: apikit.Metadata{Admission: laneDefault, ID: "start_browser_setup", Method: "POST", Path: "/v1/setup/browser", Summary: "Start first-run setup from this origin", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (BrowserSetupResponse, error) {
 		if !d.setupRequestAllowed(r) || !d.sameRequestOrigin(r, r.Header.Get("Origin")) {
 			return BrowserSetupResponse{}, foundationAuthError(identity.ErrUnauthorized)
 		}
-		if err := d.Identity.SetupLimit(ctx, d.setupPeerSubject(r), "browser-setup", 10); err != nil {
-			return BrowserSetupResponse{}, setupTransportError(err)
+		return d.setupStart(ctx, r, "browser-setup")
+	}})
+	if err != nil {
+		return err
+	}
+	// First run from the Portico app on a phone or tablet that found a server nobody has set up.
+	return apikit.Register(registry, apikit.Route[struct{}, BrowserSetupResponse]{Metadata: apikit.Metadata{Admission: laneDefault, ID: "start_app_setup", Method: "POST", Path: "/v1/setup/app", Summary: "Start first-run setup from an app", Access: apikit.Public, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 200, BodyLimit: 4096, Errors: []string{"unauthorized", "invalid_request", "rate_limited", "setup_already_complete", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (BrowserSetupResponse, error) {
+		if !d.appSetupRequest(r) {
+			return BrowserSetupResponse{}, foundationAuthError(identity.ErrUnauthorized)
 		}
-		token, err := d.Identity.BrowserSetupToken(ctx)
-		if err != nil {
-			return BrowserSetupResponse{}, setupTransportError(err)
-		}
-		return BrowserSetupResponse{d.Identity.ID(), token}, nil
+		return d.setupStart(ctx, r, "app-setup")
 	}})
 }
 

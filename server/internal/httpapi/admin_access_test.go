@@ -705,3 +705,50 @@ func TestClientReportRedactionCannotExpandPastStorageLimit(t *testing.T) {
 		t.Fatal(stored.Bytes, len(stored.Body), err)
 	}
 }
+
+// A14: one member, invitation or device read by id, as its list shows it,
+// instead of walking the list's pages. Each is an administrator's read; an
+// unknown id is 404 and a viewer's token is refused.
+func TestAdministratorReadsOneMemberInvitationAndDeviceByID(t *testing.T) {
+	f := administrationFixtureNew(t)
+	w := f.call("GET", "/v1/admin/access/members/member", f.admin, "")
+	var member access.Member
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &member) != nil || member.AccountID != "member" || member.Username != "member" {
+		t.Fatalf("member: %d %s", w.Code, w.Body)
+	}
+	if w = f.call("GET", "/v1/admin/access/members/nobody", f.admin, ""); w.Code != 404 {
+		t.Fatalf("unknown member: %d %s", w.Code, w.Body)
+	}
+	if w = f.call("GET", "/v1/admin/access/members/owner", f.member, ""); w.Code != 401 && w.Code != 403 {
+		t.Fatalf("a viewer read a member: %d", w.Code)
+	}
+
+	w = f.call("POST", "/v1/admin/access/invitations", f.admin, `{"operationId":"invite-read-1","email":"guest@example.com","role":"member","allowedLibraries":[],"expiresInHours":24}`)
+	var created access.Invitation
+	if w.Code != 201 || json.Unmarshal(w.Body.Bytes(), &created) != nil || created.ID == "" || created.Code == "" {
+		t.Fatalf("invite: %d %s", w.Code, w.Body)
+	}
+	w = f.call("GET", "/v1/admin/access/invitations/"+created.ID, f.admin, "")
+	var read access.Invitation
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &read) != nil || read.ID != created.ID || read.Email != "guest@example.com" {
+		t.Fatalf("invitation: %d %s", w.Code, w.Body)
+	}
+	if strings.Contains(w.Body.String(), created.Code) {
+		t.Fatal("reading an invitation by id showed its code")
+	}
+	if w = f.call("GET", "/v1/admin/access/invitations/missing", f.admin, ""); w.Code != 404 {
+		t.Fatalf("unknown invitation: %d %s", w.Code, w.Body)
+	}
+
+	w = f.call("GET", "/v1/admin/access/devices/"+f.memberDevice, f.owner, "")
+	var device identity.MemberDevice
+	if w.Code != 200 || json.Unmarshal(w.Body.Bytes(), &device) != nil || device.ID != f.memberDevice || device.AccountID != "member" {
+		t.Fatalf("device: %d %s", w.Code, w.Body)
+	}
+	if w = f.call("GET", "/v1/admin/access/devices/missing", f.owner, ""); w.Code != 404 {
+		t.Fatalf("unknown device: %d %s", w.Code, w.Body)
+	}
+	if w = f.call("GET", "/v1/admin/access/devices/"+f.memberDevice, f.member, ""); w.Code != 401 && w.Code != 403 {
+		t.Fatalf("a viewer read a device: %d", w.Code)
+	}
+}
