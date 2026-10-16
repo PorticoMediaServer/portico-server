@@ -4755,6 +4755,7 @@ viewer_revisions.library_id
 viewer_revisions.observation_revision
 viewer_revisions.profile_id
 viewer_revisions.revision
+viewer_revisions.title_path
 webhook_deliveries.attempts
 webhook_deliveries.created_ms
 webhook_deliveries.data

@@ -108,7 +108,7 @@ export function parsePersonalBatchReceipt(v:unknown,serverId:string,requested:re
  return Object.freeze({serverId,viewerFence:v.viewerFence,operationId:v.operationId,results:Object.freeze(results),updated:v.updated,failed:v.failed});
 }
 export const PERSONAL_BATCH_PATH=routePath("put_items_personal_state_batch");
-function info(e:unknown):PersonalSavedError{const x=e as {code?:unknown};const code=id(x?.code)?x.code:'request_failed';return {code,message:e instanceof Error?e.message:'The request failed.',conflict:['playlist_conflict','resource_conflict','revision_mismatch','personal_state_conflict','stale_continuation','operation_expired'].includes(code)};}
+function info(e:unknown):PersonalSavedError{const x=e as {code?:unknown};const code=id(x?.code)?x.code:'request_failed';return {code,message:e instanceof Error?e.message:'The request failed.',conflict:['resource_conflict','revision_mismatch','personal_state_conflict','stale_continuation','operation_expired'].includes(code)};}
 function freeze<T>(v:T):T{if(v&&typeof v==='object'){for(const c of Object.values(v))freeze(c);Object.freeze(v);}return v;}
 /** Entries a page holds, and how far a quiet re-read reaches: DEEP_PAGES pages of PAGE. */
 const PAGE=40,DEEP_PAGES=25;

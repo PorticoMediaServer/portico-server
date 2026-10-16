@@ -37,6 +37,8 @@ func (d Dependencies) browserOriginAllowed(r *http.Request, origin string) bool 
 // credential of its own, without deciding whether it is valid (the route's
 // authentication does that).
 func tokenCredentialPresented(r *http.Request) bool {
+	// A key or token in the address of a GET or HEAD is already here: the
+	// router moves it into Authorization (liftQueryCredential) before this runs.
 	if strings.TrimSpace(r.Header.Get("Authorization")) != "" {
 		return true
 	}

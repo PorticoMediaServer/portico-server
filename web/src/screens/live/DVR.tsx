@@ -14,7 +14,7 @@ import {useQuietRefresh} from '../../app/freshness';
 import {dependsOn} from '@core/freshness-hub.ts';
 
 /** A finished or failed recording and a conflict each raise a notice: the one hint the server sends for this page. */
-const dvrHints = Object.freeze([dependsOn.event('notification.changed')]);
+const dvrHints = Object.freeze([dependsOn.list('myRecordings'), dependsOn.event('notification.changed')]);
 const NO_RECORDINGS: readonly Recording[] = [];
 
 const views = (t: I18n['t']): {id: View; label: string}[] => [{id: 'upcoming', label: t('web.dvr.upcoming')}, {id: 'recorded', label: t('web.dvr.recorded')}, {id: 'rules', label: t('web.dvr.rules')}, {id: 'history', label: t('web.dvr.history')}, {id: 'storage', label: t('web.dvr.storage')}];
@@ -103,9 +103,9 @@ export function DVRView() {
   }, [dvr]);
   useEffect(() => { setCursors(['']); }, [view]);
   useEffect(() => { setPage(undefined); load(view, cursor); }, [load, view, cursor]);
-  // Recordings start, finish and fail by the clock, and the server sends no hint for it: the view
-  // on screen is read again when a recording's notice arrives and, quietly, twice a minute while
-  // this page is in front. What is shown stays until the answer is in; a failed read says nothing.
+  // The view on screen is read again when the server says this profile's recordings or rules
+  // changed (a recording started, finished, failed or was set from another device), or a notice
+  // arrives. What is shown stays until the answer is in; a failed read says nothing.
   const shown = useRef({view, cursor});
   shown.current = {view, cursor};
   useQuietRefresh('dvr', async context => {
@@ -116,7 +116,7 @@ export function DVRView() {
     const next = await dvr.list(asked.view, asked.cursor);
     await context.settle();
     if (same()) setPage(next);
-  }, () => !busy && !confirm && !editing && !conflict && (view === 'storage' ? !!storage : !!page), {dependencies: dvrHints});
+  }, () => !busy && !confirm && !editing && !conflict && (view === 'storage' ? !!storage : !!page), {dependencies: dvrHints, everyMs: 0});
   const act = async (fn: () => Promise<unknown>) => {
     setBusy(true);
     setError('');

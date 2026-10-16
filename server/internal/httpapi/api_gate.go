@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -119,11 +120,57 @@ func presentedAPICredential(r *http.Request) (secret string, present, ambiguous 
 	return secret, present, present && len(headers) != 1
 }
 
+// QueryCredentialParameter is the query parameter an API key or personal
+// access token may travel in on a GET or HEAD, so a tool can hand out an
+// address (artwork, a stream, a download) that works on its own, as other
+// media servers' tokens do.
+const QueryCredentialParameter = "apiKey"
+
+// liftQueryCredential moves a credential found in the query into the request's
+// Authorization header and removes it from the address, on every method: what
+// follows (scope checks, handlers that refuse unknown parameters, anything that
+// records a path) sees an ordinary request with a bearer. Only a GET or HEAD
+// carries it on; on any other method it is dropped, and the request is
+// answered as having no credential. A value that is not shaped like a key or
+// token (a session token) is dropped too: sessions never travel in addresses.
+// A request that also has an Authorization header ends with two, which the
+// gate refuses as ambiguous.
+func liftQueryCredential(r *http.Request) *http.Request {
+	if r.URL == nil || !strings.Contains(r.URL.RawQuery, QueryCredentialParameter+"=") {
+		return r
+	}
+	// The other parameters keep their order and spelling (a signed address
+	// stays signed); only the credential's own go.
+	kept, secrets := []string{}, []string{}
+	for _, part := range strings.Split(r.URL.RawQuery, "&") {
+		name, value, _ := strings.Cut(part, "=")
+		if decoded, err := url.QueryUnescape(name); err == nil && decoded == QueryCredentialParameter {
+			if secret, err := url.QueryUnescape(value); err == nil {
+				secrets = append(secrets, secret)
+			} else {
+				secrets = append(secrets, "")
+			}
+			continue
+		}
+		kept = append(kept, part)
+	}
+	if len(secrets) == 0 {
+		return r
+	}
+	out := r.Clone(r.Context())
+	out.URL.RawQuery = strings.Join(kept, "&")
+	out.RequestURI = out.URL.RequestURI()
+	if (r.Method == http.MethodGet || r.Method == http.MethodHead) && len(secrets) == 1 && identity.CredentialShaped(secrets[0]) {
+		out.Header.Add("Authorization", "Bearer "+secrets[0])
+	}
+	return out
+}
+
 // CarriesAPICredential reports whether a request presents an API key or
 // personal access token, by shape alone. It is for callers that sort requests
 // before authentication (the console's connection reserve).
 func CarriesAPICredential(r *http.Request) bool {
-	_, present, _ := presentedAPICredential(r)
+	_, present, _ := presentedAPICredential(liftQueryCredential(r))
 	return present
 }
 

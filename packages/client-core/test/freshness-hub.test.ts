@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventsClient} from '../src/playback-v1/events.ts';
-import {FreshnessHub, dependsOn, titlesWithPersonalState} from '../src/freshness-hub.ts';
+import {FreshnessHub, dependsOn, titleWithPersonalState, titlesWithPersonalState} from '../src/freshness-hub.ts';
 import {DocumentPool, serviceDocument} from '../src/freshness-pool.ts';
 
 /** A clock the test moves by hand; timers fire in order as it advances. */
@@ -331,4 +331,37 @@ test('a list the server sends no hint for is read again when this device\'s cloc
   await c.advance(5_000);
   assert.equal(recordings, 3);
   hub.dispose();
+});
+
+test('a title page moves for a hint that names it or names nothing, not for another title', async () => {
+  const c = clock(), hub = new FreshnessHub(c.env);
+  let reads = 0, lists = 0;
+  const page = hub.document({dependencies: titleWithPersonalState('shows', ['episode-1', 'show-1']), revalidate: async () => { reads++; }});
+  const list = hub.document({dependencies: titlesWithPersonalState('shows'), revalidate: async () => { lists++; }});
+  page.setOpen(true); list.setOpen(true);
+  hub.accept({...personal('shows', '2'), data: {personal: '2', observation: '1', titles: ['episode-9', 'season-9', 'show-9']}});
+  await c.advance(1000);
+  assert.deepEqual([reads, lists], [0, 1], 'another show moved: the list reads, the page does not');
+  hub.accept({...personal('shows', '3'), data: {personal: '3', observation: '1', titles: ['episode-2', 'season-1', 'show-1']}});
+  await c.advance(1000);
+  assert.deepEqual([reads, lists], [1, 2], 'an episode of this show moved: the show page reads');
+  hub.accept(personal('shows', '4'));
+  await c.advance(1000);
+  assert.deepEqual([reads, lists], [2, 3], 'a hint that names nothing moves every title page of the library');
+  hub.accept({...personal('films', '5'), data: {personal: '5', observation: '1'}});
+  await c.advance(1000);
+  assert.equal(reads, 2, 'another library does not move it');
+});
+
+test('a list hint for the viewer moves only the screens that depend on that list', async () => {
+  const c = clock(), hub = new FreshnessHub(c.env);
+  let guide = 0, downloads = 0;
+  hub.document({dependencies: [dependsOn.list('guide'), dependsOn.list('myRecordings')], revalidate: async () => { guide++; }}).setOpen(true);
+  hub.document({dependencies: [dependsOn.list('myDownloads')], revalidate: async () => { downloads++; }}).setOpen(true);
+  hub.accept({id: 'r1', type: 'list.changed', resource: {kind: 'list', id: 'myRecordings'}, revision: '1'});
+  await c.advance(1000);
+  assert.deepEqual([guide, downloads], [1, 0]);
+  hub.accept({id: 'd1', type: 'list.changed', resource: {kind: 'list', id: 'myDownloads'}, revision: '2'});
+  await c.advance(1000);
+  assert.deepEqual([guide, downloads], [1, 1]);
 });

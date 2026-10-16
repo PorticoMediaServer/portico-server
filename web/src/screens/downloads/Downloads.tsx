@@ -9,7 +9,7 @@ import {dependsOn} from '@core/freshness-hub.ts';
 import {ErrorNotice, ErrorState, errorText} from '../../app/errors';
 import {Badge, Button, ConfirmDialog, Inset, Loading, Notice, Page, PageHeader, ProgressBar, StateView, Surface, Text} from '../../ui';
 
-const downloadHints = Object.freeze([dependsOn.event('notification.changed')]);
+const downloadHints = Object.freeze([dependsOn.list('myDownloads'), dependsOn.event('notification.changed')]);
 
 function stateLabel(t: I18n['t'], state: DownloadPreparation['state']): string {
   switch (state) {
@@ -47,10 +47,11 @@ export function DownloadsScreen() {
   const [confirm, setConfirm] = useState<{p: DownloadPreparation; action: 'cancel' | 'remove'} | null>(null);
   const [problem, setProblem] = useState('');
   useEffect(() => { service?.start(); return () => service?.stop(); }, [service]);
-  // The server sends no hint when a download is asked for on another device or let go, only a
-  // notice when one finishes or fails: the list is read again on that notice and, quietly, twice
-  // a minute while this page is in front. What is shown stays until the answer is in.
-  useQuietRefresh('downloads', async () => { await service?.revalidate(); void service?.refreshRequests(); }, () => state.phase === 'ready' && !state.unavailable, {dependencies: downloadHints});
+  // The list is read again when the server says this profile's downloads changed (asked for on
+  // another device, finished, failed, let go). Progress moves with no hint, so while something is
+  // being prepared the page also looks twice a minute. What is shown stays until the answer is in.
+  const preparing = state.items.some(p => p.state === 'queued' || p.state === 'running') || state.requests.some(r => r.request.state === 'capturing' || r.request.state === 'admitting' || r.request.state === 'preparing');
+  useQuietRefresh('downloads', async () => { await service?.revalidate(); void service?.refreshRequests(); }, () => state.phase === 'ready' && !state.unavailable, {dependencies: downloadHints, everyMs: preparing ? 30000 : 0});
   const save = async (p: DownloadPreparation) => {
     if (!service) return;
     setProblem('');

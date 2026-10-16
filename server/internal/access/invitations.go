@@ -314,6 +314,20 @@ func (s *Store) Invitations(ctx context.Context, auth Authorize, q InvitationQue
 	return
 }
 
+// Invitation reads one invitation as the list shows it. One that does not
+// exist is sql.ErrNoRows.
+func (s *Store) Invitation(ctx context.Context, auth Authorize, id string) (out Invitation, err error) {
+	if !validID(id) {
+		return out, invalid("id")
+	}
+	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		var e error
+		out, e = invitationRow(tx.QueryRowContext(ctx, `SELECT `+invitationColumns+` FROM access_invitations WHERE id=?`, id))
+		return e
+	})
+	return
+}
+
 type InvitationRevoke struct {
 	ExpectedRevision int64  `json:"expectedRevision"`
 	OperationID      string `json:"operationId"`

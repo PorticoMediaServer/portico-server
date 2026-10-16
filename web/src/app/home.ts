@@ -25,7 +25,8 @@ import type {ServerText} from '@core/home.ts';
 export type HomeState = {phase: 'loading' | 'ready' | 'error'; document?: HomeDocument; error?: unknown; paging: ReadonlySet<string>};
 
 /** Everything Home is built from: every library's titles and order, the list of libraries, and this profile's state. */
-const homeDependencies = Object.freeze([dependsOn.libraries, ...titlesWithPersonalState()]);
+// Trending and Popular move with the server, not this profile: their own hint.
+const homeDependencies = Object.freeze([dependsOn.libraries, dependsOn.list('recommendations'), ...titlesWithPersonalState()]);
 const operationKey = () => crypto.randomUUID();
 
 export function useHome() {

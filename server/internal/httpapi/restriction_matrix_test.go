@@ -400,6 +400,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/admin/metadata/settings":                                    exempt(reasonAdmin),
 		"GET /v1/admin/access-tokens":                                        exempt(reasonAdmin),
 		"GET /v1/admin/webhooks":                                             exempt(reasonAdmin),
+		"GET /v1/admin/webhooks/{id}":                                        exempt(reasonAdmin),
 		"GET /v1/admin/webhooks/{id}/deliveries":                             exempt(reasonAdmin),
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}.vtt":          exempt(reasonGrant),
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/original.ass": exempt(reasonGrant),
@@ -491,6 +492,9 @@ func restrictionRoutes() map[string]restrictionRoute {
 
 		// Owner-only administration.
 		"GET /v1/admin/api-keys":                                exempt(reasonAdmin),
+		"GET /v1/admin/access/members/{id}":                     exempt(reasonAdmin),
+		"GET /v1/admin/access/invitations/{id}":                 exempt(reasonAdmin),
+		"GET /v1/admin/access/devices/{id}":                     exempt(reasonAdmin),
 		"GET /v1/admin/access/devices":                          exempt(reasonAdmin),
 		"GET /v1/admin/access/invitations":                      exempt(reasonAdmin),
 		"GET /v1/admin/access/members":                          exempt(reasonAdmin),
