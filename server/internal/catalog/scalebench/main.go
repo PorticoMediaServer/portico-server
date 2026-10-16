@@ -359,6 +359,17 @@ func run() (runErr error) {
 			struct {
 				name string
 				read func(*catalog.Service) error
+			}{prefix + "home-topshelf", func(s *catalog.Service) error {
+				// The Top Shelf feed: Home composed only until four rows have entries.
+				page, e := s.HomeRows(catalog.HomeRequest{Viewer: viewer, Limit: 10, Rows: 4})
+				if e == nil && len(page.Rows) == 0 {
+					return errors.New("empty top shelf")
+				}
+				return e
+			}},
+			struct {
+				name string
+				read func(*catalog.Service) error
 			}{prefix + "movies", func(s *catalog.Service) error {
 				page, e := s.Content(catalog.ContentRequest{Viewer: viewer, Library: movieLibrary, View: "browse", Sort: "title", Limit: 40})
 				if e == nil && (len(page.Sections) == 0 || len(page.Sections[0].Entries) == 0) {
