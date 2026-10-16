@@ -25575,6 +25575,45 @@ export const schemas = {
                         "interlaced": {
                           "type": "boolean"
                         },
+                        "limits": {
+                          "items": {
+                            "properties": {
+                              "bitDepths": {
+                                "items": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "type": "array"
+                              },
+                              "maxFrameRate": {
+                                "type": "number"
+                              },
+                              "maxHeight": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "maxLevel": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "maxWidth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "maxWidth",
+                              "maxHeight",
+                              "maxFrameRate"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "maxBitrateBps": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -25804,6 +25843,45 @@ export const schemas = {
                         },
                         "interlaced": {
                           "type": "boolean"
+                        },
+                        "limits": {
+                          "items": {
+                            "properties": {
+                              "bitDepths": {
+                                "items": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "type": "array"
+                              },
+                              "maxFrameRate": {
+                                "type": "number"
+                              },
+                              "maxHeight": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "maxLevel": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "maxWidth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "maxWidth",
+                              "maxHeight",
+                              "maxFrameRate"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
                         },
                         "maxBitrateBps": {
                           "maximum": 9007199254740991,
@@ -95540,6 +95618,45 @@ export const schemas = {
                     "interlaced": {
                       "type": "boolean"
                     },
+                    "limits": {
+                      "items": {
+                        "properties": {
+                          "bitDepths": {
+                            "items": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "type": "array"
+                          },
+                          "maxFrameRate": {
+                            "type": "number"
+                          },
+                          "maxHeight": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "maxLevel": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "maxWidth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "maxWidth",
+                          "maxHeight",
+                          "maxFrameRate"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
                     "maxBitrateBps": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -95769,6 +95886,45 @@ export const schemas = {
                     },
                     "interlaced": {
                       "type": "boolean"
+                    },
+                    "limits": {
+                      "items": {
+                        "properties": {
+                          "bitDepths": {
+                            "items": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "type": "array"
+                          },
+                          "maxFrameRate": {
+                            "type": "number"
+                          },
+                          "maxHeight": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "maxLevel": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "maxWidth": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "maxWidth",
+                          "maxHeight",
+                          "maxFrameRate"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "maxBitrateBps": {
                       "maximum": 9007199254740991,

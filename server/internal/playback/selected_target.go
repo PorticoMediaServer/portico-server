@@ -137,10 +137,12 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 	return nil
 }
 
-func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, cap *ClientVideoCodec) {
-	if cap == nil {
+func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, codec *ClientVideoCodec) {
+	if codec == nil {
 		return
 	}
+	point := codec.forConversion(p.OutputBitDepth, v.Width, v.Height, v.FrameRate)
+	cap := &point
 	// Missing facts cannot justify a level for an arbitrarily large picture.
 	// Use a bounded conversion until a later scan supplies the source geometry.
 	if v.Width <= 0 || v.Height <= 0 {

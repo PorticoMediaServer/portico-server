@@ -113,7 +113,11 @@ type ClientVideoCodec struct {
 	// an original file (AVFoundation takes hvc1 but not hev1). Streams the server
 	// repackages are tagged by the server and are not checked against it.
 	CodecTags []string `json:"codecTags,omitempty"`
-	Evidence  string   `json:"evidence,omitempty"`
+	// Limits, when stated, are the decoder's operating points: a picture must
+	// also fit one that applies to its bit depth. The fields above remain the
+	// codec's overall ceilings.
+	Limits   []ClientVideoLimit `json:"limits,omitempty"`
+	Evidence string             `json:"evidence,omitempty"`
 }
 
 // ClientAudioCodec is one audio decoder of an engine: the device turns the
@@ -470,6 +474,9 @@ func (e *EngineCapabilities) validate(path string) error {
 				return capabilityField(path + ".video")
 			}
 		}
+		if !validVideoLimits(v.Limits) {
+			return capabilityField(path + ".video.limits")
+		}
 		for _, dv := range v.DolbyVisionProfiles {
 			if dv < 1 || dv > 31 {
 				return capabilityField(path + ".video")
@@ -624,6 +631,7 @@ func (e *EngineCapabilities) normalize() {
 		}
 		sort.Ints(v.BitDepths)
 		sort.Ints(v.DolbyVisionProfiles)
+		v.Limits = normalizeVideoLimits(v.Limits)
 	}
 	for i := range e.Audio {
 		e.Audio[i].Codec = deviceAudioName(e.Audio[i].Codec)

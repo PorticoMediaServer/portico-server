@@ -16,13 +16,7 @@ func PlanLinearDelivery(source DeliverySource, client ClientProfile, q ControlQu
 	// Narrowing decoder geometry applies equally to copies and conversions.
 	client.Video = append([]ClientVideoCodec{}, client.Video...)
 	for i := range client.Video {
-		c := &client.Video[i]
-		if q.MaxWidth != nil {
-			c.MaxWidth = narrowCeiling(c.MaxWidth, *q.MaxWidth)
-		}
-		if q.MaxHeight != nil {
-			c.MaxHeight = narrowCeiling(c.MaxHeight, *q.MaxHeight)
-		}
+		client.Video[i].narrowGeometry(q.MaxWidth, q.MaxHeight)
 	}
 	target := QualityTarget{RungID: "original", Kind: QualityAutomatic, AllowHDR: true}
 	if q.MaxHeight != nil {

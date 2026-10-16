@@ -196,3 +196,14 @@ test('an engine can declare an audio sample-depth ceiling',()=>{
  d.engines.native.audio!.find(a=>a.codec==='flac')!.maxBitDepth=65;
  assert.equal(capabilityDocumentProblem(d),'engines.native.audio.flac');
 });
+
+test('a decoder that does 4K only at 30 states its operating points',async()=>{
+ const d=androidProfile({},{decoders:[{codec:'h264',hardware:true,maxWidth:3840,maxHeight:2160,maxFrameRate:30,limits:[{maxWidth:3840,maxHeight:2160,maxFrameRate:30},{maxWidth:1920,maxHeight:1080,maxFrameRate:60}]}]});
+ assert.equal(capabilityDocumentProblem(d),null);
+ assert.deepEqual(d.engines.native.video!.find(v=>v.codec==='h264')!.limits,[{maxWidth:3840,maxHeight:2160,maxFrameRate:30},{maxWidth:1920,maxHeight:1080,maxFrameRate:60}]);
+ const web=await probeWebProfile(chromeLike({decodingInfo:async q=>({supported:!/hvc1|dvh1/.test(q.contentType)&&q.transferFunction===undefined,smooth:!(q.width>=3840&&q.framerate>30),powerEfficient:true})}));
+ assert.deepEqual(web.engines.native.video!.find(v=>v.codec==='h264')!.limits,[{maxWidth:4096,maxHeight:2160,maxFrameRate:30},{maxWidth:1920,maxHeight:1080,maxFrameRate:60}]);
+ const bad=androidProfile({},{decoders:[{codec:'h264',hardware:true,maxWidth:1920,maxHeight:1080}]});
+ bad.engines.native.video![0]!.limits=[{}];
+ assert.equal(capabilityDocumentProblem(bad),'engines.native.video.h264.limits');
+});
