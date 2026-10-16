@@ -314,12 +314,21 @@ type browseCompiler struct {
 	rows map[string][]int64
 	// kinds are the pivot's kinds, which bound a value-side candidate list.
 	kinds []int
+	// perTitle tests a member condition on each title it is asked of, never
+	// from the value side: the titles are already a short candidate list.
+	perTitle bool
 }
 
 // drivenMaximum is the most matching member items a value-side selection
 // gathers. A broader value is tested on each title instead, where a container
 // stops at its first matching member.
 const drivenMaximum = 20000
+
+// presenceProbe is the most rows a presence or title-text selection reads to
+// learn whether it is narrow. Presence and title text are broad in most
+// lists, where the per-title test fills a page at once; reading
+// drivenMaximum rows to learn that would cost every such list.
+const presenceProbe = 2000
 
 func (c *browseCompiler) compile(node *BrowseNode) (string, error) {
 	previous := c.groupSearch
@@ -705,8 +714,8 @@ func (c *browseCompiler) titleGramCandidates(node BrowseNode) (string, error) {
 		return "", nil
 	}
 	candidates := strings.Join(arms, " UNION ")
-	found, err := c.count(`SELECT count(*) FROM (`+candidates+` LIMIT `+strconv.Itoa(drivenMaximum+1)+`)`, args...)
-	if err != nil || found > drivenMaximum {
+	found, err := c.count(`SELECT count(*) FROM (`+candidates+` LIMIT `+strconv.Itoa(presenceProbe+1)+`)`, args...)
+	if err != nil || found > presenceProbe {
 		return "", err
 	}
 	if found == 0 {
@@ -748,7 +757,7 @@ func (c *browseCompiler) exists(field browseField, condition func() (string, err
 	if field.ID == "genre" {
 		return c.genreExists(condition)
 	}
-	if source, ok := drivenMemberSource(field); ok && c.count != nil && c.ids != nil {
+	if source, ok := drivenMemberSource(field); ok && c.count != nil && c.ids != nil && !c.perTitle {
 		if clause, driven, err := c.drivenExists(field, source, condition); driven || err != nil {
 			return clause, err
 		}
@@ -828,6 +837,45 @@ func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (stri
 		}
 		return "0", nil
 	}
+	if _, counted := factGaps[field.ID]; counted && (node.Operator == "is-present" || node.Operator == "is-missing") {
+		// The counters name the few titles that lack the field, or the few
+		// that have it; those are tested, and the other answer is their
+		// complement. Where both are many, or the list holds containers,
+		// each title is tested: the field's values are too many to select.
+		present := func() (string, error) {
+			c.perTitle = true
+			defer func() { c.perTitle = false }()
+			return c.exists(field, func() (string, error) { return c.comparison(field, field.Value, "is-present", nil) })
+		}
+		gaps, err := c.factGapCandidates(field, false)
+		if err != nil {
+			return "", err
+		}
+		if gaps != "" {
+			clause, err := present()
+			if err != nil {
+				return "", err
+			}
+			missing := "(" + gaps + "NOT " + clause + ")"
+			if node.Operator == "is-missing" {
+				return missing, nil
+			}
+			return "NOT " + missing, nil
+		}
+		have, err := c.factGapCandidates(field, true)
+		if err != nil {
+			return "", err
+		}
+		clause, err := present()
+		if err != nil {
+			return "", err
+		}
+		clause = "(" + have + clause + ")"
+		if node.Operator == "is-present" {
+			return clause, nil
+		}
+		return "NOT " + clause, nil
+	}
 	switch node.Operator {
 	case "not-equals", "not-in", "is-missing":
 		positive := map[string]string{"not-equals": "equals", "not-in": "in", "is-missing": "is-present"}[node.Operator]
@@ -835,14 +883,12 @@ func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (stri
 		if err != nil {
 			return "", err
 		}
-		if candidates == "" {
-			if candidates, err = c.factGapCandidates(field, node); err != nil {
-				return "", err
-			}
-		}
+		// Candidates are few: each is tested on its own.
+		c.perTitle = candidates != ""
 		clause, err := c.exists(field, func() (string, error) {
 			return c.comparison(field, field.Value, positive, node.Value)
 		})
+		c.perTitle = false
 		if err != nil {
 			return "", err
 		}
@@ -1216,11 +1262,15 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 	for i := 0; i < source.profile; i++ {
 		scoped = append(scoped, c.profile)
 	}
-	found, err := c.count(`SELECT count(*) FROM (`+matching+` LIMIT `+strconv.Itoa(drivenMaximum+1)+`)`, append(append([]any{}, scoped...), c.args[before:]...)...)
+	limit := drivenMaximum
+	if strings.HasSuffix(body, " IS NOT NULL") {
+		limit = presenceProbe
+	}
+	found, err := c.count(`SELECT count(*) FROM (`+matching+` LIMIT `+strconv.Itoa(limit+1)+`)`, append(append([]any{}, scoped...), c.args[before:]...)...)
 	if err != nil {
 		return "", false, err
 	}
-	if found > drivenMaximum {
+	if found > limit {
 		c.args = c.args[:before]
 		return "", false, nil
 	}
@@ -1311,15 +1361,17 @@ const factGapSQL = `(asset_links=0)+(acting_credits=0)*2+(directing_credits=0)*4
 // it: those whose counter is zero (a file always has a length, so a title
 // lacks one only when it links no file). The exact condition is still tested
 // on them. It returns a clause to put before the condition, or "" when the
-// pivot holds containers or the candidates are too many to name.
-func (c *browseCompiler) factGapCandidates(field browseField, node BrowseNode) (string, error) {
+// pivot holds containers or the candidates are more than presenceProbe (the
+// field is then not near-universal). With having, it names instead the few
+// titles that have the field.
+func (c *browseCompiler) factGapCandidates(field browseField, having bool) (string, error) {
 	bit, ok := factGaps[field.ID]
-	if !ok || node.Operator != "is-missing" || c.count == nil || c.ids == nil || len(c.kinds) == 0 {
+	if !ok || c.count == nil || c.ids == nil || len(c.kinds) == 0 {
 		return "", nil
 	}
 	masks := []string{}
-	for mask := 1; mask < 16; mask++ {
-		if mask&bit != 0 {
+	for mask := 0; mask < 16; mask++ {
+		if (mask&bit != 0) != having {
 			masks = append(masks, strconv.Itoa(mask))
 		}
 	}
@@ -1333,8 +1385,8 @@ func (c *browseCompiler) factGapCandidates(field browseField, node BrowseNode) (
 		arms = append(arms, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_fact_gaps WHERE kind=`+strconv.Itoa(kind)+` AND `+factGapSQL+` IN(`+strings.Join(masks, ",")+`)`)
 	}
 	candidates := strings.Join(arms, " UNION ALL ")
-	found, err := c.count(`SELECT count(*) FROM (` + candidates + ` LIMIT ` + strconv.Itoa(drivenMaximum+1) + `)`)
-	if err != nil || found > drivenMaximum {
+	found, err := c.count(`SELECT count(*) FROM (` + candidates + ` LIMIT ` + strconv.Itoa(presenceProbe+1) + `)`)
+	if err != nil || found > presenceProbe {
 		return "", err
 	}
 	if found == 0 {
