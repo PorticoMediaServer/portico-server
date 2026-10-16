@@ -35,6 +35,7 @@ func TestWrappedDomainErrorsNeverExposeCauses(t *testing.T) {
 		{"live", liveFailure, livechannels.ErrCapacity, "source_capacity_unavailable"},
 		{"lyrics", lyricFailure, lyrics.ErrInput, "invalid_lyrics"},
 		{"analysis", analysisFailure, mediaanalysis.ErrInput, "invalid_analysis"},
+		{"analysis body", analysisFailure, lyrics.ErrInput, "invalid_analysis"},
 		{"storage", storageFailure, mounts.ErrCommandConflict, "storage_command_conflict"},
 	}
 	for _, tc := range cases {
