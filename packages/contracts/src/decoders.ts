@@ -158,12 +158,15 @@ export function decodeGetDirectTwoFactorResponse(input: unknown): types.GetDirec
 export function decodeGetDownloadArtifactResponse(input: unknown): types.GetDownloadArtifactResponse { return decode("GetDownloadArtifactResponse", input) as types.GetDownloadArtifactResponse; }
 export function decodeGetDownloadArtworkResponse(input: unknown): types.GetDownloadArtworkResponse { return decode("GetDownloadArtworkResponse", input) as types.GetDownloadArtworkResponse; }
 export function decodeGetDownloadBundleResponse(input: unknown): types.GetDownloadBundleResponse { return decode("GetDownloadBundleResponse", input) as types.GetDownloadBundleResponse; }
+export function decodeGetDownloadChapterImageResponse(input: unknown): types.GetDownloadChapterImageResponse { return decode("GetDownloadChapterImageResponse", input) as types.GetDownloadChapterImageResponse; }
 export function decodeGetDownloadOptionsResponse(input: unknown): types.GetDownloadOptionsResponse { return decode("GetDownloadOptionsResponse", input) as types.GetDownloadOptionsResponse; }
 export function decodeGetDownloadPreparationResponse(input: unknown): types.GetDownloadPreparationResponse { return decode("GetDownloadPreparationResponse", input) as types.GetDownloadPreparationResponse; }
 export function decodeGetDownloadRequestResponse(input: unknown): types.GetDownloadRequestResponse { return decode("GetDownloadRequestResponse", input) as types.GetDownloadRequestResponse; }
 export function decodeGetDownloadSettingsResponse(input: unknown): types.GetDownloadSettingsResponse { return decode("GetDownloadSettingsResponse", input) as types.GetDownloadSettingsResponse; }
 export function decodeGetDownloadSubtitleResponse(input: unknown): types.GetDownloadSubtitleResponse { return decode("GetDownloadSubtitleResponse", input) as types.GetDownloadSubtitleResponse; }
 export function decodeGetDownloadSubtitleOriginalResponse(input: unknown): types.GetDownloadSubtitleOriginalResponse { return decode("GetDownloadSubtitleOriginalResponse", input) as types.GetDownloadSubtitleOriginalResponse; }
+export function decodeGetDownloadTrickplayThumbnailsResponse(input: unknown): types.GetDownloadTrickplayThumbnailsResponse { return decode("GetDownloadTrickplayThumbnailsResponse", input) as types.GetDownloadTrickplayThumbnailsResponse; }
+export function decodeGetDownloadTrickplayTileResponse(input: unknown): types.GetDownloadTrickplayTileResponse { return decode("GetDownloadTrickplayTileResponse", input) as types.GetDownloadTrickplayTileResponse; }
 export function decodeGetDownloadUsageResponse(input: unknown): types.GetDownloadUsageResponse { return decode("GetDownloadUsageResponse", input) as types.GetDownloadUsageResponse; }
 export function decodeGetDvrResponse(input: unknown): types.GetDvrResponse { return decode("GetDvrResponse", input) as types.GetDvrResponse; }
 export function decodeGetDvrChannelsResponse(input: unknown): types.GetDvrChannelsResponse { return decode("GetDvrChannelsResponse", input) as types.GetDvrChannelsResponse; }

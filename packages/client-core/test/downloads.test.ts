@@ -515,3 +515,18 @@ test('reason codes render a sentence and sizes render a unit', () => {
   assert.equal(downloadBytes(2048), '2 KiB');
   assert.equal(downloadBytes(5_368_709_120), '5.00 GiB');
 });
+
+test('N13: chapter thumbnails and scrubbing previews travel in the bundle; a broken one is left out', () => {
+  const tiles = [{path: 'trickplay/set1/tiles/0.jpg', contentType: 'image/jpeg'}, {path: 'trickplay/set1/tiles/1.jpg', contentType: 'image/jpeg'}];
+  const trickplay = {id: 'set1', tileWidth: 320, tileHeight: 180, columns: 10, rows: 10, intervalSeconds: 10, frameCount: 150, durationSeconds: 1500, sourceOffsetSeconds: 0, thumbnails: {path: 'trickplay/set1/thumbnails.vtt', contentType: 'text/vtt'}, tiles};
+  const raw = bundle() as Record<string, unknown>;
+  const chapters = [{index: 1, title: 'One', startSeconds: 0, endSeconds: 60, image: {path: 'chapters/asset1/1/image', contentType: 'image/jpeg'}}, {index: 2, title: 'Two', startSeconds: 60, endSeconds: 120, image: {path: '../x', contentType: 'image/jpeg'}}];
+  const parsed = parseDownloadBundle({...raw, chapters, trickplay}, 'prep');
+  assert.equal(parsed.chapters[0]?.image?.path, 'chapters/asset1/1/image');
+  assert.equal(parsed.chapters[1]?.image, undefined);
+  assert.equal(parsed.trickplay?.tiles.length, 2);
+  // Too few sheets for its frames: the previews are left out, the bundle stands.
+  const short = parseDownloadBundle({...raw, trickplay: {...trickplay, tiles: tiles.slice(0, 1)}}, 'prep');
+  assert.equal(short.trickplay, undefined);
+  assert.equal(short.preparationId, 'prep');
+});
