@@ -45,6 +45,11 @@ func TestPlaybackV1CapabilitiesAndOptions(t *testing.T) {
 	if doc.Revision != 2 || doc.Document.Client.Form != "desktop" || doc.Document.EngineSetting != "automatic" {
 		t.Fatalf("document %+v", doc)
 	}
+	// A client holding this revision is answered 304; an older one gets the document.
+	if w = f.call("GET", path, map[string]string{"If-None-Match": `"2"`}, nil, 304, nil); w.Body.Len() != 0 || w.Header().Get("ETag") != `"2"` {
+		t.Fatalf("held revision: %d %q %s", w.Code, w.Header().Get("ETag"), w.Body)
+	}
+	f.call("GET", path, map[string]string{"If-None-Match": `"1"`}, nil, 200, nil)
 	// Strict requests: an unknown field is refused, an unknown value is kept.
 	bad := webCapabilities()
 	bad["bogus"] = true

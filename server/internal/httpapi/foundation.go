@@ -2,7 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"sort"
@@ -404,7 +407,11 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	}
 	err = apikit.Register(registry, apikit.Route[struct{}, RatingSystemsDocument]{Metadata: apikit.Metadata{Admission: laneDefault,
 		ID: "get_rating_systems", Method: "GET", Path: "/v1/rating-systems", Summary: "List supported content-rating systems", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "internal"},
-	}, Handler: func(context.Context, *http.Request, struct{}) (RatingSystemsDocument, error) {
+	}, Handler: func(ctx context.Context, _ *http.Request, _ struct{}) (RatingSystemsDocument, error) {
+		// The list is part of the build: its digest is the validator.
+		if apikit.Conditional(ctx, ratingSystemsTag) {
+			return RatingSystemsDocument{}, nil
+		}
 		return RatingSystemsDocument{Items: identity.RatingSystems()}, nil
 	}})
 	if err != nil {
@@ -715,3 +722,11 @@ func (d Dependencies) foundationRoutes(mux *http.ServeMux) {
 	}
 	d.mountRegistry(mux, registry)
 }
+
+// ratingSystemsTag is the validator of GET /v1/rating-systems, which only a
+// new build changes.
+var ratingSystemsTag = func() string {
+	raw, _ := json.Marshal(identity.RatingSystems())
+	sum := sha256.Sum256(raw)
+	return "ratings-" + hex.EncodeToString(sum[:8])
+}()

@@ -420,6 +420,11 @@ func registerPlaybackV1Options(r *apikit.Registry, d Dependencies) {
 		Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Default, Cost: apikit.Constant, Status: 200,
 		Errors: []string{"unauthorized", "not_found"}},
 		func(ctx context.Context, _ *http.Request, _ noBody) (playbackv1.CapabilitiesDocument, error) {
+			// The revision names the whole document: a client that holds it is
+			// answered 304 before the document is read or encoded.
+			if revision, err := d.playbackV1().CapabilitiesRevision(ctx, callerFrom(ctx).DeviceID); err == nil && apikit.Conditional(ctx, strconv.FormatInt(revision, 10)) {
+				return playbackv1.CapabilitiesDocument{}, nil
+			}
 			doc, err := d.playbackV1().Capabilities(ctx, callerFrom(ctx).DeviceID)
 			if err == nil {
 				apikit.SetHeader(ctx, "ETag", playbackv1.ETag(doc.Revision))

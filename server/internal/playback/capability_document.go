@@ -914,6 +914,15 @@ func (s *Service) Capabilities(ctx context.Context, device string) (StoredCapabi
 	return out, nil
 }
 
+// CapabilitiesRevision reads only the revision of the device's stored
+// document, so a read the client already holds is answered without parsing
+// or encoding it.
+func (s *Service) CapabilitiesRevision(ctx context.Context, device string) (int64, error) {
+	var revision int64
+	err := dbwork.QueryRow(ctx, s.db, `SELECT revision FROM playback_device_capabilities WHERE device_id=?`, device).Scan(&revision)
+	return revision, err
+}
+
 type profileQuery interface {
 	QueryRowContext(context.Context, string, ...any) *sql.Row
 }
