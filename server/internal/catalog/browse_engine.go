@@ -610,7 +610,9 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			var rank int
 			var found bool
 			var err error
-			if primary.Ordering == -2 {
+			if primary.Ordering == -2 && primary.Blocks > 0 && shape.summary.classKey == "" {
+				rank, found, err = s.browseAnchorRankIn(shape, request.Range.AnchorID, primary.Blocks)
+			} else if primary.Ordering == -2 {
 				rank, found, err = s.indexedFactAnchorRank(shape, request.Range.AnchorID)
 			} else {
 				rank, found, err = s.browseAnchorRank(shape, request.Range.AnchorID)

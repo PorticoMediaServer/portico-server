@@ -325,8 +325,15 @@ func sortTitleKeys(keys []titleKey) {
 // the block ordering, mirrored for a descending sort. An entity outside the
 // scope is not found.
 func (s *Service) browseAnchorRank(p pageShape, anchor string) (int, bool, error) {
+	definition, _ := p.primary()
+	return s.browseAnchorRankIn(p, anchor, definition.Ordering)
+}
+
+// browseAnchorRankIn is browseAnchorRank in one block ordering: a column
+// order's, or a fact order's own (definition.Blocks) for an unrestricted
+// viewer.
+func (s *Service) browseAnchorRankIn(p pageShape, anchor string, ordering int) (int, bool, error) {
 	definition, desc := p.primary()
-	ordering := definition.Ordering
 	class := p.summary.classKey != ""
 	var value any
 	var entity int64
