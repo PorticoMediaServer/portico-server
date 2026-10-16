@@ -443,6 +443,11 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 
 	where, args := browseScopeSQL(request.Library, pivot)
 	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows}
+	for _, member := range entityKindMembers(pivot) {
+		if kind, err := compactcatalog.ParseKind(member); err == nil {
+			compiler.kinds = append(compiler.kinds, int(kind))
+		}
+	}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err

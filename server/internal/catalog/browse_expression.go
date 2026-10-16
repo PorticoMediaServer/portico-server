@@ -312,6 +312,8 @@ type browseCompiler struct {
 	// rows are the Home rows the request names, resolved by the caller to the
 	// row's titles in its order (homeRow).
 	rows map[string][]int64
+	// kinds are the pivot's kinds, which bound a value-side candidate list.
+	kinds []int
 }
 
 // drivenMaximum is the most matching member items a value-side selection
@@ -1169,12 +1171,19 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 // before the condition, or "" when the candidates are too many to name (the
 // condition is then tested on every title, as before).
 func (c *browseCompiler) genrelessCandidates(field browseField, node BrowseNode) (string, error) {
-	if field.ID != "genre-presence" || node.Operator != "is-missing" || c.count == nil || c.ids == nil {
+	if field.ID != "genre-presence" || node.Operator != "is-missing" || c.count == nil || c.ids == nil || len(c.kinds) == 0 {
 		return "", nil
 	}
-	candidates := `SELECT id FROM catalog_entities INDEXED BY catalog_entities_genreless WHERE genre_sources=0 AND kind<>4
- UNION ALL SELECT ep.entity_id FROM catalog_entities sh INDEXED BY catalog_entities_genreless CROSS JOIN catalog_episodes ep ON ep.show_id=sh.id
- JOIN catalog_entities episode ON episode.id=ep.entity_id AND episode.genre_sources=0 WHERE sh.genre_sources=0 AND sh.kind=2`
+	arms := []string{}
+	for _, kind := range c.kinds {
+		if kind == int(compactcatalog.Episode) {
+			arms = append(arms, `SELECT ep.entity_id AS id FROM catalog_entities sh INDEXED BY catalog_entities_genreless CROSS JOIN catalog_episodes ep ON ep.show_id=sh.id
+ JOIN catalog_entities episode ON episode.id=ep.entity_id AND episode.genre_sources=0 WHERE sh.genre_sources=0 AND sh.kind=`+strconv.Itoa(int(compactcatalog.Show)))
+			continue
+		}
+		arms = append(arms, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_genreless WHERE genre_sources=0 AND kind=`+strconv.Itoa(kind))
+	}
+	candidates := strings.Join(arms, " UNION ALL ")
 	found, err := c.count(`SELECT count(*) FROM (` + candidates + ` LIMIT ` + strconv.Itoa(drivenMaximum+1) + `)`)
 	if err != nil || found > drivenMaximum {
 		return "", err

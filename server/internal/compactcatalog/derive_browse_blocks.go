@@ -72,26 +72,15 @@ var VisibilityOrderKeys = [visibilityOrderCount]string{
 	OrderRandom:   "v.random_key",
 }
 
-// blockKinds are the kinds an ordering keeps blocks for, as its triggers
-// list them.
+// blockKinds limits a check to the kinds an ordering keeps blocks for, as
+// its triggers list them (every kind for the column orders).
 func blockKinds(ordering int) string {
-	switch ordering {
-	case OrderRelease:
-		return "1,2,3,4,6,8"
-	case OrderLatestAired:
-		return "2"
-	case OrderCritic, OrderResolution:
-		return "1,2,3,4,10"
-	case OrderEpisodeCount:
-		return "2,3"
-	case OrderAlbum, OrderTrack:
-		return "7"
-	case OrderArtist:
-		return "6,7"
-	case OrderFileSize:
-		return "1,2,3,4,5,6,7,8,9,10"
+	kinds := map[int]string{OrderRelease: "1,2,3,4,6,8", OrderLatestAired: "2", OrderCritic: "1,2,3,4,10", OrderResolution: "1,2,3,4,10",
+		OrderEpisodeCount: "2,3", OrderAlbum: "7", OrderTrack: "7", OrderArtist: "6,7", OrderFileSize: "1,2,3,4,5,6,7,8,9,10"}[ordering]
+	if kinds == "" {
+		return ""
 	}
-	return "SELECT id FROM catalog_kinds"
+	return " WHERE e.kind IN(" + kinds + ")"
 }
 
 // blockKey is a row's place in one scope's ordering.
@@ -107,7 +96,7 @@ type blockKey struct {
 func CheckBrowseBlocks(ctx context.Context, db *sql.DB) error {
 	for ordering := 0; ordering < orderCount; ordering++ {
 		if err := checkBlocks(ctx, db, "catalog_browse_blocks", []string{"library_id", "kind"},
-			`SELECT e.library_id,e.kind,`+BlockOrderKeys[ordering]+`,e.entity_id FROM catalog_browse_rows e WHERE e.kind IN(`+blockKinds(ordering)+`)`, ordering); err != nil {
+			`SELECT e.library_id,e.kind,`+BlockOrderKeys[ordering]+`,e.entity_id FROM catalog_browse_rows e`+blockKinds(ordering), ordering); err != nil {
 			return err
 		}
 		if ordering >= visibilityOrderCount {
