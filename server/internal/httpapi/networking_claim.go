@@ -11,26 +11,20 @@ import (
 )
 
 // NetworkingClaimAuthorizer captures the actual current local owner token.
-// Browser origins use the same explicit list as the outer API middleware;
+// Claiming stays with the server's own web app and the built-in Portico pages;
 // native bearer requests may omit Origin. No cookies grant local ownership.
 func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies ...Dependencies) networking.ClaimRequestAuthorizer {
 	d := Dependencies{}
 	if len(policies) > 0 {
 		d = policies[0]
 	}
+	d.Origins = origins
 	return func(r *http.Request) (networking.ClaimRequestOwner, error) {
 		if id == nil || len(r.Header.Values("Authorization")) != 1 {
 			return networking.ClaimRequestOwner{}, identity.ErrUnauthorized
 		}
 		if origin := r.Header.Get("Origin"); origin != "" {
-			allowed := d.sameRequestOrigin(r, origin)
-			for _, want := range origins {
-				if origin == want {
-					allowed = true
-					break
-				}
-			}
-			if !allowed {
+			if !d.firstPartyOrigin(r, origin) {
 				return networking.ClaimRequestOwner{}, identity.ErrUnauthorized
 			}
 		}

@@ -329,6 +329,7 @@ CREATE TABLE catalog_playlists(
  deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1)),
  created_at TEXT NOT NULL,
  entry_count INTEGER NOT NULL DEFAULT 0 CHECK(entry_count>=0),
+ updated_at TEXT NOT NULL DEFAULT '',
  UNIQUE(owner_authority,owner_account,owner_profile,creation_operation)) STRICT;
 CREATE INDEX catalog_playlists_owner ON catalog_playlists(owner_authority,owner_account,owner_profile,deleted,name COLLATE NOCASE,id);
 CREATE TABLE catalog_playlist_entries(
@@ -1784,6 +1785,7 @@ CREATE TABLE subtitle_render_revisions(
  FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_original_revisions(
  resource_id TEXT NOT NULL,revision INTEGER NOT NULL,digest TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>0),skipped_fonts INTEGER NOT NULL DEFAULT 0,
+ forced_lines INTEGER NOT NULL DEFAULT 0 CHECK(forced_lines>=0),total_lines INTEGER NOT NULL DEFAULT 0 CHECK(total_lines>=forced_lines),
  PRIMARY KEY(resource_id,revision),FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_original_files(
  resource_id TEXT NOT NULL,revision INTEGER NOT NULL,part TEXT NOT NULL,name TEXT NOT NULL,
@@ -2593,6 +2595,8 @@ CREATE TABLE social_groups(
   governance_revision INTEGER NOT NULL DEFAULT 1,
   wait_until_ms INTEGER NOT NULL DEFAULT 0,
   activity_seen_ms INTEGER NOT NULL DEFAULT 0,
+  -- The readiness summary the room last told its members, so a report that changes nothing is not re-broadcast.
+  readiness_summary TEXT NOT NULL DEFAULT '',
   wait_resume_state TEXT NOT NULL DEFAULT 'paused' CHECK(wait_resume_state IN ('playing','paused','ready')),
   queue_revision INTEGER NOT NULL DEFAULT 1,
   reconnect_generation INTEGER NOT NULL DEFAULT 1,
@@ -3758,6 +3762,8 @@ CREATE TABLE catalog_personal_sort_rows(
 CREATE INDEX catalog_personal_order_rating ON catalog_personal_sort_rows(profile_id,library_id,kind,rating,entity_id);
 CREATE INDEX catalog_personal_order_last ON catalog_personal_sort_rows(profile_id,library_id,kind,last_played_at,entity_id);
 CREATE INDEX catalog_personal_order_plays ON catalog_personal_sort_rows(profile_id,library_id,kind,play_count,entity_id);
+-- The viewing history across libraries, most recent first, for its own order.
+CREATE INDEX catalog_personal_history ON catalog_personal_sort_rows(profile_id,last_played_at,entity_id) WHERE last_played_at<>'';
 CREATE TABLE catalog_personal_sort_buckets(
  profile_id TEXT NOT NULL,library_id INTEGER NOT NULL,kind INTEGER NOT NULL,
  axis INTEGER NOT NULL CHECK(axis BETWEEN 7 AND 9),value TEXT NOT NULL,total INTEGER NOT NULL CHECK(total>=0),
@@ -5882,6 +5888,9 @@ CREATE TRIGGER playlist_directory_insert AFTER INSERT ON catalog_playlists BEGIN
 CREATE TRIGGER playlist_directory_update AFTER UPDATE ON catalog_playlists BEGIN
  INSERT INTO playlist_directory_revisions VALUES(NEW.owner_authority,NEW.owner_account,NEW.owner_profile,1) ON CONFLICT(authority,account_id,profile_id) DO UPDATE SET revision=revision+1;
  INSERT INTO playlist_directory_revisions SELECT authority,account_id,profile_id,1 FROM playlist_shares WHERE playlist_id=NEW.token ON CONFLICT(authority,account_id,profile_id) DO UPDATE SET revision=revision+1;END;
+-- A playlist's last change (its entries, name or description), for the "Last changed" sort.
+CREATE TRIGGER catalog_playlists_updated AFTER UPDATE OF revision,name,summary ON catalog_playlists WHEN OLD.revision IS NOT NEW.revision OR OLD.name IS NOT NEW.name OR OLD.summary IS NOT NEW.summary BEGIN
+ UPDATE catalog_playlists SET updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=NEW.id;END;
 -- ===== prepared media sources (assets TEXT id -> catalog_assets token)
 CREATE TRIGGER prepared_media_source_insert AFTER INSERT ON catalog_assets BEGIN INSERT OR IGNORE INTO prepared_media_source_revisions(asset_id) VALUES(NEW.token);END;
 CREATE TRIGGER prepared_media_source_update AFTER UPDATE OF path,size,modified_ns,container ON catalog_assets WHEN OLD.path IS NOT NEW.path OR OLD.size IS NOT NEW.size OR OLD.modified_ns IS NOT NEW.modified_ns OR OLD.container IS NOT NEW.container BEGIN UPDATE prepared_media_source_revisions SET revision=revision+1 WHERE asset_id=NEW.token;END;

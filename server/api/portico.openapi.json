@@ -1041,6 +1041,9 @@
                         "format": {
                           "type": "string"
                         },
+                        "linesUrl": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -1859,6 +1862,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -5638,6 +5644,9 @@
                     "format": {
                       "type": "string"
                     },
+                    "linesUrl": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -6397,6 +6406,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -9753,6 +9765,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -41671,6 +41686,9 @@
                               "format": {
                                 "type": "string"
                               },
+                              "linesUrl": {
+                                "type": "string"
+                              },
                               "url": {
                                 "type": "string"
                               }
@@ -41796,6 +41814,9 @@
                                   "type": "string"
                                 },
                                 "format": {
+                                  "type": "string"
+                                },
+                                "linesUrl": {
                                   "type": "string"
                                 },
                                 "url": {
@@ -58494,6 +58515,9 @@
                             "format": {
                               "type": "string"
                             },
+                            "linesUrl": {
+                              "type": "string"
+                            },
                             "url": {
                               "type": "string"
                             }
@@ -59134,6 +59158,9 @@
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -63393,11 +63420,21 @@
                 },
                 "kind": {
                   "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pinRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
                 "kind",
-                "id"
+                "id",
+                "name",
+                "pinRevision"
               ],
               "type": "object"
             },
@@ -69999,6 +70036,15 @@
         ],
         "type": "object"
       },
+      "GetSubtitleFontsCjkRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetSubtitleFontsCjkResponse": {
+        "format": "binary",
+        "type": "string"
+      },
       "GetSuggestionsRequest": {
         "properties": {},
         "required": [],
@@ -70949,6 +70995,9 @@
                       "format": {
                         "type": "string"
                       },
+                      "linesUrl": {
+                        "type": "string"
+                      },
                       "url": {
                         "type": "string"
                       }
@@ -71074,6 +71123,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "url": {
@@ -71319,6 +71371,9 @@
                       "format": {
                         "type": "string"
                       },
+                      "linesUrl": {
+                        "type": "string"
+                      },
                       "url": {
                         "type": "string"
                       }
@@ -71513,6 +71568,30 @@
         },
         "required": [
           "fonts"
+        ],
+        "type": "object"
+      },
+      "GetV1MediaSubtitlesGrantResourceRevisionLinesRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetV1MediaSubtitlesGrantResourceRevisionLinesResponse": {
+        "properties": {
+          "forced": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "forced",
+          "total"
         ],
         "type": "object"
       },
@@ -76639,6 +76718,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -96732,6 +96814,9 @@
                       "format": {
                         "type": "string"
                       },
+                      "linesUrl": {
+                        "type": "string"
+                      },
                       "url": {
                         "type": "string"
                       }
@@ -97624,6 +97709,9 @@
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -106547,6 +106635,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -118505,6 +118596,9 @@
                     "format": {
                       "type": "string"
                     },
+                    "linesUrl": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -119501,6 +119595,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -157914,7 +158011,7 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions and everyone's state combined",
+        "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book or artist: its songs, files or albums) and everyone's state combined",
         "x-access": "owner",
         "x-admission": "admin-heavy",
         "x-cost": "page_sized",
@@ -213748,6 +213845,9 @@
                                         "format": {
                                           "type": "string"
                                         },
+                                        "linesUrl": {
+                                          "type": "string"
+                                        },
                                         "url": {
                                           "type": "string"
                                         }
@@ -213873,6 +213973,9 @@
                                             "type": "string"
                                           },
                                           "format": {
+                                            "type": "string"
+                                          },
+                                          "linesUrl": {
                                             "type": "string"
                                           },
                                           "url": {
@@ -217703,6 +217806,9 @@
                                       "format": {
                                         "type": "string"
                                       },
+                                      "linesUrl": {
+                                        "type": "string"
+                                      },
                                       "url": {
                                         "type": "string"
                                       }
@@ -218052,6 +218158,9 @@
                                 "format": {
                                   "type": "string"
                                 },
+                                "linesUrl": {
+                                  "type": "string"
+                                },
                                 "url": {
                                   "type": "string"
                                 }
@@ -218177,6 +218286,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "url": {
@@ -218499,6 +218611,9 @@
                                   "type": "string"
                                 },
                                 "format": {
+                                  "type": "string"
+                                },
+                                "linesUrl": {
                                   "type": "string"
                                 },
                                 "url": {
@@ -219354,6 +219469,9 @@
                                   "type": "string"
                                 },
                                 "format": {
+                                  "type": "string"
+                                },
+                                "linesUrl": {
                                   "type": "string"
                                 },
                                 "url": {
@@ -236276,6 +236394,125 @@
         "x-scope": "open"
       }
     },
+    "/v1/media/subtitles/{grant}/{resource}/{revision}/lines": {
+      "get": {
+        "operationId": "get_v1_media_subtitles_grant_resource_revision_lines",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "resource",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "segment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "forced": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "forced",
+                    "total"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "internal",
+          "subtitle_unavailable",
+          "subtitle_not_found",
+          "subtitle_renderer_platform_unsupported",
+          "subtitle_renderer_configuration",
+          "subtitle_conflict",
+          "subtitle_operation_conflict",
+          "subtitle_capacity",
+          "subtitle_unsupported",
+          "subtitle_invalid_input"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
+      }
+    },
     "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ass": {
       "get": {
         "operationId": "get_v1_media_subtitles_grant_resource_revision_original_ass",
@@ -249243,6 +249480,9 @@
                               "format": {
                                 "type": "string"
                               },
+                              "linesUrl": {
+                                "type": "string"
+                              },
                               "trackId": {
                                 "type": "string"
                               },
@@ -249984,6 +250224,9 @@
                                 "type": "string"
                               },
                               "format": {
+                                "type": "string"
+                              },
+                              "linesUrl": {
                                 "type": "string"
                               },
                               "trackId": {
@@ -250772,6 +251015,9 @@
                                 "type": "string"
                               },
                               "format": {
+                                "type": "string"
+                              },
+                              "linesUrl": {
                                 "type": "string"
                               },
                               "trackId": {
@@ -256621,6 +256867,9 @@
                                   "format": {
                                     "type": "string"
                                   },
+                                  "linesUrl": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -257805,6 +258054,9 @@
                                   "format": {
                                     "type": "string"
                                   },
+                                  "linesUrl": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -258880,6 +259132,9 @@
                                   "format": {
                                     "type": "string"
                                   },
+                                  "linesUrl": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -259781,6 +260036,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -260816,6 +261074,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -261906,6 +262167,9 @@
                                   "format": {
                                     "type": "string"
                                   },
+                                  "linesUrl": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -262806,6 +263070,9 @@
                                   "format": {
                                     "type": "string"
                                   },
+                                  "linesUrl": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -263522,6 +263789,9 @@
                                 "type": "string"
                               },
                               "format": {
+                                "type": "string"
+                              },
+                              "linesUrl": {
                                 "type": "string"
                               },
                               "trackId": {
@@ -266414,11 +266684,21 @@
                           },
                           "kind": {
                             "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "pinRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
                           "kind",
-                          "id"
+                          "id",
+                          "name",
+                          "pinRevision"
                         ],
                         "type": "object"
                       },
@@ -280613,6 +280893,67 @@
         "x-lane": "default",
         "x-max-body-bytes": 65536,
         "x-scope": "admin"
+      }
+    },
+    "/v1/subtitle-fonts/cjk": {
+      "get": {
+        "operationId": "get_subtitle_fonts_cjk",
+        "responses": {
+          "200": {
+            "content": {
+              "font/otf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the Chinese, Japanese and Korean font for subtitles drawn in a browser",
+        "x-access": "public",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
       }
     },
     "/v1/suggestions": {

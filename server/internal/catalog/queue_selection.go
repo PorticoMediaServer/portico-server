@@ -29,7 +29,9 @@ type QueueSelection struct {
 // QueueKeysTx compiles a saved resource or browse query on the capture's own
 // read snapshot. Containers expand in browse order, then their listening or
 // episode order; overlapping containers include each playable title once.
-func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, actor ResourceActor, query *QueueQuery, saved string) (QueueSelection, error) {
+// rows holds the members of any Home row the query names, resolved through
+// Home by the caller when Play was pressed (at most a row's 500 titles).
+func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, actor ResourceActor, query *QueueQuery, saved string, rows map[string][]int64) (QueueSelection, error) {
 	clone := *s.WithContext(ctx)
 	clone.readTx = tx
 	s = &clone
@@ -62,7 +64,7 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 		query = &QueueQuery{LibraryID: d.LibraryID, Pivot: d.Pivot, Query: d.Query, Sort: d.Sort}
 	}
 	if query != nil && query.LibraryID == AcrossLibraries {
-		return s.acrossQueue(ctx, tx, viewer, query)
+		return s.acrossQueue(ctx, tx, viewer, query, rows)
 	}
 	if query == nil || !viewer.AllowsLibrary(query.LibraryID) {
 		return QueueSelection{}, sql.ErrNoRows
@@ -95,7 +97,7 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 		return QueueSelection{}, err
 	}
 	where, args := browseScopeSQL(query.LibraryID, pivot)
-	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions}
+	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
 	clause, err := compiler.compile(node)
 	if err != nil {
 		return QueueSelection{}, err
@@ -105,7 +107,7 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 	restriction, values := EntityRestrictionSQL("e.entity_id", viewer.Restrictions)
 	where += ` AND ` + restriction
 	args = append(args, values...)
-	order, orderArgs, err := s.queueBrowseOrder(viewer, query, sorts, where, args)
+	order, orderArgs, err := s.queueBrowseOrder(viewer, query, sorts, where, args, rows)
 	if err != nil {
 		return QueueSelection{}, err
 	}
@@ -113,7 +115,7 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 	args = append(orderArgs, args...)
 	visible, values := viewer.itemVisibilitySQL("i.id")
 	args = append(args, values...)
-	revision, err := s.browseRevision(BrowseRequest{Library: query.LibraryID, Profile: viewer.Profile, ViewerFence: viewer.Fence, Query: node}, pivot, sorts)
+	revision, err := s.browseRevision(BrowseRequest{Library: query.LibraryID, Profile: viewer.Profile, ViewerFence: viewer.Fence, Query: node, Rows: rows}, pivot, sorts)
 	if err != nil {
 		return QueueSelection{}, err
 	}
@@ -131,6 +133,9 @@ func (s *Service) QueueKeysTx(ctx context.Context, tx *sql.Tx, viewer Viewer, ac
 		args = append(filterArgs, orderArgs...)
 	}
 	sql, err = compactcatalog.SearchServingSQL(ctx, tx, compactcatalog.ServingSQL(sql))
+	if label == "" {
+		label = s.queueGroupLabel(node)
+	}
 	if label == "" {
 		label = lib.Name
 	}
@@ -163,7 +168,7 @@ func (q *QueueQuery) UnmarshalJSON(raw []byte) error {
 	return nil
 }
 
-func (s *Service) queueBrowseOrder(viewer Viewer, query *QueueQuery, sorts []BrowseSortSelection, where string, args []any) (string, []any, error) {
+func (s *Service) queueBrowseOrder(viewer Viewer, query *QueueQuery, sorts []BrowseSortSelection, where string, args []any, rows map[string][]int64) (string, []any, error) {
 	first := sorts[0]
 	direction, op := "ASC", "<"
 	if first.Direction == "desc" {
@@ -190,25 +195,25 @@ func (s *Service) queueBrowseOrder(viewer Viewer, query *QueueQuery, sorts []Bro
 	if first.Field == "groupOrder" {
 		// The group's own order (a playlist's, a season's, an album's): its
 		// members' places, read from the group and bounded by it.
-		source, sourceArgs, err := s.groupOrderSource(groupOrderTarget(query.Query), nil)
+		source, sourceArgs, err := s.groupOrderSource(groupOrderTarget(query.Query), rows)
 		if err != nil {
 			return "", nil, err
 		}
-		rows, err := s.read().Query(`SELECT id FROM (`+source+`) ORDER BY pos `+direction+`,id `+direction, sourceArgs...)
+		found, err := s.read().Query(`SELECT id FROM (`+source+`) ORDER BY pos `+direction+`,id `+direction, sourceArgs...)
 		if err != nil {
 			return "", nil, err
 		}
 		ids := []int64{}
-		for rows.Next() {
+		for found.Next() {
 			var id int64
-			if err = rows.Scan(&id); err != nil {
-				rows.Close()
+			if err = found.Scan(&id); err != nil {
+				found.Close()
 				return "", nil, err
 			}
 			ids = append(ids, id)
 		}
-		err = rows.Err()
-		rows.Close()
+		err = found.Err()
+		found.Close()
 		if err != nil {
 			return "", nil, err
 		}
@@ -222,4 +227,20 @@ func (s *Service) queueBrowseOrder(viewer Viewer, query *QueueQuery, sorts []Bro
 	}
 	order, values := browseOrderSQL(viewer.Profile, sorts)
 	return order, values, nil
+}
+
+// queueGroupLabel names a queue played from one of a show's episode groups
+// after the show, as a season's queue is; "" for anything else.
+func (s *Service) queueGroupLabel(node *BrowseNode) string {
+	target := groupOrderTarget(node)
+	if target == nil || target.Field != "episodeGroup" {
+		return ""
+	}
+	show, _, ok := splitEpisodeGroup(target.Value)
+	if !ok {
+		return ""
+	}
+	var title string
+	_ = s.read().QueryRow(`SELECT title FROM catalog_entities WHERE public_id=pid_blob(?)`, show).Scan(&title)
+	return title
 }

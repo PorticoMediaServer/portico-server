@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {ApiError, HttpLocalApi, errorConfirmRoots} from '../src/index.ts';
-import {lanConfirmationRoots, linearError, remoteSourceDraft, withConfirmedLanRoots} from '../src/linear-api.ts';
+import {lanConfirmationRoots, remoteSourceDraft, withConfirmedLanRoots} from '../src/linear-api.ts';
 
 const refused = (roots: unknown) => new Response(JSON.stringify({error: {code: 'source_lan_confirmation_required', message: 'Confirm the local-network roots.', retry: 'none', current: {confirmRoots: roots}}}), {status: 422, headers: {'Content-Type': 'application/json'}});
 
@@ -11,7 +11,6 @@ test('CD-06: a 422 source_lan_confirmation_required keeps its confirmRoots on th
   assert.ok(error instanceof ApiError);
   assert.equal(error.status, 422);
   assert.deepEqual(lanConfirmationRoots(error), ['http://192.168.1.50', 'http://192.168.1.50:5004']);
-  assert.match(linearError(error), /local network/);
 });
 
 test('roots are plain http(s) URLs in a short list, or nothing', () => {

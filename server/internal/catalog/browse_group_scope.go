@@ -164,13 +164,23 @@ const homeRowMembersMaximum = 500
 // HomeRowMembers reads a Home row's titles in the row's order, as its See all
 // page pages them, up to homeRowMembersMaximum.
 func (s *Service) HomeRowMembers(r HomeRequest, id string) ([]int64, error) {
+	out, _, err := s.HomeRowSnapshot(r, id)
+	return out, err
+}
+
+// HomeRowSnapshot is HomeRowMembers with the row's title, for a queue that
+// plays what the row shows now (its members at the moment Play is pressed).
+func (s *Service) HomeRowSnapshot(r HomeRequest, id string) ([]int64, string, error) {
 	out := []int64{}
 	public := []string{}
-	cursor := ""
+	cursor, title := "", ""
 	for len(public) < homeRowMembersMaximum {
 		row, err := s.HomeSingleRow(r, id, HomeRowPage{Cursor: cursor, Limit: HomeRowMaxLimit})
 		if err != nil {
-			return nil, err
+			return nil, "", err
+		}
+		if title == "" {
+			title = row.Title
 		}
 		for _, entry := range row.Entries {
 			public = append(public, entry.ID)
@@ -184,22 +194,22 @@ func (s *Service) HomeRowMembers(r HomeRequest, id string) ([]int64, error) {
 		public = public[:homeRowMembersMaximum]
 	}
 	if len(public) == 0 {
-		return out, nil
+		return out, title, nil
 	}
 	rows, err := s.read().Query(`SELECT j.key,ce.id FROM json_each(?) j JOIN catalog_entities ce ON ce.public_id=pid_blob(j.value) ORDER BY j.key`, idsJSON(public))
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	defer rows.Close()
 	for rows.Next() {
 		var at int
 		var entity int64
 		if err = rows.Scan(&at, &entity); err != nil {
-			return nil, err
+			return nil, "", err
 		}
 		out = append(out, entity)
 	}
-	return out, rows.Err()
+	return out, title, rows.Err()
 }
 
 // ---- the group's own order ----

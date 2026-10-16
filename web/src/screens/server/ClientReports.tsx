@@ -61,7 +61,7 @@ export function ClientReportsPanel() {
         actions={<><Button variant="ghost" icon="download" label={t('web.diagnostics.clientReportDownload')} disabled={open?.body === undefined} onClick={() => open && save(open.report)} /><Button variant="primary" label={t('action.done')} onClick={() => setOpen(undefined)} /></>}>
         {open?.error ? <Notice tone="error" compact>{open.error}</Notice> : null}
         {open && open.body === undefined && !open.error ? <Loading label={t('server.reports.title')} /> : null}
-        {open?.body !== undefined ? <pre style={{margin: 0, maxHeight: 440, overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.5}}>{open.body || t('server.reports.empty')}</pre> : null}
+        {open?.body !== undefined ? <pre style={{margin: 0, maxHeight: 440, overflow: 'auto', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', fontFamily: 'var(--font-mono)', fontSize: '0.75rem', lineHeight: 1.5}}>{open.body || t('server.reports.empty')}</pre> : null}
       </Dialog>
       <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('server.reports.deleteTitle')} body={t('server.reports.deleteBody')} confirmLabel={t('action.delete')} busy={action.busy} error={action.error || undefined}
         onConfirm={() => void action.run(async () => { if (!removing) return; await deleteClientReport(api, removing.id); setRemoving(undefined); read.reload(); })} />
@@ -87,7 +87,7 @@ export function SetAsideTitlesPanel() {
       {list.failures.map((f, n) => (
         <SettingsRow key={`${f.domain}:${f.entityId ?? n}`} icon="warning" label={f.title || t('server.setAside.untitled')} stack
           help={t('server.setAside.tried', {count: f.attempts, when: i18n.dateTime(f.failedAt)})}
-          control={<Text variant="mono" tone="tertiary" style={{fontSize: 12, overflowWrap: 'anywhere'}}>{f.reason}</Text>} />
+          control={<Text variant="mono" tone="tertiary" style={{fontSize: '0.75rem', overflowWrap: 'anywhere'}}>{f.reason}</Text>} />
       ))}
       <SettingsFooter>
         <Button size="sm" variant="ghost" icon="refresh" label={t('server.setAside.check')} loading={read.loading} onClick={read.reload} />

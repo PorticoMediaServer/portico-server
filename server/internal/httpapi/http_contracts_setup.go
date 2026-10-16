@@ -19,6 +19,10 @@ func registerSetupHTTPContracts(registry *apikit.Registry) error {
 	}](registry, apikit.Metadata{ID: "get_health_ready", Method: "GET", Path: "/health/ready", ResponseStatuses: []int{503}, Summary: "Read server readiness", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
+	// internal/httpapi/installation.go:51
+	if err := apikit.RegisterHTTP[struct{}, SubtitleBytesContract](registry, apikit.Metadata{ID: "get_subtitle_fonts_cjk", Method: "GET", Path: "/v1/subtitle-fonts/cjk", Summary: "Read the Chinese, Japanese and Korean font for subtitles drawn in a browser", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Media, Admission: laneMediaBody, Cost: apikit.Constant, BodyLimit: 0, Status: 200, ResponseContentType: "font/otf", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
 	// internal/httpapi/onboarding.go:47
 	if err := apikit.RegisterHTTP[struct {
 		RequestID  string "json:\"requestId\""

@@ -207,3 +207,12 @@ test('a decoder that does 4K only at 30 states its operating points',async()=>{
  bad.engines.native.video![0]!.limits=[{}];
  assert.equal(capabilityDocumentProblem(bad),'engines.native.video.h264.limits');
 });
+
+test('4K is asked at a level that covers 4K, so a decoder that answers by level is not under-declared',async()=>{
+ const asked:string[]=[];
+ // A decoder that refuses 3840×2160 at level 4.0 and takes it at 5.1, as some televisions and Vega do.
+ const d=await probeWebProfile(chromeLike({decodingInfo:async q=>{if(q.width===3840)asked.push(q.contentType);return {supported:!(q.width===3840&&/avc1\.640028|av01\.0\.08M|vp09\.00\.40/.test(q.contentType))&&!/hvc1|dvh1/.test(q.contentType),smooth:true,powerEfficient:true};}}));
+ assert.ok(asked.some(type=>type.includes('avc1.640033')),'H.264 at level 5.1');
+ assert.equal(asked.some(type=>type.includes('avc1.640028')),false);
+ for(const codec of ['h264','av1','vp9'])assert.equal(d.engines.native.video!.find(v=>v.codec===codec)!.maxHeight,2160,codec);
+});

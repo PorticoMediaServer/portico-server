@@ -84,3 +84,28 @@ export function groupMemoryId(libraryId: string, pivot: string, base: readonly B
 
 /** What a group page needs to reopen as it was left. */
 export type RememberedGroup = Readonly<{sort?: RememberedSort; filters?: readonly RememberedFilter[]}>;
+
+/** What a queue selector names to play a group whole on the server: the same shape as a browse. */
+export type WholeGroupQuery = Readonly<{libraryId: string; pivot: string; query: BrowseNode; sort: readonly BrowseSortSelection[]}>;
+
+/**
+ * One of a show's episode groups that is not a season (its whole list, its specials, its
+ * absolute-only episodes, a range of a hundred) played whole by the server, in the show's own
+ * order, rather than the episodes the page has loaded.
+ */
+export function episodeGroupQuery(libraryId: string, showId: string, group: string): WholeGroupQuery {
+  return Object.freeze({libraryId, pivot: 'episodes', query: Object.freeze({all: Object.freeze([episodeGroupCondition(showId, group)])}), sort: Object.freeze([Object.freeze({field: groupOrderSort, direction: 'asc' as const})])});
+}
+
+/** Kinds played one at a time: a Home row of these plays them, not the titles that hold them. */
+const playedOneAtATime: ReadonlySet<string> = new Set(['song', 'episode', 'audiobook_file', 'chapter']);
+
+/**
+ * A Home row played whole: the server reads the row through Home when Play is pressed (at most
+ * its first 500 titles) and plays exactly that, in the row's order, across libraries. A row of
+ * songs or episodes plays those; a row of titles plays each title's own list.
+ */
+export function homeRowQuery(rowId: string, entryKinds: readonly string[]): WholeGroupQuery {
+  const pivot = entryKinds.some(kind => playedOneAtATime.has(kind)) ? 'items' : 'titles';
+  return Object.freeze({libraryId: '*', pivot, query: Object.freeze({all: Object.freeze([acrossCondition('homeRow', rowId)])}), sort: Object.freeze([Object.freeze({field: groupOrderSort, direction: 'asc' as const})])});
+}

@@ -110,6 +110,9 @@ export function parsePersonalBatchReceipt(v:unknown,serverId:string,requested:re
 export const PERSONAL_BATCH_PATH=routePath("put_items_personal_state_batch");
 function info(e:unknown):PersonalSavedError{const x=e as {code?:unknown};const code=id(x?.code)?x.code:'request_failed';return {code,message:e instanceof Error?e.message:'The request failed.',conflict:['playlist_conflict','resource_conflict','revision_mismatch','personal_state_conflict','stale_continuation','operation_expired'].includes(code)};}
 function freeze<T>(v:T):T{if(v&&typeof v==='object'){for(const c of Object.values(v))freeze(c);Object.freeze(v);}return v;}
+/** Entries a page holds, and how far a quiet re-read reaches: DEEP_PAGES pages of PAGE. */
+const PAGE=40,DEEP_PAGES=25;
+function shownOf(route:SavedRoute,p:{resources?:readonly PersonalResource[];entries?:readonly PersonalResourceEntry[]}):readonly {id:string}[]{return (route.view==='collections'||route.view==='views'?p.resources:p.entries)??[];}
 export function isPersonalSavedRoute(route:SavedRoute|null):boolean{return !!route&&['collections','views','history','resource'].includes(route.view);}
 /** The definition names an existing authorized library and canonical browse semantics. */
 export function makeSavedDefinition(libraryId:string,titlePrefix='',presentation:'grid'|'list'='grid',sort:string='title',direction:'asc'|'desc'='asc',categoryId='',pivot='movies'):SavedDefinition{
@@ -142,7 +145,7 @@ export function savedCategoryId(d?:SavedDefinition):string{
  return '';
 }
 export class PersonalSavedService{
- private state:PersonalSavedSnapshot;private listeners=new Set<()=>void>();private generation=0;private readTicket=0;private candidateTicket=0;private disposed=false;private controllers=new Set<AbortController>();
+ private state:PersonalSavedSnapshot;private listeners=new Set<()=>void>();private generation=0;private readTicket=0;private candidateTicket=0;private disposed=false;private controllers=new Set<AbortController>();private seen=0;
  private command?:{intent:PersonalSavedIntent;path:string;method:string;body:Record<string,unknown>;fence:string;rebased?:boolean};
  private api:SavedApi;readonly scope:SavedScope;private requestId:()=>Promise<string>;
  constructor(api:SavedApi,scope:SavedScope,requestId:()=>Promise<string>){this.api=api;this.scope=Object.freeze({...scope});this.requestId=requestId;if(!id(scope.serverId)||!str(scope.viewerId,1024)||!scope.viewerId)throw new Error('A complete viewer scope is required.');this.state=this.empty();}
@@ -169,6 +172,8 @@ export class PersonalSavedService{
   */
  revalidate=async(context?:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<void>=>{
   if(this.disposed||!this.state.route||this.state.loading||this.state.pending||this.command||this.state.error||!this.state.viewerFence)return;
+  // Paged past the first page (or shown as one long first page since): every page on screen is read again, not only the last one.
+  if(this.state.history.length||this.seen>PAGE){const g=this.generation;try{if(await this.readThrough(context??{}))return;}catch(e){if(!this.alive(g)||context?.signal?.aborted)return;if(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(info(e).code))return this.load(null,[]);throw e;}}
   await this.load(this.state.cursor,this.state.history,context??{});
  };
  /** Try a failed read of the page again. */
@@ -178,12 +183,50 @@ export class PersonalSavedService{
  private async load(cursor:string|null,history:readonly (string|null)[],quiet?:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<void>{
   const route=this.state.route,g=this.generation,ticket=++this.readTicket;if(!route||this.disposed)return;if(!quiet)this.publish({loading:true,error:null});
   try{
-   const query=new URLSearchParams({limit:'40',...(cursor?{cursor}:{})});
+   const patch=await this.page(route,cursor,history);if(!this.alive(g)||ticket!==this.readTicket)return;
+   if(this.state.viewerFence&&this.state.viewerFence!==patch.viewerFence)throw Object.assign(new Error('Your access changed. Reopen Saved to continue.'),{code:'scope_changed'});
+   if(quiet){await quiet.settle?.();if(!this.alive(g)||ticket!==this.readTicket||quiet.signal?.aborted||this.state.pending||this.command)return;}
+   // What the viewer has on screen: the first page, and every page appended after it.
+   const count=shownOf(route,patch).length;this.seen=cursor===null?count:cursor===this.state.nextCursor&&history.length>this.state.history.length?this.seen+count:this.seen;
+   this.publish({...patch,loading:false});
+  }catch(e){if(!this.alive(g)||ticket!==this.readTicket)return;const error=info(e);
+   // A quiet read that failed leaves the page as it was; one the server answered with "gone" or "not yours" becomes the page's own state through an ordinary load.
+   if(quiet){if(quiet.signal?.aborted)return;if(['unauthorized','forbidden','not_found','scope_changed','invalid_saved','invalid_cursor','stale_continuation'].includes(error.code))return this.load(null,[]);throw e;}this.publish({loading:false,error,...(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(error.code)?{resources:[],resource:null,entries:[],browse:null,viewerFence:''}:{})});}
+ }
+ /**
+  * A list paged past its first page, read again quietly from the first page through everything on
+  * screen (at most DEEP_PAGES pages) and shown in place as one first page: a change anywhere in
+  * view shows, nothing below the viewer disappears, and the next page continues from a fresh
+  * cursor. False when the list on screen is longer than that bound or the pages read caught the
+  * list mid-change; the caller then does what it did before (reads the page in view, or reloads).
+  */
+ private async readThrough(quiet:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<boolean>{
+  const route=this.state.route,want=this.seen,g=this.generation,ticket=++this.readTicket;
+  if(!route||this.disposed||want>DEEP_PAGES*PAGE)return false;
+  const first=await this.page(route,null,[]);if(!this.alive(g)||ticket!==this.readTicket)return true;
+  const all=[...shownOf(route,first)] as {id:string}[],seen=new Set(all.map(x=>x.id));let next=first.nextCursor,last=first;
+  for(let pages=1;next&&all.length<want;pages++){
+   if(pages>=DEEP_PAGES)return false;
+   let page:typeof first;try{page=await this.page(route,next,[]);}catch(e){if(['stale_continuation','invalid_cursor'].includes(info(e).code))return false;throw e;}
+   if(!this.alive(g)||ticket!==this.readTicket)return true;
+   if(page.viewerFence!==first.viewerFence||page.revision!==first.revision)return false;
+   for(const x of shownOf(route,page) as {id:string}[])if(!seen.has(x.id)){seen.add(x.id);all.push(x);}
+   next=page.nextCursor===next?'':page.nextCursor;last=page;
+  }
+  if(this.state.viewerFence&&this.state.viewerFence!==first.viewerFence)throw Object.assign(new Error('Your access changed. Reopen Saved to continue.'),{code:'scope_changed'});
+  await quiet.settle?.();if(!this.alive(g)||ticket!==this.readTicket||quiet.signal?.aborted||this.state.pending||this.command)return true;
+  const combined=route.view==='collections'||route.view==='views'?{resources:all as unknown as PersonalResource[]}:{entries:all as unknown as PersonalResourceEntry[],...(first.browse&&last.browse?{browse:freeze({...first.browse,entries:(all as unknown as PersonalResourceEntry[]).flatMap(e=>e.media?[e.media]:[]),pageInfo:last.browse.pageInfo})}:{})};
+  this.seen=all.length;this.publish({...first,...combined,nextCursor:next,cursor:null,history:[],loading:false});
+  return true;
+ }
+ /** One page of the route, read and checked. */
+ private async page(route:SavedRoute,cursor:string|null,history:readonly (string|null)[]){
+   const query=new URLSearchParams({limit:String(PAGE),...(cursor?{cursor}:{})});
    const path=route.view==='resource'?encodedRoutePath("get_saved_resources_id_content", {"id": encodeURIComponent(route.resourceId!)}):route.view==='history'?routePath("get_personal_history"):routePath("get_saved_resources");
    if(route.view==='collections'||route.view==='views')query.set('kind',route.view==='collections'?'collection':'view');
    if(route.view==='history'&&'period'in route&&route.period)query.set('period',route.period);
-   const raw=await this.request<unknown>(path+'?'+query);if(!this.alive(g)||ticket!==this.readTicket)return;
-   if(!obj(raw)||!str(raw.nextCursor,4096))bad();let patch:{-readonly [K in keyof PersonalSavedSnapshot]?:PersonalSavedSnapshot[K]}={resource:null,resources:[],entries:[],browse:null,nextCursor:raw.nextCursor,cursor,history:[...history]};
+   const raw=await this.request<unknown>(path+'?'+query);
+   if(!obj(raw)||!str(raw.nextCursor,4096))bad();let patch:{-readonly [K in keyof PersonalSavedSnapshot]?:PersonalSavedSnapshot[K]}&{viewerFence:string;revision:number;nextCursor:string}={resource:null,resources:[],entries:[],browse:null,nextCursor:raw.nextCursor,cursor,history:[...history],viewerFence:'',revision:0};
    if(route.view==='resource'){
     const r=resource(raw.resource,this.scope);if(r.id!==route.resourceId)bad();patch.resource=r;patch.viewerFence=r.viewerFence;patch.revision=r.revision;
     if(r.kind==='view'&&r.status==='ready'){
@@ -199,12 +242,7 @@ export class PersonalSavedService{
     // A row from another server or another viewer fence refuses the whole directory; any other row this app cannot read is left out alone.
     else{const listed=rows(raw.resources);for(const v of listed)if(obj(v)&&(v.serverId!==this.scope.serverId||v.viewerFence!==raw.viewerFence))bad();patch.resources=distinct(keepReadable('personal-saved','resources',listed,v=>{const r=resource(v,this.scope);if(r.kind!==(route.view==='collections'?'collection':'view'))bad();return r;}),'resources');}
    }
-   if(this.state.viewerFence&&this.state.viewerFence!==patch.viewerFence)throw Object.assign(new Error('Your access changed. Reopen Saved to continue.'),{code:'scope_changed'});
-   if(quiet){await quiet.settle?.();if(!this.alive(g)||ticket!==this.readTicket||quiet.signal?.aborted||this.state.pending||this.command)return;}
-   this.publish({...patch,loading:false});
-  }catch(e){if(!this.alive(g)||ticket!==this.readTicket)return;const error=info(e);
-   // A quiet read that failed leaves the page as it was; one the server answered with "gone" or "not yours" becomes the page's own state through an ordinary load.
-   if(quiet){if(quiet.signal?.aborted)return;if(['unauthorized','forbidden','not_found','scope_changed','invalid_saved','invalid_cursor','stale_continuation'].includes(error.code))return this.load(null,[]);throw e;}this.publish({loading:false,error,...(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(error.code)?{resources:[],resource:null,entries:[],browse:null,viewerFence:''}:{})});}
+   return patch;
  }
  async loadLibraries():Promise<void>{const g=this.generation;try{const raw=await this.request<RouteResponse<"get_libraries">>(routePath("get_libraries"));if(!this.alive(g))return;if(!obj(raw))bad();const libraries=distinct(keepReadable('personal-saved','libraries',rows(raw.items,2048),v=>{if(!obj(v)||!id(v.id)||!str(v.name,512)||!id(v.kind))bad();return{id:v.id,name:v.name,kind:v.kind};}),'libraries');this.publish({libraries});}catch(e){if(this.alive(g))this.publish({error:info(e)});}}
  async loadCandidates(cursor=''):Promise<void>{const r=this.state.resource,g=this.generation,ticket=++this.candidateTicket;if(!r?.actions.includes('share'))return;
@@ -239,7 +277,8 @@ export class PersonalSavedService{
    const entries=c.intent.action==='entries'&&receipt.entries!==undefined?parseEntryOutcomes(receipt.entries):undefined;
    const undo=c.intent.action==='entries'&&id(receipt.undoToken)&&str(receipt.undoUntil,64)?{undo:{token:receipt.undoToken,until:receipt.undoUntil}}:{};
    this.command=undefined;this.publish({pending:false,retryPending:false,mutationError:null,result:{...(entries?{entries}:{}),...undo,...(typeof receipt.resourceId==='string'?{resourceId:receipt.resourceId}:{}),deleted},candidates:[],candidateCursor:''});
-   if(!deleted)await this.refresh();return this.alive(g);
+   // A list paged further than its first page stays where the viewer is (a move, a removal deep in a collection).
+   if(!deleted&&!((this.state.history.length||this.seen>PAGE)&&await this.readThrough({}).catch(()=>false)))await this.refresh();return this.alive(g);
   }catch(e){if(!this.alive(g))return false;const error=info(e);this.publish({pending:false,retryPending:true,mutationError:error});if(error.conflict)await this.refresh();
    // A move made while the collection changed elsewhere is made again on what is there now, once:
    // the entries it names still say what the viewer meant. The viewer sees a conflict only if that fails too.

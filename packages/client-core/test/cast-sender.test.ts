@@ -5,13 +5,14 @@ import {CastController, castChoiceFields, parseCastEvent, type CastCommand, type
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise(setImmediate); };
 
 /** A fake receiver: records what the sender sends and lets the test answer as the TV would. */
-function receiver(deviceName = 'Living Room TV') {
+function receiver(deviceName = 'Living Room TV', deviceId?: string) {
   const sent: CastCommand[] = [];
   const onMsg = new Set<(raw: unknown) => void>();
   const onEnd = new Set<() => void>();
   let ended: boolean | undefined;
   const transport: CastTransport = {
     deviceName,
+    ...(deviceId ? {deviceId} : {}),
     send: async m => { sent.push(m); },
     onMessage: fn => { onMsg.add(fn); return () => onMsg.delete(fn); },
     onSessionEnd: fn => { onEnd.add(fn); return () => onEnd.delete(fn); },
@@ -227,4 +228,22 @@ test('a stored controller token resumes the existing TV session without pairing 
  transport.reply({type:'status',itemId:'movie',positionSeconds:80,durationSeconds:600,paused:false,audioTracks:[],textTracks:[]});assert.equal(await adopting,true);
  assert.equal(codes,1);assert.equal(transport.sent.filter(x=>x.type==='load').length,0);
  returning.pause();assert.equal(transport.sent.at(-1)?.type,'pause');returning.dispose();
+});
+
+test('two televisions with one name keep their own pairing proofs when the platform names each device', async () => {
+  const saved = new Map<string, string>();
+  const options = {api: {request: async <T,>() => ({bootstrap: {code: 'ABC123'}}) as T}, origin: 'https://server.test', displayName: 'Phone', controllerStorage: {get: (k: string) => saved.get(k), set: (k: string, v: string) => { saved.set(k, v); }}};
+  const first = new CastController(options), lounge = receiver('TV', 'device-a');
+  const started = first.start(lounge.transport, 'movie', {title: 'Film'}, 0);
+  await settle(); lounge.reply({type: 'paired', controlToken: 'a'.repeat(48)}); assert.equal(await started, true); first.dispose();
+  // The other "TV" never paired with this phone: it is asked without the first one's proof.
+  const returning = new CastController(options), bedroom = receiver('TV', 'device-b');
+  void returning.adopt(bedroom.transport);
+  assert.deepEqual(bedroom.sent[0], {type: 'status'});
+  returning.dispose();
+  // The first one, by its own id, gets its proof back.
+  const again = new CastController(options), loungeAgain = receiver('TV', 'device-a');
+  void again.adopt(loungeAgain.transport);
+  assert.deepEqual(loungeAgain.sent[0], {type: 'status', controlToken: 'a'.repeat(48)});
+  again.dispose();
 });

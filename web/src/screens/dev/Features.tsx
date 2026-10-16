@@ -1,6 +1,6 @@
 import React, {useMemo, useState} from 'react';
 import {browserClientProfile} from '../../bridge/client-profile';
-import {currentI18n} from '../../app/i18n';
+import {useI18n} from '../../app/i18n';
 import {SessionFixture} from '../../app/session';
 import {GroupSessionService} from '@core/index.ts';
 import {TogetherFixture} from '../../app/together';
@@ -95,10 +95,11 @@ function fixtureApi(failing: () => boolean) {
 function DeviceProfile() {
   const [text, setText] = useState('Asking the browser…');
   React.useEffect(() => { void browserClientProfile(true).then(p => setText(JSON.stringify(p, null, 2)), e => setText(String(e))); }, []);
-  return <pre style={{fontSize: 12, lineHeight: 1.5, whiteSpace: 'pre-wrap', userSelect: 'text'}}>{text}</pre>;
+  return <pre style={{fontSize: '0.75rem', lineHeight: 1.5, whiteSpace: 'pre-wrap', userSelect: 'text'}}>{text}</pre>;
 }
 
 export function FeaturesGallery() {
+  const {t} = useI18n();
   const [failing, setFailing] = useState(false);
   const flag = React.useRef(false);
   flag.current = failing;
@@ -116,7 +117,7 @@ export function FeaturesGallery() {
           <Inset>
             <div style={{display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 20}}>
               <Segmented label="Surface" value={surface} onChange={setSurface} options={[{id: 'inbox', label: 'Inbox'}, {id: 'feedback', label: 'Feedback'}, {id: 'security', label: 'Account security'}, {id: 'together', label: 'Watch Together'}, {id: 'profile', label: 'Device profile'}]} /> {/* lint-strings-allow: developer-only screen */}
-              <Button variant={failing ? 'danger' : 'outline'} size="sm" label={failing ? currentI18n().t('web.dev.requestsFailing') : currentI18n().t('web.dev.makeRequestsFail')} onClick={() => setFailing(f => !f)} />
+              <Button variant={failing ? 'danger' : 'outline'} size="sm" label={failing ? t('web.dev.requestsFailing') : t('web.dev.makeRequestsFail')} onClick={() => setFailing(f => !f)} />
             </div>
             {surface === 'together' ? <TogetherFixture value={together}><TogetherScreen /></TogetherFixture> : null}
             {surface === 'profile' ? <Section title="What this browser tells its server it can play"><DeviceProfile /></Section> : null} {/* lint-strings-allow: developer-only screen */}

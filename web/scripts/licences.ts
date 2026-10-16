@@ -91,7 +91,7 @@ function subtitleAndFontComponents(read: (rel: string) => string): CollectedComp
   const ofl = read('third_party/libass-wasm/OFL-1.1.txt');
   out.push({id: 'font:liberation-sans', name: 'Liberation Sans', version: '2.00.5', licence: 'OFL-1.1', group: 'fonts', text: ofl, url: 'https://github.com/liberationfonts/liberation-fonts'});
   const fonts = JSON.parse(read('third_party/subtitle-fonts/provenance.json'));
-  const fontTexts: Record<string, string> = {'OFL-1.1': read('third_party/subtitle-fonts/OFL-1.1.txt'), 'Apache-2.0': read('third_party/subtitle-fonts/Apache-2.0.txt')};
+  const fontTexts: Record<string, string> = {'OFL-1.1': read('third_party/subtitle-fonts/OFL-1.1.txt')};
   for (const f of fonts.fonts as {family: string; package: string; upstream: string; license: string; copyright?: string}[]) {
     const text = fontTexts[f.license];
     if (!text) throw new Error(`licences: no ${f.license} text for ${f.family}`);

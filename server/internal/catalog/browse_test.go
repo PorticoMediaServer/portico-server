@@ -474,8 +474,15 @@ func TestPinOrderAndPinnedLibraries(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if len(read.Order) != 2 || read.Order[0].ID != "Zulu" {
+	// Arranged pins first in their order, then the pinned rest by name, each named.
+	if len(read.Order) != 3 || read.Order[0].ID != "Zulu" || read.Order[1].ID != "Mike" || read.Order[2].ID != "Alpha" || read.Order[0].Name != "Zulu" {
 		t.Fatalf("stored order %+v", read.Order)
+	}
+	if _, e = db.Exec(`UPDATE saved_resources SET deleted=1 WHERE id='Mike'`); e != nil {
+		t.Fatal(e)
+	}
+	if read, e = s.PinOrder(actor); e != nil || len(read.Order) != 2 || read.Order[1].ID != "Alpha" {
+		t.Fatalf("a deleted pin is still listed %+v %v", read.Order, e)
 	}
 }
 

@@ -17,6 +17,9 @@ export type SkippedPart = Readonly<{document: string; part: string; count: numbe
 const MAX_PARTS = 64;
 const skipped = new Map<string, {document: string; part: string; count: number}>();
 const listeners = new Set<(part: SkippedPart) => void>();
+let version = 0;
+const watchers = new Set<() => void>();
+const changed = () => { version++; for (const watcher of [...watchers]) { try { watcher(); } catch { /* a screen never breaks a read */ } } };
 
 /** Records that `count` parts of a document were left out. `document` and `part` are names from the parser, never response text. */
 export function noteSkipped(document: string, part: string, count = 1): void {
@@ -32,6 +35,7 @@ export function noteSkipped(document: string, part: string, count = 1): void {
   entry.count = Math.min(Number.MAX_SAFE_INTEGER, entry.count + count);
   const snapshot = Object.freeze({...entry});
   for (const listener of [...listeners]) { try { listener(snapshot); } catch { /* a listener never breaks a read */ } }
+  changed();
 }
 
 /** Everything left out since the app started (or since the last reset), most recent part last. */
@@ -47,6 +51,16 @@ export function onSkipped(listener: (part: SkippedPart) => void): () => void {
 
 export function resetSkippedParts(): void {
   skipped.clear();
+  changed();
+}
+
+/** For a screen that shows the record (`useSyncExternalStore`): told of every change, and its version. */
+export function subscribeSkipped(watcher: () => void): () => void {
+  watchers.add(watcher);
+  return () => { watchers.delete(watcher); };
+}
+export function skippedVersion(): number {
+  return version;
 }
 
 /** The value when it is one this app knows, otherwise undefined. Never throws. */

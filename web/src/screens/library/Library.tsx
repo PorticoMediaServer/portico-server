@@ -39,7 +39,7 @@ import {isRecommendationRow} from '@core/recommendation-feedback.ts';
 import {useNotInterested} from '../../app/not-interested-notice';
 import {withoutHidden} from '../../app/not-interested';
 import {useI18n, type I18n} from '../../app/i18n';
-import {useQuietRefresh} from '../../app/quiet-refresh';
+import {useRefreshRequiredRetry} from '../../app/quiet-refresh';
 
 const SORT_NAMES = new Set(['title', 'added', 'year', 'duration', 'last_played', 'rating', 'episode', 'track', 'artist', 'album', 'author', 'release', 'random']);
 const sortLabel = (t: I18n['t'], key: string): string => {
@@ -126,7 +126,7 @@ export function LibraryScreen() {
   /* The authored content route still serves Discover, categories and the tab strip; browsable pivots read the engine. */
   const {snapshot, retry, refresh, next} = useContent(engine ? {libraryId, view: 'discover'} : content);
   // Read again quietly when the server says the page changed; the notice is for one that stays refused.
-  const changedStuck = useQuietRefresh(!engine && !custom && snapshot.phase === 'refresh-required', refresh);
+  const changedStuck = useRefreshRequiredRetry(!engine && !custom && snapshot.phase === 'refresh-required', refresh);
   const projection = snapshot.projection;
   // PERF-S02: section "More" appends inside its own section; the page's other
   // sections stay rendered.
@@ -266,7 +266,7 @@ export function LibraryScreen() {
           <SaveViewDialog open={savingView} onClose={() => setSavingView(false)} onSave={async name => { const service = new PersonalSavedService(api, viewerScope(session, api), () => Promise.resolve(crypto.randomUUID())); try { await service.select({view: 'views'}); await service.mutate({action: 'create', kind: 'view', name, definition: {libraryId, pivot: pivot!, query: predicates.length ? {all: predicates} : null, sort: [chosenSort], presentation: view}}); } finally { service.dispose?.(); } }} />
         </Inset>
       ) : null}
-      {active.shows === 'playlists' ? <LibraryPlaylists sort={search.sort ? {field: search.sort, direction: search.direction ?? 'asc'} : undefined} onSort={chooseSort} /> : null}
+      {active.shows === 'playlists' ? <LibraryPlaylists sort={search.sort ? {field: search.sort, direction: search.direction ?? 'asc'} : undefined} onSort={chooseSort} filter={search.category} onFilter={next => setSearch({category: next})} /> : null}
       {engine && capabilityError ? <Inset><Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => window.location.reload()}}>{capabilityError}</Notice></Inset> : null}
       {engine && browse.collection ? <EngineResults sequence={viewSequence({libraryId, pivot, predicates, sort})} unmatched={tab === 'unmatched'} collection={browse.collection} onRefresh={browse.refresh} filtered={chosenPredicates.length > 0} onClearFilters={() => setSearch({filters: undefined})} pivot={pivot} libraryId={libraryId} libraryKind={library?.kind ?? ''} list={(view === 'list' && viewChoice) || active.shows === 'tracks'} tracks={active.shows === 'tracks'} sort={sort} sorts={capabilities?.sorts ?? []} onSort={chooseSort} sortField={sort.field} square={square} scanning={scan.scanning} card={active.shows === 'genres' ? entry => <GenreCard libraryId={libraryId} entry={entry} onOpen={() => openGroup(entry.title)} /> : undefined} empty={active.shows === 'genres' ? <StateView icon="category" title={t('library.genres.empty')} body={t('library.genres.emptyBody')} /> : undefined} listKey={listWindowKey({serverId: scope.serverId, viewerId: scope.viewerId, libraryId, pivot, query: JSON.stringify([search.filters ?? null, sort])})} /> : engine && !capabilityError ? <LoadingGrid density={square ? 'square' : 'poster'} /> : null}
       {!engine && !custom && tab === 'browse' && sorts.length ? (

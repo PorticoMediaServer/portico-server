@@ -57,7 +57,9 @@ func TestCrossOriginClientsCanReadTheReportCadence(t *testing.T) {
 			t.Fatalf("%s is not exposed to an allowed origin: %v", want, names)
 		}
 	}
-	if names = exposed("https://evil.example"); len(names) != 0 {
-		t.Fatalf("headers were exposed to an origin that is not allowed: %v", names)
+	// A tool on any other origin may call with a token, so its preflight is
+	// answered too; the real request is held to the token rule.
+	if names = exposed("https://tool.example"); !has(names, "Report-Every-Ms") {
+		t.Fatalf("a token-carrying tool cannot read the cadence: %v", names)
 	}
 }

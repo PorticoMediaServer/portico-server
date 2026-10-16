@@ -10,8 +10,7 @@ A styled subtitle names its own fonts and usually carries them. When it does not
 | Devanagari | Noto Sans Devanagari | SIL Open Font License 1.1 |
 | Bengali | Noto Sans Bengali | SIL Open Font License 1.1 |
 | Tamil | Noto Sans Tamil | SIL Open Font License 1.1 |
-| Chinese and Japanese | Droid Sans Fallback | Apache License 2.0 |
 
-The files are unmodified copies from the Ubuntu packages `fonts-noto-core` and `fonts-droid-fallback`; `provenance.json` records each package version and digest. Licence texts: `OFL-1.1.txt`, `Apache-2.0.txt`.
+The files are unmodified copies from the Ubuntu package `fonts-noto-core`; `provenance.json` records each package version and digest. Licence text: `OFL-1.1.txt`.
 
-Korean is not covered: Droid Sans Fallback has no Hangul syllables and the Noto CJK font that has them is about 19 MB. A Korean styled subtitle without its own fonts shows empty boxes until a font is added here or the server offers its own fonts to the browser.
+Chinese, Japanese and Korean are not here. The server already carries Noto Sans CJK for burned-in subtitles (`server/internal/mediaexec/fonts`, about 16 MB) and serves that one copy to the browser at `GET /v1/subtitle-fonts/cjk`, fetched only when a subtitle has CJK letters.
