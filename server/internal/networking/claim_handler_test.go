@@ -37,7 +37,7 @@ func handlerFixture(t *testing.T) (*sqlFixture, *ClaimHandler, *modelTransport) 
 		if r.Header.Get("Authorization") != "Bearer current" || r.Header.Get("Origin") != "https://web.example" {
 			return ClaimRequestOwner{}, ErrClaimOwnerRequired
 		}
-		return ClaimRequestOwner{f.owner, func(ctx context.Context, tx *sql.Tx) error {
+		return ClaimRequestOwner{Owner: f.owner, Guard: func(ctx context.Context, tx *sql.Tx) error {
 			var active int
 			e := tx.QueryRowContext(ctx, `SELECT active FROM request_family`).Scan(&active)
 			if e != nil {

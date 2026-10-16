@@ -91,6 +91,40 @@ export function titleWithPersonalState(libraryId: string, titleIds: readonly str
   return [...new Set(out)];
 }
 
+/**
+ * Whether a list's filters or sort read this profile's state (played, favourites, the watchlist,
+ * the viewer's rating, last played): then any personal change can change which titles it holds or
+ * their order, not only the marks on the titles it shows.
+ */
+export function readsPersonalState(fields: readonly (string | undefined)[]): boolean {
+  return fields.some(f => !!f && /^(playState|played|watched|unwatched|inProgress|progress|favorite|watchlist|personalRating|userRating|lastPlayed|playCount|history)/.test(f));
+}
+
+/**
+ * A list of titles (a library tab, a container's titles, a person's titles): it moves when its
+ * library's titles or their order change, and for this profile's state only when a hint names one
+ * of the titles it holds now (`titleIds`, read each time a hint arrives), or names none. A list
+ * whose query reads personal state (`readsPersonal`) moves for every personal change, as before.
+ */
+export function listedTitlesWithPersonalState(libraryId: string | undefined, titleIds: Iterable<string>, readsPersonal: boolean): readonly FreshnessDependency[] {
+  if (readsPersonal) return titlesWithPersonalState(libraryId);
+  const library = libraryId ?? ALL;
+  const out: FreshnessDependency[] = [dependsOn.content(libraryId), dependsOn.order(libraryId), `personal:any:${library}`, `progress:any:${library}`];
+  for (const id of titleIds) if (id) out.push(`personal:title:${id}`, `progress:title:${id}`);
+  return out;
+}
+
+/** The ids a personal hint may name for these entries: the entry's own, the title its page is about, and what it plays. */
+export function titleIdsOf(entries: readonly Readonly<{id: string; navigation?: Readonly<{entityId?: string}>; playback?: Readonly<{itemId?: string}>}>[]): string[] {
+  const out: string[] = [];
+  for (const e of entries) {
+    out.push(e.id);
+    if (e.navigation?.entityId && e.navigation.entityId !== e.id) out.push(e.navigation.entityId);
+    if (e.playback?.itemId && e.playback.itemId !== e.id) out.push(e.playback.itemId);
+  }
+  return out;
+}
+
 /** Everything a screen of titles with personal marks depends on, for one library or all of them. */
 export function titlesWithPersonalState(libraryId?: string): readonly FreshnessDependency[] {
   return [dependsOn.content(libraryId), dependsOn.order(libraryId), dependsOn.personal(libraryId), dependsOn.progress(libraryId)];
@@ -438,8 +472,8 @@ export class FreshnessHub {
         if (progress) moved.push(dependsOn.progress(id), dependsOn.progress());
         // A hint that names its title moves only the pages about that title (or a title above it);
         // one that names none moves every title page of the library.
-        if (personal) moved.push(...(change.titles ? change.titles.map(t => `personal:title:${t}`) : [`personal:any:${id}`]));
-        if (progress) moved.push(...(change.titles ? change.titles.map(t => `progress:title:${t}`) : [`progress:any:${id}`]));
+        if (personal) moved.push(...(change.titles ? change.titles.map(t => `personal:title:${t}`) : [`personal:any:${id}`, `personal:any:${ALL}`]));
+        if (progress) moved.push(...(change.titles ? change.titles.map(t => `progress:title:${t}`) : [`progress:any:${id}`, `progress:any:${ALL}`]));
       } else if (change.type === 'settings.changed') {
         if (differs(`settings:${id}`, change.revision)) moved.push(`settings:${id}`);
       }

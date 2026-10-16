@@ -502,6 +502,9 @@ test('downloaded subtitle originals and fonts retain server bundle paths without
   const parsed = parseDownloadBundle({...bundle(), subtitles: [subtitle]}, 'prep');
   assert.deepEqual(parsed.subtitles[0].files, files);
   assert.throws(() => parseDownloadBundle({...bundle(), subtitles: [{...subtitle, files: {...files, ass: {...files.ass, path: '/v1/media/subtitles/live/track/3/original.ass'}}}]}, 'prep'));
+  // An image track carries its forced-line count; a count that cannot be true is left out.
+  assert.deepEqual(parseDownloadBundle({...bundle(), subtitles: [{...subtitle, lines: {forced: 2, total: 40}}]}, 'prep').subtitles[0].lines, {forced: 2, total: 40});
+  assert.equal(parseDownloadBundle({...bundle(), subtitles: [{...subtitle, lines: {forced: 41, total: 40}}]}, 'prep').subtitles[0].lines, undefined);
 });
 
 test('reason codes render a sentence and sizes render a unit', () => {

@@ -24,6 +24,19 @@ func (d Dependencies) mergedTitlePath(q *http.Request, name, value string) strin
 	return d.Catalog.SurvivingTitleID(q.Context(), value)
 }
 
+// titleRefNames are the query parameters and request members that carry a
+// title id wherever they appear; mergedTitleRefs sends a merged-away one to
+// the title that stayed, so a request body (starting playback, adding to a
+// playlist, deleting) follows a merge as path ids do.
+var titleRefNames = []string{"itemId", "itemIds", "addItemIds", "showId", "seasonId", "selectedSeasonId", "episodeId", "entityId", "logoItemId"}
+
+func (d Dependencies) mergedTitleRefs(q *http.Request, values []string) map[string]string {
+	if d.Catalog == nil {
+		return nil
+	}
+	return d.Catalog.SurvivingTitleIDs(q.Context(), values)
+}
+
 func routePathOf(pattern string) string {
 	if i := strings.IndexByte(pattern, ' '); i >= 0 {
 		return pattern[i+1:]

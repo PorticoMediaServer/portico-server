@@ -188,6 +188,7 @@ type Registry struct {
 	authorizeCtx AuthorizeContext
 	scopes       ScopeGate
 	rewrite      PathRewrite
+	refs         Refs
 	routes       []Definition
 	bound        map[string]bool
 	frozen       bool
@@ -416,6 +417,10 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 		}
 		q.SetPathValue(key, value)
 	}
+	if !r.routes[best].HTTP {
+		// A mounted HTTP handler rewrites its own query on the way in.
+		r.rewriteQuery(q)
+	}
 	r.handlers[best](w, q)
 }
 func matchRoute(pattern, path string) (map[string]string, int, bool) {
@@ -550,6 +555,7 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 	if err := r.define(m, reflect.TypeFor[Request](), reflect.TypeFor[Response](), true); err != nil {
 		return err
 	}
+	refs := r.bodyRefPaths(reflect.TypeFor[Request]())
 	r.handlers = append(r.handlers, func(w http.ResponseWriter, q *http.Request) {
 		fail := func(err error) { r.errors.Write(w, "", err) }
 		q, ok := r.admit(w, q, m)
@@ -584,6 +590,15 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 			if fenced && !revisionSent(raw) {
 				fail(&apierror.Error{Code: "revision_required"})
 				return
+			}
+			// An id that now names something else (a merged-away title) is
+			// replaced once the document is known to be valid.
+			if next := r.rewriteBody(q, raw, refs); !bytes.Equal(next, raw) {
+				request = *new(Request)
+				if err = json.Unmarshal(next, &request); err != nil {
+					fail(&apierror.Error{Code: "invalid_request", Cause: err})
+					return
+				}
 			}
 		} else if m.BodyLimit == 0 && !empty {
 			fail(&apierror.Error{Code: "invalid_request"})

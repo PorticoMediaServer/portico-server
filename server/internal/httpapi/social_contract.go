@@ -128,7 +128,7 @@ func registerSocial(r *apikit.Registry, d Dependencies) {
 		case "POST /v1/groups/{id}/settings":
 			socialContract[social.SettingsRequest, social.GroupResponse](r, pattern, h, 200)
 		case "POST /v1/groups/{id}/readiness":
-			socialContract[social.ReadinessRequest, social.GroupResponse](r, pattern, h, 200)
+			socialContract[social.ReadinessRequest, social.ReadinessReceipt](r, pattern, h, 200)
 		case "GET /v1/groups/{id}/queue":
 			socialContract[noBody, social.QueueResponse](r, pattern, h, 200)
 		case "POST /v1/groups/{id}/queue":

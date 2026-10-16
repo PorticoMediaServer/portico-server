@@ -3046,7 +3046,7 @@ CREATE TABLE identity_refresh_receipts(
 CREATE TABLE hosted_trust_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),revision INTEGER NOT NULL) STRICT;
 CREATE TABLE hosted_signing_revocations(key_id TEXT PRIMARY KEY) STRICT;
 CREATE TABLE hosted_policy_signers(server_id TEXT PRIMARY KEY,key_id TEXT NOT NULL) STRICT;
-CREATE TABLE networking_web_claims(operation_id TEXT PRIMARY KEY,request TEXT NOT NULL) STRICT;
+CREATE TABLE networking_web_claims(operation_id TEXT PRIMARY KEY,request TEXT NOT NULL,watch TEXT NOT NULL DEFAULT '') STRICT;
 CREATE TABLE hosted_server_events(operation_id TEXT NOT NULL,kind TEXT NOT NULL,payload TEXT NOT NULL,revision INTEGER NOT NULL, attempts INTEGER NOT NULL DEFAULT 0, next_at INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(operation_id,kind)) STRICT;
 CREATE TABLE managed_mounts(
  id TEXT PRIMARY KEY,name TEXT NOT NULL,executable TEXT NOT NULL,digest TEXT NOT NULL,
