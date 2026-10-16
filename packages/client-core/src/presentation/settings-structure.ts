@@ -338,7 +338,7 @@ const accountPages: readonly AuthoredPage[] = [
         custom('downloadsStorage', 'settings.row.downloadsStorage', {platforms: ['phone'], needs: c => !!c.downloads}),
       ]},
       // What this profile is playing on its other devices, to pause, resume or stop from here.
-      {id: 'remote', rows: [custom('remoteControls', 'remote.title')], platforms: ['web']},
+      {id: 'remote', rows: [custom('remoteControls', 'remote.title')]},
       {id: 'servers', title: 'settings.section.servers', rows: [custom('servers', 'settings.section.servers')]},
     ],
   },
@@ -422,7 +422,7 @@ const serverPages: readonly AuthoredPage[] = [
       panel('invitations', 'server.invitations', undefined, {tab: 'invitations', administrators: true}),
       // Holding new devices until the owner approves them, and every device that has signed in, newest first.
       {id: 'deviceApproval', tab: 'devices', rows: [on('runtime', 'deviceApprovalRequired', 'server.people.deviceApproval', 'server.people.deviceApprovalHelp')]},
-      panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web'], administrators: true}),
+      panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web', 'phone'], administrators: true}),
     ]},
   // Everything another program uses to work with this server, in one place: the owner's keys, members' own tokens,
   // messages sent out when something happens, and the address an assistant connects to.

@@ -127,8 +127,8 @@ test('a list setting takes an entry once, trimmed, and never an empty one', () =
 test('the second-pass rows are where an owner would look', () => {
   const web = server('web');
   assert.deepEqual(rowIds(page(web, 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired', 'server.devices']);
-  // The phone draws the approval switch; the list of everyone's devices is the web's.
-  assert.deepEqual(rowIds(page(server('phone'), 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired']);
+  // Phones and tablets have the approval switch and the list of everyone's devices, as the web does.
+  assert.deepEqual(rowIds(page(server('phone'), 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired', 'server.devices']);
   for (const id of ['runtime.sessionStorageMiB', 'runtime.ffmpegPath', 'runtime.temporaryDirectory', 'runtime.hardwareBackend']) assert.ok(rowIds(page(web, 'streaming')!).includes(id), id);
   for (const id of ['liveDefaults.importLimits.channels', 'liveDefaults.importLimits.programmes', 'liveDefaults.importLimits.bytes']) assert.ok(rowIds(page(web, 'live')!).includes(id), id);
   assert.ok(rowIds(page(web, 'general')!).includes('server.restart'));
@@ -162,6 +162,8 @@ test('the third-pass panels sit beside the settings they explain', () => {
   for (const id of ['server.resourceUsage', 'server.storageStatus', 'server.downloadUsage', 'server.setAsideTitles', 'server.playbackProblems']) for (const p of server('tv')) assert.ok(!rowIds(p).includes(id), id);
   const device = settingsStructure({owner: false, platform: 'web', capabilities: {}}).headings[0]!.pages.find(p => p.id === 'device')!;
   assert.ok(rowIds(device).includes('remoteControls'));
+  // What this profile plays on its other devices can be paused or stopped from a phone or a television too.
+  for (const platform of ['phone', 'tv'] as const) assert.ok(rowIds(settingsStructure({owner: false, platform, capabilities: {}}).headings[0]!.pages.find(p => p.id === 'device')!).includes('remoteControls'), platform);
 });
 
 test('remembered playback failures are shown a file at a time, newest first', async () => {
