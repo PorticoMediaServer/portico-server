@@ -10,7 +10,7 @@ import {routePath, encodedRoutePath} from "../../../../contracts/src/routes.ts";
  * - queues from selectors with lazily generated keys (a 10M-entry queue costs nothing), windows
  *   ≤ 200 (§16.8), seeded shuffle with the current entry first, move/remove as tombstones;
  * - device commands and transfers (commit on the target's first playing report; §16.9);
- * - `/v1/events` long-poll (parks until an event or `waitSeconds`) and a stream opener, with a
+ * - `/v1/events` long-poll (parks until an event or `waitMs`) and a stream opener, with a
  *   bounded ring (`stream.resync` for cursors older than it) and `stream.closed`;
  * - admin Now Playing and terminate.
  * Not for production.
@@ -480,7 +480,7 @@ export class FakePlaybackServer {
   // ── Events (§15) ────────────────────────────────────────────────
   private poll(q: URLSearchParams, signal?: AbortSignal): Promise<FakeResponse> | FakeResponse {
     const after = q.get('after') ?? undefined;
-    const wait = Math.max(0, Math.min(Number(q.get('waitSeconds') ?? 25), 55)) * 1000;
+    const wait = Math.max(0, Math.min(Number(q.get('waitMs') ?? 25000), 55000));
     const answer = (): FakeResponse => {
       const events = this.since(after ?? String(this.eventSeq));
       return {status: 200, headers: {}, body: {events, nextAfter: events.length ? events[events.length - 1]!.id : after ?? String(this.eventSeq)}};

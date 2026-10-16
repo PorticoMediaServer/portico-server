@@ -22,7 +22,7 @@ export const PLANNING_POLICIES:PlanningPolicy[]=['maximum_fidelity','maximum_com
 export type TranscodingSettings={
  hardwareBackend:HardwareBackend;hardwareDevice:string;hdrToneMapping:boolean;hdrToneMappingAlgorithm:ToneMappingAlgorithm;
  x264Preset:X264Preset;directStreamRemux:boolean;planningPolicy:PlanningPolicy;
- throttleBufferSeconds:number;playedRetentionSeconds:number;temporaryDirectory:string;ffmpegPath:string;sessionStorageMiB:number;
+ throttleBufferMs:number;playedRetentionMs:number;temporaryDirectory:string;ffmpegPath:string;sessionStorageMiB:number;
  maxConcurrentSessions:number;maxHardwareSessions:number;maxSoftwareSessions:number;maxBackgroundSessions:number};
 export type RuntimeSettings=TranscodingSettings&{
  analysisStorageGiB:number;analysisStageStorageMiB:number;subtitleTrackLimit:number;subtitleFileLimitMiB:number;name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;
@@ -80,8 +80,8 @@ function checkTranscoding(s:Record<string,any>){
   !X264_PRESETS.includes(s.x264Preset)||!PLANNING_POLICIES.includes(s.planningPolicy))invalid();
  if(typeof s.hdrToneMapping!=='boolean'||typeof s.directStreamRemux!=='boolean')invalid();
  if(!text(s.hardwareDevice,200)||!text(s.temporaryDirectory,1024)||!text(s.ffmpegPath,1024)||!integer(s.sessionStorageMiB)||s.sessionStorageMiB<64||s.sessionStorageMiB>1048576)invalid();
- if(!integer(s.throttleBufferSeconds)||s.throttleBufferSeconds<10||s.throttleBufferSeconds>600)invalid();
- if(!integer(s.playedRetentionSeconds)||s.playedRetentionSeconds>3600)invalid();
+ if(!integer(s.throttleBufferMs)||s.throttleBufferMs<10_000||s.throttleBufferMs>600_000)invalid();
+ if(!integer(s.playedRetentionMs)||s.playedRetentionMs>3_600_000)invalid();
  for(const key of ['maxConcurrentSessions','maxHardwareSessions','maxSoftwareSessions','maxBackgroundSessions'])
   if(!integer(s[key])||s[key]>1000)invalid();
 }

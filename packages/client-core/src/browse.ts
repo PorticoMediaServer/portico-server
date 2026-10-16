@@ -35,7 +35,7 @@ export type BrowseSortCapability=Readonly<{id:string;labelKey:string;directions:
 export type BrowsePivotCapability=Readonly<{id:string;labelKey:string;entityKinds:readonly string[];defaultSort:readonly BrowseSortSelection[];supportedViews:readonly string[];browsable:boolean;aggregate?:string;members?:boolean;sorts?:readonly string[];filters?:readonly string[];paging?:BrowsePaging}>;
 export type BrowsePaging='keyset'|'offset';
 export type BrowseQuickFilter=Readonly<{id:string;labelKey:string;query:BrowseNode}>;
-export type BrowseQueryLimits=Readonly<{maximumDepth:number;maximumClauses:number;maximumBytes:number;maximumSorts:number;defaultLimit:number;maximumLimit:number;cursorTtlSeconds:number}>;
+export type BrowseQueryLimits=Readonly<{maximumDepth:number;maximumClauses:number;maximumBytes:number;maximumSorts:number;defaultLimit:number;maximumLimit:number;cursorTtlMs:number}>;
 export type BrowseLibraryScope=Readonly<{id:string;name:string;kind:string;defaultView:string;pinned:boolean}>;
 export type BrowseSurfaceCapability=Readonly<{id:string;endpoint:string;membershipField?:string;sorts:readonly string[];filters:readonly string[];paging:BrowsePaging}>;
 export type BrowseCapabilities=Readonly<{surfaces?:readonly BrowseSurfaceCapability[];library:BrowseLibraryScope;pivots:readonly BrowsePivotCapability[];resolvedPivot:BrowsePivotCapability|null;fields:readonly BrowseFieldCapability[];sorts:readonly BrowseSortCapability[];quickFilters:readonly BrowseQuickFilter[];queryLimits:BrowseQueryLimits}>;
@@ -139,7 +139,7 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
  const across=(library.id===''||library.id===undefined)&&(library.kind===''||library.kind===undefined);
  if(!across&&(!id(library.id)||!id(library.kind))||!str(library.name??'',512)||!str(library.defaultView??'',64))bad();
  const limits=raw.queryLimits;
- for(const key of ['maximumDepth','maximumClauses','maximumBytes','maximumSorts','defaultLimit','maximumLimit','cursorTtlSeconds'])if(!count(limits[key]))bad();
+ for(const key of ['maximumDepth','maximumClauses','maximumBytes','maximumSorts','defaultLimit','maximumLimit','cursorTtlMs'])if(!count(limits[key]))bad();
  if((limits.defaultLimit as number)<1||(limits.maximumLimit as number)<(limits.defaultLimit as number))bad();
  const pivot=(v:unknown):BrowsePivotCapability=>{
   if(!obj(v)||!id(v.id)||!id(v.labelKey))bad();
@@ -177,7 +177,7 @@ export function parseBrowseCapabilities(raw:unknown):BrowseCapabilities{
    if(!obj(v)||!id(v.id)||!str(v.endpoint,256)||(v.paging!=='keyset'&&v.paging!=='offset'))bad();
    return {id:v.id,endpoint:v.endpoint,paging:v.paging as BrowsePaging,sorts:known('surface.sorts',v.sorts,64),filters:known('surface.filters',v.filters,128),...(v.membershipField===undefined?{}:{membershipField:id(v.membershipField)?v.membershipField:bad()})};
   }),pivots,resolvedPivot:resolved,fields,sorts,quickFilters,
-  queryLimits:{maximumDepth:limits.maximumDepth as number,maximumClauses:limits.maximumClauses as number,maximumBytes:limits.maximumBytes as number,maximumSorts:limits.maximumSorts as number,defaultLimit:limits.defaultLimit as number,maximumLimit:limits.maximumLimit as number,cursorTtlSeconds:limits.cursorTtlSeconds as number},
+  queryLimits:{maximumDepth:limits.maximumDepth as number,maximumClauses:limits.maximumClauses as number,maximumBytes:limits.maximumBytes as number,maximumSorts:limits.maximumSorts as number,defaultLimit:limits.defaultLimit as number,maximumLimit:limits.maximumLimit as number,cursorTtlMs:limits.cursorTtlMs as number},
  });
 }
 

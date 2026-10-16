@@ -12,11 +12,11 @@ import (
 )
 
 type LiveDefaults struct {
-	ImportLimits        ImportLimits `json:"importLimits"`
-	StreamBufferSeconds int          `json:"streamBufferSeconds"`
-	RetryWindowSeconds  int          `json:"retryWindowSeconds"`
-	UserAgent           string       `json:"userAgent"`
-	GuideDays           int          `json:"guideDays"`
+	ImportLimits   ImportLimits `json:"importLimits"`
+	StreamBufferMs int          `json:"streamBufferMs"`
+	RetryWindowMs  int          `json:"retryWindowMs"`
+	UserAgent      string       `json:"userAgent"`
+	GuideDays      int          `json:"guideDays"`
 	// LogoImport turns on fetching channel logos the source advertises.
 	LogoImport bool `json:"logoImport"`
 	// DiscoveryEnabled allows the HDHomeRun search to send packets on the LAN.
@@ -46,12 +46,12 @@ type LiveSourceSettings struct {
 	EnabledChannels []string `json:"enabledChannels"`
 	Kind            string   `json:"kind"`
 	// Null-able overrides: a nil value inherits the server default.
-	StreamBufferSeconds *int             `json:"streamBufferSeconds"`
-	RetryWindowSeconds  *int             `json:"retryWindowSeconds"`
-	UserAgent           string           `json:"userAgent"`
-	Filters             SourceFilters    `json:"filters"`
-	Logos               LogoImport       `json:"logoImport"`
-	Numbering           ChannelNumbering `json:"channelNumbering"`
+	StreamBufferMs *int             `json:"streamBufferMs"`
+	RetryWindowMs  *int             `json:"retryWindowMs"`
+	UserAgent      string           `json:"userAgent"`
+	Filters        SourceFilters    `json:"filters"`
+	Logos          LogoImport       `json:"logoImport"`
+	Numbering      ChannelNumbering `json:"channelNumbering"`
 	// GuideSourceID names the XMLTV source that supplies this source's guide,
 	// which is how a standalone guide is attached to a streaming playlist.
 	GuideSourceID string `json:"guideSourceId"`
@@ -82,7 +82,7 @@ func SourceImportLimits(server ImportLimits, own *ImportLimits) ImportLimits {
 
 // RuntimeConfigurationTx reads the same typed documents the owner edits.
 func RuntimeConfigurationTx(ctx context.Context, tx *sql.Tx, sid string) (LiveDefaults, LiveSourceSettings, error) {
-	d := LiveDefaults{ImportLimits: ImportLimits{MaxUploadBytes, MaxChannels, MaxProgrammes}, StreamBufferSeconds: 8, RetryWindowSeconds: 60, UserAgent: "Portico/1.0", GuideDays: 7, LogoImport: true, DiscoveryEnabled: true}
+	d := LiveDefaults{ImportLimits: ImportLimits{MaxUploadBytes, MaxChannels, MaxProgrammes}, StreamBufferMs: 8000, RetryWindowMs: 60000, UserAgent: "Portico/1.0", GuideDays: 7, LogoImport: true, DiscoveryEnabled: true}
 	v := LiveSourceSettings{Logos: LogoImport{Enabled: true}, Numbering: ChannelNumbering{Mode: "source", StartAt: 100, Step: 1}}
 	for _, entry := range []struct {
 		scope  string
@@ -101,11 +101,11 @@ func RuntimeConfigurationTx(ctx context.Context, tx *sql.Tx, sid string) (LiveDe
 			return d, v, e
 		}
 	}
-	if v.StreamBufferSeconds != nil {
-		d.StreamBufferSeconds = *v.StreamBufferSeconds
+	if v.StreamBufferMs != nil {
+		d.StreamBufferMs = *v.StreamBufferMs
 	}
-	if v.RetryWindowSeconds != nil {
-		d.RetryWindowSeconds = *v.RetryWindowSeconds
+	if v.RetryWindowMs != nil {
+		d.RetryWindowMs = *v.RetryWindowMs
 	}
 	if v.UserAgent != "" {
 		d.UserAgent = v.UserAgent

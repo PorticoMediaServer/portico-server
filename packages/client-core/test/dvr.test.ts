@@ -4,7 +4,9 @@ import {DVRClient,DVRModel,parseDVRPage,parseRecording,validRecordingOptions,val
 import type {ChannelApi} from '../src/channel-guide.ts';
 const hex=(n=64,c='a')=>c.repeat(n);
 const time='2026-09-06T12:00:00Z',end='2026-09-06T13:00:00Z';
-const recording=()=>({id:hex(),revision:1,occurrence:{sourceId:hex(48),channelId:hex(64,'b'),generation:hex(48,'c'),programmeId:hex(64,'d')},programme:{id:hex(64,'d'),channelId:hex(64,'b'),title:'Owned programme',start:time,end,lineage:'provider-id',seriesId:'series',episodeId:'episode',newEvidence:'unknown'},options:{...defaultRecordingOptions},start:time,end,state:'scheduled',reason:'',keep:false,itemId:'',libraryId:'',coverageStart:'',coverageEnd:'',bytes:0,ruleId:'',conflicts:[]});
+/** Padding on the wire is milliseconds; defaultRecordingOptions is the client's own (seconds) form. */
+const wireOptions={beforeMs:0,afterMs:0,priority:0,retentionDays:0,episodeLimit:0};
+const recording=()=>({id:hex(),revision:1,occurrence:{sourceId:hex(48),channelId:hex(64,'b'),generation:hex(48,'c'),programmeId:hex(64,'d')},programme:{id:hex(64,'d'),channelId:hex(64,'b'),title:'Owned programme',start:time,end,lineage:'provider-id',seriesId:'series',episodeId:'episode',newEvidence:'unknown'},options:{...wireOptions},start:time,end,state:'scheduled',reason:'',keep:false,itemId:'',libraryId:'',coverageStart:'',coverageEnd:'',bytes:0,ruleId:'',conflicts:[]});
 const page=()=>({recordings:[recording()],rules:[],nextCursor:'',revision:1,captureAvailable:true,captureUnavailableReason:'',deletionAvailable:true,usage:{bytes:0,pendingDeleteBytes:0,recordings:1}});
 const envelope=(result:unknown)=>({protocolVersion:'1.0',serverId:'server',result});
 const nonce=async()=>hex(48,'e');
@@ -61,7 +63,7 @@ test('DVR deadline settles an adapter which ignores AbortSignal',{timeout:1000},
  const api:ChannelApi={request:<T>()=>new Promise<T>(()=>{})};const client=new DVRClient(api,'server',nonce,5);await assert.rejects(client.list('upcoming'),/timed out/);client.dispose();
 });
 test('series rule DTOs do not retain injected provider fields',()=>{
- const p:any=page();p.rules=[{id:hex(),revision:1,reconcileState:'ready',diagnostic:'',updatedAt:time,secret:'secret',config:{name:'Rule',sourceId:hex(48),seriesId:'series',enabled:true,episodes:'new',allowedChannels:[],blockedChannels:[],keywords:[],blockedKeywords:[],options:{...defaultRecordingOptions,secret:'secret'},secret:'secret'}}];
+ const p:any=page();p.rules=[{id:hex(),revision:1,reconcileState:'ready',diagnostic:'',updatedAt:time,secret:'secret',config:{name:'Rule',sourceId:hex(48),seriesId:'series',enabled:true,episodes:'new',allowedChannels:[],blockedChannels:[],keywords:[],blockedKeywords:[],options:{...wireOptions,secret:'secret'},secret:'secret'}}];
  assert.ok(!JSON.stringify(parseDVRPage(p)).includes('secret'));assert.equal(parseDVRPage(p).rules[0].config.episodes,'new');
 });
 

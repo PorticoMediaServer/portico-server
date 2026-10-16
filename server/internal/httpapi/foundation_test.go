@@ -170,7 +170,7 @@ func TestFoundationContractAndReplay(t *testing.T) {
 	if anonymousBootstrap.Code != 401 {
 		t.Fatalf("anonymous bootstrap: %d", anonymousBootstrap.Code)
 	}
-	eventsRequest := httptest.NewRequest("GET", "/v1/events?waitSeconds=0", nil)
+	eventsRequest := httptest.NewRequest("GET", "/v1/events?waitMs=0", nil)
 	eventsRequest.Header.Set("Authorization", "Bearer "+viewer.AccessToken)
 	events := httptest.NewRecorder()
 	h.ServeHTTP(events, eventsRequest)
@@ -213,7 +213,7 @@ func TestFoundationContractAndReplay(t *testing.T) {
 		if err := contract.Record("../../testdata/contracts/get-bootstrap.json", "GetBootstrapResponse", "GET", "/v1/bootstrap", nil, bootstrap, "viewer"); err != nil {
 			t.Fatal(err)
 		}
-		if err := contract.Record("../../testdata/contracts/get-events.json", "GetEventsResponse", "GET", "/v1/events?waitSeconds=0", nil, events, "viewer"); err != nil {
+		if err := contract.Record("../../testdata/contracts/get-events.json", "GetEventsResponse", "GET", "/v1/events?waitMs=0", nil, events, "viewer"); err != nil {
 			t.Fatal(err)
 		}
 		if err := contract.Record("../../testdata/contracts/get-rating-systems.json", "GetRatingSystemsResponse", "GET", "/v1/rating-systems", nil, ratings, "viewer"); err != nil {

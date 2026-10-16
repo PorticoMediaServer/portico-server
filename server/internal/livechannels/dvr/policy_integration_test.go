@@ -60,7 +60,7 @@ func TestRecordingIntentUsesGrantAndSnapshotsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r.Options.BeforeSeconds != 60 || r.Options.AfterSeconds != 180 {
+	if r.Options.BeforeMs != 60000 || r.Options.AfterMs != 180000 {
 		t.Fatal(r.Options)
 	}
 	if _, err = db.Exec(`UPDATE dvr_defaults SET before_seconds=600,after_seconds=900`); err != nil {
@@ -72,7 +72,7 @@ func TestRecordingIntentUsesGrantAndSnapshotsDefaults(t *testing.T) {
 	}
 	rule := RuleInput{Mutation: Mutation{RequestID: strings.Repeat("f", 48)}, ID: strings.Repeat("1", 64), Anchor: in.Occurrence, UseDefaults: true, Config: RuleConfig{Name: "Series", SourceID: src, SeriesID: "series", Enabled: true, Episodes: "all", AllowedChannels: []string{}, BlockedChannels: []string{}, Keywords: []string{}}}
 	saved, err := s.SaveRule(ctx, auth, owner, rule)
-	if err != nil || saved.Config.Options.BeforeSeconds != 600 {
+	if err != nil || saved.Config.Options.BeforeMs != 600000 {
 		t.Fatal(saved, err)
 	}
 	var work int

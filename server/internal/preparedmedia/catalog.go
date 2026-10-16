@@ -3,7 +3,6 @@ package preparedmedia
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"math"
 
@@ -99,7 +98,7 @@ func readVersion(row interface{ Scan(...any) error }) (Version, error) {
 	var raw string
 	e := row.Scan(&v.ID, &v.ItemID, &v.SourceID, &v.ProfileID, &v.TargetID, &v.SourceRevision, &v.PartIndex, &v.EditionID, &v.Digest, &v.Size, &raw, &v.State, &v.Revision, &v.CreatedMS)
 	if e == nil {
-		e = json.Unmarshal([]byte(raw), &v.Facts)
+		e = v.Facts.DecodeStored([]byte(raw))
 	}
 	return v, e
 }

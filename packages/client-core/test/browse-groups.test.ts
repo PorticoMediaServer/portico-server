@@ -41,7 +41,7 @@ test('a vocabulary across libraries is read, with offset paging and the group or
     sorts: [{id: 'title', labelKey: 'sort.title', directions: ['asc', 'desc'], defaultDirection: 'asc', expensive: false, applicableKinds: ['movie']}, {id: 'groupOrder', labelKey: 'sort.groupOrder', directions: ['asc', 'desc'], defaultDirection: 'asc', expensive: false, requiresGroup: true, applicableKinds: ['movie']}],
     quickFilters: [],
     surfaces: [{id: 'watchlist', endpoint: '/v1/browse', membershipField: 'watchlisted', sorts: ['title'], filters: ['year'], paging: 'offset'}],
-    queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 1, defaultLimit: 40, maximumLimit: 100, cursorTtlSeconds: 1800},
+    queryLimits: {maximumDepth: 5, maximumClauses: 40, maximumBytes: 65536, maximumSorts: 1, defaultLimit: 40, maximumLimit: 100, cursorTtlMs: 1800000},
   });
   assert.equal(caps.library.id, acrossLibraries);
   assert.equal(caps.resolvedPivot?.paging, 'offset');

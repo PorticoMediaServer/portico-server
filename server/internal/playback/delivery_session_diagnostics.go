@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"math"
 
 	"portico.local/server/internal/decoder"
 )
@@ -30,23 +31,23 @@ type SessionHardware struct {
 // paths, no source identifiers and no credentials: it is an explanation, not a
 // handle.
 type SessionDelivery struct {
-	AudioRenditions          []AudioRenditionPlan    `json:"audioRenditions,omitempty"`
-	Mode                     string                  `json:"mode"`
-	Strategy                 string                  `json:"strategy"`
-	ReasonCodes              []string                `json:"reasonCodes"`
-	Policy                   *ResolvedDeliveryPolicy `json:"policy,omitempty"`
-	QualityID                string                  `json:"qualityId"`
-	Hardware                 SessionHardware         `json:"hardware"`
-	Streams                  []SessionStreamDecision `json:"streams"`
-	Throttled                bool                    `json:"throttled"`
-	ConvertedThroughSeconds  float64                 `json:"convertedThroughSeconds"`
-	ToneMap                  bool                    `json:"toneMap"`
-	ToneMapAlgorithm         string                  `json:"toneMapAlgorithm,omitempty"`
-	TargetDisplayHeight      int                     `json:"targetDisplayHeight,omitempty"`
-	TargetVideoBitrateBPS    int                     `json:"targetVideoBitrateBps,omitempty"`
-	TargetAudioBitrateBPS    int                     `json:"targetAudioBitrateBps,omitempty"`
-	PlayedRetentionSeconds   int                     `json:"playedRetentionSeconds"`
-	ThrottleBufferSecondsMax int                     `json:"throttleBufferSeconds"`
+	AudioRenditions       []AudioRenditionPlan    `json:"audioRenditions,omitempty"`
+	Mode                  string                  `json:"mode"`
+	Strategy              string                  `json:"strategy"`
+	ReasonCodes           []string                `json:"reasonCodes"`
+	Policy                *ResolvedDeliveryPolicy `json:"policy,omitempty"`
+	QualityID             string                  `json:"qualityId"`
+	Hardware              SessionHardware         `json:"hardware"`
+	Streams               []SessionStreamDecision `json:"streams"`
+	Throttled             bool                    `json:"throttled"`
+	ConvertedThroughMs    int64                   `json:"convertedThroughMs"`
+	ToneMap               bool                    `json:"toneMap"`
+	ToneMapAlgorithm      string                  `json:"toneMapAlgorithm,omitempty"`
+	TargetDisplayHeight   int                     `json:"targetDisplayHeight,omitempty"`
+	TargetVideoBitrateBPS int                     `json:"targetVideoBitrateBps,omitempty"`
+	TargetAudioBitrateBPS int                     `json:"targetAudioBitrateBps,omitempty"`
+	PlayedRetentionMs     int64                   `json:"playedRetentionMs"`
+	ThrottleBufferMs      int64                   `json:"throttleBufferMs"`
 	// Decision is the trace of the plan: the device it was made for, the source
 	// as the planner saw it, and for every route whether it was admissible and,
 	// if not, each rule that rejected it.
@@ -91,7 +92,7 @@ func SessionDeliveryTx(ctx context.Context, tx *sql.Tx, settings DeliverySetting
 		AudioRenditions: plan.Renditions, Mode: plan.Mode, Strategy: string(plan.Strategy), ReasonCodes: plan.ReasonCodes, Policy: plan.Policy,
 		QualityID: plan.QualityID, ToneMap: plan.ToneMap, ToneMapAlgorithm: plan.ToneMapAlgorithm,
 		TargetDisplayHeight: plan.TargetHeight, TargetVideoBitrateBPS: plan.VideoBitrateBPS, TargetAudioBitrateBPS: plan.AudioBitrateBPS,
-		PlayedRetentionSeconds: cfg.PlayedRetentionSeconds, ThrottleBufferSecondsMax: cfg.ThrottleBufferSeconds,
+		PlayedRetentionMs: int64(cfg.PlayedRetentionSeconds) * 1000, ThrottleBufferMs: int64(cfg.ThrottleBufferSeconds) * 1000,
 		Hardware: SessionHardware{Backend: plan.HardwareBackend, Stages: []decoder.HardwareStage{}},
 		Streams:  []SessionStreamDecision{},
 		Decision: plan.Trace, AudioChannels: plan.AudioChannels, Downmix: plan.Downmix, Deinterlace: plan.Deinterlace, OutputContainer: plan.OutputContainer,
@@ -140,10 +141,11 @@ func SessionDeliveryTx(ctx context.Context, tx *sql.Tx, settings DeliverySetting
 		return nil, err
 	}
 	if produced >= 0 {
-		out.ConvertedThroughSeconds = float64(produced+1) * HLSSegmentSeconds
-		if out.ConvertedThroughSeconds > plan.Duration && plan.Duration > 0 {
-			out.ConvertedThroughSeconds = plan.Duration
+		through := float64(produced+1) * HLSSegmentSeconds
+		if through > plan.Duration && plan.Duration > 0 {
+			through = plan.Duration
 		}
+		out.ConvertedThroughMs = int64(math.Round(through * 1000))
 	}
 	return out, nil
 }

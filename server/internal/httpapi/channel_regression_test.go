@@ -673,7 +673,7 @@ func (s *channelSuite) liveChannel(t *testing.T, tuners int) playback.LinearRefe
 		return "fixture", func(string, string) bool { return true }, nil
 	}
 	id := strings.Repeat("ab", 24)
-	preview, err := s.live.PreviewRemote(context.Background(), owner, livechannels.SourceFetcher{}, livechannels.RemoteDraft{ID: id, Name: "Demo Live", Kind: "m3u", Locator: server.URL + "/list.m3u", GuideURL: server.URL + "/guide.xml", ConfirmedLANRoots: []string{server.URL + "/"}, RefreshSeconds: 3600, OwnerLimit: tuners, ViewerAccess: "server-members"})
+	preview, err := s.live.PreviewRemote(context.Background(), owner, livechannels.SourceFetcher{}, livechannels.RemoteDraft{ID: id, Name: "Demo Live", Kind: "m3u", Locator: server.URL + "/list.m3u", GuideURL: server.URL + "/guide.xml", ConfirmedLANRoots: []string{server.URL + "/"}, RefreshMs: 3600000, OwnerLimit: tuners, ViewerAccess: "server-members"})
 	if err != nil {
 		t.Fatalf("preview: %v", err)
 	}

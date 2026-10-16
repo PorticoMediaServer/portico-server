@@ -401,7 +401,7 @@ func (d *Driver) result(in dvr.CaptureRequest, cp dvr.CaptureCheckpoint, root, p
 	// never missing segments, reconnects, revocation or a nonzero producer failure.
 	tolerance := 4 * time.Second
 	expected := end.Sub(start).Seconds()
-	out.Complete = cp.ProducerSucceeded && cp.BoundaryReached && cp.Gaps == 0 && !cp.First.IsZero() && !cp.Last.IsZero() && !cp.First.After(start.Add(tolerance)) && !cp.Last.Before(end.Add(-tolerance)) && out.Duration >= expected-tolerance.Seconds() && out.Duration <= expected+float64(in.Recording.Options.BeforeSeconds+in.Recording.Options.AfterSeconds)+2*tolerance.Seconds()
+	out.Complete = cp.ProducerSucceeded && cp.BoundaryReached && cp.Gaps == 0 && !cp.First.IsZero() && !cp.Last.IsZero() && !cp.First.After(start.Add(tolerance)) && !cp.Last.Before(end.Add(-tolerance)) && out.Duration >= expected-tolerance.Seconds() && out.Duration <= expected+float64(in.Recording.Options.BeforeMs+in.Recording.Options.AfterMs)/1000+2*tolerance.Seconds()
 	if out.Complete {
 		out.Reason = ""
 	}

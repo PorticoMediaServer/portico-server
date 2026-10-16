@@ -172,8 +172,8 @@ export class RequestTimeoutError extends Error {
  * do not come through here and have no such limit.
  */
 export function requestDeadlineMs(path: string, method: string): number {
-  const held = /[?&]waitSeconds=(\d{1,4})(?:&|$)/.exec(path);
-  if (held) return (Math.min(Number(held[1]), 600) + 15) * 1000;
+  const held = /[?&]waitMs=(\d{1,7})(?:&|$)/.exec(path);
+  if (held) return Math.min(Number(held[1]), 600_000) + 15_000;
   if (method === 'GET' || method === 'HEAD') return 30_000;
   return path.startsWith(routePrefix("change_connectivity_policy", 2)) ? 120_000 : 60_000;
 }

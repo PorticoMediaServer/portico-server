@@ -5,9 +5,10 @@ import { readLyricsResponse } from '../src/lyrics-http.ts';
 import { HttpLocalApi } from '../src/index.ts';
 const scope = { serverId: 'server', viewerId: 'viewer-profile-session' }, target = { itemId: 'song', libraryId: 'music', sessionId: 'session', sessionGeneration: 2 };
 const source = { id: 'asset', version: 'b'.repeat(64), startSeconds: 10, duration: 90, sourceDuration: 100, local: true };
+const wireSource = { id: 'asset', version: 'b'.repeat(64), startMs: 10000, durationMs: 90000, sourceDurationMs: 100000, local: true };
 const document = { format: 'lrc' as const, text: '[00:12]First\n[00:15]Next', lines: [{ atMs: 12000, text: 'First' }, { atMs: 15000, text: 'Next' }], embeddedOffsetMs: 0 };
 const revision = { id: 'lyric', revision: 1, scope: 'private' as const, canManage: true, deleted: false, language: 'en', offsetMs: 500, format: 'lrc' as const, digest: 'c'.repeat(64), provenance: { origin: 'upload' as const, providerId: '', label: 'Uploaded text', rights: '' }, createdAt: '2026-09-06T00:00:00Z', document };
-function view() { return { scope: { ...target, serverId: 'server', viewerFence: 'a'.repeat(64) }, sources: [source], source, resources: [revision], selection: { revision: 1, resource: revision }, canShare: false, providers: { lrclib: false, configured: true, revision: 1 } }; }
+function view() { return { scope: { ...target, serverId: 'server', viewerFence: 'a'.repeat(64) }, sources: [wireSource], source: wireSource, resources: [revision], selection: { revision: 1, resource: revision }, canShare: false, providers: { lrclib: false, configured: true, revision: 1 } }; }
 function deferred<T>() { let resolve!: (v: T) => void; let reject!: (e: unknown) => void; const promise = new Promise<T>((r, j) => { resolve = r; reject = j; }); return { promise, resolve, reject }; }
 function api(request: (path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<unknown>) { return { request: request as <T>(path: string, method?: string, body?: unknown, signal?: AbortSignal) => Promise<T> }; }
 test('uses accepted source time, positive delay, backward seeks and clipped seek actions', () => {

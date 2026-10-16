@@ -109,7 +109,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Revision   int64  `json:"revision"`
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
-		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
+		ReceiptLifetimeMs int64 `json:"receiptLifetimeMs"`
 	}](registry, apikit.Metadata{ID: "post_saved_resources", Method: "POST", Path: "/v1/saved-resources", Summary: "Run saved resources", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
@@ -123,7 +123,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Revision   int64  `json:"revision"`
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
-		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
+		ReceiptLifetimeMs int64 `json:"receiptLifetimeMs"`
 	}](registry, apikit.Metadata{ID: "patch_saved_resources_id", Method: "PATCH", Path: "/v1/saved-resources/{id}", Summary: "Change saved resources", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
@@ -137,7 +137,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Revision   int64  `json:"revision"`
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
-		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
+		ReceiptLifetimeMs int64 `json:"receiptLifetimeMs"`
 	}](registry, apikit.Metadata{ID: "delete_saved_resources_id", Method: "DELETE", Path: "/v1/saved-resources/{id}", Summary: "Remove saved resources", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
@@ -151,7 +151,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Revision   int64  `json:"revision"`
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
-		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
+		ReceiptLifetimeMs int64 `json:"receiptLifetimeMs"`
 	}](registry, apikit.Metadata{ID: "put_saved_resources_id_entries", Method: "PUT", Path: "/v1/saved-resources/{id}/entries", Summary: "Save saved resources entries", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Revision   int64  `json:"revision"`
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
-		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
+		ReceiptLifetimeMs int64 `json:"receiptLifetimeMs"`
 	}](registry, apikit.Metadata{ID: "reorder_saved_collection", Method: "PUT", Path: "/v1/saved-resources/{id}/order", Summary: "Move entries of a personal collection (at most 200), fenced by its revision", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Revision   int64  `json:"revision"`
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
-		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
+		ReceiptLifetimeMs int64 `json:"receiptLifetimeMs"`
 	}](registry, apikit.Metadata{ID: "put_saved_resources_id_shares", Method: "PUT", Path: "/v1/saved-resources/{id}/shares", Summary: "Save saved resources shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
@@ -193,7 +193,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Revision   int64  `json:"revision"`
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
-		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
+		ReceiptLifetimeMs int64 `json:"receiptLifetimeMs"`
 	}](registry, apikit.Metadata{ID: "delete_saved_resources_id_shares", Method: "DELETE", Path: "/v1/saved-resources/{id}/shares", Summary: "Remove saved resources shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
@@ -213,20 +213,20 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/saved_resources.go:240
 	if err := apikit.RegisterHTTP[catalog.RecommendationsReset, struct {
-		ServerID               string `json:"serverId"`
-		ViewerFence            string `json:"viewerFence"`
-		OperationID            string `json:"operationId"`
-		ClearedNotInterested   int    `json:"clearedNotInterested"`
-		ReceiptLifetimeSeconds int    `json:"receiptLifetimeSeconds"`
+		ServerID             string `json:"serverId"`
+		ViewerFence          string `json:"viewerFence"`
+		OperationID          string `json:"operationId"`
+		ClearedNotInterested int    `json:"clearedNotInterested"`
+		ReceiptLifetimeMs    int64  `json:"receiptLifetimeMs"`
 	}](registry, apikit.Metadata{ID: "post_me_recommendations_reset", Method: "POST", Path: "/v1/me/recommendations:reset", Summary: "Run viewer recommendations reset", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:258
 	if err := apikit.RegisterHTTP[catalog.ActivityMutation, struct {
-		ServerID               string                  `json:"serverId"`
-		ViewerFence            string                  `json:"viewerFence"`
-		Receipt                catalog.ActivityReceipt `json:"receipt"`
-		ReceiptLifetimeSeconds int                     `json:"receiptLifetimeSeconds"`
+		ServerID          string                  `json:"serverId"`
+		ViewerFence       string                  `json:"viewerFence"`
+		Receipt           catalog.ActivityReceipt `json:"receipt"`
+		ReceiptLifetimeMs int64                   `json:"receiptLifetimeMs"`
 	}](registry, apikit.Metadata{ID: "post_personal_history_actions", Method: "POST", Path: "/v1/personal-history/actions", Summary: "Run personal history actions", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}

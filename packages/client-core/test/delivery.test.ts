@@ -61,15 +61,15 @@ test('session delivery diagnostics publish the route, the stages and the progres
  const raw={mode:'hls',strategy:'video_conversion',reasonCodes:['video_codec_requires_conversion','hdr_tone_mapping_required'],policy:policy(),qualityId:'720p',
   hardware:{backend:'videotoolbox',stages:[{operation:'decode',execution:'hardware'},{operation:'tone_map',execution:'software'},{operation:'encode',execution:'hardware'}]},
   streams:[{kind:'video',inputCodec:'hevc',outputCodec:'h264',action:'convert'},{kind:'audio',inputCodec:'eac3',outputCodec:'aac',action:'convert'},{kind:'subtitle',inputCodec:'',outputCodec:'',action:'burn_in'}],
-  throttled:true,convertedThroughSeconds:126,toneMap:true,toneMapAlgorithm:'hable',targetDisplayHeight:720,targetVideoBitrateBps:4000000,targetAudioBitrateBps:128000,
-  playedRetentionSeconds:300,throttleBufferSeconds:60};
+  throttled:true,convertedThroughMs:126000,toneMap:true,toneMapAlgorithm:'hable',targetDisplayHeight:720,targetVideoBitrateBps:4000000,targetAudioBitrateBps:128000,
+  playedRetentionMs:300000,throttleBufferMs:60000};
  const parsed=parseSessionDelivery(raw);
  assert.equal(parsed.strategy,'video_conversion');
  assert.equal(parsed.hardware.backend,'videotoolbox');
  assert.equal(parsed.hardware.stages.length,3);
  assert.equal(parsed.streams[2].action,'burn_in');
  assert.equal(parsed.throttled,true);
- assert.equal(parsed.convertedThroughSeconds,126);
+ assert.equal(parsed.convertedThroughMs,126000);
  assert.equal(parsed.policy!.networkClass,'remote');
  assert(Object.isFrozen(parsed.streams));
  // Reason codes are server vocabulary, not free text.
@@ -80,9 +80,9 @@ test('session delivery diagnostics publish the route, the stages and the progres
   {...raw,hardware:{backend:'gpu',stages:[]}},
   {...raw,hardware:{backend:'software',stages:[{operation:'denoise',execution:'hardware'}]}},
   {...raw,streams:[{kind:'video',inputCodec:'h264',outputCodec:'h264',action:'transmute'}]},
-  {...raw,convertedThroughSeconds:-1},
+  {...raw,convertedThroughMs:-1000},
   {...raw,throttled:'yes'},
-  {...raw,playedRetentionSeconds:999999},
+  {...raw,playedRetentionMs:999999000},
  ])assert.throws(()=>parseSessionDelivery(broken),{code:'invalid_delivery_payload'});
  // A session with no policy yet is still a valid diagnostic.
  assert.equal(parseSessionDelivery({...raw,policy:null}).policy,null);
@@ -128,7 +128,7 @@ test('the transport hint is normalized and sent as a header the server may narro
 
 test('the decision trace is read, and a bad one costs only itself',async()=>{
  const {parseSessionDelivery,parseDecisionTrace,setDeliveryContext,deliveryContextHeaders}=await import('../src/delivery.ts');
- const base={mode:'hls',strategy:'video_conversion',reasonCodes:['video_codec_requires_conversion'],policy:null,qualityId:'auto',hardware:{backend:'software',stages:[{operation:'decode',execution:'software'},{operation:'deinterlace',execution:'software'},{operation:'encode',execution:'software'}]},streams:[],throttled:false,convertedThroughSeconds:0,toneMap:true,playedRetentionSeconds:180,throttleBufferSeconds:60};
+ const base={mode:'hls',strategy:'video_conversion',reasonCodes:['video_codec_requires_conversion'],policy:null,qualityId:'auto',hardware:{backend:'software',stages:[{operation:'decode',execution:'software'},{operation:'deinterlace',execution:'software'},{operation:'encode',execution:'software'}]},streams:[],throttled:false,convertedThroughMs:0,toneMap:true,playedRetentionMs:180000,throttleBufferMs:60000};
  const decision={version:1,client:{family:'web',evidence:'probed',revision:'abc',published:true},container:'mkv',video:{codec:'hevc',bitDepth:10,height:2160,dynamicRange:'hdr10'},audio:{streamIndex:1,codec:'truehd',channels:8,objectAudio:'atmos',chosenBy:'default',tracks:2},routes:[{route:'original',transport:'direct',admissible:false,chosen:false,rejections:[{code:'container_unsupported',detail:'mkv'}]},{route:'video_conversion',transport:'hls_ts',admissible:true,chosen:true,rejections:[]}],notes:['source_detail_unobserved']};
  const parsed=parseSessionDelivery({...base,decision,audioChannels:2,downmix:'itu_limited',deinterlace:true,outputContainer:'mpegts_hls',failure:'hardware_encoder_failed:nvenc'});
  assert.equal(parsed.decision!.routes[0].rejections[0].code,'container_unsupported');

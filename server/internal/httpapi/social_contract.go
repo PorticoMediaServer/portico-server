@@ -36,7 +36,7 @@ func socialContract[Req, Resp any](r *apikit.Registry, pattern string, h http.Ha
 		m.Lane = apikit.Realtime
 	}
 	if strings.HasSuffix(parts[1], "/inbox/wait") {
-		m.Query = []string{"waitSeconds"}
+		m.Query = []string{"waitMs"}
 		m.Lane = apikit.Realtime
 	}
 	if parts[0] == "GET" {

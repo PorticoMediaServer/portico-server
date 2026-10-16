@@ -38,13 +38,13 @@ type PersonalBatchResult struct {
 	Personal *PersonalState `json:"personal,omitempty"`
 }
 type PersonalBatchReceipt struct {
-	ServerID               string                `json:"serverId"`
-	ViewerFence            string                `json:"viewerFence"`
-	OperationID            string                `json:"operationId"`
-	Results                []PersonalBatchResult `json:"results"`
-	Updated                int                   `json:"updated"`
-	Failed                 int                   `json:"failed"`
-	ReceiptLifetimeSeconds int64                 `json:"receiptLifetimeSeconds"`
+	ServerID          string                `json:"serverId"`
+	ViewerFence       string                `json:"viewerFence"`
+	OperationID       string                `json:"operationId"`
+	Results           []PersonalBatchResult `json:"results"`
+	Updated           int                   `json:"updated"`
+	Failed            int                   `json:"failed"`
+	ReceiptLifetimeMs int64                 `json:"receiptLifetimeMs"`
 }
 
 func personalFailureCode(e error) string {
@@ -107,7 +107,7 @@ func personalBatchFields(item PersonalBatchItem) []struct {
 // whole carries the retry receipt, so a replay returns the first outcome rather
 // than re-evaluating rows against revisions its own first attempt advanced.
 func (s *Service) SetPersonalBatch(account, profile string, m PersonalBatchMutation, authorize func(*sql.Tx, string) error) (PersonalBatchReceipt, error) {
-	out := PersonalBatchReceipt{OperationID: m.OperationID, Results: []PersonalBatchResult{}, ReceiptLifetimeSeconds: 2592000}
+	out := PersonalBatchReceipt{OperationID: m.OperationID, Results: []PersonalBatchResult{}, ReceiptLifetimeMs: 2592000000}
 	if !personalOperation.MatchString(m.OperationID) {
 		return out, requestinput.New("invalid operationId")
 	}

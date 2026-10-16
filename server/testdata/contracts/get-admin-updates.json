@@ -13,12 +13,12 @@
       "channel": "stable"
     },
     "channel": "stable",
-    "feedConfigured": false,
-    "state": "unconfigured",
+    "feedConfigured": true,
+    "state": "unavailable",
     "updateAvailable": false,
     "checkedAt": "",
-    "status": "no-feed",
-    "message": "No release feed is configured, so this server only reports the build it is running.",
+    "status": "unavailable",
+    "message": "This server is not configured to contact a release feed.",
     "autoInstall": false
   }
 }

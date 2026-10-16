@@ -56,7 +56,7 @@ func TestReadCredentialDoesNotReceiveOwnerEvents(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, token := range []string{read.Secret, admin.Secret, f.owner} {
-		w := f.call("GET", "/v1/events?after=0&waitSeconds=0", token, "")
+		w := f.call("GET", "/v1/events?after=0&waitMs=0", token, "")
 		if w.Code != 200 {
 			t.Fatalf("events: %d %s", w.Code, w.Body)
 		}
@@ -84,7 +84,7 @@ func TestListHintsReachOwnerAndAdministratorsOnly(t *testing.T) {
 		name, token string
 		hears       bool
 	}{{"owner", f.owner, true}, {"administrator", f.admin, true}, {"member", f.member, false}} {
-		w := f.call("GET", "/v1/events?after=0&waitSeconds=0", c.token, "")
+		w := f.call("GET", "/v1/events?after=0&waitMs=0", c.token, "")
 		if w.Code != 200 {
 			t.Fatalf("%s events: %d %s", c.name, w.Code, w.Body)
 		}

@@ -1137,7 +1137,7 @@ func loadDeliveryPlan(q audioQuery, session string) (*DeliveryPlan, error) {
 	var raw string
 	err = q.QueryRow(`SELECT v.id,v.revision,pin.digest,pin.size,v.source_revision,v.facts_json FROM prepared_media_session_pins pin JOIN prepared_media_versions v ON v.id=pin.version_id WHERE pin.session_id=? AND v.state IN('published','deleting')`, session).Scan(&prepared.VersionID, &prepared.Revision, &prepared.Digest, &prepared.Size, &prepared.SourceRevision, &raw)
 	if err == nil {
-		if err = json.Unmarshal([]byte(raw), &prepared.Facts); err != nil {
+		if err = prepared.Facts.DecodeStored([]byte(raw)); err != nil {
 			return nil, err
 		}
 		p.Prepared = &prepared

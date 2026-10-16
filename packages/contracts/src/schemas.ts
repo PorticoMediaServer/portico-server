@@ -104,7 +104,7 @@ export const schemas = {
           "bytesTotalEstimated": {
             "type": "boolean"
           },
-          "etaSeconds": {
+          "etaMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "nullable": true,
@@ -119,7 +119,7 @@ export const schemas = {
           "bytesTotal",
           "bytesTotalEstimated",
           "percent",
-          "etaSeconds"
+          "etaMs"
         ],
         "type": "object"
       },
@@ -145,8 +145,10 @@ export const schemas = {
           "artist": {
             "type": "string"
           },
-          "durationSeconds": {
-            "type": "number"
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "groupId": {
             "type": "string"
@@ -421,7 +423,7 @@ export const schemas = {
               "autoplay": {
                 "type": "boolean"
               },
-              "countdownSeconds": {
+              "countdownMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -435,7 +437,7 @@ export const schemas = {
             },
             "required": [
               "autoplay",
-              "countdownSeconds",
+              "countdownMs",
               "passoutCheckDue",
               "automaticAdvances",
               "startDuringCredits"
@@ -1249,7 +1251,7 @@ export const schemas = {
               "autoplay": {
                 "type": "boolean"
               },
-              "countdownSeconds": {
+              "countdownMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -1263,7 +1265,7 @@ export const schemas = {
             },
             "required": [
               "autoplay",
-              "countdownSeconds",
+              "countdownMs",
               "passoutCheckDue",
               "automaticAdvances",
               "startDuringCredits"
@@ -3948,7 +3950,7 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "playedRetentionSeconds": {
+          "playedRetentionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -3985,7 +3987,7 @@ export const schemas = {
           "temporaryDirectory": {
             "type": "string"
           },
-          "throttleBufferSeconds": {
+          "throttleBufferMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -4030,8 +4032,8 @@ export const schemas = {
           "x264Preset",
           "directStreamRemux",
           "planningPolicy",
-          "throttleBufferSeconds",
-          "playedRetentionSeconds",
+          "throttleBufferMs",
+          "playedRetentionMs",
           "temporaryDirectory",
           "ffmpegPath",
           "sessionStorageMiB",
@@ -4257,7 +4259,7 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "playedRetentionSeconds": {
+              "playedRetentionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -4294,7 +4296,7 @@ export const schemas = {
               "temporaryDirectory": {
                 "type": "string"
               },
-              "throttleBufferSeconds": {
+              "throttleBufferMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -4339,8 +4341,8 @@ export const schemas = {
               "x264Preset",
               "directStreamRemux",
               "planningPolicy",
-              "throttleBufferSeconds",
-              "playedRetentionSeconds",
+              "throttleBufferMs",
+              "playedRetentionMs",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
@@ -4582,7 +4584,7 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "playedRetentionSeconds": {
+              "playedRetentionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -4619,7 +4621,7 @@ export const schemas = {
               "temporaryDirectory": {
                 "type": "string"
               },
-              "throttleBufferSeconds": {
+              "throttleBufferMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -4664,8 +4666,8 @@ export const schemas = {
               "x264Preset",
               "directStreamRemux",
               "planningPolicy",
-              "throttleBufferSeconds",
-              "playedRetentionSeconds",
+              "throttleBufferMs",
+              "playedRetentionMs",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
@@ -5549,7 +5551,7 @@ export const schemas = {
               "autoplay": {
                 "type": "boolean"
               },
-              "countdownSeconds": {
+              "countdownMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -5563,7 +5565,7 @@ export const schemas = {
             },
             "required": [
               "autoplay",
-              "countdownSeconds",
+              "countdownMs",
               "passoutCheckDue",
               "automaticAdvances",
               "startDuringCredits"
@@ -6646,7 +6648,7 @@ export const schemas = {
       "preparationId": {
         "type": "string"
       },
-      "renewAfterSeconds": {
+      "renewAfterMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -6668,7 +6670,7 @@ export const schemas = {
       "token",
       "issuedAt",
       "expiresAt",
-      "renewAfterSeconds",
+      "renewAfterMs",
       "renewed",
       "artifact"
     ],
@@ -6801,7 +6803,7 @@ export const schemas = {
                 "bytesTotalEstimated": {
                   "type": "boolean"
                 },
-                "etaSeconds": {
+                "etaMs": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "nullable": true,
@@ -6816,7 +6818,7 @@ export const schemas = {
                 "bytesTotal",
                 "bytesTotalEstimated",
                 "percent",
-                "etaSeconds"
+                "etaMs"
               ],
               "type": "object"
             },
@@ -6842,8 +6844,10 @@ export const schemas = {
                 "artist": {
                   "type": "string"
                 },
-                "durationSeconds": {
-                  "type": "number"
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "groupId": {
                   "type": "string"
@@ -7114,7 +7118,7 @@ export const schemas = {
                     "bytesTotalEstimated": {
                       "type": "boolean"
                     },
-                    "etaSeconds": {
+                    "etaMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "nullable": true,
@@ -7129,7 +7133,7 @@ export const schemas = {
                     "bytesTotal",
                     "bytesTotalEstimated",
                     "percent",
-                    "etaSeconds"
+                    "etaMs"
                   ],
                   "type": "object"
                 },
@@ -7155,8 +7159,10 @@ export const schemas = {
                     "artist": {
                       "type": "string"
                     },
-                    "durationSeconds": {
-                      "type": "number"
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
                     },
                     "groupId": {
                       "type": "string"
@@ -8301,7 +8307,7 @@ export const schemas = {
               "autoplay": {
                 "type": "boolean"
               },
-              "countdownSeconds": {
+              "countdownMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -8315,7 +8321,7 @@ export const schemas = {
             },
             "required": [
               "autoplay",
-              "countdownSeconds",
+              "countdownMs",
               "passoutCheckDue",
               "automaticAdvances",
               "startDuringCredits"
@@ -9568,12 +9574,12 @@ export const schemas = {
           },
           "options": {
             "properties": {
-              "afterSeconds": {
+              "afterMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "beforeSeconds": {
+              "beforeMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -9595,8 +9601,8 @@ export const schemas = {
               }
             },
             "required": [
-              "beforeSeconds",
-              "afterSeconds",
+              "beforeMs",
+              "afterMs",
               "priority",
               "retentionDays",
               "episodeLimit"
@@ -11115,7 +11121,7 @@ export const schemas = {
         ],
         "type": "object"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -11131,7 +11137,7 @@ export const schemas = {
       "serverId",
       "viewerFence",
       "receipt",
-      "receiptLifetimeSeconds"
+      "receiptLifetimeMs"
     ],
     "type": "object"
   },
@@ -11389,7 +11395,7 @@ export const schemas = {
         ],
         "type": "object"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -11405,7 +11411,7 @@ export const schemas = {
       "serverId",
       "viewerFence",
       "receipt",
-      "receiptLifetimeSeconds"
+      "receiptLifetimeMs"
     ],
     "type": "object"
   },
@@ -15736,13 +15742,13 @@ export const schemas = {
                     "newEpisodesOnly": {
                       "type": "boolean"
                     },
-                    "postPaddingSeconds": {
+                    "postPaddingMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "nullable": true,
                       "type": "integer"
                     },
-                    "prePaddingSeconds": {
+                    "prePaddingMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "nullable": true,
@@ -15755,8 +15761,8 @@ export const schemas = {
                     }
                   },
                   "required": [
-                    "prePaddingSeconds",
-                    "postPaddingSeconds",
+                    "prePaddingMs",
+                    "postPaddingMs",
                     "keepPolicy",
                     "newEpisodesOnly",
                     "priority",
@@ -16085,12 +16091,12 @@ export const schemas = {
               "movieFolderTemplate": {
                 "type": "string"
               },
-              "postPaddingSeconds": {
+              "postPaddingMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "prePaddingSeconds": {
+              "prePaddingMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -16126,8 +16132,8 @@ export const schemas = {
               }
             },
             "required": [
-              "prePaddingSeconds",
-              "postPaddingSeconds",
+              "prePaddingMs",
+              "postPaddingMs",
               "keepPolicy",
               "conversion",
               "folderTemplate",
@@ -17163,9 +17169,9 @@ export const schemas = {
           },
           "trickplay": {
             "properties": {
-              "intervalSeconds": {
+              "intervalMs": {
                 "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
+                "minimum": 0,
                 "type": "integer"
               },
               "maxTiles": {
@@ -17180,7 +17186,7 @@ export const schemas = {
               }
             },
             "required": [
-              "intervalSeconds",
+              "intervalMs",
               "tileWidth",
               "maxTiles"
             ],
@@ -17241,9 +17247,9 @@ export const schemas = {
             "identityConfirmed": {
               "type": "boolean"
             },
-            "intervalSeconds": {
+            "intervalMs": {
               "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
+              "minimum": 0,
               "type": "integer"
             },
             "kind": {
@@ -17284,7 +17290,7 @@ export const schemas = {
             "health",
             "enabled",
             "followSymlinks",
-            "intervalSeconds",
+            "intervalMs",
             "nextScanAt",
             "lastCompleteAt",
             "lastProgressAt"
@@ -20212,9 +20218,11 @@ export const schemas = {
             "libraryName": {
               "type": "string"
             },
-            "positionSeconds": {
+            "positionMs": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
               "nullable": true,
-              "type": "number"
+              "type": "integer"
             },
             "reportedAt": {
               "nullable": true,
@@ -20242,7 +20250,7 @@ export const schemas = {
             "delivery",
             "createdAt",
             "reportedAt",
-            "positionSeconds",
+            "positionMs",
             "expiresAt",
             "authorizationStopped",
             "cleanupStatus",
@@ -21079,7 +21087,7 @@ export const schemas = {
           "planningPolicy": {
             "type": "string"
           },
-          "playedRetentionSeconds": {
+          "playedRetentionMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -21209,7 +21217,7 @@ export const schemas = {
             ],
             "type": "object"
           },
-          "throttleBufferSeconds": {
+          "throttleBufferMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -21301,8 +21309,8 @@ export const schemas = {
           "directStreamRemux",
           "x264Preset",
           "planningPolicy",
-          "throttleBufferSeconds",
-          "playedRetentionSeconds",
+          "throttleBufferMs",
+          "playedRetentionMs",
           "temporaryDirectory",
           "presets",
           "dependencies",
@@ -23042,7 +23050,7 @@ export const schemas = {
         "properties": {
           "audioEffects": {
             "properties": {
-              "crossfadeSeconds": {
+              "crossfadeMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -23056,7 +23064,7 @@ export const schemas = {
             },
             "required": [
               "gapless",
-              "crossfadeSeconds",
+              "crossfadeMs",
               "normalization"
             ],
             "type": "object"
@@ -23442,7 +23450,7 @@ export const schemas = {
       },
       "queryLimits": {
         "properties": {
-          "cursorTtlSeconds": {
+          "cursorTtlMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -23485,7 +23493,7 @@ export const schemas = {
           "maximumSorts",
           "defaultLimit",
           "maximumLimit",
-          "cursorTtlSeconds"
+          "cursorTtlMs"
         ],
         "type": "object"
       },
@@ -25205,7 +25213,7 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "playedRetentionSeconds": {
+              "playedRetentionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -25242,7 +25250,7 @@ export const schemas = {
               "temporaryDirectory": {
                 "type": "string"
               },
-              "throttleBufferSeconds": {
+              "throttleBufferMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -25287,8 +25295,8 @@ export const schemas = {
               "x264Preset",
               "directStreamRemux",
               "planningPolicy",
-              "throttleBufferSeconds",
-              "playedRetentionSeconds",
+              "throttleBufferMs",
+              "playedRetentionMs",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
@@ -25530,7 +25538,7 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "playedRetentionSeconds": {
+              "playedRetentionMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -25567,7 +25575,7 @@ export const schemas = {
               "temporaryDirectory": {
                 "type": "string"
               },
-              "throttleBufferSeconds": {
+              "throttleBufferMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -25612,8 +25620,8 @@ export const schemas = {
               "x264Preset",
               "directStreamRemux",
               "planningPolicy",
-              "throttleBufferSeconds",
-              "playedRetentionSeconds",
+              "throttleBufferMs",
+              "playedRetentionMs",
               "temporaryDirectory",
               "ffmpegPath",
               "sessionStorageMiB",
@@ -27207,8 +27215,10 @@ export const schemas = {
       "chapters": {
         "items": {
           "properties": {
-            "endSeconds": {
-              "type": "number"
+            "endMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "image": {
               "properties": {
@@ -27230,8 +27240,10 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
-            "startSeconds": {
-              "type": "number"
+            "startMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "title": {
               "type": "string"
@@ -27240,8 +27252,8 @@ export const schemas = {
           "required": [
             "index",
             "title",
-            "startSeconds",
-            "endSeconds"
+            "startMs",
+            "endMs"
           ],
           "type": "object"
         },
@@ -27256,20 +27268,24 @@ export const schemas = {
             "automatic": {
               "type": "boolean"
             },
-            "endSeconds": {
-              "type": "number"
+            "endMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "kind": {
               "type": "string"
             },
-            "startSeconds": {
-              "type": "number"
+            "startMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             }
           },
           "required": [
             "kind",
-            "startSeconds",
-            "endSeconds",
+            "startMs",
+            "endMs",
             "automatic"
           ],
           "type": "object"
@@ -27394,8 +27410,10 @@ export const schemas = {
           "artist": {
             "type": "string"
           },
-          "durationSeconds": {
-            "type": "number"
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "groupId": {
             "type": "string"
@@ -27448,8 +27466,10 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "durationSeconds": {
-            "type": "number"
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "frameCount": {
             "maximum": 9007199254740991,
@@ -27459,16 +27479,20 @@ export const schemas = {
           "id": {
             "type": "string"
           },
-          "intervalSeconds": {
-            "type": "number"
+          "intervalMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "rows": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "sourceOffsetSeconds": {
-            "type": "number"
+          "sourceOffsetMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "thumbnails": {
             "properties": {
@@ -27520,10 +27544,10 @@ export const schemas = {
           "tileHeight",
           "columns",
           "rows",
-          "intervalSeconds",
+          "intervalMs",
           "frameCount",
-          "durationSeconds",
-          "sourceOffsetSeconds",
+          "durationMs",
+          "sourceOffsetMs",
           "thumbnails",
           "tiles"
         ],
@@ -27821,7 +27845,7 @@ export const schemas = {
           "bytesTotalEstimated": {
             "type": "boolean"
           },
-          "etaSeconds": {
+          "etaMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "nullable": true,
@@ -27836,7 +27860,7 @@ export const schemas = {
           "bytesTotal",
           "bytesTotalEstimated",
           "percent",
-          "etaSeconds"
+          "etaMs"
         ],
         "type": "object"
       },
@@ -27862,8 +27886,10 @@ export const schemas = {
           "artist": {
             "type": "string"
           },
-          "durationSeconds": {
-            "type": "number"
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "groupId": {
             "type": "string"
@@ -28039,7 +28065,7 @@ export const schemas = {
                     "bytesTotalEstimated": {
                       "type": "boolean"
                     },
-                    "etaSeconds": {
+                    "etaMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "nullable": true,
@@ -28054,7 +28080,7 @@ export const schemas = {
                     "bytesTotal",
                     "bytesTotalEstimated",
                     "percent",
-                    "etaSeconds"
+                    "etaMs"
                   ],
                   "type": "object"
                 },
@@ -28080,8 +28106,10 @@ export const schemas = {
                     "artist": {
                       "type": "string"
                     },
-                    "durationSeconds": {
-                      "type": "number"
+                    "durationMs": {
+                      "maximum": 9007199254740991,
+                      "minimum": 0,
+                      "type": "integer"
                     },
                     "groupId": {
                       "type": "string"
@@ -28727,12 +28755,12 @@ export const schemas = {
               },
               "options": {
                 "properties": {
-                  "afterSeconds": {
+                  "afterMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "beforeSeconds": {
+                  "beforeMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -28754,8 +28782,8 @@ export const schemas = {
                   }
                 },
                 "required": [
-                  "beforeSeconds",
-                  "afterSeconds",
+                  "beforeMs",
+                  "afterMs",
                   "priority",
                   "retentionDays",
                   "episodeLimit"
@@ -29088,12 +29116,12 @@ export const schemas = {
                 },
                 "options": {
                   "properties": {
-                    "afterSeconds": {
+                    "afterMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
-                    "beforeSeconds": {
+                    "beforeMs": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
@@ -29115,8 +29143,8 @@ export const schemas = {
                     }
                   },
                   "required": [
-                    "beforeSeconds",
-                    "afterSeconds",
+                    "beforeMs",
+                    "afterMs",
                     "priority",
                     "retentionDays",
                     "episodeLimit"
@@ -29349,12 +29377,12 @@ export const schemas = {
                     },
                     "options": {
                       "properties": {
-                        "afterSeconds": {
+                        "afterMs": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
                         },
-                        "beforeSeconds": {
+                        "beforeMs": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
@@ -29376,8 +29404,8 @@ export const schemas = {
                         }
                       },
                       "required": [
-                        "beforeSeconds",
-                        "afterSeconds",
+                        "beforeMs",
+                        "afterMs",
                         "priority",
                         "retentionDays",
                         "episodeLimit"
@@ -31478,7 +31506,7 @@ export const schemas = {
             "artworkShape": {
               "type": "string"
             },
-            "cacheTtlSeconds": {
+            "cacheTtlMs": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
@@ -31492,7 +31520,7 @@ export const schemas = {
                   "artworkShape": {
                     "type": "string"
                   },
-                  "cacheTtlSeconds": {
+                  "cacheTtlMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -32386,7 +32414,7 @@ export const schemas = {
                   "privacySensitivity",
                   "policyState",
                   "priority",
-                  "cacheTtlSeconds",
+                  "cacheTtlMs",
                   "required",
                   "hideable",
                   "reorderable",
@@ -33291,7 +33319,7 @@ export const schemas = {
             "privacySensitivity",
             "policyState",
             "priority",
-            "cacheTtlSeconds",
+            "cacheTtlMs",
             "required",
             "hideable",
             "reorderable",
@@ -33340,7 +33368,7 @@ export const schemas = {
       "artworkShape": {
         "type": "string"
       },
-      "cacheTtlSeconds": {
+      "cacheTtlMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -33354,7 +33382,7 @@ export const schemas = {
             "artworkShape": {
               "type": "string"
             },
-            "cacheTtlSeconds": {
+            "cacheTtlMs": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
@@ -34248,7 +34276,7 @@ export const schemas = {
             "privacySensitivity",
             "policyState",
             "priority",
-            "cacheTtlSeconds",
+            "cacheTtlMs",
             "required",
             "hideable",
             "reorderable",
@@ -35153,7 +35181,7 @@ export const schemas = {
       "privacySensitivity",
       "policyState",
       "priority",
-      "cacheTtlSeconds",
+      "cacheTtlMs",
       "required",
       "hideable",
       "reorderable",
@@ -35471,9 +35499,9 @@ export const schemas = {
           },
           "trickplay": {
             "properties": {
-              "intervalSeconds": {
+              "intervalMs": {
                 "maximum": 9007199254740991,
-                "minimum": -9007199254740991,
+                "minimum": 0,
                 "type": "integer"
               },
               "maxTiles": {
@@ -35488,7 +35516,7 @@ export const schemas = {
               }
             },
             "required": [
-              "intervalSeconds",
+              "intervalMs",
               "tileWidth",
               "maxTiles"
             ],
@@ -38446,8 +38474,10 @@ export const schemas = {
       "source": {
         "nullable": true,
         "properties": {
-          "duration": {
-            "type": "number"
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "id": {
             "type": "string"
@@ -38455,11 +38485,15 @@ export const schemas = {
           "local": {
             "type": "boolean"
           },
-          "sourceDuration": {
-            "type": "number"
+          "sourceDurationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
-          "startSeconds": {
-            "type": "number"
+          "startMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "version": {
             "type": "string"
@@ -38468,9 +38502,9 @@ export const schemas = {
         "required": [
           "id",
           "version",
-          "startSeconds",
-          "duration",
-          "sourceDuration",
+          "startMs",
+          "durationMs",
+          "sourceDurationMs",
           "local"
         ],
         "type": "object"
@@ -38478,8 +38512,10 @@ export const schemas = {
       "sources": {
         "items": {
           "properties": {
-            "duration": {
-              "type": "number"
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "id": {
               "type": "string"
@@ -38487,11 +38523,15 @@ export const schemas = {
             "local": {
               "type": "boolean"
             },
-            "sourceDuration": {
-              "type": "number"
+            "sourceDurationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
-            "startSeconds": {
-              "type": "number"
+            "startMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "version": {
               "type": "string"
@@ -38500,9 +38540,9 @@ export const schemas = {
           "required": [
             "id",
             "version",
-            "startSeconds",
-            "duration",
-            "sourceDuration",
+            "startMs",
+            "durationMs",
+            "sourceDurationMs",
             "local"
           ],
           "type": "object"
@@ -39255,8 +39295,10 @@ export const schemas = {
           "downmix": {
             "type": "string"
           },
-          "duration": {
-            "type": "number"
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "engine": {
             "type": "string"
@@ -39406,8 +39448,10 @@ export const schemas = {
                   "container": {
                     "type": "string"
                   },
-                  "duration": {
-                    "type": "number"
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
                   },
                   "height": {
                     "maximum": 9007199254740991,
@@ -39429,7 +39473,7 @@ export const schemas = {
                   "audioCodec",
                   "width",
                   "height",
-                  "duration",
+                  "durationMs",
                   "audioTracks"
                 ],
                 "type": "object"
@@ -39747,7 +39791,7 @@ export const schemas = {
           "sourceContainer",
           "sourceVideoCodec",
           "sourceAudioCodec",
-          "duration",
+          "durationMs",
           "mode",
           "strategy",
           "reason",
@@ -39948,8 +39992,10 @@ export const schemas = {
                 "container": {
                   "type": "string"
                 },
-                "duration": {
-                  "type": "number"
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "height": {
                   "maximum": 9007199254740991,
@@ -39971,7 +40017,7 @@ export const schemas = {
                 "audioCodec",
                 "width",
                 "height",
-                "duration",
+                "durationMs",
                 "audioTracks"
               ],
               "type": "object"
@@ -40082,8 +40128,10 @@ export const schemas = {
             "container": {
               "type": "string"
             },
-            "duration": {
-              "type": "number"
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "enabled": {
               "type": "boolean"
@@ -40231,7 +40279,7 @@ export const schemas = {
             "audioCodec",
             "width",
             "height",
-            "duration",
+            "durationMs",
             "factsRevision",
             "factsStatus",
             "relation",
@@ -40913,8 +40961,10 @@ export const schemas = {
                 "container": {
                   "type": "string"
                 },
-                "duration": {
-                  "type": "number"
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "height": {
                   "maximum": 9007199254740991,
@@ -40936,7 +40986,7 @@ export const schemas = {
                 "audioCodec",
                 "width",
                 "height",
-                "duration",
+                "durationMs",
                 "audioTracks"
               ],
               "type": "object"
@@ -41060,7 +41110,7 @@ export const schemas = {
             "artworkShape": {
               "type": "string"
             },
-            "cacheTtlSeconds": {
+            "cacheTtlMs": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
@@ -41074,7 +41124,7 @@ export const schemas = {
                   "artworkShape": {
                     "type": "string"
                   },
-                  "cacheTtlSeconds": {
+                  "cacheTtlMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -41968,7 +42018,7 @@ export const schemas = {
                   "privacySensitivity",
                   "policyState",
                   "priority",
-                  "cacheTtlSeconds",
+                  "cacheTtlMs",
                   "required",
                   "hideable",
                   "reorderable",
@@ -42873,7 +42923,7 @@ export const schemas = {
             "privacySensitivity",
             "policyState",
             "priority",
-            "cacheTtlSeconds",
+            "cacheTtlMs",
             "required",
             "hideable",
             "reorderable",
@@ -43327,8 +43377,10 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
-            "durationSeconds": {
-              "type": "number"
+            "durationMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "frameCount": {
               "maximum": 9007199254740991,
@@ -43343,8 +43395,10 @@ export const schemas = {
             "id": {
               "type": "string"
             },
-            "intervalSeconds": {
-              "type": "number"
+            "intervalMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "revision": {
               "type": "string"
@@ -43357,8 +43411,10 @@ export const schemas = {
             "sourceId": {
               "type": "string"
             },
-            "sourceOffsetSeconds": {
-              "type": "number"
+            "sourceOffsetMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "sourceRevision": {
               "type": "string"
@@ -43403,9 +43459,9 @@ export const schemas = {
             "tileHeight",
             "columns",
             "rows",
-            "intervalSeconds",
-            "durationSeconds",
-            "sourceOffsetSeconds",
+            "intervalMs",
+            "durationMs",
+            "sourceOffsetMs",
             "tileCount",
             "frameCount",
             "stale",
@@ -44928,7 +44984,7 @@ export const schemas = {
       },
       "queryLimits": {
         "properties": {
-          "cursorTtlSeconds": {
+          "cursorTtlMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -44971,7 +45027,7 @@ export const schemas = {
           "maximumSorts",
           "defaultLimit",
           "maximumLimit",
-          "cursorTtlSeconds"
+          "cursorTtlMs"
         ],
         "type": "object"
       },
@@ -51485,7 +51541,7 @@ export const schemas = {
               "chapterThumbnailMode": {
                 "type": "string"
               },
-              "trickplayIntervalSeconds": {
+              "trickplayIntervalMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -51503,19 +51559,19 @@ export const schemas = {
               "videoPreviewEnabled": {
                 "type": "boolean"
               },
-              "videoPreviewSeconds": {
+              "videoPreviewMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               }
             },
             "required": [
-              "trickplayIntervalSeconds",
+              "trickplayIntervalMs",
               "trickplayTileWidth",
               "trickplayMaxTiles",
               "chapterThumbnailMode",
               "videoPreviewEnabled",
-              "videoPreviewSeconds"
+              "videoPreviewMs"
             ],
             "type": "object"
           },
@@ -51738,12 +51794,12 @@ export const schemas = {
               "logoImport": {
                 "type": "boolean"
               },
-              "retryWindowSeconds": {
+              "retryWindowMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "streamBufferSeconds": {
+              "streamBufferMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -51754,8 +51810,8 @@ export const schemas = {
             },
             "required": [
               "importLimits",
-              "streamBufferSeconds",
-              "retryWindowSeconds",
+              "streamBufferMs",
+              "retryWindowMs",
               "userAgent",
               "guideDays",
               "logoImport",
@@ -51842,12 +51898,12 @@ export const schemas = {
               "logoImport": {
                 "type": "boolean"
               },
-              "retryWindowSeconds": {
+              "retryWindowMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "streamBufferSeconds": {
+              "streamBufferMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -51858,8 +51914,8 @@ export const schemas = {
             },
             "required": [
               "importLimits",
-              "streamBufferSeconds",
-              "retryWindowSeconds",
+              "streamBufferMs",
+              "retryWindowMs",
               "userAgent",
               "guideDays",
               "logoImport",
@@ -52020,13 +52076,13 @@ export const schemas = {
                 ],
                 "type": "object"
               },
-              "retryWindowSeconds": {
+              "retryWindowMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "nullable": true,
                 "type": "integer"
               },
-              "streamBufferSeconds": {
+              "streamBufferMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "nullable": true,
@@ -52040,8 +52096,8 @@ export const schemas = {
               "enabledGroups",
               "enabledChannels",
               "kind",
-              "streamBufferSeconds",
-              "retryWindowSeconds",
+              "streamBufferMs",
+              "retryWindowMs",
               "userAgent",
               "filters",
               "logoImport",
@@ -53730,7 +53786,7 @@ export const schemas = {
             },
             "type": "array"
           },
-          "heartbeatSeconds": {
+          "heartbeatMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -53740,7 +53796,7 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "maxWaitSeconds": {
+          "maxWaitMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -53778,8 +53834,8 @@ export const schemas = {
           "commands",
           "views",
           "maxLimit",
-          "heartbeatSeconds",
-          "maxWaitSeconds"
+          "heartbeatMs",
+          "maxWaitMs"
         ],
         "type": "object"
       },
@@ -57503,18 +57559,22 @@ export const schemas = {
                 "id": {
                   "type": "string"
                 },
-                "positionSeconds": {
-                  "type": "number"
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
                 }
               },
               "required": [
                 "id",
-                "positionSeconds"
+                "positionMs"
               ],
               "type": "object"
             },
-            "endSeconds": {
-              "type": "number"
+            "endMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "id": {
               "type": "string"
@@ -57524,8 +57584,10 @@ export const schemas = {
               "minimum": -9007199254740991,
               "type": "integer"
             },
-            "startSeconds": {
-              "type": "number"
+            "startMs": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
             },
             "thumbnailUrl": {
               "type": "string"
@@ -57538,16 +57600,18 @@ export const schemas = {
             "id",
             "index",
             "title",
-            "startSeconds",
-            "endSeconds",
+            "startMs",
+            "endMs",
             "action"
           ],
           "type": "object"
         },
         "type": "array"
       },
-      "duration": {
-        "type": "number"
+      "durationMs": {
+        "maximum": 9007199254740991,
+        "minimum": 0,
+        "type": "integer"
       },
       "nextCursor": {
         "type": "string"
@@ -57610,7 +57674,7 @@ export const schemas = {
       "revision",
       "status",
       "reason",
-      "duration",
+      "durationMs",
       "chapters",
       "totalCount",
       "nextCursor"
@@ -59371,7 +59435,7 @@ export const schemas = {
         "properties": {
           "audioEffects": {
             "properties": {
-              "crossfadeSeconds": {
+              "crossfadeMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -59385,7 +59449,7 @@ export const schemas = {
             },
             "required": [
               "gapless",
-              "crossfadeSeconds",
+              "crossfadeMs",
               "normalization"
             ],
             "type": "object"
@@ -59618,7 +59682,7 @@ export const schemas = {
           "autoplay": {
             "type": "boolean"
           },
-          "countdownSeconds": {
+          "countdownMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -59632,7 +59696,7 @@ export const schemas = {
         },
         "required": [
           "autoplay",
-          "countdownSeconds",
+          "countdownMs",
           "passoutCheckDue",
           "automaticAdvances",
           "startDuringCredits"
@@ -64842,7 +64906,7 @@ export const schemas = {
             "artworkShape": {
               "type": "string"
             },
-            "cacheTtlSeconds": {
+            "cacheTtlMs": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
@@ -64856,7 +64920,7 @@ export const schemas = {
                   "artworkShape": {
                     "type": "string"
                   },
-                  "cacheTtlSeconds": {
+                  "cacheTtlMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -65750,7 +65814,7 @@ export const schemas = {
                   "privacySensitivity",
                   "policyState",
                   "priority",
-                  "cacheTtlSeconds",
+                  "cacheTtlMs",
                   "required",
                   "hideable",
                   "reorderable",
@@ -66655,7 +66719,7 @@ export const schemas = {
             "privacySensitivity",
             "policyState",
             "priority",
-            "cacheTtlSeconds",
+            "cacheTtlMs",
             "required",
             "hideable",
             "reorderable",
@@ -69953,15 +70017,17 @@ export const schemas = {
             },
             "viewing": {
               "properties": {
-                "positionSeconds": {
-                  "type": "number"
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "watched": {
                   "type": "boolean"
                 }
               },
               "required": [
-                "positionSeconds",
+                "positionMs",
                 "watched"
               ],
               "type": "object"
@@ -70547,7 +70613,7 @@ export const schemas = {
                 "bytesTotalEstimated": {
                   "type": "boolean"
                 },
-                "etaSeconds": {
+                "etaMs": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "nullable": true,
@@ -70562,7 +70628,7 @@ export const schemas = {
                 "bytesTotal",
                 "bytesTotalEstimated",
                 "percent",
-                "etaSeconds"
+                "etaMs"
               ],
               "type": "object"
             },
@@ -70588,8 +70654,10 @@ export const schemas = {
                 "artist": {
                   "type": "string"
                 },
-                "durationSeconds": {
-                  "type": "number"
+                "durationMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "groupId": {
                   "type": "string"
@@ -71766,7 +71834,7 @@ export const schemas = {
               "autoplay": {
                 "type": "boolean"
               },
-              "countdownSeconds": {
+              "countdownMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -71780,7 +71848,7 @@ export const schemas = {
             },
             "required": [
               "autoplay",
-              "countdownSeconds",
+              "countdownMs",
               "passoutCheckDue",
               "automaticAdvances",
               "startDuringCredits"
@@ -72898,9 +72966,9 @@ export const schemas = {
       "followSymlinks": {
         "type": "boolean"
       },
-      "intervalSeconds": {
+      "intervalMs": {
         "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
+        "minimum": 0,
         "type": "integer"
       },
       "name": {
@@ -72915,7 +72983,7 @@ export const schemas = {
       "path",
       "classification",
       "followSymlinks",
-      "intervalSeconds",
+      "intervalMs",
       "expectedRevision",
       "acceptReplacement"
     ],
@@ -72946,9 +73014,9 @@ export const schemas = {
       "identityConfirmed": {
         "type": "boolean"
       },
-      "intervalSeconds": {
+      "intervalMs": {
         "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
+        "minimum": 0,
         "type": "integer"
       },
       "kind": {
@@ -72989,7 +73057,7 @@ export const schemas = {
       "health",
       "enabled",
       "followSymlinks",
-      "intervalSeconds",
+      "intervalMs",
       "nextScanAt",
       "lastCompleteAt",
       "lastProgressAt"
@@ -73545,12 +73613,12 @@ export const schemas = {
       },
       "options": {
         "properties": {
-          "afterSeconds": {
+          "afterMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "beforeSeconds": {
+          "beforeMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -73572,8 +73640,8 @@ export const schemas = {
           }
         },
         "required": [
-          "beforeSeconds",
-          "afterSeconds",
+          "beforeMs",
+          "afterMs",
           "priority",
           "retentionDays",
           "episodeLimit"
@@ -73698,12 +73766,12 @@ export const schemas = {
           },
           "options": {
             "properties": {
-              "afterSeconds": {
+              "afterMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "beforeSeconds": {
+              "beforeMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -73725,8 +73793,8 @@ export const schemas = {
               }
             },
             "required": [
-              "beforeSeconds",
-              "afterSeconds",
+              "beforeMs",
+              "afterMs",
               "priority",
               "retentionDays",
               "episodeLimit"
@@ -74367,7 +74435,7 @@ export const schemas = {
         "properties": {
           "audioEffects": {
             "properties": {
-              "crossfadeSeconds": {
+              "crossfadeMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -74381,7 +74449,7 @@ export const schemas = {
             },
             "required": [
               "gapless",
-              "crossfadeSeconds",
+              "crossfadeMs",
               "normalization"
             ],
             "type": "object"
@@ -74804,7 +74872,7 @@ export const schemas = {
         ],
         "type": "object"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -74820,7 +74888,7 @@ export const schemas = {
       "serverId",
       "viewerFence",
       "receipt",
-      "receiptLifetimeSeconds"
+      "receiptLifetimeMs"
     ],
     "type": "object"
   },
@@ -76590,13 +76658,13 @@ export const schemas = {
           "newEpisodesOnly": {
             "type": "boolean"
           },
-          "postPaddingSeconds": {
+          "postPaddingMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "nullable": true,
             "type": "integer"
           },
-          "prePaddingSeconds": {
+          "prePaddingMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "nullable": true,
@@ -76609,8 +76677,8 @@ export const schemas = {
           }
         },
         "required": [
-          "prePaddingSeconds",
-          "postPaddingSeconds",
+          "prePaddingMs",
+          "postPaddingMs",
           "keepPolicy",
           "newEpisodesOnly",
           "priority",
@@ -76716,13 +76784,13 @@ export const schemas = {
               "newEpisodesOnly": {
                 "type": "boolean"
               },
-              "postPaddingSeconds": {
+              "postPaddingMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "nullable": true,
                 "type": "integer"
               },
-              "prePaddingSeconds": {
+              "prePaddingMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "nullable": true,
@@ -76735,8 +76803,8 @@ export const schemas = {
               }
             },
             "required": [
-              "prePaddingSeconds",
-              "postPaddingSeconds",
+              "prePaddingMs",
+              "postPaddingMs",
               "keepPolicy",
               "newEpisodesOnly",
               "priority",
@@ -77098,9 +77166,9 @@ export const schemas = {
       "followSymlinks": {
         "type": "boolean"
       },
-      "intervalSeconds": {
+      "intervalMs": {
         "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
+        "minimum": 0,
         "type": "integer"
       },
       "name": {
@@ -77115,7 +77183,7 @@ export const schemas = {
       "path",
       "classification",
       "followSymlinks",
-      "intervalSeconds",
+      "intervalMs",
       "expectedRevision",
       "acceptReplacement"
     ],
@@ -77146,9 +77214,9 @@ export const schemas = {
       "identityConfirmed": {
         "type": "boolean"
       },
-      "intervalSeconds": {
+      "intervalMs": {
         "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
+        "minimum": 0,
         "type": "integer"
       },
       "kind": {
@@ -77189,7 +77257,7 @@ export const schemas = {
       "health",
       "enabled",
       "followSymlinks",
-      "intervalSeconds",
+      "intervalMs",
       "nextScanAt",
       "lastCompleteAt",
       "lastProgressAt"
@@ -77226,9 +77294,9 @@ export const schemas = {
       "identityConfirmed": {
         "type": "boolean"
       },
-      "intervalSeconds": {
+      "intervalMs": {
         "maximum": 9007199254740991,
-        "minimum": -9007199254740991,
+        "minimum": 0,
         "type": "integer"
       },
       "kind": {
@@ -77269,7 +77337,7 @@ export const schemas = {
       "health",
       "enabled",
       "followSymlinks",
-      "intervalSeconds",
+      "intervalMs",
       "nextScanAt",
       "lastCompleteAt",
       "lastProgressAt"
@@ -80239,14 +80307,14 @@ export const schemas = {
   },
   "PostAdminLiveSourcesDiscoverRequest": {
     "properties": {
-      "windowSeconds": {
+      "windowMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
       }
     },
     "required": [
-      "windowSeconds"
+      "windowMs"
     ],
     "type": "object"
   },
@@ -83807,12 +83875,12 @@ export const schemas = {
           },
           "options": {
             "properties": {
-              "afterSeconds": {
+              "afterMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "beforeSeconds": {
+              "beforeMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -83834,8 +83902,8 @@ export const schemas = {
               }
             },
             "required": [
-              "beforeSeconds",
-              "afterSeconds",
+              "beforeMs",
+              "afterMs",
               "priority",
               "retentionDays",
               "episodeLimit"
@@ -84060,12 +84128,12 @@ export const schemas = {
       "options": {
         "nullable": true,
         "properties": {
-          "afterSeconds": {
+          "afterMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "beforeSeconds": {
+          "beforeMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -84087,8 +84155,8 @@ export const schemas = {
           }
         },
         "required": [
-          "beforeSeconds",
-          "afterSeconds",
+          "beforeMs",
+          "afterMs",
           "priority",
           "retentionDays",
           "episodeLimit"
@@ -84217,12 +84285,12 @@ export const schemas = {
           },
           "options": {
             "properties": {
-              "afterSeconds": {
+              "afterMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "beforeSeconds": {
+              "beforeMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -84244,8 +84312,8 @@ export const schemas = {
               }
             },
             "required": [
-              "beforeSeconds",
-              "afterSeconds",
+              "beforeMs",
+              "afterMs",
               "priority",
               "retentionDays",
               "episodeLimit"
@@ -84479,12 +84547,12 @@ export const schemas = {
       },
       "options": {
         "properties": {
-          "afterSeconds": {
+          "afterMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "beforeSeconds": {
+          "beforeMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -84506,8 +84574,8 @@ export const schemas = {
           }
         },
         "required": [
-          "beforeSeconds",
-          "afterSeconds",
+          "beforeMs",
+          "afterMs",
           "priority",
           "retentionDays",
           "episodeLimit"
@@ -86851,7 +86919,7 @@ export const schemas = {
       "operationId": {
         "type": "string"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -86868,7 +86936,7 @@ export const schemas = {
       "viewerFence",
       "operationId",
       "clearedNotInterested",
-      "receiptLifetimeSeconds"
+      "receiptLifetimeMs"
     ],
     "type": "object"
   },
@@ -90280,7 +90348,7 @@ export const schemas = {
         ],
         "type": "object"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -90296,7 +90364,7 @@ export const schemas = {
       "serverId",
       "viewerFence",
       "receipt",
-      "receiptLifetimeSeconds"
+      "receiptLifetimeMs"
     ],
     "type": "object"
   },
@@ -90538,8 +90606,10 @@ export const schemas = {
           "container": {
             "type": "string"
           },
-          "duration": {
-            "type": "number"
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "height": {
             "maximum": 9007199254740991,
@@ -90561,7 +90631,7 @@ export const schemas = {
           "audioCodec",
           "width",
           "height",
-          "duration",
+          "durationMs",
           "audioTracks"
         ],
         "type": "object"
@@ -91119,7 +91189,7 @@ export const schemas = {
         ],
         "type": "object"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -91135,7 +91205,7 @@ export const schemas = {
       "serverId",
       "viewerFence",
       "receipt",
-      "receiptLifetimeSeconds"
+      "receiptLifetimeMs"
     ],
     "type": "object"
   },
@@ -93643,7 +93713,7 @@ export const schemas = {
       "password": {
         "type": "string"
       },
-      "refreshSeconds": {
+      "refreshMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -93669,7 +93739,7 @@ export const schemas = {
       "password",
       "confirmedLanRoots",
       "mappings",
-      "refreshSeconds",
+      "refreshMs",
       "ownerLimit",
       "useDiscoveredCapacity",
       "viewerAccess"
@@ -94748,13 +94818,13 @@ export const schemas = {
           "newEpisodesOnly": {
             "type": "boolean"
           },
-          "postPaddingSeconds": {
+          "postPaddingMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "nullable": true,
             "type": "integer"
           },
-          "prePaddingSeconds": {
+          "prePaddingMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "nullable": true,
@@ -94767,8 +94837,8 @@ export const schemas = {
           }
         },
         "required": [
-          "prePaddingSeconds",
-          "postPaddingSeconds",
+          "prePaddingMs",
+          "postPaddingMs",
           "keepPolicy",
           "newEpisodesOnly",
           "priority",
@@ -94874,13 +94944,13 @@ export const schemas = {
               "newEpisodesOnly": {
                 "type": "boolean"
               },
-              "postPaddingSeconds": {
+              "postPaddingMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "nullable": true,
                 "type": "integer"
               },
-              "prePaddingSeconds": {
+              "prePaddingMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "nullable": true,
@@ -94893,8 +94963,8 @@ export const schemas = {
               }
             },
             "required": [
-              "prePaddingSeconds",
-              "postPaddingSeconds",
+              "prePaddingMs",
+              "postPaddingMs",
               "keepPolicy",
               "newEpisodesOnly",
               "priority",
@@ -95128,12 +95198,12 @@ export const schemas = {
           "movieFolderTemplate": {
             "type": "string"
           },
-          "postPaddingSeconds": {
+          "postPaddingMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "prePaddingSeconds": {
+          "prePaddingMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -95169,8 +95239,8 @@ export const schemas = {
           }
         },
         "required": [
-          "prePaddingSeconds",
-          "postPaddingSeconds",
+          "prePaddingMs",
+          "postPaddingMs",
           "keepPolicy",
           "conversion",
           "folderTemplate",
@@ -95297,12 +95367,12 @@ export const schemas = {
               "movieFolderTemplate": {
                 "type": "string"
               },
-              "postPaddingSeconds": {
+              "postPaddingMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "prePaddingSeconds": {
+              "prePaddingMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -95338,8 +95408,8 @@ export const schemas = {
               }
             },
             "required": [
-              "prePaddingSeconds",
-              "postPaddingSeconds",
+              "prePaddingMs",
+              "postPaddingMs",
               "keepPolicy",
               "conversion",
               "folderTemplate",
@@ -95414,9 +95484,9 @@ export const schemas = {
       },
       "trickplay": {
         "properties": {
-          "intervalSeconds": {
+          "intervalMs": {
             "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
+            "minimum": 0,
             "type": "integer"
           },
           "maxTiles": {
@@ -95431,7 +95501,7 @@ export const schemas = {
           }
         },
         "required": [
-          "intervalSeconds",
+          "intervalMs",
           "tileWidth",
           "maxTiles"
         ],
@@ -97439,12 +97509,12 @@ export const schemas = {
           },
           "options": {
             "properties": {
-              "afterSeconds": {
+              "afterMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "beforeSeconds": {
+              "beforeMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -97466,8 +97536,8 @@ export const schemas = {
               }
             },
             "required": [
-              "beforeSeconds",
-              "afterSeconds",
+              "beforeMs",
+              "afterMs",
               "priority",
               "retentionDays",
               "episodeLimit"
@@ -97726,12 +97796,12 @@ export const schemas = {
           },
           "options": {
             "properties": {
-              "afterSeconds": {
+              "afterMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "beforeSeconds": {
+              "beforeMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -97753,8 +97823,8 @@ export const schemas = {
               }
             },
             "required": [
-              "beforeSeconds",
-              "afterSeconds",
+              "beforeMs",
+              "afterMs",
               "priority",
               "retentionDays",
               "episodeLimit"
@@ -97851,12 +97921,12 @@ export const schemas = {
               },
               "options": {
                 "properties": {
-                  "afterSeconds": {
+                  "afterMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
                   },
-                  "beforeSeconds": {
+                  "beforeMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
@@ -97878,8 +97948,8 @@ export const schemas = {
                   }
                 },
                 "required": [
-                  "beforeSeconds",
-                  "afterSeconds",
+                  "beforeMs",
+                  "afterMs",
                   "priority",
                   "retentionDays",
                   "episodeLimit"
@@ -98151,9 +98221,9 @@ export const schemas = {
       },
       "trickplay": {
         "properties": {
-          "intervalSeconds": {
+          "intervalMs": {
             "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
+            "minimum": 0,
             "type": "integer"
           },
           "maxTiles": {
@@ -98168,7 +98238,7 @@ export const schemas = {
           }
         },
         "required": [
-          "intervalSeconds",
+          "intervalMs",
           "tileWidth",
           "maxTiles"
         ],
@@ -98206,9 +98276,9 @@ export const schemas = {
       },
       "trickplay": {
         "properties": {
-          "intervalSeconds": {
+          "intervalMs": {
             "maximum": 9007199254740991,
-            "minimum": -9007199254740991,
+            "minimum": 0,
             "type": "integer"
           },
           "maxTiles": {
@@ -98223,7 +98293,7 @@ export const schemas = {
           }
         },
         "required": [
-          "intervalSeconds",
+          "intervalMs",
           "tileWidth",
           "maxTiles"
         ],
@@ -98782,7 +98852,7 @@ export const schemas = {
         ],
         "type": "object"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -98795,7 +98865,7 @@ export const schemas = {
       }
     },
     "required": [
-      "receiptLifetimeSeconds",
+      "receiptLifetimeMs",
       "serverId",
       "operationId",
       "itemId",
@@ -98858,7 +98928,7 @@ export const schemas = {
       "operationId": {
         "type": "string"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -99010,7 +99080,7 @@ export const schemas = {
       "results",
       "updated",
       "failed",
-      "receiptLifetimeSeconds"
+      "receiptLifetimeMs"
     ],
     "type": "object"
   },
@@ -99296,7 +99366,7 @@ export const schemas = {
               "chapterThumbnailMode": {
                 "type": "string"
               },
-              "trickplayIntervalSeconds": {
+              "trickplayIntervalMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -99314,19 +99384,19 @@ export const schemas = {
               "videoPreviewEnabled": {
                 "type": "boolean"
               },
-              "videoPreviewSeconds": {
+              "videoPreviewMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               }
             },
             "required": [
-              "trickplayIntervalSeconds",
+              "trickplayIntervalMs",
               "trickplayTileWidth",
               "trickplayMaxTiles",
               "chapterThumbnailMode",
               "videoPreviewEnabled",
-              "videoPreviewSeconds"
+              "videoPreviewMs"
             ],
             "type": "object"
           },
@@ -99590,7 +99660,7 @@ export const schemas = {
               "chapterThumbnailMode": {
                 "type": "string"
               },
-              "trickplayIntervalSeconds": {
+              "trickplayIntervalMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -99608,19 +99678,19 @@ export const schemas = {
               "videoPreviewEnabled": {
                 "type": "boolean"
               },
-              "videoPreviewSeconds": {
+              "videoPreviewMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               }
             },
             "required": [
-              "trickplayIntervalSeconds",
+              "trickplayIntervalMs",
               "trickplayTileWidth",
               "trickplayMaxTiles",
               "chapterThumbnailMode",
               "videoPreviewEnabled",
-              "videoPreviewSeconds"
+              "videoPreviewMs"
             ],
             "type": "object"
           },
@@ -100469,7 +100539,7 @@ export const schemas = {
         ],
         "type": "object"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -100485,7 +100555,7 @@ export const schemas = {
       "serverId",
       "viewerFence",
       "receipt",
-      "receiptLifetimeSeconds"
+      "receiptLifetimeMs"
     ],
     "type": "object"
   },
@@ -100743,7 +100813,7 @@ export const schemas = {
         ],
         "type": "object"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -100759,7 +100829,7 @@ export const schemas = {
       "serverId",
       "viewerFence",
       "receipt",
-      "receiptLifetimeSeconds"
+      "receiptLifetimeMs"
     ],
     "type": "object"
   },
@@ -101323,7 +101393,7 @@ export const schemas = {
               "autoplay": {
                 "type": "boolean"
               },
-              "countdownSeconds": {
+              "countdownMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -101337,7 +101407,7 @@ export const schemas = {
             },
             "required": [
               "autoplay",
-              "countdownSeconds",
+              "countdownMs",
               "passoutCheckDue",
               "automaticAdvances",
               "startDuringCredits"
@@ -102468,7 +102538,7 @@ export const schemas = {
         ],
         "type": "object"
       },
-      "receiptLifetimeSeconds": {
+      "receiptLifetimeMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -102484,7 +102554,7 @@ export const schemas = {
       "serverId",
       "viewerFence",
       "receipt",
-      "receiptLifetimeSeconds"
+      "receiptLifetimeMs"
     ],
     "type": "object"
   },
@@ -102870,15 +102940,17 @@ export const schemas = {
             },
             "viewing": {
               "properties": {
-                "positionSeconds": {
-                  "type": "number"
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "watched": {
                   "type": "boolean"
                 }
               },
               "required": [
-                "positionSeconds",
+                "positionMs",
                 "watched"
               ],
               "type": "object"
@@ -103218,15 +103290,17 @@ export const schemas = {
             },
             "viewing": {
               "properties": {
-                "positionSeconds": {
-                  "type": "number"
+                "positionMs": {
+                  "maximum": 9007199254740991,
+                  "minimum": 0,
+                  "type": "integer"
                 },
                 "watched": {
                   "type": "boolean"
                 }
               },
               "required": [
-                "positionSeconds",
+                "positionMs",
                 "watched"
               ],
               "type": "object"
@@ -104597,12 +104671,12 @@ export const schemas = {
           "logoImport": {
             "type": "boolean"
           },
-          "retryWindowSeconds": {
+          "retryWindowMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
           },
-          "streamBufferSeconds": {
+          "streamBufferMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
@@ -104613,8 +104687,8 @@ export const schemas = {
         },
         "required": [
           "importLimits",
-          "streamBufferSeconds",
-          "retryWindowSeconds",
+          "streamBufferMs",
+          "retryWindowMs",
           "userAgent",
           "guideDays",
           "logoImport",
@@ -104686,12 +104760,12 @@ export const schemas = {
               "logoImport": {
                 "type": "boolean"
               },
-              "retryWindowSeconds": {
+              "retryWindowMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "streamBufferSeconds": {
+              "streamBufferMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -104702,8 +104776,8 @@ export const schemas = {
             },
             "required": [
               "importLimits",
-              "streamBufferSeconds",
-              "retryWindowSeconds",
+              "streamBufferMs",
+              "retryWindowMs",
               "userAgent",
               "guideDays",
               "logoImport",
@@ -104889,13 +104963,13 @@ export const schemas = {
             ],
             "type": "object"
           },
-          "retryWindowSeconds": {
+          "retryWindowMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "nullable": true,
             "type": "integer"
           },
-          "streamBufferSeconds": {
+          "streamBufferMs": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "nullable": true,
@@ -104909,8 +104983,8 @@ export const schemas = {
           "enabledGroups",
           "enabledChannels",
           "kind",
-          "streamBufferSeconds",
-          "retryWindowSeconds",
+          "streamBufferMs",
+          "retryWindowMs",
           "userAgent",
           "filters",
           "logoImport",
@@ -104982,12 +105056,12 @@ export const schemas = {
               "logoImport": {
                 "type": "boolean"
               },
-              "retryWindowSeconds": {
+              "retryWindowMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
-              "streamBufferSeconds": {
+              "streamBufferMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -104998,8 +105072,8 @@ export const schemas = {
             },
             "required": [
               "importLimits",
-              "streamBufferSeconds",
-              "retryWindowSeconds",
+              "streamBufferMs",
+              "retryWindowMs",
               "userAgent",
               "guideDays",
               "logoImport",
@@ -105160,13 +105234,13 @@ export const schemas = {
                 ],
                 "type": "object"
               },
-              "retryWindowSeconds": {
+              "retryWindowMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "nullable": true,
                 "type": "integer"
               },
-              "streamBufferSeconds": {
+              "streamBufferMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "nullable": true,
@@ -105180,8 +105254,8 @@ export const schemas = {
               "enabledGroups",
               "enabledChannels",
               "kind",
-              "streamBufferSeconds",
-              "retryWindowSeconds",
+              "streamBufferMs",
+              "retryWindowMs",
               "userAgent",
               "filters",
               "logoImport",
@@ -108892,7 +108966,7 @@ export const schemas = {
   },
   "SocialPostV1GroupsIdInvitesRequest": {
     "properties": {
-      "expiresInSeconds": {
+      "expiresInMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -108911,7 +108985,7 @@ export const schemas = {
     },
     "required": [
       "protocolVersion",
-      "expiresInSeconds",
+      "expiresInMs",
       "maxUses",
       "recipientProfileId"
     ],
@@ -113272,7 +113346,7 @@ export const schemas = {
               "autoplay": {
                 "type": "boolean"
               },
-              "countdownSeconds": {
+              "countdownMs": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
@@ -113286,7 +113360,7 @@ export const schemas = {
             },
             "required": [
               "autoplay",
-              "countdownSeconds",
+              "countdownMs",
               "passoutCheckDue",
               "automaticAdvances",
               "startDuringCredits"

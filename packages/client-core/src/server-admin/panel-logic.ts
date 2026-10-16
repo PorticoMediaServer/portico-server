@@ -122,8 +122,8 @@ export function normalizeHdHomerunLocator(input: string): string {
   return 'http://' + trimmed;
 }
 /** CD-49: a guide-only source has nothing to stream: its guide pointer and streaming override are cleared. */
-export function guideOnlyPatch(kind: string): {kind: string; guideSourceId?: string; streamBufferSeconds?: null} {
-  if (kind === 'xmltv-guide') return {kind, guideSourceId: '', streamBufferSeconds: null};
+export function guideOnlyPatch(kind: string): {kind: string; guideSourceId?: string; streamBufferMs?: null} {
+  if (kind === 'xmltv-guide') return {kind, guideSourceId: '', streamBufferMs: null};
   return {kind};
 }
 /** CD-15: regeneration sends the published boundary unchanged, fenced on the current revision. */

@@ -1024,7 +1024,7 @@ func TestSocialReceiverInboxWait(t *testing.T) {
 	// Nothing waiting: the read is held for the wait it names, then answers empty.
 	started := time.Now()
 	var inbox social.ReceiverInbox
-	f.decode(f.as(f.token, "GET", path+"?waitSeconds=1", nil), 200, &inbox)
+	f.decode(f.as(f.token, "GET", path+"?waitMs=1000", nil), 200, &inbox)
 	if held := time.Since(started); held < 900*time.Millisecond || held > 5*time.Second {
 		t.Fatalf("an empty inbox was held for %s, not about a second", held)
 	}
@@ -1033,17 +1033,17 @@ func TestSocialReceiverInboxWait(t *testing.T) {
 	}
 	// A wait of nothing is the plain read.
 	started = time.Now()
-	f.decode(f.as(f.token, "GET", path+"?waitSeconds=0", nil), 200, &inbox)
+	f.decode(f.as(f.token, "GET", path+"?waitMs=0", nil), 200, &inbox)
 	if held := time.Since(started); held > 2*time.Second {
-		t.Fatalf("waitSeconds=0 was held for %s", held)
+		t.Fatalf("waitMs=0 was held for %s", held)
 	}
-	for _, bad := range []string{"-1", "56", "soon"} {
-		if w := f.as(f.token, "GET", path+"?waitSeconds="+bad, nil); w.Code != 400 || errorCode(t, w) != "invalid_request" {
-			t.Fatalf("waitSeconds=%s answered %d %s", bad, w.Code, w.Body.String())
+	for _, bad := range []string{"-1", "55001", "soon"} {
+		if w := f.as(f.token, "GET", path+"?waitMs="+bad, nil); w.Code != 400 || errorCode(t, w) != "invalid_request" {
+			t.Fatalf("waitMs=%s answered %d %s", bad, w.Code, w.Body.String())
 		}
 	}
 	// Another viewer cannot wait on this receiver.
-	if w := f.as(f.member, "GET", path+"?waitSeconds=1", nil); w.Code != 404 {
+	if w := f.as(f.member, "GET", path+"?waitMs=1000", nil); w.Code != 404 {
 		t.Fatalf("another viewer waited on this receiver's inbox: %d", w.Code)
 	}
 
@@ -1056,7 +1056,7 @@ func TestSocialReceiverInboxWait(t *testing.T) {
 	done := make(chan answer, 1)
 	go func() {
 		begun := time.Now()
-		w := f.as(f.token, "GET", path+"?waitSeconds=20", nil)
+		w := f.as(f.token, "GET", path+"?waitMs=20000", nil)
 		var got social.ReceiverInbox
 		_ = json.Unmarshal(w.Body.Bytes(), &got)
 		done <- answer{got, w.Code, time.Since(begun)}
@@ -1078,7 +1078,7 @@ func TestSocialReceiverInboxWait(t *testing.T) {
 
 	// Something already waiting answers at once, however long the wait asked for.
 	started = time.Now()
-	f.decode(f.as(f.token, "GET", path+"?waitSeconds=20", nil), 200, &inbox)
+	f.decode(f.as(f.token, "GET", path+"?waitMs=20000", nil), 200, &inbox)
 	if held := time.Since(started); held > 2*time.Second || len(inbox.Grants) != 1 {
 		t.Fatalf("a waiting grant was held back for %s: %+v", held, inbox)
 	}

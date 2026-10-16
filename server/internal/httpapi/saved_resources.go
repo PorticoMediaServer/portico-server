@@ -169,7 +169,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 					keep = append(keep, id)
 				}
 				if len(keep) == 0 && len(m.RemoveEntryIDs) == 0 {
-					write(w, 200, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "receipt": catalog.SavedResourceReceipt{OperationID: m.OperationID, ResourceID: r.PathValue("id"), Entries: &catalog.EntryOutcomes{Added: []string{}, Removed: []string{}, Unchanged: []string{}, Failed: rejected}}, "receiptLifetimeSeconds": 2592000})
+					write(w, 200, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "receipt": catalog.SavedResourceReceipt{OperationID: m.OperationID, ResourceID: r.PathValue("id"), Entries: &catalog.EntryOutcomes{Added: []string{}, Removed: []string{}, Unchanged: []string{}, Failed: rejected}}, "receiptLifetimeMs": 2592000000})
 					return
 				}
 				m.AddItemIDs = keep
@@ -216,7 +216,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 				failure(w, e)
 				return
 			}
-			d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "receipt": out, "current": map[string]any{"resourceId": out.ResourceID, "revision": revision, "deleted": dead}, "receiptLifetimeSeconds": 2592000})
+			d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "receipt": out, "current": map[string]any{"resourceId": out.ResourceID, "revision": revision, "deleted": dead}, "receiptLifetimeMs": 2592000000})
 		})
 	}
 	d.httpHandle(mux, "PUT /v1/saved-pins/{kind}/{id}", func(w http.ResponseWriter, r *http.Request) {
@@ -254,7 +254,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "operationId": out.OperationID, "clearedNotInterested": out.ClearedNotInterested, "receiptLifetimeSeconds": 2592000})
+		d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "operationId": out.OperationID, "clearedNotInterested": out.ClearedNotInterested, "receiptLifetimeMs": 2592000000})
 	})
 	d.httpHandle(mux, "POST /v1/personal-history/actions", func(w http.ResponseWriter, r *http.Request) {
 		p, _, fence, e := d.homeScope(r)
@@ -272,7 +272,7 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "receipt": out, "receiptLifetimeSeconds": 2592000})
+		d.savedResponse(w, r, fence, map[string]any{"serverId": d.Identity.ID(), "viewerFence": fence, "receipt": out, "receiptLifetimeMs": 2592000000})
 	})
 }
 

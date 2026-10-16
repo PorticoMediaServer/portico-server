@@ -22,20 +22,20 @@ import (
 // stored only as a digest.
 //
 // The address is good for as long as it is used or renewed, and for GrantIdle
-// after the last of either. RenewAfterSeconds tells a client when to renew a
+// after the last of either. RenewAfterMs tells a client when to renew a
 // transfer that is still unfinished; renewing keeps the same address, which is
 // what lets a phone's own downloader pick a paused transfer up again hours
 // later without the app having to restart it.
 type Grant struct {
-	PreparationID     string   `json:"preparationId"`
-	ItemID            string   `json:"itemId"`
-	URL               string   `json:"url"`
-	Token             string   `json:"token"`
-	IssuedAt          string   `json:"issuedAt"`
-	ExpiresAt         string   `json:"expiresAt"`
-	RenewAfterSeconds int      `json:"renewAfterSeconds"`
-	Renewed           bool     `json:"renewed"`
-	Artifact          Artifact `json:"artifact"`
+	PreparationID string   `json:"preparationId"`
+	ItemID        string   `json:"itemId"`
+	URL           string   `json:"url"`
+	Token         string   `json:"token"`
+	IssuedAt      string   `json:"issuedAt"`
+	ExpiresAt     string   `json:"expiresAt"`
+	RenewAfterMs  int64    `json:"renewAfterMs"`
+	Renewed       bool     `json:"renewed"`
+	Artifact      Artifact `json:"artifact"`
 }
 
 // GrantRequest asks for a transfer address. Renew names the token of an
@@ -207,7 +207,7 @@ func (s *Service) IssueGrant(ctx context.Context, p identity.Principal, id strin
 			return out, e
 		}
 	}
-	out = Grant{PreparationID: id, ItemID: current.ItemID, URL: s.grantPath + token, Token: token, IssuedAt: stamp(issued), ExpiresAt: stamp(expires), RenewAfterSeconds: int(GrantIdle / time.Second / 4), Renewed: renewed, Artifact: current.Artifact}
+	out = Grant{PreparationID: id, ItemID: current.ItemID, URL: s.grantPath + token, Token: token, IssuedAt: stamp(issued), ExpiresAt: stamp(expires), RenewAfterMs: GrantIdle.Milliseconds() / 4, Renewed: renewed, Artifact: current.Artifact}
 	if e = operations.SaveReceipt(tx, scope, r.OperationID, digest, out, now); e != nil {
 		return out, e
 	}

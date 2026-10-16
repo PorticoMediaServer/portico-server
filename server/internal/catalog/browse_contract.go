@@ -416,13 +416,13 @@ type BrowseQuickFilter struct {
 	Query    *BrowseNode `json:"query"`
 }
 type BrowseQueryLimits struct {
-	MaximumDepth     int `json:"maximumDepth"`
-	MaximumClauses   int `json:"maximumClauses"`
-	MaximumBytes     int `json:"maximumBytes"`
-	MaximumSorts     int `json:"maximumSorts"`
-	DefaultLimit     int `json:"defaultLimit"`
-	MaximumLimit     int `json:"maximumLimit"`
-	CursorTTLSeconds int `json:"cursorTtlSeconds"`
+	MaximumDepth   int `json:"maximumDepth"`
+	MaximumClauses int `json:"maximumClauses"`
+	MaximumBytes   int `json:"maximumBytes"`
+	MaximumSorts   int `json:"maximumSorts"`
+	DefaultLimit   int `json:"defaultLimit"`
+	MaximumLimit   int `json:"maximumLimit"`
+	CursorTTLMs    int `json:"cursorTtlMs"`
 }
 type BrowseSurfaceCapability struct {
 	ID              string   `json:"id"`
@@ -462,7 +462,7 @@ func BrowseQuickFilters() []BrowseQuickFilter {
 }
 
 func browseQueryLimits() BrowseQueryLimits {
-	return BrowseQueryLimits{MaximumDepth: BrowseMaximumDepth, MaximumClauses: BrowseMaximumClauses, MaximumBytes: BrowseMaximumBytes, MaximumSorts: BrowseMaximumSorts, DefaultLimit: BrowseDefaultLimit, MaximumLimit: BrowseMaximumLimit, CursorTTLSeconds: BrowseCursorTTLSecond}
+	return BrowseQueryLimits{MaximumDepth: BrowseMaximumDepth, MaximumClauses: BrowseMaximumClauses, MaximumBytes: BrowseMaximumBytes, MaximumSorts: BrowseMaximumSorts, DefaultLimit: BrowseDefaultLimit, MaximumLimit: BrowseMaximumLimit, CursorTTLMs: BrowseCursorTTLSecond * 1000}
 }
 
 // BrowseCapabilitiesFor publishes the vocabulary for one library, narrowed to a

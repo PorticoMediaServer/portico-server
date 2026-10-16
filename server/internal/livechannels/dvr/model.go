@@ -50,15 +50,15 @@ func recordID(o livechannels.Owner, source, programme string) string {
 type DurableAuthority func(context.Context, *sql.Tx, livechannels.Owner, string, string) error
 
 type Options struct {
-	BeforeSeconds int `json:"beforeSeconds"`
-	AfterSeconds  int `json:"afterSeconds"`
+	BeforeMs      int `json:"beforeMs"`
+	AfterMs       int `json:"afterMs"`
 	Priority      int `json:"priority"`
 	RetentionDays int `json:"retentionDays"` // zero = keep until manually deleted
 	EpisodeLimit  int `json:"episodeLimit"`  // zero = unlimited; Keep is always exempt
 }
 
 func (o Options) Valid() bool {
-	return o.BeforeSeconds >= 0 && o.BeforeSeconds <= 21600 && o.AfterSeconds >= 0 && o.AfterSeconds <= 21600 && o.Priority >= -1000 && o.Priority <= 1000 && o.RetentionDays >= 0 && o.RetentionDays <= 3650 && o.EpisodeLimit >= 0 && o.EpisodeLimit <= 100000
+	return o.BeforeMs >= 0 && o.BeforeMs <= 21600000 && o.AfterMs >= 0 && o.AfterMs <= 21600000 && o.Priority >= -1000 && o.Priority <= 1000 && o.RetentionDays >= 0 && o.RetentionDays <= 3650 && o.EpisodeLimit >= 0 && o.EpisodeLimit <= 100000
 }
 
 type Occurrence struct {
@@ -277,7 +277,7 @@ func padded(p livechannels.Programme, o Options) (time.Time, time.Time, error) {
 	if e != nil || !b.After(a) || b.Sub(a) > 7*24*time.Hour {
 		return time.Time{}, time.Time{}, ErrInvalid
 	}
-	return a.Add(-time.Duration(o.BeforeSeconds) * time.Second), b.Add(time.Duration(o.AfterSeconds) * time.Second), nil
+	return a.Add(-time.Duration(o.BeforeMs) * time.Millisecond), b.Add(time.Duration(o.AfterMs) * time.Millisecond), nil
 }
 
 type Page struct {

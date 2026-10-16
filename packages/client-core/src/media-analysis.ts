@@ -3,6 +3,7 @@ import type {RouteResponse} from "../../contracts/src/routes.ts";
 import type {LibraryContentApi, ContentScope} from './library-content.ts';
 import type {PlaybackSnapshot} from './index.ts';
 import {firstOfEach,keepReadable,oneOfOr} from './tolerant.ts';
+import {wireDurations} from './wire-units.ts';
 
 export const analysisOperations = ['checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection'] as const;
 export type AnalysisOperation = typeof analysisOperations[number];
@@ -43,7 +44,7 @@ export function parseAnalysis(raw:unknown,bound:ContentScope,t:AnalysisTarget):A
  assert(object(raw));const scope=checkedScope(raw.scope,bound,t),source=checkedSource(raw.source,t);
  assert(typeof raw.canManage==='boolean'&&integer(raw.markerRevision)&&raw.markerRevision>0&&object(raw.policy));const p=raw.policy;
  assert(text(p.tier,64)&&p.tier&&integer(p.revision)&&p.revision>0);const operations=list(p.operations,32);assert(operations.every(x=>text(x,64)));
- const trickplay=p.trickplay===undefined?{intervalSeconds:0,tileWidth:0,maxTiles:0}:p.trickplay;
+ const trickplay:unknown=p.trickplay===undefined?{intervalSeconds:0,tileWidth:0,maxTiles:0}:wireDurations(p.trickplay,{intervalSeconds:'intervalMs'});
  assert(object(trickplay)&&integer(trickplay.intervalSeconds)&&integer(trickplay.tileWidth)&&integer(trickplay.maxTiles));
  assert(trickplay.intervalSeconds<=600&&trickplay.tileWidth<=640&&trickplay.maxTiles<=20000);
  // A tier this app does not know reads as custom: the operations the server lists are what it shows.

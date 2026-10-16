@@ -17,7 +17,7 @@ class Engine {
  pause=()=>{this.pauses++;this.update({intent:'paused'});};
  update(patch:unknown){this.state={...this.state,...patch as any};for(const f of this.listeners)f();}
 }
-function chapterData(){return {scope:{serverId:'server',libraryId:'library',itemId:'song',sessionId:'session',generation:1,sourceId:'source',viewerFence:'fence'},revision:'revision',status:'available',reason:null,duration:60,chapters:[{id:'source:1',index:1,title:'One',startSeconds:0,endSeconds:30,action:{id:'seek',positionSeconds:0}},{id:'source:2',index:2,title:'Two',startSeconds:30,endSeconds:60,action:{id:'seek',positionSeconds:30}}],totalCount:2,nextCursor:''};}
+function chapterData(){return {scope:{serverId:'server',libraryId:'library',itemId:'song',sessionId:'session',generation:1,sourceId:'source',viewerFence:'fence'},revision:'revision',status:'available',reason:null,durationMs:60000,chapters:[{id:'source:1',index:1,title:'One',startMs:0,endMs:30000,action:{id:'seek',positionMs:0}},{id:'source:2',index:2,title:'Two',startMs:30000,endMs:60000,action:{id:'seek',positionMs:30000}}],totalCount:2,nextCursor:''};}
 function setup(options:{preferences?:Partial<typeof prefs>;context?:(id:string)=>unknown;request?:ListeningRequest}={}) {
  const engine=new Engine();let now=0,p={...prefs,...options.preferences};const writes:unknown[]=[];
  const request:ListeningRequest=options.request??(async(path,body,method)=>{

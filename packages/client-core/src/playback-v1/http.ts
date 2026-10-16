@@ -43,13 +43,13 @@ export function header(r: V1Response, name: string): string | undefined {
   return undefined;
 }
 
-function retryAfter(r: V1Response, body: {retryAfterSeconds?: unknown} | undefined): number | undefined {
+function retryAfter(r: V1Response, body: {retryAfterMs?: unknown} | undefined): number | undefined {
   const h = header(r, 'Retry-After')?.trim();
   if (h && /^\d+$/.test(h)) return Number(h) * 1000;
   // The other legal form (RFC 9110) is an HTTP-date; a proxy in front of the server may answer with one.
   const at = h ? Date.parse(h) : NaN;
   if (Number.isFinite(at) && at > Date.now()) return Math.ceil((at - Date.now()) / 1000) * 1000;
-  return typeof body?.retryAfterSeconds === 'number' ? body.retryAfterSeconds * 1000 : undefined;
+  return typeof body?.retryAfterMs === 'number' && Number.isSafeInteger(body.retryAfterMs) && body.retryAfterMs > 0 ? body.retryAfterMs : undefined;
 }
 
 const defaultRetry = (status: number): RetryClass => (status === 412 || status === 409 ? 'after_refresh' : status === 401 ? 'after_reauth' : status >= 500 || status === 429 ? 'same_request' : 'never');
@@ -59,7 +59,7 @@ export async function call(http: V1Http, request: V1Request, ok?: readonly numbe
   const r = await http.send(request);
   const good = ok ? ok.includes(r.status) : r.status >= 200 && r.status < 300;
   if (good) return r;
-  const e = (r.body as {error?: {code?: unknown; retry?: unknown; current?: unknown; retryAfterSeconds?: unknown; reason?: unknown}} | undefined)?.error;
+  const e = (r.body as {error?: {code?: unknown; retry?: unknown; current?: unknown; retryAfterMs?: unknown; reason?: unknown}} | undefined)?.error;
   const code = typeof e?.code === 'string' ? e.code : r.status === 404 ? 'not_found' : 'request_failed';
   const retry = (['never', 'same_request', 'after_refresh', 'after_reauth'] as const).includes(e?.retry as RetryClass) ? e!.retry as RetryClass : defaultRetry(r.status);
   const reason = typeof e?.reason === 'string' && e.reason.length <= 128 ? e.reason : undefined;

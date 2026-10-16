@@ -7,10 +7,10 @@ const usageDoc={profileId:'profile',profileBytes:0,profileCount:0,serverBytes:0,
 const preparation=(over:Record<string,unknown>={}):any=>({
  id:'prep',itemId:'item',libraryId:'lib',profileId:'profile',quality:'1080p',origin:'item',title:{kind:'movie',title:'Film',onServer:true},batchId:'batch',state:'ready',reason:'',
  artifact:{kind:'prepared',ref:'version',sha256:sha,bytes:4096,estimated:false,container:'mp4',contentType:'video/mp4',fileName:'prep.mp4'},
- progress:{bytesDone:4096,bytesTotal:4096,bytesTotalEstimated:false,percent:100,etaSeconds:null},
+ progress:{bytesDone:4096,bytesTotal:4096,bytesTotalEstimated:false,percent:100,etaMs:null},
  actions:['remove'],revision:3,createdAt:'2026-09-16T10:00:00Z',updatedAt:'2026-09-16T10:05:00Z',readyAt:'2026-09-16T10:05:00Z',expiresAt:'2026-10-16T10:05:00Z',...over});
-const running=()=>preparation({id:'busy',state:'running',artifact:{kind:'',ref:'',sha256:'',bytes:0,estimated:true,container:'',contentType:'',fileName:''},progress:{bytesDone:100,bytesTotal:1000,bytesTotalEstimated:true,percent:10,etaSeconds:60},actions:['pause','cancel'],readyAt:'',expiresAt:''});
-const grantDoc={preparationId:'prep',itemId:'item',url:'/v1/downloads/artifacts/tok-1',token:'tok-1',issuedAt:'2026-09-17T00:00:00Z',expiresAt:'2026-09-17T00:10:00Z',renewAfterSeconds:600,renewed:false,artifact:{kind:'prepared',ref:'version',sha256:sha,bytes:4096,estimated:false,container:'mp4',contentType:'video/mp4',fileName:'prep.mp4'}};
+const running=()=>preparation({id:'busy',state:'running',artifact:{kind:'',ref:'',sha256:'',bytes:0,estimated:true,container:'',contentType:'',fileName:''},progress:{bytesDone:100,bytesTotal:1000,bytesTotalEstimated:true,percent:10,etaMs:60000},actions:['pause','cancel'],readyAt:'',expiresAt:''});
+const grantDoc={preparationId:'prep',itemId:'item',url:'/v1/downloads/artifacts/tok-1',token:'tok-1',issuedAt:'2026-09-17T00:00:00Z',expiresAt:'2026-09-17T00:10:00Z',renewAfterMs:600000,renewed:false,artifact:{kind:'prepared',ref:'version',sha256:sha,bytes:4096,estimated:false,container:'mp4',contentType:'video/mp4',fileName:'prep.mp4'}};
 
 function server(items:any[]){
  const calls:{path:string;method:string;body?:any}[]=[];let fail:any;

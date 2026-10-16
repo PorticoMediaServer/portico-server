@@ -1,6 +1,6 @@
 /**
  * X-02: the viewer's music preferences are what the audio engine renders with. The server
- * publishes them per profile (`music.gapless`, `music.crossfadeSeconds`, `music.audioNormalization`,
+ * publishes them per profile (`music.gapless`, `music.crossfadeMs`, `music.audioNormalization`,
  * scope profile-server); `PlaybackService.adoptAudioEffectsPreference` applies them, and the device's
  * cached copy (the queue journal) is only used until the server has answered, or offline.
  */
@@ -14,9 +14,9 @@ export function musicAudioEffects(snapshot:PreferenceSnapshot):AudioEffectsSetti
   try{const v=preferenceValue(snapshot,key);return valid(v)?v as T:fallback;}catch{return fallback;}
  };
  const gapless=read('music.gapless',defaultAudioEffects.gapless,v=>typeof v==='boolean');
- const crossfade=read('music.crossfadeSeconds',defaultAudioEffects.crossfadeSeconds,v=>typeof v==='number'&&Number.isFinite(v));
+ const crossfadeMs=read('music.crossfadeMs',defaultAudioEffects.crossfadeSeconds*1000,v=>typeof v==='number'&&Number.isFinite(v));
  const normalization=read<AudioEffectsSettings['normalization']>('music.audioNormalization',defaultAudioEffects.normalization,v=>v==='off'||v==='track'||v==='album');
- return Object.freeze({gapless,crossfadeSeconds:Math.min(12,Math.max(0,Math.round(crossfade))),normalization});
+ return Object.freeze({gapless,crossfadeSeconds:Math.min(12,Math.max(0,Math.round(crossfadeMs/1000))),normalization});
 }
 
 /** Whether this device can render effects for what's playing now: undefined when nothing tells

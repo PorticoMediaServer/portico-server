@@ -2,6 +2,7 @@ import {routeBody} from "../../contracts/src/routes.ts";
 import {encodedRoutePath, routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';
+import {wireDurations} from './wire-units.ts';
 import type { ContentScope, LibraryContentApi } from './library-content.ts';
 export type LyricLine = Readonly<{
     atMs: number | null;
@@ -132,7 +133,7 @@ function revision(v: unknown, content = false): LyricRevision {
         invalid();
     return Object.freeze({ ...v, provenance: provenance(v.provenance), ...(d ? { document: d } : {}) }) as LyricRevision;
 }
-function source(v: unknown): LyricSource { if (!obj(v) || !id(v.id) || !hash(v.version) || !seconds(v.startSeconds) || !seconds(v.duration) || !seconds(v.sourceDuration) || v.duration <= 0 || v.sourceDuration <= 0 || v.startSeconds + v.duration > v.sourceDuration + .1 || typeof v.local !== 'boolean')
+function source(wire: unknown): LyricSource { const v: unknown = wireDurations(wire, {startSeconds: 'startMs', duration: 'durationMs', sourceDuration: 'sourceDurationMs'}); if (!obj(v) || !id(v.id) || !hash(v.version) || !seconds(v.startSeconds) || !seconds(v.duration) || !seconds(v.sourceDuration) || v.duration <= 0 || v.sourceDuration <= 0 || v.startSeconds + v.duration > v.sourceDuration + .1 || typeof v.local !== 'boolean')
     invalid(); return Object.freeze(v) as LyricSource; }
 export function parseLyricsView(raw: unknown, scope: ContentScope, target: LyricsTarget): LyricsView {
     if (!obj(raw) || !obj(raw.scope) || raw.scope.serverId !== scope.serverId || raw.scope.itemId !== target.itemId || raw.scope.libraryId !== target.libraryId || !hash(raw.scope.viewerFence) || raw.scope.sessionId !== (target.sessionId ?? '') || raw.scope.sessionGeneration !== (target.sessionGeneration ?? 0) || !Array.isArray(raw.sources) || raw.sources.length > 32 || !Array.isArray(raw.resources) || raw.resources.length > 64 || typeof raw.canShare !== 'boolean' || !obj(raw.selection) || !integer(raw.selection.revision) || !obj(raw.providers) || typeof raw.providers.lrclib !== 'boolean' || typeof raw.providers.configured !== 'boolean' || !integer(raw.providers.revision))

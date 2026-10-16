@@ -10,7 +10,7 @@ function entry(id = 'm1', kind = 'movie') {
 function row(changes: Record<string, unknown> = {}): any {
   return {
     id: 'recent_movies', title: 'Recently Added in Movies', kind: 'recent', artworkShape: 'poster', endpoint: '/v1/home/rows/recent_movies',
-    libraryId: 'movies', viewerFence: 'fence', privacySensitivity: 'catalog', policyState: 'available', priority: 100, cacheTtlSeconds: 120,
+    libraryId: 'movies', viewerFence: 'fence', privacySensitivity: 'catalog', policyState: 'available', priority: 100, cacheTtlMs: 120000,
     required: false, hideable: true, reorderable: true, critical: false, cursorCapable: true,
     entries: [entry('m1'), entry('m2')], total: 5, start: 0, limit: 2, hasMore: true, nextCursor: 'opaque.signature',
     revision: {catalog: 3, viewer: 1}, ...changes,
@@ -87,7 +87,7 @@ test('one Home row that cannot be read is left out and the others are kept', () 
 
 test('a Home row reads neutrally where it is only drawn, and ignores fields this app does not know', () => {
   const parsed = validateHomeRow(row({
-    artworkShape: 'circle', required: true, hideable: true, critical: 'yes', priority: 'high', cacheTtlSeconds: undefined, limit: -1,
+    artworkShape: 'circle', required: true, hideable: true, critical: 'yes', priority: 'high', cacheTtlMs: undefined, limit: -1,
     entries: [entry('m1'), entry('m1'), {id: 'broken'}, entry('m2')], total: 1, titleText: {code: 1}, relation: 7, futureField: {anything: true},
   }));
   assert.equal(parsed.artworkShape, 'poster');
@@ -96,13 +96,13 @@ test('a Home row reads neutrally where it is only drawn, and ignores fields this
   assert.equal(parsed.critical, false);
   assert.equal(parsed.priority, 0);
   assert.equal(parsed.limit, 0);
-  assert.equal(parsed.cacheTtlSeconds, undefined);
+  assert.equal(parsed.cacheTtlMs, undefined);
   assert.deepEqual(parsed.entries.map(e => e.id), ['m1', 'm2']);
   assert.equal(parsed.total, 2, 'the total is at least the entries kept');
   assert.equal(parsed.titleText, undefined);
   assert.equal(parsed.relation, undefined);
   assert.equal('futureField' in parsed, false);
-  assert.equal(validateHomeRow(row()).cacheTtlSeconds, 120);
+  assert.equal(validateHomeRow(row()).cacheTtlMs, 120000);
   // A server that stops sending the presentation fields still has its row shown.
   const bare = validateHomeRow({id: 'bare', viewerFence: 'fence', entries: [entry('m1')], revision: {catalog: 1, viewer: 1}});
   assert.deepEqual([bare.title, bare.kind, bare.artworkShape, bare.nextCursor, bare.total, bare.hasMore], ['', '', 'poster', '', 1, false]);
@@ -164,7 +164,7 @@ test('suggestions carry a reason, a source and a bounded score', () => {
 });
 
 test('per-item recommendation rows must be explained and must exclude their own item', async () => {
-  const related = row({id: 'genre:tmdb:16', title: 'More Animation', kind: 'related', relation: 'genre', provider: 'tmdb', evidenceId: '16', entries: [entry('m2')], total: 1, limit: 1, hasMore: false, nextCursor: '', cursorCapable: false, reorderable: false, priority: 0, cacheTtlSeconds: 300, endpoint: '/v1/items/m1/recommendations'});
+  const related = row({id: 'genre:tmdb:16', title: 'More Animation', kind: 'related', relation: 'genre', provider: 'tmdb', evidenceId: '16', entries: [entry('m2')], total: 1, limit: 1, hasMore: false, nextCursor: '', cursorCapable: false, reorderable: false, priority: 0, cacheTtlMs: 300000, endpoint: '/v1/items/m1/recommendations'});
   const parsed = validateItemRecommendations({itemId: 'm1', rows: [related], revision: {catalog: 3, viewer: 1}}, 'm1');
   assert.equal(parsed.rows[0].relation, 'genre');
   // The title itself is never one of its own recommendations: that entry is left out, and a row with nothing left is not shown.
@@ -229,7 +229,7 @@ test('CD-31/CD-32: Home stays bounded at 64 rows and 64 layout IDs including DVR
 });
 
 test('a movie\'s More like this row is the similar-titles row under the catalogue heading, else the first row', () => {
-  const base = {kind: 'related', provider: 'local', total: 1, limit: 12, hasMore: false, nextCursor: '', cursorCapable: false, reorderable: false, priority: 0, cacheTtlSeconds: 300, endpoint: '/v1/items/m1/recommendations'};
+  const base = {kind: 'related', provider: 'local', total: 1, limit: 12, hasMore: false, nextCursor: '', cursorCapable: false, reorderable: false, priority: 0, cacheTtlMs: 300000, endpoint: '/v1/items/m1/recommendations'};
   const genre = row({...base, id: 'genre:tmdb:16', title: 'More Animation', relation: 'genre', evidenceId: '16', entries: [entry('m2')]});
   const similar = row({...base, id: 'because_you_watched:local:m1', title: 'Because you watched Title m1', relation: 'because_you_watched', evidenceId: 'm1', entries: [entry('m3')]});
   const parsed = (rows: any[]) => validateItemRecommendations({itemId: 'm1', rows, revision: {catalog: 3, viewer: 1}}, 'm1');

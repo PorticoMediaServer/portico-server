@@ -24,7 +24,7 @@ const capabilities = {
     {id: 'hd', labelKey: 'filter.hd', query: {field: 'resolution', operator: 'equals', value: 'hd'}},
     {id: 'uhd', labelKey: 'filter.uhd', query: {field: 'resolution', operator: 'equals', value: 'uhd'}},
   ],
-  queryLimits: {maximumDepth: 4, maximumClauses: 20, maximumBytes: 8192, maximumSorts: 2, defaultLimit: 60, maximumLimit: 200, cursorTtlSeconds: 600},
+  queryLimits: {maximumDepth: 4, maximumClauses: 20, maximumBytes: 8192, maximumSorts: 2, defaultLimit: 60, maximumLimit: 200, cursorTtlMs: 600000},
 } as unknown as BrowseCapabilities;
 
 export function BrowseLab() {
