@@ -166,6 +166,19 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 	dbwork.WriteGate().ResetPeak()
 	var stepUnits int
 	var stepMillis []float64
+	domainUnits, domainHeld := map[int]int{}, map[int]time.Duration{}
+	domainSummary := func() string {
+		keys := make([]int, 0, len(domainUnits))
+		for d := range domainUnits {
+			keys = append(keys, d)
+		}
+		sort.Ints(keys)
+		parts := make([]string, 0, len(keys))
+		for _, d := range keys {
+			parts = append(parts, fmt.Sprintf("%d:%d/%.1fs", d, domainUnits[d], domainHeld[d].Seconds()))
+		}
+		return strings.Join(parts, ",")
+	}
 	lastUnits, lastLog := 0, time.Now()
 	for {
 		schedule.Tick(ctx)
@@ -177,6 +190,10 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 			fmt.Fprintf(os.Stderr, "SLOW_STEP %s ms=%d domain=%d units=%d held_ms=%d\n", name, since.Milliseconds(), domain, units, took.Milliseconds())
 		}
 		stepUnits += n
+		if domain, units, took := w.LastBatch(); err == nil && n > 0 {
+			domainUnits[domain] += units
+			domainHeld[domain] += took
+		}
 		if err != nil {
 			close(stop)
 			<-done
@@ -188,6 +205,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 			db.QueryRow(`SELECT count(*) FROM catalog_dirty`).Scan(&pending)
 			cache := dbwork.Reads().StatementCache
 			fmt.Fprintf(os.Stderr, "DRAIN %s elapsed=%s pending=%d units=%d units_per_s=%.1f rss_kb=%d gate_max_ms=%d cache_hits=%d misses=%d evictions=%d domains=%s\n", name, time.Since(start).Round(time.Second), pending, stepUnits, float64(stepUnits-lastUnits)/time.Since(lastLog).Seconds(), r.RSSKB, dbwork.WriteGate().Stats().MaxHeldMilli, cache.Hits, cache.Misses, cache.Evictions, pendingByDomain(db))
+			fmt.Fprintf(os.Stderr, "DRAIN_DOMAINS %s %s\n", name, domainSummary())
 			lastUnits, lastLog = stepUnits, time.Now()
 			logAt = time.Now()
 			if deriveBudget > 0 && time.Since(start) > deriveBudget {
@@ -219,6 +237,7 @@ func exerciseDrain(db *sql.DB, s *catalog.Service, name string, queries ...strin
 		at := func(q float64) float64 { return stepMillis[min(len(stepMillis)-1, int(q*float64(len(stepMillis))))] }
 		fmt.Fprintf(os.Stderr, "STEPS %s steps=%d units=%d p50_ms=%.2f p95_ms=%.2f p99_ms=%.2f max_ms=%.2f\n", name, len(stepMillis), stepUnits, at(.5), at(.95), at(.99), stepMillis[len(stepMillis)-1])
 	}
+	fmt.Fprintf(os.Stderr, "DERIVE_DOMAINS %s %s\n", name, domainSummary())
 	fmt.Fprintf(os.Stderr, "DERIVE %s probes=%d max_browse_search_ms=%.3f max_gate_held_ms=%d failed_probes=%d\n", name, probes, float64(maxRead)/float64(time.Millisecond), dbwork.WriteGate().Stats().MaxHeldMilli, failedProbes)
 	for i, entry := range dbwork.StatementProfile() {
 		if i == 40 {

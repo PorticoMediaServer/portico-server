@@ -19,3 +19,4 @@ server/server.exe
 *.p8
 *.p12
 *.key
+/server/scalebench

@@ -8,6 +8,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storage"
 	"testing"
 )
 
@@ -17,7 +18,9 @@ func TestDurableContinuationAndCancellation(t *testing.T) {
 	if e := os.Mkdir(media, 0700); e != nil {
 		t.Fatal(e)
 	}
-	for i := 0; i < 40; i++ {
+	// Folders are listed and checked a batch to a step: this many take more
+	// than the 32 steps of one process call and fewer than two calls' worth.
+	for i := 0; i < 20*storage.MaxInventoryBatch; i++ {
 		if e := os.Mkdir(filepath.Join(media, fmt.Sprint(i)), 0700); e != nil {
 			t.Fatal(e)
 		}

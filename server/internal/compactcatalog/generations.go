@@ -80,6 +80,6 @@ func beginGeneration(ctx context.Context, tx *sql.Tx) error {
 }
 
 func finishGeneration(ctx context.Context, tx *sql.Tx) error {
-	_, err := tx.ExecContext(ctx, `UPDATE catalog_generations SET retaining=0 WHERE singleton=1 AND retaining=1 AND NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE rebuilding=1) AND NOT EXISTS(SELECT 1 FROM catalog_dirty d WHERE domain IN(18,19,20,25,26,28) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures f WHERE f.domain=d.domain AND f.entity_id=d.entity_id))`)
+	_, err := tx.ExecContext(ctx, `UPDATE catalog_generations SET retaining=0 WHERE singleton=1 AND retaining=1 AND NOT EXISTS(SELECT 1 FROM catalog_derivations WHERE rebuilding=1) AND NOT EXISTS(SELECT 1 FROM catalog_dirty d WHERE domain IN(18,19,20,25,26,28,35) AND NOT EXISTS(SELECT 1 FROM catalog_derivation_failures f WHERE f.domain=d.domain AND f.entity_id=d.entity_id))`)
 	return err
 }

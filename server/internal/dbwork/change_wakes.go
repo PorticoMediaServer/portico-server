@@ -19,11 +19,10 @@ func (s *changeSet) note(statement string) {
 	if s == nil {
 		return
 	}
-	text := strings.ToLower(strings.TrimSpace(statement))
 	// A CTE or multi-statement command may write several roots. Preserve safety
 	// by broadcasting whenever the bounded head parser cannot prove its scope.
-	unknown := strings.HasPrefix(text, "with ") || strings.Contains(strings.TrimSuffix(text, ";"), ";")
-	table, ok := writtenTable(text)
+	head := headOf(statement)
+	unknown, table, ok := head.unknown, head.table, head.named
 	if !ok && !unknown {
 		return
 	}

@@ -46,6 +46,7 @@ type request struct {
 	Argv                   []string              `json:"argv,omitempty"`
 	Watch                  *WatchRequest         `json:"watch,omitempty"`
 	Inventory              *InventoryRequest     `json:"inventory,omitempty"`
+	Inventories            []InventoryRequest    `json:"inventories,omitempty"`
 	LyricsRoot             string                `json:"lyricsRoot,omitempty"`
 	LyricsLanguage         string                `json:"lyricsLanguage,omitempty"`
 	LyricsProbeArgv        []string              `json:"lyricsProbeArgv,omitempty"`
@@ -201,6 +202,8 @@ func Helper(in io.Reader, out io.Writer) (result error) {
 			return errors.New("missing inventory request")
 		}
 		return inventoryAbsenceHelper(*r.Inventory, out)
+	case "inventory-pages", "inventory-directories":
+		return inventoryBatchHelper(r.Operation, r.Inventories, out)
 	case "inventory-directory":
 		if r.Inventory == nil {
 			return errors.New("missing inventory request")
