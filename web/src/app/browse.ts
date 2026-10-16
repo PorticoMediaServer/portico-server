@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
+import {createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {currentI18n} from './i18n';
 import {createWindowedCollection, type FetchPage, type WindowedCollection} from '@core/collections/index.ts';
 import {titlesWithPersonalState} from '@core/freshness-hub.ts';
@@ -104,15 +104,31 @@ export function useBrowseCollection(input: {libraryId?: string; pivot?: string; 
   return {collection, refresh};
 }
 
+/** The group a list across libraries is (its person, playlist, collection, Home row, My List, Favorites or history), so its filter choices count that list's own titles. */
+export const FacetGroupContext = createContext<Readonly<{group: string; value: string}> | undefined>(undefined);
+
+/** The group condition of a list across libraries, from the conditions it always applies. */
+export function facetGroupOf(base: readonly BrowseNode[]): Readonly<{group: string; value: string}> | undefined {
+  for (const node of base) {
+    if (!('field' in node)) continue;
+    if (['person', 'cast', 'crew', 'list', 'savedCollection', 'homeRow'].includes(node.field) && typeof node.value === 'string') return {group: node.field, value: node.value};
+    if (['watchlisted', 'favorite', 'lastPlayedAt'].includes(node.field)) return {group: node.field, value: ''};
+  }
+  return undefined;
+}
+
 export function useFacets(libraryId: string | undefined) {
   const {api} = useSession();
+  const facetGroup = useContext(FacetGroupContext);
+  const groupField = facetGroup?.group, groupValue = facetGroup?.value;
   return useCallback(async (field: string, q = ''): Promise<readonly BrowseFacetValue[]> => {
     if (!libraryId) return [];
     const params = new URLSearchParams({field, limit: '100'});
     if (q) params.set('q', q);
+    if (groupField && libraryId === acrossLibraries) { params.set('group', groupField); params.set('value', groupValue ?? ''); }
     const raw = await api.request<unknown>(`${browseFacetsPath(libraryId)}?${params}`, 'GET');
     return parseBrowseFacets(raw, field).values;
-  }, [api, libraryId]);
+  }, [api, libraryId, groupField, groupValue]);
 }
 
 /** URL form: a JSON array of predicates, bounded so a link stays a link. */
