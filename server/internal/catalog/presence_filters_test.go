@@ -120,6 +120,52 @@ func TestPresenceGenreAndTitleFiltersMatchTheTitleTest(t *testing.T) {
 	}
 }
 
+// A grouping of songs counts the songs a presence filter keeps.
+func TestGroupingPresenceFiltersCountTheirSongs(t *testing.T) {
+	c := catalogtest.Open(t)
+	music := c.Library("a", "Music", "music", "/a")
+	album := c.Album(c.Artist(music, "Artist"), "Album", 2001)
+	for s := 0; s < 4; s++ {
+		song := c.Song(album, s+1, fmt.Sprintf("/a/%d.flac", s), fmt.Sprintf("Song %d", s))
+		c.Genres(song.ID, "tags", []string{"Rock", "Jazz"}[s%2])
+		if s == 3 {
+			c.Exec(`DELETE FROM catalog_asset_links WHERE entity_id=?`, song.ID)
+		}
+	}
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: "p", Fence: "grouping", Libraries: []string{"a"}}
+	for _, tc := range []struct {
+		node BrowseNode
+		want string
+	}{
+		{BrowseNode{Field: "durationMs", Operator: "is-present"}, "[Jazz:1 Rock:2]"},
+		{BrowseNode{Field: "durationMs", Operator: "is-missing"}, "[Jazz:1]"},
+		{BrowseNode{Field: "versions", Operator: "is-present"}, "[Jazz:2 Rock:2]"},
+		{BrowseNode{Field: "versions", Operator: "is-missing"}, "[]"},
+		{BrowseNode{Field: "genre", Operator: "is-missing"}, "[]"},
+		{BrowseNode{Field: "title", Operator: "contains", Value: "song 2"}, "[Rock:1]"},
+	} {
+		node := tc.node
+		page, err := s.BrowseEntities(v, BrowseRequest{Library: "a", Pivot: "genres", Query: &node, Limit: 10})
+		if err != nil {
+			t.Fatalf("%+v: %v", node, err)
+		}
+		got := []string{}
+		for _, entry := range page.Entries {
+			n := 0
+			if entry.Count != nil {
+				n = *entry.Count
+			}
+			got = append(got, fmt.Sprintf("%s:%d", entry.Title, n))
+		}
+		sort.Strings(got)
+		if fmt.Sprint(got) != tc.want {
+			t.Fatalf("%s %s: %v, want %s", node.Field, node.Operator, got, tc.want)
+		}
+	}
+}
+
 // The counters behind "is missing" follow credits and file links as they
 // are written, moved and removed.
 func TestFactGapCountersFollowCreditsAndLinks(t *testing.T) {

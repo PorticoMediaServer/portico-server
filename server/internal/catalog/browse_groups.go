@@ -90,6 +90,7 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 		// candidate list is bounded by their kinds.
 		if lib, libErr := s.library(request.Library); libErr == nil {
 			compiler.kinds = facetHolderKinds[lib.Kind]
+			compiler.itemPivot = lib.Kind == "movie" || lib.Kind == "music" || lib.Kind == "audiobook"
 		}
 		clause, err := compiler.compile(request.Query)
 		if err != nil {
