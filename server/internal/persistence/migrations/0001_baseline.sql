@@ -4193,6 +4193,7 @@ CREATE INDEX quick_connect_expiry_v1 ON quick_connect_v1(expires_at);
 CREATE INDEX api_idempotency_expiry ON api_idempotency(expires_at);
 CREATE INDEX identity_refresh_predecessors_family ON identity_refresh_predecessors(family_id);
 CREATE INDEX identity_unknown_attempts_age ON identity_unknown_attempts(last_failure);
+CREATE INDEX identity_credential_attempts_age ON identity_credential_attempts(last_failure);
 CREATE INDEX authorization_families_retention ON authorization_session_families(revoked,authorization_horizon,id);
 CREATE INDEX authorization_families_horizon ON authorization_session_families(authorization_horizon,id);
 CREATE INDEX networking_mappings_expiry ON networking_mappings(expires_at);

@@ -294,6 +294,7 @@ index feedback_details_kind
 index hosted_identity_challenges_expiry
 index hosted_identity_nonces_expiry
 index identity_browser_accounts_recent
+index identity_credential_attempts_age
 index identity_device_families_device
 index identity_devices_account
 index identity_devices_recent
