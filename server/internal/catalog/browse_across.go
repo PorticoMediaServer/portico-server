@@ -612,9 +612,11 @@ func (s *Service) facetsInGroup(viewer Viewer, request FacetRequest, limit int) 
 	if request.Field == "decade" || request.Field == "year" {
 		where = `e.year BETWEEN 1800 AND 2199`
 	}
-	query := `SELECT ` + source.Value + ` AS facet_value,` + source.Label + ` AS facet_label,count(DISTINCT e.entity_id) AS facet_count FROM (
-	 SELECT r.entity_id,COALESCE(r.item_id,r.entity_id) AS item_id,r.year FROM (` + members + `) m CROSS JOIN catalog_browse_rows r ON r.entity_id=m.id
-	 JOIN catalog_libraries l ON l.id=r.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE ` + restriction + `) e ` + source.Join + ` WHERE ` + where + `
+	// The list's rows are read by key on their own (the serving rows are two
+	// generations, read whole inside a join), then their values counted.
+	query := `WITH e AS MATERIALIZED (SELECT r.entity_id,COALESCE(r.item_id,r.entity_id) AS item_id,r.year FROM catalog_browse_rows r
+	 WHERE r.entity_id IN(SELECT id FROM (` + members + `)) AND r.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND ` + restriction + `)
+	 SELECT ` + source.Value + ` AS facet_value,` + source.Label + ` AS facet_label,count(DISTINCT e.entity_id) AS facet_count FROM e ` + source.Join + ` WHERE ` + where + `
 	 GROUP BY facet_value ORDER BY facet_count DESC,facet_label COLLATE NOCASE`
 	args := append(append(append([]any{}, memberArgs...), viewer.librariesJSON()), restrictionArgs...)
 	rows, err := s.read().Query(query, args...)
