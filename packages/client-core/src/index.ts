@@ -914,9 +914,14 @@ export class PlaybackService {
     // AVAudioUnitTimePitch is controlled by the native owner. A JS seek here
     // would duplicate its intent and restart a PCM window at the old epoch.
     if(this.nativeV1){void this.nativeV1.action('rate',rate).catch(()=>{});return;}
-    this.queue?.seekRetiringAudio?.(this.snapshot.positionSeconds);this.queue?.invalidateAudioPreparation?.();
+    // The speed already in use: nothing to restart (a new session re-applies the held speed).
+    if(rate===this.snapshot.audioEffects.rate)return;
+    // Where the listener is, or is about to be: a start or seek still on its way (a resume
+    // part-way into a book) keeps its target rather than going back to the last reported position.
+    const at=this.snapshot.pendingSeek?.positionSeconds??this.snapshot.positionSeconds;
+    this.queue?.seekRetiringAudio?.(at);this.queue?.invalidateAudioPreparation?.();
     this.update({audioEffects:{...this.snapshot.audioEffects,rate}});
-    if(this.snapshot.audioEffects.rendering&&this.snapshot.session)this.requestSeek(this.snapshot.positionSeconds);
+    if(this.snapshot.audioEffects.rendering&&this.snapshot.session)this.requestSeek(at);
   }
   /** The native v1 owner re-reads its session (the app returned to the foreground). */
   refreshPlaybackAuthority(){return this.nativeV1?.refresh()??Promise.resolve();}

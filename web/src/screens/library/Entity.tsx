@@ -184,13 +184,14 @@ export function EntityScreen() {
   const barredSection = kind === 'book' ? (onePart ? undefined : parts) : legacySections[0];
   const titleBar = groups.titles && snapshot.sections.length && (kind !== 'book' || barredSection) ? <Inset><GroupBar group={titleGroup} total={isArtist ? releases?.totalCount : barredSection?.totalCount} /></Inset> : null;
   // The owner arranges a library collection's own order here (only while it is shown in that order).
+  // A collection page carries no entity projection: the collection is the route's own id.
   const ownOrderShown = kind === 'collection' && !address.sort && !address.filters;
-  const canReorder = (owner || administrator) && ownOrderShown && !!entity && (titleGroup.total ?? 0) > 1;
+  const canReorder = (owner || administrator) && ownOrderShown && (titleGroup.total ?? 0) > 1;
   const reorderList = useWholeList(reordering && canReorder ? titleGroup.collection : undefined);
   const moveTitle = async (from: number, to: number) => {
     const request = moveRequest(reorderList.entries.map(e => e.id), from, to);
-    if (!request || !entity) return;
-    await moveCollectionTitle(<T,>(path: string, method: 'GET' | 'PUT', body?: unknown) => api.request<T>(path, method, body), entity.id, request.entryId, request.afterEntryId);
+    if (!request) return;
+    await moveCollectionTitle(<T,>(path: string, method: 'GET' | 'PUT', body?: unknown) => api.request<T>(path, method, body), entityId, request.entryId, request.afterEntryId);
     titleGroup.refresh?.();
   };
   return (
