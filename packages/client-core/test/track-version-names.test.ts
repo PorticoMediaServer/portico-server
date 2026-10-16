@@ -56,4 +56,6 @@ test('versions from the playback options read as the Version menus list them, ne
   assert.deepEqual([...mediaVersionNames([v('a', {edition: 'Extended'}), v('b')], t).values()], ['File · 1080p · MKV · Extended', 'File · 1080p · MKV']);
   assert.deepEqual([...mediaVersionNames([v('a'), v('b')], t).values()], ['File · 1080p · MKV · Version 1', 'File · 1080p · MKV · Version 2']);
   assert.deepEqual([...mediaVersionNames([{id: 'a', label: '', video: []}], t).values()], ['Version 1']);
+  // The server's own label ("720p · MKV", "SD · MP4") already names the resolution and container.
+  assert.deepEqual([...mediaVersionNames([{id: 'a', label: '720p · MKV', container: 'mkv', video: [{height: 720}]}, {id: 'b', label: 'SD · MP4', container: 'mp4', video: [{height: 360}]}], t).values()], ['720p · MKV', 'SD · 360p · MP4']);
 });
