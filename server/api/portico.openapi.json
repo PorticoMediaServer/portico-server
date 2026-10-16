@@ -1013,6 +1013,9 @@
                         "format": {
                           "type": "string"
                         },
+                        "linesUrl": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -1803,6 +1806,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -5554,6 +5560,9 @@
                     "format": {
                       "type": "string"
                     },
+                    "linesUrl": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -6285,6 +6294,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -9613,6 +9625,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -41447,6 +41462,9 @@
                               "format": {
                                 "type": "string"
                               },
+                              "linesUrl": {
+                                "type": "string"
+                              },
                               "url": {
                                 "type": "string"
                               }
@@ -41572,6 +41590,9 @@
                                   "type": "string"
                                 },
                                 "format": {
+                                  "type": "string"
+                                },
+                                "linesUrl": {
                                   "type": "string"
                                 },
                                 "url": {
@@ -58270,6 +58291,9 @@
                             "format": {
                               "type": "string"
                             },
+                            "linesUrl": {
+                              "type": "string"
+                            },
                             "url": {
                               "type": "string"
                             }
@@ -58882,6 +58906,9 @@
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -70697,6 +70724,9 @@
                       "format": {
                         "type": "string"
                       },
+                      "linesUrl": {
+                        "type": "string"
+                      },
                       "url": {
                         "type": "string"
                       }
@@ -70822,6 +70852,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "url": {
@@ -71067,6 +71100,9 @@
                       "format": {
                         "type": "string"
                       },
+                      "linesUrl": {
+                        "type": "string"
+                      },
                       "url": {
                         "type": "string"
                       }
@@ -71261,6 +71297,30 @@
         },
         "required": [
           "fonts"
+        ],
+        "type": "object"
+      },
+      "GetV1MediaSubtitlesGrantResourceRevisionLinesRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetV1MediaSubtitlesGrantResourceRevisionLinesResponse": {
+        "properties": {
+          "forced": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "forced",
+          "total"
         ],
         "type": "object"
       },
@@ -76359,6 +76419,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -96452,6 +96515,9 @@
                       "format": {
                         "type": "string"
                       },
+                      "linesUrl": {
+                        "type": "string"
+                      },
                       "url": {
                         "type": "string"
                       }
@@ -97316,6 +97382,9 @@
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -106127,6 +106196,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -118057,6 +118129,9 @@
                     "format": {
                       "type": "string"
                     },
+                    "linesUrl": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -119025,6 +119100,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -213272,6 +213350,9 @@
                                         "format": {
                                           "type": "string"
                                         },
+                                        "linesUrl": {
+                                          "type": "string"
+                                        },
                                         "url": {
                                           "type": "string"
                                         }
@@ -213397,6 +213478,9 @@
                                             "type": "string"
                                           },
                                           "format": {
+                                            "type": "string"
+                                          },
+                                          "linesUrl": {
                                             "type": "string"
                                           },
                                           "url": {
@@ -217227,6 +217311,9 @@
                                       "format": {
                                         "type": "string"
                                       },
+                                      "linesUrl": {
+                                        "type": "string"
+                                      },
                                       "url": {
                                         "type": "string"
                                       }
@@ -217576,6 +217663,9 @@
                                 "format": {
                                   "type": "string"
                                 },
+                                "linesUrl": {
+                                  "type": "string"
+                                },
                                 "url": {
                                   "type": "string"
                                 }
@@ -217701,6 +217791,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "url": {
@@ -218023,6 +218116,9 @@
                                   "type": "string"
                                 },
                                 "format": {
+                                  "type": "string"
+                                },
+                                "linesUrl": {
                                   "type": "string"
                                 },
                                 "url": {
@@ -218878,6 +218974,9 @@
                                   "type": "string"
                                 },
                                 "format": {
+                                  "type": "string"
+                                },
+                                "linesUrl": {
                                   "type": "string"
                                 },
                                 "url": {
@@ -235632,6 +235731,125 @@
         "x-scope": "open"
       }
     },
+    "/v1/media/subtitles/{grant}/{resource}/{revision}/lines": {
+      "get": {
+        "operationId": "get_v1_media_subtitles_grant_resource_revision_lines",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "resource",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "segment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "forced": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "forced",
+                    "total"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "internal",
+          "subtitle_unavailable",
+          "subtitle_not_found",
+          "subtitle_renderer_platform_unsupported",
+          "subtitle_renderer_configuration",
+          "subtitle_conflict",
+          "subtitle_operation_conflict",
+          "subtitle_capacity",
+          "subtitle_unsupported",
+          "subtitle_invalid_input"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
+      }
+    },
     "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ass": {
       "get": {
         "operationId": "get_v1_media_subtitles_grant_resource_revision_original_ass",
@@ -248571,6 +248789,9 @@
                               "format": {
                                 "type": "string"
                               },
+                              "linesUrl": {
+                                "type": "string"
+                              },
                               "trackId": {
                                 "type": "string"
                               },
@@ -249284,6 +249505,9 @@
                                 "type": "string"
                               },
                               "format": {
+                                "type": "string"
+                              },
+                              "linesUrl": {
                                 "type": "string"
                               },
                               "trackId": {
@@ -250044,6 +250268,9 @@
                                 "type": "string"
                               },
                               "format": {
+                                "type": "string"
+                              },
+                              "linesUrl": {
                                 "type": "string"
                               },
                               "trackId": {
@@ -255865,6 +256092,9 @@
                                   "format": {
                                     "type": "string"
                                   },
+                                  "linesUrl": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -257021,6 +257251,9 @@
                                   "format": {
                                     "type": "string"
                                   },
+                                  "linesUrl": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -258068,6 +258301,9 @@
                                   "format": {
                                     "type": "string"
                                   },
+                                  "linesUrl": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -258941,6 +259177,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -259948,6 +260187,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -261010,6 +261252,9 @@
                                   "format": {
                                     "type": "string"
                                   },
+                                  "linesUrl": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -261882,6 +262127,9 @@
                                   "format": {
                                     "type": "string"
                                   },
+                                  "linesUrl": {
+                                    "type": "string"
+                                  },
                                   "trackId": {
                                     "type": "string"
                                   },
@@ -262570,6 +262818,9 @@
                                 "type": "string"
                               },
                               "format": {
+                                "type": "string"
+                              },
+                              "linesUrl": {
                                 "type": "string"
                               },
                               "trackId": {

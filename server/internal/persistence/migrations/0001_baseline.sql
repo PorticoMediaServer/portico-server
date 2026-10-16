@@ -1784,6 +1784,7 @@ CREATE TABLE subtitle_render_revisions(
  FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_original_revisions(
  resource_id TEXT NOT NULL,revision INTEGER NOT NULL,digest TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>0),skipped_fonts INTEGER NOT NULL DEFAULT 0,
+ forced_lines INTEGER NOT NULL DEFAULT 0 CHECK(forced_lines>=0),total_lines INTEGER NOT NULL DEFAULT 0 CHECK(total_lines>=forced_lines),
  PRIMARY KEY(resource_id,revision),FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_original_files(
  resource_id TEXT NOT NULL,revision INTEGER NOT NULL,part TEXT NOT NULL,name TEXT NOT NULL,

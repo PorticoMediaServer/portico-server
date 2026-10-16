@@ -7,7 +7,8 @@ import type {LibraryContentApi} from './library-content.ts';
 
 export type SubtitleFormat='srt'|'vtt'|'ass'|'ssa'|'pgs'|'sup'|'vobsub'|'idx'|'dvb'|'smi'|'sami'|'ttml'|'dfxp';
 export type SubtitleRendering='text'|'ass'|'pgs'|'vobsub'|'dvb';
-export type SubtitleDelivery=Readonly<{format:SubtitleRendering;url?:string;companionUrl?:string;fontsUrl?:string}>;
+/** `linesUrl` (image subtitles): how many of the track's lines are forced (`parseSubtitleLines`). */
+export type SubtitleDelivery=Readonly<{format:SubtitleRendering;url?:string;companionUrl?:string;fontsUrl?:string;linesUrl?:string}>;
 export type SubtitleFont=Readonly<{name:string;url:string}>;
 export type SubtitlePresentation=Readonly<{sessionId:string;generation:number;streamUrl:string;mode:'direct'|'hls';positionUs:string}>;
 export type SubtitleResource = Readonly<{
@@ -46,7 +47,7 @@ function invalid():never{throw Object.assign(new Error(unreadableServerResponse)
 function array(v:unknown,max:number):unknown[]{if(!Array.isArray(v)||v.length>max)invalid();return v;}
 export function validateSubtitleDelivery(v:unknown):SubtitleDelivery{
  if(!record(v)||!['text','ass','pgs','vobsub','dvb'].includes(String(v.format)))invalid();
- for(const key of ['url','companionUrl','fontsUrl']){const path=v[key];if(path!==undefined&&(!text(path,1024)||!/^\/v1\/media\/subtitles\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[1-9]\d*(?:\.vtt|\/original\.(?:ass|ssa|sup|idx|sub|mks)|\/fonts)?$/.test(path)))invalid();}
+ for(const key of ['url','companionUrl','fontsUrl','linesUrl']){const path=v[key];if(path!==undefined&&(!text(path,1024)||!/^\/v1\/media\/subtitles\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+\/[1-9]\d*(?:\.vtt|\/original\.(?:ass|ssa|sup|idx|sub|mks)|\/fonts|\/lines)?$/.test(path)))invalid();}
  return Object.freeze({...v}) as SubtitleDelivery;
 }
 function resource(v:unknown):SubtitleResource{
