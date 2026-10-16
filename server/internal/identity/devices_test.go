@@ -382,3 +382,53 @@ func TestTopShelfTokenIsBoundAndIsNotASession(t *testing.T) {
 		t.Fatalf("a denied device kept its feed: %v", e)
 	}
 }
+
+// A25: a sign-in that names no installation gets a device record of its own,
+// and under owner approval each one waits. However often such a client tries,
+// an account keeps only the newest few waiting records; an approved one, or
+// one that already holds a sign-in, is never removed by this.
+func TestUnnamedWaitingDevicesAreBoundedPerAccount(t *testing.T) {
+	ctx := context.Background()
+	s, owner, _, _ := memberWithSession(t)
+	if e := s.SetDeviceApprovalPolicy(DeviceApprovalOwner); e != nil {
+		t.Fatal(e)
+	}
+	waiting := func() (ids []string) {
+		rows, e := s.db.Query(`SELECT d.id FROM identity_devices d JOIN accounts a ON a.id=d.account_id WHERE a.username='member' AND d.approval_state='pending' AND d.installation_id LIKE 'unnamed-%'`)
+		if e != nil {
+			t.Fatal(e)
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id string
+			if e = rows.Scan(&id); e != nil {
+				t.Fatal(e)
+			}
+			ids = append(ids, id)
+		}
+		return ids
+	}
+	if out, e := s.DirectLoginFrom(ctx, "member", "Testing2!", true); e != nil || !out.DeviceApprovalPending {
+		t.Fatalf("an unnamed installation was admitted under owner approval: %+v %v", out, e)
+	}
+	first := waiting()
+	if len(first) != 1 {
+		t.Fatalf("waiting unnamed records after one sign-in: %d", len(first))
+	}
+	// The owner approves the first one: it is no longer waiting, and stays.
+	if _, e := s.ApproveDevice(ctx, owner.AccountToken, first[0], true); e != nil {
+		t.Fatal(e)
+	}
+	for i := 0; i < 9; i++ {
+		if out, e := s.DirectLoginFrom(ctx, "member", "Testing2!", true); e != nil || !out.DeviceApprovalPending {
+			t.Fatalf("attempt %d: %+v %v", i, out, e)
+		}
+	}
+	if n := len(waiting()); n != unnamedWaitingKept {
+		t.Fatalf("waiting unnamed records after ten sign-ins: %d, want %d", n, unnamedWaitingKept)
+	}
+	var approved int
+	if e := s.db.QueryRow(`SELECT count(*) FROM identity_devices WHERE id=? AND approval_state='approved'`, first[0]).Scan(&approved); e != nil || approved != 1 {
+		t.Fatalf("the approved unnamed device was removed: %d %v", approved, e)
+	}
+}
