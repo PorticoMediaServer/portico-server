@@ -89,9 +89,31 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
 	// neither flattens it nor drops its order; it holds the next
 	// nextEpisodeWindow episodes, so a show the viewer may see none of soon
 	// costs that many tests, not the rest of the show.
+	//
+	// Most often the next episode is later in the same season: the season's
+	// own index reads those first, so a long show is not ordered whole for
+	// each started show. The general step below still decides when the
+	// season has none the viewer may watch.
+	sameSeason := `(SELECT pid(i2.public_id) FROM (SELECT e2.entity_id AS id FROM catalog_episodes previous
+   CROSS JOIN catalog_episodes e2 INDEXED BY catalog_episodes_season ON e2.season_id=previous.season_id AND e2.number>=previous.number
+   WHERE previous.entity_id=CAST(w.last_item_id AS INTEGER) AND previous.season_id IS NOT NULL AND previous.numbering!='absolute' AND previous.show_id=w.show_id
+    AND e2.numbering!='absolute' AND e2.show_id=w.show_id AND (e2.entity_id=previous.entity_id OR e2.number>previous.number)
+   ORDER BY e2.number,e2.entity_id LIMIT ` + strconv.Itoa(nextEpisodeWindow) + `) next
+   CROSS JOIN catalog_entities i2 ON i2.id=next.id
+   WHERE EXISTS(SELECT 1 FROM catalog_libraries cl WHERE cl.id=i2.library_id AND cl.library_id=w.library_id) AND ` + homeVisible("i2.id") + `
+    AND ` + personalstate.CompactSQL("w.profile_id", "i2.id") + `=0
+    AND COALESCE((SELECT p.position FROM progress p WHERE p.profile_id=w.profile_id AND p.item_id=i2.id),0)=0
+    ` + nextDismissal + `
+    AND ` + nextVisibility + `
+   LIMIT 1)`
+	visibleShow := ""
+	if r.visibleShows != "" {
+		visibleShow = " AND " + r.visibleShows
+	}
 	base := `SELECT chosen.id,chosen.ord FROM (SELECT COALESCE(
   ` + partial(true) + `,
   ` + partial(false) + `,
+  ` + sameSeason + `,
   (SELECT pid(i2.public_id) FROM (SELECT e2.entity_id AS id FROM catalog_entities pe JOIN catalog_episodes previous ON previous.entity_id=pe.id
    LEFT JOIN catalog_seasons ps ON ps.entity_id=previous.season_id AND (SELECT retired FROM catalog_entities WHERE id=previous.season_id)=0
    JOIN catalog_entities sh ON sh.id=w.show_id JOIN catalog_episodes e2 ON e2.show_id=sh.id
@@ -111,7 +133,7 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
    LIMIT 1)
 	 ) AS id,w.last_activity AS ord,w.library_id AS library_id,w.last_item_id AS last_item_id FROM
 	 (SELECT * FROM profile_show_activity WHERE profile_id=? AND library_id IN(SELECT value FROM json_each(?))` + showFilter + ` ORDER BY last_activity DESC,show_id LIMIT ` + strconv.Itoa(window) + `) w
-	 WHERE w.profile_id=? AND w.library_id IN(SELECT value FROM json_each(?))
+	 WHERE w.profile_id=? AND w.library_id IN(SELECT value FROM json_each(?))` + visibleShow + `
 	 ` + showDismissal + ` chosen
 	 WHERE chosen.id IS NOT NULL AND (chosen.ord>=(SELECT value FROM json_each(?) WHERE key=chosen.library_id)
 	 OR (EXISTS(SELECT 1 FROM json_each(?) WHERE key=chosen.library_id AND value=1)
@@ -123,6 +145,7 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
 	args = append(args, cutoffs)
 	args = append(args, partialArgs...)
 	args = append(args, cutoffs)
+	args = append(args, nextArgs...)
 	args = append(args, nextArgs...)
 	args = append(args, r.Profile, string(libraries))
 	if showID != "" {

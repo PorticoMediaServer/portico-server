@@ -807,6 +807,15 @@ func (s *Service) recEligible(r HomeRequest, libraries recLibraries, scored []*r
 	}
 	allowed, _ := json.Marshal(libraries.ids)
 	restriction, args := EntityRestrictionSQL("e.id", r.Restrictions)
+	if restriction != "1" {
+		// A work its library's class does not hold is refused by one key
+		// lookup, before the live restriction walks its members.
+		published, err := s.publishedClassesSQL("e.id", r.Libraries, r.Restrictions)
+		if err != nil {
+			return nil, err
+		}
+		restriction = published + " AND " + restriction
+	}
 	bind := []any{idsJSON64(ids), string(allowed), r.Profile}
 	bind = append(bind, args...)
 	rows, err := s.read().Query(`SELECT e.id,pid(e.public_id),br.kind,COALESCE(br.recent_text,br.added_text,''),COALESCE(br.duration_max,0)
