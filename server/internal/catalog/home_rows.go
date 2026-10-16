@@ -860,7 +860,22 @@ func (s *Service) HomeRows(r HomeRequest) (HomeDocument, error) {
 	for _, id := range r.HiddenRowIDs {
 		hidden[id] = true
 	}
+	composed := func() bool {
+		if r.Rows <= 0 {
+			return false
+		}
+		filled := 0
+		for _, row := range out.Rows {
+			if len(row.Entries) > 0 {
+				filled++
+			}
+		}
+		return filled >= r.Rows
+	}
 	for _, spec := range homeOrdered(specs, r.RowOrder) {
+		if composed() {
+			break
+		}
 		if spec.PolicyState != "available" {
 			continue
 		}
