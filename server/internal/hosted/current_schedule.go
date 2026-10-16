@@ -72,7 +72,7 @@ func (s *Service) saveCurrentSchedule(ctx context.Context, v networking.Intent, 
 // Hosted is contacted when something changed, not on a clock. A check-in is a backstop for a
 // missed wake, so its bound is days. There is no membership policy to renew: membership is
 // this server's own, and changes to it are pushed (membership_push.go).
-const maxCheckInSeconds = 8 * 24 * 60 * 60
+const maxCheckIn = 8 * 24 * time.Hour
 
 // controlSafetyInterval is the longest this loop will sleep when it believes
 // nothing is due. It is a backstop against a schedule this process computed
@@ -252,13 +252,13 @@ func (s *Service) ordinaryControlStep(ctx context.Context) (time.Time, error) {
 			return e
 		}
 		var result struct {
-			HeartbeatAfterSeconds int         `json:"heartbeatAfterSeconds"`
-			PresenceExpiresAt     time.Time   `json:"presenceExpiresAt"`
-			RouteLabel            string      `json:"routeLabel"`
-			MemberSequence        int64       `json:"memberSequence"`
-			MemberDigestMatches   bool        `json:"memberDigestMatches"`
-			CleanupPending        bool        `json:"cleanupPending"`
-			Departures            []Departure `json:"departures"`
+			HeartbeatAfterMs    int64       `json:"heartbeatAfterMs"`
+			PresenceExpiresAt   time.Time   `json:"presenceExpiresAt"`
+			RouteLabel          string      `json:"routeLabel"`
+			MemberSequence      int64       `json:"memberSequence"`
+			MemberDigestMatches bool        `json:"memberDigestMatches"`
+			CleanupPending      bool        `json:"cleanupPending"`
+			Departures          []Departure `json:"departures"`
 			// SigningCertificate is Hosted's current root-signed documents
 			// certificate, with every key revoked so far.
 			SigningCertificate *trust.Certificate `json:"signingCertificate"`
@@ -267,7 +267,7 @@ func (s *Service) ordinaryControlStep(ctx context.Context) (time.Time, error) {
 		if e := s.current.transport.CallServer(ctx, v, networking.SendHeartbeat, in, &result); e != nil {
 			return e
 		}
-		if result.HeartbeatAfterSeconds < 60 || result.HeartbeatAfterSeconds > maxCheckInSeconds || !result.PresenceExpiresAt.After(now) {
+		if result.HeartbeatAfterMs < time.Minute.Milliseconds() || result.HeartbeatAfterMs > maxCheckIn.Milliseconds() || !result.PresenceExpiresAt.After(now) {
 			return networking.ErrInvalid
 		}
 		// Revocations first: a key Hosted has withdrawn stops admitting anyone,
@@ -277,7 +277,7 @@ func (s *Service) ordinaryControlStep(ctx context.Context) (time.Time, error) {
 		}
 		// Hosted sets the cadence (weekly when it can wake this server, daily when it cannot);
 		// per-server jitter keeps a fleet from checking in together.
-		delay := time.Duration(result.HeartbeatAfterSeconds) * time.Second
+		delay := time.Duration(result.HeartbeatAfterMs) * time.Millisecond
 		delay = delay*9/10 + time.Duration(rand.Int64N(int64(delay/5)))
 		schedule.NextHeartbeat = now.Add(delay)
 		if f := s.routeLabel.Load(); result.RouteLabel != "" && f != nil {

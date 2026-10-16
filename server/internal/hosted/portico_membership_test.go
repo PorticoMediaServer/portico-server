@@ -219,7 +219,7 @@ func (x *fakeIndex) RoundTrip(r *http.Request) (*http.Response, error) {
 		x.checkIns++
 		departures := x.departures
 		x.departures = nil
-		return answer(map[string]any{"heartbeatAfterSeconds": 7 * 24 * 3600, "presenceExpiresAt": time.Now().Add(8 * 24 * time.Hour), "memberSequence": x.sequence, "memberDigestMatches": true, "departures": departures})
+		return answer(map[string]any{"heartbeatAfterMs": (7 * 24 * time.Hour).Milliseconds(), "presenceExpiresAt": time.Now().Add(8 * 24 * time.Hour), "memberSequence": x.sequence, "memberDigestMatches": true, "departures": departures})
 	}
 	return &http.Response{StatusCode: 404, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{}`)), Request: r}, nil
 }
