@@ -31,6 +31,7 @@ var processSpawns = map[string]string{
 	"internal/storage/audio_cover.go:ReadAudioCover":                          "storage helper (server binary); reads the embedded picture with the server's own bounded reader, runs no tool",
 	"internal/storage/inventory_watch.go:WatchInventory":                      "storage helper (server binary) watching library folders for changes; opens no media",
 	"internal/storage/inventory_page.go:inventoryRequest":                     "storage helper (server binary)",
+	"internal/storage/inventory_batch.go:inventoryBatchRequest":               "storage helper (server binary) listing or checking several folders of one root; opens no media",
 	"internal/storage/inventory_page_stream.go:produce":                       "storage helper (server binary)",
 	"internal/storage/observed_playback.go:OpenObservedPlayback":              "storage helper (server binary)",
 	"internal/storage/lyrics.go:ReadLyrics":                                   "storage helper (server binary); its ffprobe argv comes from mediaexec",
