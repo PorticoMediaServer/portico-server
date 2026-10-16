@@ -362,6 +362,9 @@ const peopleRankedMaximum = 1000
 // for one page before it ranks the matches after all.
 const peopleWalkWindow = 20000
 
+// peopleWalkChunk is how many people of the window are tested at a time.
+const peopleWalkChunk = 64
+
 // personCreditedSQL is "this person has a credit the viewer can see" over the
 // person id expression. An unrestricted viewer reads the maintained counts; a
 // restricted one tests the restriction on the person's credits.
@@ -484,28 +487,70 @@ func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset in
 func (s *Service) peopleNameWalk(q, match string, viewer Viewer, limit, offset int, order, direction string) (ids []int64, ok bool, e error) {
 	credited, creditedArgs := personCreditedSQL(viewer, "people.id")
 	extra, extraArgs := searchCJKPredicate("portico_search_fold(people.name)", q)
-	test := ` AND EXISTS(SELECT 1 FROM catalog_people_names WHERE catalog_people_names MATCH ? AND rowid=people.id) AND ` + credited + extra
-	testArgs := append(append([]any{match}, creditedArgs...), extraArgs...)
 	want := offset + limit
 	dir := "ASC"
 	if order == "title" && direction == "desc" {
 		dir = "DESC"
 	}
+	// A person's name is tested here, as the name index tokens it: every typed
+	// word starts one of the name's words. The index itself, asked about one
+	// person at a time, reads every name a broad prefix matches each time.
+	typed := facettext.SearchTerms(q)
+	named := func(name string) bool {
+		words := strings.Fields(facettext.SearchDocument(name))
+		for _, term := range typed {
+			found := false
+			for _, word := range words {
+				if strings.HasPrefix(word, term) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false
+			}
+		}
+		return true
+	}
 	walk := func(bound string, boundArgs []any, n int) ([]int64, bool, error) {
-		// The window is a bounded run of the name index; the walk stops at n.
-		window := `SELECT people.id FROM catalog_people people INDEXED BY catalog_people_name WHERE 1` + bound + ` ORDER BY people.sort_name ` + dir + `,people.id ` + dir + ` LIMIT ` + strconv.Itoa(peopleWalkWindow)
-		found, err := s.entityIDs(`SELECT people.id FROM (`+window+`) w CROSS JOIN catalog_people people ON people.id=w.id WHERE 1`+test+` ORDER BY people.sort_name `+dir+`,people.id `+dir+` LIMIT ?`, append(append(append([]any{}, boundArgs...), testArgs...), n)...)
+		// The window is a bounded run of the name index, read in order; the
+		// names that match are tested for a visible credit a chunk at a time
+		// and the walk stops at n.
+		rows, err := s.read().Query(`SELECT people.id,people.name FROM catalog_people people INDEXED BY catalog_people_name WHERE 1`+bound+` ORDER BY people.sort_name `+dir+`,people.id `+dir+` LIMIT `+strconv.Itoa(peopleWalkWindow), boundArgs...)
 		if err != nil {
 			return nil, false, err
 		}
-		if len(found) >= n {
-			return found, true, nil
+		read, candidates := 0, []int64{}
+		for rows.Next() {
+			var id int64
+			var name string
+			if err = rows.Scan(&id, &name); err != nil {
+				rows.Close()
+				return nil, false, err
+			}
+			read++
+			if named(name) {
+				candidates = append(candidates, id)
+			}
 		}
-		var scanned int
-		if err = s.read().QueryRow(`SELECT count(*) FROM (`+window+`)`, boundArgs...).Scan(&scanned); err != nil {
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
 			return nil, false, err
 		}
-		return found, scanned < peopleWalkWindow, nil
+		found := []int64{}
+		for at := 0; at < len(candidates) && len(found) < n; at += peopleWalkChunk {
+			chunk, _ := json.Marshal(candidates[at:min(at+peopleWalkChunk, len(candidates))])
+			passed, err := s.entityIDs(`SELECT people.id FROM json_each(?) j CROSS JOIN catalog_people people ON people.id=j.value WHERE `+credited+extra+` ORDER BY j.key`, append(append([]any{string(chunk)}, creditedArgs...), extraArgs...)...)
+			if err != nil {
+				return nil, false, err
+			}
+			found = append(found, passed...)
+		}
+		if len(found) >= n {
+			return found[:n], true, nil
+		}
+		return found, read < peopleWalkWindow, nil
 	}
 	if order == "title" {
 		found, done, err := walk("", nil, want)
