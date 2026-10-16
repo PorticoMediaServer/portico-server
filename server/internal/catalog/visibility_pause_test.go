@@ -25,7 +25,9 @@ func TestVisibilityBuilderHonoursBackgroundPause(t *testing.T) {
 	defer dbwork.SetBackgroundPolicy(dbwork.SpeedNormal, 0)
 	dbwork.SetBackgroundPolicy(dbwork.SpeedNormal, time.Now().Add(time.Hour).UnixMilli())
 	done := make(chan error, 1)
-	go func() { done <- s.RebuildVisibilityClass(context.Background(), "music", visibilityRestrictionOf(nil, false, "adult")) }()
+	go func() {
+		done <- s.RebuildVisibilityClass(context.Background(), "music", visibilityRestrictionOf(nil, false, "adult"))
+	}()
 	select {
 	case err := <-done:
 		t.Fatalf("builder ran while background work was paused: %v", err)
