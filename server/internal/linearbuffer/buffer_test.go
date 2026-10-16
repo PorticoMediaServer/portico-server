@@ -174,7 +174,7 @@ func TestPublisherImmutableAndAuthorityFenced(t *testing.T) {
 }
 func TestManifestRejectsPathsKeysAndUnboundedData(t *testing.T) {
 	for _, text := range []string{"#EXTM3U\n#EXTINF:4,\n../segment-000000000.ts\n", "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"http://secret\"\n#EXTINF:4,\nsegment-000000000.ts\n", "#EXTM3U\n#EXTINF:NaN,\nsegment-000000000.ts\n", "#EXTM3U\n#EXTINF:61,\nsegment-000000000.ts\n"} {
-		if _, e := parseManifest([]byte(text)); e == nil {
+		if _, e := parseManifest([]byte(text), false); e == nil {
 			t.Fatalf("accepted %q", text)
 		}
 	}
@@ -332,5 +332,29 @@ func TestConfiguredSourceBufferDelaysReadyAndGoLive(t *testing.T) {
 	playlist, e := b.Playlist()
 	if e != nil || !strings.Contains(string(playlist), "#EXT-X-START:TIME-OFFSET=-10.000000") {
 		t.Fatalf("%s %v", playlist, e)
+	}
+}
+func TestClocksMapMediaTimeAndPlaylistsStartWhereAsked(t *testing.T) {
+	b := testBuffer(t, true)
+	base := b.options.OriginMS
+	p := publisher(t, b, 1, base)
+	publish(t, p, 0, 5*90000)
+	publish(t, p, 1, 9*90000)
+	q := publisher(t, b, 2, base+20000)
+	publish(t, q, 0, 0)
+	clocks := b.Clocks()
+	// Producer 1's media time is the channel's; producer 2's starts 20 s in.
+	// (Retention has already let the first segment go.)
+	if len(clocks) != 2 || clocks[0].OffsetUS != 0 || clocks[0].StartUS != 9e6 || clocks[0].EndUS != 13e6 || clocks[1].OffsetUS != 20e6 || clocks[1].StartUS != 20e6 {
+		t.Fatalf("%+v", clocks)
+	}
+	at := int64(21e6)
+	list, e := b.PlaylistFrom(&at)
+	if e != nil || strings.Contains(string(list), "s2.ts") || !strings.Contains(string(list), "s3.ts") || !strings.Contains(string(list), "#EXT-X-MEDIA-SEQUENCE:3\n") {
+		t.Fatalf("%s %v", list, e)
+	}
+	whole, _ := b.Playlist()
+	if !strings.Contains(string(whole), "s2.ts") {
+		t.Fatalf("%s", whole)
 	}
 }

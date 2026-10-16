@@ -113,7 +113,11 @@ type ClientVideoCodec struct {
 	// an original file (AVFoundation takes hvc1 but not hev1). Streams the server
 	// repackages are tagged by the server and are not checked against it.
 	CodecTags []string `json:"codecTags,omitempty"`
-	Evidence  string   `json:"evidence,omitempty"`
+	// Limits, when stated, are the decoder's operating points: a picture must
+	// also fit one that applies to its bit depth. The fields above remain the
+	// codec's overall ceilings.
+	Limits   []ClientVideoLimit `json:"limits,omitempty"`
+	Evidence string             `json:"evidence,omitempty"`
 }
 
 // ClientAudioCodec is one audio decoder of an engine: the device turns the
@@ -187,6 +191,11 @@ type EngineCapabilities struct {
 	// tracks inside an original file. Without it only the first track of an
 	// original is reachable, and any other choice needs an HLS route.
 	EmbeddedAudioSwitching bool `json:"embeddedAudioSwitching"`
+	// LiveChannels is true when a second engine (mpv) plays live channels: a
+	// timeshift window positioned on the channel's own clock. The native
+	// engine always does; a second engine that does not say so is never
+	// given a channel.
+	LiveChannels bool `json:"liveChannels,omitempty"`
 }
 
 // CapabilityEngines holds one profile per engine. Native is required.
@@ -252,6 +261,7 @@ type ClientProfile struct {
 	ToneMapsHDR            bool                     `json:"toneMapsHdr"`
 	MaxBitrateBPS          int                      `json:"maxBitrateBps"`
 	EmbeddedAudioSwitching bool                     `json:"embeddedAudioSwitching"`
+	LiveChannels           bool                     `json:"liveChannels,omitempty"`
 	Overrides              CapabilityOverrides      `json:"overrides"`
 	AudioDecode            []ClientAudioDecode      `json:"audioDecode,omitempty"`
 
@@ -470,6 +480,9 @@ func (e *EngineCapabilities) validate(path string) error {
 				return capabilityField(path + ".video")
 			}
 		}
+		if !validVideoLimits(v.Limits) {
+			return capabilityField(path + ".video.limits")
+		}
 		for _, dv := range v.DolbyVisionProfiles {
 			if dv < 1 || dv > 31 {
 				return capabilityField(path + ".video")
@@ -624,6 +637,7 @@ func (e *EngineCapabilities) normalize() {
 		}
 		sort.Ints(v.BitDepths)
 		sort.Ints(v.DolbyVisionProfiles)
+		v.Limits = normalizeVideoLimits(v.Limits)
 	}
 	for i := range e.Audio {
 		e.Audio[i].Codec = deviceAudioName(e.Audio[i].Codec)
@@ -669,7 +683,7 @@ func (d CapabilityDocument) Profile(name string) ClientProfile {
 		Display: d.Display, AudioOutput: d.AudioOutput, MaxBitrateBPS: d.MaxBitrateBPS, Overrides: d.Overrides, AudioDecode: d.AudioDecode,
 		Video: append([]ClientVideoCodec{}, e.Video...), Audio: append([]ClientAudioCodec{}, e.Audio...), AudioPassthrough: append([]ClientAudioPassthrough{}, e.AudioPassthrough...),
 		Transports: e.Transports, SubtitleRendering: e.SubtitleRendering, ToneMapsHDR: e.ToneMapsHDR, EmbeddedAudioSwitching: e.EmbeddedAudioSwitching,
-		Revision: d.Revision,
+		LiveChannels: e.LiveChannels || name == EngineNative, Revision: d.Revision,
 	}
 	p.applyOverrides()
 	return p

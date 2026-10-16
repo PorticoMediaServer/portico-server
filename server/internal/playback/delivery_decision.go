@@ -176,6 +176,13 @@ func videoRejections(v *SourceVideo, client ClientProfile, t ClientTransport, al
 	if c == nil || !containsString(t.Video, v.Codec) {
 		return append(out, RouteRejection{RejectVideoCodec, v.Codec})
 	}
+	// A decoder that states operating points is held to the one that serves
+	// this picture's depth, size and rate.
+	point, decoded := c.forStream(v.BitDepth, v.Width, v.Height, v.FrameRate)
+	if !decoded {
+		return append(out, RouteRejection{RejectVideoBitDepth, fmt.Sprintf("%d-bit", v.BitDepth)})
+	}
+	c = &point
 	if len(c.Profiles) > 0 && v.Profile != "" && !containsString(c.Profiles, profileName(v.Profile)) {
 		out = append(out, RouteRejection{RejectVideoProfile, v.Profile})
 	}

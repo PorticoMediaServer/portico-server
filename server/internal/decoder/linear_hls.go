@@ -23,6 +23,10 @@ type LinearEncoding struct {
 	ConvertVideo, ConvertAudio, HDRToSDR bool
 	SeekUS, ClipEndUS                    int64
 	MaxHeight, VideoBitrate              int
+	// Fragmented publishes fragmented MP4 (an init segment and .m4s
+	// fragments) instead of MPEG-TS. CopyHEVC marks a copied HEVC picture,
+	// which MP4 must label hvc1 for Apple's players.
+	Fragmented, CopyHEVC bool
 }
 
 var outputPath = regexp.MustCompile(`^/output/[a-f0-9]{64}/$`)
@@ -122,6 +126,13 @@ func linearHLSArgs(input, output string, p LinearEncoding) ([]string, error) {
 	}
 	if p.ConvertAudio {
 		args = append(args, graph.Audio...)
+	}
+	if p.Fragmented {
+		if p.CopyHEVC && !p.ConvertVideo {
+			args = append(args, "-tag:v", "hvc1")
+		}
+		args = append(args, "-sn", "-dn", "-avoid_negative_ts", "disabled", "-muxdelay", "0", "-f", "hls", "-hls_time", "4", "-hls_list_size", "12", "-hls_flags", "independent_segments+program_date_time", "-hls_segment_type", "fmp4", "-hls_fmp4_init_filename", "init.mp4", "-method", "PUT", "-rw_timeout", "15000000", "-hls_segment_filename", output+"segment-%09d.m4s", output+"index.m3u8")
+		return args, nil
 	}
 	args = append(args, "-sn", "-dn", "-avoid_negative_ts", "disabled", "-muxdelay", "0", "-f", "hls", "-hls_time", "4", "-hls_list_size", "12", "-hls_flags", "independent_segments+program_date_time", "-hls_segment_options", "mpegts_copyts=1", "-method", "PUT", "-rw_timeout", "15000000", "-hls_segment_filename", output+"segment-%09d.ts", output+"index.m3u8")
 	return args, nil

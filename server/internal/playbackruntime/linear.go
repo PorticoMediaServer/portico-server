@@ -19,6 +19,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/supervise"
 	workerloop "portico.local/server/internal/worker"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,9 +68,12 @@ type linearEntry struct {
 	selection   playback.LinearSelection
 	selections  map[int64]playback.LinearSelection
 	state, code string
-	logged      string // the last start failure written to the log
-	cancel      context.CancelFunc
-	requests    chan struct{}
+	// engine is the player engine the buffer's stream is made for; the first
+	// producer chooses it and later ones keep it.
+	engine   string
+	logged   string // the last start failure written to the log
+	cancel   context.CancelFunc
+	requests chan struct{}
 }
 
 func privateDirectory(path string) error {
@@ -323,6 +327,7 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 	}
 	entry.mu.Lock()
 	entry.buffer = buffer
+	entry.engine = ""
 	entry.generation = work.BufferOrdinal
 	entry.token = hex.EncodeToString(secret[:])
 	entry.selection = work.Selection
@@ -754,12 +759,26 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 	if e != nil {
 		return e
 	}
-	plan, e := linearPlan(raw, w)
+	// A live input may publish fragmented MP4 where the device needs it; a
+	// buffer already holding media keeps its kind.
+	packaging := playback.LinearEither
+	if held, fragmented := entry.buffer.Packaging(); held && fragmented {
+		packaging = playback.LinearFragmentedOnly
+	} else if held {
+		packaging = playback.LinearTSOnly
+	}
+	entry.mu.Lock()
+	pinned := entry.engine
+	entry.mu.Unlock()
+	plan, engine, e := linearEnginePlan(raw, w, packaging, pinned)
 	if e != nil {
 		return e
 	}
+	entry.mu.Lock()
+	entry.engine = engine
+	entry.mu.Unlock()
 	plan.HLSInput = gateway.HLS()
-	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal}, func() error { return l.checkProducerWithPatience(work, w) })
+	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal, Fragmented: plan.Fragmented}, func() error { return l.checkProducerWithPatience(work, w) })
 	if e != nil {
 		return e
 	}
@@ -822,10 +841,18 @@ func (l *LinearRuntime) produceLibrary(ctx context.Context, w playback.LinearWor
 	if e != nil {
 		return e
 	}
-	plan, e := linearPlan(raw, w)
+	// A library channel's timeline is the source's own MPEG-TS clock. Its
+	// engine is chosen like a live input's and kept for the buffer.
+	entry.mu.Lock()
+	pinned := entry.engine
+	entry.mu.Unlock()
+	plan, engine, e := linearEnginePlan(raw, w, playback.LinearTSOnly, pinned)
 	if e != nil {
 		return e
 	}
+	entry.mu.Lock()
+	entry.engine = engine
+	entry.mu.Unlock()
 	now := time.Now().UnixMilli()
 	if now >= w.Selection.EntryEndMS {
 		return channelFault("programme_boundary", 409)
@@ -891,8 +918,9 @@ func (l *LinearRuntime) Snapshot(id string) playback.LinearMedia {
 		return result
 	}
 	e.mu.Lock()
-	buffer, generation, producer, token, state, code, logo := e.buffer, e.generation, e.producer, e.token, e.state, e.code, e.selection.LogoItemID
+	buffer, generation, producer, token, state, code, logo, engine := e.buffer, e.generation, e.producer, e.token, e.state, e.code, e.selection.LogoItemID, e.engine
 	e.mu.Unlock()
+	result.Engine = engine
 	if buffer == nil {
 		return result
 	}
@@ -916,6 +944,10 @@ func (l *LinearRuntime) Snapshot(id string) playback.LinearMedia {
 	}
 	for _, gap := range w.Gaps {
 		result.Gaps = append(result.Gaps, playback.LinearInterval{StartUS: strconv.FormatInt(gap.StartUS, 10), EndUS: strconv.FormatInt(gap.EndUS, 10)})
+	}
+	result.Clocks = []playback.LinearClock{}
+	for _, c := range buffer.Clocks() {
+		result.Clocks = append(result.Clocks, playback.LinearClock{StartUS: strconv.FormatInt(c.StartUS, 10), EndUS: strconv.FormatInt(c.EndUS, 10), OffsetUS: strconv.FormatInt(c.OffsetUS, 10)})
 	}
 	return result
 }
@@ -1006,6 +1038,9 @@ func (l *LinearRuntime) MediaGrant(ctx context.Context, id, generation, token st
 	p, err := l.owner.Linear.authority.AuthorizeLinearMedia(ctx, id, gen, &selection)
 	return p, selection, err
 }
+
+var playlistStart = regexp.MustCompile(`^at=([0-9]{1,13})$`)
+
 func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, generation, token, name string) {
 	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
@@ -1022,7 +1057,20 @@ func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, g
 		http.Error(w, "media busy", 429)
 		return
 	}
-	if r.Method != "GET" && r.Method != "HEAD" || r.URL.RawQuery != "" {
+	// The only query is a playlist's start (at=<milliseconds from the origin>),
+	// for a player that reopens a live playlist where it wants to be.
+	var from *int64
+	if r.URL.RawQuery != "" {
+		match := playlistStart.FindStringSubmatch(r.URL.RawQuery)
+		if match == nil || name != "index.m3u8" {
+			http.NotFound(w, r)
+			return
+		}
+		ms, _ := strconv.ParseInt(match[1], 10, 64)
+		us := ms * 1000
+		from = &us
+	}
+	if r.Method != "GET" && r.Method != "HEAD" {
 		http.NotFound(w, r)
 		return
 	}
@@ -1048,7 +1096,7 @@ func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, g
 				return
 			}
 		}
-		data, err := buffer.Playlist()
+		data, err := buffer.PlaylistFrom(from)
 		if err != nil {
 			w.Header().Set("Retry-After", "1")
 			http.Error(w, "media preparing", 503)
@@ -1079,7 +1127,7 @@ func (l *LinearRuntime) ServeMedia(w http.ResponseWriter, r *http.Request, id, g
 		http.Error(w, "media authority expired", 403)
 		return
 	}
-	w.Header().Set("Content-Type", "video/mp2t")
+	w.Header().Set("Content-Type", reader.ContentType)
 	w.Header().Set("Content-Length", strconv.FormatInt(reader.Size, 10))
 	if r.Method == "HEAD" {
 		return

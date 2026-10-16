@@ -2900,7 +2900,11 @@ CREATE TABLE download_preparations(
  item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL,
  title_json TEXT NOT NULL DEFAULT '',
  source_asset_id TEXT NOT NULL DEFAULT '',
- quality TEXT NOT NULL, origin TEXT NOT NULL CHECK(origin IN('item','items','container','next')),
+ quality TEXT NOT NULL,
+ -- The prepared recipe the quality resolved to for the asking device (HEVC
+ -- keeping HDR and surround where it plays them); '' for the original.
+ recipe TEXT NOT NULL DEFAULT '',
+ origin TEXT NOT NULL CHECK(origin IN('item','items','container','next')),
  batch_id TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL CHECK(state IN('queued','running','ready','paused','failed','unavailable','cancelled','expired')),
  reason TEXT NOT NULL DEFAULT '',
@@ -3566,6 +3570,11 @@ CREATE TABLE playback_channel_sessions(
  selection_json TEXT NOT NULL,
  transport_json TEXT NOT NULL,
  client_profile_json TEXT NOT NULL DEFAULT '',
+ -- The device's mpv engine when it plays channels and the viewer has not
+ -- chosen Native, and the viewer's player setting: the producer plans for
+ -- the engine that keeps the most (LinearEngines).
+ mpv_profile_json TEXT NOT NULL DEFAULT '',
+ engine_setting TEXT NOT NULL DEFAULT 'automatic' CHECK(engine_setting IN('automatic','native','mpv')),
  source_revision INTEGER NOT NULL DEFAULT 1,
  retry_revision INTEGER NOT NULL DEFAULT 0,
  buffer_ordinal INTEGER NOT NULL DEFAULT 0,
