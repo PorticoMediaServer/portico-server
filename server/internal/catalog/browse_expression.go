@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -1368,7 +1369,8 @@ const factGapSQL = `(asset_links=0)+(acting_credits=0)*2+(directing_credits=0)*4
 // on them. It returns a clause to put before the condition, or "" when the
 // pivot holds containers or the candidates are more than presenceProbe (the
 // field is then not near-universal). With having, it names instead the few
-// titles that have the field.
+// titles that have the field, and for containers those holding a member that
+// has it.
 func (c *browseCompiler) factGapCandidates(field browseField, having bool) (string, error) {
 	bit, ok := factGaps[field.ID]
 	if !ok || c.count == nil || c.ids == nil || len(c.kinds) == 0 {
@@ -1380,14 +1382,25 @@ func (c *browseCompiler) factGapCandidates(field browseField, having bool) (stri
 			masks = append(masks, strconv.Itoa(mask))
 		}
 	}
+	playable := []int{int(compactcatalog.Movie), int(compactcatalog.Episode), int(compactcatalog.Track), int(compactcatalog.Part)}
 	arms := []string{}
 	for _, kind := range c.kinds {
-		switch compactcatalog.Kind(kind) {
-		case compactcatalog.Movie, compactcatalog.Episode, compactcatalog.Track, compactcatalog.Part:
-		default:
-			return "", nil
+		if !slices.Contains(playable, kind) {
+			arms = nil
+			break
 		}
 		arms = append(arms, `SELECT id FROM catalog_entities INDEXED BY catalog_entities_fact_gaps WHERE kind=`+strconv.Itoa(kind)+` AND `+factGapSQL+` IN(`+strings.Join(masks, ",")+`)`)
+	}
+	if arms == nil {
+		if !having {
+			return "", nil
+		}
+		// A container has the field only if a member does: the few members
+		// that have it name their containers.
+		for _, kind := range playable {
+			arms = append(arms, `SELECT bei.entity_id AS id FROM catalog_entities member INDEXED BY catalog_entities_fact_gaps CROSS JOIN catalog_browse_memberships bei INDEXED BY catalog_browse_membership_item ON bei.item_id=member.id
+ WHERE member.kind=`+strconv.Itoa(kind)+` AND `+factGapSQL+` IN(`+strings.Join(masks, ",")+`)`)
+		}
 	}
 	candidates := strings.Join(arms, " UNION ALL ")
 	found, err := c.count(`SELECT count(*) FROM (` + candidates + ` LIMIT ` + strconv.Itoa(presenceProbe+1) + `)`)

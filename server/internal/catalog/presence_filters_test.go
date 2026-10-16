@@ -58,8 +58,22 @@ func TestPresenceGenreAndTitleFiltersMatchTheTitleTest(t *testing.T) {
 			}
 		}
 	}
+	tv := c.Library("t", "TV", "tv", "/t")
+	for i := 0; i < 4; i++ {
+		show := c.Show(tv, fmt.Sprintf("Show %d", i), 2002)
+		season := c.Season(show, 1)
+		for n := 1; n <= 3; n++ {
+			episode := c.Episode(show, season, n, fmt.Sprintf("/t/%d/%d.mkv", i, n))
+			// Only the second show has a director, on one episode.
+			if i == 1 && n == 2 {
+				c.Write(func(ctx context.Context, tx *sql.Tx) error {
+					return compactcatalog.SetCreditsTx(ctx, tx, episode.ID, "fixture", []compactcatalog.Credit{{PersonKey: "d", PersonName: "Dir", CreditedName: "Dir", Role: "Director", Department: "Directing"}})
+				})
+			}
+		}
+	}
 	c.Drain()
-	v := Viewer{Profile: "p", Fence: "presence", Libraries: []string{"m", "a"}}
+	v := Viewer{Profile: "p", Fence: "presence", Libraries: []string{"m", "a", "t"}}
 	s := New(c.DB)
 	cases := []struct {
 		library, pivot string
@@ -82,6 +96,10 @@ func TestPresenceGenreAndTitleFiltersMatchTheTitleTest(t *testing.T) {
 		{"m", "movies", 1, BrowseNode{Field: "title", Operator: "in", Value: []any{"Film 01", "Zebra Crossing 7"}}},
 		{"m", "movies", 1, BrowseNode{Field: "title", Operator: "contains", Value: "qqq"}},
 		{"m", "movies", 1, BrowseNode{Field: "title", Operator: "contains", Value: "m"}},
+		{"t", "shows", 2, BrowseNode{Field: "director", Operator: "is-present"}},
+		{"t", "shows", 2, BrowseNode{Field: "director", Operator: "is-missing"}},
+		{"t", "shows", 2, BrowseNode{Field: "writer", Operator: "is-present"}},
+		{"t", "episodes", 4, BrowseNode{Field: "director", Operator: "is-present"}},
 		{"a", "albums", 6, BrowseNode{Field: "genre", Operator: "is-missing"}},
 		{"a", "artists", 5, BrowseNode{Field: "genre", Operator: "is-missing"}},
 		{"a", "songs", 7, BrowseNode{Field: "genre", Operator: "is-missing"}},
