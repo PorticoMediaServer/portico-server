@@ -340,7 +340,8 @@ func (s *Service) DiscoverWithRestrictions(library, profile string, restrictions
 		}
 		rows, e = s.read().Query(`SELECT id FROM (`+source.base+`) ORDER BY ord DESC,id LIMIT 12`, source.args...)
 	} else {
-		rows, e = s.read().Query(`SELECT id FROM (`+homeContinueBase(mode)+`) candidate WHERE `+clause+` ORDER BY ord DESC,id LIMIT 12`, args...)
+		// The listening walk's bounded window takes the profile first.
+		rows, e = s.read().Query(`SELECT id FROM (`+homeContinueBase(mode)+`) candidate WHERE `+clause+` ORDER BY ord DESC,id LIMIT 12`, append([]any{profile}, args...)...)
 	}
 	if e != nil {
 		return out, e

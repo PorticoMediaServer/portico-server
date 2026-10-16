@@ -293,6 +293,10 @@ func homeVisible(alias string) string {
 // this many entries, however long the profile's listening history is.
 const continueListeningMaximum = 40
 
+// continueListeningWindow is how much of the profile's recent unfinished
+// activity Continue Listening reads to find those entries.
+const continueListeningWindow = 1000
+
 func homeContinueBase(mode string) string {
 	kind := `k.playable=1 AND k.listening=0 AND i.kind<>11`
 	libraries := `a.library_id IN(SELECT value FROM json_each(?))`
@@ -306,7 +310,10 @@ func homeContinueBase(mode string) string {
 		// One ordered walk of the profile's unfinished activity across its music
 		// and audiobook libraries (0079). The per-library index would make SQLite
 		// sort the whole history before the row's LIMIT could stop it.
-		activity = `progress_activity a INDEXED BY progress_home_profile_recent`
+		// The walk reads at most continueListeningWindow of the profile's
+		// most recent unfinished activity, so a long history of unfinished
+		// films and episodes ahead of the music costs the same in any library.
+		activity = `(SELECT * FROM progress_activity INDEXED BY progress_home_profile_recent WHERE profile_id=? AND state!='ended' ORDER BY updated_at DESC,item_id DESC LIMIT ` + strconv.Itoa(continueListeningWindow) + `) a`
 	}
 	// id names the public id for hydration, entity the integer id for
 	// restriction predicates, ord the activity row's own column so the planner
@@ -349,7 +356,7 @@ func (s *Service) homeSourceBase(r HomeRequest, spec homeRowSpec) (homeSource, e
 		mode := "continue_movies"
 		if spec.ID == "continue_listening" {
 			mode = "continue_listening"
-			return homeSource{base: homeContinueBase(mode), args: []any{r.Profile, libraries}, cap: continueListeningMaximum}, nil
+			return homeSource{base: homeContinueBase(mode), args: []any{r.Profile, r.Profile, libraries}, cap: continueListeningMaximum}, nil
 		}
 		cutoffs, premieres, maximum, err := s.continueWatchingPolicy(r.Libraries, r.now())
 		if err != nil {
