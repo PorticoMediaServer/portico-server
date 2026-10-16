@@ -158,7 +158,6 @@ Missing values disappear cleanly. Facts MUST NOT be filled with `Unknown` unless
 ### 7.2 Summary and credits
 
 - The hero summary is bounded; complete text is reachable through expansion or the body on small screens.
-- Spoiler-sensitive episode summaries follow the profile's spoiler policy.
 - Cast/crew uses person entities with portrait art where available and stable role labels.
 - Long credit lists use pagination/virtualization and deterministic focus identity.
 

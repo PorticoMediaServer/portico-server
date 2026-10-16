@@ -202,7 +202,7 @@ Embedded tags are media-kind-aware. Music tags are useful identity and descripti
 
 User watch state, play count, Saved state, and profile preferences found in NFO or tags MUST NOT be imported into multiple users or treated as descriptive metadata. Any future import is a separate explicit migration contract.
 
-Portico does not write provider metadata, artwork, NFO, OPF, tags, or lyrics beside owner media by default. A future owner-enabled export is a separate atomic operation with source write-capability checks, collision/backup policy, and a preview; a metadata refresh never acquires filesystem write authority implicitly.
+Portico does not write provider metadata, artwork, NFO, OPF, tags, or lyrics beside owner media, and no such export is planned (dropped by Justin, 15 Oct 2026). A metadata refresh never acquires filesystem write authority.
 
 ## 7. Manual edits, locks, and undo
 

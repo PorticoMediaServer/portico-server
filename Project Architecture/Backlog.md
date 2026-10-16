@@ -34,9 +34,9 @@ October implementation reconciliation. Report inventory read at 2026-10-13 12:56
 
 - **native-playback:** Apple/Android SDK/device builds; native start-throughput and reason parsing; same-session Player-setting capability replan; fallback-font mixed-script coverage, Settings caption rows and chapter thumbnails. Recheck stale mirror failures after native-sync; no React-hook coverage or runtime proof is claimed. Source: [native-playback](../../_program/reports/native-playback.md).
 
-- **apple-mpv:** Real MPVKit/SDK/linkage, display/HDR/receiver, subtitle, seek and lifecycle qualification; software limits and early EOF. PiP/live/music mpv remain unavailable. Read later apple-mpv-review fixes before reopening corrected source defects. Source: [apple-mpv](../../_program/reports/apple-mpv.md).
+- **apple-mpv:** Real own-engine build (`third_party/media-engine`)/SDK/linkage, display/HDR/receiver, subtitle, seek and lifecycle qualification; software limits and early EOF. PiP/live/music mpv remain unavailable. Read later apple-mpv-review fixes before reopening corrected source defects. Source: [apple-mpv](../../_program/reports/apple-mpv.md).
 
-- **apple-mpv-review:** Apple framework compilation, pinned MPVKit ABI/symbols, physical teardown/seek/relay/track/display acceptance. Source review fixes do not prove HDR output, audio routing or all glyphs. Source: [apple-mpv-review](../../_program/reports/apple-mpv-review.md).
+- **apple-mpv-review:** Apple framework compilation, the own engine's framework ABI/symbols, physical teardown/seek/relay/track/display acceptance. Source review fixes do not prove HDR output, audio routing or all glyphs. Source: [apple-mpv-review](../../_program/reports/apple-mpv-review.md).
 
 - **android-mpv:** Build Gradle/JNI/libmpv and test physical Android/Fire devices. No mpv passthrough, interlace or DV5; no mpv PiP/live/music. HDR with drawn subtitles uses SDR; HDR output, software ceilings/fonts and Fire receiver reporting remain unqualified. Android 11 frame-rate API excludes older Fire OS. Add release notices/source custody. Source: [android-mpv](../../_program/reports/android-mpv.md).
 
@@ -60,7 +60,7 @@ October implementation reconciliation. Report inventory read at 2026-10-13 12:56
 
 ## Identity, API and networking
 
-- **accounts-security:** Restricted profiles still manage devices/approve TV; prune failed-attempt ledger; remove residual Hosted authority branches; investigate historical Apple sign-outs; country/per-library unrated policy and label/tag parity; device-approval records without installation IDs. Client permission/hours/device handling needs acceptance. Keys restored from backup are an explicit disclosed exception, not an assumed scrub task. Source: [accounts-security](../../_program/reports/accounts-security.md).
+- **accounts-security:** Restricted profiles still manage devices/approve TV; prune failed-attempt ledger; remove residual Hosted authority branches; investigate historical Apple sign-outs; device-approval records without installation IDs. Client permission/hours/device handling needs acceptance. Keys restored from backup are an explicit disclosed exception, not an assumed scrub task. Source: [accounts-security](../../_program/reports/accounts-security.md).
 
 - **review-accounts-security:** Independent five findings fixed. Reconcile all new route restriction/visibility matrices and client propagation/real proxy/Hosted/crash acceptance. Later base-health reports matrix fixes; verify against the final integrated revision rather than reopen that older count blindly. Source: [review-accounts-security](../../_program/reports/review-accounts-security.md).
 

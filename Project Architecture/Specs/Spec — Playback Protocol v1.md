@@ -14,11 +14,13 @@ Sessions bind to authenticated installation/device records. Access/refresh token
 
 Automatic is the Player default. Native plays original/plain remux where possible. mpv is selected when it avoids native video conversion, lossy audio or burn-in and can play the file. Explicit Native/mpv choices remain, with necessary fallback explained by the plan. The presentation names the engine. Republish on relevant output/settings changes.
 
-mpv is implemented on Apple and Android/Fire clients, but native linkage/device acceptance remains required. Android mpv declares no passthrough, interlacing or DV profile 5; mpv PiP/live/music are not delivered. Vega declares SDR/stereo/text and hides unsupported features. Per-engine display ranges and richer codec rate/resolution limits remain gaps.
+mpv is implemented on Apple and Android/Fire clients with Portico's own engine build (`third_party/media-engine/` in the client repository, FFmpeg at the server's pin), but native linkage/device acceptance remains required. Android mpv declares no passthrough, interlacing or DV profile 5; mpv PiP/live/music are not delivered. Vega declares SDR/stereo/text and hides unsupported features. Per-engine display ranges and richer codec rate/resolution limits remain gaps.
 
 ## 3. Reads and choices
 
-`GET /v1/items/{itemId}/playback-options` provides current versions, audio/subtitle choices, quality options and remembered preferences. A plan preview explains direct/remux/conversion and engine choice. Current source facts/permissions decide choices, not a client reconstruction of server policy.
+`GET /v1/items/{itemId}/playback-options` provides current versions, audio/subtitle choices, quality options and the viewer's Settings preferences.
+
+Player choices (Justin, 15 Oct): Settings decide every start. A change made in the player (track, quality, speed, caption look, Forced only, the engine) lasts for that playback only: it is carried through autoplay, completion and queue continuation and is gone at the next fresh start or new queue. Nothing is remembered per title; there is no "forget last choice" route. A plan preview explains direct/remux/conversion and engine choice. Current source facts/permissions decide choices, not a client reconstruction of server policy.
 
 Version/track choices before Play must reach the start. Native's pending-version hook remains an integration item. Multipart version grouping/best-playable version selection and absorbed-ID references need identity/playback review; generic height/size order does not prove the best playable choice.
 
@@ -36,7 +38,7 @@ Markers, chapters and discovered subtitles are independent resources. Subtitle d
 
 Rejected starts/replans must preserve the working grant, queue and progress authority. Replay/reads recheck profile ownership and current visibility. Remote controllers retain the playing device's engine/network context. Use relevant revisions; unrelated progress must not conflict with a semantic command. Reconcile an ambiguous mutation instead of inventing a new intent.
 
-Web and native use PlaybackService and PlaybackSessionController. Local seek is used when the player/range permits; server production restart is requested only when needed. Timeline observations include local track choices and failure facts. Native Player-setting changes still replace the session on the current entry instead of a same-session capability replan.
+Web and native use PlaybackService and PlaybackSessionController. Local seek is used when the player/range permits; server production restart is requested only when needed. Timeline observations include local track choices and failure facts. A native Player (engine) change re-plans the same session in place (`PATCH` with a replan), keeping the queue entry, choices and position.
 
 ## 5. Quality and conversion
 
@@ -50,17 +52,17 @@ Rich ordinary playback is distinct from current H.264 SDR/AAC prepared recipes a
 
 ## 6. Subtitles
 
-Prefer original device rendering where supported, including beside remuxed/converted streams. Otherwise use appropriate text delivery or high-quality burn-in. Track Off, Automatic, forced and explicit choices remain distinct. A subtitle-triggered replan preserves the session/queue.
+Prefer original device rendering where supported, including beside remuxed/converted streams. The web draws ASS/SSA, PGS, VobSub and DVB itself; native players draw what their engine declares; iPhone Safari's full-screen player takes a styled track as text. Subtitles are chosen by session change, never by a separate selection route. Otherwise use appropriate text delivery or high-quality burn-in. Track Off, Automatic, forced and explicit choices remain distinct. A subtitle-triggered replan preserves the session/queue.
 
 The server delivers WebVTT, ASS/SSA originals and fonts, PGS SUP, paired VobSub and DVB capsules with grant-scoped range reads. Web has WebAssembly libass and image workers. Native/mpv follow declared render capability. Unsupported renderers are hidden; do not advertise a kind merely because an engine library exists.
 
-Glyph coverage, real bitmap samples, offsets/seeks, HDR preview/burn, PiP/Cast fallback and offline original/companion/font packaging remain acceptance/integration tasks. Device rendering source code is not proof of consistent subtitles everywhere.
+Picture in Picture shows no drawn subtitles (Justin, 15 Oct): a burned-in subtitle stays with the picture, a drawn one returns with it, and opening Picture in Picture never asks the server for a conversion. Glyph coverage, real bitmap samples, offsets/seeks, HDR preview/burn, Cast fallback and offline original/companion/font packaging remain acceptance/integration tasks. Device rendering source code is not proof of consistent subtitles everywhere.
 
 ## 7. Queues and listening
 
 Queue selectors, windows and prepare/commit-next operations are in the current registry. Stable entry IDs retain duplicate playlist occurrences. Changes/retries do not collapse a queue to one title. Audio successor preparation is not commit; bounded deadlines and exact generation/transition fences govern gapless/crossfade. A late successor must not hold outgoing audio forever.
 
-Music and audiobooks retain local tag/lyric/chapter evidence. Normalisation is off by default; unknown gain uses unity and amplification needs measured peak. Audiobook speed reaches 3× on server/web. Pause comfort uses 15 seconds after five minutes and 30 after one hour. Source facts still perform full background decode rather than a general packets-first shortcut. Real priming, deep resume, resampling, latency and gapless fixtures remain required.
+Music and audiobooks retain local tag/lyric/chapter evidence. Normalisation is off by default; unknown gain uses unity and amplification needs measured peak. Audiobook speed reaches 3× on server/web. Exact resume in MP3, ADTS and Ogg needs no conversion: a per-file seek index (`GET /v1/media/{grant}/audio-index`, named by the direct plan as `seekIndex`) lets the client read from the right byte (Justin, 15 Oct). Pause comfort uses 15 seconds after five minutes and 30 after one hour. Source facts still perform full background decode rather than a general packets-first shortcut. Real priming, deep resume, resampling, latency and gapless fixtures remain required.
 
 ## 8. Live, DVR and offline
 
