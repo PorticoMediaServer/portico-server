@@ -1019,7 +1019,16 @@ func SetCreditsTx(ctx context.Context, tx *sql.Tx, entity int64, provider string
 	}
 	for _, c := range credits {
 		var person any
+		var aliased int64
 		if c.PersonKey != "" {
+			// A name someone was known by before a provider identified them.
+			if err := tx.QueryRowContext(ctx, `SELECT person_id FROM catalog_people_aliases WHERE alias=?`, c.PersonKey).Scan(&aliased); err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+		}
+		if aliased != 0 {
+			person = aliased
+		} else if c.PersonKey != "" {
 			var id int64
 			// The people directory orders by sort_name on its index (binary
 			// collation), so the stored form is folded: "de Niro" before "Zeta".
@@ -1049,6 +1058,65 @@ func SetCreditsTx(ctx context.Context, tx *sql.Tx, entity int64, provider string
 		next++
 	}
 	return touchOwnTx(ctx, tx, entity)
+}
+
+// LocalPersonKey is the people identity key of someone credited by name
+// alone (local metadata with no provider id). It folds as SQLite's lower()
+// does, so item credits and a show's credits name one person.
+func LocalPersonKey(name string) string {
+	b := []byte(strings.TrimSpace(name))
+	for i, c := range b {
+		if c >= 'A' && c <= 'Z' {
+			b[i] = c + 'a' - 'A'
+		}
+	}
+	return "name:" + string(b)
+}
+
+// AdoptLocalPersonTx makes the person known only by name from local metadata
+// one with the provider's person, when the provider credits that name on the
+// same title the local metadata does. The person keeps their page: either
+// they take the provider's identity, or, when that person already exists,
+// their credits move to them and the old page id leads there.
+func AdoptLocalPersonTx(ctx context.Context, tx *sql.Tx, entity int64, provider, providerPersonID, name string) error {
+	if provider == "" || providerPersonID == "" || strings.TrimSpace(name) == "" {
+		return nil
+	}
+	local, providerKey := LocalPersonKey(name), provider+":"+providerPersonID
+	var from int64
+	var token string
+	err := tx.QueryRowContext(ctx, `SELECT p.id,p.token FROM catalog_people p WHERE p.identity_key=? AND EXISTS(SELECT 1 FROM catalog_credits c INDEXED BY catalog_credits_person WHERE c.person_id=p.id AND c.entity_id=?)`, local, entity).Scan(&from, &token)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	into := from
+	err = tx.QueryRowContext(ctx, `SELECT id FROM catalog_people WHERE identity_key=?`, providerKey).Scan(&into)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		into = from
+		if _, err = tx.ExecContext(ctx, `UPDATE catalog_people SET identity_key=?,provider_ids=json_object(?,?),revision=revision+1 WHERE id=?`, providerKey, provider, providerPersonID, from); err != nil {
+			return err
+		}
+	case err != nil:
+		return err
+	default:
+		for _, q := range []string{
+			`UPDATE catalog_credits SET person_id=?2 WHERE person_id=?1`,
+			`UPDATE catalog_people_aliases SET person_id=?2 WHERE person_id=?1`,
+			`INSERT OR REPLACE INTO catalog_people_aliases(alias,person_id) VALUES('token:'||?3,?2)`,
+			`DELETE FROM catalog_people WHERE id=?1`,
+			`UPDATE catalog_people SET revision=revision+1 WHERE id=?2`,
+		} {
+			if _, err = tx.ExecContext(ctx, q, from, into, token); err != nil {
+				return err
+			}
+		}
+	}
+	_, err = tx.ExecContext(ctx, `INSERT OR REPLACE INTO catalog_people_aliases(alias,person_id) VALUES(?,?)`, local, into)
+	return err
 }
 
 func creditLabel(ctx context.Context, tx *sql.Tx, label string) (int64, error) {

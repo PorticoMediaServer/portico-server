@@ -66,6 +66,16 @@ CREATE TABLE catalog_identities(
  kind INTEGER NOT NULL,
  PRIMARY KEY(root,source_key)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_identities_public ON catalog_identities(public_id);
+-- A title merged into another keeps answering at its old public id: links,
+-- bookmarks and offline receipts that name it reach the title that stayed.
+CREATE TABLE catalog_merged_ids(
+ public_id BLOB PRIMARY KEY CHECK(length(public_id)=16),
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_merged_ids_entity ON catalog_merged_ids(entity_id);
+-- A title the owner separated from another: provider identity never joins it
+-- automatically again (the owner still can).
+CREATE TABLE catalog_kept_apart(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE) STRICT;
 
 -- One asset table: physical evidence and probed facts. token is the asset's
 -- public id (assets are not entities; the format is unchanged).
@@ -358,6 +368,13 @@ CREATE TABLE catalog_people(
  revision INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE INDEX catalog_people_name ON catalog_people(sort_name,id);
 CREATE UNIQUE INDEX catalog_people_identity ON catalog_people(identity_key);
+-- Other names a person is known by: the "name:" key of someone first known
+-- only from local metadata, and the old page id, once a provider identified
+-- them and the two became one person.
+CREATE TABLE catalog_people_aliases(
+ alias TEXT PRIMARY KEY,
+ person_id INTEGER NOT NULL REFERENCES catalog_people(id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_people_aliases_person ON catalog_people_aliases(person_id);
 CREATE TABLE catalog_credits(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  ord INTEGER NOT NULL,
@@ -2393,6 +2410,58 @@ CREATE TRIGGER screen_attention_update AFTER UPDATE OF status,accepted_publicati
  DELETE FROM screen_metadata_attention WHERE entity_id=NEW.target_id AND NEW.accepted_publication<>''
  AND NEW.status IN('matched','matched_work','pending_children','delegated_tvdb')
  AND (NEW.selection_mode IN('owner','legacy') OR COALESCE((SELECT confidence FROM screen_metadata_publications WHERE id=NEW.accepted_publication),1)>=0.9);
+END;
+-- Music and audiobooks wait for the owner here, beside the film and TV list
+-- and in the same per-library counts: an album MusicBrainz could not settle
+-- or offers a choice for, a track that needs a choice, and a book whose tags
+-- leave it without an author.
+CREATE TABLE listening_metadata_attention(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN('album','song','book')),
+ library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+ reason TEXT NOT NULL,generation INTEGER NOT NULL,
+ dismissed_generation INTEGER NOT NULL DEFAULT -1,
+ retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))) STRICT;
+CREATE INDEX listening_metadata_attention_library ON listening_metadata_attention(library_id,entity_id) WHERE dismissed_generation<>generation;
+CREATE INDEX listening_metadata_attention_active ON listening_metadata_attention(entity_id) WHERE retired=0 AND dismissed_generation<>generation;
+CREATE TRIGGER listening_attention_count_insert AFTER INSERT ON listening_metadata_attention WHEN NEW.retired=0 AND NEW.dismissed_generation<>NEW.generation BEGIN
+ INSERT INTO screen_metadata_attention_counts(library_id,total) VALUES(NEW.library_id,1)
+ ON CONFLICT(library_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER listening_attention_count_delete AFTER DELETE ON listening_metadata_attention WHEN OLD.retired=0 AND OLD.dismissed_generation<>OLD.generation BEGIN
+ UPDATE screen_metadata_attention_counts SET total=total-1 WHERE library_id=OLD.library_id;
+END;
+CREATE TRIGGER listening_attention_count_update AFTER UPDATE OF library_id,retired,dismissed_generation,generation ON listening_metadata_attention BEGIN
+ UPDATE screen_metadata_attention_counts SET total=total-1 WHERE library_id=OLD.library_id AND OLD.retired=0 AND OLD.dismissed_generation<>OLD.generation;
+ INSERT INTO screen_metadata_attention_counts(library_id,total) SELECT NEW.library_id,1 WHERE NEW.retired=0 AND NEW.dismissed_generation<>NEW.generation
+ ON CONFLICT(library_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER listening_attention_retire AFTER UPDATE OF retired ON catalog_entities WHEN OLD.retired<>NEW.retired AND NEW.kind IN(6,7,8) BEGIN
+ UPDATE listening_metadata_attention SET retired=NEW.retired WHERE entity_id=NEW.id;
+END;
+CREATE TRIGGER listening_attention_music_insert AFTER INSERT ON mb_jobs WHEN NEW.status='needs_selection' OR NEW.kind='album' AND NEW.status='unresolved' BEGIN
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,NEW.kind,(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id),NEW.status,NEW.generation,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1)
+ WHERE (SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id) IS NOT NULL
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=excluded.generation,retired=excluded.retired;
+END;
+CREATE TRIGGER listening_attention_music_update AFTER UPDATE OF status,generation ON mb_jobs WHEN OLD.status IS NOT NEW.status OR OLD.generation IS NOT NEW.generation BEGIN
+ DELETE FROM listening_metadata_attention WHERE entity_id=NEW.entity_id AND NOT(NEW.status='needs_selection' OR NEW.kind='album' AND NEW.status='unresolved');
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,NEW.kind,(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id),NEW.status,NEW.generation,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1)
+ WHERE (NEW.status='needs_selection' OR NEW.kind='album' AND NEW.status='unresolved') AND (SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id) IS NOT NULL
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=excluded.generation,retired=excluded.retired;
+END;
+CREATE TRIGGER listening_attention_book_insert AFTER INSERT ON catalog_books WHEN trim(NEW.author)='' BEGIN
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,'book',library_id,'no_author',1,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1) FROM catalog_libraries WHERE id=NEW.library_id
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=generation+1;
+END;
+CREATE TRIGGER listening_attention_book_update AFTER UPDATE OF author ON catalog_books WHEN (trim(OLD.author)='') IS NOT (trim(NEW.author)='') BEGIN
+ DELETE FROM listening_metadata_attention WHERE entity_id=NEW.entity_id AND trim(NEW.author)<>'';
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,'book',library_id,'no_author',1,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1) FROM catalog_libraries WHERE id=NEW.library_id AND trim(NEW.author)=''
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=generation+1;
 END;
 CREATE TABLE screen_metadata_fields(
  target_kind TEXT NOT NULL,target_id INTEGER NOT NULL,field TEXT NOT NULL,value TEXT NOT NULL,
@@ -4899,9 +4968,12 @@ CREATE TRIGGER tvdb_publication_item_source AFTER UPDATE OF source_revision ON m
 CREATE TRIGGER artwork_source_changed AFTER UPDATE OF source_revision,identity_revision ON metadata_publication_heads WHEN OLD.source_revision IS NOT NEW.source_revision OR OLD.identity_revision IS NOT NEW.identity_revision BEGIN
  UPDATE artwork_entity_heads SET revision=revision+1 WHERE entity_id=NEW.item_id OR entity_id IN(SELECT book_id FROM catalog_book_files WHERE entity_id=NEW.item_id);
  INSERT INTO artwork_dirty VALUES('item',NEW.item_id) ON CONFLICT(kind,entity_id) DO NOTHING;END;
+-- An episode whose fetch is in flight keeps it: its tags are not among its
+-- matching inputs (films' are).
 CREATE TRIGGER screen_wake_video_names_INSERT AFTER INSERT ON inventory_video_names BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
- WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id);
+ WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id)
+  AND (lease='' OR NOT EXISTS(SELECT 1 FROM catalog_episodes ep WHERE ep.entity_id=screen_metadata_work.target_id));
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
  WHERE target_kind='show' AND target_id IN(SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id) AND lease='' AND NOT(accepted_publication<>'' AND status IN('matched','pending_children'));END;
 CREATE TRIGGER screen_wake_video_names_UPDATE AFTER UPDATE ON inventory_video_names BEGIN
@@ -6204,6 +6276,33 @@ CREATE TRIGGER webhook_title_metadata_updated AFTER UPDATE OF metadata_revision 
  WHEN NEW.metadata_revision<>OLD.metadata_revision AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
  INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
   FROM catalog_entities e WHERE e.id=NEW.item_id AND e.kind IN(1,2,4,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+-- A show's, album's or book's own details (overview, artwork and the like)
+-- change without touching its title or year; those changes are updates too.
+CREATE TRIGGER webhook_show_details_updated AFTER UPDATE OF original_title,tagline,overview,content_rating,studio,network,country,tags,labels ON catalog_shows
+ WHEN (OLD.original_title IS NOT NEW.original_title OR OLD.tagline IS NOT NEW.tagline OR OLD.overview IS NOT NEW.overview OR OLD.content_rating IS NOT NEW.content_rating OR OLD.studio IS NOT NEW.studio OR OLD.network IS NOT NEW.network OR OLD.country IS NOT NEW.country OR OLD.tags IS NOT NEW.tags OR OLD.labels IS NOT NEW.labels) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_album_details_updated AFTER UPDATE OF overview,label,tags,release_date,release_country ON catalog_albums
+ WHEN (OLD.overview IS NOT NEW.overview OR OLD.label IS NOT NEW.label OR OLD.tags IS NOT NEW.tags OR OLD.release_date IS NOT NEW.release_date OR OLD.release_country IS NOT NEW.release_country) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_book_details_updated AFTER UPDATE OF author,narrator,overview,series,series_position,tags,labels ON catalog_books
+ WHEN (OLD.author IS NOT NEW.author OR OLD.narrator IS NOT NEW.narrator OR OLD.overview IS NOT NEW.overview OR OLD.series IS NOT NEW.series OR OLD.series_position IS NOT NEW.series_position OR OLD.tags IS NOT NEW.tags OR OLD.labels IS NOT NEW.labels) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_container_art_updated AFTER UPDATE OF overview,poster_url,backdrop_url,original_title,tagline ON catalog_item_details
+ WHEN (OLD.overview IS NOT NEW.overview OR OLD.poster_url IS NOT NEW.poster_url OR OLD.backdrop_url IS NOT NEW.backdrop_url OR OLD.original_title IS NOT NEW.original_title OR OLD.tagline IS NOT NEW.tagline) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_container_art_added AFTER INSERT ON catalog_item_details
+ WHEN (NEW.overview<>'' OR NEW.poster_url<>'' OR NEW.backdrop_url<>'') AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
 END;
 CREATE TRIGGER webhook_title_removed BEFORE DELETE ON catalog_entities
  WHEN OLD.kind IN(1,2,4,6,8) AND OLD.retired=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.removed,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=OLD.library_id) BEGIN

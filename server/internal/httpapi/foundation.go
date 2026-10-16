@@ -300,6 +300,7 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	// catalogue (bf54a83) plus lane C's /v1/capabilities route (2a92fa3).
 	registry := apikit.NewContextual(d.v1Authorize, policyCatalogue())
 	registry.GateScopes(registryScopeGate)
+	registry.RewritePathValues(d.mergedTitlePath)
 	err := apikit.Register(registry, apikit.Route[struct{}, ServerDocument]{Metadata: apikit.Metadata{Admission: laneDefault,
 		ID: "get_server", Method: "GET", Path: "/v1/server", Summary: "Read server identity and API level", Access: apikit.Public, Requires: apikit.ScopeOpen, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, Errors: []string{"internal"},
 	}, Handler: func(context.Context, *http.Request, struct{}) (ServerDocument, error) {

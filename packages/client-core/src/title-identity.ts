@@ -136,6 +136,17 @@ export async function findLibraryFile(api:TitleIdentityApi,libraryId:string,file
  return undefined;
 }
 
+/** Kinds whose files sit in an album or book, which an owner can separate by folder. */
+export const FOLDER_SPLITTABLE_KINDS:readonly string[]=Object.freeze(['song','audiobook_file']);
+
+/** Says the folder holding this file is an album (or book) of its own, not part of the one it was joined with. Returns the new album's or book's id. */
+export async function separateLibraryFolder(api:TitleIdentityApi,libraryId:string,file:LibraryFileRecord):Promise<string>{
+ if(!id(libraryId)||!id(file.objectId)||!id(file.revision))invalid('folder to separate');
+ const out=await api.request<unknown>(libraryBase(libraryId)+'/inventory/'+encodeURIComponent(file.objectId)+'/separate-folder','POST',{revision:file.revision});
+ if(!obj(out)||!id(out.itemId))invalid('separated album');
+ return out.itemId;
+}
+
 /** Says one file is not a version of the title it was grouped with: it becomes a title of its own, and the choice is remembered across scans. Returns the new title's id. */
 export async function separateLibraryFile(api:TitleIdentityApi,libraryId:string,file:LibraryFileRecord):Promise<string>{
  if(!id(libraryId)||!id(file.objectId)||!id(file.revision))invalid('file to separate');

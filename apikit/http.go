@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"reflect"
+	"strings"
 )
 
 // RegisterHTTP declares the exact request and response types of an HTTP handler.
@@ -38,11 +39,19 @@ func (r *Registry) MountHTTP(mux *http.ServeMux, pattern string, handler http.Ha
 		}
 		r.bound[d.ID] = true
 		m := d.Metadata
+		names := pathNames(d.Path)
 		serve := func(w http.ResponseWriter, q *http.Request) {
 			if r.scopes != nil {
 				if err := r.scopes(q, m.Requires); err != nil {
 					r.errors.Write(w, "", err)
 					return
+				}
+			}
+			if r.rewrite != nil {
+				for _, name := range names {
+					if value := q.PathValue(name); value != "" {
+						q.SetPathValue(name, r.rewrite(q, name, value))
+					}
 				}
 			}
 			handler.ServeHTTP(w, q)
@@ -52,6 +61,19 @@ func (r *Registry) MountHTTP(mux *http.ServeMux, pattern string, handler http.Ha
 		return nil
 	}
 	return fmt.Errorf("HTTP handler has no typed contract: %s", pattern)
+}
+
+// pathNames lists a route path's wildcard names.
+func pathNames(path string) []string {
+	var names []string
+	for _, part := range strings.Split(path, "/") {
+		if strings.HasPrefix(part, "{") {
+			if end := strings.IndexByte(part, '}'); end > 1 {
+				names = append(names, strings.TrimSuffix(part[1:end], "..."))
+			}
+		}
+	}
+	return names
 }
 
 // MetadataForPattern reads an operation declaration by its registered pattern.

@@ -178,6 +178,7 @@ index catalog_facet_members_previous_group
 index catalog_identities_public
 index catalog_item_attribute_edges_first
 index catalog_item_attribute_edges_term
+index catalog_merged_ids_entity
 index catalog_missing_titles_library
 index catalog_missing_titles_time
 index catalog_movie_category_member_id
@@ -190,6 +191,7 @@ index catalog_movie_category_visible_item
 index catalog_movie_category_visible_pair
 index catalog_movie_category_visible_poster
 index catalog_movie_category_visible_rank
+index catalog_people_aliases_person
 index catalog_people_identity
 index catalog_people_name
 index catalog_personal_history
@@ -350,6 +352,8 @@ index library_sources_due
 index library_sources_library
 index listening_book_series_key
 index listening_group_names
+index listening_metadata_attention_active
+index listening_metadata_attention_library
 index live_allocations_capacity
 index live_channel_choices_groups
 index live_icon_jobs_due
@@ -688,8 +692,10 @@ table catalog_item_attribute_edges
 table catalog_item_availability
 table catalog_item_availability_previous
 table catalog_item_details
+table catalog_kept_apart
 table catalog_kinds
 table catalog_libraries
+table catalog_merged_ids
 table catalog_missing_title_counts
 table catalog_missing_titles
 table catalog_movie_category_cursors
@@ -703,6 +709,7 @@ table catalog_movie_category_visible_pair_jobs
 table catalog_movie_category_visible_state
 table catalog_movie_category_visible_summaries
 table catalog_people
+table catalog_people_aliases
 table catalog_people_names
 table catalog_people_names_config
 table catalog_people_names_content
@@ -900,6 +907,7 @@ table library_scan_policies
 table library_sources
 table listening_book_groups
 table listening_book_series
+table listening_metadata_attention
 table live_allocation_reconcile_cursor
 table live_allocations
 table live_channel_attributes
@@ -1793,6 +1801,14 @@ trigger library_navigation_revisions_bound_delete
 trigger library_navigation_revisions_bound_insert
 trigger library_revision_create
 trigger library_revision_update
+trigger listening_attention_book_insert
+trigger listening_attention_book_update
+trigger listening_attention_count_delete
+trigger listening_attention_count_insert
+trigger listening_attention_count_update
+trigger listening_attention_music_insert
+trigger listening_attention_music_update
+trigger listening_attention_retire
 trigger listening_series_asset_delete
 trigger listening_series_asset_insert
 trigger listening_series_book_library
@@ -2350,6 +2366,10 @@ trigger w2i01_music_artwork_identity
 trigger w2i01_screen_artwork
 trigger w2i01_screen_artwork_consent
 trigger w2i01_screen_artwork_policy
+trigger webhook_album_details_updated
+trigger webhook_book_details_updated
+trigger webhook_container_art_added
+trigger webhook_container_art_updated
 trigger webhook_deliveries_webhooks_list_delete
 trigger webhook_deliveries_webhooks_list_insert
 trigger webhook_deliveries_webhooks_list_update
@@ -2361,6 +2381,7 @@ trigger webhook_playback_stopped
 trigger webhook_recording_done
 trigger webhook_scan_finished
 trigger webhook_scan_started
+trigger webhook_show_details_updated
 trigger webhook_storage_low
 trigger webhook_storage_lower
 trigger webhook_title_added

@@ -27,11 +27,13 @@ var personalOperation = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
 type personalReader interface{ QueryRow(string, ...any) *sql.Row }
 
-// personalID resolves a public item id to its integer entity id. An unknown
+// personalID resolves a public item id to its integer entity id (a merged-away
+// title's id resolves to the title that stayed). An unknown
 // or malformed id reads as not found, like the old items lookup.
 func personalID(q personalReader, item string) (int64, error) {
 	var id int64
-	if e := q.QueryRow(`SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)`, item).Scan(&id); e != nil {
+	if e := q.QueryRow(`SELECT id FROM catalog_entities WHERE public_id=pid_blob(?1)
+ UNION ALL SELECT entity_id FROM catalog_merged_ids WHERE public_id=pid_blob(?1) LIMIT 1`, item).Scan(&id); e != nil {
 		return 0, e
 	}
 	return id, nil

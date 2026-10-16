@@ -426,3 +426,35 @@ func refreshBookContextEffective(ctx context.Context, tx *sql.Tx, bookID int64) 
 	}
 	return refreshBookGroupMembers(ctx, tx, bookID)
 }
+
+// ReprojectBookFileTx re-reads one audiobook file's series and position
+// evidence at once, after the file moved to another book: nothing derived
+// still names the book it left.
+func ReprojectBookFileTx(ctx context.Context, tx *sql.Tx, fileID int64) error {
+	rows, err := tx.QueryContext(ctx, `SELECT asset_id FROM catalog_asset_links WHERE entity_id=?1
+ UNION SELECT asset_id FROM catalog_book_series_contrib WHERE file_id=?1
+ UNION SELECT asset_id FROM catalog_book_position_contrib WHERE file_id=?1`, fileID)
+	if err != nil {
+		return err
+	}
+	var assets []int64
+	for rows.Next() {
+		var id int64
+		if err = rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		assets = append(assets, id)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return err
+	}
+	for _, asset := range assets {
+		if err = projectBookEvidencePair(ctx, tx, fileID, asset); err != nil {
+			return err
+		}
+	}
+	return nil
+}

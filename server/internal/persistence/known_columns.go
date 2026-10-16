@@ -974,6 +974,7 @@ catalog_item_details.release_date
 catalog_item_details.studio
 catalog_item_details.tagline
 catalog_item_details.tags
+catalog_kept_apart.entity_id
 catalog_kinds.browsable
 catalog_kinds.container
 catalog_kinds.id
@@ -987,6 +988,8 @@ catalog_libraries.library_id
 catalog_libraries.name
 catalog_libraries.retired
 catalog_libraries.root
+catalog_merged_ids.entity_id
+catalog_merged_ids.public_id
 catalog_missing_title_counts.library_id
 catalog_missing_title_counts.total
 catalog_missing_titles.entity_id
@@ -1072,6 +1075,8 @@ catalog_people.provider_ids
 catalog_people.revision
 catalog_people.sort_name
 catalog_people.token
+catalog_people_aliases.alias
+catalog_people_aliases.person_id
 catalog_people_names.catalog_people_names
 catalog_people_names.name
 catalog_people_names.rank
@@ -2296,6 +2301,13 @@ listening_book_series.book_id
 listening_book_series.library_id
 listening_book_series.series_key
 listening_book_series.series_name
+listening_metadata_attention.dismissed_generation
+listening_metadata_attention.entity_id
+listening_metadata_attention.generation
+listening_metadata_attention.kind
+listening_metadata_attention.library_id
+listening_metadata_attention.reason
+listening_metadata_attention.retired
 live_allocation_reconcile_cursor.cursor
 live_allocation_reconcile_cursor.singleton
 live_allocations.account_id
