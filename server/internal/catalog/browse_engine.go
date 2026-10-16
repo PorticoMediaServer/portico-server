@@ -722,7 +722,9 @@ func (s *Service) browseProjection(profile string, rows []browseRow) ([]ContentE
 		for _, id := range containerIDs {
 			args = append(args, id)
 		}
-		rows, err := s.read().Query(`SELECT m.entity_id,count(*) FROM catalog_browse_memberships m WHERE m.entity_id IN (`+placeholders(len(containerIDs))+`) GROUP BY m.entity_id`, args...)
+		// A card's count is its maintained membership counter, not a pass
+		// over an artist's songs or a show's episodes.
+		rows, err := s.read().Query(`SELECT m.entity_id,m.members FROM catalog_browse_member_links m WHERE m.entity_id IN (`+placeholders(len(containerIDs))+`)`, args...)
 		if err != nil {
 			return nil, err
 		}

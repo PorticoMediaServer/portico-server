@@ -6776,22 +6776,24 @@ END;
 CREATE TABLE catalog_browse_member_links(
  entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
  available INTEGER NOT NULL,
- unavailable INTEGER NOT NULL) STRICT;
+ unavailable INTEGER NOT NULL,
+ -- The row's memberships, the count a container card shows.
+ members INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE TRIGGER catalog_browse_member_links_join AFTER INSERT ON catalog_browse_memberships BEGIN
- INSERT INTO catalog_browse_member_links(entity_id,available,unavailable)
-  SELECT NEW.entity_id,COALESCE(sum(l.available=1),0),COALESCE(sum(l.available=0),0) FROM catalog_asset_links l WHERE l.entity_id=NEW.item_id
-  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable;
+ INSERT INTO catalog_browse_member_links(entity_id,available,unavailable,members)
+  SELECT NEW.entity_id,COALESCE(sum(l.available=1),0),COALESCE(sum(l.available=0),0),1 FROM catalog_asset_links l WHERE l.entity_id=NEW.item_id
+  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable,members=members+1;
 END;
 CREATE TRIGGER catalog_browse_member_links_leave AFTER DELETE ON catalog_browse_memberships BEGIN
  UPDATE catalog_browse_member_links SET available=available-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=1),
-  unavailable=unavailable-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=0) WHERE entity_id=OLD.entity_id;
+  unavailable=unavailable-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=0),members=members-1 WHERE entity_id=OLD.entity_id;
 END;
 CREATE TRIGGER catalog_browse_member_links_move AFTER UPDATE OF entity_id,item_id ON catalog_browse_memberships WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.item_id IS NOT NEW.item_id BEGIN
  UPDATE catalog_browse_member_links SET available=available-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=1),
-  unavailable=unavailable-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=0) WHERE entity_id=OLD.entity_id;
- INSERT INTO catalog_browse_member_links(entity_id,available,unavailable)
-  SELECT NEW.entity_id,COALESCE(sum(l.available=1),0),COALESCE(sum(l.available=0),0) FROM catalog_asset_links l WHERE l.entity_id=NEW.item_id
-  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable;
+  unavailable=unavailable-(SELECT count(*) FROM catalog_asset_links l WHERE l.entity_id=OLD.item_id AND l.available=0),members=members-1 WHERE entity_id=OLD.entity_id;
+ INSERT INTO catalog_browse_member_links(entity_id,available,unavailable,members)
+  SELECT NEW.entity_id,COALESCE(sum(l.available=1),0),COALESCE(sum(l.available=0),0),1 FROM catalog_asset_links l WHERE l.entity_id=NEW.item_id
+  ON CONFLICT(entity_id) DO UPDATE SET available=available+excluded.available,unavailable=unavailable+excluded.unavailable,members=members+1;
 END;
 CREATE TRIGGER catalog_browse_member_links_link_insert AFTER INSERT ON catalog_asset_links BEGIN
  INSERT INTO catalog_browse_member_links(entity_id,available,unavailable)

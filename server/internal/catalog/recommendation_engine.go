@@ -443,6 +443,10 @@ func workKeySQL(i string) string {
 	 ELSE '' END`
 }
 
+// homePosterLenders is how many of a container's members a Home card without
+// artwork tries, in order, for a poster to borrow.
+const homePosterLenders = 64
+
 func (s *Service) homeEngineEntries(profile string, ids []string) ([]ContentEntry, error) {
 	out := []ContentEntry{}
 	if len(ids) == 0 {
@@ -526,11 +530,13 @@ func (s *Service) homeEngineEntries(profile string, ids []string) ([]ContentEntr
 		clause, args := ItemRestrictionSQL("i.id", s.recRestrictions)
 		// Each container's first qualifying child (lowest id, so scan order)
 		// lends its poster: a walk of the container's memberships in id order
-		// that stops at the first, not an aggregate over every child.
+		// that stops at the first, not an aggregate over every child. The walk
+		// reads at most homePosterLenders members, so a container whose first
+		// members have no poster costs the same in any library.
 		bind := append(append([]any{}, args...), idsJSON(containerIDs))
-		rows, e := s.read().Query(`SELECT pid(container.public_id),(SELECT pid(i.public_id) FROM catalog_browse_memberships bx
+		rows, e := s.read().Query(`SELECT pid(container.public_id),(SELECT pid(i.public_id) FROM (SELECT item_id FROM catalog_browse_memberships WHERE entity_id=container.id ORDER BY item_id LIMIT `+strconv.Itoa(homePosterLenders)+`) bx
  CROSS JOIN catalog_entities i ON i.id=bx.item_id CROSS JOIN catalog_item_details d ON d.entity_id=i.id
- WHERE bx.entity_id=container.id AND d.poster_url<>''
+ WHERE d.poster_url<>''
  AND EXISTS(SELECT 1 FROM catalog_asset_links link JOIN catalog_assets asset ON asset.id=link.asset_id WHERE link.entity_id=i.id AND link.available=1)
  AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=i.id)
  AND `+clause+` ORDER BY bx.item_id LIMIT 1)
