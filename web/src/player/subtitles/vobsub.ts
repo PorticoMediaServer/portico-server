@@ -113,13 +113,37 @@ export function readSubpicture(sub: Uint8Array, position: number, spend: (bytes:
   return {data, ptsMs: pts};
 }
 
-type Control = {startMs: number | null; stopMs: number | null; forced: boolean; colours: number[]; alphas: number[]; x1: number; y1: number; x2: number; y2: number; top: number; bottom: number};
+/** Colours that change part-way along lines (`CHG_COLCON`): from column `x` on, lines `first`–`last` (picture coordinates). */
+type ColourChange = {first: number; last: number; points: {x: number; colours: number[]; alphas: number[]}[]};
+type Control = {startMs: number | null; stopMs: number | null; forced: boolean; colours: number[]; alphas: number[]; x1: number; y1: number; x2: number; y2: number; top: number; bottom: number; changes: ColourChange[]};
+
+/**
+ * The line ranges of a `CHG_COLCON` command: each names its lines and up to eight points along
+ * them where another four colours and transparencies take over, and the list ends with
+ * `0f ff ff ff`. A range that does not read is left out; the rest still apply.
+ */
+export function readColourChanges(data: Uint8Array, from: number, to: number): ColourChange[] {
+  const out: ColourChange[] = [];
+  let p = from;
+  while (p + 4 <= to && out.length < 64) {
+    const a = (data[p]! << 8) | data[p + 1]!, b = (data[p + 2]! << 8) | data[p + 3]!;
+    if (a === 0x0fff && b === 0xffff) break;
+    const first = a & 0xfff, count = b >> 12, last = b & 0xfff;
+    p += 4;
+    const points: ColourChange['points'] = [];
+    for (let i = 0; i < count && p + 6 <= to; i++, p += 6) {
+      points.push({x: ((data[p]! << 8) | data[p + 1]!) & 0xfff, colours: [data[p + 3]! & 15, data[p + 3]! >> 4, data[p + 2]! & 15, data[p + 2]! >> 4], alphas: [data[p + 5]! & 15, data[p + 5]! >> 4, data[p + 4]! & 15, data[p + 4]! >> 4]});
+    }
+    if (points.length && last >= first) out.push({first, last, points: points.sort((x, y) => x.x - y.x)});
+  }
+  return out;
+}
 
 /** Reads a unit's command sequences: what the picture is, and when it goes on and off (relative to its time). */
 export function readSubpictureControl(data: Uint8Array): Control | null {
   if (data.length < 4) return null;
   const first = (data[2]! << 8) | data[3]!;
-  const control: Control = {startMs: null, stopMs: null, forced: false, colours: [0, 0, 0, 0], alphas: [0, 0, 0, 0], x1: 0, y1: 0, x2: -1, y2: -1, top: -1, bottom: -1};
+  const control: Control = {startMs: null, stopMs: null, forced: false, colours: [0, 0, 0, 0], alphas: [0, 0, 0, 0], x1: 0, y1: 0, x2: -1, y2: -1, top: -1, bottom: -1, changes: []};
   let p = first;
   for (let sequences = 0; sequences < 64 && p + 4 <= data.length; sequences++) {
     const delayMs = (((data[p]! << 8) | data[p + 1]!) * 1024) / 90, next = (data[p + 2]! << 8) | data[p + 3]!;
@@ -138,7 +162,7 @@ export function readSubpictureControl(data: Uint8Array): Control | null {
           control.y1 = (data[q + 3]! << 4) | (data[q + 4]! >> 4); control.y2 = ((data[q + 4]! & 15) << 8) | data[q + 5]!;
           q += 6; break;
         case 0x06: if (q + 4 > data.length) return null; control.top = (data[q]! << 8) | data[q + 1]!; control.bottom = (data[q + 2]! << 8) | data[q + 3]!; q += 4; break;
-        case 0x07: { if (q + 2 > data.length) return null; const size = (data[q]! << 8) | data[q + 1]!; q += Math.max(2, size); break; }
+        case 0x07: { if (q + 2 > data.length) return null; const size = (data[q]! << 8) | data[q + 1]!; control.changes = readColourChanges(data, q + 2, Math.min(data.length, q + Math.max(2, size))); q += Math.max(2, size); break; }
         default: done = true;
       }
     }
@@ -205,20 +229,31 @@ function paintSubpicture(data: Uint8Array, control: Control, index: VobSubIndex)
   const pixels = new Uint8Array(width * height);
   decodeField(data, control.top, pixels, width, height, 0);
   decodeField(data, control.bottom, pixels, width, height, 1);
-  const table = new Uint8ClampedArray(16);
-  for (let value = 0; value < 4; value++) {
-    const custom = index.custom;
-    const [r, g, b] = custom ? custom.colours[value] ?? [0, 0, 0] : index.palette[control.colours[value]!] ?? [0, 0, 0];
-    const alpha = custom && custom.transparent[value] ? 0 : Math.round(control.alphas[value]! * 17 * index.alpha);
-    table.set([r, g, b, alpha], value * 4);
-  }
+  const tableOf = (colours: readonly number[], alphas: readonly number[]) => {
+    const table = new Uint8ClampedArray(16);
+    for (let value = 0; value < 4; value++) {
+      const custom = index.custom;
+      const [r, g, b] = custom ? custom.colours[value] ?? [0, 0, 0] : index.palette[colours[value]!] ?? [0, 0, 0];
+      const alpha = custom && custom.transparent[value] ? 0 : Math.round(alphas[value]! * 17 * index.alpha);
+      table.set([r, g, b, alpha], value * 4);
+    }
+    return table;
+  };
+  const plain = tableOf(control.colours, control.alphas);
+  // Lines with colour changes switch table at each change point (columns in picture coordinates).
+  const changed = control.changes.map(change => ({...change, tables: change.points.map(point => ({x: point.x - control.x1, table: tableOf(point.colours, point.alphas)}))}));
   const rgba = new Uint8ClampedArray(width * height * 4);
   let seen = false;
-  for (let i = 0, target = 0; i < pixels.length; i++, target += 4) {
-    const entry = pixels[i]! * 4;
-    if (table[entry + 3] === 0) continue;
-    seen = true;
-    rgba[target] = table[entry]!; rgba[target + 1] = table[entry + 1]!; rgba[target + 2] = table[entry + 2]!; rgba[target + 3] = table[entry + 3]!;
+  for (let y = 0; y < height; y++) {
+    const line = control.y1 + y, change = changed.find(c => line >= c.first && line <= c.last);
+    let table = plain, next = 0;
+    for (let x = 0, i = y * width, target = i * 4; x < width; x++, i++, target += 4) {
+      if (change) while (next < change.tables.length && change.tables[next]!.x <= x) table = change.tables[next++]!.table;
+      const entry = pixels[i]! * 4;
+      if (table[entry + 3] === 0) continue;
+      seen = true;
+      rgba[target] = table[entry]!; rgba[target + 1] = table[entry + 1]!; rgba[target + 2] = table[entry + 2]!; rgba[target + 3] = table[entry + 3]!;
+    }
   }
   return seen ? {x: control.x1 + index.originX, y: control.y1 + index.originY, width, height, rgba, forced: control.forced} : null;
 }

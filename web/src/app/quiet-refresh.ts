@@ -1,27 +1,13 @@
 import {useEffect, useRef, useState} from 'react';
-import {backoffDelay, foregroundRetry} from './foreground-retry';
+import {quietRefreshStep} from '@core/quiet-refresh.ts';
+import {foregroundRetry} from './foreground-retry';
 
 /**
- * A list the server says changed under the page (`refresh-required`: even its first page was
- * refused as out of date) is read again by itself, quietly, with what is shown kept in place:
- * open screens stay current without anyone pressing Refresh. Only a list that is still refused
- * after a few tries (about half a minute) says so, with the notice's own Refresh.
- *
- * Tries run only while the tab is visible and back off with jitter; a list that has stayed
- * readable for a minute starts counting again from zero.
+ * The web's quiet re-read of a list the server says changed under the page (the shared rule,
+ * `quietRefreshStep`): tries run only while the tab is visible, and the notice shows only once
+ * they have not brought the list back. True once that is so: then, and only then, show the notice.
  */
-export const QUIET_REFRESH_TRIES = 3;
-const BASE_MS = 1500, MAX_MS = 12000, SETTLED_MS = 60_000;
-
-/** The pure rule: whether to try again now (and after how long), or say the list is stuck. */
-export function quietRefreshStep(state: {tries: number; lastAt: number}, now: number, random: () => number = Math.random): {state: {tries: number; lastAt: number}; delayMs?: number; stuck: boolean} {
-  const tries = now - state.lastAt > SETTLED_MS ? 0 : state.tries;
-  if (tries >= QUIET_REFRESH_TRIES) return {state: {tries, lastAt: state.lastAt}, stuck: true};
-  return {state: {tries: tries + 1, lastAt: now}, delayMs: tries === 0 ? 0 : backoffDelay(tries - 1, BASE_MS, MAX_MS, random), stuck: false};
-}
-
-/** True once quiet tries have not brought the list back: then, and only then, show the notice. */
-export function useQuietRefresh(required: boolean, refresh: () => unknown): boolean {
+export function useRefreshRequiredRetry(required: boolean, refresh: () => unknown): boolean {
   const [stuck, setStuck] = useState(false);
   const latest = useRef(refresh);
   latest.current = refresh;

@@ -682,7 +682,7 @@ function BulkEditor({targets, onSaved, onClose}: {targets: readonly RepairTarget
           ) : null}
         </div>
       ) : null}
-      <label style={{display: 'flex', alignItems: 'center', gap: 8, fontSize: 13}}><input type="checkbox" checked={lockEdited} onChange={e => setLockEdited(e.target.checked)} disabled={busy} /> {t('web.metadata.lockEdited')}</label>
+      <label style={{display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.8125rem'}}><input type="checkbox" checked={lockEdited} onChange={e => setLockEdited(e.target.checked)} disabled={busy} /> {t('web.metadata.lockEdited')}</label>
       {error ? <Notice tone="error">{error}</Notice> : null}
       <Footer copy={pending ? t('web.metadata.pendingChanges', {pending, count: targets.length}) : t('web.metadata.fillHint')} busy={busy} primary={pending ? {label: t('web.metadata.applyTo', {count: targets.length}), onClick: () => void apply()} : undefined} onClose={onClose} />
       {busy ? <div style={{display: 'flex', alignItems: 'center', gap: 8}}><Spinner /><Text variant="caption" tone="tertiary">{t('web.metadata.applying')}</Text></div> : null}

@@ -148,7 +148,7 @@ export function HostedChooser({onDone, onBack, preferredServerId, title, inShell
     if (!servers.length) return <StateView icon="server" title={t('web.chooser.noneTitle')} body={t('web.chooser.noneBody')} action={{label: t('web.servers.refresh'), onClick: refresh, loading: refreshing}} />;
     return (
       <div className={s.stack}>
-        <h2 className={s.title} style={{textAlign: 'center', fontSize: 20}}>{t('web.chooser.lede')}</h2>
+        <h2 className={s.title} style={{textAlign: 'center', fontSize: '1.25rem'}}>{t('web.chooser.lede')}</h2>
         {list}
         <div style={{display: 'flex', justifyContent: 'center'}}><Button variant="ghost" size="sm" icon="refresh" label={t('web.servers.refresh')} loading={refreshing} onClick={refresh} /></div>
       </div>
@@ -156,7 +156,7 @@ export function HostedChooser({onDone, onBack, preferredServerId, title, inShell
   }
   return (
     <div className={s.stack}>
-      {title ? <h2 className={s.title} style={{textAlign: 'center', fontSize: 20}}>{title}</h2> : null}
+      {title ? <h2 className={s.title} style={{textAlign: 'center', fontSize: '1.25rem'}}>{title}</h2> : null}
       <p className={s.lede} style={{textAlign: 'center'}}>{t('web.chooser.lede')}</p>
       {session.serversStatus === 'loading' ? <Loading label={t('web.chooser.loading')} /> : null}
       {connecting ? <Loading label={t('web.chooser.connecting', {server: target!.name})} /> : null}

@@ -1181,6 +1181,7 @@ catalog_playlists.owner_profile
 catalog_playlists.revision
 catalog_playlists.summary
 catalog_playlists.token
+catalog_playlists.updated_at
 catalog_rec_df.facet
 catalog_rec_df.works
 catalog_rec_facets.entity_id
@@ -4420,6 +4421,7 @@ social_groups.queue_position
 social_groups.queue_revision
 social_groups.rate_denominator
 social_groups.rate_numerator
+social_groups.readiness_summary
 social_groups.reconnect_generation
 social_groups.repeat_mode
 social_groups.resume_state
@@ -4515,10 +4517,12 @@ subtitle_original_files.resource_id
 subtitle_original_files.revision
 subtitle_original_files.size
 subtitle_original_revisions.digest
+subtitle_original_revisions.forced_lines
 subtitle_original_revisions.resource_id
 subtitle_original_revisions.revision
 subtitle_original_revisions.size
 subtitle_original_revisions.skipped_fonts
+subtitle_original_revisions.total_lines
 subtitle_provider_candidates.actor
 subtitle_provider_candidates.attribution
 subtitle_provider_candidates.expires_at

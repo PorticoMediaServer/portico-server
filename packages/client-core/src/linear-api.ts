@@ -25,11 +25,6 @@ export function parseRemoteSourcePreview(raw:unknown,serverId:string):RemoteSour
  return {...v,capacityMode:oneOfOr('remote-source-preview','capacityMode',v.capacityMode,['defaulted','discovered','configured'] as const,'defaulted')} as unknown as RemoteSourcePreview;
 }
 export async function previewRemoteSource(api:ChannelApi,serverId:string,draft:RemoteSourceDraft,signal?:AbortSignal){return parseRemoteSourcePreview(await api.request(routePath("preview_remote_live_source"),'POST',draft,signal),serverId)}
-export function linearError(error:unknown,fallback='The request did not finish. Try again.'):string{
- if(!isRecord(error))return fallback;const code=typeof error.code==='string'?error.code:isRecord(error.error)?error.error.code:undefined;
- if(error.status===401||error.status===403)return 'Your access changed. Reopen this server to continue.';
- switch(code){case 'invalid_channel_input':return 'The playlist or guide could not be used. Check the addresses and try again.';case 'source_lan_confirmation_required':return 'This source is on your local network. Confirm the addresses below to let Portico reach them, then it checks again.';case 'source_has_dependencies':return 'This source is still referenced by recordings, rules or active playback. Disable it until those dependencies are resolved.';case 'source_network_policy':return 'This address was blocked by the source network policy. Confirm the exact LAN device root only when you trust it.';case 'source_credentials_required':return 'The provider rejected these credentials. Re-enter them and preview again.';case 'source_unavailable':return 'The source could not be reached or returned an unsupported response. Your last saved guide is preserved.';case 'channel_revision_conflict':return 'This configuration changed or the preview expired. Reload and preview again.';case 'source_capacity_unavailable':return 'The confirmed tuners are occupied or reserved for recordings.';default:return fallback}
-}
 
 /** CD-06: the local-network roots a preview asks the owner to confirm, when that is why it failed. */
 export function lanConfirmationRoots(error:unknown):readonly string[]|undefined{

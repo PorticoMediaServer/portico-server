@@ -14,7 +14,7 @@ import {iconFor} from '@core/presentation/index.ts';
 import {PlayerProvider, usePlayer} from '../player/engine';
 import {ServerPreferencesProvider, useServerPreferences} from '../app/server-preferences';
 import {ConnectionOverlay} from './Connection';
-import {FreshnessRuntime} from '../app/freshness';
+import {FreshnessRuntime, useFreshness} from '../app/freshness';
 import {CustodyPrompt} from './CustodyPrompt';
 import {SelectionProvider, useSelectionActive} from '../app/selection';
 import {MetadataEditorProvider, useMetadataEditor} from '../app/metadata-editor';
@@ -24,6 +24,9 @@ import {TogetherProvider, useInRoom} from '../app/together';
 import {CastProvider} from '../app/cast';
 import {ChannelSourcesProvider, channelEntries, readReminders, subscribeReminders, useChannelSources} from '../app/channels';
 import {artworkMetricsEnabled, logScreen, useArtworkScreens} from '../app/artwork-metrics';
+import {PINS_CHANGED_EVENT, usePinActions, usePinnedResources} from '../app/pins';
+import {dependsOn} from '@core/freshness-hub.ts';
+import {PinEditor, pinnedResourceIcon} from './PinEditor';
 import s from './Shell.module.css';
 
 // Bundle size (PERF): the player UI, the entry actions sheet, the selection bar
@@ -314,6 +317,16 @@ function Rail({collapsed, onToggle}: {collapsed: boolean; onToggle?: () => void}
   const scope = useViewerScope();
   // ONB-04: a found-files pill on each library that is scanning (viewer-safe status, polled).
   const scans = useSidebarScans(session.api, scope.serverId, libraries.items.map(l => l.id));
+  const pins = usePinnedResources(session.api, scope.serverId, sessionIdentity(session.session) || undefined);
+  const pinActions = usePinActions(session.api, scope.serverId);
+  const [editingPins, setEditingPins] = useState(false);
+  // A pin changed here or on another device (it arrives with this profile's personal changes) reorders the libraries too.
+  const reloadLibraries = libraries.reload;
+  useEffect(() => { if (pins.ready) reloadLibraries(); }, [pins.revision, pins.ready, reloadLibraries]);
+  const {hub} = useFreshness();
+  useEffect(() => hub.watch([dependsOn.personal()], reloadLibraries), [hub, reloadLibraries]);
+  useEffect(() => { window.addEventListener(PINS_CHANGED_EVENT, reloadLibraries); return () => window.removeEventListener(PINS_CHANGED_EVENT, reloadLibraries); }, [reloadLibraries]);
+  const firstUnpinned = libraries.items.findIndex(l => l.pinned !== true);
   return (
     <nav className={s.rail} aria-label={t('web.shell.primary')}>
       <Link to="/" className={s.brand} aria-label={t('web.shell.homeLabel')}>
@@ -327,10 +340,26 @@ function Rail({collapsed, onToggle}: {collapsed: boolean; onToggle?: () => void}
         <TogetherLink collapsed={collapsed} />
       </div>
       <div className={s.railScroll}>
-        <div className={s.railHeading}>{t('web.shell.libraries')}</div>
+        {pins.order.length ? (
+          <>
+            <div className={s.railHeading}>{t('pins.heading')}</div>
+            <div className={s.railGroup}>
+              {pins.order.map(entry => (
+                <RailLink key={entry.kind + ':' + entry.id} to="/saved/$kind/$resourceId" params={{kind: entry.kind, resourceId: entry.id}} icon={pinnedResourceIcon(entry.kind)} label={entry.name} collapsed={collapsed} />
+              ))}
+            </div>
+          </>
+        ) : null}
+        <div className={s.railHeadingRow}>
+          <div className={s.railHeading}>{t('web.shell.libraries')}</div>
+          {!collapsed && (libraries.items.length || pins.order.length) ? <IconButton name="edit" variant="ghost" size="sm" label={t('pins.edit')} className={s.railHeadingAction} onClick={() => setEditingPins(true)} /> : null}
+        </div>
         <div className={s.railGroup}>
-          {libraries.items.map(l => (
-            <RailLink key={l.id} to="/library/$libraryId" params={{libraryId: l.id}} icon={iconFor(l.kind)} label={l.name} collapsed={collapsed} scanning={scans.has(l.id)} scanCount={scans.has(l.id) ? i18n.number(scans.get(l.id) ?? 0) : undefined} />
+          {libraries.items.map((l, index) => (
+            <React.Fragment key={l.id}>
+              {index > 0 && index === firstUnpinned ? <div className={s.railDivider} role="separator" /> : null}
+              <RailLink to="/library/$libraryId" params={{libraryId: l.id}} icon={iconFor(l.kind)} label={l.name} collapsed={collapsed} scanning={scans.has(l.id)} scanCount={scans.has(l.id) ? i18n.number(scans.get(l.id) ?? 0) : undefined} />
+            </React.Fragment>
           ))}
           {!libraries.items.length && !libraries.loading ? (session.owner
             ? <RailLink to="/settings/$section" params={{section: 'server-libraries'}} icon="plus" label={t('web.shell.addLibrary')} collapsed={collapsed} />
@@ -338,6 +367,7 @@ function Rail({collapsed, onToggle}: {collapsed: boolean; onToggle?: () => void}
         </div>
         <ChannelsRail collapsed={collapsed} />
       </div>
+      <PinEditor open={editingPins} onOpenChange={setEditingPins} libraries={libraries.items} pinned={pins.order} actions={pinActions} />
       <div className={s.railFoot}>
         <NotificationsBell collapsed={collapsed} />
         <RailLink to="/settings" icon="settings" label={t('web.shell.settings')} collapsed={collapsed} activeWhen={p => p.startsWith('/settings')} />

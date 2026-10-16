@@ -336,6 +336,9 @@ func (d Dependencies) registerSubtitleRoutes(registry *apikit.Registry) error {
 			return e
 		}
 	}
+	if e := registerSubtitleRaw[struct{}, subtitles.Lines](registry, "GET /v1/media/subtitles/{grant}/{resource}/{revision}/lines", d.originalSubtitleRoute); e != nil {
+		return e
+	}
 	return registerSubtitleRaw[struct{}, subtitles.FontFiles](registry, "GET /v1/media/subtitles/{grant}/{resource}/{revision}/fonts", d.originalSubtitleRoute)
 
 }

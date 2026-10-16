@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {subtitleTrackNames, versionNames} from '../src/presentation/title-files.ts';
+import {mediaVersionNames, subtitleTrackNames, versionNames} from '../src/presentation/title-files.ts';
 import {defaultI18n} from '../../i18n/src/index.ts';
 
 const t = defaultI18n.t;
@@ -47,4 +47,13 @@ test('the same language and format twice gains a number; marks the title did not
 
 test('a track that names nothing is still something to choose', () => {
   assert.deepEqual(names([{id: '1', language: 'und', title: ''}, {id: '2', language: '', title: ''}]), ['Track 1', 'Track 2']);
+});
+
+test('versions from the playback options read as the Version menus list them, never twice the same', () => {
+  const v = (id: string, more: Partial<Parameters<typeof mediaVersionNames>[0][number]> = {}) => ({id, label: 'File', container: 'mkv', video: [{height: 1080}], ...more});
+  assert.deepEqual([...mediaVersionNames([v('a'), v('b', {video: [{height: 2160}]})], t).values()], ['File · 1080p · MKV', 'File · 2160p · MKV']);
+  assert.deepEqual([...mediaVersionNames([v('a', {bitrateKbps: 8000}), v('b', {bitrateKbps: 12000})], t).values()], ['File · 1080p · MKV · 8.0 Mbps', 'File · 1080p · MKV · 12 Mbps']);
+  assert.deepEqual([...mediaVersionNames([v('a', {edition: 'Extended'}), v('b')], t).values()], ['File · 1080p · MKV · Extended', 'File · 1080p · MKV']);
+  assert.deepEqual([...mediaVersionNames([v('a'), v('b')], t).values()], ['File · 1080p · MKV · Version 1', 'File · 1080p · MKV · Version 2']);
+  assert.deepEqual([...mediaVersionNames([{id: 'a', label: '', video: []}], t).values()], ['Version 1']);
 });

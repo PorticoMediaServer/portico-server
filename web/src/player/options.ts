@@ -6,7 +6,7 @@ import {PlayerOffersService, type PlayerOffersSnapshot} from '@core/player-offer
 import {SubtitleService, fetchSubtitleDocument, type SubtitleDocument, type SubtitleSnapshot} from '@core/subtitles.ts';
 import {PlayerChaptersService, type PlayerChaptersSnapshot} from '@core/player-chapters.ts';
 import type {ContentScope} from '@core/library-content.ts';
-import {drawnRenderingFor, readSubtitleFile, readSubtitleFontList, selectedSubtitleOriginal, type DrawnSubtitleFormat} from '@core/subtitle-originals.ts';
+import {SUBTITLE_CJK_FONT_PATH, drawnRenderingFor, readSubtitleFile, readSubtitleFontList, selectedSubtitleOriginal, type DrawnSubtitleFormat} from '@core/subtitle-originals.ts';
 import {subtitleSessionChange} from './subtitles/selection';
 import type {SubtitleSurface} from './subtitle-surface';
 import type {SubtitleOverlay} from './subtitles/overlay';
@@ -238,7 +238,7 @@ export function usePlayerSubtitles(api: HttpLocalApi, scope: ContentScope, playb
           // The fonts attached to the file; a subtitle whose font list cannot be read is still drawn, in the fallback fonts.
           let fonts: string[] = [];
           if (original.fontsUrl) { try { fonts = (await readSubtitleFontList(fetch, absolute(original.fontsUrl), original.fontsUrl, new AbortController().signal)).map(font => absolute(font.url)); } catch { fonts = []; } }
-          source = {kind: 'ass', script: absolute(original.url), fonts};
+          source = {kind: 'ass', script: absolute(original.url), fonts, cjkFont: absolute(SUBTITLE_CJK_FONT_PATH)};
         } else if (original.format === 'vobsub') source = {kind: 'vobsub', index: absolute(original.url), data: absolute(original.companionUrl ?? '')};
         else source = {kind: original.format, data: absolute(original.url)};
         if (!current()) return;

@@ -103,13 +103,13 @@ export type SettingsCustomId =
   | 'server.accounts' | 'server.invitations' | 'server.devices' | 'server.apiKeys' | 'server.memberTokens' | 'server.webhooks' | 'server.assistants'
   | 'server.metadataSettings'
   | 'server.transcodeStatus'
-  | 'server.remoteStatus' | 'server.accountConnection' | 'server.certificateStatus' | 'server.addresses' | 'server.connection' | 'server.ownCertificateStatus'
+  | 'server.remoteStatus' | 'server.secureConnection' | 'server.accountConnection' | 'server.certificateStatus' | 'server.addresses' | 'server.connection' | 'server.ownCertificateStatus'
   | 'server.diskUsage' | 'server.retention' | 'server.remoteSources' | 'server.backups' | 'server.missingTitles'
   | 'server.windows' | 'server.jobs'
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
   | 'server.identity' | 'server.updates' | 'server.restart' | 'server.clientReports'
   | 'server.setAsideTitles' | 'server.backgroundPause' | 'server.ffmpegStatus' | 'server.resourceUsage' | 'server.storageStatus' | 'server.downloadUsage'
-  | 'server.playbackProblems';
+  | 'server.playbackProblems' | 'server.skippedParts';
 
 type RowCopy = Readonly<{
   label: MessageId;
@@ -338,7 +338,7 @@ const accountPages: readonly AuthoredPage[] = [
         custom('downloadsStorage', 'settings.row.downloadsStorage', {platforms: ['phone'], needs: c => !!c.downloads}),
       ]},
       // What this profile is playing on its other devices, to pause, resume or stop from here.
-      {id: 'remote', rows: [custom('remoteControls', 'remote.title')], platforms: ['web']},
+      {id: 'remote', rows: [custom('remoteControls', 'remote.title')]},
       {id: 'servers', title: 'settings.section.servers', rows: [custom('servers', 'settings.section.servers')]},
     ],
   },
@@ -422,7 +422,7 @@ const serverPages: readonly AuthoredPage[] = [
       panel('invitations', 'server.invitations', undefined, {tab: 'invitations', administrators: true}),
       // Holding new devices until the owner approves them, and every device that has signed in, newest first.
       {id: 'deviceApproval', tab: 'devices', rows: [on('runtime', 'deviceApprovalRequired', 'server.people.deviceApproval', 'server.people.deviceApprovalHelp')]},
-      panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web'], administrators: true}),
+      panel('devices', 'server.devices', 'settings.section.devices', {tab: 'devices', platforms: ['web', 'phone'], administrators: true}),
     ]},
   // Everything another program uses to work with this server, in one place: the owner's keys, members' own tokens,
   // messages sent out when something happens, and the address an assistant connects to.
@@ -477,15 +477,26 @@ const serverPages: readonly AuthoredPage[] = [
   ]},
   {id: 'remote', title: 'settings.server.remote', icon: 'network', sections: [
     panel('status', 'server.remoteStatus'),
+    // Secure connection (Justin, 15 Oct): status, what it does, on/off and the owner's own
+    // certificate, in plain words. With a Portico Account it is on from the start; without one
+    // the status line says how to turn it on. The switch appears once there is a connection to
+    // switch (`claimed`, derived by the certificate form).
+    {id: 'secure', title: 'settings.server.secure.title', description: 'settings.server.secure.lede', rows: [
+      custom('server.secureConnection', 'settings.server.secure.title'),
+      on('certificate', 'enabled', 'settings.server.secure.toggle', 'settings.server.secure.toggleHelp', {key: 'claimed', equals: true}),
+      custom('server.certificateStatus'),
+    ]},
+    // For an owner with a domain and no reverse proxy: where the files are, and whether the server is using them.
+    {id: 'ownCertificate', title: 'web.connectivity.customCert', description: 'settings.server.ownCertificateLede', rows: [
+      custom('server.ownCertificateStatus', 'web.connectivity.customCert'),
+      setting('connectivity', 'customCertificateDomain', 'web.connectivity.customCertDomain', {type: 'text', mono: true, example: 'media.example.com'}),
+      setting('connectivity', 'customCertificatePath', 'web.connectivity.customCertPath', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/fullchain.pem'}),
+      setting('connectivity', 'customCertificateKeyPath', 'web.connectivity.customCertKey', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/privkey.pem'}),
+    ]},
     panel('account', 'server.accountConnection', 'web.general.accountConnection'),
     {id: 'reach', title: 'web.network.remoteTitle', description: 'web.network.remoteLede', rows: [
       on('remote', 'enabled', 'web.network.remoteTitle', 'web.network.remoteHelp'),
       on('remote', 'ipv6Open', 'web.network.ipv6', 'web.network.ipv6Help'),
-    ]},
-    {id: 'certificate', title: 'web.network.certTitle', description: 'web.network.certLede', rows: [
-      custom('server.certificateStatus'),
-      on('certificate', 'enabled', 'web.network.certRequest', 'web.network.certRequestHelp'),
-      setting('certificate', 'publicPort', 'web.network.publicPort', {type: 'number', min: 1, max: 65535}, {when: {key: 'enabled', equals: true}}),
     ]},
     // The one list that decides home or away for every device, with where the owner is connected from right now.
     {id: 'home', title: 'settings.server.homeNetwork', description: 'settings.server.homeNetworkLede', rows: [
@@ -500,14 +511,8 @@ const serverPages: readonly AuthoredPage[] = [
       setting('connectivity', 'accessUrls', 'web.connectivity.extraAddresses', {type: 'lines', example: 'https://media.example.com'}, {help: 'settings.server.extraAddressesHelp'}),
       setting('connectivity', 'trustedProxies', 'web.connectivity.trustedProxies', {type: 'lines', example: '127.0.0.1'}, {help: 'settings.server.trustedProxiesHelp'}),
     ]},
-    // For an owner with a domain and no reverse proxy: where the files are, and whether the server is using them.
-    {id: 'ownCertificate', title: 'web.connectivity.customCert', description: 'settings.server.ownCertificateLede', rows: [
-      custom('server.ownCertificateStatus', 'web.connectivity.customCert'),
-      setting('connectivity', 'customCertificateDomain', 'web.connectivity.customCertDomain', {type: 'text', mono: true, example: 'media.example.com'}),
-      setting('connectivity', 'customCertificatePath', 'web.connectivity.customCertPath', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/fullchain.pem'}),
-      setting('connectivity', 'customCertificateKeyPath', 'web.connectivity.customCertKey', {type: 'text', mono: true, example: '/etc/letsencrypt/live/media.example.com/privkey.pem'}),
-    ]},
     {id: 'advanced', title: 'settings.section.advanced', advanced: true, rows: [
+      setting('certificate', 'publicPort', 'settings.server.secure.port', {type: 'number', min: 1, max: 65535}, {help: 'settings.server.secure.portHelp', when: {key: 'claimed', equals: true}}),
       on('remote', 'mapping', 'web.network.mappingTitle', 'web.network.mappingHelp'),
       on('remote', 'pcp', 'settings.server.mapping.pcp', undefined, {key: 'mapping', equals: true}),
       on('remote', 'natpmp', 'settings.server.mapping.natpmp', undefined, {key: 'mapping', equals: true}),
@@ -568,6 +573,8 @@ const serverPages: readonly AuthoredPage[] = [
     // Titles a rebuild could not finish, with why: present only while there are any.
     panel('setAside', 'server.setAsideTitles', 'server.setAside.title', {platforms: ['web', 'phone'], administrators: true}),
     panel('clientReports', 'server.clientReports', 'web.diagnostics.clientReports', {platforms: ['web', 'phone']}),
+    // What this app left out of the server's answers (a newer server, usually), on this device.
+    panel('skipped', 'server.skippedParts', 'settings.server.skippedParts', {platforms: ['web', 'phone'], description: 'settings.server.skippedPartsLede'}),
     panel('export', 'server.supportExport', 'settings.server.supportExport'),
     panel('feedback', 'server.feedback', 'settings.server.feedback'),
     panel('state', 'server.stateFolder'),

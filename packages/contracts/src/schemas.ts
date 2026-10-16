@@ -1006,6 +1006,9 @@ export const schemas = {
                     "format": {
                       "type": "string"
                     },
+                    "linesUrl": {
+                      "type": "string"
+                    },
                     "trackId": {
                       "type": "string"
                     },
@@ -1796,6 +1799,9 @@ export const schemas = {
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -5293,6 +5299,9 @@ export const schemas = {
                 "format": {
                   "type": "string"
                 },
+                "linesUrl": {
+                  "type": "string"
+                },
                 "trackId": {
                   "type": "string"
                 },
@@ -6024,6 +6033,9 @@ export const schemas = {
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -8740,6 +8752,9 @@ export const schemas = {
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -39669,6 +39684,9 @@ export const schemas = {
                       "format": {
                         "type": "string"
                       },
+                      "linesUrl": {
+                        "type": "string"
+                      },
                       "url": {
                         "type": "string"
                       }
@@ -39793,6 +39811,9 @@ export const schemas = {
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "url": {
@@ -56033,6 +56054,9 @@ export const schemas = {
                         "format": {
                           "type": "string"
                         },
+                        "linesUrl": {
+                          "type": "string"
+                        },
                         "url": {
                           "type": "string"
                         }
@@ -56645,6 +56669,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "format": {
+                  "type": "string"
+                },
+                "linesUrl": {
                   "type": "string"
                 },
                 "trackId": {
@@ -60770,11 +60797,21 @@ export const schemas = {
             },
             "kind": {
               "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "pinRevision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             }
           },
           "required": [
             "kind",
-            "id"
+            "id",
+            "name",
+            "pinRevision"
           ],
           "type": "object"
         },
@@ -67220,6 +67257,15 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetSubtitleFontsCjkRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSubtitleFontsCjkResponse": {
+    "format": "binary",
+    "type": "string"
+  },
   "GetSuggestionsRequest": {
     "properties": {},
     "required": [],
@@ -68140,6 +68186,9 @@ export const schemas = {
                   "format": {
                     "type": "string"
                   },
+                  "linesUrl": {
+                    "type": "string"
+                  },
                   "url": {
                     "type": "string"
                   }
@@ -68264,6 +68313,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "format": {
+                  "type": "string"
+                },
+                "linesUrl": {
                   "type": "string"
                 },
                 "url": {
@@ -68504,6 +68556,9 @@ export const schemas = {
                   "format": {
                     "type": "string"
                   },
+                  "linesUrl": {
+                    "type": "string"
+                  },
                   "url": {
                     "type": "string"
                   }
@@ -68698,6 +68753,30 @@ export const schemas = {
     },
     "required": [
       "fonts"
+    ],
+    "type": "object"
+  },
+  "GetV1MediaSubtitlesGrantResourceRevisionLinesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetV1MediaSubtitlesGrantResourceRevisionLinesResponse": {
+    "properties": {
+      "forced": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "total": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "forced",
+      "total"
     ],
     "type": "object"
   },
@@ -71454,6 +71533,9 @@ export const schemas = {
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -91315,6 +91397,9 @@ export const schemas = {
                   "format": {
                     "type": "string"
                   },
+                  "linesUrl": {
+                    "type": "string"
+                  },
                   "url": {
                     "type": "string"
                   }
@@ -92179,6 +92264,9 @@ export const schemas = {
                   "type": "string"
                 },
                 "format": {
+                  "type": "string"
+                },
+                "linesUrl": {
                   "type": "string"
                 },
                 "trackId": {
@@ -100852,6 +100940,9 @@ export const schemas = {
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -112122,6 +112213,9 @@ export const schemas = {
                 "format": {
                   "type": "string"
                 },
+                "linesUrl": {
+                  "type": "string"
+                },
                 "trackId": {
                   "type": "string"
                 },
@@ -113090,6 +113184,9 @@ export const schemas = {
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {

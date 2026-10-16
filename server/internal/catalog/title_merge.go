@@ -23,9 +23,9 @@ var ErrNotMergeable = requestinput.New("titles of different kinds or libraries c
 
 // MergeTitlesTx makes from part of into and removes from. Both must be of one
 // kind in one library. A show takes the other show's seasons and episodes
-// (same-numbered ones merge in turn), an album its tracks and a book its parts
-// (likewise), an artist its albums; a film, episode, track or book part takes
-// the other's files as versions.
+// (same-numbered ones merge in turn); an album, book or artist takes the
+// other's songs, files or albums (container_merge.go); a film, episode,
+// track or book part takes the other's files as versions.
 func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 	if from == into {
 		return nil
@@ -48,10 +48,8 @@ func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 		}
 	case compactcatalog.Season:
 		return fmt.Errorf("%w: seasons merge with their shows", ErrNotMergeable)
-	case compactcatalog.Album, compactcatalog.Artist, compactcatalog.Book:
-		if err := mergeListeningChildrenTx(ctx, tx, from, into, fromKind); err != nil {
-			return err
-		}
+	case compactcatalog.Album, compactcatalog.Book, compactcatalog.Artist:
+		return mergeContainerTx(ctx, tx, from, into, fromKind)
 	case compactcatalog.Movie, compactcatalog.Episode, compactcatalog.Track, compactcatalog.Part, compactcatalog.Extra:
 	default:
 		return fmt.Errorf("%w: kind %d", ErrNotMergeable, fromKind)
@@ -83,6 +81,11 @@ func absorbTx(ctx context.Context, tx *sql.Tx, from, into int64, kind compactcat
 	for _, p := range identities {
 		if err := compactcatalog.RecordProviderIdentityTx(ctx, tx, into, p); err != nil {
 			if errors.Is(err, compactcatalog.ErrIdentityConflict) {
+				// Two editions of an album, two printings of a book, are matched to
+				// different releases: the one that stays keeps its own match.
+				if isContainerKind(kind) {
+					continue
+				}
 				return fmt.Errorf("%w: provider identities differ", ErrNotMergeable)
 			}
 			return err
@@ -424,117 +427,6 @@ func reparentSeasonTx(ctx context.Context, tx *sql.Tx, season, into int64, intoK
 		return err
 	}
 	return compactcatalog.TouchEntityTx(ctx, tx, season)
-}
-
-// mergeListeningChildrenTx moves an album's tracks, a book's parts or an
-// artist's albums under another of the same kind. A track or part the other
-// already has at the same disc and number absorbs the incoming one, so two
-// copies of one release become versions of each track.
-func mergeListeningChildrenTx(ctx context.Context, tx *sql.Tx, from, into int64, kind compactcatalog.Kind) error {
-	type child struct {
-		id           int64
-		disc, number sql.NullInt64
-	}
-	read := func(query string) ([]child, error) {
-		rows, err := tx.QueryContext(ctx, query, from)
-		if err != nil {
-			return nil, err
-		}
-		defer rows.Close()
-		var out []child
-		for rows.Next() {
-			var c child
-			if err = rows.Scan(&c.id, &c.disc, &c.number); err != nil {
-				return nil, err
-			}
-			out = append(out, c)
-		}
-		return out, rows.Err()
-	}
-	switch kind {
-	case compactcatalog.Artist:
-		albums, err := read(`SELECT entity_id,NULL,NULL FROM catalog_albums WHERE artist_id=? ORDER BY entity_id`)
-		if err != nil {
-			return err
-		}
-		for _, a := range albums {
-			if _, err = tx.ExecContext(ctx, `UPDATE catalog_entities SET parent_id=? WHERE id=? AND parent_id IS NOT ?`, into, a.id, into); err != nil {
-				return err
-			}
-			if err = compactcatalog.SetFactsTx(ctx, tx, a.id, map[string]any{"artist_id": into}); err != nil {
-				return err
-			}
-			if err = compactcatalog.TouchEntityTx(ctx, tx, a.id); err != nil {
-				return err
-			}
-		}
-		for _, q := range []string{
-			`UPDATE OR IGNORE catalog_song_artists SET artist_id=?2 WHERE artist_id=?1`,
-			`DELETE FROM catalog_song_artists WHERE artist_id=?1`,
-		} {
-			if _, err = tx.ExecContext(ctx, q, from, into); err != nil {
-				return err
-			}
-		}
-		return nil
-	case compactcatalog.Album, compactcatalog.Book:
-	default:
-		return ErrNotMergeable
-	}
-	table, parentColumn, numberColumn, childKind := "catalog_songs", "album_id", "track_number", compactcatalog.Track
-	if kind == compactcatalog.Book {
-		table, parentColumn, numberColumn, childKind = "catalog_book_files", "book_id", "part_number", compactcatalog.Part
-	}
-	children, err := read(`SELECT entity_id,disc_number,` + numberColumn + ` FROM ` + table + ` WHERE ` + parentColumn + `=? ORDER BY entity_id`)
-	if err != nil {
-		return err
-	}
-	for _, c := range children {
-		var existing int64
-		if c.number.Valid {
-			err = tx.QueryRowContext(ctx, `SELECT entity_id FROM `+table+` WHERE `+parentColumn+`=? AND COALESCE(disc_number,1)=COALESCE(?,1) AND `+numberColumn+`=? ORDER BY entity_id LIMIT 1`, into, c.disc, c.number).Scan(&existing)
-			if err != nil && !errors.Is(err, sql.ErrNoRows) {
-				return err
-			}
-		}
-		if existing != 0 {
-			if err = absorbTx(ctx, tx, c.id, existing, childKind); err != nil {
-				return err
-			}
-			continue
-		}
-		if _, err = tx.ExecContext(ctx, `UPDATE catalog_entities SET parent_id=? WHERE id=?`, into, c.id); err != nil {
-			return err
-		}
-		if err = compactcatalog.SetFactsTx(ctx, tx, c.id, map[string]any{parentColumn: into}); err != nil {
-			return err
-		}
-		if kind == compactcatalog.Book {
-			if err = compactcatalog.ReprojectBookFileTx(ctx, tx, c.id); err != nil {
-				return err
-			}
-		}
-		if err = compactcatalog.TouchEntityTx(ctx, tx, c.id); err != nil {
-			return err
-		}
-	}
-	if kind == compactcatalog.Book {
-		// What still hangs off the emptied book: the place a profile stopped
-		// moves with the parts, the rest is the book's own derived context.
-		for _, q := range []string{
-			`UPDATE OR IGNORE book_resume SET book_id=?2 WHERE book_id=?1`,
-			`DELETE FROM book_resume WHERE book_id=?1`,
-			`DELETE FROM catalog_book_group_members WHERE book_id=?1`,
-			`DELETE FROM catalog_book_series_spellings WHERE book_id=?1`,
-			`DELETE FROM catalog_book_series_terms WHERE book_id=?1`,
-			`DELETE FROM catalog_book_position_terms WHERE book_id=?1`,
-		} {
-			if _, err = tx.ExecContext(ctx, q, from, into); err != nil {
-				return err
-			}
-		}
-	}
-	return nil
 }
 
 // KeepApartTx records that an owner separated this title: provider identity

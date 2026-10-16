@@ -319,11 +319,11 @@ test('styled subtitles: the script is decoded, fonts are listed, and the worker 
   const renderer = new StyledSubtitleRenderer({load: () => Promise.resolve(engine.Engine), now: () => now});
   const read: ReadSubtitleFile = (url, max) => { assert.equal(url, 'https://server.example/original.ass'); assert.ok(max >= 1024 * 1024); return Promise.resolve({bytes: new TextEncoder().encode('﻿' + script), charset: 'windows-1252'}); };
   renderer.resize({width: 3840, height: 2160, picture: {x: 0, y: 0, width: 3840, height: 2160}});
-  await renderer.load({kind: 'ass', script: 'https://server.example/original.ass', fonts: ['https://server.example/fonts/0']}, {canvas: c.element, read, signal: new AbortController().signal, failed: () => {}});
+  await renderer.load({kind: 'ass', script: 'https://server.example/original.ass', fonts: ['https://server.example/fonts/0'], cjkFont: 'https://server.example/v1/subtitle-fonts/cjk'}, {canvas: c.element, read, signal: new AbortController().signal, failed: () => {}});
   const o = engine.options();
   assert.ok(o.subContent.startsWith('[Script Info]'), 'a byte-order mark wins over the declared encoding and is dropped');
   assert.equal(o.fonts[0], 'https://server.example/fonts/0', 'the file’s own fonts first');
-  assert.deepEqual(o.fonts.slice(1).map(url => url.split('/').pop()), ['NotoSansArabic-Regular.ttf', 'DroidSansFallbackFull.ttf'], 'then fonts for the scripts in the text');
+  assert.deepEqual(o.fonts.slice(1).map(url => url.split('/').pop()), ['NotoSansArabic-Regular.ttf', 'cjk'], 'then fonts for the scripts in the text (CJK from the server)');
   assert.ok(o.workerUrl.endsWith('/vendor/libass-wasm-4.2.4/subtitles-octopus-worker.js'));
   assert.ok(o.fallbackFont.endsWith('/vendor/libass-wasm-4.2.4/default.woff2'));
   assert.deepEqual(engine.calls, [['resize', 2560, 1440]], 'a 4K picture is drawn at 1440 lines and scaled up');
@@ -383,11 +383,13 @@ test('fallback fonts are chosen by the scripts in the text', () => {
     ['Hello, world. Привет. Γειά', []],
     ['مرحبا', ['arabic']], ['שלום', ['hebrew']], ['สวัสดี', ['thai']], ['नमस्ते', ['devanagari']], ['নমস্কার', ['bengali']], ['வணக்கம்', ['tamil']],
     ['こんにちは', ['cjk']], ['你好', ['cjk']], ['Ｈｅｌｌｏ', ['cjk']],
-    ['안녕하세요', []],
+    ['안녕하세요', ['cjk']],
     ['Sign: 東京 — مرحبا', ['arabic', 'cjk']],
   ];
   for (const [text, want] of cases) assert.deepEqual(scriptsIn(text), want, text);
-  assert.deepEqual(fallbackFontsFor('東京').map(url => url.split('/').slice(-2).join('/')), ['subtitle-fonts-1/DroidSansFallbackFull.ttf']);
+  // Chinese, Japanese and Korean are the server's font, and only when there is one to name.
+  assert.deepEqual(fallbackFontsFor('東京'), []);
+  assert.deepEqual(fallbackFontsFor('東京 서울', script => (script === 'cjk' ? 'https://server/v1/subtitle-fonts/cjk' : undefined)), ['https://server/v1/subtitle-fonts/cjk']);
 });
 
 test('the capability declaration: one list, written into either document shape', () => {

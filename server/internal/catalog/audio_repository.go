@@ -419,6 +419,18 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		if e := tx.QueryRow(`SELECT x.album_id FROM catalog_songs x WHERE x.entity_id=? AND (EXISTS(SELECT 1 FROM mb_jobs j WHERE j.kind='album' AND j.entity_id=x.album_id AND j.manual=1) OR EXISTS(SELECT 1 FROM catalog_kept_apart k WHERE k.entity_id=x.album_id))`, item).Scan(&album); e != nil && !errors.Is(e, sql.ErrNoRows) {
 			return e
 		}
+		// An album the owner merged into another is still known by its name:
+		// the ledger sends its songs to the album that stayed, and the merge's
+		// choice holds over the tags (no edition split, no key rewrite).
+		merged := false
+		if album == 0 {
+			var key string
+			if e := tx.QueryRow(`SELECT a.id,d.local_key FROM catalog_identities i JOIN catalog_entities a ON a.public_id=i.public_id JOIN catalog_albums d ON d.entity_id=a.id
+ WHERE i.root=(SELECT root FROM catalog_libraries WHERE id=?1) AND i.source_key=?2 AND a.library_id=?1`, handle, compactcatalog.AlbumKey(groupKey)).Scan(&album, &key); e != nil && !errors.Is(e, sql.ErrNoRows) {
+				return e
+			}
+			merged = album != 0 && key != groupKey
+		}
 		if album == 0 {
 			if e := tx.QueryRow(`SELECT a.id FROM catalog_entities a JOIN catalog_albums d ON d.entity_id=a.id WHERE a.library_id=? AND d.local_key=?`, handle, groupKey).Scan(&album); e != nil && !errors.Is(e, sql.ErrNoRows) {
 				return e
@@ -436,7 +448,7 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 				return e
 			}
 		}
-		if album != 0 {
+		if album != 0 && !merged {
 			var pinned bool
 			if err = tx.QueryRow(`SELECT manual FROM mb_jobs WHERE kind='album' AND entity_id=?`, album).Scan(&pinned); err != nil && !errors.Is(err, sql.ErrNoRows) {
 				return err
@@ -499,7 +511,7 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		if err = tx.QueryRow(`SELECT COALESCE((SELECT manual FROM mb_jobs WHERE kind='album' AND entity_id=?),0)`, album).Scan(&pinned); err != nil {
 			return err
 		}
-		if !pinned {
+		if !pinned && !merged {
 			var oldKey, oldEdition string
 			if err = tx.QueryRow(`SELECT local_key,edition_key FROM catalog_albums WHERE entity_id=?`, album).Scan(&oldKey, &oldEdition); err != nil {
 				return err

@@ -21,7 +21,8 @@ const wait=(ms:number,signal:AbortSignal)=>new Promise<void>(resolve=>{if(signal
 const us=(seconds:number)=>String(Math.max(0,Math.round(seconds*1e6)));
 
 export type HandoffPhase='idle'|'asking'|'preparing'|'starting'|'done'|'failed';
-export type HandoffSnapshot=Readonly<{receivers:readonly Receiver[];directoryPhase:'idle'|'loading'|'ready'|'error';directoryError?:string;phase:HandoffPhase;target?:Receiver;message?:string;receiverPlaybackId?:string;remoteSession?:Session;controlling?:boolean}>;
+/** `handoffId` is the committed handoff the controls follow (from `send` or `reconnect`): what a later launch reconnects to. */
+export type HandoffSnapshot=Readonly<{receivers:readonly Receiver[];directoryPhase:'idle'|'loading'|'ready'|'error';directoryError?:string;phase:HandoffPhase;target?:Receiver;message?:string;handoffId?:string;receiverPlaybackId?:string;remoteSession?:Session;controlling?:boolean}>;
 export type HandoffSource=Readonly<{playbackId:string;positionSeconds:number}>;
 
 export class HandoffController{
@@ -49,7 +50,7 @@ export class HandoffController{
   const fail=(message:string)=>{if(!signal.aborted)this.publish({phase:'failed',message});return false;};
   let handoff:Handoff|undefined;const device={device:target.displayName};
   try{
-   this.publish({phase:'asking',target,message:undefined,receiverPlaybackId:undefined,remoteSession:undefined});
+   this.publish({phase:'asking',target,message:undefined,handoffId:undefined,receiverPlaybackId:undefined,remoteSession:undefined});
    let grant=parseReceiverGrant(await this.api.request<RouteResponse<"social_post_v1_receivers_id_grants">>(encodedRoutePath("social_post_v1_receivers_id_grants", {"id": encodeURIComponent(target.id)}),'POST',routeBody("social_post_v1_receivers_id_grants", {protocolVersion:SOCIAL_PROTOCOL,controllerDisplayName:this.device.displayName.slice(0,64)}),signal));
    // A television that has not met this device asks its own viewer first.
    for(let waited=0;grant.state==='pending'&&waited<60000&&!signal.aborted;waited+=this.pollMs){
@@ -74,7 +75,7 @@ export class HandoffController{
    if(handoff.state!=='prepared'||handoff.outcome!=='pending')return fail(serviceText(handoff.state==='expired'?'playOn.didNotStartInTime':'playOn.couldNotStart',device));
    handoff=parseHandoff(await this.api.request<RouteResponse<"social_post_v1_handoffs_id_commit">>(encodedRoutePath("social_post_v1_handoffs_id_commit", {"id": encodeURIComponent(handoff.id)}),'POST',routeBody("social_post_v1_handoffs_id_commit", {protocolVersion:SOCIAL_PROTOCOL,expectedRevision:handoff.revision}),signal));
    if(handoff.state!=='committed')return fail(serviceText('playOn.couldNotTakeOver',device));
-   this.publish({phase:'done',receiverPlaybackId:handoff.receiverPlaybackId,message:serviceText('playOn.playingOn',device)});
+   this.publish({phase:'done',handoffId:handoff.id,receiverPlaybackId:handoff.receiverPlaybackId,message:serviceText('playOn.playingOn',device)});
    return true;
   }catch(e){
    if(signal.aborted){if(handoff)void this.rollback(handoff);return false;}
@@ -86,7 +87,7 @@ export class HandoffController{
  async reconnect(handoffId:string):Promise<boolean>{
   try{const h=parseHandoff(await this.api.request<RouteResponse<"social_get_v1_handoffs_id">>(encodedRoutePath("social_get_v1_handoffs_id", {"id": encodeURIComponent(handoffId)})));
    if(h.state!=='committed')return false;
-   this.publish({phase:'done',receiverPlaybackId:h.receiverPlaybackId});return this.refreshRemote();
+   this.publish({phase:'done',handoffId:h.id,receiverPlaybackId:h.receiverPlaybackId});return this.refreshRemote();
   }catch{return false;}
  }
  async refreshRemote():Promise<boolean>{
