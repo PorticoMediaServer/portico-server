@@ -11,7 +11,7 @@ import {useSession} from '../../app/session';
 import {useFreshDocument} from '../../app/freshness';
 import {dependsOn} from '@core/freshness-hub.ts';
 import {useI18n} from '../../app/i18n';
-import {Button, Dialog, Input, Menu, Notice, Select, SettingsGroup, SettingsRow, Text, type MenuItem} from '../../ui';
+import {Button, Dialog, Input, Menu, Notice, Select, SettingsGroup, SettingsRow, Text, type IconName, type MenuItem} from '../../ui';
 import page from '../settings/Settings.module.css';
 
 type Api = ReturnType<typeof useSession>['api'];
@@ -69,9 +69,14 @@ export function NeedsAttentionPanel({libraryId, onCount}: {libraryId: string; on
       await sendFresh(entry, e => service.act({kind: e.kind, entityId: e.entityId, expectedRevision: e.revision, ...command}),
         () => findInPages(async cursor => { const page = await service.list(cursor, 25); return {items: page.entries, nextCursor: page.nextCursor ?? ''}; }, e => e.entityId === entry.entityId && e.kind === entry.kind, 8));
     }, done).then(ok => { read.reload(); return ok; });
-  const open = (entry: AttentionEntry) => (entry.kind === 'show'
-    ? void navigate({to: '/show/$showId', params: {showId: entry.entityId}, search: {library: libraryId}})
-    : void navigate({to: '/media/$itemId', params: {itemId: entry.entityId}, search: {library: libraryId}}));
+  const open = (entry: AttentionEntry) => {
+    if (entry.kind === 'show') return void navigate({to: '/show/$showId', params: {showId: entry.entityId}, search: {library: libraryId}});
+    // An album or book is settled on its own page, a track on its album's.
+    if (entry.kind === 'album' || entry.kind === 'book' || (entry.kind === 'song' && entry.parentId)) {
+      return void navigate({to: '/library/$libraryId/$view/$entityId', params: {libraryId, view: entry.kind === 'book' ? 'book' : 'album', entityId: entry.kind === 'song' ? entry.parentId : entry.entityId}, search: {title: entry.title}});
+    }
+    return void navigate({to: '/media/$itemId', params: {itemId: entry.entityId}, search: {library: libraryId}});
+  };
   return (
     <SettingsGroup title={t('metadata.attention.title')} description={t('server.attention.lede')}>
       {read.error ? <div style={{padding: 12}}><Notice tone={entries ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></div> : null}
@@ -82,13 +87,14 @@ export function NeedsAttentionPanel({libraryId, onCount}: {libraryId: string; on
           ...(attentionOffers(entry, 'search') ? [{id: 'search', label: t('server.attention.search'), icon: 'search' as const}] : []),
           ...(attentionOffers(entry, 'id') ? [{id: 'id', label: t('server.attention.enterId'), icon: 'link' as const}] : []),
           ...(attentionOffers(entry, 'parent') && entry.parentId ? [{id: 'parent', label: t('server.attention.openShow'), icon: 'tv' as const}] : []),
+          ...(attentionOffers(entry, 'retry') ? [{id: 'retry', label: t('server.attention.lookUpAgain'), icon: 'refresh' as const}] : []),
           ...(attentionOffers(entry, 'dismiss') ? [{id: 'dismiss', label: t('metadata.attention.dismiss'), icon: 'close' as const, separatorBefore: true}] : []),
         ];
         const offered = attentionOffers(entry, 'accept') ? entry.candidates : [];
         return (
-          <SettingsRow key={entry.entityId} stack icon={entry.kind === 'show' ? 'tv' : 'film'}
+          <SettingsRow key={entry.entityId} stack icon={attentionIcon(entry)}
             label={<button type="button" className={page.rowLink} onClick={() => open(entry)}>{entry.title || t('server.attention.untitled')}</button>}
-            help={attentionReason(t, has, entry.reason)}
+            help={attentionReason(t, has, entry.reason, entry.kind)}
             control={<div style={{display: 'flex', flexDirection: 'column', gap: 8, width: '100%'}}>
               {offered.map(candidate => <Candidate key={candidate.key} candidate={candidate} busy={action.busy} onUse={() => void send(entry, {action: 'accept', candidateKey: candidate.key, ...(candidate.orders[0] ? {order: candidate.orders[0].id} : {})}, t('server.attention.matched', {title: candidate.title}))} />)}
               {items.length ? <div><Menu label={t('server.attention.actions', {title: entry.title})} trigger={<Button size="sm" variant="ghost" icon="more" label={offered.length ? t('server.attention.somethingElse') : t('server.attention.choose')} />} items={items} onSelect={id => {
@@ -97,6 +103,7 @@ export function NeedsAttentionPanel({libraryId, onCount}: {libraryId: string; on
                 else if (id === 'id') setIdentifying(entry);
                 else if (id === 'parent') void navigate({to: '/show/$showId', params: {showId: entry.parentId}, search: {library: libraryId}});
                 else if (id === 'dismiss') void send(entry, {action: 'dismiss'}, t('server.attention.dismissed'));
+                else if (id === 'retry') void send(entry, {action: 'retry'}, t('server.attention.lookingUp'));
               }} /></div> : null}
             </div>} />
         );
@@ -109,6 +116,15 @@ export function NeedsAttentionPanel({libraryId, onCount}: {libraryId: string; on
         onIdentify={(provider, providerId) => identifying && void send(identifying, {action: 'id', providerId, ...(provider ? {provider} : {})}, t('server.attention.idSaved')).then(ok => { if (ok) setIdentifying(undefined); })} />
     </SettingsGroup>
   );
+}
+
+function attentionIcon(entry: AttentionEntry): IconName {
+  switch (entry.kind) {
+    case 'show': return 'tv';
+    case 'album': case 'song': return 'music';
+    case 'book': return 'book';
+    default: return 'film';
+  }
 }
 
 /** One suggested match: what it is, why it was suggested, and Use this. */

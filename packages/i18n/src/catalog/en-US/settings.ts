@@ -616,6 +616,8 @@ export const settingsMessages = {
   'server.attention.search': 'Search for it…',
   'server.attention.enterId': 'Enter a provider ID…',
   'server.attention.openShow': 'Open the show',
+  'server.attention.lookUpAgain': 'Look it up again',
+  'server.attention.lookingUp': 'Looking it up again. The list updates when it’s done.',
   'server.attention.useNamed': 'Use {title}',
   'server.attention.matched': 'Matched to {title}. Its details will follow in a moment.',
   'server.attention.dismissed': 'Dismissed. It comes back only if the title’s files change.',
