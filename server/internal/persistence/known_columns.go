@@ -853,6 +853,7 @@ catalog_dirty.domain
 catalog_dirty.entity_id
 catalog_dirty.revision
 catalog_entities.added_ms
+catalog_entities.genre_sources
 catalog_entities.id
 catalog_entities.kind
 catalog_entities.library_id

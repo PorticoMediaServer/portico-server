@@ -11,7 +11,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 )
 
-// Versions, duration, resolution and credited-name filters select from the
+// Versions, duration, resolution, credited-name and missing-genre filters select from the
 // value side (maintained version counts, the files' indexes, the credited
 // names); they must match exactly the titles the per-title test matches.
 func TestValueSideFiltersMatchTheTitleTest(t *testing.T) {
@@ -21,6 +21,9 @@ func TestValueSideFiltersMatchTheTitleTest(t *testing.T) {
 		item := c.Movie(lib, fmt.Sprintf("/m/%d.mkv", i), fmt.Sprintf("Film %d", i), 2000)
 		if i%3 == 0 {
 			c.File(item.ID, fmt.Sprintf("/m/%d-b.mkv", i), float64(3000+i))
+		}
+		if i%2 == 0 {
+			c.Genres(item.ID, "fixture", "Drama")
 		}
 		c.Exec(`UPDATE catalog_assets SET height=?,duration=? WHERE id=?`, []int{480, 720, 1080, 2160}[i%4], float64(5000+i%5), item.Asset)
 		name := fmt.Sprintf("Actor %d", i%6)
@@ -49,6 +52,7 @@ func TestValueSideFiltersMatchTheTitleTest(t *testing.T) {
 		{Field: "director", Operator: "starts-with", Value: "Dir Actor"},
 		{Field: "actor", Operator: "not-in", Value: []any{"Actor 2", "Actor 4"}},
 		{Field: "writer", Operator: "equals", Value: "Actor 1"},
+		{Field: "genre", Operator: "is-missing", Value: nil},
 	}
 	for _, node := range nodes {
 		node := node

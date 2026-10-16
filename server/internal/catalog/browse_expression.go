@@ -741,13 +741,17 @@ func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (stri
 	switch node.Operator {
 	case "not-equals", "not-in", "is-missing":
 		positive := map[string]string{"not-equals": "equals", "not-in": "in", "is-missing": "is-present"}[node.Operator]
+		candidates, err := c.genrelessCandidates(field, node)
+		if err != nil {
+			return "", err
+		}
 		clause, err := c.exists(field, func() (string, error) {
 			return c.comparison(field, field.Value, positive, node.Value)
 		})
 		if err != nil {
 			return "", err
 		}
-		return "NOT " + clause, nil
+		return candidates + "NOT " + clause, nil
 	case "contains-all":
 		values, _ := node.Value.([]any)
 		parts := make([]string, 0, len(values))
@@ -1156,4 +1160,33 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 	raw, _ := json.Marshal(ids)
 	c.args = append(c.args, string(raw))
 	return `e.entity_id IN(SELECT value FROM json_each(?))`, true, nil
+}
+
+// genrelessCandidates bounds "has no genre" to the titles that can lack one:
+// those whose own entity no genre source names (catalog_entities.genre_sources,
+// kept by the term sources), and the episodes of shows none names. The exact
+// condition is still tested, on those titles only. It returns a clause to put
+// before the condition, or "" when the candidates are too many to name (the
+// condition is then tested on every title, as before).
+func (c *browseCompiler) genrelessCandidates(field browseField, node BrowseNode) (string, error) {
+	if field.ID != "genre-presence" || node.Operator != "is-missing" || c.count == nil || c.ids == nil {
+		return "", nil
+	}
+	candidates := `SELECT id FROM catalog_entities INDEXED BY catalog_entities_genreless WHERE genre_sources=0 AND kind<>4
+ UNION ALL SELECT ep.entity_id FROM catalog_entities sh INDEXED BY catalog_entities_genreless CROSS JOIN catalog_episodes ep ON ep.show_id=sh.id
+ JOIN catalog_entities episode ON episode.id=ep.entity_id AND episode.genre_sources=0 WHERE sh.genre_sources=0 AND sh.kind=2`
+	found, err := c.count(`SELECT count(*) FROM (` + candidates + ` LIMIT ` + strconv.Itoa(drivenMaximum+1) + `)`)
+	if err != nil || found > drivenMaximum {
+		return "", err
+	}
+	if found == 0 {
+		return "0 AND ", nil
+	}
+	ids, err := c.ids(candidates)
+	if err != nil {
+		return "", err
+	}
+	raw, _ := json.Marshal(ids)
+	c.args = append(c.args, string(raw))
+	return `e.entity_id IN(SELECT value FROM json_each(?)) AND `, nil
 }

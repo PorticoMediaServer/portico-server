@@ -48,8 +48,12 @@ CREATE TABLE catalog_entities(
  sort_head TEXT NOT NULL,
  year INTEGER NOT NULL DEFAULT 0,
  added_ms INTEGER,
- retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))) STRICT;
+ retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1)),
+ -- How many genre sources name the entity itself (kept by catalog_term_sources'
+ -- triggers), so "has no genre" starts from the entities with none.
+ genre_sources INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE INDEX catalog_entities_title ON catalog_entities(library_id,kind,sort_key,id);
+CREATE INDEX catalog_entities_genreless ON catalog_entities(kind,id) WHERE genre_sources=0;
 CREATE INDEX catalog_entities_added ON catalog_entities(library_id,added_ms DESC,id DESC) WHERE added_ms IS NOT NULL;
 CREATE INDEX catalog_entities_parent ON catalog_entities(parent_id,id) WHERE parent_id IS NOT NULL;
 CREATE INDEX catalog_entities_library ON catalog_entities(library_id,kind,id);
@@ -465,6 +469,16 @@ CREATE INDEX catalog_term_sources_overrides ON catalog_term_sources(label_overri
 CREATE INDEX catalog_term_source_membership ON catalog_term_sources(entity_id,term_id);
 CREATE INDEX catalog_term_sources_provider ON catalog_term_sources(provider,source_id,entity_id);
 CREATE INDEX catalog_term_sources_name_seek ON catalog_term_sources(source_name COLLATE NOCASE,entity_id);
+CREATE TRIGGER catalog_entities_genre_sources_join AFTER INSERT ON catalog_term_sources WHEN (SELECT vocab FROM catalog_terms WHERE id=NEW.term_id)=1 BEGIN
+ UPDATE catalog_entities SET genre_sources=genre_sources+1 WHERE id=NEW.entity_id;
+END;
+CREATE TRIGGER catalog_entities_genre_sources_leave AFTER DELETE ON catalog_term_sources WHEN (SELECT vocab FROM catalog_terms WHERE id=OLD.term_id)=1 BEGIN
+ UPDATE catalog_entities SET genre_sources=max(0,genre_sources-1) WHERE id=OLD.entity_id;
+END;
+CREATE TRIGGER catalog_entities_genre_sources_move AFTER UPDATE OF entity_id,term_id ON catalog_term_sources WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.term_id IS NOT NEW.term_id BEGIN
+ UPDATE catalog_entities SET genre_sources=max(0,genre_sources-1) WHERE id=OLD.entity_id AND (SELECT vocab FROM catalog_terms WHERE id=OLD.term_id)=1;
+ UPDATE catalog_entities SET genre_sources=genre_sources+1 WHERE id=NEW.entity_id AND (SELECT vocab FROM catalog_terms WHERE id=NEW.term_id)=1;
+END;
 
 CREATE TABLE catalog_related_facets(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,

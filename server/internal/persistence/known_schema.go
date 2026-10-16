@@ -170,6 +170,7 @@ index catalog_credits_person
 index catalog_credits_provider_person
 index catalog_credits_role
 index catalog_entities_added
+index catalog_entities_genreless
 index catalog_entities_library
 index catalog_entities_parent
 index catalog_entities_title
@@ -1497,6 +1498,9 @@ trigger catalog_credit_names_move
 trigger catalog_dataset_vocabulary_bound_check
 trigger catalog_dataset_vocabulary_bound_delete
 trigger catalog_dataset_vocabulary_bound_insert
+trigger catalog_entities_genre_sources_join
+trigger catalog_entities_genre_sources_leave
+trigger catalog_entities_genre_sources_move
 trigger catalog_facet_asset_height
 trigger catalog_facet_attributes_delete
 trigger catalog_facet_attributes_insert
