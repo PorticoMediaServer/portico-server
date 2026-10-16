@@ -93,11 +93,13 @@ func checkOK(t *testing.T, db *sql.DB) {
 }
 
 // A backup during concurrent writes: writers never wait long, and the copy
-// passes integrity_check.
+// passes integrity_check. The probe row is written through the write gate
+// first, so the measured waits are the backup's and not a fresh database's
+// first write (50-150 ms here, more on a loaded host, with or without a backup).
 func TestBackupDuringConcurrentWrites(t *testing.T) {
 	svc, state, db := testService(t)
 	ctx := context.Background()
-	if _, err := db.Exec(`INSERT INTO configuration(key,value) VALUES('backup_write_probe','0') ON CONFLICT(key) DO UPDATE SET value='0'`); err != nil {
+	if _, err := dbwork.ExecWrite(ctx, db, dbwork.ClassInteractive, `INSERT INTO configuration(key,value) VALUES('backup_write_probe','0') ON CONFLICT(key) DO UPDATE SET value='0'`); err != nil {
 		t.Fatal(err)
 	}
 	done := make(chan struct{})
