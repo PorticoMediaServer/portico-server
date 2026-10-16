@@ -512,6 +512,11 @@ func (s *Store) ReportReadiness(ctx context.Context, p identity.Principal, id st
 		if epoch != g.playbackRevision {
 			return nil
 		}
+		var was string
+		var wasRevision, wasAt int64
+		if e := tx.QueryRowContext(ctx, `SELECT readiness,readiness_revision,readiness_at_ms FROM social_group_members WHERE id=?`, m.id).Scan(&was, &wasRevision, &wasAt); e != nil {
+			return e
+		}
 		if _, e := tx.ExecContext(ctx, `UPDATE social_group_members SET readiness=?,readiness_position_us=?,readiness_at_ms=?,readiness_revision=? WHERE id=?`, req.Readiness, position, s.ms(), g.playbackRevision, m.id); e != nil {
 			return e
 		}
@@ -530,7 +535,7 @@ func (s *Store) ReportReadiness(ctx context.Context, p identity.Principal, id st
 		if _, e := s.releaseWait(ctx, tx, g); e != nil {
 			return e
 		}
-		_, summary, e := s.members(ctx, tx, *g)
+		summary, e := s.readinessSummary(ctx, tx, *g)
 		if e != nil {
 			return e
 		}
@@ -540,6 +545,20 @@ func (s *Store) ReportReadiness(ctx context.Context, p identity.Principal, id st
 		if g.state == "preparing" && summary.Aggregate == "ready" {
 			g.state = "ready"
 		}
+		// Every member hears every other member's reports, so a report that
+		// changes nothing anyone is shown (the same readiness, the same room
+		// summary, a fresh report) is not re-broadcast: in steady playback the
+		// room's traffic no longer grows with the square of its size. The
+		// member's position is still kept, for snapshots and the wait.
+		raw, _ := json.Marshal(summary)
+		fresh := wasAt > 0 && s.ms()-wasAt <= ReadinessStaleSeconds*1000
+		if was == req.Readiness && wasRevision == g.playbackRevision && fresh && string(raw) == g.readinessSummary {
+			return nil
+		}
+		if _, e = tx.ExecContext(ctx, `UPDATE social_groups SET readiness_summary=? WHERE id=?`, string(raw), g.id); e != nil {
+			return e
+		}
+		g.readinessSummary = string(raw)
 		return s.publish(ctx, tx, g.id, EventReadiness, map[string]any{"memberId": m.id, "readiness": req.Readiness, "positionUs": counter(position), "reportedAt": stamp(s.ms()), "aggregate": summary})
 	})
 }

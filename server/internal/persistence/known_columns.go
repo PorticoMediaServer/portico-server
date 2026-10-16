@@ -4408,6 +4408,7 @@ social_groups.queue_position
 social_groups.queue_revision
 social_groups.rate_denominator
 social_groups.rate_numerator
+social_groups.readiness_summary
 social_groups.reconnect_generation
 social_groups.repeat_mode
 social_groups.resume_state
