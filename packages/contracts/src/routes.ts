@@ -914,6 +914,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -935,6 +936,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -956,6 +958,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -994,6 +997,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -1015,6 +1019,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -1242,6 +1247,27 @@ export const routes = [
     "admission": "admin-heavy"
   },
   {
+    "id": "get_admin_access_device",
+    "method": "GET",
+    "path": "/v1/admin/access/devices/{id}",
+    "summary": "Read one member's device as the devices list shows it",
+    "access": "admin_scope",
+    "adminScope": "members",
+    "requires": "admin",
+    "lane": "security",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "invalid_request",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "get_admin_access_devices",
     "method": "GET",
     "path": "/v1/admin/access/devices",
@@ -1268,6 +1294,28 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_admin_access_invitation",
+    "method": "GET",
+    "path": "/v1/admin/access/invitations/{id}",
+    "summary": "Read one invitation as the invitations list shows it",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "get_admin_access_invitations",
     "method": "GET",
     "path": "/v1/admin/access/invitations",
@@ -1283,6 +1331,28 @@ export const routes = [
       "limit",
       "state"
     ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_access_member",
+    "method": "GET",
+    "path": "/v1/admin/access/members/{id}",
+    "summary": "Read one member as the members list shows it",
+    "access": "admin_scope",
+    "adminScope": "access",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 0,
     "errors": [
       "invalid_request",
       "unauthorized",
@@ -7229,6 +7299,28 @@ export const routes = [
     "admission": "media-body"
   },
   {
+    "id": "get_webhook",
+    "method": "GET",
+    "path": "/v1/admin/webhooks/{id}",
+    "summary": "Read one webhook",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "not_found",
+      "unauthorized",
+      "not_permitted",
+      "insufficient_scope",
+      "invalid_request",
+      "administration_unavailable",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "head_download_artifact",
     "method": "HEAD",
     "path": "/v1/downloads/artifacts/{grant}",
@@ -8280,6 +8372,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -8322,6 +8415,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -10920,6 +11014,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -12475,6 +12570,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -12496,6 +12592,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -12538,6 +12635,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -12559,6 +12657,7 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "revision_mismatch",
       "internal"
     ],
     "status": 200,
@@ -15658,7 +15757,7 @@ export const routes = [
     "id": "update_webhook",
     "method": "PATCH",
     "path": "/v1/admin/webhooks/{id}",
-    "summary": "Change a webhook, turn it on or off, or replace its secret",
+    "summary": "Change a webhook, turn it on or off, or replace its secret; fenced by its revision",
     "access": "owner",
     "requires": "admin",
     "lane": "default",
@@ -15666,13 +15765,15 @@ export const routes = [
     "bodyLimit": 8192,
     "errors": [
       "body_too_large",
+      "revision_mismatch",
       "not_found",
       "unauthorized",
       "not_permitted",
       "insufficient_scope",
       "invalid_request",
       "administration_unavailable",
-      "internal"
+      "internal",
+      "revision_required"
     ],
     "status": 200,
     "admission": "admin"
@@ -15735,8 +15836,11 @@ export const routePaths = {
   "delete_webhook": "/v1/admin/webhooks/{id}",
   "download_client_log": "/v1/admin/diagnostics/client-logs/{id}/download",
   "empty_missing_titles": "/v1/admin/missing-titles/empty",
+  "get_admin_access_device": "/v1/admin/access/devices/{id}",
   "get_admin_access_devices": "/v1/admin/access/devices",
+  "get_admin_access_invitation": "/v1/admin/access/invitations/{id}",
   "get_admin_access_invitations": "/v1/admin/access/invitations",
+  "get_admin_access_member": "/v1/admin/access/members/{id}",
   "get_admin_access_members": "/v1/admin/access/members",
   "get_admin_access_members_id_limits": "/v1/admin/access/members/{id}/limits",
   "get_admin_analysis_operations": "/v1/admin/analysis-operations",
@@ -15992,6 +16096,7 @@ export const routePaths = {
   "get_v1_media_subtitles_grant_resource_revision_original_sub": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sub",
   "get_v1_media_subtitles_grant_resource_revision_original_sup": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.sup",
   "get_v1_media_subtitles_grant_resource_revision_vtt": "/v1/media/subtitles/{grant}/{resource}/{revision}.vtt",
+  "get_webhook": "/v1/admin/webhooks/{id}",
   "head_download_artifact": "/v1/downloads/artifacts/{grant}",
   "head_media_grant_audio": "/v1/media/{grant}/audio",
   "head_v1_media_subtitles_grant_resource_revision_fonts_font": "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}",

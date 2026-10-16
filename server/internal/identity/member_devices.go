@@ -222,6 +222,43 @@ func (s *Service) MemberDevices(ctx context.Context, actor Principal, q MemberDe
 	return out, nil
 }
 
+// MemberDevice reads one device as the list shows it, so a console can read
+// again the record it is deciding about without walking the list. A device the
+// caller may not decide about is not found, as it is absent from the list.
+func (s *Service) MemberDevice(ctx context.Context, actor Principal, id string) (MemberDevice, error) {
+	if !Administrative(actor.Role) {
+		return MemberDevice{}, ErrForbidden
+	}
+	if !validFamilyID(id) {
+		return MemberDevice{}, ErrDeviceInput
+	}
+	gated, e := dbwork.BeginSnapshot(ctx, s.db)
+	if e != nil {
+		return MemberDevice{}, e
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	if actor, e = s.memberDeviceAuthorityTx(ctx, tx, actor); e != nil {
+		return MemberDevice{}, e
+	}
+	var role string
+	row := tx.QueryRowContext(ctx, `SELECT `+memberDeviceColumns+`,m.role FROM identity_devices d JOIN accounts a ON a.id=d.account_id JOIN direct_memberships m ON m.account_id=d.account_id WHERE d.authority='local' AND d.id=?`, id)
+	var d MemberDevice
+	var state string
+	e = row.Scan(&d.ID, &d.AccountID, &d.Username, &d.ProfileID, &d.Name, &d.Platform, &d.App, &d.AppVersion, &state, &d.FirstSeen, &d.LastSeen, &d.Revision, &role)
+	if errors.Is(e, sql.ErrNoRows) {
+		return MemberDevice{}, ErrDeviceUnknown
+	}
+	if e != nil {
+		return MemberDevice{}, e
+	}
+	if !managesDevicesOf(actor, d.AccountID, role) {
+		return MemberDevice{}, ErrDeviceUnknown
+	}
+	d.Trust = trustOf(state)
+	return d, nil
+}
+
 // SetMemberDeviceTrust approves a device, blocks it, or puts it back to
 // waiting. Blocking ends what the device is doing now, not only what it does
 // next: its sessions are revoked through the family hook, so playback it had

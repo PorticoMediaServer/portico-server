@@ -126,11 +126,11 @@ func TestWebhookValidationRefusesWhatItShould(t *testing.T) {
 		t.Fatalf("the list carries the secret: %s", raw)
 	}
 	// Rotation shows a new secret once; a chosen secret is not echoed back.
-	rotated, err := store.Update(ctx, nil, made.Webhook.ID, Change{RotateSecret: true})
+	rotated, err := store.Update(ctx, nil, made.Webhook.ID, Change{ExpectedRevision: made.Webhook.Revision, RotateSecret: true})
 	if err != nil || rotated.Secret == "" || rotated.Secret == made.Secret {
 		t.Fatalf("rotate: %v", err)
 	}
-	chosen, err := store.Update(ctx, nil, made.Webhook.ID, Change{Secret: "a-secret-of-my-own-choosing"})
+	chosen, err := store.Update(ctx, nil, made.Webhook.ID, Change{ExpectedRevision: rotated.Webhook.Revision, Secret: "a-secret-of-my-own-choosing"})
 	if err != nil || chosen.Secret != "" || chosen.Webhook.SecretHint != "sing" {
 		t.Fatalf("chosen secret: %v %+v", err, chosen)
 	}
@@ -266,7 +266,7 @@ func TestDeliveryIsSignedRetriedAndLogged(t *testing.T) {
 	// of the kind, and turning one off abandons what was waiting.
 	target.answer(200)
 	off := false
-	if _, err = store.Update(ctx, nil, made.Webhook.ID, Change{Enabled: &off}); err != nil {
+	if _, err = store.Update(ctx, nil, made.Webhook.ID, Change{ExpectedRevision: made.Webhook.Revision, Enabled: &off}); err != nil {
 		t.Fatal(err)
 	}
 	if err = store.Emit(ctx, ServerStarted, "", nil); err != nil {

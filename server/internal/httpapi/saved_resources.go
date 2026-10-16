@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/requestinput"
@@ -201,13 +200,6 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 				}
 				return nil
 			})
-			if route.action == "reorder" && errors.Is(e, catalog.ErrPlaylistConflict) {
-				// As a playlist's order: the collection changed since it was read.
-				if standardErrors != nil {
-					standardErrors.Write(w, "", &apierror.Error{Code: "revision_mismatch"})
-					return
-				}
-			}
 			if e != nil {
 				failure(w, e)
 				return
@@ -307,6 +299,3 @@ func (d Dependencies) servePersonalHistory(w http.ResponseWriter, r *http.Reques
 	}
 	d.savedResponse(w, r, fence, out)
 }
-
-// standardErrors writes the standard error answers (apierror.Defaults).
-var standardErrors, _ = apierror.New()

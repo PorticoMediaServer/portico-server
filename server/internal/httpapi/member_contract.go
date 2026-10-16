@@ -35,6 +35,16 @@ func registerMemberRoutes(registry *apikit.Registry, d Dependencies) error {
 	}}); err != nil {
 		return err
 	}
+	if err := apikit.Register(registry, apikit.Route[struct{}, identity.MemberDevice]{Metadata: apikit.Metadata{Admission: laneAdmin, ID: "get_admin_access_device", Method: "GET", Path: "/v1/admin/access/devices/{id}", Summary: "Read one member's device as the devices list shows it", Access: apikit.Admin, Requires: apikit.ScopeAdmin, AdminScope: "members", Lane: apikit.Security, Cost: apikit.Constant, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (identity.MemberDevice, error) {
+		p, err := d.foundationCaller(r.WithContext(ctx))
+		if err != nil {
+			return identity.MemberDevice{}, foundationAuthError(err)
+		}
+		out, err := d.Identity.MemberDevice(ctx, p, r.PathValue("id"))
+		return out, memberDeviceError(err)
+	}}); err != nil {
+		return err
+	}
 	if err := apikit.Register(registry, apikit.Route[identity.MemberDeviceTrust, identity.MemberDevice]{Metadata: apikit.Metadata{Admission: laneSecurityFence, ID: "put_admin_access_device_trust", Method: "PUT", Path: "/v1/admin/access/devices/{id}/trust", Summary: "Approve a member's device, block it, or put it back to waiting", Access: apikit.Admin, Requires: apikit.ScopeSession, AdminScope: "members", Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "revision_mismatch", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body identity.MemberDeviceTrust) (identity.MemberDevice, error) {
 		p, err := d.foundationCaller(r.WithContext(ctx))
 		if err != nil {

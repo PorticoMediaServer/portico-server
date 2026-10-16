@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -45,17 +46,28 @@ func TestWebhooksAreTheOwnersAndNeedTheAdminScope(t *testing.T) {
 	if w = f.call("GET", "/v1/admin/webhooks", token.Secret, ""); w.Code != 403 {
 		t.Fatalf("a member's token listed webhooks: %d %s", w.Code, w.Body)
 	}
+	// Edits name the revision they were made against: none is 428, an old one
+	// 412 with the webhook as it is now; one webhook reads by id.
+	if w = f.call("PATCH", "/v1/admin/webhooks/"+made.Webhook.ID, f.owner, `{"enabled":false}`); w.Code != 428 {
+		t.Fatalf("an edit with no revision: %d %s", w.Code, w.Body)
+	}
+	if w = f.call("PATCH", "/v1/admin/webhooks/"+made.Webhook.ID, f.owner, `{"expectedRevision":99,"enabled":false}`); w.Code != 412 || !strings.Contains(w.Body.String(), `"current":`) {
+		t.Fatalf("an edit against an old revision: %d %s", w.Code, w.Body)
+	}
+	if w = f.call("GET", "/v1/admin/webhooks/"+made.Webhook.ID, f.owner, ""); w.Code != 200 || !strings.Contains(w.Body.String(), fmt.Sprintf(`"revision":%d`, made.Webhook.Revision)) {
+		t.Fatalf("read one: %d %s", w.Code, w.Body)
+	}
 	// Edits are partial; bad values and unknown fields are refused.
-	w = f.call("PATCH", "/v1/admin/webhooks/"+made.Webhook.ID, f.owner, `{"enabled":false}`)
+	w = f.call("PATCH", "/v1/admin/webhooks/"+made.Webhook.ID, f.owner, fmt.Sprintf(`{"expectedRevision":%d,"enabled":false}`, made.Webhook.Revision))
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"enabled":false`) || !strings.Contains(w.Body.String(), `"name":"Home automation"`) || strings.Contains(w.Body.String(), `"secret":`) {
 		t.Fatalf("patch: %d %s", w.Code, w.Body)
 	}
-	for _, bad := range []string{`{"url":"ftp://example.com"}`, `{"events":[]}`, `{"events":["webhook.test"]}`, `{"secret":"short"}`, `{"owner":"me"}`} {
+	for _, bad := range []string{`{"expectedRevision":2,"url":"ftp://example.com"}`, `{"expectedRevision":2,"events":[]}`, `{"expectedRevision":2,"events":["webhook.test"]}`, `{"expectedRevision":2,"secret":"short"}`, `{"expectedRevision":2,"owner":"me"}`} {
 		if w = f.call("PATCH", "/v1/admin/webhooks/"+made.Webhook.ID, f.owner, bad); w.Code != 400 {
 			t.Fatalf("%s accepted: %d %s", bad, w.Code, w.Body)
 		}
 	}
-	w = f.call("PATCH", "/v1/admin/webhooks/"+made.Webhook.ID, f.owner, `{"rotateSecret":true}`)
+	w = f.call("PATCH", "/v1/admin/webhooks/"+made.Webhook.ID, f.owner, `{"expectedRevision":2,"rotateSecret":true}`)
 	var rotated webhooks.Issued
 	if err := json.Unmarshal(w.Body.Bytes(), &rotated); err != nil || w.Code != 200 || rotated.Secret == "" || rotated.Secret == made.Secret {
 		t.Fatalf("rotate: %d %s", w.Code, w.Body)
