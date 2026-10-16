@@ -21,7 +21,7 @@ type Api = {request<T>(path: string, method?: string, body?: unknown, signal?: A
  * server's owner may set a different one (a self-hosted receiver); otherwise this is used. */
 const PORTICO_CAST_APPLICATION = (import.meta.env?.VITE_CAST_APPLICATION_ID as string | undefined) ?? '';
 type Listener = (ns: string, message: string) => void;
-type CastSession = {getCastDevice(): {friendlyName: string}; sendMessage(ns: string, body: unknown): Promise<unknown>; addMessageListener(ns: string, fn: Listener): void; removeMessageListener(ns: string, fn: Listener): void; endSession(stop: boolean): void};
+type CastSession = {getCastDevice(): {friendlyName: string; /** The SDK's unique id for the receiver. */ label?: string}; sendMessage(ns: string, body: unknown): Promise<unknown>; addMessageListener(ns: string, fn: Listener): void; removeMessageListener(ns: string, fn: Listener): void; endSession(stop: boolean): void};
 type Framework = {CastContext: {getInstance(): {setOptions(o: unknown): void; requestSession(): Promise<unknown>; getCurrentSession(): CastSession | null; addEventListener(type: string, fn: (e: {sessionState: string}) => void): void; removeEventListener(type: string, fn: (e: {sessionState: string}) => void): void}}; CastContextEventType: {SESSION_STATE_CHANGED: string}; SessionState: Record<string, string>};
 declare global { interface Window { __onGCastApiAvailable?: (available: boolean) => void; cast?: {framework: Framework}; chrome?: {cast?: {AutoJoinPolicy: {ORIGIN_SCOPED: string}}} } }
 
@@ -111,6 +111,8 @@ function transportFor(session: CastSession): CastTransport {
   const context = framework.CastContext.getInstance();
   return {
     deviceName: session.getCastDevice().friendlyName,
+    // Two televisions with one name keep separate pairing proofs.
+    ...(session.getCastDevice().label ? {deviceId: session.getCastDevice().label} : {}),
     send: message => session.sendMessage(CAST_NAMESPACE, message).then(() => undefined),
     onMessage: fn => { const l: Listener = (_ns, raw) => fn(raw); session.addMessageListener(CAST_NAMESPACE, l); return () => session.removeMessageListener(CAST_NAMESPACE, l); },
     onSessionEnd: fn => {
