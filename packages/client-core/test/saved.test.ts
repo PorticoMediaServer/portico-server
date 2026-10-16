@@ -255,10 +255,12 @@ test('CD-17: selecting, paging and reloading each filter produces the intended U
   assert.equal(s.getSnapshot().projection!.query.category,'all');
   s.dispose();
  }
- // Filter for other views is rejected before transport.
+ // A filter another view does not offer is rejected before transport; the list of playlists has its own groups.
  {
   const s=setup(async()=>projection('playlists',0,[]));
-  assert.throws(()=>s.select({view:'playlists',filter:'all' as any}));
+  assert.throws(()=>s.select({view:'playlists',filter:'unwatched' as any}));
+  assert.throws(()=>s.select({view:'collections',filter:'all' as any}));
+  assert.doesNotThrow(()=>void s.select({view:'playlists',filter:'mine'}).catch(()=>{}));
   assert.throws(()=>s.select({view:'watchlist',filter:'everything' as any}));
   s.dispose();
  }

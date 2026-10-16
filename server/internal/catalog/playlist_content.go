@@ -18,20 +18,61 @@ func directoryRevision(q personalReader, a ResourceActor) (ContentRevision, erro
 func resourceEnvelope(r ContentRequest, title string) ContentEnvelope {
 	return ContentEnvelope{Scope: ContentScope{r.ServerID, "", "mixed", r.View, r.EntityID, r.ViewerFence}, Heading: ContentHeading{Key: "saved." + r.View, Fallback: title}, Query: ContentQuery{Sort: r.Sort, Direction: r.Direction, Limit: r.Limit, SearchMode: "none"}, Navigation: savedNavigation(), Sorts: []ContentSort{}, Filters: []ContentFilter{}, Sections: []ContentSection{}}
 }
+// playlistDirectorySorts are the orders a list of playlists offers: by name,
+// by when each was made or last changed, and by how many entries it holds.
+// Each is a key over the playlist row itself, so a page costs the viewer's
+// own playlists, never the library.
+var playlistDirectorySorts = []struct {
+	id, label, key, direction string
+}{
+	{"title", "playlists.sort.title", "p.name COLLATE NOCASE", "asc"},
+	{"created", "playlists.sort.created", "p.created_at", "desc"},
+	{"updated", "playlists.sort.updated", "COALESCE(NULLIF(p.updated_at,''),p.created_at)", "desc"},
+	{"count", "playlists.sort.count", "printf('%010d',p.entry_count)", "desc"},
+}
+
+// playlistDirectoryFilters are the named groups a list of playlists offers.
+var playlistDirectoryFilters = map[string]string{
+	"all":    "1",
+	"mine":   "(p.owner_authority=? AND p.owner_account=? AND p.owner_profile=?)",
+	"shared": "NOT (p.owner_authority=? AND p.owner_account=? AND p.owner_profile=?)",
+	"pinned": "EXISTS(SELECT 1 FROM saved_pins pin WHERE pin.owner_key=? AND pin.kind='playlist' AND pin.resource_id=p.token AND pin.pinned=1)",
+}
+
 func (s *Service) PlaylistDirectory(r ContentRequest, a ResourceActor) (ContentEnvelope, error) {
 	if r.Sort == "" {
 		r.Sort = "title"
 	}
-	if r.Direction == "" {
-		r.Direction = "asc"
+	if r.Filter == "" {
+		r.Filter = "all"
 	}
 	if r.Limit == 0 {
 		r.Limit = 40
 	}
 	out := resourceEnvelope(r, "Playlists")
-	out.Sorts = []ContentSort{{"title", "sort.title", []string{"asc", "desc"}}}
-	if r.Sort != "title" || (r.Direction != "asc" && r.Direction != "desc") || r.Limit < 1 || r.Limit > 100 {
+	key := ""
+	for _, sort := range playlistDirectorySorts {
+		out.Sorts = append(out.Sorts, ContentSort{sort.id, sort.label, []string{"asc", "desc"}})
+		if sort.id == r.Sort {
+			key = sort.key
+			if r.Direction == "" {
+				r.Direction = sort.direction
+			}
+		}
+	}
+	out.Query.Sort, out.Query.Direction = r.Sort, r.Direction
+	predicate, known := playlistDirectoryFilters[r.Filter]
+	if key == "" || !known || (r.Direction != "asc" && r.Direction != "desc") || r.Limit < 1 || r.Limit > 100 {
 		return out, requestinput.New("invalid playlist directory query")
+	}
+	filterArgs := func() []any {
+		switch r.Filter {
+		case "mine", "shared":
+			return []any{a.Authority, a.AccountID, a.ProfileID}
+		case "pinned":
+			return []any{actorKey(a)}
+		}
+		return nil
 	}
 	ctx := s.Context()
 	gated, e := dbwork.BeginSnapshot(ctx, s.db)
@@ -54,13 +95,18 @@ func (s *Service) PlaylistDirectory(r ContentRequest, a ResourceActor) (ContentE
 		actions = append(actions, "create_playlist")
 	}
 	out.Actions = &actions
-	scope := cursorScope{Profile: a.ProfileID, View: "playlists", Viewer: r.ViewerFence, Sort: r.Sort, Direction: r.Direction, Limit: r.Limit}
-	where := ` FROM catalog_playlists p WHERE p.deleted=0 AND p.id IN(SELECT owned.id FROM catalog_playlists owned WHERE owned.owner_authority=? AND owned.owner_account=? AND owned.owner_profile=? AND owned.deleted=0 UNION SELECT shared.id FROM playlist_shares share JOIN catalog_playlists shared ON shared.token=share.playlist_id WHERE share.authority=? AND share.account_id=? AND share.profile_id=?)`
-	args := []any{a.Authority, a.AccountID, a.ProfileID, a.Authority, a.AccountID, a.ProfileID}
-	var count int
-	if e = tx.QueryRow(`SELECT count(*)`+where, args...).Scan(&count); e != nil {
+	scope := cursorScope{Profile: a.ProfileID, View: "playlists", Viewer: r.ViewerFence, Sort: r.Sort, Direction: r.Direction, Category: r.Filter, Limit: r.Limit}
+	visible := ` FROM catalog_playlists p WHERE p.deleted=0 AND p.id IN(SELECT owned.id FROM catalog_playlists owned WHERE owned.owner_authority=? AND owned.owner_account=? AND owned.owner_profile=? AND owned.deleted=0 UNION SELECT shared.id FROM playlist_shares share JOIN catalog_playlists shared ON shared.token=share.playlist_id WHERE share.authority=? AND share.account_id=? AND share.profile_id=?)`
+	visibleArgs := []any{a.Authority, a.AccountID, a.ProfileID, a.Authority, a.AccountID, a.ProfileID}
+	// One pass counts every group the filter offers, over the viewer's own playlists.
+	var all, mine, pinned int
+	if e = tx.QueryRow(`SELECT count(*),COALESCE(sum(p.owner_authority=? AND p.owner_account=? AND p.owner_profile=?),0),COALESCE(sum(EXISTS(SELECT 1 FROM saved_pins pin WHERE pin.owner_key=? AND pin.kind='playlist' AND pin.resource_id=p.token AND pin.pinned=1)),0)`+visible, append([]any{a.Authority, a.AccountID, a.ProfileID, actorKey(a)}, visibleArgs...)...).Scan(&all, &mine, &pinned); e != nil {
 		return out, e
 	}
+	out.Filters = []ContentFilter{{ID: "filter", LabelKey: "playlists.filter", Options: []ContentFilterOption{{ID: "all", Label: "All", Count: all}, {ID: "mine", Label: "Mine", Count: mine}, {ID: "shared", Label: "Shared with me", Count: all - mine}, {ID: "pinned", Label: "Pinned", Count: pinned}}}}
+	count := map[string]int{"all": all, "mine": mine, "shared": all - mine, "pinned": pinned}[r.Filter]
+	where := visible + ` AND ` + predicate
+	args := append(append([]any{}, visibleArgs...), filterArgs()...)
 	op := ">"
 	if r.Direction == "desc" {
 		op = "<"
@@ -70,22 +116,25 @@ func (s *Service) PlaylistDirectory(r ContentRequest, a ResourceActor) (ContentE
 		if err != nil {
 			return out, err
 		}
-		where += ` AND (p.name COLLATE NOCASE` + op + `? OR (p.name COLLATE NOCASE=? AND p.token` + op + `?))`
+		where += ` AND (` + key + op + `? OR (` + key + `=? AND p.token` + op + `?))`
 		args = append(args, c.Value, c.Value, c.ID)
 	}
 	args = append(args, r.Limit+1)
-	rows, e := tx.Query(`SELECT p.token,p.name,p.summary,p.entry_count`+where+` ORDER BY p.name COLLATE NOCASE `+r.Direction+`,p.token `+r.Direction+` LIMIT ?`, args...)
+	rows, e := tx.Query(`SELECT p.token,p.name,p.summary,p.entry_count,`+key+` AS sort_value`+where+` ORDER BY `+key+` `+r.Direction+`,p.token `+r.Direction+` LIMIT ?`, args...)
 	if e != nil {
 		return out, e
 	}
 	entries := []ContentEntry{}
+	values := []string{}
 	for rows.Next() {
 		var v ContentEntry
 		var n int
-		if e = rows.Scan(&v.ID, &v.Title, &v.Overview, &n); e != nil {
+		var value string
+		if e = rows.Scan(&v.ID, &v.Title, &v.Overview, &n, &value); e != nil {
 			rows.Close()
 			return out, e
 		}
+		values = append(values, value)
 		v.Kind = "playlist"
 		v.Count = &n
 		v.Navigation = &ContentNavigation{View: "playlist", EntityID: v.ID}
@@ -100,7 +149,7 @@ func (s *Service) PlaylistDirectory(r ContentRequest, a ResourceActor) (ContentE
 	if len(entries) > r.Limit {
 		entries = entries[:r.Limit]
 		v := entries[len(entries)-1]
-		next, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: v.Title, ID: v.ID, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
+		next, e = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: values[r.Limit-1], ID: v.ID, Expires: time.Now().Add(30 * time.Minute).Unix()}, rev)
 		if e != nil {
 			return out, e
 		}

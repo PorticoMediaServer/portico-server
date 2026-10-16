@@ -103,7 +103,7 @@ export function HomeScreen() {
           {state.phase === 'loading' && !document ? <LoadingShelves /> : null}
           {state.phase === 'error' && !document ? <ErrorState error={state.error} context="home" retry={refresh} refresh={refresh} /> : null}
           {state.phase === 'error' && document ? <Inset><ErrorNotice error={state.error} context="home" retry={refresh} refresh={refresh} /></Inset> : null}
-          {rows.map(row => <SectionView key={row.id} section={sectionOf(row, libraryName)} libraryId={row.libraryId} onMore={row.nextCursor && !state.paging.has(row.id) ? () => void more(row.id) : undefined} onSeeAll={row.seeAll || row.libraryId || isRecommendationRow(row) ? () => seeAll(row) : undefined} alwaysSeeAll={row.seeAll?.type === 'saved_view'} noSelect origin={isRecommendationRow(row) ? 'recommendation' : undefined} />)}
+          {rows.map(row => <SectionView key={row.id} section={sectionOf(row, libraryName)} libraryId={row.libraryId} onMore={row.nextCursor && !state.paging.has(row.id) ? () => void more(row.id) : undefined} onSeeAll={row.seeAll || row.libraryId || isRecommendationRow(row) ? () => seeAll(row) : undefined} alwaysSeeAll={row.seeAll?.type === 'saved_view'} noSelect homeRow origin={isRecommendationRow(row) ? 'recommendation' : undefined} />)}
           {document && !rows.length && !hero ? (!libraries.items.length && !libraries.loading ? <NoLibraries where="home" /> : <StateView icon="home" title={t('web.empty.homeTitle')} body={t(owner ? 'web.empty.homeOwnerBody' : 'web.empty.homeMemberBody')} />) : null}
         </div>
       </Page>

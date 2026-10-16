@@ -79,9 +79,12 @@ test('a group plays its query only while it shows a sorted or filtered list', ()
   assert.deepEqual(groupSequence({active: true, spec, predicates: [], sort}, {shuffle: true}), {kind: 'query', query: {libraryId: 'lib', pivot: 'episodes', query: {all: spec.base}, sort: [sort]}, shuffle: true});
 });
 
-test('a list across libraries plays as the server query it is, in its own order; a Home row plays from the screen', async () => {
-  const {groupSequence, viewSequence} = await import('../src/app/container-play.ts');
+test('a list across libraries plays as the server query it is, in its own order, a Home row too', async () => {
+  const {groupSequence, viewSequence, episodeGroupSequence, homeRowSequence} = await import('../src/app/container-play.ts');
   const spec = {libraryId: '*', pivot: 'items', base: [{field: 'list', operator: 'equals' as const, value: 'p1'}]};
   assert.deepEqual(groupSequence({active: true, spec, predicates: [{field: 'year', operator: 'at-least', value: 2000}], sort: {field: 'groupOrder', direction: 'asc'}}), {kind: 'query', query: {libraryId: '*', pivot: 'items', query: {all: [{field: 'list', operator: 'equals', value: 'p1'}, {field: 'year', operator: 'at-least', value: 2000}]}, sort: [{field: 'groupOrder', direction: 'asc'}]}});
-  assert.equal(viewSequence({libraryId: '*', pivot: 'titles', base: [{field: 'homeRow', operator: 'equals', value: 'recommended'}]}), undefined);
+  assert.deepEqual(viewSequence({libraryId: '*', pivot: 'titles', base: [{field: 'homeRow', operator: 'equals', value: 'recommended'}]}), {kind: 'query', query: {libraryId: '*', pivot: 'titles', query: {all: [{field: 'homeRow', operator: 'equals', value: 'recommended'}]}}});
+  // A Home row of songs plays those songs, whole, in the row's order; an episode group the show's own.
+  assert.deepEqual(homeRowSequence('recent_music', ['song']), {kind: 'query', query: {libraryId: '*', pivot: 'items', query: {all: [{field: 'homeRow', operator: 'equals', value: 'recent_music'}]}, sort: [{field: 'groupOrder', direction: 'asc'}]}});
+  assert.deepEqual(episodeGroupSequence('tv', 's1', 'range:100', {shuffle: true}), {kind: 'query', query: {libraryId: 'tv', pivot: 'episodes', query: {all: [{field: 'episodeGroup', operator: 'equals', value: 's1/range:100'}]}, sort: [{field: 'groupOrder', direction: 'asc'}]}, shuffle: true});
 });

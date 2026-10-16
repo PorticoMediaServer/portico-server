@@ -27,6 +27,7 @@ import type {BrowseNode} from '@core/browse.ts';
 import {acrossGroup, useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-browse';
 import {useLibrariesContext} from '../../app/libraries';
 import {GroupBar, GroupGrid, GroupRows} from '../shared/GroupBrowse';
+import {announcePinsChanged} from '../../app/pins';
 import {ManualOrderList} from '../shared/ManualOrder';
 import {moveRequest} from '@core/presentation/manual-order.ts';
 
@@ -168,6 +169,7 @@ export function SavedResourceScreen() {
       }} />} />;
     };
     const pageMenu: MenuItem[] = [];
+    if (can('pin')) pageMenu.push({id: 'pin', label: p?.pinned ? t('pins.unpin') : t('pins.pin'), icon: p?.pinned ? 'bookmarkFilled' : 'bookmark'});
     if (can('rename')) pageMenu.push({id: 'rename', label: t('web.saved.rename'), icon: 'edit'});
     if (can('delete')) pageMenu.push({id: 'delete', label: t('web.saved.deletePlaylist'), icon: 'trash', destructive: true, separatorBefore: pageMenu.length > 0});
     const name = p?.name ?? title ?? t('web.saved.playlist');
@@ -185,7 +187,7 @@ export function SavedResourceScreen() {
             {first ? <Button variant="primary" icon="play" label={t('action.play')} onClick={() => playOwn(media.map(e => e.media), sequenceContainer('playlist', resourceId))} /> : null}
             {media.filter(e => e.media.playback).length > 1 ? <Button variant="secondary" icon="shuffle" label={t('title.shuffle')} onClick={() => playOwn(media.map(e => e.media), sequenceContainer('playlist', resourceId, {shuffle: true}))} /> : null}
           </>}
-          {pageMenu.length ? <Menu label={t('web.saved.playlistOptions')} trigger={<Button variant="ghost" icon="more" aria-label={t('web.saved.playlistOptions')} />} items={pageMenu} onSelect={id => (id === 'rename' ? setRenaming(true) : setDeleting(true))} /> : null}
+          {pageMenu.length ? <Menu label={t('web.saved.playlistOptions')} trigger={<Button variant="ghost" icon="more" aria-label={t('web.saved.playlistOptions')} />} items={pageMenu} onSelect={id => (id === 'pin' ? void change(() => service.mutate({action: 'pin', pinned: !p?.pinned}), announcePinsChanged) : id === 'rename' ? setRenaming(true) : setDeleting(true))} /> : null}
         </>} />
         {snap.phase === 'error' ? <Inset><ErrorNotice error={snap.error} context="playlist" retry={() => void service.retry().catch(() => {})} /></Inset> : null}
         {problem && !deleting ? <Inset><Notice tone="error" action={{label: t('action.dismiss'), onClick: () => setProblem('')}}>{problem}</Notice></Inset> : null}
@@ -227,6 +229,7 @@ export function SavedResourceScreen() {
   // of the first 4 item posters or covers (nothing when no item has art).
   const collectionMosaic = mosaicPaths({}, items.flatMap(e => (e.media ? [e.media] : [])));
   const pageMenu: MenuItem[] = [];
+  if (can('pin')) pageMenu.push({id: 'pin', label: r?.pinned ? t('pins.unpin') : t('pins.pin'), icon: r?.pinned ? 'bookmarkFilled' : 'bookmark'});
   if (can('update')) pageMenu.push({id: 'rename', label: t('web.saved.rename'), icon: 'edit'});
   if (can('delete')) pageMenu.push({id: 'delete', label: view ? t('web.saved.deleteView') : t('web.saved.deleteCollection'), icon: 'trash', destructive: true, separatorBefore: pageMenu.length > 0});
   // A saved view or collection plays whole, from the server, in the order it is shown.
@@ -258,7 +261,7 @@ export function SavedResourceScreen() {
           {ownPlayable.length > 1 ? <Button variant="secondary" icon="shuffle" label={t('title.shuffle')} onClick={() => playOwn(ownPlayable, savedSequence(resourceId, {shuffle: true}))} /> : null}
         </> : null}
         {canReorder || reordering ? <Button variant={reordering ? 'primary' : 'secondary'} icon={reordering ? 'check' : 'list'} label={reordering ? t('order.done') : t('order.reorder')} aria-pressed={reordering} onClick={() => setReordering(on => !on)} /> : null}
-        {pageMenu.length ? <Menu label={t('web.saved.collectionOptions')} trigger={<Button variant="ghost" icon="more" aria-label={t('web.saved.collectionOptions')} />} items={pageMenu} onSelect={id => (id === 'rename' ? setRenaming(true) : setDeleting(true))} /> : null}
+        {pageMenu.length ? <Menu label={t('web.saved.collectionOptions')} trigger={<Button variant="ghost" icon="more" aria-label={t('web.saved.collectionOptions')} />} items={pageMenu} onSelect={id => (id === 'pin' ? void change(() => done(service.mutate({action: 'pin', pinned: !r?.pinned})), announcePinsChanged) : id === 'rename' ? setRenaming(true) : setDeleting(true))} /> : null}
       </>} />
       {snap.error ? <Inset><ErrorNotice error={snap.error} context="collection" retry={() => void service.refresh().catch(() => {})} /></Inset> : null}
       {snap.mutationError && !problem && !renaming && !deleting ? <Inset><ErrorNotice error={snap.mutationError} context="collection" operation="save" /></Inset> : null}

@@ -8,6 +8,8 @@ import {arrivals} from '@core/freshness-actions.ts';
 import {selectableKind, useIsSelected, useSelectionActions, useSelectionActive, useSelectionSection} from '../../app/selection';
 import type {MenuAnchor} from '../../ui';
 import type {EntryOrigin} from '../../player/engine';
+import {usePlayerActions} from '../../player/PlayerContext';
+import {homeRowSequence, type SequenceContainer} from '../../app/container-play';
 import type {ContentHeading} from '@core/library-content.ts';
 import {serverTextLabel} from '@core/presentation/index.ts';
 
@@ -61,7 +63,7 @@ function useArrivals(entries: readonly ContentEntry[]): ReadonlySet<string> {
   return last.current.arrived;
 }
 
-export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libraryId, noSelect, loadingMore, origin, alwaysSeeAll}: {/** See all even when the row shows everything it has (a saved view's page has more than its row). */ alwaysSeeAll?: boolean; section: ContentSection; onSeeAll?: () => void; onMore?: () => void; hideTitle?: boolean; inShow?: boolean; libraryId?: string; /** WEB-LIB-08: Home rows don't offer the selection checkbox. */ noSelect?: boolean; /** A "More" page is on its way; the button shows it instead of firing again. */ loadingMore?: boolean; /** Where the cards sit, for their actions menu (a recommendation row offers Not interested). */ origin?: EntryOrigin}) {
+export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libraryId, noSelect, loadingMore, origin, alwaysSeeAll, homeRow}: {/** A Home row: a row of songs, episodes or parts plays on from the one pressed, the whole row as Home holds it (the server's). */ homeRow?: boolean; /** See all even when the row shows everything it has (a saved view's page has more than its row). */ alwaysSeeAll?: boolean; section: ContentSection; onSeeAll?: () => void; onMore?: () => void; hideTitle?: boolean; inShow?: boolean; libraryId?: string; /** WEB-LIB-08: Home rows don't offer the selection checkbox. */ noSelect?: boolean; /** A "More" page is on its way; the button shows it instead of firing again. */ loadingMore?: boolean; /** Where the cards sit, for their actions menu (a recommendation row offers Not interested). */ origin?: EntryOrigin}) {
   const i18n = useI18n();
   const selecting = useSelectionActive();
   const actions = useSelectionActions();
@@ -83,6 +85,8 @@ export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libra
   }, [onMore, section.id, section.nextCursor]);
   // Above the empty return: a row that empties and fills again keeps the same hooks.
   const arrived = useArrivals(section.entries);
+  const kinds = homeRow ? [...new Set(section.entries.map(e => e.kind))].sort().join(',') : '';
+  const sequence = React.useMemo(() => (homeRow && kinds.split(',').some(kind => kind === 'song' || kind === 'episode' || kind === 'audiobook_file' || kind === 'chapter') ? homeRowSequence(section.id, kinds.split(',')) : undefined), [homeRow, kinds, section.id]);
   if (!section.entries.length) return null;
   const first = section.entries[0]!;
   // A mixed row takes the poster density (its square art is fitted into poster frames).
@@ -90,7 +94,7 @@ export function SectionView({section, onSeeAll, onMore, hideTitle, inShow, libra
   // WEB-HOME-01: one geometry per row. Square art (albums) in a row of posters sits
   // inside a poster frame instead of a shorter square card.
   const rowShape = section.entries.every(e => shapeFor(e.kind, inShow ? 'showWorkspace' : 'shelf') === 'square') ? 'square' : undefined;
-  const card = (entry: ContentEntry) => <EntryCard key={entry.id} entry={entry} arrived={arrived.has(entry.id)} siblings={siblings} inShow={inShow} libraryId={libraryId} selectable={selectable} noSelect={noSelect} rowShape={rowShape ?? (inShow ? undefined : 'poster')} origin={origin} resume={isContinueRow(section.id)} />;
+  const card = (entry: ContentEntry) => <EntryCard key={entry.id} entry={entry} arrived={arrived.has(entry.id)} siblings={siblings} inShow={inShow} libraryId={libraryId} selectable={selectable} noSelect={noSelect} rowShape={rowShape ?? (inShow ? undefined : 'poster')} origin={origin} resume={isContinueRow(section.id)} sequence={sequence} />;
   if (section.type === 'list') {
     return (
       <Section title={hideTitle ? undefined : sectionHeading(i18n, section.heading)}>
@@ -260,7 +264,7 @@ export function LoadingGrid({density = 'poster'}: {density?: GridDensity}) {
  * memoised Card skips re-rendering when a neighbour is ticked. Subscribes to
  * the chosen set itself, in the smallest component that needs it.
  */
-export const EntryCard = React.memo(function EntryCard({entry, siblings, inShow, libraryId, selectable, rowShape, noSelect, origin, resume, arrived}: {entry: ContentEntry; /** The card has just appeared in a row that was already on screen: it fades in. */ arrived?: boolean; /** A Continue Watching card: the show as the title, what is left as the caption. */ resume?: boolean; noSelect?: boolean; origin?: EntryOrigin; /** The entries around this one (for shift-click range selection), read on demand. */ siblings: () => readonly ContentEntry[]; inShow?: boolean; libraryId?: string; selectable: boolean; /** The row's shared geometry, when the row mixes kinds. */ rowShape?: 'poster' | 'square'}) {
+export const EntryCard = React.memo(function EntryCard({entry, siblings, inShow, libraryId, selectable, rowShape, noSelect, origin, resume, arrived, sequence}: {/** The list the card's Play plays on through, from this card (a Home row of songs). */ sequence?: SequenceContainer; entry: ContentEntry; /** The card has just appeared in a row that was already on screen: it fades in. */ arrived?: boolean; /** A Continue Watching card: the show as the title, what is left as the caption. */ resume?: boolean; noSelect?: boolean; origin?: EntryOrigin; /** The entries around this one (for shift-click range selection), read on demand. */ siblings: () => readonly ContentEntry[]; inShow?: boolean; libraryId?: string; selectable: boolean; /** The row's shared geometry, when the row mixes kinds. */ rowShape?: 'poster' | 'square'}) {
   // The caption and labels come from catalogue helpers: reading the catalogue here redraws the card in a new language.
   useI18n();
   const natural = shapeFor(entry.kind, inShow ? 'showWorkspace' : 'shelf');
@@ -270,7 +274,8 @@ export const EntryCard = React.memo(function EntryCard({entry, siblings, inShow,
   const actions = useSelectionActions();
   const selected = useIsSelected(entry.id);
   const onOpen = useCallback(() => open(entry, 'open', libraryId), [open, entry, libraryId]);
-  const onPlay = useCallback(() => open(entry, 'play', libraryId), [open, entry, libraryId]);
+  const player = usePlayerActions();
+  const onPlay = useCallback(() => (sequence && entry.playback ? player.playSequence([entry], 0, entry.playback.startSeconds ?? entry.progressSeconds ?? 0, sequence) : open(entry, 'play', libraryId)), [open, entry, libraryId, sequence, player]);
   const onMore = useCallback((anchor: MenuAnchor) => open(entry, 'more', libraryId, anchor, origin), [open, entry, libraryId, origin]);
   const onSelect = useCallback(({range}: {range: boolean}) => {
     if (!actions) return;
