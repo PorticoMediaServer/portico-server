@@ -638,6 +638,8 @@ CREATE TRIGGER catalog_title_grams_insert AFTER INSERT ON catalog_browse_rows BE
 CREATE TRIGGER catalog_title_grams_update AFTER UPDATE OF title ON catalog_browse_rows WHEN OLD.title IS NOT NEW.title BEGIN
  DELETE FROM catalog_title_grams WHERE rowid=OLD.entity_id;
  INSERT INTO catalog_title_grams(rowid,title) VALUES(NEW.entity_id,portico_fold_text(NEW.title)); END;
+CREATE TRIGGER catalog_personal_sort_rows_title AFTER UPDATE OF sort_key ON catalog_browse_rows WHEN OLD.sort_key IS NOT NEW.sort_key BEGIN
+ UPDATE catalog_personal_sort_rows SET sort_key=NEW.sort_key WHERE entity_id=NEW.entity_id; END;
 CREATE TRIGGER catalog_title_grams_delete AFTER DELETE ON catalog_browse_rows BEGIN
  DELETE FROM catalog_title_grams WHERE rowid=OLD.entity_id; END;
 CREATE INDEX catalog_asset_links_available_seek ON catalog_asset_links(entity_id,available);
@@ -3963,12 +3965,15 @@ CREATE TABLE catalog_personal_sort_rows(
  profile_id TEXT NOT NULL,entity_id INTEGER NOT NULL,library_id INTEGER NOT NULL,kind INTEGER NOT NULL,
  rating_key TEXT NOT NULL,last_month TEXT NOT NULL,last_year TEXT NOT NULL,
  rating INTEGER NOT NULL DEFAULT 0,last_played_at TEXT NOT NULL DEFAULT '',play_count INTEGER NOT NULL DEFAULT 0,
+ -- The title's browse sort key, so the history reads in title order past any length.
+ sort_key TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(profile_id,entity_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_personal_order_rating ON catalog_personal_sort_rows(profile_id,library_id,kind,rating,entity_id);
 CREATE INDEX catalog_personal_order_last ON catalog_personal_sort_rows(profile_id,library_id,kind,last_played_at,entity_id);
 CREATE INDEX catalog_personal_order_plays ON catalog_personal_sort_rows(profile_id,library_id,kind,play_count,entity_id);
 -- The viewing history across libraries, most recent first, for its own order.
 CREATE INDEX catalog_personal_history ON catalog_personal_sort_rows(profile_id,last_played_at,entity_id) WHERE last_played_at<>'';
+CREATE INDEX catalog_personal_history_title ON catalog_personal_sort_rows(profile_id,sort_key COLLATE NOCASE,entity_id) WHERE last_played_at<>'';
 CREATE TABLE catalog_personal_sort_buckets(
  profile_id TEXT NOT NULL,library_id INTEGER NOT NULL,kind INTEGER NOT NULL,
  axis INTEGER NOT NULL CHECK(axis BETWEEN 7 AND 9),value TEXT NOT NULL,total INTEGER NOT NULL CHECK(total>=0),

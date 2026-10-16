@@ -305,7 +305,8 @@ func personalDateKeys(last string) (string, string) {
 
 func refreshPersonalSortEntity(ctx context.Context, tx *sql.Tx, profile string, entity int64) error {
 	var library, kind int
-	rowErr := tx.QueryRowContext(ctx, `SELECT library_id,kind FROM catalog_browse_rows WHERE entity_id=?`, entity).Scan(&library, &kind)
+	var sortKey string
+	rowErr := tx.QueryRowContext(ctx, `SELECT library_id,kind,sort_key FROM catalog_browse_rows WHERE entity_id=?`, entity).Scan(&library, &kind, &sortKey)
 	if rowErr != nil && rowErr != sql.ErrNoRows {
 		return rowErr
 	}
@@ -314,9 +315,9 @@ func refreshPersonalSortEntity(ctx context.Context, tx *sql.Tx, profile string, 
 		return err
 	}
 	var oldLibrary, oldKind int
-	var oldRating, oldMonth, oldYear, oldLast string
+	var oldRating, oldMonth, oldYear, oldLast, oldSortKey string
 	var oldRatingValue, oldPlays int
-	oldErr := tx.QueryRowContext(ctx, `SELECT library_id,kind,rating_key,last_month,last_year,rating,last_played_at,play_count FROM catalog_personal_sort_rows WHERE profile_id=? AND entity_id=?`, profile, entity).Scan(&oldLibrary, &oldKind, &oldRating, &oldMonth, &oldYear, &oldRatingValue, &oldLast, &oldPlays)
+	oldErr := tx.QueryRowContext(ctx, `SELECT library_id,kind,rating_key,last_month,last_year,rating,last_played_at,play_count,sort_key FROM catalog_personal_sort_rows WHERE profile_id=? AND entity_id=?`, profile, entity).Scan(&oldLibrary, &oldKind, &oldRating, &oldMonth, &oldYear, &oldRatingValue, &oldLast, &oldPlays, &oldSortKey)
 	if oldErr != nil && oldErr != sql.ErrNoRows {
 		return oldErr
 	}
@@ -345,7 +346,7 @@ func refreshPersonalSortEntity(ctx context.Context, tx *sql.Tx, profile string, 
 	if err := tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT total FROM catalog_personal_play_totals WHERE profile_id=? AND entity_id=?),0)`, profile, entity).Scan(&plays); err != nil {
 		return err
 	}
-	if oldErr == nil && oldLibrary == library && oldKind == kind && oldRatingValue == int(rating.Float64) && oldLast == last && oldPlays == plays {
+	if oldErr == nil && oldLibrary == library && oldKind == kind && oldRatingValue == int(rating.Float64) && oldLast == last && oldPlays == plays && oldSortKey == sortKey {
 		return nil
 	}
 	if err := adjustOld(); err != nil {
@@ -353,7 +354,7 @@ func refreshPersonalSortEntity(ctx context.Context, tx *sql.Tx, profile string, 
 	}
 	month, year := personalDateKeys(last)
 	values := [3]string{personalRatingKey(rating), month, year}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_personal_sort_rows(profile_id,entity_id,library_id,kind,rating_key,last_month,last_year,rating,last_played_at,play_count) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(profile_id,entity_id) DO UPDATE SET library_id=excluded.library_id,kind=excluded.kind,rating_key=excluded.rating_key,last_month=excluded.last_month,last_year=excluded.last_year,rating=excluded.rating,last_played_at=excluded.last_played_at,play_count=excluded.play_count`, profile, entity, library, kind, values[0], values[1], values[2], int(rating.Float64), last, plays); err != nil {
+	if _, err := tx.ExecContext(ctx, `INSERT INTO catalog_personal_sort_rows(profile_id,entity_id,library_id,kind,rating_key,last_month,last_year,rating,last_played_at,play_count,sort_key) VALUES(?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(profile_id,entity_id) DO UPDATE SET library_id=excluded.library_id,kind=excluded.kind,rating_key=excluded.rating_key,last_month=excluded.last_month,last_year=excluded.last_year,rating=excluded.rating,last_played_at=excluded.last_played_at,play_count=excluded.play_count,sort_key=excluded.sort_key`, profile, entity, library, kind, values[0], values[1], values[2], int(rating.Float64), last, plays, sortKey); err != nil {
 		return err
 	}
 	return adjustPersonalSortBuckets(ctx, tx, profile, library, kind, values, 1)

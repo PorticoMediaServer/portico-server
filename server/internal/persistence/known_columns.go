@@ -1145,6 +1145,7 @@ catalog_personal_sort_rows.play_count
 catalog_personal_sort_rows.profile_id
 catalog_personal_sort_rows.rating
 catalog_personal_sort_rows.rating_key
+catalog_personal_sort_rows.sort_key
 catalog_personal_sort_state.backfill_done
 catalog_personal_sort_state.id
 catalog_personal_sort_state.item_cursor

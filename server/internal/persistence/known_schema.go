@@ -202,6 +202,7 @@ index catalog_people_aliases_person
 index catalog_people_identity
 index catalog_people_name
 index catalog_personal_history
+index catalog_personal_history_title
 index catalog_personal_order_last
 index catalog_personal_order_plays
 index catalog_personal_order_rating
@@ -1595,6 +1596,7 @@ trigger catalog_personal_sort_browse_update
 trigger catalog_personal_sort_member_delete
 trigger catalog_personal_sort_member_insert
 trigger catalog_personal_sort_member_update
+trigger catalog_personal_sort_rows_title
 trigger catalog_personal_sort_source_delete
 trigger catalog_personal_sort_source_insert
 trigger catalog_personal_sort_source_update

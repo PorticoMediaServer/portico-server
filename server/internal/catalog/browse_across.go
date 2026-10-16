@@ -254,7 +254,7 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	out.PageInfo.Revision = revision
-	if anchor.Field == "lastPlayedAt" && sorts[0].Field == "groupOrder" {
+	if anchor.Field == "lastPlayedAt" && (sorts[0].Field == "groupOrder" || sorts[0].Field == "lastPlayed") {
 		return s.acrossHistory(request, pivot, sorts[0], out, limit)
 	}
 
@@ -264,6 +264,11 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	var capped bool
 	if err = s.read().QueryRow(`SELECT count(*)>? FROM (`+members+`)`, append([]any{acrossMaximum}, memberArgs...)...).Scan(&capped); err != nil {
 		return out, nil, err
+	}
+	if capped && anchor.Field == "lastPlayedAt" && sorts[0].Field == "title" {
+		// A history longer than the members a list reads is read in title
+		// order from the profile's own rows, past any length.
+		return s.acrossHistory(request, pivot, sorts[0], out, limit)
 	}
 	group := `WITH anchor(id,pos) AS MATERIALIZED (SELECT id,pos FROM (` + members + `) LIMIT ` + strconv.Itoa(acrossMaximum) + `),
  ord(id,pos) AS MATERIALIZED (SELECT id,min(pos) FROM (SELECT id,pos FROM anchor
@@ -367,12 +372,36 @@ func (s *Service) acrossLetters(query string, args ...any) ([]BrowsePositionAnch
 	return out, rows.Err()
 }
 
+// historyOrder is an order the viewing history across libraries is read in
+// straight from the profile's own rows: the index, the ordered column and its
+// direction. Its own order and last played are most recent first ascending
+// and descending respectively; title reads the titles' sort keys the rows
+// keep.
+func historyOrder(selection BrowseSortSelection) (index, column, direction string) {
+	descending := selection.Direction == "desc"
+	switch selection.Field {
+	case "groupOrder":
+		descending = !descending
+	case "title":
+		index, column = "catalog_personal_history_title", "personal.sort_key COLLATE NOCASE"
+	}
+	if index == "" {
+		index, column = "catalog_personal_history", "personal.last_played_at"
+	}
+	direction = "ASC"
+	if descending {
+		direction = "DESC"
+	}
+	return index, column, direction
+}
+
 // acrossHistory pages the viewing history across libraries in its own order
-// (most recent first, or oldest first) straight from the maintained per-title
-// last-played facts and their history index, so it runs past any number of
-// plays: a page reads its own rows from the index, filters and restrictions
-// applied as it goes, and the total is counted up to the totals limit and
-// then given as a lower bound that grows as the viewer pages on.
+// (most recent first, or oldest first), by last played, or by title, straight
+// from the maintained per-title personal rows and their history indexes, so
+// it runs past any number of plays: a page reads its own rows from the index,
+// filters and restrictions applied as it goes, and the total is counted up to
+// the totals limit and then given as a lower bound that grows as the viewer
+// pages on.
 func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, selection BrowseSortSelection, out BrowseResult, limit int) (BrowseResult, []browseRow, error) {
 	kinds, err := acrossKinds(pivot)
 	if err != nil {
@@ -391,11 +420,8 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 		where += " AND " + live
 		args = append(args, liveArgs...)
 	}
-	from := `catalog_personal_sort_rows personal INDEXED BY catalog_personal_history CROSS JOIN catalog_browse_rows e ON e.entity_id=personal.entity_id CROSS JOIN catalog_entities ce ON ce.id=e.entity_id`
-	direction := "DESC"
-	if selection.Direction == "desc" {
-		direction = "ASC"
-	}
+	index, column, direction := historyOrder(selection)
+	from := `catalog_personal_sort_rows personal INDEXED BY ` + index + ` CROSS JOIN catalog_browse_rows e ON e.entity_id=personal.entity_id CROSS JOIN catalog_entities ce ON ce.id=e.entity_id`
 	start, counted, total := 0, false, 0
 	scope := cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:history:" + pivot.ID, Sort: canonicalSort([]BrowseSortSelection{selection}), Category: queryFingerprint(request.Query), Limit: limit}
 	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
@@ -431,7 +457,8 @@ func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, select
 		start = max(0, total-1)
 	}
 	out.PageInfo.Start = start
-	selected, err := s.queryBrowseKeyRows(`SELECT `+browseRowColumns+`,personal.last_played_at FROM `+from+` WHERE `+where+` ORDER BY personal.last_played_at `+direction+`,personal.entity_id `+direction+` LIMIT ? OFFSET ?`, "groupOrder", append(append([]any{}, args...), limit+1, start)...)
+	key := strings.TrimSuffix(column, " COLLATE NOCASE")
+	selected, err := s.queryBrowseKeyRows(`SELECT `+browseRowColumns+`,`+key+` FROM `+from+` WHERE `+where+` ORDER BY `+column+` `+direction+`,personal.entity_id `+direction+` LIMIT ? OFFSET ?`, selection.Field, append(append([]any{}, args...), limit+1, start)...)
 	if err != nil {
 		return out, nil, err
 	}
@@ -686,7 +713,17 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
  ord(id,pos) AS MATERIALIZED (SELECT id,min(pos) FROM (SELECT id,pos FROM anchor
   UNION ALL SELECT bm.entity_id,anchor.pos FROM anchor CROSS JOIN catalog_browse_memberships bm INDEXED BY catalog_browse_membership_item ON bm.item_id=anchor.id
   UNION ALL SELECT bm.item_id,anchor.pos FROM anchor CROSS JOIN catalog_browse_memberships bm ON bm.entity_id=anchor.id) GROUP BY id)`
-	query2 := group + `, ranked AS (SELECT e.entity_id,row_number() OVER(ORDER BY ` + order + `) AS ordinal FROM ord CROSS JOIN catalog_browse_rows e ON e.entity_id=ord.id WHERE ` + where + `), members AS (
+	ranked := group + `, ranked AS (SELECT e.entity_id,row_number() OVER(ORDER BY ` + order + `) AS ordinal FROM ord CROSS JOIN catalog_browse_rows e ON e.entity_id=ord.id WHERE ` + where + `)`
+	if anchor.Field == "lastPlayedAt" && (sorts[0].Field == "groupOrder" || sorts[0].Field == "lastPlayed" || sorts[0].Field == "title") {
+		// The whole history, in its order, from the profile's own rows: a
+		// queue of it is not cut at the members a list reads.
+		index, column, direction := historyOrder(sorts[0])
+		ranked = `WITH ranked AS (SELECT e.entity_id,row_number() OVER(ORDER BY ` + column + ` ` + direction + `,personal.entity_id ` + direction + `) AS ordinal
+ FROM catalog_personal_sort_rows personal INDEXED BY ` + index + ` CROSS JOIN catalog_browse_rows e ON e.entity_id=personal.entity_id
+ WHERE personal.profile_id=? AND personal.last_played_at<>'' AND ` + where + `)`
+		memberArgs, orderArgs = []any{viewer.Profile}, nil
+	}
+	query2 := ranked + `, members AS (
  SELECT i.id,min(r.ordinal) AS ordinal FROM ranked r JOIN catalog_browse_memberships bm ON bm.entity_id=r.entity_id JOIN catalog_entities i ON i.id=bm.item_id JOIN catalog_kinds k ON k.id=i.kind AND k.playable=1
  WHERE ` + visible + recordingsClause("i.id", viewer.Restrictions) + ` AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=i.id) GROUP BY i.id)
  SELECT pid(i.public_id) FROM members m JOIN catalog_entities i ON i.id=m.id
