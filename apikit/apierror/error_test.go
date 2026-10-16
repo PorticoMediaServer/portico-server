@@ -26,7 +26,7 @@ func TestMessageLintAndSafeWriter(t *testing.T) {
 	}
 	w := httptest.NewRecorder()
 	r.Write(w, "request-2", &Error{Code: "request_in_progress", Message: "unsafe override", RetryAfterSeconds: 2})
-	if w.Code != 409 || w.Header().Get("Retry-After") != "2" || strings.Contains(w.Body.String(), "unsafe override") {
+	if w.Code != 409 || w.Header().Get("Retry-After") != "2" || strings.Contains(w.Body.String(), "unsafe override") || !strings.Contains(w.Body.String(), `"retryAfterMs":2000`) || strings.Contains(w.Body.String(), "retryAfterSeconds") {
 		t.Fatal(w.Code, w.Body)
 	}
 }

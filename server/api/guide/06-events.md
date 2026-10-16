@@ -6,7 +6,7 @@ screen. It is local server traffic, not push notification or email delivery.
 
 ## Streaming and polling
 
-Without `waitSeconds`, the response is SSE (`text/event-stream`). Send the last
+Without `waitMs`, the response is SSE (`text/event-stream`). Send the last
 received SSE `id` as `Last-Event-ID` on reconnect. Do not put `after` in a
 streaming query. For example:
 
@@ -23,7 +23,7 @@ token deadline. Refresh the session and reconnect. One installation shares
 one stream; a newcomer replaces its earlier stream.
 
 A polling client uses
-`GET /v1/events?after=1042&waitSeconds=25`. Wait is 0–25 seconds. The JSON answer
+`GET /v1/events?after=1042&waitMs=25000`. Wait is 0–25000 milliseconds. The JSON answer
 has `events`, `nextAfter` and `more`. Save `nextAfter` even when no visible event
 was returned. Continue immediately while `more` is true, otherwise park again.
 IDs are non-negative decimal positions, not inbox or resource revisions.

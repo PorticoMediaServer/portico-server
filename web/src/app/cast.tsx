@@ -53,8 +53,8 @@ function CastBar() {
   const i18n = useI18n();
   const player = usePlayer();
   const prefs = useServerPreferences();
-  const skipBack = prefs.value<number>('playback.skipBackSeconds', 10);
-  const skipForward = prefs.value<number>('playback.skipForwardSeconds', 30);
+  const skipBack = prefs.value<number>('playback.skipBackMs', 10_000) / 1000;
+  const skipForward = prefs.value<number>('playback.skipForwardMs', 30_000) / 1000;
   // CAST-05: stopping the TV offers to carry on here from where it was.
   const [resume, setResume] = useState<{itemId: string; position: number; title?: string}>();
   // MU4 CAST-03: the expanded controller sheet.

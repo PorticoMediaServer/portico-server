@@ -200,7 +200,7 @@ func TestLiveRemotePreviewAsksForLANConfirmation(t *testing.T) {
 		}
 	}))
 	defer tuner.Close()
-	draft := map[string]any{"id": strings.Repeat("ab", 24), "expectedRevision": 0, "name": "Antenna", "kind": "hdhomerun", "locator": tuner.URL + "/", "guideUrl": "", "username": "", "password": "", "confirmedLanRoots": []string{}, "mappings": []any{}, "refreshSeconds": 3600, "ownerLimit": 0, "useDiscoveredCapacity": true, "viewerAccess": "owner-only"}
+	draft := map[string]any{"id": strings.Repeat("ab", 24), "expectedRevision": 0, "name": "Antenna", "kind": "hdhomerun", "locator": tuner.URL + "/", "guideUrl": "", "username": "", "password": "", "confirmedLanRoots": []string{}, "mappings": []any{}, "refreshMs": 3600000, "ownerLimit": 0, "useDiscoveredCapacity": true, "viewerAccess": "owner-only"}
 	preview := func() *httptest.ResponseRecorder {
 		payload, _ := json.Marshal(draft)
 		r := httptest.NewRequest("POST", "/v1/admin/live-sources/remote/preview", bytes.NewReader(payload))

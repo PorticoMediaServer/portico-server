@@ -413,8 +413,8 @@ func (s *Service) publish(r row, retentionDays int) Preparation {
 		if elapsed > 0 {
 			rate := float64(r.Progress.BytesDone) / elapsed
 			if rate > 0 {
-				eta := int64(float64(r.Progress.BytesTotal-r.Progress.BytesDone) / rate)
-				out.Progress.ETASeconds = &eta
+				eta := int64(float64(r.Progress.BytesTotal-r.Progress.BytesDone) / rate * 1000)
+				out.Progress.ETAMs = &eta
 			}
 		}
 	}

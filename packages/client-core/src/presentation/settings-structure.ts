@@ -129,7 +129,7 @@ export type SettingsRow =
   | Readonly<{kind: 'custom'; id: SettingsCustomId; /** For search and for a client that titles the panel. */ label?: MessageId}>
   | ServerSettingRow;
 
-/** How a server setting is edited. A number shows `unit` after it; `scale` converts what is shown to what is stored (minutes shown, seconds stored: 60). */
+/** How a server setting is edited. A number shows `unit` after it; `scale` converts what is shown to what is stored (minutes shown, milliseconds stored: 60000). */
 export type ServerControl =
   | Readonly<{type: 'switch'}>
   | Readonly<{type: 'choice'; choices: readonly SettingsChoice[]}>
@@ -173,7 +173,8 @@ type Authored<T> = T & Only;
 type AuthoredSection = Readonly<{id: string; title?: MessageId; description?: MessageId; advanced?: boolean; tab?: string; administrators?: boolean; rows: readonly Authored<SettingsRow>[]}> & Only;
 type AuthoredPage = Readonly<{id: string; title: MessageId; icon: IconId; tabs?: readonly SettingsTab[]; sections: readonly AuthoredSection[]}> & Only;
 
-const seconds = (...values: number[]): SettingsChoice[] => values.map(value => ({value, label: 'pref.unit.seconds', labelValues: {count: value}}));
+/** Durations are stored in milliseconds and shown in seconds. */
+const seconds = (...values: number[]): SettingsChoice[] => values.map(value => ({value: value * 1000, label: 'pref.unit.seconds', labelValues: {count: value}}));
 const speedChoice = (value: number): SettingsChoice => (value === 1 ? {value, label: 'pref.unit.speedNormal'} : {value, label: 'pref.unit.speed', labelValues: {value}});
 const speeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2].map(speedChoice);
 const audiobookSpeeds: SettingsChoice[] = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.5, 3].map(speedChoice);
@@ -211,7 +212,7 @@ const accountPages: readonly AuthoredPage[] = [
     id: 'playback', title: 'settings.page.playback', icon: 'play', sections: [
       {id: 'next', title: 'settings.section.nextEpisode', rows: [
         toggle('playback.autoplayNext', 'settings.row.autoplayNext', {help: 'pref.help.playback.autoplayNext'}),
-        pref('playback.upNextCountdownSeconds', 'settings.row.countdown', {type: 'choice', choices: [{value: 0, label: 'pref.value.playback.upNextCountdownSeconds.0'}, ...seconds(5, 10, 15)]}, {when: {key: 'playback.autoplayNext', equals: true}}),
+        pref('playback.upNextCountdownMs', 'settings.row.countdown', {type: 'choice', choices: [{value: 0, label: 'pref.value.playback.upNextCountdownMs.0'}, ...seconds(5, 10, 15)]}, {when: {key: 'playback.autoplayNext', equals: true}}),
         toggle('playback.startNextDuringCredits', 'settings.row.startNextDuringCredits', {help: 'pref.help.playback.startNextDuringCredits', when: {key: 'playback.autoplayNext', equals: true}}),
         toggle('playback.passoutProtection', 'settings.row.stillWatching', {help: 'settings.help.stillWatching'}),
         pref('playback.passoutAfterEpisodes', 'settings.row.stillWatchingAfter', {type: 'choice', choices: [2, 3, 4, 5].map(value => ({value, label: 'pref.unit.episodes' as MessageId, labelValues: {count: value}}))}, {when: {key: 'playback.passoutProtection', equals: true}}),
@@ -220,8 +221,8 @@ const accountPages: readonly AuthoredPage[] = [
         pref('playback.introSkip', 'pref.label.playback.introSkip', {type: 'choice', choices: skipChoices('playback.introSkip')}),
         pref('playback.creditsSkip', 'pref.label.playback.creditsSkip', {type: 'choice', choices: skipChoices('playback.creditsSkip')}),
         pref('playback.recapSkip', 'pref.label.playback.recapSkip', {type: 'choice', choices: skipChoices('playback.recapSkip')}),
-        pref('playback.skipBackSeconds', 'pref.label.playback.skipBackSeconds', {type: 'choice', choices: seconds(5, 10, 15, 30)}, {help: 'pref.help.playback.skipBackSeconds'}),
-        pref('playback.skipForwardSeconds', 'pref.label.playback.skipForwardSeconds', {type: 'choice', choices: seconds(10, 15, 30, 60)}, {help: 'pref.help.playback.skipForwardSeconds'}),
+        pref('playback.skipBackMs', 'pref.label.playback.skipBackMs', {type: 'choice', choices: seconds(5, 10, 15, 30)}, {help: 'pref.help.playback.skipBackMs'}),
+        pref('playback.skipForwardMs', 'pref.label.playback.skipForwardMs', {type: 'choice', choices: seconds(10, 15, 30, 60)}, {help: 'pref.help.playback.skipForwardMs'}),
       ]},
       // No music speed: a song plays at the speed it was recorded.
       {id: 'speed', title: 'settings.section.speed', needs: c => c.playbackSpeed !== false, rows: [
@@ -289,7 +290,7 @@ const accountPages: readonly AuthoredPage[] = [
     id: 'music', title: 'settings.page.music', icon: 'music', sections: [
       {id: 'sound', rows: [
         pref('music.audioNormalization', 'settings.row.volumeLeveling', {type: 'choice', choices: (['off', 'track', 'album'] as const).map(value => ({value, label: `pref.value.music.audioNormalization.${value}` as MessageId}))}, {help: 'settings.help.volumeLeveling', needs: c => c.audioEffects !== false}),
-        pref('music.crossfadeSeconds', 'pref.label.music.crossfadeSeconds', {type: 'choice', choices: [{value: 0, label: 'pref.value.music.crossfadeSeconds.0'}, ...seconds(2, 4, 6, 8, 10, 12)]}, {help: 'pref.help.music.crossfadeSeconds', needs: c => c.audioEffects !== false}),
+        pref('music.crossfadeMs', 'pref.label.music.crossfadeMs', {type: 'choice', choices: [{value: 0, label: 'pref.value.music.crossfadeMs.0'}, ...seconds(2, 4, 6, 8, 10, 12)]}, {help: 'pref.help.music.crossfadeMs', needs: c => c.audioEffects !== false}),
         toggle('music.gapless', 'pref.label.music.gapless', {help: 'settings.help.gapless', needs: c => c.audioEffects !== false}),
         toggle('playback.showSyncedLyrics', 'settings.row.lyrics', {help: 'settings.help.lyrics'}),
       ]},
@@ -389,8 +390,8 @@ const serverPages: readonly AuthoredPage[] = [
     sections: [
       panel('sources', 'server.liveSources', undefined, {tab: 'sources'}),
       {id: 'liveDefaults', tab: 'sources', title: 'web.dvrSettings.liveDefaults', description: 'web.dvrSettings.liveDefaultsLede', rows: [
-        setting('liveDefaults', 'streamBufferSeconds', 'web.dvrSettings.buffer', {type: 'number', min: 0, max: 120, unit: 'settings.unit.seconds'}, {help: 'web.dvrSettings.bufferHelp'}),
-        setting('liveDefaults', 'retryWindowSeconds', 'web.dvrSettings.retryWindow', {type: 'number', min: 0, max: 600, unit: 'settings.unit.seconds'}, {help: 'web.dvrSettings.retryWindowHelp'}),
+        setting('liveDefaults', 'streamBufferMs', 'web.dvrSettings.buffer', {type: 'number', min: 0, max: 120, unit: 'settings.unit.seconds', scale: 1000}, {help: 'web.dvrSettings.bufferHelp'}),
+        setting('liveDefaults', 'retryWindowMs', 'web.dvrSettings.retryWindow', {type: 'number', min: 5, max: 600, unit: 'settings.unit.seconds', scale: 1000}, {help: 'web.dvrSettings.retryWindowHelp'}),
         setting('liveDefaults', 'guideDays', 'web.dvrSettings.guideDays', {type: 'number', min: 1, max: 21, unit: 'settings.unit.days'}, {help: 'web.dvrSettings.guideDaysHelp'}),
         setting('liveDefaults', 'userAgent', 'web.dvrSettings.userAgent', {type: 'text', mono: true}, {help: 'web.dvrSettings.userAgentHelp'}),
         on('liveDefaults', 'logoImport', 'web.dvrSettings.logoImport'),
@@ -407,8 +408,8 @@ const serverPages: readonly AuthoredPage[] = [
       panel('recordingRules', 'server.recordingRules', undefined, {tab: 'recording'}),
       // Only what the server honours: the rows that said "not available on this server" are gone.
       {id: 'recordingDefaults', tab: 'recording', title: 'web.dvrSettings.defaults', description: 'web.dvrSettings.defaultsLede', rows: [
-        setting('recording', 'prePaddingSeconds', 'web.dvr.startEarly', {type: 'number', min: 0, max: 120, unit: 'settings.unit.minutes', scale: 60}, {help: 'web.dvrSettings.startEarlyHelp'}),
-        setting('recording', 'postPaddingSeconds', 'web.dvrSettings.finishLate', {type: 'number', min: 0, max: 240, unit: 'settings.unit.minutes', scale: 60}, {help: 'web.dvrSettings.finishLateHelp'}),
+        setting('recording', 'prePaddingMs', 'web.dvr.startEarly', {type: 'number', min: 0, max: 30, unit: 'settings.unit.minutes', scale: 60000}, {help: 'web.dvrSettings.startEarlyHelp'}),
+        setting('recording', 'postPaddingMs', 'web.dvrSettings.finishLate', {type: 'number', min: 0, max: 120, unit: 'settings.unit.minutes', scale: 60000}, {help: 'web.dvrSettings.finishLateHelp'}),
         // Justin (15 Oct): live viewing keeps its tuner unless the owner says otherwise.
         setting('recording', 'liveTunerConflict', 'server.live.tunerConflict', {type: 'choice', choices: [{value: 'keep-watching', label: 'server.live.tunerConflict.keep'}, {value: 'stop-watching', label: 'server.live.tunerConflict.stop'}]}, {help: 'server.live.tunerConflictHelp'}),
         setting('recording', 'keepPolicy.mode', 'web.dvr.keepLabel', {type: 'choice', choices: [{value: 'keep-all', label: 'web.logs.everything'}, {value: 'keep-count', label: 'web.dvrSettings.keepNewest'}, {value: 'keep-days', label: 'web.dvrSettings.keepDays'}]}),

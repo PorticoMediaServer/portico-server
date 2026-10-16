@@ -30,7 +30,7 @@ func TestPreferenceRegistryIsWellFormed(t *testing.T) {
 	}
 	for _, key := range []string{
 		"playback.startedThresholdPercent", "playback.playedThresholdPercent", "delivery.transcode",
-		"quality.home", "quality.remote", "music.crossfadeSeconds", "privacy.pauseWatchHistory",
+		"quality.home", "quality.remote", "music.crossfadeMs", "privacy.pauseWatchHistory",
 		"search.rememberHistory", "region.hourCycle", "home.rowOrder",
 		"appearance.cardSizePercent", "notifications.badges",
 	} {
@@ -261,9 +261,9 @@ func TestPreferenceConsumersAndSemanticDomains(t *testing.T) {
 			t.Fatal("a viewer time zone preference is published", f.Key)
 		}
 	}
-	values := PreferenceValues{"music.gapless": false, "music.crossfadeSeconds": int64(6), "music.audioNormalization": "album"}
+	values := PreferenceValues{"music.gapless": false, "music.crossfadeMs": int64(6000), "music.audioNormalization": "album"}
 	effects := values.AudioEffects()
-	if effects.Gapless || effects.CrossfadeSeconds != 6 || effects.Normalization != "album" {
+	if effects.Gapless || effects.CrossfadeMs != 6000 || effects.Normalization != "album" {
 		t.Fatal(effects)
 	}
 }

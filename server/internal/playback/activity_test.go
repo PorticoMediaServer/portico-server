@@ -72,7 +72,7 @@ func TestActivityPaginationReportsAndScope(t *testing.T) {
 		t.Fatal(e)
 	}
 	now, e := s.Activity(ctx, p, scope, "open", 40, "")
-	if e != nil || len(now.Items) != 40 || now.Items[0].SessionID != last.ID || now.Items[0].ReportedAt == nil || *now.Items[0].PositionSeconds != 17 {
+	if e != nil || len(now.Items) != 40 || now.Items[0].SessionID != last.ID || now.Items[0].ReportedAt == nil || *now.Items[0].PositionMs != 17000 {
 		t.Fatal(now, e)
 	}
 	if _, e = s.Create(p, item, "auto", "new-after-first-page"); e != nil {

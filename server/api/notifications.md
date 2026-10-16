@@ -15,7 +15,7 @@ changing the inbox. It advances for new notices, read receipts, archives and
 retention prunes. A batch that changes nothing does not advance it.
 
 The shared `/v1/events` feed has a separate decimal event position. Resume SSE
-with `Last-Event-ID`, or use `?after=<event-id>&waitSeconds=25` for the long-poll
+with `Last-Event-ID`, or use `?after=<event-id>&waitMs=25000` for the long-poll
 fallback. A `notification.changed` hint carries the inbox revision; quietly
 reread the inbox and counts. Never use the inbox revision as the feed position.
 
@@ -173,7 +173,7 @@ Share the device's authenticated `GET /v1/events` server-sent stream. A
 or unread-count document quietly. Event ids belong to the unified feed, and are
 independent of inbox revisions. Resume with `Last-Event-ID`.
 
-A platform without streaming uses `GET /v1/events?after=<event-id>&waitSeconds=25`.
+A platform without streaming uses `GET /v1/events?after=<event-id>&waitMs=25000`.
 Its response contains `events`, `nextAfter` and `more`. `stream.resync` means
 reread the visible documents. Heartbeats are comments every 25 seconds and do
 no database work. Streams end at token expiry or after 30 minutes; revocations

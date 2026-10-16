@@ -174,8 +174,8 @@ type NoticeVocabulary struct {
 	Commands   []string `json:"commands"`
 	Views      []string `json:"views"`
 	MaxLimit   int      `json:"maxLimit"`
-	Heartbeat  int      `json:"heartbeatSeconds"`
-	MaxWait    int      `json:"maxWaitSeconds"`
+	Heartbeat  int      `json:"heartbeatMs"`
+	MaxWait    int      `json:"maxWaitMs"`
 }
 
 const (
@@ -197,8 +197,8 @@ func NoticeVocabularyDocument() NoticeVocabulary {
 		Commands:   append([]string{}, notify.Commands...),
 		Views:      append([]string{}, notify.Views...),
 		MaxLimit:   noticeMaxLimit,
-		Heartbeat:  noticeHeartbeat,
-		MaxWait:    noticeMaxWait,
+		Heartbeat:  noticeHeartbeat * 1000,
+		MaxWait:    noticeMaxWait * 1000,
 	}
 }
 

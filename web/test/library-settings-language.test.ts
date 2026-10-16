@@ -58,7 +58,7 @@ const docWithLanguage = (language: string) => ({
   settings: {
     allowMediaDeletion: false,
     providers: [{mediaKind: 'movie', provider: 'tmdb', apiKeySet: false, language, region: 'US'}],
-    analysis: [], navigation: {trickplayIntervalSeconds: 5, trickplayTileWidth: 160, chapterThumbnailMode: 'embedded', videoPreviewEnabled: false, videoPreviewSeconds: 0},
+    analysis: [], navigation: {trickplayIntervalMs: 5000, trickplayTileWidth: 160, chapterThumbnailMode: 'embedded', videoPreviewEnabled: false, videoPreviewMs: 0},
   },
   analysisMatrix: {costClasses: [], operations: []},
   availableProviders: [{id: 'tmdb', name: 'TMDB', mediaKinds: ['movie'], supportsApiKey: false, supportsLocale: true, attributionNote: ''}],

@@ -48,9 +48,9 @@ export type SessionDelivery=Readonly<{
  audioRenditions?:readonly DeliveryAudioRendition[];
  mode:'direct'|'hls'|'remote';strategy:DeliveryStrategy;reasonCodes:readonly string[];policy:ResolvedDeliveryPolicy|null;
  qualityId:string;hardware:Readonly<{backend:DeliveryBackend;stages:readonly HardwareStage[]}>;
- streams:readonly SessionStreamDecision[];throttled:boolean;convertedThroughSeconds:number;
+ streams:readonly SessionStreamDecision[];throttled:boolean;convertedThroughMs:number;
  toneMap:boolean;toneMapAlgorithm?:string;targetDisplayHeight?:number;targetVideoBitrateBps?:number;targetAudioBitrateBps?:number;
- playedRetentionSeconds:number;throttleBufferSeconds:number;
+ playedRetentionMs:number;throttleBufferMs:number;
  /** Why this route: the device the plan was made for, the source as the planner
   * saw it, and every route with the rules that rejected it. */
  decision?:DecisionTrace;
@@ -186,8 +186,8 @@ export function parseDeliveryAudioRenditions(raw:unknown):readonly DeliveryAudio
 export function parseSessionDelivery(raw:unknown):SessionDelivery{
  if(!obj(raw))invalid();
  if(!text(raw.qualityId,64)||typeof raw.throttled!=='boolean'||typeof raw.toneMap!=='boolean')invalid();
- if(typeof raw.convertedThroughSeconds!=='number'||!Number.isFinite(raw.convertedThroughSeconds)||raw.convertedThroughSeconds<0)invalid();
- if(!count(raw.playedRetentionSeconds,86_400)||!count(raw.throttleBufferSeconds,3_600))invalid();
+ if(!count(raw.convertedThroughMs,Number.MAX_SAFE_INTEGER))invalid();
+ if(!count(raw.playedRetentionMs,86_400_000)||!count(raw.throttleBufferMs,3_600_000))invalid();
  if(raw.toneMapAlgorithm!==undefined&&!text(raw.toneMapAlgorithm,32))invalid();
  for(const key of ['targetDisplayHeight','targetVideoBitrateBps','targetAudioBitrateBps'])if(raw[key]!==undefined&&!count(raw[key]))invalid();
  const hardware=obj(raw.hardware)?raw.hardware:invalid();
@@ -211,14 +211,14 @@ export function parseSessionDelivery(raw:unknown):SessionDelivery{
   hardware:Object.freeze({backend:oneOf(hardware.backend,['software','videotoolbox','vaapi','qsv','nvenc','amf'] as const),stages:Object.freeze(stages)}),
   streams:Object.freeze(streams),
   throttled:raw.throttled,
-  convertedThroughSeconds:raw.convertedThroughSeconds,
+  convertedThroughMs:raw.convertedThroughMs,
   toneMap:raw.toneMap,
   ...(raw.toneMapAlgorithm===undefined?{}:{toneMapAlgorithm:raw.toneMapAlgorithm as string}),
   ...(raw.targetDisplayHeight===undefined?{}:{targetDisplayHeight:raw.targetDisplayHeight as number}),
   ...(raw.targetVideoBitrateBps===undefined?{}:{targetVideoBitrateBps:raw.targetVideoBitrateBps as number}),
   ...(raw.targetAudioBitrateBps===undefined?{}:{targetAudioBitrateBps:raw.targetAudioBitrateBps as number}),
-  playedRetentionSeconds:raw.playedRetentionSeconds,
-  throttleBufferSeconds:raw.throttleBufferSeconds,
+  playedRetentionMs:raw.playedRetentionMs,
+  throttleBufferMs:raw.throttleBufferMs,
   // Additions are read leniently: an explanation field that does not fit is
   // left out, never a reason to lose the rest.
   ...(()=>{const decision=parseDecisionTrace(raw.decision);return decision?{decision}:{};})(),

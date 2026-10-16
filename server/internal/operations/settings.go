@@ -92,8 +92,8 @@ func Registry() []Field {
 		field("x264Preset", "transcoding", "enumeration", "veryfast", nil, nil, X264Presets, "next-operation", "software conversion launch", "Software encoder speed against size. Slower presets need more CPU per stream."),
 		field("directStreamRemux", "transcoding", "boolean", true, nil, nil, nil, "next-operation", "delivery planning", "Repackages compatible sources into a supported container without re-encoding video or audio."),
 		field("planningPolicy", "transcoding", "enumeration", "maximum_fidelity", nil, nil, PlanningPolicies, "next-operation", "delivery planning", "Chooses how the planner trades picture fidelity, client compatibility and server work."),
-		field("throttleBufferSeconds", "transcoding", "integer", 60, bounded(10), bounded(600), nil, "next-operation", "conversion pacing", "How far ahead of the viewer a conversion may run before it pauses."),
-		field("playedRetentionSeconds", "transcoding", "integer", 180, bounded(0), bounded(3600), nil, "next-operation", "conversion segment retention", "How long already played segments stay on disk so a small rewind does not restart the conversion."),
+		field("throttleBufferMs", "transcoding", "integer", 60000, bounded(10000), bounded(600000), nil, "next-operation", "conversion pacing", "How far ahead of the viewer a conversion may run before it pauses, in milliseconds."),
+		field("playedRetentionMs", "transcoding", "integer", 180000, bounded(0), bounded(3600000), nil, "next-operation", "conversion segment retention", "How long already played segments stay on disk so a small rewind does not restart the conversion."),
 		field("ffmpegPath", "transcoding", "path", "", nil, nil, nil, "restart", "media tool qualification and conversion launch", "Absolute path to another FFmpeg build. It is checked before use and runs with the same process restrictions."),
 		field("sessionStorageMiB", "transcoding", "integer", 4096, bounded(64), bounded(1048576), nil, "next-operation", "conversion output retention", "Maximum working space for one playback session in MiB. Older played segments are removed first."),
 		field("temporaryDirectory", "transcoding", "path", "", nil, nil, nil, "restart", "conversion working directory", "Absolute path for conversion working files. Empty uses the server state directory. Readiness is reported by the transcode capacity report."),
@@ -154,8 +154,8 @@ type Settings struct {
 	X264Preset              string `json:"x264Preset"`
 	DirectStreamRemux       bool   `json:"directStreamRemux"`
 	PlanningPolicy          string `json:"planningPolicy"`
-	ThrottleBufferSeconds   int    `json:"throttleBufferSeconds"`
-	PlayedRetentionSeconds  int    `json:"playedRetentionSeconds"`
+	ThrottleBufferMs        int    `json:"throttleBufferMs"`
+	PlayedRetentionMs       int    `json:"playedRetentionMs"`
 	TemporaryDirectory      string `json:"temporaryDirectory"`
 	FFmpegPath              string `json:"ffmpegPath"`
 	SessionStorageMiB       int    `json:"sessionStorageMiB"`
@@ -225,7 +225,7 @@ type LogRetention struct {
 // DefaultSettings is the registry's own answer before any owner write, so a
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
-	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferSeconds: 60, PlayedRetentionSeconds: 180, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30,
+	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30,
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
@@ -450,9 +450,9 @@ func validateSettings(v *Settings) error {
 	if len(fields) > 0 {
 		return &ValidationError{fields}
 	}
-	clamp(&v.ThrottleBufferSeconds, 10, 600)
+	clamp(&v.ThrottleBufferMs, 10000, 600000)
 	clamp(&v.RemoteBitrateLimitKbps, 0, 200000)
-	clamp(&v.PlayedRetentionSeconds, 0, 3600)
+	clamp(&v.PlayedRetentionMs, 0, 3600000)
 	for _, target := range []*int{&v.MaxConcurrentSessions, &v.MaxHardwareSessions, &v.MaxSoftwareSessions, &v.MaxBackgroundSessions} {
 		clamp(target, 0, 1000)
 	}

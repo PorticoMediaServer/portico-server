@@ -2,6 +2,7 @@ import {encodedRoutePath, routePrefix} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
 import type {ContentScope, LibraryContentApi} from './library-content.ts';
 import {firstOfEach, keepReadable} from './tolerant.ts';
+import {wireDurations} from './wire-units.ts';
 
 /** A derivative is neither a catalog edition nor an original source-version ID. */
 export type PreparedChoice = Readonly<{versionId: string; expectedRevision: number; offersRevision: string}>;
@@ -37,7 +38,7 @@ export function parsePreparedChoice(v: unknown): PreparedChoice {
 export function parsePreparedVersion(v: unknown, itemId: string): PreparedVersion {
   if (!object(v) || !id(v.id) || v.itemId!==itemId || !id(v.sourceId) || !id(v.profileId) || !id(v.targetId) || !digest(v.sourceRevision) || !integer(v.partIndex) || v.editionId!==null&&!id(v.editionId) || !digest(v.digest) || !integer(v.size) || v.size<1 || !integer(v.revision) || v.revision<1 || !integer(v.createdMs) || !['published','deleting','deleted'].includes(String(v.state)) || typeof v.selectable!=='boolean' || !text(v.reason,128)) invalid();
   if (v.selectable ? v.state!=='published'||v.reason!=='' : !v.reason) invalid();
-  const f=v.facts;
+  const f=wireDurations(v.facts,{duration:'durationMs'});
   if (!object(f) || f.container!=='mp4' || !['','h264'].includes(String(f.videoCodec)) || !['','aac'].includes(String(f.audioCodec)) || !integer(f.width) || !integer(f.height) || !integer(f.audioTracks) || f.audioTracks>16 || typeof f.duration!=='number' || !Number.isFinite(f.duration) || f.duration<=0) invalid();
   if (f.videoCodec==='h264' ? f.width<2||f.height<2||f.width>1920||f.height>1080 : f.width!==0||f.height!==0) invalid();
   if ((f.audioCodec==='aac') !== (f.audioTracks>0) || !f.videoCodec&&!f.audioCodec) invalid();

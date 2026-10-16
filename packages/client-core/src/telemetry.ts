@@ -30,7 +30,7 @@ export type TranscodePreset={id:string;label:string;height:number;videoKbps:numb
 export type RuntimeDependency={path:string;version:string;ok:boolean};
 export type TranscodeCapacity={
  enabled:boolean;hardware:HardwareStatus;sessions:SessionCounts;hdrToneMapping:ToneMappingStatus;
- directStreamRemux:boolean;x264Preset:string;planningPolicy:string;throttleBufferSeconds:number;playedRetentionSeconds:number;
+ directStreamRemux:boolean;x264Preset:string;planningPolicy:string;throttleBufferMs:number;playedRetentionMs:number;
  temporaryDirectory:TemporaryDirectory;presets:TranscodePreset[];dependencies:Record<string,RuntimeDependency>;warnings:string[];observedAt:number};
 
 const obj=(v:unknown):v is Record<string,any>=>typeof v==='object'&&v!==null&&!Array.isArray(v);
@@ -86,7 +86,7 @@ export function parseTelemetryReading(value:unknown):TelemetryReading{
 export function parseTranscodeCapacity(value:unknown):TranscodeCapacity{
  const c=base(value);
  if(typeof c.enabled!=='boolean'||typeof c.directStreamRemux!=='boolean'||!text(c.x264Preset,40)||!text(c.planningPolicy,40)||
-  !integer(c.throttleBufferSeconds)||!integer(c.playedRetentionSeconds)||!integer(c.observedAt))invalid();
+  !integer(c.throttleBufferMs)||!integer(c.playedRetentionMs)||!integer(c.observedAt))invalid();
  const hardware=base(c.hardware);
  if(!text(hardware.configured,40)||!text(hardware.effective,40)||!text(hardware.device,200)||!Array.isArray(hardware.probes)||hardware.probes.length>20)invalid();
  const probes=keepReadable('transcode-capacity','hardware.probes',hardware.probes,probe=>{const p=base(probe);if(!text(p.backend,40)||typeof p.supported!=='boolean'||!text(p.detail,512))invalid();return p as HardwareProbe;});

@@ -3,6 +3,7 @@ import {unreadableServerResponse} from './server-messages.ts';
 import {serviceProblem, serviceText} from './presentation/service-text.ts';
 import type {MessageId} from '../../i18n/src/index.ts';
 import {firstOfEach, keepReadable, oneOfOr} from './tolerant.ts';
+import {durationIntent, wireDurations} from './wire-units.ts';
 /** DVR intent protocol. This module never constructs a stream URL or starts playback.
  * Each instance belongs to one authenticated server/viewer lifetime. */
 import type {ChannelApi, GuideChannel, GuideProgramme} from './channel-guide';
@@ -44,7 +45,8 @@ function programme(v: unknown): GuideProgramme {
  if(!text(seriesId,512)||!text(episodeId,512))invalid();
  return {id:v.id,channelId:v.channelId,title:v.title,start:v.start,end:v.end,lineage,seriesId,episodeId,description,newEvidence} as GuideProgramme;
 }
-export function parseRecording(v: unknown): Recording {
+export function parseRecording(wire: unknown): Recording {
+ const v: unknown = optionsFromWire(wire);
  if(!object(v)||!id(v.id)||!number(v.revision,1)||!object(v.occurrence)||!id(v.occurrence.sourceId,48)||!id(v.occurrence.channelId)||!id(v.occurrence.generation,48)||!id(v.occurrence.programmeId)||!validRecordingOptions(v.options)||!instant(v.start)||!instant(v.end)||!states.includes(v.state)||!text(v.reason,256)||typeof v.keep!=='boolean'||!text(v.ruleId,64)||v.ruleId!==''&&!id(v.ruleId)||!text(v.itemId,64)||!text(v.libraryId,64)||v.itemId!==''&&(!id(v.itemId)||!id(v.libraryId))||!number(v.bytes)||!Array.isArray(v.conflicts)||v.conflicts.length>100000)invalid();
  if(!(v.coverageStart===''||instant(v.coverageStart))||!(v.coverageEnd===''||instant(v.coverageEnd)))invalid();
  for(const c of v.conflicts)if(!object(c)||!instant(c.start)||!instant(c.end)||Date.parse(c.start)>=Date.parse(c.end)||!number(c.demand,1)||!number(c.capacity))invalid();
@@ -71,13 +73,17 @@ export function parseRecording(v: unknown): Recording {
 export function countUnwatched(recordings: readonly Pick<Recording,'watched'>[]): number {
   return recordings.filter(r=>r.watched===false).length;
 }
+/** Padding travels in milliseconds; the options here keep the seconds the pickers offer. */
+const PADDING = {beforeSeconds: 'beforeMs', afterSeconds: 'afterMs'} as const;
+function optionsFromWire(v:unknown):unknown{return object(v)&&object(v.options)?{...v,options:wireDurations(v.options,PADDING)}:v;}
+function configToWire(c:RuleConfig):Record<string,unknown>{return {...c,options:durationIntent(c.options,PADDING)};}
 function config(v:unknown):RuleConfig{
  if(!object(v)||!text(v.name,160)||!v.name||!id(v.sourceId,48)||!text(v.seriesId,512)||!v.seriesId||typeof v.enabled!=='boolean'||!['all','new'].includes(v.episodes)||!validRecordingOptions(v.options))invalid();
  for(const k of ['allowedChannels','blockedChannels'])if(!Array.isArray(v[k])||v[k].length>2000||v[k].some((x:unknown)=>!id(x)))invalid();
  for(const k of ['keywords','blockedKeywords'])if(!Array.isArray(v[k])||v[k].length>20||v[k].some((x:unknown)=>!text(x,128)||!x.trim()))invalid();
  return {name:v.name,sourceId:v.sourceId,seriesId:v.seriesId,enabled:v.enabled,episodes:v.episodes,allowedChannels:[...v.allowedChannels],blockedChannels:[...v.blockedChannels],keywords:[...v.keywords],blockedKeywords:[...v.blockedKeywords],options:{beforeSeconds:v.options.beforeSeconds,afterSeconds:v.options.afterSeconds,priority:v.options.priority,retentionDays:v.options.retentionDays,episodeLimit:v.options.episodeLimit}};
 }
-function rule(v:unknown):RecordingRule{if(!object(v)||!id(v.id)||!number(v.revision,1)||!text(v.reconcileState,64)||!text(v.diagnostic,256)||!instant(v.updatedAt))invalid();return {id:v.id,revision:v.revision,config:config(v.config),reconcileState:v.reconcileState,diagnostic:v.diagnostic,updatedAt:v.updatedAt} as RecordingRule;}
+function rule(v:unknown):RecordingRule{if(!object(v)||!id(v.id)||!number(v.revision,1)||!text(v.reconcileState,64)||!text(v.diagnostic,256)||!instant(v.updatedAt))invalid();return {id:v.id,revision:v.revision,config:config(optionsFromWire(v.config)),reconcileState:v.reconcileState,diagnostic:v.diagnostic,updatedAt:v.updatedAt} as RecordingRule;}
 /**
  * One page of recordings and rules. The cursor, the revision and the bounds are exact. A
  * recording or a rule that cannot be read (or is in a state this app does not know, so it could
@@ -155,16 +161,16 @@ export class DVRClient {
  }
  async list(view:Exclude<DVRView,'storage'>,cursor=''){return parseDVRPage(await this.read(routePath("get_dvr") + "?" + (new URLSearchParams({state:view,limit:'50',...(cursor?{cursor}:{})}))));}
  async detail(recordingId:string,after=''):Promise<RecordingDetail>{if(!id(recordingId)||after&&!id(after))invalid();const v=await this.read<RecordingDetail>(encodedRoutePath("get_dvr_recordings_id", {"id": recordingId})+(after?'?after='+after:''));if(!object(v)||!validCapacity(v.capacity)||!Array.isArray(v.overlaps)||v.overlaps.length>20||!text(v.nextOverlap,64)||v.nextOverlap&&!id(v.nextOverlap))invalid();const r=parseRecording(v.recording);if(r.id!==recordingId)invalid();for(const o of v.overlaps)if(!object(o)||!id(o.id)||!text(o.title,512)||!instant(o.start)||!instant(o.end)||Date.parse(o.start)>=Date.parse(o.end)||!number(o.priority,-1000,1000)||!states.includes(o.state))invalid();if(new Set(v.overlaps.map(o=>o.id)).size!==v.overlaps.length)invalid();return {recording:r,capacity:capacity(v.capacity),overlaps:v.overlaps.map(o=>({id:o.id,title:o.title,start:o.start,end:o.end,priority:o.priority,state:o.state})),nextOverlap:v.nextOverlap};}
- async schedule(d:RecordingDraft,options:RecordingOptions){if(!validRecordingOptions(options))invalid();return parseRecording(await this.mutate(routePath("post_dvr_recordings"),'POST',{occurrence:occurrence(d),options}));}
- async update(r:Recording,options:RecordingOptions){if(!validRecordingOptions(options))invalid();return parseRecording(await this.mutate(encodedRoutePath("patch_dvr_recordings_id", {"id": r.id}),'PATCH',{expectedRevision:r.revision,options}));}
+ async schedule(d:RecordingDraft,options:RecordingOptions){if(!validRecordingOptions(options))invalid();return parseRecording(await this.mutate(routePath("post_dvr_recordings"),'POST',{occurrence:occurrence(d),options:durationIntent(options,PADDING)}));}
+ async update(r:Recording,options:RecordingOptions){if(!validRecordingOptions(options))invalid();return parseRecording(await this.mutate(encodedRoutePath("patch_dvr_recordings_id", {"id": r.id}),'PATCH',{expectedRevision:r.revision,options:durationIntent(options,PADDING)}));}
  async cancel(r:Recording){return parseRecording(await this.mutate(encodedRoutePath("post_dvr_recordings_id_cancel", {"id": r.id}),'POST',{expectedRevision:r.revision}));}
  async keep(r:Recording){return parseRecording(await this.mutate(encodedRoutePath("put_dvr_recordings_id_keep", {"id": r.id}),'PUT',{expectedRevision:r.revision,keep:!r.keep}));}
  async deletePreview(r:Recording):Promise<DeletePreview>{const v=await this.read<DeletePreview>(encodedRoutePath("get_dvr_recordings_id_delete_preview", {"id": r.id}));if(!object(v)||v.recordingId!==r.id||!number(v.revision,1)||!number(v.bytes)||typeof v.keep!=='boolean'||typeof v.activeReaders!=='boolean'||!text(v.result,1024))invalid();return {recordingId:v.recordingId,revision:v.revision,bytes:v.bytes,keep:v.keep,activeReaders:v.activeReaders,result:v.result};}
  async delete(r:Recording,preview:DeletePreview){if(preview.recordingId!==r.id)invalid();return parseRecording(await this.mutate(encodedRoutePath("delete_dvr_recordings_id", {"id": r.id}),'DELETE',{expectedRevision:preview.revision}));}
  async newRuleID(){const [a,b]=await Promise.all([this.newRequestId(),this.newRequestId()]);if(!id(a,48)||!id(b,48))invalid();return (a+b).slice(0,64);}
- async saveRule(ruleId:string,revision:number,c:RuleConfig,anchor?:Occurrence){if(!id(ruleId)||!number(revision))invalid();config(c);return rule(await this.mutate(encodedRoutePath("put_dvr_rules_id", {"id": ruleId}),'PUT',{id:ruleId,expectedRevision:revision,config:c,...(anchor?{anchor}:{})}));}
+ async saveRule(ruleId:string,revision:number,c:RuleConfig,anchor?:Occurrence){if(!id(ruleId)||!number(revision))invalid();config(c);return rule(await this.mutate(encodedRoutePath("put_dvr_rules_id", {"id": ruleId}),'PUT',{id:ruleId,expectedRevision:revision,config:configToWire(c),...(anchor?{anchor}:{})}));}
  async deleteRule(r:RecordingRule,future:'keep'|'cancel'){const v=await this.mutate<{deleted:boolean}>(encodedRoutePath("delete_dvr_rules_id", {"id": r.id}),'DELETE',{expectedRevision:r.revision,future});if(v.deleted!==true)invalid();}
- async preview(c:RuleConfig):Promise<RulePreview>{config(c);const v=await this.read<RulePreview>(routePath("post_dvr_rules_preview"),'POST',c);if(!object(v)||!number(v.matches)||!number(v.unknownNewEvidence)||!id(v.generation,48)||!Array.isArray(v.sample)||v.sample.length>12||!validCapacity(v.capacity))invalid();return {matches:v.matches,unknownNewEvidence:v.unknownNewEvidence,sample:v.sample.map(programme),generation:v.generation,capacity:capacity(v.capacity)};}
+ async preview(c:RuleConfig):Promise<RulePreview>{config(c);const v=await this.read<RulePreview>(routePath("post_dvr_rules_preview"),'POST',configToWire(c));if(!object(v)||!number(v.matches)||!number(v.unknownNewEvidence)||!id(v.generation,48)||!Array.isArray(v.sample)||v.sample.length>12||!validCapacity(v.capacity))invalid();return {matches:v.matches,unknownNewEvidence:v.unknownNewEvidence,sample:v.sample.map(programme),generation:v.generation,capacity:capacity(v.capacity)};}
  async channels(sourceId:string,search='',cursor=''):Promise<ChannelChoices>{if(!id(sourceId,48))invalid();const v=await this.read<ChannelChoices>(routePath("get_dvr_channels") + "?" + (new URLSearchParams({sourceId,search,cursor})));if(!object(v)||!id(v.generation,48)||!text(v.nextCursor,128)||!Array.isArray(v.channels)||v.channels.length>30)invalid();for(const c of v.channels)if(!object(c)||!id(c.id)||!text(c.name,256)||!text(c.number,32))invalid();return {channels:v.channels.map(c=>({id:c.id,name:c.name,number:c.number})),generation:v.generation,nextCursor:v.nextCursor};}
  async storage():Promise<RecordingStorage>{const v=await this.read<RecordingStorage>(routePath("get_dvr_storage"));if(!object(v)||!validStoragePolicy(v.policy)||!object(v.measurement)||!number(v.measurement.usedBytes)||!number(v.measurement.freeBytes)||!number(v.measurement.reservedBytes)||typeof v.measurement.writeHealthy!=='boolean'||!(v.measurement.measuredAt===''||instant(v.measurement.measuredAt))||!number(v.pendingDeleteBytes)||!number(v.forecastBytes)||!number(v.forecastHours,1)||!text(v.forecastDescription,2048)||typeof v.captureAvailable!=='boolean'||!text(v.warning,256))invalid();return {policy:storagePolicy(v.policy),measurement:{freeBytes:v.measurement.freeBytes,usedBytes:v.measurement.usedBytes,reservedBytes:v.measurement.reservedBytes,writeHealthy:v.measurement.writeHealthy,measuredAt:v.measurement.measuredAt},pendingDeleteBytes:v.pendingDeleteBytes,forecastBytes:v.forecastBytes,forecastHours:v.forecastHours,forecastDescription:v.forecastDescription,captureAvailable:v.captureAvailable,warning:v.warning};}
  async saveStorage(p:StoragePolicy){if(!validStoragePolicy(p))invalid();const {revision,...policy}=p;const v=await this.mutate<StoragePolicy>(routePath("put_dvr_storage"),'PUT',{expectedRevision:revision,policy});if(!validStoragePolicy(v))invalid();return storagePolicy(v);}

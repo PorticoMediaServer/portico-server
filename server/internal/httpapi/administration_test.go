@@ -152,7 +152,7 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 	if read.Result.Revision != 1 || read.Result.Settings.AllowMediaDeletion || len(read.Result.Matrix.Operations) == 0 {
 		t.Fatalf("library document %+v", read.Result)
 	}
-	body := `{"expectedRevision":1,"operationId":"films-settings-1","settings":{"allowMediaDeletion":true,"providers":[],"analysis":["probe","local_metadata"],"navigation":{"trickplayIntervalSeconds":10,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"embedded","videoPreviewEnabled":false,"videoPreviewSeconds":30}}}`
+	body := `{"expectedRevision":1,"operationId":"films-settings-1","settings":{"allowMediaDeletion":true,"providers":[],"analysis":["probe","local_metadata"],"navigation":{"trickplayIntervalMs":10000,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"embedded","videoPreviewEnabled":false,"videoPreviewMs":30000}}}`
 	if w = request("PUT", "/v1/admin/libraries/lib/settings", owner.AccessToken, body); w.Code != 200 {
 		t.Fatalf("write answered %d: %s", w.Code, w.Body.String())
 	}
@@ -175,12 +175,12 @@ func TestAdministrationOwnerBoundaryAndLibrarySettingsRoundTrip(t *testing.T) {
 		t.Fatalf("a replay must not advance the revision: %d", read.Result.Revision)
 	}
 	// A fresh operation at the now-stale revision is a conflict.
-	stale := `{"expectedRevision":1,"operationId":"films-settings-2","settings":{"allowMediaDeletion":true,"providers":[],"analysis":["probe"],"navigation":{"trickplayIntervalSeconds":10,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"embedded","videoPreviewEnabled":false,"videoPreviewSeconds":30}}}`
+	stale := `{"expectedRevision":1,"operationId":"films-settings-2","settings":{"allowMediaDeletion":true,"providers":[],"analysis":["probe"],"navigation":{"trickplayIntervalMs":10000,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"embedded","videoPreviewEnabled":false,"videoPreviewMs":30000}}}`
 	if w = request("PUT", "/v1/admin/libraries/lib/settings", owner.AccessToken, stale); w.Code != 412 || !strings.Contains(w.Body.String(), `"code":"revision_mismatch"`) {
 		t.Fatalf("stale write answered %d: %s", w.Code, w.Body.String())
 	}
 	// A field-level refusal names the field.
-	bad := `{"expectedRevision":2,"operationId":"invalid-settings-key","settings":{"allowMediaDeletion":false,"providers":[],"analysis":["probe"],"navigation":{"trickplayIntervalSeconds":10,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"nonsense","videoPreviewEnabled":false,"videoPreviewSeconds":30}}}`
+	bad := `{"expectedRevision":2,"operationId":"invalid-settings-key","settings":{"allowMediaDeletion":false,"providers":[],"analysis":["probe"],"navigation":{"trickplayIntervalMs":10000,"trickplayTileWidth":320,"trickplayMaxTiles":400,"chapterThumbnailMode":"nonsense","videoPreviewEnabled":false,"videoPreviewMs":30000}}}`
 	w = request("PUT", "/v1/admin/libraries/lib/settings", owner.AccessToken, bad)
 	if w.Code != 400 {
 		t.Fatalf("invalid write answered %d", w.Code)

@@ -4,7 +4,7 @@ const setId='a'.repeat(64),revision='b'.repeat(64),otherId='c'.repeat(64),otherR
 const target={libraryId:'library',itemId:'item'};
 function set(overrides:Record<string,unknown>={}):any{
  const id=String(overrides.id??setId);
- return {id,sourceId:'asset',sourceRevision:'rev',width:640,height:360,tileWidth:320,tileHeight:180,columns:2,rows:2,intervalSeconds:10,durationSeconds:60,sourceOffsetSeconds:0,tileCount:2,frameCount:6,stale:false,revision,
+ return {id,sourceId:'asset',sourceRevision:'rev',width:640,height:360,tileWidth:320,tileHeight:180,columns:2,rows:2,intervalMs:10000,durationMs:60000,sourceOffsetMs:0,tileCount:2,frameCount:6,stale:false,revision,
   tilesUrl:'/v1/items/item/trickplay/'+id+'/tiles',thumbnailsUrl:'/v1/items/item/trickplay/'+id+'/thumbnails.vtt',...overrides};
 }
 function view(sets:any[]=[set()]):any{return {scope:{serverId:'server',libraryId:'library',itemId:'item',viewerFence:'fence',sessionId:'',sessionGeneration:0},sets};}
@@ -47,7 +47,7 @@ test('inconsistent geometry, counts, identifiers, scope and foreign URLs are rej
  const mutations:Record<string,unknown>[]=[
   {width:641},{height:361},{columns:0},{rows:0},{tileWidth:0},
   {tileCount:1},{tileCount:3},{frameCount:0},
-  {intervalSeconds:0},{intervalSeconds:-1},{durationSeconds:0},{sourceOffsetSeconds:-1},{sourceOffsetSeconds:'0'},
+  {intervalMs:0},{intervalMs:-1000},{durationMs:0},{sourceOffsetMs:-1000},{sourceOffsetMs:'0'},
   {id:'short'},{revision:'short'},{sourceId:''},{sourceRevision:''},
   {stale:'yes'},
   {tilesUrl:'/v1/items/other/trickplay/'+setId+'/tiles'},
@@ -71,7 +71,7 @@ test('an empty list parses and set preference favours current, finer sets',()=>{
  const empty=parseTrickplay(view([]),'server',target);
  assert.equal(empty.sets.length,0);
  assert.equal(preferredTrickplaySet(empty),null);
- const stale=set({stale:true,intervalSeconds:2});
+ const stale=set({stale:true,intervalMs:2000});
  const current=set({id:otherId,revision:otherRevision,sourceId:'asset-2'});
  const parsed=parseTrickplay(view([stale,current]),'server',target);
  assert.equal(preferredTrickplaySet(parsed)!.id,otherId);
@@ -81,7 +81,7 @@ test('an empty list parses and set preference favours current, finer sets',()=>{
 
 test('a trimmed association indexes frames by source time but reports item time',()=>{
  // The item starts 20s into the source and runs 40s; frame 2 covers its start.
- const s=parseTrickplay(view([set({sourceOffsetSeconds:20,durationSeconds:40})]),'server',target).sets[0];
+ const s=parseTrickplay(view([set({sourceOffsetMs:20000,durationMs:40000})]),'server',target).sets[0];
  const first=trickplayFrameAt(s,0)!;
  assert.equal(first.index,2);
  assert.deepEqual([first.startSeconds,first.endSeconds],[0,10]);

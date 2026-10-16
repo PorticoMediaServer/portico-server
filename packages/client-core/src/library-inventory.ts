@@ -4,6 +4,7 @@ import {encodedRoutePath} from "../../contracts/src/routes.ts";
  * path cache, automatic command replay, or client-side identity heuristics. */
 import type {ContentScope, LibraryContentApi} from './library-content.ts';
 import {firstOfEach,keepReadable,noteSkipped} from './tolerant.ts';
+import {durationIntent,wireDurations} from './wire-units.ts';
 import type {ServerEvent} from './playback-v1/types.ts';
 
 export type ScanTier='file_list_only'|'basic'|'complete'|'custom';
@@ -32,7 +33,7 @@ function parseConfig(raw:unknown,bound:ContentScope,libraryId:string):InventoryC
  // The scan policy is sent back when the owner changes it, so its tier stays exact; a step this app does not know is left out of what it shows, each known step once.
  const given=list(policy.operations,64),operations=[...new Set(given.filter(v=>scanOperations.includes(v as ScanOperation)))];if(operations.length!==given.length)noteSkipped('library-inventory','policy.operations',given.length-operations.length);
  // A folder that cannot be read is left out alone, and a repeated one keeps its first row.
- const sources=firstOfEach('library-inventory','sources',keepReadable('library-inventory','sources',list(raw.sources,64),v=>{assert(record(v)&&id(v.id)&&v.libraryId===libraryId&&text(v.kind,64)&&text(v.name,512)&&text(v.path)&&text(v.resolvedPath)&&['local','network'].includes(String(v.classification))&&integer(v.generation)&&text(v.health,128)&&typeof v.enabled==='boolean'&&typeof v.followSymlinks==='boolean'&&typeof v.identityConfirmed==='boolean'&&integer(v.intervalSeconds)&&text(v.nextScanAt,128)&&text(v.lastCompleteAt,128)&&text(v.lastProgressAt,128));return Object.freeze({...v}) as InventorySource;}),s=>s.id);
+ const sources=firstOfEach('library-inventory','sources',keepReadable('library-inventory','sources',list(raw.sources,64),wire=>{const v:unknown=wireDurations(wire,{intervalSeconds:'intervalMs'});assert(record(v)&&id(v.id)&&v.libraryId===libraryId&&text(v.kind,64)&&text(v.name,512)&&text(v.path)&&text(v.resolvedPath)&&['local','network'].includes(String(v.classification))&&integer(v.generation)&&text(v.health,128)&&typeof v.enabled==='boolean'&&typeof v.followSymlinks==='boolean'&&typeof v.identityConfirmed==='boolean'&&integer(v.intervalSeconds)&&text(v.nextScanAt,128)&&text(v.lastCompleteAt,128)&&text(v.lastProgressAt,128));return Object.freeze({...v}) as InventorySource;}),s=>s.id);
  return Object.freeze({scope:scope(raw.scope,bound),libraryId,revision:raw.revision,sources:Object.freeze(sources),policy:Object.freeze({tier:policy.tier as ScanTier,revision:policy.revision,operations:Object.freeze(operations as ScanOperation[])})});
 }
 function parseObjects(raw:unknown,bound:ContentScope,libraryId:string,filter:InventoryFilter):InventoryObjects {
@@ -73,7 +74,7 @@ export class LibraryInventoryService {
   try{await this.request(this.base()+path,method,body);if(this.disposed||epoch!==this.epoch)return false;await this.reconcile();if(this.disposed||epoch!==this.epoch)return false;this.publish({mutation:'complete'});return true;
   }catch(e){if(this.disposed||epoch!==this.epoch)return false;const error=errorOf(e);const definite=['invalid_request','source_busy','source_changed','source_already_configured','library_configuration_conflict','stale_continuation','not_found','forbidden','unauthorized'].includes(error.code);if(['unauthorized','forbidden'].includes(error.code)){this.epoch++;for(const c of this.controllers)c.abort();this.publish({config:null,objects:null,loading:false});}this.publish({error,mutation:definite?'error':'ambiguous'});return false;}finally{this.commandBusy=false;}
  }
- saveSource(sourceId:string|undefined,input:SourceSettings){assert(!sourceId||id(sourceId));assert(text(input.name,100)&&input.name.trim()&&text(input.path)&&input.path&&integer(input.expectedRevision)&&input.expectedRevision>0&&integer(input.intervalSeconds));return this.command('/sources'+(sourceId?'/'+encodeURIComponent(sourceId):''),sourceId?'PATCH':'POST',input);}
+ saveSource(sourceId:string|undefined,input:SourceSettings){assert(!sourceId||id(sourceId));assert(text(input.name,100)&&input.name.trim()&&text(input.path)&&input.path&&integer(input.expectedRevision)&&input.expectedRevision>0&&integer(input.intervalSeconds));return this.command('/sources'+(sourceId?'/'+encodeURIComponent(sourceId):''),sourceId?'PATCH':'POST',durationIntent(input,{intervalSeconds:'intervalMs'}));}
  removeSource(sourceId:string,expectedRevision:number){assert(id(sourceId)&&integer(expectedRevision));return this.command('/sources/'+encodeURIComponent(sourceId),'DELETE',{expectedRevision});}
  scanSource(sourceId:string){assert(id(sourceId));return this.command('/sources/'+encodeURIComponent(sourceId)+'/scans','POST');}
  checkSource(sourceId:string){assert(id(sourceId));return this.command('/sources/'+encodeURIComponent(sourceId)+'/check','POST');}

@@ -651,13 +651,13 @@ func (d Dependencies) receiverRoutes(handle socialHandle, viewer socialViewer, s
 			return
 		}
 		wait := receiverInboxDefaultWait
-		if raw := r.URL.Query().Get("waitSeconds"); raw != "" {
+		if raw := r.URL.Query().Get("waitMs"); raw != "" {
 			n, err := strconv.Atoi(raw)
-			if err != nil || n < 0 || n > receiverInboxMaxWaitSeconds {
-				socialFailure(w, &social.Fault{Code: "invalid_request", Status: 400, Message: "waitSeconds must be between 0 and " + strconv.Itoa(receiverInboxMaxWaitSeconds) + "."})
+			if err != nil || n < 0 || n > receiverInboxMaxWaitSeconds*1000 {
+				socialFailure(w, &social.Fault{Code: "invalid_request", Status: 400, Message: "waitMs must be between 0 and " + strconv.Itoa(receiverInboxMaxWaitSeconds*1000) + "."})
 				return
 			}
-			wait = time.Duration(n) * time.Second
+			wait = time.Duration(n) * time.Millisecond
 		}
 		if !inboxWaits.admit(p.Hash) {
 			socialFailure(w, &social.Fault{Code: "rate_limited", Status: 429, Message: "Too many receivers are waiting for this viewer. Try again shortly.", Retryable: true, RetryAfter: 5})

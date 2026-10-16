@@ -64,24 +64,24 @@ type HomeRow struct {
 	Relation           string      `json:"relation,omitempty"`
 	// Family groups rows the layout arranges as one ("for_you": the personal
 	// rows, which vary with the profile and the day).
-	Family          string          `json:"family,omitempty"`
-	Provider        string          `json:"provider,omitempty"`
-	EvidenceID      string          `json:"evidenceId,omitempty"`
-	Priority        int             `json:"priority"`
-	CacheTTLSeconds int             `json:"cacheTtlSeconds"`
-	Required        bool            `json:"required"`
-	Hideable        bool            `json:"hideable"`
-	Reorderable     bool            `json:"reorderable"`
-	Critical        bool            `json:"critical"`
-	CursorCapable   bool            `json:"cursorCapable"`
-	Entries         []ContentEntry  `json:"entries"`
-	Total           int             `json:"total"`
-	Start           int             `json:"start"`
-	Limit           int             `json:"limit"`
-	HasMore         bool            `json:"hasMore"`
-	NextCursor      string          `json:"nextCursor"`
-	AnchorID        string          `json:"anchorId,omitempty"`
-	Revision        ContentRevision `json:"revision"`
+	Family        string          `json:"family,omitempty"`
+	Provider      string          `json:"provider,omitempty"`
+	EvidenceID    string          `json:"evidenceId,omitempty"`
+	Priority      int             `json:"priority"`
+	CacheTTLMs    int             `json:"cacheTtlMs"`
+	Required      bool            `json:"required"`
+	Hideable      bool            `json:"hideable"`
+	Reorderable   bool            `json:"reorderable"`
+	Critical      bool            `json:"critical"`
+	CursorCapable bool            `json:"cursorCapable"`
+	Entries       []ContentEntry  `json:"entries"`
+	Total         int             `json:"total"`
+	Start         int             `json:"start"`
+	Limit         int             `json:"limit"`
+	HasMore       bool            `json:"hasMore"`
+	NextCursor    string          `json:"nextCursor"`
+	AnchorID      string          `json:"anchorId,omitempty"`
+	Revision      ContentRevision `json:"revision"`
 	// lead is the first entry's own order value: for the Continue rows, when it
 	// was last played. Home compares the two to choose its hero.
 	lead string
@@ -194,7 +194,7 @@ type homeSource struct {
 func (spec homeRowSpec) descriptor() HomeRow {
 	return HomeRow{ID: spec.ID, Title: spec.Title, TitleText: spec.titleText(), Kind: spec.Kind, ArtworkShape: spec.ArtworkShape, Explanation: spec.Explanation,
 		SeeAll: spec.destination(), Endpoint: "/v1/home/rows/" + spec.ID, LibraryID: spec.LibraryID, PrivacySensitivity: spec.Privacy, PolicyState: spec.PolicyState,
-		Priority: spec.Priority, CacheTTLSeconds: spec.CacheTTL, Required: spec.Required, Hideable: spec.Hideable,
+		Priority: spec.Priority, CacheTTLMs: spec.CacheTTL * 1000, Required: spec.Required, Hideable: spec.Hideable,
 		Reorderable: spec.Reorderable, Critical: spec.Critical, CursorCapable: spec.Cursors, Family: spec.Family, Entries: []ContentEntry{}}
 }
 

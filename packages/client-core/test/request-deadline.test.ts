@@ -44,8 +44,8 @@ test('a caller who cancels gets a cancellation, never a timeout', async t => {
 });
 
 test('a long poll may wait as long as it asked the server to hold it, plus a margin', () => {
-  assert.equal(requestDeadlineMs('/v1/events?waitSeconds=25&after=7', 'GET'), 40_000);
-  assert.equal(requestDeadlineMs('/v1/events?after=7&waitSeconds=55', 'GET'), 70_000);
+  assert.equal(requestDeadlineMs('/v1/events?waitMs=25000&after=7', 'GET'), 40_000);
+  assert.equal(requestDeadlineMs('/v1/events?after=7&waitMs=55000', 'GET'), 70_000);
   assert.equal(requestDeadlineMs('/v1/libraries', 'GET'), 30_000);
   assert.equal(requestDeadlineMs('/v1/items/abc/watched', 'PUT'), 60_000);
   assert.equal(requestDeadlineMs('/v1/admin/backups', 'POST'), 120_000);
@@ -55,7 +55,7 @@ test('the raw request used by playback and events has the same deadline', async 
   t.mock.timers.enable({apis: ['setTimeout']});
   const server = silentServer();
   const api = new HttpLocalApi('http://192.168.1.20:32500', '', server.fetcher);
-  const pending = api.requestRaw('/v1/events?waitSeconds=25', 'GET').then(() => 'answered', error => error);
+  const pending = api.requestRaw('/v1/events?waitMs=25000', 'GET').then(() => 'answered', error => error);
   await Promise.resolve();
   t.mock.timers.tick(39_000);
   assert.equal(server.seen[0]?.aborted, false, 'the server is allowed its 25 seconds and a margin');

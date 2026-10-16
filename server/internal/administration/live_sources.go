@@ -22,15 +22,15 @@ type LiveDefaults = livechannels.LiveDefaults
 
 // DefaultLiveDefaults is the answer before any owner write.
 func DefaultLiveDefaults() LiveDefaults {
-	return LiveDefaults{ImportLimits: livechannels.ImportLimits{Bytes: livechannels.MaxUploadBytes, Channels: livechannels.MaxChannels, Programmes: livechannels.MaxProgrammes}, StreamBufferSeconds: 8, RetryWindowSeconds: 60, UserAgent: "Portico/1.0", GuideDays: 7, LogoImport: true, DiscoveryEnabled: true}
+	return LiveDefaults{ImportLimits: livechannels.ImportLimits{Bytes: livechannels.MaxUploadBytes, Channels: livechannels.MaxChannels, Programmes: livechannels.MaxProgrammes}, StreamBufferMs: 8000, RetryWindowMs: 60000, UserAgent: "Portico/1.0", GuideDays: 7, LogoImport: true, DiscoveryEnabled: true}
 }
 
 func validateLiveDefaults(v *LiveDefaults) error {
 	if !safeText(v.UserAgent, 200) || strings.ContainsAny(v.UserAgent, "\r\n") {
 		return invalid("settings.userAgent")
 	}
-	clampInt(&v.StreamBufferSeconds, 0, 120)
-	clampInt(&v.RetryWindowSeconds, 5, 3600)
+	clampInt(&v.StreamBufferMs, 0, 120000)
+	clampInt(&v.RetryWindowMs, 5000, 3600000)
 	clampInt(&v.GuideDays, 1, 14)
 	if v.ImportLimits.Bytes == 0 {
 		v.ImportLimits.Bytes = livechannels.MaxUploadBytes
@@ -163,14 +163,14 @@ func validateLiveSourceSettings(v *LiveSourceSettings) error {
 	}
 	// A guide-only source has nothing to stream, so stream tuning is meaningless
 	// on it and is refused rather than silently kept.
-	if v.Kind == "xmltv-guide" && (v.StreamBufferSeconds != nil || v.GuideSourceID != "") {
+	if v.Kind == "xmltv-guide" && (v.StreamBufferMs != nil || v.GuideSourceID != "") {
 		fields = append(fields, "settings.kind")
 	}
-	if v.StreamBufferSeconds != nil && (*v.StreamBufferSeconds < 0 || *v.StreamBufferSeconds > 120) {
-		fields = append(fields, "settings.streamBufferSeconds")
+	if v.StreamBufferMs != nil && (*v.StreamBufferMs < 0 || *v.StreamBufferMs > 120000) {
+		fields = append(fields, "settings.streamBufferMs")
 	}
-	if v.RetryWindowSeconds != nil && (*v.RetryWindowSeconds < 5 || *v.RetryWindowSeconds > 3600) {
-		fields = append(fields, "settings.retryWindowSeconds")
+	if v.RetryWindowMs != nil && (*v.RetryWindowMs < 5000 || *v.RetryWindowMs > 3600000) {
+		fields = append(fields, "settings.retryWindowMs")
 	}
 	if l := v.ImportLimits; l != nil && (l.Bytes < 0 || l.Bytes > 1<<30 || l.Channels < 0 || l.Channels > 100000 || l.Programmes < 0 || l.Programmes > 10000000) {
 		fields = append(fields, "settings.importLimits")
@@ -242,11 +242,11 @@ func (s *Service) liveSourceDocument(ctx context.Context, tx *sql.Tx, id string)
 	}
 	normalizeLiveSourceSettings(&settings)
 	effective := defaults
-	if settings.StreamBufferSeconds != nil {
-		effective.StreamBufferSeconds = *settings.StreamBufferSeconds
+	if settings.StreamBufferMs != nil {
+		effective.StreamBufferMs = *settings.StreamBufferMs
 	}
-	if settings.RetryWindowSeconds != nil {
-		effective.RetryWindowSeconds = *settings.RetryWindowSeconds
+	if settings.RetryWindowMs != nil {
+		effective.RetryWindowMs = *settings.RetryWindowMs
 	}
 	if settings.UserAgent != "" {
 		effective.UserAgent = settings.UserAgent

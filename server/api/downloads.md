@@ -120,7 +120,7 @@ To keep the same address alive, send `renew` with the token already held:
 
 When the token still belongs to this viewer, this claim and this exact file, the same `url` comes
 back with `renewed: true`, even if it had run out. Otherwise a new address is issued. Renew a
-transfer that is still unfinished every `renewAfterSeconds`. This is what lets a phone's own
+transfer that is still unfinished every `renewAfterMs`. This is what lets a phone's own
 downloader, which re-requests the same address hours later, carry on.
 
 The file's identity is its digest, not its address. `GET` supports `Range`, and the `ETag` is

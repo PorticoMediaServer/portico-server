@@ -273,8 +273,8 @@ export class GroupSessionService{
   const room=this.room;if(!room)return;
   try{await this.api.request<unknown>(path(room.id,'/readiness'),'POST',{protocolVersion:SOCIAL_PROTOCOL,readiness,positionUs,playbackRevision:this.state.group?.playbackRevision,ended},room.abort.signal);}catch{}
  }
- async invite(input:{expiresInSeconds?:number;maxUses?:number}={}):Promise<boolean>{
-  const invite=await this.act(async group=>parseGroupInvite(await this.api.request<unknown>(path(group.id,'/invites'),'POST',{protocolVersion:SOCIAL_PROTOCOL,expiresInSeconds:input.expiresInSeconds??900,maxUses:input.maxUses??8})),'together.error.invite');
+ async invite(input:{expiresInMs?:number;maxUses?:number}={}):Promise<boolean>{
+  const invite=await this.act(async group=>parseGroupInvite(await this.api.request<unknown>(path(group.id,'/invites'),'POST',{protocolVersion:SOCIAL_PROTOCOL,expiresInMs:input.expiresInMs??900_000,maxUses:input.maxUses??8})),'together.error.invite');
   if(invite)this.publish({invite});return !!invite;
  }
  /** Hands the host role to another member, or (while the host is away) claims it for this one. */

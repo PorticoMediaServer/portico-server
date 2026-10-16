@@ -395,7 +395,7 @@ func TestDVRTemplatesAndTunerConflicts(t *testing.T) {
 		t.Fatal("an unknown live tuner policy should have been refused")
 	}
 	settings.LiveTunerConflict = "stop-watching"
-	settings.PrePaddingSeconds = 120
+	settings.PrePaddingMs = 120000
 	saved, err := service.SaveDVRSettings(ctx, allow, Change[DVRDefaults]{ExpectedRevision: 1, Settings: settings, OperationID: "test-policy-key-17"})
 	if err != nil {
 		t.Fatal(err)

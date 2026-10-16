@@ -3864,7 +3864,7 @@ export const routes = [
     "bodyLimit": 0,
     "query": [
       "after",
-      "waitSeconds"
+      "waitMs"
     ],
     "errors": [
       "unauthorized",
@@ -14264,7 +14264,7 @@ export const routes = [
     "cost": "page_sized",
     "bodyLimit": 0,
     "query": [
-      "waitSeconds"
+      "waitMs"
     ],
     "errors": [
       "unauthorized",

@@ -166,7 +166,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/administration.go:289
 	if err := apikit.RegisterHTTP[struct {
-		WindowSeconds int "json:\"windowSeconds\""
+		WindowMs int "json:\"windowMs\""
 	}, LiveOwnerResult[administration.TunerDiscovery]](registry, apikit.Metadata{ID: "post_admin_live_sources_discover", Method: "POST", Path: "/v1/admin/live-sources/discover", Summary: "Run server live sources discover", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}

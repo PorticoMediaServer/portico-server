@@ -26,7 +26,7 @@ export type HomeRow = Readonly<{
   relation?: string; provider?: string; evidenceId?: string;
   priority: number;
   /** How long the server would let the row be reused. No client reads it; absent when the server does not send it. */
-  cacheTtlSeconds?: number;
+  cacheTtlMs?: number;
   required: boolean; hideable: boolean; reorderable: boolean; critical: boolean; cursorCapable: boolean;
   entries: readonly ContentEntry[]; total: number; start: number; limit: number; hasMore: boolean;
   nextCursor: string; anchorId?: string; revision: HomeRevision;
@@ -132,7 +132,7 @@ function parseHomeRow(value: unknown, allowChildren: boolean): HomeRow {
     }));
   }
   if (object(value.hero) && id(value.hero.rowId) && id(value.hero.entryId)) row.hero = Object.freeze({rowId: value.hero.rowId, entryId: value.hero.entryId, ...(typeof value.hero.selectionKey === "string" ? {selectionKey: words(value.hero.selectionKey,1024)} : {})});
-  if (whole(value.cacheTtlSeconds)) row.cacheTtlSeconds = value.cacheTtlSeconds;
+  if (whole(value.cacheTtlMs)) row.cacheTtlMs = value.cacheTtlMs;
   const titleText = titleTextOf(value.titleText);
   if (titleText) row.titleText = titleText;
   for (const field of ['explanation', 'libraryId', 'relation', 'provider', 'evidenceId', 'anchorId', 'family'] as const) {

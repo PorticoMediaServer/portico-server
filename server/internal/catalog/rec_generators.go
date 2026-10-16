@@ -170,7 +170,7 @@ func (x *recSession) recGenerators() ([]recRow, error) {
 	// Recommended is what suits the viewer; a third row saying both said
 	// neither.
 	if x.discover == "movie" {
-		filter = &BrowseNode{Field: "durationSeconds", Operator: "at-most", Value: float64(100 * 60)}
+		filter = &BrowseNode{Field: "durationMs", Operator: "at-most", Value: float64(100 * 60 * 1000)}
 		if err := add(recRowSpec("for_you:short", "Short picks for you", "home.row.shortPicks", nil, 66), recRowMinimum, 0, func() ([]recCandidate, error) {
 			return x.rank(recOptions{diversify: true, keep: func(c *recScored) bool { return c.duration > 0 && c.duration <= 100*60 }})
 		}); err != nil {

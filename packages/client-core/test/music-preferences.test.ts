@@ -9,7 +9,7 @@ const field = (key: string, type: PreferenceField['type'], value: PreferenceFiel
   ({key, type, default: value, scopes: ['profile-server'], group: 'music', labelKey: key, ...extra});
 const registry = [
   field('music.gapless', 'boolean', true),
-  field('music.crossfadeSeconds', 'integer', 0, {min: 0, max: 12}),
+  field('music.crossfadeMs', 'integer', 0, {min: 0, max: 12000}),
   field('music.audioNormalization', 'string', 'off', {allowedValues: ['off', 'track', 'album']}),
 ];
 const snapshot = (effective: PreferenceValues, fields = registry): PreferenceSnapshot => ({
@@ -19,11 +19,11 @@ const api: PlaybackApi = {createPlayback: async () => { throw new Error('no play
 
 test('X-02: the server’s music preferences are the effects; gapless is on by default', () => {
   assert.deepEqual(musicAudioEffects(snapshot({})), {gapless: true, crossfadeSeconds: 0, normalization: 'off'});
-  assert.deepEqual(musicAudioEffects(snapshot({'music.gapless': false, 'music.crossfadeSeconds': 6, 'music.audioNormalization': 'album'})), {gapless: false, crossfadeSeconds: 6, normalization: 'album'});
+  assert.deepEqual(musicAudioEffects(snapshot({'music.gapless': false, 'music.crossfadeMs': 6000, 'music.audioNormalization': 'album'})), {gapless: false, crossfadeSeconds: 6, normalization: 'album'});
   // An older server that publishes none of them: the defaults, gapless on.
   assert.deepEqual(musicAudioEffects(snapshot({}, [])), {gapless: true, crossfadeSeconds: 0, normalization: 'off'});
   // Outside the engine's domain: brought inside it.
-  assert.equal(musicAudioEffects(snapshot({'music.crossfadeSeconds': 30})).crossfadeSeconds, 12);
+  assert.equal(musicAudioEffects(snapshot({'music.crossfadeMs': 30000})).crossfadeSeconds, 12);
   assert.equal(musicAudioEffects(snapshot({'music.audioNormalization': 'loud'})).normalization, 'off');
   const service = new PlaybackService(api, () => 'r', {});
   assert.equal(service.getSnapshot().audioEffects.settings.gapless, true, 'before the server answers, gapless is on');
@@ -35,7 +35,7 @@ test('X-02: preferences flow into the service and win over the device’s cached
   service.restoreAudioEffects(noAudioEffects);
   assert.deepEqual(service.getSnapshot().audioEffects.settings, noAudioEffects);
   // The server answers: its values apply, and a late journal read can't undo them.
-  service.adoptAudioEffectsPreference(musicAudioEffects(snapshot({'music.crossfadeSeconds': 4, 'music.audioNormalization': 'track'})));
+  service.adoptAudioEffectsPreference(musicAudioEffects(snapshot({'music.crossfadeMs': 4000, 'music.audioNormalization': 'track'})));
   assert.deepEqual(service.getSnapshot().audioEffects.settings, {gapless: true, crossfadeSeconds: 4, normalization: 'track'});
   service.restoreAudioEffects(noAudioEffects);
   assert.equal(service.getSnapshot().audioEffects.settings.crossfadeSeconds, 4);

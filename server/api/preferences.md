@@ -17,7 +17,7 @@ Automatic starts at Original and adapts; it is an explicit choice. Use the
 registry's allowed values instead of keeping an independent quality ladder.
 
 The effective response also includes `audioEffects` (`gapless`,
-`crossfadeSeconds`, `normalization`), derived from the three `music.*` registry
+`crossfadeMs`, `normalization`), derived from the three `music.*` registry
 values. Clients should apply this object to the renderer and persist changes
 through the preference endpoint. The registry no longer includes
 `music.shuffleDefault`, `music.repeatDefault`, or `navigation.sidebarCollapsed`.

@@ -40,9 +40,12 @@ export function chunkChannelMapEntries<T>(entries: readonly T[]): T[][] {
 }
 
 type FilterRule = {mode: 'include' | 'exclude'; values: string[]};
-type SourceSettings = {enabledGroups: readonly string[]; enabledChannels: readonly string[]; kind: string; streamBufferSeconds: number | null; retryWindowSeconds: number | null; userAgent: string; filters: {categories: FilterRule; countries: FilterRule; keywords: FilterRule}; logoImport: {enabled: boolean; overwriteExisting: boolean}; channelNumbering: {mode: 'source' | 'sequential'; startAt: number; step: number}; guideSourceId: string; importLimits?: ImportLimits | null};
+type SourceSettings = {enabledGroups: readonly string[]; enabledChannels: readonly string[]; kind: string; streamBufferMs: number | null; retryWindowMs: number | null; userAgent: string; filters: {categories: FilterRule; countries: FilterRule; keywords: FilterRule}; logoImport: {enabled: boolean; overwriteExisting: boolean}; channelNumbering: {mode: 'source' | 'sequential'; startAt: number; step: number}; guideSourceId: string; importLimits?: ImportLimits | null};
 type ImportLimits = {bytes: number; channels: number; programmes: number};
-type SourceDocument = {sourceId: string; sourceName: string; revision: number; settings: SourceSettings; effective: {streamBufferSeconds: number; retryWindowSeconds: number; importLimits?: ImportLimits}; availableKinds: string[]};
+type SourceDocument = {sourceId: string; sourceName: string; revision: number; settings: SourceSettings; effective: {streamBufferMs: number; retryWindowMs: number; importLimits?: ImportLimits}; availableKinds: string[]};
+/** These fields travel in milliseconds and are entered in whole seconds; empty means the server default. */
+const shownSeconds = (ms: number | null): string => (ms === null ? '' : String(ms / 1000));
+const enteredMs = (value: string): number | null => (value === '' ? null : Math.max(0, Math.round(Number(value) || 0)) * 1000);
 const MB = 1048576;
 const kindName: Record<string, MessageId> = {playlist: 'server.live.sourceKind.playlist', 'xmltv-guide': 'server.live.sourceKind.guide', hdhomerun: 'server.live.sourceKind.tuner'};
 const filterName = {categories: 'server.live.filter.categories', countries: 'server.live.filter.countries', keywords: 'server.live.filter.keywords'} as const satisfies Record<string, MessageId>;
@@ -134,8 +137,8 @@ export function SourceSettingsDialog({src, guides, onClose, onChanged}: {src: {i
               </div>
             ) : null}
             <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
-              <Input label={t('web.liveSource.streamBuffer')} type="number" min={0} placeholder={t('web.liveSource.serverDefault', {value: doc.effective.streamBufferSeconds})} value={draft.streamBufferSeconds === null ? '' : String(draft.streamBufferSeconds)} onChange={e => patch({streamBufferSeconds: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)})} style={{width: 220}} />
-              <Input label={t('web.liveSource.retryFor')} type="number" min={0} placeholder={t('web.liveSource.serverDefault', {value: doc.effective.retryWindowSeconds})} value={draft.retryWindowSeconds === null ? '' : String(draft.retryWindowSeconds)} onChange={e => patch({retryWindowSeconds: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)})} style={{width: 220}} />
+              <Input label={t('web.liveSource.streamBuffer')} type="number" min={0} placeholder={t('web.liveSource.serverDefault', {value: doc.effective.streamBufferMs / 1000})} value={shownSeconds(draft.streamBufferMs)} onChange={e => patch({streamBufferMs: enteredMs(e.target.value)})} style={{width: 220}} />
+              <Input label={t('web.liveSource.retryFor')} type="number" min={0} placeholder={t('web.liveSource.serverDefault', {value: doc.effective.retryWindowMs / 1000})} value={shownSeconds(draft.retryWindowMs)} onChange={e => patch({retryWindowMs: enteredMs(e.target.value)})} style={{width: 220}} />
             </div>
             {/* This source's own import limits: lower than the server's, never higher; an empty field is the server's. */}
             <div style={{display: 'flex', flexDirection: 'column', gap: 8}}>
@@ -273,7 +276,7 @@ export function DiscoverTunersDialog({onClose, onUse}: {onClose: () => void; onU
   const [error, setError] = useState('');
   const search = async () => {
     setBusy(true); setError('');
-    try { setResult(await admin.send<Discovery>('/v1/admin/live-sources/discover', 'POST', {windowSeconds: 5})); } catch (e) { setError(problem(e)); } finally { setBusy(false); }
+    try { setResult(await admin.send<Discovery>('/v1/admin/live-sources/discover', 'POST', {windowMs: 5000})); } catch (e) { setError(problem(e)); } finally { setBusy(false); }
   };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void search(); }, []);
@@ -291,8 +294,8 @@ export function DiscoverTunersDialog({onClose, onUse}: {onClose: () => void; onU
 }
 
 type Keep = {mode: 'keep-all' | 'keep-count' | 'keep-days'; keepCount: number; keepDays: number; keepUntilWatched: boolean};
-type Group = {owner: RecordingOwner; anchor?: RecordingAnchor; status?: string; id: string; kind: 'series' | 'keyword'; name: string; match: string; sourceId: string; enabled: boolean; revision: number; options: {prePaddingSeconds: number | null; postPaddingSeconds: number | null; keepPolicy: Keep | null; newEpisodesOnly: boolean; priority: number; folderTemplate: string}};
-const blank: Omit<Group, 'id' | 'revision'> = {owner: {authority: 'local', accountId: '', profileId: ''}, kind: 'series', name: '', match: '', sourceId: '', enabled: true, options: {prePaddingSeconds: null, postPaddingSeconds: null, keepPolicy: null, newEpisodesOnly: false, priority: 0, folderTemplate: ''}};
+type Group = {owner: RecordingOwner; anchor?: RecordingAnchor; status?: string; id: string; kind: 'series' | 'keyword'; name: string; match: string; sourceId: string; enabled: boolean; revision: number; options: {prePaddingMs: number | null; postPaddingMs: number | null; keepPolicy: Keep | null; newEpisodesOnly: boolean; priority: number; folderTemplate: string}};
+const blank: Omit<Group, 'id' | 'revision'> = {owner: {authority: 'local', accountId: '', profileId: ''}, kind: 'series', name: '', match: '', sourceId: '', enabled: true, options: {prePaddingMs: null, postPaddingMs: null, keepPolicy: null, newEpisodesOnly: false, priority: 0, folderTemplate: ''}};
 
 /** Standing instructions for an explicitly owned series selected from the real guide. */
 export function RecordingRulesGroup({sources}: {sources: readonly {id: string; name: string}[]}) {
@@ -384,8 +387,8 @@ export function RecordingRulesGroup({sources}: {sources: readonly {id: string; n
             </> : <Text variant="caption" tone="secondary">{t('web.recordingRules.fixedNote')}</Text>}
             <Checkbox checked={edit.options.newEpisodesOnly} disabled={!edit.options.newEpisodesOnly && !(chosenSeries ? ['new', 'repeat'].includes(chosenSeries.newEvidence) : series.some(s => s.seriesId === edit.match && ['new', 'repeat'].includes(s.newEvidence)))} onCheckedChange={newEpisodesOnly => setEdit({...edit, options: {...edit.options, newEpisodesOnly}})} label={t('guide.newOnly')} />
             <div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}>
-              <Input label={t('web.recordingRules.startEarlySeconds')} type="number" min={0} placeholder={t('web.recordingRules.default')} value={edit.options.prePaddingSeconds === null ? '' : String(edit.options.prePaddingSeconds)} onChange={e => setEdit({...edit, options: {...edit.options, prePaddingSeconds: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)}})} style={{width: 170}} />
-              <Input label={t('web.recordingRules.endLateSeconds')} type="number" min={0} placeholder={t('web.recordingRules.default')} value={edit.options.postPaddingSeconds === null ? '' : String(edit.options.postPaddingSeconds)} onChange={e => setEdit({...edit, options: {...edit.options, postPaddingSeconds: e.target.value === '' ? null : Math.max(0, Number(e.target.value) || 0)}})} style={{width: 170}} />
+              <Input label={t('web.recordingRules.startEarlySeconds')} type="number" min={0} placeholder={t('web.recordingRules.default')} value={shownSeconds(edit.options.prePaddingMs)} onChange={e => setEdit({...edit, options: {...edit.options, prePaddingMs: enteredMs(e.target.value)}})} style={{width: 170}} />
+              <Input label={t('web.recordingRules.endLateSeconds')} type="number" min={0} placeholder={t('web.recordingRules.default')} value={shownSeconds(edit.options.postPaddingMs)} onChange={e => setEdit({...edit, options: {...edit.options, postPaddingMs: enteredMs(e.target.value)}})} style={{width: 170}} />
               <Input label={t('web.recordingRules.priority')} help={t('web.recordingRules.priorityHelp')} type="number" value={String(edit.options.priority)} onChange={e => setEdit({...edit, options: {...edit.options, priority: Math.round(Number(e.target.value) || 0)}})} style={{width: 130}} />
             </div>
             <Select label={t('web.dvr.keepLabel')} value={edit.options.keepPolicy?.mode ?? 'default'} onChange={e => setEdit({...edit, options: {...edit.options, keepPolicy: e.target.value === 'default' ? null : {mode: e.target.value as Keep['mode'], keepCount: edit.options.keepPolicy?.keepCount || 5, keepDays: edit.options.keepPolicy?.keepDays || 30, keepUntilWatched: edit.options.keepPolicy?.keepUntilWatched ?? false}}})} options={[{value: 'default', label: t('web.recordingRules.useDefaults')}, {value: 'keep-all', label: t('web.logs.everything')}, {value: 'keep-count', label: t('web.recordingRules.latestFew')}, {value: 'keep-days', label: t('web.dvrSettings.keepDays')}]} />

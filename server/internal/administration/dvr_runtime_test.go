@@ -52,7 +52,7 @@ func TestAdministrativeGroupOwnsRealRuleAndLegacyRemainsDisabled(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rule.Owner != c.Owner || rule.Options.PrePaddingSeconds == nil || *rule.Options.PrePaddingSeconds != 60 {
+	if rule.Owner != c.Owner || rule.Options.PrePaddingMs == nil || *rule.Options.PrePaddingMs != 60000 {
 		t.Fatal(rule)
 	}
 	var count int

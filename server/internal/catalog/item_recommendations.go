@@ -257,7 +257,7 @@ func relatedRowAsHome(item Item, row RelatedMovieRow, entries []ContentEntry) Ho
 	return HomeRow{ID: row.ID, Title: row.Heading, TitleText: relatedRowText(row.Relation, row.Heading), Kind: "related", ArtworkShape: recommendationRowShape(kind),
 		Endpoint: "/v1/items/" + item.ID + "/recommendations", LibraryID: item.LibraryID, PrivacySensitivity: "catalog",
 		PolicyState: "available", Relation: row.Relation, Provider: row.Provider, EvidenceID: row.EvidenceID,
-		CacheTTLSeconds: 300, Hideable: true, Reorderable: false, Entries: entries, Total: len(entries), Limit: len(entries)}
+		CacheTTLMs: 300000, Hideable: true, Reorderable: false, Entries: entries, Total: len(entries), Limit: len(entries)}
 }
 
 func (s *Service) recommendationIDs(relation recommendationRelation) ([]string, error) {

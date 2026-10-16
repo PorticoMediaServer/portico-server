@@ -109,7 +109,7 @@ func newPlaybackV1(d Dependencies) *playbackv1.Service {
 		if err != nil {
 			return playbackv1.PostPlayPolicy{}, err
 		}
-		return playbackv1.PostPlayPolicy{Autoplay: values.Bool("playback.autoplayNext"), CountdownSeconds: values.Int("playback.upNextCountdownSeconds"), StartDuringCredits: values.Bool("playback.startNextDuringCredits"), Protection: values.Bool("playback.passoutProtection"), Episodes: values.Int("playback.passoutAfterEpisodes")}, nil
+		return playbackv1.PostPlayPolicy{Autoplay: values.Bool("playback.autoplayNext"), CountdownMs: values.Int("playback.upNextCountdownMs"), StartDuringCredits: values.Bool("playback.startNextDuringCredits"), Protection: values.Bool("playback.passoutProtection"), Episodes: values.Int("playback.passoutAfterEpisodes")}, nil
 	}
 	if d.AudioMedia != nil {
 		s.MeasureAudio = d.AudioMedia.MeasureAudio

@@ -535,7 +535,7 @@ func (s *Service) publish(ctx context.Context, w work, object mediaartifact.Obje
 	}
 	id := hash([]any{w.ID, w.Generation, object.Digest})
 	sel, _ := json.Marshal(w.Source)
-	raw, _ := json.Marshal(facts)
+	raw := facts.EncodeStored()
 	now := time.Now().UnixMilli()
 	entity, e := entityid.Resolve(ctx, tx, w.ItemID)
 	if e != nil {

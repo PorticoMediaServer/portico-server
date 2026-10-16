@@ -48,7 +48,7 @@ func TestRemoteSourceWithALargeGuideSaves(t *testing.T) {
 	ctx := context.Background()
 	a := testAuthority("fence", true, true)
 	draft := RemoteDraft{ID: strings.Repeat("ab", 24), Name: "Playlist", Kind: "m3u", Locator: srv.URL + "/channels.m3u", GuideURL: srv.URL + "/guide.xml",
-		ConfirmedLANRoots: []string{srv.URL + "/"}, Mappings: []ChannelMapping{}, RefreshSeconds: 21600, ViewerAccess: "server-members"}
+		ConfirmedLANRoots: []string{srv.URL + "/"}, Mappings: []ChannelMapping{}, RefreshMs: 21600000, ViewerAccess: "server-members"}
 	preview, e := s.PreviewRemote(ctx, a, SourceFetcher{}, draft)
 	if e != nil {
 		t.Fatalf("preview: %v", e)
@@ -73,7 +73,7 @@ func TestRemoteInitialSelectionKeepsOnlyEnabledChannels(t *testing.T) {
 	s := testStore(t)
 	ctx := context.Background()
 	a := testAuthority("fence", true, true)
-	draft := RemoteDraft{ID: strings.Repeat("ab", 24), Name: "Selected", Kind: "m3u", Locator: srv.URL + "/channels.m3u", ConfirmedLANRoots: []string{srv.URL + "/"}, RefreshSeconds: 21600, ViewerAccess: "server-members", EnabledGroups: []string{"Keep"}}
+	draft := RemoteDraft{ID: strings.Repeat("ab", 24), Name: "Selected", Kind: "m3u", Locator: srv.URL + "/channels.m3u", ConfirmedLANRoots: []string{srv.URL + "/"}, RefreshMs: 21600000, ViewerAccess: "server-members", EnabledGroups: []string{"Keep"}}
 	p, e := s.PreviewRemote(ctx, a, SourceFetcher{}, draft)
 	if e != nil {
 		t.Fatal(e)

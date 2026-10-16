@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"math"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"regexp"
@@ -38,7 +39,7 @@ type ActivityRow struct {
 	Delivery             string   `json:"delivery"`
 	CreatedAt            *string  `json:"createdAt"`
 	ReportedAt           *string  `json:"reportedAt"`
-	PositionSeconds      *float64 `json:"positionSeconds"`
+	PositionMs           *int64   `json:"positionMs"`
 	ExpiresAt            string   `json:"expiresAt"`
 	AuthorizationStopped bool     `json:"authorizationStopped"`
 	CleanupStatus        string   `json:"cleanupStatus"`
@@ -146,9 +147,14 @@ func (s *Service) Activity(ctx context.Context, p identity.Principal, scope Acti
 		var row ActivityRow
 		var ordinal int64
 		var artifact bool
-		if e = rows.Scan(&ordinal, &row.SessionID, &row.Generation, &row.ItemID, &row.Title, &row.LibraryID, &row.LibraryName, &row.LibraryKind, &row.State, &row.Delivery, &row.CreatedAt, &row.ReportedAt, &row.PositionSeconds, &row.ExpiresAt, &artifact); e != nil {
+		var position *float64
+		if e = rows.Scan(&ordinal, &row.SessionID, &row.Generation, &row.ItemID, &row.Title, &row.LibraryID, &row.LibraryName, &row.LibraryKind, &row.State, &row.Delivery, &row.CreatedAt, &row.ReportedAt, &position, &row.ExpiresAt, &artifact); e != nil {
 			rows.Close()
 			return out, e
+		}
+		if position != nil && *position >= 0 && !math.IsNaN(*position) && !math.IsInf(*position, 0) {
+			ms := int64(math.Round(*position * 1000))
+			row.PositionMs = &ms
 		}
 		if len(out.Items) == limit {
 			break

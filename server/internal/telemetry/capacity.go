@@ -22,8 +22,8 @@ type TranscodeSettings struct {
 	X264Preset              string
 	DirectStreamRemux       bool
 	PlanningPolicy          string
-	ThrottleBufferSeconds   int
-	PlayedRetentionSeconds  int
+	ThrottleBufferMs        int
+	PlayedRetentionMs       int
 	SessionStorageMiB       int
 	TemporaryDirectory      string
 	MaxConcurrentSessions   int
@@ -131,21 +131,21 @@ type TemporaryDirectory struct {
 
 // Report is the wire shape of GET /v1/admin/transcode/capacity.
 type Report struct {
-	Toolchain              *decoder.ToolchainFacts `json:"toolchain,omitempty"`
-	Enabled                bool                    `json:"enabled"`
-	Hardware               HardwareStatus          `json:"hardware"`
-	Sessions               SessionCounts           `json:"sessions"`
-	HDRToneMapping         ToneMappingStatus       `json:"hdrToneMapping"`
-	DirectStreamRemux      bool                    `json:"directStreamRemux"`
-	X264Preset             string                  `json:"x264Preset"`
-	PlanningPolicy         string                  `json:"planningPolicy"`
-	ThrottleBufferSeconds  int                     `json:"throttleBufferSeconds"`
-	PlayedRetentionSeconds int                     `json:"playedRetentionSeconds"`
-	TemporaryDirectory     TemporaryDirectory      `json:"temporaryDirectory"`
-	Presets                []Preset                `json:"presets"`
-	Dependencies           map[string]Dependency   `json:"dependencies"`
-	Warnings               []string                `json:"warnings"`
-	ObservedAt             int64                   `json:"observedAt"`
+	Toolchain          *decoder.ToolchainFacts `json:"toolchain,omitempty"`
+	Enabled            bool                    `json:"enabled"`
+	Hardware           HardwareStatus          `json:"hardware"`
+	Sessions           SessionCounts           `json:"sessions"`
+	HDRToneMapping     ToneMappingStatus       `json:"hdrToneMapping"`
+	DirectStreamRemux  bool                    `json:"directStreamRemux"`
+	X264Preset         string                  `json:"x264Preset"`
+	PlanningPolicy     string                  `json:"planningPolicy"`
+	ThrottleBufferMs   int                     `json:"throttleBufferMs"`
+	PlayedRetentionMs  int                     `json:"playedRetentionMs"`
+	TemporaryDirectory TemporaryDirectory      `json:"temporaryDirectory"`
+	Presets            []Preset                `json:"presets"`
+	Dependencies       map[string]Dependency   `json:"dependencies"`
+	Warnings           []string                `json:"warnings"`
+	ObservedAt         int64                   `json:"observedAt"`
 }
 
 // Capacity composes the report. Probe and dependency results are cached because
@@ -191,21 +191,21 @@ func (c *Capacity) Report(ctx context.Context, s TranscodeSettings, sessions Ses
 	effective, effectiveWarning := resolveBackend(s.HardwareBackend, probes)
 	directory := resolveTemporaryDirectory(s.TemporaryDirectory, c.State)
 	out := Report{
-		Toolchain:              decoder.CurrentToolchain(),
-		Enabled:                s.Enabled,
-		Hardware:               HardwareStatus{Configured: s.HardwareBackend, Effective: effective, Device: s.HardwareDevice, Probes: probes},
-		Sessions:               sessions,
-		HDRToneMapping:         toneMapping(s, effective, dependencies["ffmpeg"].OK),
-		DirectStreamRemux:      s.DirectStreamRemux,
-		X264Preset:             s.X264Preset,
-		PlanningPolicy:         s.PlanningPolicy,
-		ThrottleBufferSeconds:  s.ThrottleBufferSeconds,
-		PlayedRetentionSeconds: s.PlayedRetentionSeconds,
-		TemporaryDirectory:     directory,
-		Presets:                Presets(),
-		Dependencies:           dependencies,
-		Warnings:               []string{},
-		ObservedAt:             now,
+		Toolchain:          decoder.CurrentToolchain(),
+		Enabled:            s.Enabled,
+		Hardware:           HardwareStatus{Configured: s.HardwareBackend, Effective: effective, Device: s.HardwareDevice, Probes: probes},
+		Sessions:           sessions,
+		HDRToneMapping:     toneMapping(s, effective, dependencies["ffmpeg"].OK),
+		DirectStreamRemux:  s.DirectStreamRemux,
+		X264Preset:         s.X264Preset,
+		PlanningPolicy:     s.PlanningPolicy,
+		ThrottleBufferMs:   s.ThrottleBufferMs,
+		PlayedRetentionMs:  s.PlayedRetentionMs,
+		TemporaryDirectory: directory,
+		Presets:            Presets(),
+		Dependencies:       dependencies,
+		Warnings:           []string{},
+		ObservedAt:         now,
 	}
 	if out.Toolchain != nil {
 		if missing := out.Toolchain.MissingRequired(); len(missing) > 0 {

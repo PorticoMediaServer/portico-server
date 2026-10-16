@@ -195,8 +195,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const subtitleSize=prefs.value<string>('playback.subtitleSize','medium');
   const subtitleBackground=prefs.value<string>('playback.subtitleBackground','translucent');
   useEffect(()=>{const el=video.current;if(!el)return;el.style.setProperty('--subtitle-size',({small:'80%',medium:'100%',large:'125%','extra-large':'150%'} as Record<string,string>)[subtitleSize]??'100%');el.style.setProperty('--subtitle-background',({none:'transparent',translucent:'var(--subtitle-translucent)',opaque:'black'} as Record<string,string>)[subtitleBackground]??'var(--subtitle-translucent)');},[resourceKey,subtitleSize,subtitleBackground]);
-  const skipBack = prefs.value<number>('playback.skipBackSeconds', 10);
-  const skipForward = prefs.value<number>('playback.skipForwardSeconds', 30);
+  const skipBack = prefs.value<number>('playback.skipBackMs', 10_000) / 1000;
+  const skipForward = prefs.value<number>('playback.skipForwardMs', 30_000) / 1000;
   const defaultSpeed = prefs.value<number>('playback.defaultSpeed', 1);
   const skipModes: Record<string, SkipMode> = {intro: prefs.value('playback.introSkip', 'ask'), credits: prefs.value('playback.creditsSkip', 'ask'), recap: prefs.value('playback.recapSkip', 'ask'), outro: prefs.value('playback.creditsSkip', 'ask'), commercial: 'ask'};
   const trickplay = useTrickplay(api, scope, item, offers.data?.current?.sourceId, !isAudio && !state.channel);

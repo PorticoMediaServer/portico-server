@@ -11,7 +11,7 @@ import type {V1Http} from '../src/playback-v1/http.ts';
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 
-function setup(options: {postPlay?: {autoplay: boolean; countdownSeconds: number; passoutCheckDue: boolean; automaticAdvances: number; startDuringCredits?: boolean}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]; beforeFreshPlayback?: () => Promise<void>} = {}) {
+function setup(options: {postPlay?: {autoplay: boolean; countdownMs: number; passoutCheckDue: boolean; automaticAdvances: number; startDuringCredits?: boolean}; log?: {method: string; path: string; body?: unknown}[]; server?: ConstructorParameters<typeof FakePlaybackServer>[0]; beforeFreshPlayback?: () => Promise<void>} = {}) {
   const server = new FakePlaybackServer(options.server);
   const inner = fakeHttp(server);
   const log = options.log ?? [];
@@ -689,7 +689,7 @@ test('a retry after the queue moved on does not start the new entry at the old t
 });
 
 test('the server still-watching policy holds completion and a manual Continue releases it', async () => {
-  const {player, playback, log, stop} = setup({postPlay: {autoplay: true, countdownSeconds: 5, passoutCheckDue: true, automaticAdvances: 2}});
+  const {player, playback, log, stop} = setup({postPlay: {autoplay: true, countdownMs: 5000, passoutCheckDue: true, automaticAdvances: 2}});
   await player.playEntries(['a', 'b'].map(queueItemInput));
   playToEnd(playback);
   await settle(); await settle();
@@ -755,7 +755,7 @@ test('republishing capabilities re-plans the same session without remembering th
 
 test('the queue view carries the viewer\'s choice to start the next title during the credits', async () => {
   for (const startDuringCredits of [true, false]) {
-    const {player, stop} = setup({postPlay: {autoplay: true, countdownSeconds: 10, passoutCheckDue: false, automaticAdvances: 0, startDuringCredits}});
+    const {player, stop} = setup({postPlay: {autoplay: true, countdownMs: 10000, passoutCheckDue: false, automaticAdvances: 0, startDuringCredits}});
     await player.playEntries(['a', 'b'].map(queueItemInput));
     await settle();
     assert.equal(player.getSnapshot().view?.postPlay.startDuringCredits, startDuringCredits);

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {AdministrationError,analysisSelectionComplete,backupProgressFraction,deletionAllowed,folderTemplateProblems,folderTemplateTokens,isRestoreRefusalCode,isStatePermissionsAlert,parseAnalysisMatrix,parseBackupsDocument,parseChannelMapPage,parseDVRDocument,parseDeletePreview,parseDeleteResult,parseEnvelope,parseFailure,parseFilesystemPage,parseLibraryDocument,parseLiveSourceDocument,parseRestoreStaged,parseStatePermissionsItem,parseStorageReport,parseTunerView,parseUpdateReport} from '../src/administration.ts';
 
 const matrix={costClasses:[{id:'metadata-only',name:'Metadata only',description:'One read.',order:1},{id:'decode',name:'Decodes the video',description:'Expensive.',order:3}],operations:[{id:'probe',name:'Media probe',costClass:'metadata-only',description:'Reads facts.',mediaKinds:['movie'],defaultEnabled:true,requires:null,producesArtifacts:false,network:false},{id:'trickplay',name:'Trickplay tiles',costClass:'decode',description:'Decodes frames.',mediaKinds:['movie'],defaultEnabled:false,requires:['probe'],producesArtifacts:true,network:false}]};
-const navigation={trickplayIntervalSeconds:10,trickplayTileWidth:320,trickplayMaxTiles:400,chapterThumbnailMode:'generated',videoPreviewEnabled:false,videoPreviewSeconds:30};
+const navigation={trickplayIntervalMs:10000,trickplayTileWidth:320,trickplayMaxTiles:400,chapterThumbnailMode:'generated',videoPreviewEnabled:false,videoPreviewMs:30000};
 function libraryDocument(overrides:Record<string,unknown>={}){return {libraryId:'lib',libraryName:'Films',libraryKind:'movie',revision:2,digest:'d',settings:{allowMediaDeletion:true,monitorChanges:true,providers:[{mediaKind:'movie',provider:'tmdb',apiKey:'',apiKeySet:true,language:'en',region:'GB'}],analysis:['probe','trickplay'],navigation},analysisMatrix:matrix,availableProviders:[{id:'tmdb',name:'TMDB',mediaKinds:['movie'],supportsApiKey:true,supportsLocale:true,attributionNote:'Metadata provided by TMDB.'}],enumerations:{chapterThumbnailMode:['none','embedded','generated']},sources:[{id:'src',name:'Films',root:'/mnt/media/Films',classification:'local',enabled:true}],...overrides};}
 
 test('the envelope is checked and a response from another server is refused',()=>{
@@ -97,12 +97,12 @@ test('CD-43: a capped 64-root page parses as truncated; a 65th root still refuse
 });
 
 test('a guide-only live source may not carry stream tuning or a guide attachment',()=>{
- const base={sourceId:'src',sourceName:'Rooftop aerial',revision:3,digest:'d',tunerCount:2,availableKinds:['playlist','xmltv-guide','hdhomerun'],settings:{enabledGroups:[],enabledChannels:[],kind:'playlist',streamBufferSeconds:12,retryWindowSeconds:null,userAgent:'',guideSourceId:'src-guide',filters:{categories:{mode:'include',values:['News']},countries:{mode:'include',values:[]},keywords:{mode:'exclude',values:['shopping']}},logoImport:{enabled:true,overwriteExisting:false},channelNumbering:{mode:'sequential',startAt:100,step:1}},effective:{importLimits:{bytes:536870912,channels:50000,programmes:5000000},streamBufferSeconds:12,retryWindowSeconds:60,userAgent:'Portico/1.0',guideDays:7,logoImport:true,discoveryEnabled:true}};
+ const base={sourceId:'src',sourceName:'Rooftop aerial',revision:3,digest:'d',tunerCount:2,availableKinds:['playlist','xmltv-guide','hdhomerun'],settings:{enabledGroups:[],enabledChannels:[],kind:'playlist',streamBufferMs:12000,retryWindowMs:null,userAgent:'',guideSourceId:'src-guide',filters:{categories:{mode:'include',values:['News']},countries:{mode:'include',values:[]},keywords:{mode:'exclude',values:['shopping']}},logoImport:{enabled:true,overwriteExisting:false},channelNumbering:{mode:'sequential',startAt:100,step:1}},effective:{importLimits:{bytes:536870912,channels:50000,programmes:5000000},streamBufferMs:12000,retryWindowMs:60000,userAgent:'Portico/1.0',guideDays:7,logoImport:true,discoveryEnabled:true}};
  const parsed=parseLiveSourceDocument(base);
- assert.equal(parsed.settings.streamBufferSeconds,12);
- assert.equal(parsed.settings.retryWindowSeconds,null);
+ assert.equal(parsed.settings.streamBufferMs,12000);
+ assert.equal(parsed.settings.retryWindowMs,null);
  assert.throws(()=>parseLiveSourceDocument({...base,settings:{...base.settings,kind:'xmltv-guide'}}));
- const guide=parseLiveSourceDocument({...base,settings:{...base.settings,kind:'xmltv-guide',streamBufferSeconds:null,guideSourceId:''}});
+ const guide=parseLiveSourceDocument({...base,settings:{...base.settings,kind:'xmltv-guide',streamBufferMs:null,guideSourceId:''}});
  assert.equal(guide.settings.kind,'xmltv-guide');
 });
 
@@ -119,7 +119,7 @@ test('a channel map lists two channels served on one number so the clash can be 
 });
 
 test('the DVR document refuses deleting the original with no conversion, and templates are checked before a write',()=>{
- const settings={prePaddingSeconds:60,postPaddingSeconds:180,keepPolicy:{mode:'keep-count',keepCount:5,keepDays:0,keepUntilWatched:true},conversion:{mode:'remux',ladderId:'',deleteOriginal:false},folderTemplate:'{series}/Season {season:02}/{series} - S{season:02}E{episode:02} - {title}',movieFolderTemplate:'{title} ({year})/{title} ({year})',recordingProfile:'original',sidecars:{nfo:true,poster:true,fanart:false,thumbnail:true},tunerPreference:'least-busy',liveTunerConflict:'keep-watching'};
+ const settings={prePaddingMs:60000,postPaddingMs:180000,keepPolicy:{mode:'keep-count',keepCount:5,keepDays:0,keepUntilWatched:true},conversion:{mode:'remux',ladderId:'',deleteOriginal:false},folderTemplate:'{series}/Season {season:02}/{series} - S{season:02}E{episode:02} - {title}',movieFolderTemplate:'{title} ({year})/{title} ({year})',recordingProfile:'original',sidecars:{nfo:true,poster:true,fanart:false,thumbnail:true},tunerPreference:'least-busy',liveTunerConflict:'keep-watching'};
  const tokens=[{token:'{series}',description:'Series title.',example:'Nova',supportsPadding:false},{token:'{season}',description:'Season number.',example:'3',supportsPadding:true},{token:'{episode}',description:'Episode number.',example:'7',supportsPadding:true},{token:'{title}',description:'Title.',example:'The Planets',supportsPadding:false},{token:'{year}',description:'Year.',example:'2024',supportsPadding:false}];
  const document=parseDVRDocument({revision:1,digest:'d',settings,folderTokens:tokens,enumerations:{keepMode:['keep-all','keep-count','keep-days']}});
  assert.equal(document.settings.keepPolicy.keepCount,5);
@@ -214,7 +214,7 @@ test('the state-permissions item parses and only live items match',()=>{
 });
 
 test('current DVR defaults accept unavailable templates as empty and retain the supported settings',()=>{
- const settings={prePaddingSeconds:60,postPaddingSeconds:180,keepPolicy:{mode:'keep-all',keepCount:0,keepDays:0,keepUntilWatched:false},conversion:{mode:'none',ladderId:'',deleteOriginal:false},folderTemplate:'',movieFolderTemplate:'',recordingProfile:'original',sidecars:{nfo:false,poster:false,fanart:false,thumbnail:false},tunerPreference:'first-available',liveTunerConflict:'stop-watching'};
+ const settings={prePaddingMs:60000,postPaddingMs:180000,keepPolicy:{mode:'keep-all',keepCount:0,keepDays:0,keepUntilWatched:false},conversion:{mode:'none',ladderId:'',deleteOriginal:false},folderTemplate:'',movieFolderTemplate:'',recordingProfile:'original',sidecars:{nfo:false,poster:false,fanart:false,thumbnail:false},tunerPreference:'first-available',liveTunerConflict:'stop-watching'};
  const wire={revision:1,digest:'current',settings,folderTokens:[],enumerations:{keepMode:['keep-all','keep-count','keep-days'],conversionMode:['none'],recordingProfile:['original'],tunerPreference:['first-available']}};
  const document=parseDVRDocument(wire);
  assert.deepEqual(document.settings,settings);

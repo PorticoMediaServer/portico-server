@@ -69,7 +69,7 @@ func TestCapacityAndAttentionReadTheSettingsRegistry(t *testing.T) {
 	mux, owner, _ := telemetryFixture(t)
 	var report telemetry.Report
 	telemetryData(t, mux, owner, "/v1/admin/transcode/capacity", &report)
-	if report.X264Preset != "veryfast" || report.Hardware.Configured != "auto" || report.ThrottleBufferSeconds != 60 {
+	if report.X264Preset != "veryfast" || report.Hardware.Configured != "auto" || report.ThrottleBufferMs != 60000 {
 		t.Fatal("the capacity report must publish the registry's effective values", report)
 	}
 	if len(report.Presets) == 0 || report.Hardware.Effective == "" {
