@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
+	"time"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/requestinput"
 )
@@ -144,6 +146,9 @@ func (s *Service) SetPinOrder(a ResourceActor, expected int64, order []PinOrderE
 	if _, e = tx.Exec(`INSERT INTO saved_pin_order_revisions(owner_key,revision) VALUES(?,?) ON CONFLICT(owner_key) DO UPDATE SET revision=excluded.revision`, owner, revision); e != nil {
 		return out, e
 	}
+	if e = hintPinsChanged(tx, owner, "pins"); e != nil {
+		return out, e
+	}
 	if e = gated.Commit(); e != nil {
 		return out, e
 	}
@@ -230,6 +235,9 @@ func (s *Service) SetLibraryNavigation(a ResourceActor, expected int64, librarie
 	if _, e = tx.Exec(`INSERT INTO library_navigation_revisions(owner_key,revision) VALUES(?,?) ON CONFLICT(owner_key) DO UPDATE SET revision=excluded.revision`, owner, revision); e != nil {
 		return out, e
 	}
+	if e = hintPinsChanged(tx, owner, "library-navigation"); e != nil {
+		return out, e
+	}
 	if e = gated2.Commit(); e != nil {
 		return out, e
 	}
@@ -270,4 +278,13 @@ func (s *Service) LibrariesForViewer(a ResourceActor) ([]Library, error) {
 		}
 	}
 	return out, nil
+}
+
+// hintPinsChanged tells the viewer's other devices that their pins moved, so
+// the rail and Saved there follow within the feed's usual delay.
+func hintPinsChanged(tx *sql.Tx, owner, what string) error {
+	_, e := tx.Exec(`INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision)
+ VALUES(?,'personal.changed','personal',?,?)
+ ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision`, "personal:"+owner, what, strconv.FormatInt(time.Now().UnixNano(), 10))
+	return e
 }

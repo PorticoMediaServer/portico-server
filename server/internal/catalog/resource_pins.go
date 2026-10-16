@@ -87,6 +87,9 @@ func (s *Service) MutateSavedPin(a ResourceActor, kind, id string, m PinMutation
 	if _, e = tx.Exec(`INSERT INTO saved_pins VALUES(?,?,?,?,?) ON CONFLICT(owner_key,kind,resource_id) DO UPDATE SET pinned=excluded.pinned,revision=excluded.revision`, actorKey(a), kind, id, m.Pinned, out.PinRevision); e != nil {
 		return out, e
 	}
+	if e = hintPinsChanged(tx, actorKey(a), "pins"); e != nil {
+		return out, e
+	}
 	if e = fenceOperation(tx, actorKey(a), "resource", m.OperationID, hash); e != nil {
 		return out, e
 	}

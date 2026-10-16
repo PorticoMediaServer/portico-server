@@ -14,7 +14,7 @@ import {iconFor} from '@core/presentation/index.ts';
 import {PlayerProvider, usePlayer} from '../player/engine';
 import {ServerPreferencesProvider, useServerPreferences} from '../app/server-preferences';
 import {ConnectionOverlay} from './Connection';
-import {FreshnessRuntime} from '../app/freshness';
+import {FreshnessRuntime, useFreshness} from '../app/freshness';
 import {CustodyPrompt} from './CustodyPrompt';
 import {SelectionProvider, useSelectionActive} from '../app/selection';
 import {MetadataEditorProvider, useMetadataEditor} from '../app/metadata-editor';
@@ -24,7 +24,8 @@ import {TogetherProvider, useInRoom} from '../app/together';
 import {CastProvider} from '../app/cast';
 import {ChannelSourcesProvider, channelEntries, readReminders, subscribeReminders, useChannelSources} from '../app/channels';
 import {artworkMetricsEnabled, logScreen, useArtworkScreens} from '../app/artwork-metrics';
-import {usePinActions, usePinnedResources} from '../app/pins';
+import {PINS_CHANGED_EVENT, usePinActions, usePinnedResources} from '../app/pins';
+import {dependsOn} from '@core/freshness-hub.ts';
 import {PinEditor, pinnedResourceIcon} from './PinEditor';
 import s from './Shell.module.css';
 
@@ -319,9 +320,12 @@ function Rail({collapsed, onToggle}: {collapsed: boolean; onToggle?: () => void}
   const pins = usePinnedResources(session.api, scope.serverId, sessionIdentity(session.session) || undefined);
   const pinActions = usePinActions(session.api, scope.serverId);
   const [editingPins, setEditingPins] = useState(false);
-  // A pin changed here or elsewhere reorders the libraries too.
+  // A pin changed here or on another device (it arrives with this profile's personal changes) reorders the libraries too.
   const reloadLibraries = libraries.reload;
   useEffect(() => { if (pins.ready) reloadLibraries(); }, [pins.revision, pins.ready, reloadLibraries]);
+  const {hub} = useFreshness();
+  useEffect(() => hub.watch([dependsOn.personal()], reloadLibraries), [hub, reloadLibraries]);
+  useEffect(() => { window.addEventListener(PINS_CHANGED_EVENT, reloadLibraries); return () => window.removeEventListener(PINS_CHANGED_EVENT, reloadLibraries); }, [reloadLibraries]);
   const firstUnpinned = libraries.items.findIndex(l => l.pinned !== true);
   return (
     <nav className={s.rail} aria-label={t('web.shell.primary')}>
