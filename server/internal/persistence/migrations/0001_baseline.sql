@@ -2593,6 +2593,8 @@ CREATE TABLE social_groups(
   governance_revision INTEGER NOT NULL DEFAULT 1,
   wait_until_ms INTEGER NOT NULL DEFAULT 0,
   activity_seen_ms INTEGER NOT NULL DEFAULT 0,
+  -- The readiness summary the room last told its members, so a report that changes nothing is not re-broadcast.
+  readiness_summary TEXT NOT NULL DEFAULT '',
   wait_resume_state TEXT NOT NULL DEFAULT 'paused' CHECK(wait_resume_state IN ('playing','paused','ready')),
   queue_revision INTEGER NOT NULL DEFAULT 1,
   reconnect_generation INTEGER NOT NULL DEFAULT 1,
