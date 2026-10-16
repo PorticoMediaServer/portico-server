@@ -116,7 +116,7 @@ export type Presentation = Readonly<{
   generation: number; mode: 'direct' | 'stream'; url: string; startPositionMs: number;
   /** The player engine the device must play this presentation with. */
   engine: PlaybackEngine;
-  subtitles: readonly Readonly<{trackId: string; format: string; url: string; companionUrl?: string; fontsUrl?: string}>[];
+  subtitles: readonly Readonly<{trackId: string; format: string; url: string; companionUrl?: string; fontsUrl?: string; linesUrl?: string}>[];
   decision: Readonly<{video?: Decision; audio?: Decision; subtitles?: Decision}>;
   bitrateKbps?: number;
   /** The quality in force (what was asked for, or the saved default for this network). */
@@ -183,7 +183,7 @@ export function parsePresentation(p: unknown, prepared = false): Presentation {
     audioTrackId: typeof p.audioTrackId === 'string' && p.audioTrackId ? p.audioTrackId : undefined,
     subtitle: obj(p.subtitle) && typeof p.subtitle.trackId === 'string' && p.subtitle.trackId ? Object.freeze({trackId: p.subtitle.trackId, kind: oneOf(p.subtitle.kind, ['text', 'ass', 'pgs', 'vobsub', 'dvb'] as const, 'other' as never), delivery: oneOf(p.subtitle.delivery, ['sidecar', 'device', 'burn'] as const, 'other' as never)}) : undefined,
     container: typeof p.container === 'string' && p.container ? p.container : undefined,
-    subtitles: Object.freeze(arr(p.subtitles).filter(obj).map(s => Object.freeze({trackId: id(s.trackId, 'subtitle track'), format: str(s.format), url: url(s.url, 'subtitle url'), ...(s.companionUrl===undefined?{}:{companionUrl:url(s.companionUrl,'subtitle companion url')}), ...(s.fontsUrl===undefined?{}:{fontsUrl:url(s.fontsUrl,'subtitle fonts url')})}))),
+    subtitles: Object.freeze(arr(p.subtitles).filter(obj).map(s => Object.freeze({trackId: id(s.trackId, 'subtitle track'), format: str(s.format), url: url(s.url, 'subtitle url'), ...(s.companionUrl===undefined?{}:{companionUrl:url(s.companionUrl,'subtitle companion url')}), ...(s.fontsUrl===undefined?{}:{fontsUrl:url(s.fontsUrl,'subtitle fonts url')}), ...(s.linesUrl===undefined?{}:{linesUrl:url(s.linesUrl,'subtitle lines url')})}))),
     decision: Object.freeze({video: decision(d.video), audio: decision(d.audio), subtitles: decision(d.subtitles)}),
     bitrateKbps: optNum(p.bitrateKbps),
     hdr: obj(p.hdr) ? Object.freeze({source: typeof p.hdr.source === 'string' ? p.hdr.source : undefined, delivered: typeof p.hdr.delivered === 'string' ? p.hdr.delivered : undefined, toneMapped: bool(p.hdr.toneMapped)}) : undefined,

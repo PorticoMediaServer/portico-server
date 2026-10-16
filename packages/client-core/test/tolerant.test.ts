@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {firstOfEach, keepReadable, noteSkipped, oneOf, oneOfOr, onSkipped, resetSkippedParts, skippedParts} from '../src/tolerant.ts';
+import {firstOfEach, keepReadable, noteSkipped, oneOf, oneOfOr, onSkipped, resetSkippedParts, skippedParts, skippedVersion, subscribeSkipped} from '../src/tolerant.ts';
 
 test('a known value is kept and an unknown one is dropped without failing', () => {
   assert.equal(oneOf('poster', ['poster', 'square']), 'poster');
@@ -45,4 +45,21 @@ test('the record of skipped parts is bounded and listeners hear each skip', () =
   assert.equal(skippedParts().at(-1)?.part, 'after');
   noteSkipped('doc', 'after', 0);
   assert.equal(skippedParts().at(-1)?.count, 1);
+});
+
+test('a screen showing the record is told when it changes, and Clear all empties it', () => {
+  resetSkippedParts();
+  let told = 0;
+  const stop = subscribeSkipped(() => told++);
+  const before = skippedVersion();
+  noteSkipped('saved', 'entries', 2);
+  assert.equal(told, 1);
+  assert.notEqual(skippedVersion(), before);
+  resetSkippedParts();
+  assert.equal(told, 2);
+  assert.deepEqual(skippedParts(), []);
+  stop();
+  noteSkipped('saved', 'entries');
+  assert.equal(told, 2);
+  resetSkippedParts();
 });

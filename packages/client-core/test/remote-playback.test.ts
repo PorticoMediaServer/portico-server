@@ -31,7 +31,7 @@ test('a handoff commits only after the television proves it is playing', async()
  const s=server({grants:['accepted'],handoffs:[{},{},{outcome:'pending',revision:'2',receiverPlaybackId:'pb_tv',readyPositionUs:'90400000'}]});
  const c=controller(s);
  assert.equal(await c.send(tv,{playbackId:'pb_1',positionSeconds:90}),true);
- assert.equal(c.getSnapshot().phase,'done');
+ assert.equal(c.getSnapshot().phase,'done');assert.equal(c.getSnapshot().handoffId,'hdf_1');
  const prepared=s.calls.find(x=>x.path==='/v1/handoffs')!;
  assert.equal(prepared.body.startPositionUs,'90000000');assert.equal(prepared.body.sourcePlaybackId,'pb_1');
  const commit=s.calls.find(x=>x.path.endsWith('/commit'))!;

@@ -6753,6 +6753,28 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_subtitle_fonts_cjk",
+    "method": "GET",
+    "path": "/v1/subtitle-fonts/cjk",
+    "summary": "Read the Chinese, Japanese and Korean font for subtitles drawn in a browser",
+    "access": "public",
+    "requires": "open",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "font/otf",
+    "http": true,
+    "admission": "media-body"
+  },
+  {
     "id": "get_suggestions",
     "method": "GET",
     "path": "/v1/suggestions",
@@ -7065,6 +7087,38 @@ export const routes = [
     ],
     "status": 200,
     "responseContentType": "font/ttf",
+    "admission": "media-body"
+  },
+  {
+    "id": "get_v1_media_subtitles_grant_resource_revision_lines",
+    "method": "GET",
+    "path": "/v1/media/subtitles/{grant}/{resource}/{revision}/lines",
+    "summary": "Read or change authorized subtitles",
+    "access": "public",
+    "requires": "open",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "query": [
+      "segment"
+    ],
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal",
+      "subtitle_unavailable",
+      "subtitle_not_found",
+      "subtitle_renderer_platform_unsupported",
+      "subtitle_renderer_configuration",
+      "subtitle_conflict",
+      "subtitle_operation_conflict",
+      "subtitle_capacity",
+      "subtitle_unsupported",
+      "subtitle_invalid_input"
+    ],
+    "status": 200,
     "admission": "media-body"
   },
   {
@@ -8069,7 +8123,7 @@ export const routes = [
     "id": "merge_titles",
     "method": "POST",
     "path": "/v1/admin/titles/merge",
-    "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions and everyone's state combined",
+    "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book or artist: its songs, files or albums) and everyone's state combined",
     "access": "owner",
     "requires": "library",
     "lane": "default",
@@ -16078,6 +16132,7 @@ export const routePaths = {
   "get_storage_source_operations_id": "/v1/storage/source-operations/{id}",
   "get_storage_sources": "/v1/storage/sources",
   "get_storage_status": "/v1/admin/storage/status",
+  "get_subtitle_fonts_cjk": "/v1/subtitle-fonts/cjk",
   "get_suggestions": "/v1/suggestions",
   "get_system": "/v1/system",
   "get_topshelf": "/v1/topshelf",
@@ -16089,6 +16144,7 @@ export const routePaths = {
   "get_v1_media_subtitles_grant_resource_revision": "/v1/media/subtitles/{grant}/{resource}/{revision}",
   "get_v1_media_subtitles_grant_resource_revision_fonts": "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts",
   "get_v1_media_subtitles_grant_resource_revision_fonts_font": "/v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}",
+  "get_v1_media_subtitles_grant_resource_revision_lines": "/v1/media/subtitles/{grant}/{resource}/{revision}/lines",
   "get_v1_media_subtitles_grant_resource_revision_original_ass": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.ass",
   "get_v1_media_subtitles_grant_resource_revision_original_idx": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.idx",
   "get_v1_media_subtitles_grant_resource_revision_original_mks": "/v1/media/subtitles/{grant}/{resource}/{revision}/original.mks",

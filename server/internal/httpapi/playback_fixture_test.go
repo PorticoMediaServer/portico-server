@@ -9,7 +9,6 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -25,10 +24,10 @@ import (
 )
 
 type currentPlaybackHTTPFixture struct {
-	d            Dependencies
-	h            http.Handler
-	token, proof string
-	t            *testing.T
+	d     Dependencies
+	h     http.Handler
+	token string
+	t     *testing.T
 }
 
 func currentPlaybackHTTP(t *testing.T) *currentPlaybackHTTPFixture {
@@ -125,7 +124,7 @@ func currentPlaybackHTTPWith(t *testing.T, beforeStart func(rt *playbackruntime.
 	})
 	d := Dependencies{Origins: []string{"http://127.0.0.1:19412"}, DB: db, Identity: id, Catalog: catalog.New(db), Hosted: cached, Storage: store, Mounts: managed, PlaybackRuntime: rt}
 	mux := New(d)
-	return &currentPlaybackHTTPFixture{d: d, h: mux, token: session.AccessToken, proof: strings.Repeat("p", 43), t: t}
+	return &currentPlaybackHTTPFixture{d: d, h: mux, token: session.AccessToken, t: t}
 }
 func (f *currentPlaybackHTTPFixture) call(method, path string, body any) *httptest.ResponseRecorder {
 	f.t.Helper()
@@ -139,7 +138,6 @@ func (f *currentPlaybackHTTPFixture) call(method, path string, body any) *httpte
 	}
 	r := httptest.NewRequest(method, path, bytes.NewReader(raw))
 	r.Header.Set("Authorization", "Bearer "+f.token)
-	r.Header.Set("X-Playback-Controller-Token", f.proof)
 	if body != nil {
 		r.Header.Set("Content-Type", "application/json")
 	}

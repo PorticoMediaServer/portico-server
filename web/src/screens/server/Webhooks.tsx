@@ -57,7 +57,7 @@ export function WebhooksPanel() {
       {list?.items.map(w => {
         const trouble = webhookTrouble(t, w);
         return (
-          <SettingsRow key={w.id} icon="link" label={w.name} help={<><span style={{fontFamily: 'var(--font-mono)', fontSize: 12, overflowWrap: 'anywhere'}}>{w.url}</span>{` · ${t('api.webhooks.eventCount', {count: w.events.length})}`}</>}
+          <SettingsRow key={w.id} icon="link" label={w.name} help={<><span style={{fontFamily: 'var(--font-mono)', fontSize: '0.75rem', overflowWrap: 'anywhere'}}>{w.url}</span>{` · ${t('api.webhooks.eventCount', {count: w.events.length})}`}</>}
             state={trouble ? <Status tone={trouble.tone}>{trouble.text}</Status> : undefined}
             control={<div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
               <Switch checked={w.enabled} disabled={action.busy} label={t('api.webhooks.turnOn', {name: w.name})} onCheckedChange={on => void action.run(async () => { await changeWebhook(api, w, {enabled: on}); read.reload(); })} />
@@ -131,7 +131,7 @@ function SecretDialog({issued, onClose}: {issued?: IssuedWebhook; onClose: () =>
   return (
     <Dialog open={!!issued?.secret} onOpenChange={o => !o && onClose()} dismissable={false} title={t('api.webhooks.secretTitle')} width={500} actions={<Button variant="primary" label={t('web.access.copiedIt')} onClick={onClose} />}>
       <Notice tone="warning" compact>{t('api.webhooks.secretShownOnce')}</Notice>
-      <TextArea label={t('api.webhooks.secret')} readOnly rows={2} value={issued?.secret ?? ''} onFocus={e => e.currentTarget.select()} style={{fontFamily: 'var(--font-mono)', fontSize: 13}} />
+      <TextArea label={t('api.webhooks.secret')} readOnly rows={2} value={issued?.secret ?? ''} onFocus={e => e.currentTarget.select()} style={{fontFamily: 'var(--font-mono)', fontSize: '0.8125rem'}} />
       <div style={{display: 'flex', gap: 12, alignItems: 'center'}}><Button size="sm" variant="secondary" icon="copy" label={t('web.twoStep.copy')} onClick={() => void navigator.clipboard?.writeText(issued?.secret ?? '').then(() => setCopied(true), () => {})} /><span role="status">{copied ? <Text variant="caption" tone="tertiary">{t('api.credential.copied')}</Text> : null}</span></div>
     </Dialog>
   );

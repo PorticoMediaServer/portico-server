@@ -188,11 +188,13 @@ your limit; retry after the stated delay.
 ## Browsers
 
 A key or token is a bearer secret. Do not put one in a web page other people can
-load. Requests from a browser page on another origin are refused unless the
-server's operator has listed that origin.
+load.
 
-To allow a separate browser app, set `PORTICO_ALLOWED_ORIGINS` to its exact
-origin (comma-separated for several) before starting the server. This adds to
-built-in first-party origins. It is not needed for the bundled same-origin web
-app and does not allow cross-origin first-run setup. CORS permission does not
-replace authentication, scopes or library restrictions.
+A page on any origin may call the API with a key or token in `Authorization`
+(or a media URL carrying its grant); the server answers its preflight and its
+request with `Access-Control-Allow-Origin` set to that origin. There is nothing
+to configure. Cookies never authenticate a request here and are never allowed
+across origins (no `Access-Control-Allow-Credentials`). A request from another
+origin without a token, and any cross-origin first-run setup, is refused with
+`403 origin_not_allowed`. CORS permission does not replace authentication,
+scopes or library restrictions.

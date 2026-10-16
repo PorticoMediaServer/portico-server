@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {manualMoves, movedOrder, moveRequest, moveTarget} from '../src/presentation/manual-order.ts';
+import {manualMoves, movedOrder, moveRequest, moveRequestAt, moveTarget, placeBeforeMoves} from '../src/presentation/manual-order.ts';
 
 test('a move sends the entry and the one it follows, never the whole order', () => {
   const ids = ['a', 'b', 'c', 'd'];
@@ -25,4 +25,21 @@ test('the moves offered for an entry; to the bottom only with the whole list loa
   assert.deepEqual(manualMoves(0, 1, true), []);
   assert.equal(moveTarget('up', 0, 3), 0);
   assert.equal(moveTarget('bottom', 0, 3), 2);
+});
+
+test('a move in a list only partly on hand needs only the moved entry and its new neighbour, and shows at once', () => {
+  const ids = ['a', 'b', 'c', 'd', 'e'];
+  const loaded = (i: number) => ids[i];
+  for (let from = 0; from < ids.length; from++) for (let to = 0; to < ids.length; to++) {
+    assert.deepEqual(moveRequestAt(loaded, ids.length, from, to), moveRequest(ids, from, to), `${from}->${to}`);
+    if (from === to) continue;
+    const after = movedOrder(ids, from, to);
+    assert.deepEqual(after.map((_, i) => ids[placeBeforeMoves(i, [{from, to}])]), after, `shown ${from}->${to}`);
+  }
+  // Two moves before the list is read again.
+  const twice = movedOrder(movedOrder(ids, 4, 0), 1, 3);
+  assert.deepEqual(twice.map((_, i) => ids[placeBeforeMoves(i, [{from: 4, to: 0}, {from: 1, to: 3}])]), twice);
+  // The neighbour isn't loaded: nothing is sent.
+  assert.equal(moveRequestAt(i => (i === 4 ? 'e' : undefined), 5, 4, 2), undefined);
+  assert.deepEqual(moveRequestAt(i => (i === 4 ? 'e' : undefined), 5, 4, 0), {entryId: 'e', afterEntryId: ''});
 });

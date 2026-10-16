@@ -1,6 +1,6 @@
 import {useEffect, useState} from 'react';
 import {HttpLocalApi} from '@core/index.ts';
-import {SECURE_CONNECTION_HELP_URL, plainHttpOutsideHome} from '@core/connection-note.ts';
+import {plainHttpOutsideHome} from '@core/connection-note.ts';
 import {useI18n} from '../../app/i18n';
 import s from './Auth.module.css';
 
@@ -32,8 +32,7 @@ export function PlainHttpNote() {
   if (!show) return null;
   return (
     <p className={s.plainHttp}>
-      {t('web.connectivity.httpOutsideHome')}{' '}
-      <a href={SECURE_CONNECTION_HELP_URL} target="_blank" rel="noopener noreferrer">{t('signIn.plainHttp.link')}</a>
+      {t('web.connectivity.httpOutsideHome')} {t('signIn.plainHttp.owner')}
     </p>
   );
 }

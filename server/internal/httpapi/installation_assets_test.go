@@ -149,3 +149,21 @@ func TestWebDocumentAuthorizesOnlyItsOwnScrollLockStyles(t *testing.T) {
 		t.Fatal("HEAD must return headers without the document")
 	}
 }
+
+func TestSubtitleCJKFontIsServedOnceAndRevalidates(t *testing.T) {
+	mux := http.NewServeMux()
+	Dependencies{}.installationRoutes(mux)
+	response := httptest.NewRecorder()
+	mux.ServeHTTP(response, httptest.NewRequest("GET", "/v1/subtitle-fonts/cjk", nil))
+	tag := response.Header().Get("ETag")
+	if response.Code != 200 || response.Header().Get("Content-Type") != "font/otf" || tag == "" || response.Body.Len() < 1<<20 || !strings.HasPrefix(response.Body.String(), "OTTO") {
+		t.Fatalf("font: %d %q %q %d", response.Code, response.Header().Get("Content-Type"), tag, response.Body.Len())
+	}
+	again := httptest.NewRequest("GET", "/v1/subtitle-fonts/cjk", nil)
+	again.Header.Set("If-None-Match", tag)
+	cached := httptest.NewRecorder()
+	mux.ServeHTTP(cached, again)
+	if cached.Code != http.StatusNotModified || cached.Body.Len() != 0 {
+		t.Fatalf("revalidation: %d %d", cached.Code, cached.Body.Len())
+	}
+}

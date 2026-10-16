@@ -131,7 +131,7 @@ function CreateCredentialDialog({open, onClose, words, scopes, create, onCreated
           {issued.secret ? (
             <>
               <Notice tone="warning" compact>{words.shownOnce}</Notice>
-              <TextArea label={words.secretLabel} readOnly rows={2} value={issued.secret} onFocus={e => e.currentTarget.select()} style={{fontFamily: 'var(--font-mono)', fontSize: 13}} />
+              <TextArea label={words.secretLabel} readOnly rows={2} value={issued.secret} onFocus={e => e.currentTarget.select()} style={{fontFamily: 'var(--font-mono)', fontSize: '0.8125rem'}} />
               <div style={{display: 'flex', gap: 12, alignItems: 'center'}}><Button size="sm" variant="secondary" icon="copy" label={t('web.twoStep.copy')} onClick={copy} /><span role="status">{copied ? <Text variant="caption" tone="tertiary">{t('api.credential.copied')}</Text> : null}</span></div>
             </>
           ) : <Notice tone="warning" compact>{t('api.credential.secretNotShown')}</Notice>}

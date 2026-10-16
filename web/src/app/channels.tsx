@@ -2,7 +2,7 @@ import React, {createContext, useCallback, useContext, useEffect, useMemo, useSt
 import type {ChannelApi} from '@core/channel-guide.ts';
 import {legacyChannelSources, legacyGuideSource, type ChannelSource, type GuideChannelRow, type GuideDataSource} from '@core/guide/index.ts';
 import {sessionIdentity, useSession} from './session';
-import {currentI18n} from './i18n';
+import {currentI18n, type I18n} from './i18n';
 import {onServerChanged} from './server-changes';
 import {dedupedGuideApi, forgetGuideReads} from './guide-reads';
 import {ChannelSourcesStore} from '@core/guide/source-reads.ts';
@@ -84,8 +84,7 @@ export function ChannelSourcesProvider({children}: {children: React.ReactNode}) 
 /** The rail and phone picker entries (§2.0): All channels with 2+ sources, each source, Recordings when a live source records. */
 /** Glyphs: live sources a neutral channels glyph (never the source type); Library Channels its own mark (placeholder `library` until `libraryChannel` is drawn). */
 export type ChannelEntry = {id: string; name: string; icon: 'channels' | 'library' | 'grid' | 'dvr'; library: boolean};
-export function channelEntries(sources: readonly ChannelSource[]): ChannelEntry[] {
-  const t = currentI18n().t;
+export function channelEntries(sources: readonly ChannelSource[], t: I18n['t'] = currentI18n().t): ChannelEntry[] {
   if (!sources.length) return [];
   const out: ChannelEntry[] = [];
   if (sources.length >= 2) out.push({id: ALL, name: t('channels.all'), icon: 'grid', library: false});

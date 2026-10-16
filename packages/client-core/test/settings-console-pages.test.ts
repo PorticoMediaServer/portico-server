@@ -59,6 +59,19 @@ test('remote access carries the home networks, the address to give out, proxies,
   assert.ok(limit && limit.kind === 'server-setting' && limit.control.type === 'number' && limit.control.empty?.stores === 0);
 });
 
+test('secure connection comes first on remote access: its status, a switch once there is a connection, then the owner\'s own certificate', () => {
+  for (const platform of ['web', 'phone'] as const) {
+    const remote = page(server(platform), 'remote')!;
+    const secure = remote.sections.find(s => s.id === 'secure')!;
+    assert.equal(secure.title, 'settings.server.secure.title');
+    assert.deepEqual(secure.rows.map(r => (r.kind === 'server-setting' ? `${r.form}.${r.key}` : r.kind === 'custom' ? r.id : '')), ['server.secureConnection', 'certificate.enabled', 'server.certificateStatus']);
+    const toggle = secure.rows.find(r => r.kind === 'server-setting')!;
+    assert.ok(toggle.kind === 'server-setting' && toggle.when?.key === 'claimed' && toggle.when.equals === true);
+    const order = remote.sections.map(s => s.id);
+    assert.ok(order.indexOf('secure') < order.indexOf('ownCertificate') && order.indexOf('ownCertificate') < order.indexOf('reach'), order.join());
+  }
+});
+
 test('background work speed is one named choice beside background priority', () => {
   const rows = page(server('web'), 'schedule')!.sections.flatMap(s => s.rows);
   const speed = rows.find(r => r.kind === 'server-setting' && r.key === 'backgroundSpeed');
@@ -127,8 +140,8 @@ test('a list setting takes an entry once, trimmed, and never an empty one', () =
 test('the second-pass rows are where an owner would look', () => {
   const web = server('web');
   assert.deepEqual(rowIds(page(web, 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired', 'server.devices']);
-  // The phone draws the approval switch; the list of everyone's devices is the web's.
-  assert.deepEqual(rowIds(page(server('phone'), 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired']);
+  // Phones and tablets have the approval switch and the list of everyone's devices, as the web does.
+  assert.deepEqual(rowIds(page(server('phone'), 'people')!).filter(id => id.includes('evice')), ['runtime.deviceApprovalRequired', 'server.devices']);
   for (const id of ['runtime.sessionStorageMiB', 'runtime.ffmpegPath', 'runtime.temporaryDirectory', 'runtime.hardwareBackend']) assert.ok(rowIds(page(web, 'streaming')!).includes(id), id);
   for (const id of ['liveDefaults.importLimits.channels', 'liveDefaults.importLimits.programmes', 'liveDefaults.importLimits.bytes']) assert.ok(rowIds(page(web, 'live')!).includes(id), id);
   assert.ok(rowIds(page(web, 'general')!).includes('server.restart'));
@@ -162,6 +175,8 @@ test('the third-pass panels sit beside the settings they explain', () => {
   for (const id of ['server.resourceUsage', 'server.storageStatus', 'server.downloadUsage', 'server.setAsideTitles', 'server.playbackProblems']) for (const p of server('tv')) assert.ok(!rowIds(p).includes(id), id);
   const device = settingsStructure({owner: false, platform: 'web', capabilities: {}}).headings[0]!.pages.find(p => p.id === 'device')!;
   assert.ok(rowIds(device).includes('remoteControls'));
+  // What this profile plays on its other devices can be paused or stopped from a phone or a television too.
+  for (const platform of ['phone', 'tv'] as const) assert.ok(rowIds(settingsStructure({owner: false, platform, capabilities: {}}).headings[0]!.pages.find(p => p.id === 'device')!).includes('remoteControls'), platform);
 });
 
 test('remembered playback failures are shown a file at a time, newest first', async () => {

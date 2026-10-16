@@ -1,4 +1,5 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {resetSkippedParts, skippedParts, skippedVersion, subscribeSkipped} from '@core/tolerant.ts';
 import {readEventStream} from '@core/index.ts';
 import {retryAfterSeconds} from '../../bridge/protectedArtwork';
 import {logCategories, logLevels, parseLogEvent, parseLogPage, type LogCategory, type LogLevel, type LogRecord, type LogSettings} from '@core/admin/index.ts';
@@ -120,7 +121,7 @@ export function MessageLogGroup() {
         <Switch checked={live} onCheckedChange={setLive} label={t('guide.live')} />
         {live ? <Status tone={tailError ? 'warning' : 'healthy'}>{tailError || t('web.logs.following')}</Status> : <Freshness at={read.at} onRefresh={read.reload} refreshing={read.loading} />}
       </div>
-      <div ref={box} role="log" aria-live="off" style={{margin: '0 16px 12px', maxHeight: 360, overflow: 'auto', background: 'var(--surface-recess, var(--surface-diagnostics))', borderRadius: 10, padding: '8px 12px', fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: 12, lineHeight: 1.55}}>
+      <div ref={box} role="log" aria-live="off" style={{margin: '0 16px 12px', maxHeight: 360, overflow: 'auto', background: 'var(--surface-recess, var(--surface-diagnostics))', borderRadius: 10, padding: '8px 12px', fontFamily: 'var(--font-mono, ui-monospace, monospace)', fontSize: '0.75rem', lineHeight: 1.55}}>
         {lines.length ? lines.map(l => (
           <div key={l.sequence} style={{display: 'flex', gap: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-word'}}>
             <span style={{color: 'var(--text-tertiary)', flexShrink: 0}}>{logTime(i18n, l.at)}</span>
@@ -155,6 +156,24 @@ export function DetailWindowRow() {
   return (
     <SettingsRow label={t('settings.server.detailWindow')} help={on ? t('settings.server.detailWindow.until', {time: i18n.time(until!)}) : t('settings.server.detailWindow.help')} state={action.error || undefined}
       control={<Button size="sm" variant={on ? 'outline' : 'secondary'} label={on ? t('settings.server.detailWindow.stop') : t('settings.server.detailWindow.start')} loading={action.busy} onClick={() => void action.run(async () => { await setDetailWindow(deps, !on); await form.load(); })} />} />
+  );
+}
+
+/**
+ * What this app left out of the server's answers on this device (the tolerant readers' record):
+ * which document, which part, how many. The names are the readers' own, never anything the server
+ * sent. Empty is the normal state.
+ */
+export function SkippedPartsGroup() {
+  const {t} = useI18n();
+  useSyncExternalStore(subscribeSkipped, skippedVersion);
+  const parts = skippedParts();
+  return (
+    <SettingsGroup title={t('settings.server.skippedParts')} description={t('settings.server.skippedPartsLede')} action={parts.length ? <Button variant="ghost" size="sm" label={t('action.clearAll')} onClick={resetSkippedParts} /> : undefined}>
+      {parts.length ? [...parts].reverse().map(part => (
+        <SettingsRow key={part.document + '\n' + part.part} label={part.document} help={part.part} meta={<Text variant="caption" tone="tertiary">{t('settings.server.skippedPartsCount', {count: part.count})}</Text>} />
+      )) : <SettingsRow label={t('settings.server.skippedPartsNone')} />}
+    </SettingsGroup>
   );
 }
 

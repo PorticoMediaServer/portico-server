@@ -199,9 +199,11 @@ type Presentation struct {
 type SubtitleFile struct {
 	CompanionURL string `json:"companionUrl,omitempty"`
 	FontsURL     string `json:"fontsUrl,omitempty"`
-	TrackID      string `json:"trackId"`
-	Format       string `json:"format"`
-	URL          string `json:"url"`
+	// LinesURL (image subtitles): how many of the track's lines are forced.
+	LinesURL string `json:"linesUrl,omitempty"`
+	TrackID  string `json:"trackId"`
+	Format   string `json:"format"`
+	URL      string `json:"url"`
 }
 
 // PresentationSubtitle is the subtitle track a presentation shows.

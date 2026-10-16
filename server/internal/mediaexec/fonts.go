@@ -52,6 +52,16 @@ var notoDevanagariFont []byte
 //go:embed fonts/NotoSansDevanagari-LICENSE
 var notoDevanagariLicense []byte
 
+var cjkTag = sync.OnceValue(func() string {
+	sum := sha256.Sum256(notoCJKFont)
+	return `"` + hex.EncodeToString(sum[:16]) + `"`
+})
+
+// CJKFont is the bundled Chinese, Japanese and Korean face and a strong ETag
+// for it. Browsers that draw styled subtitles themselves fetch this one copy
+// instead of carrying a second CJK font of their own.
+func CJKFont() ([]byte, string) { return notoCJKFont, cjkTag() }
+
 // hostFontDirs are read-only font sources a decoder may use when present:
 // the distribution's configuration, symlinked rules and fonts on Linux, the
 // system's fonts on macOS. Debian/Ubuntu conf.d links target /usr/share/fontconfig.

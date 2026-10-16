@@ -24,6 +24,8 @@ test('nothing found says so; televisions offer nothing', () => {
   assert.equal(none.empty, 'playOn.noneNearby');
   assert.deepEqual(playOnDestinations('tvos', {airplay: true, googleCast: true, nearby: [{id: 'x', name: 'x', kind: 'tv'}]}), {offered: false, rows: []});
   assert.equal(playOnDestinations('androidtv').offered, false);
+  assert.equal(playOnDestinations('firetv').offered, false);
+  assert.equal(playOnDestinations('vega').offered, false);
 });
 
 test('web: Cast only on Chromium with the SDK, AirPlay only in Safari', () => {

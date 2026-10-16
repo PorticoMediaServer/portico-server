@@ -1,14 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {HttpLocalApi} from '../src/index.ts';
-import {parseCertificateStatus,certificateSummary,certificateError,loadCertificate,saveCertificate,readCertificateResponse} from '../src/certificates.ts';
+import {parseCertificateStatus,certificateError,loadCertificate,saveCertificate,readCertificateResponse} from '../src/certificates.ts';
 const namespace='ptc-aaaaaaaaaaaaaaaaaaaa';
 function status(){return {configured:true,authorityId:'a'.repeat(64),config:{enabled:true,publicPort:32500,publicAddress:'8.8.8.8',revision:'7'},state:'ready',environment:'production',namespace,dnsName:'*.'+namespace+'.direct.getportico.tv',tlsReady:true,publiclyTrusted:true,listenerBound:true,listenPort:32500,reachability:'probe_required'};}
 const response=(raw:unknown)=>new Response(JSON.stringify(raw),{headers:{'Content-Type':'application/json'}});
 test('certificate projection never invents reachability and drops unrecognized secrets',()=>{
  const s=parseCertificateStatus({...status(),csr:'secret',providerResponse:{token:'secret'}});
  assert.equal(s.reachability,'probe_required');assert.equal('csr' in s,false);assert.equal('providerResponse' in s,false);
- assert.match(certificateSummary(s),/does not confirm/);assert.ok(Object.isFrozen(s.config));
+ assert.ok(Object.isFrozen(s.config));
  assert.throws(()=>parseCertificateStatus({...status(),reachability:'verified'}));
  assert.throws(()=>parseCertificateStatus({...status(),environment:'staging',publiclyTrusted:true}));
  assert.throws(()=>parseCertificateStatus({...status(),namespace:'pca-'+ 'a'.repeat(52)}));

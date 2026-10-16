@@ -107,7 +107,8 @@ export function ChannelsScreen() {
   const format = useGuideFormat();
   const t = format.t;
   const compact = useCompact();
-  const entries = useMemo(() => channelEntries(sources), [sources]);
+  // The entries' names are the catalogue's: a new language names them again.
+  const entries = useMemo(() => channelEntries(sources, t), [sources, t]);
   const current = entry && entries.some(e => e.id === entry) ? entry : undefined;
   // /channels opens All channels (2+ sources), else the only source.
   useEffect(() => {

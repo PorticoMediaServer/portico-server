@@ -142,7 +142,7 @@ function RemoteSourceDialog({open, tuner, onClose, onSaved}: {open: boolean; tun
       {confirm ? (
         <Notice tone="warning" title={i18n.t('web.liveTv.lanTitle')}>
           <span>{i18n.t('web.liveTv.lanBody')}</span>
-          <ul style={{margin: '8px 0 0', paddingLeft: 20, fontFamily: 'var(--font-mono)', fontSize: 12.5}}>{confirm.map(root => <li key={root}>{root}</li>)}</ul>
+          <ul style={{margin: '8px 0 0', paddingLeft: 20, fontFamily: 'var(--font-mono)', fontSize: '0.78125rem'}}>{confirm.map(root => <li key={root}>{root}</li>)}</ul>
         </Notice>
       ) : null}
       {action.error ? <Notice tone="error" compact>{action.error}</Notice> : null}

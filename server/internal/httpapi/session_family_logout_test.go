@@ -150,7 +150,11 @@ func TestSessionFamilyHTTPLogoutRequestSafety(t *testing.T) {
 		{"body", 400, func(r *http.Request) { r.ContentLength = 1; r.Body = logoutUnreadBody{} }},
 		{"unknown-body", 400, func(r *http.Request) { r.ContentLength = -1; r.Body = logoutUnreadBody{} }},
 		{"chunked", 400, func(r *http.Request) { r.TransferEncoding = []string{"chunked"}; r.Body = logoutUnreadBody{} }},
-		{"origin", 403, func(r *http.Request) { r.Header.Set("Origin", "http://127.0.0.1:11112") }},
+		// Another origin may call with a token; without one it is refused before authentication.
+		{"origin", 403, func(r *http.Request) {
+			r.Header.Set("Origin", "http://127.0.0.1:11112")
+			r.Header.Del("Authorization")
+		}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

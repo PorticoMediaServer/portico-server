@@ -79,3 +79,35 @@ test('a quiet re-read keeps the sources on screen, and a failed one leaves them 
  fail=true;await assert.rejects(service.revalidate());
  assert.equal(service.getSnapshot().sources.length,1);assert.equal(service.getSnapshot().error,'');service.dispose();
 });
+test('a share changed elsewhere is read again and the command sent once more, silently',async()=>{
+ const conflict=()=>Object.assign(new Error('changed'),{code:'storage_command_conflict'});
+ // Removal: the share was edited elsewhere (generation 2); it is removed at its new generation.
+ let rows=[source({generation:2})];const writes:any[]=[];
+ const removing=new RemoteSourceService(api(async(_p,m,b)=>{if(m==='GET')return list(rows);writes.push(b);if((b as any).expectedGeneration!==2)throw conflict();rows=[];return {scope:wire,receipt:{operationId:op,accepted:true,removed:true,source:source({generation:3,state:'removed'})}};}),scope,async()=>op);
+ await removing.load();await removing.remove(source() as any);
+ assert.deepEqual(writes.map(w=>w.expectedGeneration),[1,2]);assert(removing.getSnapshot().receipt);assert.equal(removing.getSnapshot().error,'');removing.dispose();
+ // Removal of a share already removed elsewhere is done, not a failure.
+ const gone=new RemoteSourceService(api(async(_p,m)=>{if(m==='GET')return list([]);throw conflict();}),scope,async()=>op);
+ await gone.remove(source() as any);assert.equal(gone.getSnapshot().alreadyDone,true);assert.equal(gone.getSnapshot().error,'');gone.dispose();
+ // An edit: someone renamed the share, the owner only switched "insecure local"; the rename is kept.
+ const sent:any[]=[];
+ const editing=new RemoteSourceService(api(async(_p,m,b)=>{if(m==='GET')return list([source({generation:2,name:'Renamed'})]);sent.push(b);if((b as any).expectedGeneration!==2)throw conflict();return receipt();}),scope,async()=>op);
+ const base=source() as any;
+ await editing.configure('dav',{name:'DAV',root:'',username:'',password:'',keepPassword:true,keepConnection:true,insecureLocal:true,expectedGeneration:1},base);
+ assert.equal(sent.length,2);assert.equal(sent[1].name,'Renamed');assert.equal(sent[1].insecureLocal,true);assert.equal(sent[1].expectedGeneration,2);assert(editing.getSnapshot().receipt);editing.dispose();
+ // Both renamed it: that is the one case the owner is told about, and nothing is re-sent.
+ let tries=0;
+ const both=new RemoteSourceService(api(async(_p,m)=>{if(m==='GET')return list([source({generation:2,name:'Theirs'})]);tries++;throw conflict();}),scope,async()=>op);
+ await both.configure('dav',{name:'Mine',root:'',username:'',password:'',keepPassword:true,keepConnection:true,insecureLocal:false,expectedGeneration:1},base);
+ assert.equal(tries,1);assert.equal(both.getSnapshot().errorCode,'storage_command_conflict');assert.match(both.getSnapshot().error,/changed/);both.dispose();
+});
+test('an edit is carried onto the share as it is now, field by field',async()=>{
+ const {rebaseDavEdit}=await import('../src/remote-sources.ts');
+ const base=source() as any,keep={name:'DAV',root:'',username:'',password:'',keepPassword:true,keepConnection:true,insecureLocal:false,expectedGeneration:1};
+ // The connection was changed elsewhere and the owner kept theirs as it was: fine, the server keeps the new one.
+ assert.equal(rebaseDavEdit(base,source({generation:4,origin:'https://other.example'}) as any,{...keep,name:'New'})?.expectedGeneration,4);
+ // Both changed the connection (a new password typed here): conflict.
+ assert.equal(rebaseDavEdit(base,source({generation:4,origin:'https://other.example'}) as any,{...keep,keepPassword:false,password:'p'}),undefined);
+ // Both made the same change: no conflict.
+ assert.equal(rebaseDavEdit(base,source({generation:4,name:'Same'}) as any,{...keep,name:'Same'})?.name,'Same');
+});
