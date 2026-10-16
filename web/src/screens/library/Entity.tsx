@@ -15,8 +15,7 @@ import {useSession} from '../../app/session';
 import {useDownloads} from '../../app/downloads';
 import {containerKindFor, useContainerWatched} from '../shared/container-watched';
 import {Button, Inset, KeyValue, ListRow, Page, Section, Skeleton, StateView, Surface, Text, TitleHero, type MenuAnchor} from '../../ui';
-import {ManualOrderList, useWholeList} from '../shared/ManualOrder';
-import {moveRequest} from '@core/presentation/manual-order.ts';
+import {WindowedOrderList} from '../shared/ManualOrder';
 import {moveCollectionTitle} from '@core/library-collection-order.ts';
 import {LoadingShelves, SectionView, sectionHeading} from '../shared/Sections';
 import {GroupBar, GroupGrid, GroupRows} from '../shared/GroupBrowse';
@@ -186,13 +185,13 @@ export function EntityScreen() {
   // The owner arranges a library collection's own order here (only while it is shown in that order).
   const ownOrderShown = kind === 'collection' && !address.sort && !address.filters;
   const canReorder = (owner || administrator) && ownOrderShown && !!entity && (titleGroup.total ?? 0) > 1;
-  const reorderList = useWholeList(reordering && canReorder ? titleGroup.collection : undefined);
-  const moveTitle = async (from: number, to: number) => {
-    const request = moveRequest(reorderList.entries.map(e => e.id), from, to);
-    if (!request || !entity) return;
+  const refreshTitles = titleGroup.refresh;
+  const moveTitle = useCallback(async (request: Readonly<{entryId: string; afterEntryId: string}>) => {
+    if (!entity) return;
     await moveCollectionTitle(<T,>(path: string, method: 'GET' | 'PUT', body?: unknown) => api.request<T>(path, method, body), entity.id, request.entryId, request.afterEntryId);
-    titleGroup.refresh?.();
-  };
+    // The rows in view are read again; the move stays shown until they arrive.
+    refreshTitles?.();
+  }, [api, entity, refreshTitles]);
   return (
     <div style={{position: 'relative'}}>
         <TitleHero
@@ -268,7 +267,7 @@ export function EntityScreen() {
             <Section title={isArtist ? t('title.albums') : barredSection ? sectionHeading(i18n, barredSection.heading) : undefined}>
               {canReorder || reordering ? <Inset><Button variant={reordering ? 'primary' : 'secondary'} icon={reordering ? 'check' : 'list'} label={reordering ? t('order.done') : t('order.reorder')} aria-pressed={reordering} onClick={() => setReordering(on => !on)} /></Inset> : null}
               {reordering && canReorder ? null : titleBar}
-              {reordering && canReorder ? <Inset><Surface padless><ManualOrderList entries={reorderList.entries} whole={reorderList.whole} label={entity?.title ?? ''} onMove={moveTitle} /></Surface></Inset> : <GroupGrid group={titleGroup} square={libraryKind === 'music' || libraryKind === 'audiobook'} />}
+              {reordering && canReorder ? <Inset><Surface padless>{titleGroup.collection ? <WindowedOrderList collection={titleGroup.collection} label={entity?.title ?? ''} onMove={moveTitle} /> : null}</Surface></Inset> : <GroupGrid group={titleGroup} square={libraryKind === 'music' || libraryKind === 'audiobook'} />}
             </Section>
           ) : null}
           {/* Releases by type: Albums, Singles & EPs, Compilations, Appears on (client-core `artistReleaseGroups`). */}

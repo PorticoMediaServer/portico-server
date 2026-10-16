@@ -95,6 +95,8 @@ export function SavedResourceScreen() {
   const savedAll = useAppendedPages(`playlist:${resourceId}`, savedBinding.snapshot.pagination.cursor, savedPage, e => e.id);
   const personalPage = personalBinding.snapshot.entries;
   const personalAll = useAppendedPages(`resource:${resourceId}`, personalBinding.snapshot.cursor, personalPage, e => e.id);
+  // One list for as long as the pages are the same, so a move shown at once is not undone by a redraw.
+  const personalOrdered = useMemo(() => personalAll.flatMap(e => (e.media ? [{id: e.id, media: e.media}] : [])), [personalAll]);
 
   // The library's sort and filters on what is listed here. A playlist and a personal collection span
   // libraries and are sorted and filtered across them as one list (a playlist keeps its own order
@@ -230,7 +232,7 @@ export function SavedResourceScreen() {
   // A saved view or collection plays whole, from the server, in the order it is shown.
   const ownPlayable = items.flatMap(e => (e.media?.playback ? [e.media] : []));
   // Moves send the moved entry and the one it now follows; the list shown is the server's own order.
-  const ordered = personalAll.flatMap(e => (e.media ? [{id: e.id, media: e.media}] : []));
+  const ordered = personalOrdered;
   const canReorder = r?.kind === 'collection' && can('reorder') && !group.active && ordered.length > 1;
   const moveEntry = async (from: number, to: number) => {
     const request = moveRequest(ordered.map(e => e.id), from, to);

@@ -212,11 +212,13 @@ function intent(v: SavedIntent): SavedIntent {
  }
  throw new Error('Invalid playlist command.');
 }
+/** Entries a saved page holds, and how far a quiet re-read of a paged list reaches (pages). */
+const SAVED_PAGE = 40, SAVED_DEEP_PAGES = 25;
 export class SavedService {
  private api: SavedApi; private bound: SavedScope; private requestId: () => Promise<string>; private timeoutMs: number;
  private generation = 0; private readGeneration = 0; private candidateGeneration = 0; private orderGeneration = 0; private controllers = new Set<AbortController>();
  private readController?: AbortController; private candidateController?: AbortController; private orderController?: AbortController; private disposed = false; private running = false;
-  private commands: Command[] = []; private listeners = new Set<() => void>(); private state: SavedSnapshot; private history: (string|null)[] = []; private readPromise?: Promise<void>; private requestKey = ''; private retryCursor: string|null = null; private retryMove?: 'next'|'previous';
+  private commands: Command[] = []; private listeners = new Set<() => void>(); private state: SavedSnapshot; private history: (string|null)[] = []; private readPromise?: Promise<void>; private requestKey = ''; private retryCursor: string|null = null; private retryMove?: 'next'|'previous'; private seen = 0;
   /** Q7: the last failed command, kept for explicit retryMutation with the same
    * idempotency key. Failed commands are removed from `commands` so later
    * commands proceed; this slot preserves the operation for a deliberate retry. */
@@ -255,6 +257,9 @@ export class SavedService {
   context?.signal?.addEventListener('abort', stop, { once: true });
   const generation = this.generation, read = this.readGeneration, api = this.api, bound = this.bound;
   try {
+   // Paged past the first page (or shown as one long first page since): every page on screen is read again, not only the last one.
+   if ((cursor !== null || this.seen > SAVED_PAGE) && await this.readThrough(controller, context?.settle)) return;
+   if (this.disposed || generation !== this.generation || read !== this.readGeneration || controller.signal.aborted) return;
    const params = new URLSearchParams({ limit: '40' }); if (cursor) params.set('cursor', cursor);
    let path: string;
    if (selected.view === 'playlist') path = encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)});
@@ -276,6 +281,67 @@ export class SavedService {
    if (['unauthorized','forbidden','not_found','playlist_forbidden','playlist_not_found','policy_expired','stale_continuation','invalid_cursor'].includes(e.code)) { await this.refresh(); return; }
    throw error;
   } finally { this.controllers.delete(controller); context?.signal?.removeEventListener('abort', stop); }
+ }
+ /**
+  * A list paged past its first page, read again quietly from the first page through everything on
+  * screen (at most SAVED_DEEP_PAGES pages) and shown in place as one first page: a change anywhere
+  * in view shows, nothing below the viewer disappears, and the next page continues from a fresh
+  * cursor. False when the list on screen is longer than that bound or the pages caught the list
+  * mid-change; the caller then reads only the page in view, or reloads, as before.
+  */
+ private async readThrough(controller: AbortController, settle?: () => Promise<void>): Promise<boolean> {
+  const selected = this.state.route, want = this.seen;
+  if (!selected || want > SAVED_DEEP_PAGES * SAVED_PAGE) return false;
+  const generation = this.generation, read = this.readGeneration, api = this.api, bound = this.bound;
+  const live = () => !this.disposed && generation === this.generation && read === this.readGeneration && !controller.signal.aborted;
+  const pathOf = (cursor: string | null) => {
+   const params = new URLSearchParams({ limit: String(SAVED_PAGE) }); if (cursor) params.set('cursor', cursor);
+   if (selected.view === 'playlist') return encodedRoutePath("get_playlists_id_content", {"id": encodeURIComponent(selected.playlistId)}) + '?' + params;
+   params.set('view', selected.view); if (selected.sort) params.set('sort', selected.sort); if (selected.direction) params.set('direction', selected.direction); if ('filter' in selected && selected.filter) params.set('filter', selected.filter);
+   return routePath("get_saved_content") + '?' + params;
+  };
+  const [raw, rawResource] = await this.deadline(Promise.all([api.request<unknown>(pathOf(null), 'GET', undefined, controller.signal), selected.view === 'playlist' ? api.request<RouteResponse<"get_playlists_id">>(encodedRoutePath("get_playlists_id", {"id": encodeURIComponent(selected.playlistId)}), 'GET', undefined, controller.signal) : Promise.resolve(null)]), controller);
+  if (!live()) return true;
+  const first = projection(raw, bound, selected), playlist = selected.view === 'playlist' ? resource(rawResource, bound, selected.playlistId) : null;
+  if (playlist && (playlist.viewerFence !== first.scope.viewerFence || playlist.revision !== first.playlistRevision || this.state.lastReceipt?.playlistId === playlist.id && playlist.revision < this.state.lastReceipt.revision)) return false;
+  const sections = first.sections.map(section => ({ ...section, entries: [...section.entries] as SavedEntry[] }));
+  const seen = new Set(sections.flatMap(section => section.entries.map(e => e.id)));
+  let count = seen.size;
+  for (let pages = 1; count < want; pages++) {
+   const paged = sections.find(section => section.nextCursor);
+   if (!paged) break;
+   if (pages >= SAVED_DEEP_PAGES) return false;
+   const followed = paged.nextCursor;
+   let page: SavedProjection;
+   try { page = projection(await this.deadline(api.request<unknown>(pathOf(followed), 'GET', undefined, controller.signal), controller), bound, selected); }
+   catch (error) { if (['stale_continuation', 'invalid_cursor'].includes(errorInfo(error).code)) return false; throw error; }
+   if (!live()) return true;
+   if (page.scope.viewerFence !== first.scope.viewerFence || playlist && page.playlistRevision !== playlist.revision) return false;
+   for (const part of page.sections) {
+    const into = sections.find(section => section.id === part.id);
+    const added = part.entries.filter(e => !seen.has(e.id));
+    for (const e of added) seen.add(e.id);
+    count += added.length;
+    if (!into) { sections.push({ ...part, entries: added }); continue; }
+    into.entries.push(...added);
+    into.totalCount = part.totalCount;
+    into.nextCursor = part.nextCursor === followed ? '' : part.nextCursor;
+   }
+   // A page that answered for none of the sections ends the list where it is.
+   if (paged.nextCursor === followed) paged.nextCursor = '';
+  }
+  await settle?.();
+  if (!live() || this.commands.length || this.state.phase !== 'ready') return true;
+  const parsed = freeze({ ...first, sections });
+  const moved = !!playlist && !!this.state.playlist && playlist.revision !== this.state.playlist.revision;
+  this.history = []; this.seen = count;
+  this.publish({ projection: parsed, playlist, ...(moved ? { order: null, orderLoading: false, orderError: null } : {}), pagination: { cursor: null, history: [], canPrevious: false, next: parsed.sections.filter(s => s.nextCursor).map(s => ({ sectionId: s.id, cursor: s.nextCursor })) } });
+  return true;
+ }
+ /** readThrough on its own deadline, for after a change made here; false on any failure. */
+ private async quietThrough(): Promise<boolean> {
+  const controller = new AbortController(); this.controllers.add(controller);
+  try { return await this.readThrough(controller); } catch { return false; } finally { this.controllers.delete(controller); }
  }
  next(sectionId: string): Promise<void> { this.active(); if (this.state.phase !== 'ready') return Promise.resolve(); const next = this.state.pagination.next.find(n => n.sectionId === sectionId); if (!next) return Promise.resolve(); return this.read(next.cursor, 'next'); }
  previous(): Promise<void> { this.active(); if (this.state.phase !== 'ready' || !this.history.length) return Promise.resolve(); return this.read(this.history.at(-1)!, 'previous'); }
@@ -310,6 +376,9 @@ export class SavedService {
     if (playlist && (playlist.viewerFence !== parsed.scope.viewerFence || playlist.revision !== parsed.playlistRevision)) throw new Failure('stale_continuation', 'The playlist changed while loading. Refresh its current order.', true);
     // A later page read after the list moved is still a valid page; only another viewer's answer is refused.
     if (cursor && previous && parsed.scope.viewerFence !== previous.scope.viewerFence) throw new Failure('stale_continuation', 'Saved results changed. Refresh the first page.', true);
+    // What the viewer has on screen: the first page, and every page appended after it.
+    const count = parsed.sections.reduce((n, section) => n + section.entries.length, 0);
+    this.seen = cursor === null ? count : move === 'next' ? this.seen + count : this.seen;
     if (move === 'next') { this.history.push(oldCursor); if (this.history.length > 64) this.history.shift(); } else if (move === 'previous') this.history.pop();
     this.publish({ phase: 'ready', projection: parsed, playlist, pagination: { cursor, history: [...this.history], canPrevious: this.history.length > 0, next: parsed.sections.filter(s => s.nextCursor).map(s => ({ sectionId: s.id, cursor: s.nextCursor })) } });
    } catch (error) {
@@ -402,7 +471,8 @@ export class SavedService {
    this.candidateController?.abort(); this.candidateGeneration++; this.orderController?.abort(); this.orderGeneration++;
    this.commands.shift(); this.publish({ lastReceipt: receipt, mutationError: null, candidates: null, candidatesLoading: false, order: null, orderLoading: false, orderError: null });
    if (receipt.deleted && selected.view === 'playlist') { for (const pending of this.commands) pending.resolve(); this.commands = []; this.lastFailure = undefined; this.readController?.abort(); this.readGeneration++; this.publish({ phase: 'ready', projection: null, playlist: null, pagination: { cursor: null, history: [], canPrevious: false, next: [] } }); c.resolve(); }
-   else { await this.refresh(); c.resolve(); }
+   // A list paged further than its first page stays where the viewer is (a removal deep in a playlist).
+   else { if (!((this.history.length || this.seen > SAVED_PAGE) && await this.quietThrough())) await this.refresh(); c.resolve(); }
    } catch (error) {
     if (this.disposed || generation !== this.generation) return;
     const e = errorInfo(error);
