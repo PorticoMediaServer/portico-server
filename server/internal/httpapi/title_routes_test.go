@@ -30,7 +30,7 @@ func TestOwnerListsEmptiesMissingTitlesAndRemovesALibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Nobody but the owner reaches these.
-	for _, probe := range [][2]string{{"GET", "/v1/admin/missing-titles"}, {"POST", "/v1/admin/missing-titles/empty"}, {"POST", "/v1/admin/titles/merge"}, {"DELETE", "/v1/admin/libraries/films"}} {
+	for _, probe := range [][2]string{{"GET", "/v1/admin/missing-titles"}, {"POST", "/v1/admin/missing-titles/empty"}, {"POST", "/v1/admin/titles/merge"}, {"POST", "/v1/admin/titles/separate-artist"}, {"DELETE", "/v1/admin/libraries/films"}} {
 		if w := call(probe[0], probe[1], "", ""); w.Code != 401 {
 			t.Fatalf("%s %s without a session answered %d", probe[0], probe[1], w.Code)
 		}
@@ -50,6 +50,12 @@ func TestOwnerListsEmptiesMissingTitlesAndRemovesALibrary(t *testing.T) {
 	}
 	if w = call("POST", "/v1/admin/titles/merge", `{"fromId":"nope","intoId":"neither"}`, owner.AccessToken); w.Code != 404 {
 		t.Fatalf("merging unknown titles answered %d %s", w.Code, w.Body.String())
+	}
+	if w = call("POST", "/v1/admin/titles/separate-artist", `{"albumIds":["nope"]}`, owner.AccessToken); w.Code != 404 {
+		t.Fatalf("separating an unknown album answered %d %s", w.Code, w.Body.String())
+	}
+	if w = call("POST", "/v1/admin/titles/separate-artist", `{"albumIds":[]}`, owner.AccessToken); w.Code != 400 {
+		t.Fatalf("separating no album answered %d %s", w.Code, w.Body.String())
 	}
 	var revision int64
 	if err := d.DB.QueryRow(`SELECT revision FROM library_configuration WHERE library_id='films'`).Scan(&revision); err != nil {

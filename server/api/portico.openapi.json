@@ -109759,6 +109759,31 @@
         ],
         "type": "object"
       },
+      "SeparateArtistRequest": {
+        "properties": {
+          "albumIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "albumIds"
+        ],
+        "type": "object"
+      },
+      "SeparateArtistResponse": {
+        "properties": {
+          "artistId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artistId"
+        ],
+        "type": "object"
+      },
       "SetContainerPersonalStateRequest": {
         "properties": {
           "expectedRevision": {
@@ -158657,6 +158682,96 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/titles/separate-artist": {
+      "post": {
+        "operationId": "separate_artist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "albumIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "albumIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "artistId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "artistId"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Say that some albums are not by the artist they are filed under: they move, with their songs' credits, to a new artist of the same name that is never joined back automatically; at least one album stays",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 8192,
         "x-scope": "library"
       }
     },

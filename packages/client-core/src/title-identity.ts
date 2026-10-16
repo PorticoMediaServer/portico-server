@@ -73,6 +73,15 @@ export async function mergeTitles(api:TitleIdentityApi,fromId:string,intoId:stri
  if(!obj(out)||!id(out.itemId))invalid('merged title');
  return out.itemId;
 }
+/** Says these albums, all filed under one artist, are by someone else of the same name ("Not
+ * this artist"): they move, with their songs' credits, to a new artist of their own that is never
+ * joined back automatically. At least one album must stay with the artist. Returns the new artist's id. */
+export async function separateArtist(api:TitleIdentityApi,albumIds:readonly string[]):Promise<string>{
+ if(!albumIds.length||albumIds.length>100||!albumIds.every(id))invalid('albums to separate');
+ const out=await api.request<RouteResponse<"separate_artist">>(routePath("separate_artist"),'POST',routeBody("separate_artist", {albumIds:[...albumIds]}));
+ if(!obj(out)||!id(out.artistId))invalid('separated artist');
+ return out.artistId;
+}
 /** Removes a library. `confirmation` is the library's name typed back; `expectedRevision` its
  * configuration revision. The library disappears at once; the rest happens in the background.
  * Files on disk are not touched and watch state is kept in case its titles return. */

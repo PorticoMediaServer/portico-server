@@ -587,6 +587,7 @@ export function decodeRevokeProfileDownloadsResponse(input: unknown): types.Revo
 export function decodeSaveLiveSourceResponse(input: unknown): types.SaveLiveSourceResponse { return decode("SaveLiveSourceResponse", input) as types.SaveLiveSourceResponse; }
 export function decodeSaveQueueAsPlaylistResponse(input: unknown): types.SaveQueueAsPlaylistResponse { return decode("SaveQueueAsPlaylistResponse", input) as types.SaveQueueAsPlaylistResponse; }
 export function decodeSearchResponse(input: unknown): types.SearchResponse { return decode("SearchResponse", input) as types.SearchResponse; }
+export function decodeSeparateArtistResponse(input: unknown): types.SeparateArtistResponse { return decode("SeparateArtistResponse", input) as types.SeparateArtistResponse; }
 export function decodeSetContainerPersonalStateResponse(input: unknown): types.SetContainerPersonalStateResponse { return decode("SetContainerPersonalStateResponse", input) as types.SetContainerPersonalStateResponse; }
 export function decodeSetLiveSettingsResponse(input: unknown): types.SetLiveSettingsResponse { return decode("SetLiveSettingsResponse", input) as types.SetLiveSettingsResponse; }
 export function decodeSetLiveSourceConfigurationResponse(input: unknown): types.SetLiveSourceConfigurationResponse { return decode("SetLiveSourceConfigurationResponse", input) as types.SetLiveSourceConfigurationResponse; }

@@ -104448,6 +104448,31 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "SeparateArtistRequest": {
+    "properties": {
+      "albumIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "albumIds"
+    ],
+    "type": "object"
+  },
+  "SeparateArtistResponse": {
+    "properties": {
+      "artistId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "artistId"
+    ],
+    "type": "object"
+  },
   "SetContainerPersonalStateRequest": {
     "properties": {
       "expectedRevision": {
