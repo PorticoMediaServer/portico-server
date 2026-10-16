@@ -306,3 +306,26 @@ func (s probeSideData) contentLightLevel() string {
 	}
 	return strconv.FormatInt(cll, 10) + "," + strconv.FormatInt(fall, 10)
 }
+
+// HDRStaticMetadata reads ffprobe side data entries (a stream's or a frame's)
+// into the notation StreamDetail keeps: the mastering display and the content
+// light level, each "" when absent or unusable.
+func HDRStaticMetadata(entries []json.RawMessage) (display, cll string) {
+	for _, raw := range entries {
+		var side probeSideData
+		if len(raw) > 4096 || json.Unmarshal(raw, &side) != nil {
+			continue
+		}
+		switch side.Type {
+		case "Mastering display metadata":
+			if display == "" {
+				display = side.masteringDisplay()
+			}
+		case "Content light level metadata":
+			if cll == "" {
+				cll = side.contentLightLevel()
+			}
+		}
+	}
+	return display, cll
+}

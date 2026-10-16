@@ -383,7 +383,8 @@ func TestPreparedWholeSealedRecordingEndAndMultipartAdmission(t *testing.T) {
 
 func TestPreparedRecipesVersionChapterPolicyWithoutLosingLegacyIdentity(t *testing.T) {
 	for _, current := range Profiles() {
-		if !strings.HasSuffix(current.ID, "-v3") {
+		// HEVC recipes are a family of their own, first made as v1.
+		if !strings.HasSuffix(current.ID, "-v3") && !Rich(current.ID) {
 			t.Fatal("new requests offered an old recipe", current.ID)
 		}
 		if current.ID != "portable-720-v3" && current.ID != "portable-1080-v3" && current.ID != "audio-aac-v3" {

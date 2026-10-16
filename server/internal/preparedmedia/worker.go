@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"log"
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/diskspace"
 	"portico.local/server/internal/identity"
@@ -425,6 +426,7 @@ func (s *Service) encodeAndPublish(ctx context.Context, w work, custody *attempt
 	}
 	progress := &progressWriter{s: s, w: w, out: output, ctx: ctx}
 	recipe := recipeFor(p)
+	recipe.Source = original.recipeSource()
 	e = s.encode(ctx, w, custody, source, recipe, progress)
 	if e != nil {
 		return e
@@ -581,6 +583,19 @@ type probed struct {
 	VideoLevel                 int
 	FrameRate                  float64
 	AudioChannels              []int
+	// The first picture's range as a recipe reads it (sdr, hdr10, hlg; a
+	// Dolby Vision picture's base layer), its depth, and HDR10's metadata.
+	// Range is "" for a Dolby Vision picture with no base layer to show.
+	Range                    string
+	BitDepth                 int
+	DolbyVision              bool
+	MasterDisplay, MaxCLL    string
+	ColorTransfer, Primaries string
+}
+
+// recipeSource is what an encode is told about the source it reads.
+func (f probed) recipeSource() decoder.PreparedSource {
+	return decoder.PreparedSource{DynamicRange: f.Range, BitDepth: f.BitDepth, DolbyVision: f.DolbyVision, MasterDisplay: f.MasterDisplay, MaxCLL: f.MaxCLL, AudioChannels: append([]int(nil), f.AudioChannels...)}
 }
 
 func parseProbe(raw []byte) (probed, error) {
@@ -599,12 +614,11 @@ func parseProbe(raw []byte) (probed, error) {
 			AverageFrameRate        string `json:"avg_frame_rate"`
 			ColorTransfer           string `json:"color_transfer"`
 			ColorPrimaries          string `json:"color_primaries"`
+			BitsRaw                 string `json:"bits_per_raw_sample"`
 			Disposition             struct {
 				AttachedPic int `json:"attached_pic"`
 			}
-			SideData []struct {
-				Type string `json:"side_data_type"`
-			} `json:"side_data_list"`
+			SideData []json.RawMessage `json:"side_data_list"`
 		}
 	}
 	var p probed
@@ -631,10 +645,30 @@ func parseProbe(raw []byte) (probed, error) {
 				p.PixFmt = s.PixFmt
 				p.VideoProfile, p.VideoLevel = s.Profile, s.Level
 				p.FrameRate = probeRate(s.AverageFrameRate)
+				p.ColorTransfer, p.Primaries = s.ColorTransfer, s.ColorPrimaries
+				p.BitDepth = pixelDepth(s.PixFmt, s.BitsRaw)
+				p.MasterDisplay, p.MaxCLL = assets.HDRStaticMetadata(s.SideData)
 			}
 			p.HDR = p.HDR || s.ColorTransfer == "smpte2084" || s.ColorTransfer == "arib-std-b67" || s.ColorPrimaries == "bt2020"
-			for _, d := range s.SideData {
-				p.HDR = p.HDR || strings.Contains(strings.ToLower(d.Type), "dovi")
+			for _, raw := range s.SideData {
+				var d struct {
+					Type          string `json:"side_data_type"`
+					Profile       int    `json:"dv_profile"`
+					Compatibility int    `json:"dv_bl_signal_compatibility_id"`
+				}
+				if json.Unmarshal(raw, &d) != nil {
+					continue
+				}
+				if strings.Contains(strings.ToLower(d.Type), "dovi") {
+					p.HDR = true
+					if p.VideoStreams == 1 && d.Profile > 0 {
+						p.DolbyVision = true
+						p.Range = decoder.DolbyVisionBaseRange(d.Profile, d.Compatibility)
+					}
+				}
+			}
+			if p.VideoStreams == 1 && !p.DolbyVision {
+				p.Range = assets.DynamicRangeOf(s.ColorTransfer, 0)
 			}
 		case "audio":
 			p.AudioTracks++
@@ -659,10 +693,42 @@ func acceptSource(f probed, p Profile, kind string) error {
 		if f.AudioTracks < 1 || f.VideoStreams != 0 {
 			return ErrUnsupported
 		}
-	} else if f.VideoStreams != 1 || f.AttachedVideo || f.Width < 2 || f.Height < 2 || f.HDR {
+	} else if f.VideoStreams != 1 || f.AttachedVideo || f.Width < 2 || f.Height < 2 {
 		return ErrUnsupported
+	} else if f.HDR {
+		// An HDR picture is kept by an HEVC recipe and tone-mapped by an H.264
+		// one. A picture neither can show correctly (Dolby Vision without a base
+		// layer, wide-gamut pictures of no known range) is refused rather than
+		// written in the wrong colours.
+		switch {
+		case f.Range == "" || f.Range == assets.RangeSDR && !f.DolbyVision:
+			return ErrUnsupported
+		case f.DolbyVision && Rich(p.ID) && !decoder.PreparedDolbyVisionBaseAvailable():
+			return ErrUnsupported
+		case !Rich(p.ID) && f.Range != assets.RangeSDR && !decoder.PreparedToneMapAvailable():
+			return ErrUnsupported
+		}
 	}
 	return nil
+}
+
+// pixelDepth is a picture's depth from its pixel format, or from the raw
+// sample size ffprobe reports.
+func pixelDepth(format, raw string) int {
+	if depth, err := strconv.Atoi(raw); err == nil && depth > 0 && depth <= 16 {
+		return depth
+	}
+	format = strings.ToLower(format)
+	for _, depth := range []string{"16", "14", "12", "10"} {
+		if strings.HasSuffix(format, depth+"le") || strings.HasSuffix(format, depth+"be") || strings.HasPrefix(format, "p0"+depth) {
+			n, _ := strconv.Atoi(depth)
+			return n
+		}
+	}
+	if format == "" {
+		return 0
+	}
+	return 8
 }
 func probeRate(raw string) float64 {
 	parts := strings.Split(raw, "/")
@@ -684,16 +750,32 @@ func acceptOutput(original, output probed, p Profile) error {
 	if !strings.Contains(","+output.Container+",", ",mp4,") && !strings.Contains(","+output.Container+",", ",mov,") {
 		return ErrOutput
 	}
-	if math.Abs(original.Duration-output.Duration) > math.Max(1, original.Duration*0.001) || output.AudioTracks != original.AudioTracks || output.HDR || output.AttachedVideo {
+	rich := Rich(p.ID)
+	// An HEVC recipe keeps an HDR source's range; everything else is SDR.
+	keptHDR := rich && original.Range != "" && original.Range != assets.RangeSDR
+	if math.Abs(original.Duration-output.Duration) > math.Max(1, original.Duration*0.001) || output.AudioTracks != original.AudioTracks || output.HDR != keptHDR || output.AttachedVideo {
+		return ErrOutput
+	}
+	if keptHDR && (output.Range != original.Range || output.DolbyVision) {
 		return ErrOutput
 	}
 	if output.AudioTracks > 0 && output.AudioCodec != "aac" {
 		return ErrOutput
 	}
-	for _, c := range output.AudioChannels {
-		if c != 2 {
+	for i, c := range output.AudioChannels {
+		if i >= len(original.AudioChannels) || c != decoder.PreparedChannels(rich, original.AudioChannels[i]) {
 			return ErrOutput
 		}
+	}
+	if rich {
+		depth := 8
+		if keptHDR || original.BitDepth >= 10 {
+			depth = 10
+		}
+		if output.VideoStreams != 1 || output.VideoCodec != "hevc" || output.BitDepth != depth || output.Width < 2 || output.Height < 2 || output.Width > p.Width || output.Height > p.Height || output.Width%2 != 0 || output.Height%2 != 0 || output.FrameRate <= 0 || output.FrameRate > 60.1 {
+			return ErrOutput
+		}
+		return nil
 	}
 	if p.Kind == "audio" {
 		if output.VideoStreams != 0 {

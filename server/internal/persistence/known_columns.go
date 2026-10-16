@@ -1677,6 +1677,7 @@ download_preparations.profile_key
 download_preparations.quality
 download_preparations.ready_ms
 download_preparations.reason
+download_preparations.recipe
 download_preparations.revision
 download_preparations.source_asset_id
 download_preparations.source_modified_ns

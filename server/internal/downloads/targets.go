@@ -10,7 +10,9 @@ import (
 	"strconv"
 	"strings"
 
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/playback"
 )
 
@@ -90,7 +92,7 @@ func sourceReason(s source, e error) string {
 // can. A converted quality is real when a finished copy of it already exists,
 // or when the conversion code reports it can make one; a rung that is only a
 // name in the ladder is refused before a claim that could only fail is made.
-func qualityReason(ctx context.Context, tx *sql.Tx, quality string, found source) string {
+func qualityReason(ctx context.Context, tx *sql.Tx, quality, recipe string, found source) string {
 	if quality == QualityOriginal {
 		return ""
 	}
@@ -101,7 +103,9 @@ func qualityReason(ctx context.Context, tx *sql.Tx, quality string, found source
 	if !audioKind(found.Kind) && found.Height > 0 && rung.Height > found.Height {
 		return ReasonNotOptimized
 	}
-	recipe := preparedProfile(found.Kind, rung)
+	if recipe == "" {
+		recipe = preparedProfile(found.Kind, rung)
+	}
 	if preparedmedia.Producible(recipe) {
 		return ""
 	}
@@ -128,7 +132,7 @@ func preparedProfile(kind string, rung playback.QualityPreset) string {
 
 // estimateBytes is bitrate times duration, and the caller publishes it as an
 // estimate. Only the original's size is exact before the artifact exists.
-func estimateBytes(quality string, s source) (int64, bool) {
+func estimateBytes(quality, id string, s source) (int64, bool) {
 	if quality == QualityOriginal {
 		return s.Size, false
 	}
@@ -136,7 +140,10 @@ func estimateBytes(quality string, s source) (int64, bool) {
 	if !ok || s.Duration <= 0 || math.IsNaN(s.Duration) || math.IsInf(s.Duration, 0) {
 		return 0, true
 	}
-	recipe, err := preparedmedia.ProfileByID(preparedProfile(s.Kind, rung))
+	if id == "" {
+		id = preparedProfile(s.Kind, rung)
+	}
+	recipe, err := preparedmedia.ProfileByID(id)
 	if err != nil {
 		return 0, true
 	}
@@ -294,4 +301,95 @@ func qualityLabel(quality string) string {
 		return rung.Label
 	}
 	return strings.ToUpper(quality)
+}
+
+// chooseRecipe is the prepared recipe a rung resolves to for this device and
+// this source. The HEVC recipe is chosen when it keeps something the H.264 one
+// would give up (HDR, ten bits, surround sound, or an HEVC or AV1 original)
+// and the device plays its result; otherwise the H.264 recipe, which is quicker
+// to make and plays everywhere. "" for the original.
+func chooseRecipe(ctx context.Context, tx *sql.Tx, device playback.CapabilityDocument, quality string, found source) string {
+	rung, ok := ladderRung(quality)
+	if quality == QualityOriginal || !ok {
+		return ""
+	}
+	plain := preparedProfile(found.Kind, rung)
+	rich := preparedmedia.RichProfileFor(rung.Height)
+	if audioKind(found.Kind) || rich == "" || found.Asset == "" {
+		return plain
+	}
+	facts, err := playback.DeliverySourceTx(ctx, tx, found.Asset)
+	if err != nil || facts.Video == nil || !richGains(facts) {
+		return plain
+	}
+	if !preparedmedia.Producible(rich) {
+		versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item)
+		if e != nil || selectableVersionForSource(versions, rich, found.Asset) == nil {
+			return plain
+		}
+	}
+	recipe, err := preparedmedia.ProfileByID(rich)
+	if err != nil || !playback.DownloadPlayable(richTarget(facts, recipe), device) {
+		return plain
+	}
+	return rich
+}
+
+// richGains reports whether the HEVC recipe keeps something of this source the
+// H.264 recipe would lose.
+func richGains(f playback.DeliverySource) bool {
+	v := f.Video
+	if v.Codec == "hevc" || v.Codec == "av1" || v.BitDepth >= 10 || richRange(v) != "sdr" {
+		return true
+	}
+	for _, a := range f.Audio {
+		if a.Channels > 2 {
+			return true
+		}
+	}
+	return false
+}
+
+// richRange is the range an HEVC recipe writes for the source: HDR10 or HLG
+// kept (a Dolby Vision picture through its base layer), SDR otherwise.
+func richRange(v *playback.SourceVideo) string {
+	r := v.DynamicRange
+	if r == assets.RangeDolbyVision {
+		r = decoder.DolbyVisionBaseRange(v.DolbyVisionProfile, v.DolbyVisionCompatibility)
+	}
+	if r == assets.RangeHDR10 || r == assets.RangeHLG {
+		return r
+	}
+	return assets.RangeSDR
+}
+
+// richTarget describes the file an HEVC recipe makes from this source, for the
+// device's own planner to judge.
+func richTarget(f playback.DeliverySource, recipe preparedmedia.Profile) playback.DeliverySource {
+	v := f.Video
+	r := richRange(v)
+	depth := 8
+	if r != assets.RangeSDR || v.BitDepth >= 10 {
+		depth = 10
+	}
+	width, height := v.Width, v.Height
+	if width <= 0 || height <= 0 {
+		width, height = recipe.Width, recipe.Height
+	}
+	if scale := math.Min(1, math.Min(float64(recipe.Width)/float64(width), float64(recipe.Height)/float64(height))); scale < 1 {
+		width, height = int(float64(width)*scale)/2*2, int(float64(height)*scale)/2*2
+	}
+	rate := v.FrameRate
+	if rate <= 0 || rate > 60 {
+		rate = 60
+	}
+	profile := "Main"
+	if depth == 10 {
+		profile = "Main 10"
+	}
+	out := playback.DeliverySource{Container: "mp4", Video: &playback.SourceVideo{Codec: "hevc", StreamDetail: assets.StreamDetail{Profile: profile, Level: decoder.HEVCOutputLevel(width, height, rate), BitDepth: depth, Width: width, Height: height, FrameRate: rate, DynamicRange: r, CodecTag: "hvc1"}}}
+	for i, a := range f.Audio {
+		out.Audio = append(out.Audio, playback.SourceAudio{Index: i + 1, Ordinal: i, Codec: "aac", Channels: decoder.PreparedChannels(true, a.Channels), Default: a.Default, StreamDetail: assets.StreamDetail{SampleRate: 48000}})
+	}
+	return out
 }

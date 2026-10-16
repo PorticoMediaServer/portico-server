@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"portico.local/server/internal/playback"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
@@ -525,10 +526,11 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 		}
 		return "", reason, nil
 	}
-	if reason := qualityReason(ctx, tx, quality, source); reason != "" {
+	recipe := chooseRecipe(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), quality, source)
+	if reason := qualityReason(ctx, tx, quality, recipe, source); reason != "" {
 		return "", reason, nil
 	}
-	estimate, estimated := estimateBytes(quality, source)
+	estimate, estimated := estimateBytes(quality, recipe, source)
 	if e = storageRoom(tx, quality, estimate); errors.Is(e, ErrStorageFull) {
 		return "", ReasonStorageFull, nil
 	}
@@ -540,7 +542,7 @@ func (s *Service) admitRequestItem(ctx context.Context, tx *sql.Tx, p identity.P
 		return "", "", e
 	}
 	id := identity.Token()
-	_, e = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,source_asset_id,quality,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,'container',?,'queued',?,?,?,?)`, id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, source.Library, titleSnapshot(title), source.Asset, quality, batch, estimate, estimated, now, now)
+	_, e = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,source_asset_id,quality,recipe,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,'container',?,'queued',?,?,?,?)`, id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, source.Library, titleSnapshot(title), source.Asset, quality, recipe, batch, estimate, estimated, now, now)
 	if e != nil {
 		return "", "", e
 	}

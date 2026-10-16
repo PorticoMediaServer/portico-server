@@ -38,7 +38,7 @@ func TestEveryDownloadRungHasMatchingRecipeAndEstimate(t *testing.T) {
 		if err != nil || recipe.Height != rung.Height {
 			t.Fatal(rung, recipe, err)
 		}
-		got, _ := estimateBytes(rung.ID, source{Kind: "movie", Duration: 100})
+		got, _ := estimateBytes(rung.ID, "", source{Kind: "movie", Duration: 100})
 		want := int64(float64((recipe.VideoKbps+recipe.AudioKbps)*1000) / 8 * 100 * 1.03)
 		if got != want {
 			t.Fatal(rung.ID, got, want)

@@ -2824,7 +2824,11 @@ CREATE TABLE download_preparations(
  item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL,
  title_json TEXT NOT NULL DEFAULT '',
  source_asset_id TEXT NOT NULL DEFAULT '',
- quality TEXT NOT NULL, origin TEXT NOT NULL CHECK(origin IN('item','items','container','next')),
+ quality TEXT NOT NULL,
+ -- The prepared recipe the quality resolved to for the asking device (HEVC
+ -- keeping HDR and surround where it plays them); '' for the original.
+ recipe TEXT NOT NULL DEFAULT '',
+ origin TEXT NOT NULL CHECK(origin IN('item','items','container','next')),
  batch_id TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL CHECK(state IN('queued','running','ready','paused','failed','unavailable','cancelled','expired')),
  reason TEXT NOT NULL DEFAULT '',
