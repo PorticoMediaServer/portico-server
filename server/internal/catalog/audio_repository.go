@@ -164,12 +164,14 @@ var bookRetireChecks = []string{
 	`SELECT EXISTS(SELECT 1 FROM artwork_uploads WHERE kind='book' AND entity_id=?)`,
 }
 
-func settleEmptiedBook(ctx context.Context, tx *sql.Tx, book int64) error {
+// settleEmptiedBook is retireEmptiedAlbumTx for a book: into is the book its
+// last file went to, or 0 when the file went nowhere.
+func settleEmptiedBook(ctx context.Context, tx *sql.Tx, book, into int64) error {
 	var files bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_book_files WHERE book_id=?)`, book).Scan(&files); err != nil || files {
 		return err
 	}
-	return settleEmptied(ctx, tx, book, bookRetireChecks)
+	return settleEmptiedInto(ctx, tx, book, into, bookRetireChecks)
 }
 
 // artistRetireChecks is the same rule for the album's artist.
@@ -200,8 +202,9 @@ func anyPresent(ctx context.Context, tx *sql.Tx, id int64, checks []string) (boo
 // retireEmptiedAlbumTx settles the album a song just left: while songs remain
 // nothing happens; an empty album with state is retired, without state it is
 // deleted; its artist then gets the same treatment. Two albums are never
-// merged by content: only the id passed in can go.
-func retireEmptiedAlbumTx(ctx context.Context, tx *sql.Tx, album int64) error {
+// merged by content: only the id passed in can go. into is the album the last
+// song went to (0 when it went nowhere): a deleted album's id leads there.
+func retireEmptiedAlbumTx(ctx context.Context, tx *sql.Tx, album, into int64) error {
 	var artist int64
 	if err := tx.QueryRowContext(ctx, `SELECT artist_id FROM catalog_albums WHERE entity_id=?`, album).Scan(&artist); errors.Is(err, sql.ErrNoRows) {
 		return nil
@@ -212,7 +215,7 @@ func retireEmptiedAlbumTx(ctx context.Context, tx *sql.Tx, album int64) error {
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_songs WHERE album_id=?)`, album).Scan(&songs); err != nil || songs {
 		return err
 	}
-	if err := settleEmptied(ctx, tx, album, albumRetireChecks); err != nil {
+	if err := settleEmptiedInto(ctx, tx, album, into, albumRetireChecks); err != nil {
 		return err
 	}
 	var used bool
@@ -224,12 +227,34 @@ func retireEmptiedAlbumTx(ctx context.Context, tx *sql.Tx, album int64) error {
 }
 
 func settleEmptied(ctx context.Context, tx *sql.Tx, id int64, checks []string) error {
+	return settleEmptiedInto(ctx, tx, id, 0, checks)
+}
+
+// settleEmptiedInto is settleEmptied for a container whose last member moved
+// to another container of its kind (into, when not 0). Deleted, its public id
+// leads to that container from then on, as a merged-away title's does: an
+// album or book first filed from its folder while a scan is still reading tags
+// moves to its real artist or author with another id a moment later, and a
+// page, link or request that already holds the first id reaches it there
+// instead of a 404. A retired container keeps its own id (and its state).
+func settleEmptiedInto(ctx context.Context, tx *sql.Tx, id, into int64, checks []string) error {
 	blocked, err := anyPresent(ctx, tx, id, checks)
 	if err != nil {
 		return err
 	}
 	if blocked {
 		return compactcatalog.RetireEntityTx(ctx, tx, id)
+	}
+	if into != 0 && into != id {
+		for _, q := range []string{
+			// Ids it had absorbed lead on, and then its own.
+			`UPDATE catalog_merged_ids SET entity_id=?2 WHERE entity_id=?1`,
+			`INSERT OR REPLACE INTO catalog_merged_ids(public_id,entity_id) SELECT public_id,?2 FROM catalog_entities WHERE id=?1`,
+		} {
+			if _, err = tx.ExecContext(ctx, q, id, into); err != nil {
+				return err
+			}
+		}
 	}
 	return compactcatalog.DeleteEntityTx(ctx, tx, id)
 }
@@ -586,7 +611,7 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		// The song (and its artist credits above) has left `previous` by now,
 		// so an emptied album's artist is retireable in the same transaction.
 		if previous != 0 && previous != album {
-			if err = retireEmptiedAlbumTx(ctx, tx, previous); err != nil {
+			if err = retireEmptiedAlbumTx(ctx, tx, previous, album); err != nil {
 				return err
 			}
 		}
@@ -663,7 +688,7 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 	// A file whose book identity changed (its tags arrived after a first scan
 	// without them, or were edited) has left `previousBook`; an emptied book goes.
 	if previousBook != 0 && previousBook != book {
-		if err = settleEmptiedBook(ctx, tx, previousBook); err != nil {
+		if err = settleEmptiedBook(ctx, tx, previousBook, book); err != nil {
 			return err
 		}
 	}

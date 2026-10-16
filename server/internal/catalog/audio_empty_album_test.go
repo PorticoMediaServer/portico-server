@@ -7,6 +7,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/persistence"
 	"testing"
 )
@@ -72,6 +73,10 @@ func TestTaglessFirstImportThenTagsLeavesOneAlbum(t *testing.T) {
 	if err := db.QueryRow(`SELECT entity_id FROM catalog_albums`).Scan(&oldID); err != nil {
 		t.Fatal("tagless pass created no album", err)
 	}
+	oldPublic, err := entityid.Public(context.Background(), db, oldID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var unknown int
 	if err := db.QueryRow(`SELECT count(*) FROM catalog_artists WHERE local_key='unknown artist'`).Scan(&unknown); err != nil || unknown != 1 {
 		t.Fatal("tagless setup missing unknown-artist phantom", unknown, err)
@@ -95,6 +100,15 @@ func TestTaglessFirstImportThenTagsLeavesOneAlbum(t *testing.T) {
 	}
 	if err := db.QueryRow(`SELECT count(*) FROM catalog_artists WHERE local_key='unknown artist'`).Scan(&unknown); err != nil || unknown != 0 {
 		t.Fatalf("unknown-artist phantom remains: %d %v", unknown, err)
+	}
+	// The album page opened while the scan was still reading tags keeps working:
+	// its id leads to the tagged album, through the path, body and query resolver.
+	if got, err := entityid.Resolve(context.Background(), db, oldPublic); err != nil || got != newID {
+		t.Fatalf("the first album id leads to %d (%v), want %d", got, err, newID)
+	}
+	newPublic, _ := entityid.Public(context.Background(), db, newID)
+	if got := s.SurvivingTitleID(context.Background(), oldPublic); got != newPublic {
+		t.Fatalf("surviving id %q, want %q", got, newPublic)
 	}
 	if err := db.QueryRow(`SELECT count(*) FROM catalog_identities i JOIN catalog_entities e ON e.public_id=i.public_id JOIN catalog_albums a ON a.entity_id=e.id WHERE e.id=?`, newID).Scan(&songs); err != nil || songs != 1 {
 		t.Fatalf("tagged album identity rows=%d %v", songs, err)

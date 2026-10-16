@@ -9,6 +9,7 @@ import (
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/persistence"
 )
 
@@ -55,6 +56,14 @@ func TestTaglessFirstImportThenTagsLeavesOneBook(t *testing.T) {
 	catalogtest.New(t, db).Library("books", "Audiobooks", "audiobook", "/books")
 	s := New(db)
 	commitBookFile(t, s, db, nil, true)
+	var first int64
+	if err = db.QueryRow(`SELECT entity_id FROM catalog_books`).Scan(&first); err != nil {
+		t.Fatal(err)
+	}
+	firstPublic, err := entityid.Public(context.Background(), db, first)
+	if err != nil {
+		t.Fatal(err)
+	}
 	commitBookFile(t, s, db, map[string]string{"title": "Listener", "album": "Listener", "artist": "Test Author", "narrator": "Test Narrator"}, false)
 	var live int
 	var author string
@@ -63,5 +72,13 @@ func TestTaglessFirstImportThenTagsLeavesOneBook(t *testing.T) {
 	}
 	if live != 1 || author != "Test Author" {
 		t.Fatalf("live books %d, author %q; want one book by Test Author", live, author)
+	}
+	// A page opened on the book while the scan was reading tags still reaches it.
+	var book int64
+	if err = db.QueryRow(`SELECT entity_id FROM catalog_books`).Scan(&book); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := entityid.Resolve(context.Background(), db, firstPublic); err != nil || got != book {
+		t.Fatalf("the first book id leads to %d (%v), want %d", got, err, book)
 	}
 }

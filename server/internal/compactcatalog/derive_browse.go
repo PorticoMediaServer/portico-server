@@ -248,6 +248,15 @@ func deriveBrowseRow(ctx context.Context, tx *sql.Tx, id int64) error {
 	return deriveHomeBuckets(ctx, tx, id)
 }
 
+// DeriveBrowseRowTx derives one entity's browse row now, in the caller's
+// transaction, for an owner's action whose next read must already find it: a
+// container made by that action is otherwise unseen by every page until the
+// derivation worker reaches it. The queued derivation still runs and finds the
+// row current.
+func DeriveBrowseRowTx(ctx context.Context, tx *sql.Tx, id int64) error {
+	return deriveBrowseRow(ctx, tx, id)
+}
+
 // recentWorkKinds are the containers a Recently Added shelf lists in place of
 // their members; foldedKinds are those members.
 var (

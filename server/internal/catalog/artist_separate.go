@@ -121,6 +121,11 @@ func (s *Service) SeparateArtist(ctx context.Context, albums []string, authorize
 				return err
 			}
 		}
+		// The new artist's page opens next: it is visible from the first read,
+		// not once the derivation worker has caught up.
+		if err = compactcatalog.DeriveBrowseRowTx(ctx, tx, separate); err != nil {
+			return err
+		}
 		if _, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, library); err != nil {
 			return err
 		}
