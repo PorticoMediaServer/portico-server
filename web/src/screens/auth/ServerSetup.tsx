@@ -86,14 +86,17 @@ export function ServerSetup({system}: {system: SystemInfo}) {
     setBusy(true);
     setError('');
     // Opened during the click, so pop-up blockers allow it; it is pointed at the approval page once known.
-    const win = mode === 'hosted' ? openClaimWindow() : null;
+    // A build that cannot reach the Portico Account service (hostedConfigured, true for every
+    // release build) leaves the connection to Server settings rather than open a window for nothing.
+    const connect = mode === 'hosted' && system.hostedConfigured;
+    const win = connect ? openClaimWindow() : null;
     try {
       const api = await direct.pairedApi();
       const {setupToken} = await api.request<{serverId: string; setupToken: string}>('/v1/setup/browser', 'POST', {});
       const issued = await initializeServer(api, browserSetupDraft(direct.pin.serverId), {setupToken, name: name.trim(), username: username.trim(), password, authMode: mode, recoverySaved: mode === 'hosted' ? saved : true, interactive: true}, AbortSignal.timeout(30000));
       setPassword('');
       setConfirm('');
-      if (mode === 'hosted') void connectAccount(api, issued, win);
+      if (connect) void connectAccount(api, issued, win);
       else await direct.acceptIssued(api, issued);
     } catch (e) {
       closeBlank(win);
