@@ -27,11 +27,14 @@ func queryBuildFixture(t *testing.T) (*Service, *catalogtest.Catalog, snapshot) 
 		return catalog.New(c.DB).QueueKeysTx(ctx, tx, catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: "f", Libraries: []string{"movies"}}, catalog.ResourceActor{}, sel.Query, "", nil)
 	}
 	in := SegmentInput{Source: Selector{Query: &catalog.QueueQuery{LibraryID: "movies", Pivot: "movies"}}}
+	// Every read a build still holds is let go when the test ends, however it
+	// ends: the two capture slots are process-wide, and a test that stops
+	// early must not leave the next one without one.
+	t.Cleanup(func() { releaseCaptures(s) })
 	snap, err := s.buildSnapshot(context.Background(), p, "q_test", in, "source", MaxQueueKeys, nil, scanBudget{keys: 256})
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { s.releaseCapture(snap.id) })
 	if !snap.partial || snap.count != 256 {
 		t.Fatalf("partial snapshot %+v", snap)
 	}
@@ -54,6 +57,19 @@ func queryBuildFixture(t *testing.T) (*Service, *catalogtest.Catalog, snapshot) 
 		t.Fatal(err)
 	}
 	return s, c, snap
+}
+
+// releaseCaptures lets go of every capture a service's builds still hold.
+func releaseCaptures(s *Service) {
+	s.build.mu.Lock()
+	ids := make([]string, 0, len(s.build.captures))
+	for id := range s.build.captures {
+		ids = append(ids, id)
+	}
+	s.build.mu.Unlock()
+	for _, id := range ids {
+		s.releaseCapture(id)
+	}
 }
 
 func TestQueryCaptureResumesAfterRestartAtTheSameRevision(t *testing.T) {
@@ -96,6 +112,12 @@ func TestGrowingQueryShuffleKeepsTheSameSeededOrder(t *testing.T) {
 	s.releaseCapture(snap.id)
 	s.HoldQueueBuilds()
 	who := Caller{DeviceID: "shuffle_device", Principal: identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"}}}
+	// The queue belongs to a device that exists: the sweep a create starts in
+	// the background removes the queues of devices that are gone, and once
+	// raced the reply (an empty queue under load).
+	if _, err := c.DB.Exec(`INSERT INTO identity_devices(id,account_id,installation_id,name,platform,app,app_version,first_seen,last_seen) VALUES('shuffle_device','account','installation','Test','android','portico','1','2026-10-16T00:00:00Z','2026-10-16T00:00:00Z')`); err != nil {
+		t.Fatal(err)
+	}
 	var previous []string
 	for n := 0; n < 2; n++ {
 		q, err := s.CreateQueue(context.Background(), who, fmt.Sprintf("seeded-query-%06d", n), CreateQueueRequest{Selector: &Selector{Query: &catalog.QueueQuery{LibraryID: "movies", Pivot: "movies"}}, Shuffle: &QueueSeed{Seed: "42"}})
@@ -105,6 +127,9 @@ func TestGrowingQueryShuffleKeepsTheSameSeededOrder(t *testing.T) {
 		if q.Queue.Current == nil || q.Queue.Total != 256 {
 			t.Fatalf("first shuffled batch %+v", q.Queue)
 		}
+		// The sweep runs now, rather than whenever the scheduler lets it: the
+		// queue it must keep is still there to read.
+		s.SweepQueues(context.Background())
 		var id string
 		if err = c.DB.QueryRow(`SELECT id FROM queue_v1_snapshots WHERE queue_id=?`, q.Queue.ID).Scan(&id); err != nil {
 			t.Fatal(err)
