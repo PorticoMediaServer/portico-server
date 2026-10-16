@@ -841,11 +841,18 @@ func (l *LinearRuntime) produceLibrary(ctx context.Context, w playback.LinearWor
 	if e != nil {
 		return e
 	}
-	// A library channel's timeline is the source's own MPEG-TS clock.
-	plan, e := linearPlan(raw, w, playback.LinearTSOnly)
+	// A library channel's timeline is the source's own MPEG-TS clock. Its
+	// engine is chosen like a live input's and kept for the buffer.
+	entry.mu.Lock()
+	pinned := entry.engine
+	entry.mu.Unlock()
+	plan, engine, e := linearEnginePlan(raw, w, playback.LinearTSOnly, pinned)
 	if e != nil {
 		return e
 	}
+	entry.mu.Lock()
+	entry.engine = engine
+	entry.mu.Unlock()
 	now := time.Now().UnixMilli()
 	if now >= w.Selection.EntryEndMS {
 		return channelFault("programme_boundary", 409)
