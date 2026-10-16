@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventsClient} from '../src/playback-v1/events.ts';
-import {FreshnessHub, dependsOn, titleWithPersonalState, titlesWithPersonalState} from '../src/freshness-hub.ts';
+import {FreshnessHub, dependsOn, listedTitlesWithPersonalState, readsPersonalState, titleWithPersonalState, titlesWithPersonalState} from '../src/freshness-hub.ts';
 import {DocumentPool, serviceDocument} from '../src/freshness-pool.ts';
 
 /** A clock the test moves by hand; timers fire in order as it advances. */
@@ -351,6 +351,26 @@ test('a title page moves for a hint that names it or names nothing, not for anot
   hub.accept({...personal('films', '5'), data: {personal: '5', observation: '1'}});
   await c.advance(1000);
   assert.equal(reads, 2, 'another library does not move it');
+});
+
+test('a list of titles moves only for the titles it holds, unless its query reads personal state', async () => {
+  const c = clock(), hub = new FreshnessHub(c.env);
+  let held = ['show-1'], reads = 0, across = 0, played = 0;
+  hub.document({dependencies: () => listedTitlesWithPersonalState('shows', held, false), revalidate: async () => { reads++; }}).setOpen(true);
+  hub.document({dependencies: () => listedTitlesWithPersonalState(undefined, held, false), revalidate: async () => { across++; }}).setOpen(true);
+  hub.document({dependencies: () => listedTitlesWithPersonalState('shows', held, readsPersonalState(['playState'])), revalidate: async () => { played++; }}).setOpen(true);
+  hub.accept({...personal('shows', '2'), data: {personal: '2', observation: '1', titles: ['episode-9', 'season-9', 'show-9']}});
+  await c.advance(1000);
+  assert.deepEqual([reads, across, played], [0, 0, 1], 'a title not in the list moves only the list filtered by played state');
+  held = ['show-1', 'show-9'];
+  hub.accept({...personal('shows', '3'), data: {personal: '3', observation: '1', titles: ['episode-8', 'season-9', 'show-9']}});
+  await c.advance(1000);
+  assert.deepEqual([reads, across, played], [1, 1, 2], 'a title scrolled into view moves the lists');
+  hub.accept({...personal('films', '4'), data: {personal: '4', observation: '1'}});
+  await c.advance(1000);
+  assert.deepEqual([reads, across, played], [1, 2, 2], 'a hint naming no title moves the list across libraries only for another library');
+  assert.equal(readsPersonalState(['genre', 'title']), false);
+  assert.equal(readsPersonalState(['genre', 'lastPlayedAt']), true);
 });
 
 test('a list hint for the viewer moves only the screens that depend on that list', async () => {

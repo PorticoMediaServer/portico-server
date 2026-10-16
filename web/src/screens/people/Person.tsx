@@ -23,7 +23,8 @@ function lifeDate(i18n: I18n, value: string): string {
 import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useViewerScope} from '../../app/viewer-scope';
 import {useFreshDocument} from '../../app/freshness';
-import {titlesWithPersonalState} from '@core/freshness-hub.ts';
+import {listedTitlesWithPersonalState} from '@core/freshness-hub.ts';
+import {titleIdsOf} from '../../app/browse';
 import {useI18n, type I18n} from '../../app/i18n';
 import {acrossGroup, useGroupBrowse, type GroupChoice} from '../../app/group-browse';
 import {GroupBar, GroupGrid} from '../shared/GroupBrowse';
@@ -39,7 +40,6 @@ type State = {phase: 'loading' | 'ready' | 'error'; page?: PersonPage; error?: u
  * through the windowed grid, so a prolific filmography never mounts more than
  * ~300 cards (PERF-S17).
  */
-const personDependencies = Object.freeze([...titlesWithPersonalState()]);
 
 export function PersonScreen() {
   const i18n = useI18n();
@@ -72,7 +72,8 @@ export function PersonScreen() {
     [api, scope, personId, role, kept],
   );
   // A person's titles follow the libraries while the page is open: a title that arrives, goes or is watched updates in place.
-  useFreshDocument(personDependencies, context => credits.revalidate({fetchPage: personCreditsSource(api, scope, personId, role), hold: context.settle}), () => credits.getSnapshot().total !== undefined);
+  // Their marks move only for the titles held on the page (the credits keep their own order).
+  useFreshDocument(() => listedTitlesWithPersonalState(undefined, titleIdsOf(credits.residentItems().map(c => c.media)), false), context => credits.revalidate({fetchPage: personCreditsSource(api, scope, personId, role), hold: context.settle}), () => credits.getSnapshot().total !== undefined);
   const creditsSnapshot = useSyncExternalStore(credits.subscribe, credits.getSnapshot);
   // The library's sort and filters on this person's titles, across every library they are in, as one
   // list. Cast and Crew keep the toolbar: the server's cast and crew conditions are the same split.

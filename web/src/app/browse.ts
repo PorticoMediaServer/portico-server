@@ -1,7 +1,8 @@
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {currentI18n} from './i18n';
 import {createWindowedCollection, type FetchPage, type WindowedCollection} from '@core/collections/index.ts';
-import {titlesWithPersonalState} from '@core/freshness-hub.ts';
+import {listedTitlesWithPersonalState, readsPersonalState} from '@core/freshness-hub.ts';
+import {browseFields} from '@core/browse.ts';
 import {usePooled} from './freshness';
 import type {ContentEntry} from '@core/library-content.ts';
 import {acrossLibraries, browseCapabilitiesPath, browseFacetsPath, parseBrowseCapabilities, parseBrowseFacets, type BrowseCapabilities, type BrowseFacetValue, type BrowseNode, type BrowseSortSelection} from '@core/browse.ts';
@@ -58,6 +59,13 @@ export const BROWSE_PAGE = 60;
 type BrowseStore = {collection?: WindowedCollection<ContentEntry>; /** What a quiet read asks for: the filters and sort on screen now. */ source?: () => FetchPage<ContentEntry>; getSnapshot(): unknown; subscribe(listener: () => void): () => void; dispose(): void};
 const idleStore = (): BrowseStore => ({getSnapshot: () => undefined, subscribe: () => () => {}, dispose: () => {}});
 
+/** The ids a personal hint may name for these entries: the entry's own, and the title its page is about. */
+export function titleIdsOf(entries: readonly ContentEntry[]): string[] {
+  const out: string[] = [];
+  for (const e of entries) { out.push(e.id); if (e.navigation?.entityId && e.navigation.entityId !== e.id) out.push(e.navigation.entityId); if (e.playback?.itemId && e.playback.itemId !== e.id) out.push(e.playback.itemId); }
+  return out;
+}
+
 export function useBrowseCollection(input: {libraryId?: string; pivot?: string; /** What the list is of (a collection's titles, an album's songs). Always applied; the viewer's filters only narrow it. */ base?: readonly BrowseNode[]; predicates: readonly Predicate[]; sort?: BrowseSortSelection; enabled: boolean; pageSize?: number}) {
   const {api} = useSession();
   const {libraryId, pivot, base, predicates, sort, enabled} = input;
@@ -70,6 +78,9 @@ export function useBrowseCollection(input: {libraryId?: string; pivot?: string; 
   // same list at the same place without a request. A new query is a new generation of it.
   const latest = useRef<() => FetchPage<ContentEntry>>(undefined);
   latest.current = () => browsePageSource(api, {libraryId: libraryId!, pivot: pivot!, base, predicates, sort});
+  // Whether the list's own conditions or order read this profile's state (see dependencies below).
+  const personalQuery = useRef(false);
+  personalQuery.current = readsPersonalState([...browseFields(base ?? []), ...browseFields(predicates), sort?.field]);
   const {service: store, document, memo} = usePooled<BrowseStore, unknown>(on ? `browse:${libraryId}:${pivot}:${pageSize}${baseKey}` : 'browse:idle', () => {
     if (!on) return {service: idleStore(), document: {dependencies: [], revalidate: async () => {}}};
     const collection = createWindowedCollection<ContentEntry>({fetchPage: latest.current!(), pageSize, maxResidentPages: 10, keyOf: e => e.id});
@@ -77,9 +88,9 @@ export function useBrowseCollection(input: {libraryId?: string; pivot?: string; 
     return {
       service,
       document: {
-        // The titles, their order, and this profile's marks on them.
-        // A list across libraries follows them all.
-        dependencies: titlesWithPersonalState(libraryId === acrossLibraries ? undefined : libraryId),
+        // The titles, their order, and this profile's marks on the titles it holds (all of its
+        // state when the list is filtered or ordered by it). A list across libraries follows them all.
+        dependencies: () => listedTitlesWithPersonalState(libraryId === acrossLibraries ? undefined : libraryId, titleIdsOf(collection.residentItems()), personalQuery.current),
         hasContent: () => collection.getSnapshot().total !== undefined,
         // The same list read again behind the one on screen (a new reading has a new revision), swapped in whole at the same place.
         revalidate: context => collection.revalidate({fetchPage: service.source?.(), hold: context.settle}),
