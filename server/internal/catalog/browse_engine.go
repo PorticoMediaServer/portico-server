@@ -459,6 +459,16 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 	// library scope and the client's own query, so neither can widen it.
 	live, liveArgs := EntityRestrictionSQL("e.entity_id", request.Restrictions)
 	if live != "1" {
+		// The published class refuses a title the viewer may see none of by
+		// one key lookup, before the live test walks a refused show's every
+		// episode; the live test still decides for the titles it holds.
+		published, err := s.publishedClassesSQL("e.entity_id", []string{request.Library}, request.Restrictions)
+		if err != nil {
+			return out, nil, err
+		}
+		if published != "1" {
+			live = published + " AND " + live
+		}
 		where += " AND " + live
 		args = append(args, liveArgs...)
 	}

@@ -86,6 +86,12 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 	var countGroups func(values []string) (map[string]int, error)
 	if request.Query != nil || request.Restrictions.Active() {
 		compiler := browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, rows: request.Rows}
+		// The grouping's titles are the library's facet holders: a value-side
+		// candidate list is bounded by their kinds.
+		if lib, libErr := s.library(request.Library); libErr == nil {
+			compiler.kinds = facetHolderKinds[lib.Kind]
+			compiler.itemPivot = lib.Kind == "movie" || lib.Kind == "music" || lib.Kind == "audiobook"
+		}
 		clause, err := compiler.compile(request.Query)
 		if err != nil {
 			return out, err
@@ -288,4 +294,11 @@ func (s *Service) browseAggregate(request BrowseRequest, pivot browsePivot) (Bro
 		out.PageInfo.NextCursor, err = s.encodeCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(rows)), ID: last.value, Keys: []string{last.key}, Total: total, Expires: expires})
 	}
 	return out, err
+}
+
+// facetHolderKinds are the kinds a library's groupings count
+// (compactcatalog.FacetHolderSQL), by library kind.
+var facetHolderKinds = map[string][]int{
+	"movie": {int(compactcatalog.Movie)}, "tv": {int(compactcatalog.Show)}, "anime": {int(compactcatalog.Show)},
+	"music": {int(compactcatalog.Track)}, "audiobook": {int(compactcatalog.Part)},
 }

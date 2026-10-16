@@ -51,9 +51,18 @@ CREATE TABLE catalog_entities(
  retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1)),
  -- How many genre sources name the entity itself (kept by catalog_term_sources'
  -- triggers), so "has no genre" starts from the entities with none.
- genre_sources INTEGER NOT NULL DEFAULT 0) STRICT;
+ genre_sources INTEGER NOT NULL DEFAULT 0,
+ -- How many files the entity links and how many acting, directing and writing
+ -- credits it carries (kept by the link and credit writes), so "is missing"
+ -- on a field nearly every title has starts from the few that have none
+ -- (catalog_entities_fact_gaps, browse_expression.go's factGapSQL).
+ asset_links INTEGER NOT NULL DEFAULT 0,
+ acting_credits INTEGER NOT NULL DEFAULT 0,
+ directing_credits INTEGER NOT NULL DEFAULT 0,
+ writing_credits INTEGER NOT NULL DEFAULT 0) STRICT;
 CREATE INDEX catalog_entities_title ON catalog_entities(library_id,kind,sort_key,id);
 CREATE INDEX catalog_entities_genreless ON catalog_entities(kind,id) WHERE genre_sources=0;
+CREATE INDEX catalog_entities_fact_gaps ON catalog_entities(kind,(asset_links=0)+(acting_credits=0)*2+(directing_credits=0)*4+(writing_credits=0)*8,id);
 CREATE INDEX catalog_entities_added ON catalog_entities(library_id,added_ms DESC,id DESC) WHERE added_ms IS NOT NULL;
 CREATE INDEX catalog_entities_parent ON catalog_entities(parent_id,id) WHERE parent_id IS NOT NULL;
 CREATE INDEX catalog_entities_library ON catalog_entities(library_id,kind,id);
@@ -120,6 +129,16 @@ CREATE TABLE catalog_item_version_counts(
  item_id INTEGER PRIMARY KEY,
  versions INTEGER NOT NULL) STRICT;
 CREATE INDEX catalog_item_version_counts_value ON catalog_item_version_counts(versions,item_id);
+CREATE TRIGGER catalog_entities_asset_links_join AFTER INSERT ON catalog_asset_links BEGIN
+ UPDATE catalog_entities SET asset_links=asset_links+1 WHERE id=NEW.entity_id;
+END;
+CREATE TRIGGER catalog_entities_asset_links_leave AFTER DELETE ON catalog_asset_links BEGIN
+ UPDATE catalog_entities SET asset_links=max(0,asset_links-1) WHERE id=OLD.entity_id;
+END;
+CREATE TRIGGER catalog_entities_asset_links_move AFTER UPDATE OF entity_id ON catalog_asset_links WHEN OLD.entity_id IS NOT NEW.entity_id BEGIN
+ UPDATE catalog_entities SET asset_links=max(0,asset_links-1) WHERE id=OLD.entity_id;
+ UPDATE catalog_entities SET asset_links=asset_links+1 WHERE id=NEW.entity_id;
+END;
 CREATE TRIGGER catalog_item_version_counts_join AFTER INSERT ON catalog_asset_links WHEN NEW.part_index=0 BEGIN
  INSERT INTO catalog_item_version_counts(item_id,versions) VALUES(NEW.entity_id,1) ON CONFLICT(item_id) DO UPDATE SET versions=versions+1;
 END;
@@ -443,6 +462,19 @@ CREATE TABLE catalog_person_credit_counts(
  department_id INTEGER NOT NULL,
  credits INTEGER NOT NULL,
  PRIMARY KEY(person_id,library_id,department_id)) WITHOUT ROWID, STRICT;
+-- The acting, directing and writing credits an entity carries, by the actor,
+-- director and writer fields' own label tests (browse_contract.go).
+CREATE TRIGGER catalog_entities_credit_roles_join AFTER INSERT ON catalog_credits BEGIN
+ UPDATE catalog_entities SET acting_credits=acting_credits+COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=NEW.department_id)='Acting'),0),directing_credits=directing_credits+COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=NEW.role_id)='Director' OR (SELECT label FROM catalog_credit_labels WHERE id=NEW.department_id)='Directing'),0),writing_credits=writing_credits+COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=NEW.role_id) IN('Writer','Screenplay') OR (SELECT label FROM catalog_credit_labels WHERE id=NEW.department_id)='Writing'),0) WHERE id=NEW.entity_id;
+END;
+CREATE TRIGGER catalog_entities_credit_roles_leave AFTER DELETE ON catalog_credits BEGIN
+ UPDATE catalog_entities SET acting_credits=max(0,acting_credits-COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=OLD.department_id)='Acting'),0)),directing_credits=max(0,directing_credits-COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=OLD.role_id)='Director' OR (SELECT label FROM catalog_credit_labels WHERE id=OLD.department_id)='Directing'),0)),writing_credits=max(0,writing_credits-COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=OLD.role_id) IN('Writer','Screenplay') OR (SELECT label FROM catalog_credit_labels WHERE id=OLD.department_id)='Writing'),0)) WHERE id=OLD.entity_id;
+END;
+CREATE TRIGGER catalog_entities_credit_roles_move AFTER UPDATE OF entity_id,role_id,department_id ON catalog_credits
+ WHEN OLD.entity_id IS NOT NEW.entity_id OR OLD.role_id IS NOT NEW.role_id OR OLD.department_id IS NOT NEW.department_id BEGIN
+ UPDATE catalog_entities SET acting_credits=max(0,acting_credits-COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=OLD.department_id)='Acting'),0)),directing_credits=max(0,directing_credits-COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=OLD.role_id)='Director' OR (SELECT label FROM catalog_credit_labels WHERE id=OLD.department_id)='Directing'),0)),writing_credits=max(0,writing_credits-COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=OLD.role_id) IN('Writer','Screenplay') OR (SELECT label FROM catalog_credit_labels WHERE id=OLD.department_id)='Writing'),0)) WHERE id=OLD.entity_id;
+ UPDATE catalog_entities SET acting_credits=acting_credits+COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=NEW.department_id)='Acting'),0),directing_credits=directing_credits+COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=NEW.role_id)='Director' OR (SELECT label FROM catalog_credit_labels WHERE id=NEW.department_id)='Directing'),0),writing_credits=writing_credits+COALESCE(((SELECT label FROM catalog_credit_labels WHERE id=NEW.role_id) IN('Writer','Screenplay') OR (SELECT label FROM catalog_credit_labels WHERE id=NEW.department_id)='Writing'),0) WHERE id=NEW.entity_id;
+END;
 CREATE TRIGGER catalog_person_credit_counts_join AFTER INSERT ON catalog_credits WHEN NEW.person_id IS NOT NULL BEGIN
  INSERT INTO catalog_person_credit_counts(person_id,library_id,department_id,credits) SELECT NEW.person_id,e.library_id,NEW.department_id,1 FROM catalog_entities e WHERE e.id=NEW.entity_id
   ON CONFLICT(person_id,library_id,department_id) DO UPDATE SET credits=credits+1;
@@ -597,6 +629,19 @@ CREATE INDEX catalog_browse_track_key ON catalog_browse_rows(library_id,kind,tra
 CREATE INDEX catalog_browse_file_size ON catalog_browse_rows(library_id,kind,file_size,entity_id);
 CREATE INDEX catalog_browse_resolution_key ON catalog_browse_rows(library_id,kind,resolution_key,entity_id);
 CREATE INDEX catalog_browse_availability ON catalog_browse_rows(library_id,kind,availability_state,sort_key COLLATE NOCASE,entity_id);
+-- Each browse row's folded title as trigrams (no positions: a title filter
+-- reads the rows holding all of its text's trigrams and tests those alone),
+-- so "title contains" that matches few titles never tests every title.
+CREATE VIRTUAL TABLE catalog_title_grams USING fts5(title,content='',contentless_delete=1,tokenize='trigram case_sensitive 1',detail='none');
+CREATE TRIGGER catalog_title_grams_insert AFTER INSERT ON catalog_browse_rows BEGIN
+ INSERT INTO catalog_title_grams(rowid,title) VALUES(NEW.entity_id,portico_fold_text(NEW.title)); END;
+CREATE TRIGGER catalog_title_grams_update AFTER UPDATE OF title ON catalog_browse_rows WHEN OLD.title IS NOT NEW.title BEGIN
+ DELETE FROM catalog_title_grams WHERE rowid=OLD.entity_id;
+ INSERT INTO catalog_title_grams(rowid,title) VALUES(NEW.entity_id,portico_fold_text(NEW.title)); END;
+CREATE TRIGGER catalog_personal_sort_rows_title AFTER UPDATE OF sort_key ON catalog_browse_rows WHEN OLD.sort_key IS NOT NEW.sort_key BEGIN
+ UPDATE catalog_personal_sort_rows SET sort_key=NEW.sort_key WHERE entity_id=NEW.entity_id; END;
+CREATE TRIGGER catalog_title_grams_delete AFTER DELETE ON catalog_browse_rows BEGIN
+ DELETE FROM catalog_title_grams WHERE rowid=OLD.entity_id; END;
 CREATE INDEX catalog_asset_links_available_seek ON catalog_asset_links(entity_id,available);
 CREATE INDEX catalog_browse_random_key ON catalog_browse_rows(library_id,kind,random_key,entity_id);
 CREATE INDEX catalog_browse_title ON catalog_browse_rows(library_id,kind,sort_key COLLATE NOCASE,entity_id);
@@ -3920,12 +3965,15 @@ CREATE TABLE catalog_personal_sort_rows(
  profile_id TEXT NOT NULL,entity_id INTEGER NOT NULL,library_id INTEGER NOT NULL,kind INTEGER NOT NULL,
  rating_key TEXT NOT NULL,last_month TEXT NOT NULL,last_year TEXT NOT NULL,
  rating INTEGER NOT NULL DEFAULT 0,last_played_at TEXT NOT NULL DEFAULT '',play_count INTEGER NOT NULL DEFAULT 0,
+ -- The title's browse sort key, so the history reads in title order past any length.
+ sort_key TEXT NOT NULL DEFAULT '',
  PRIMARY KEY(profile_id,entity_id)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_personal_order_rating ON catalog_personal_sort_rows(profile_id,library_id,kind,rating,entity_id);
 CREATE INDEX catalog_personal_order_last ON catalog_personal_sort_rows(profile_id,library_id,kind,last_played_at,entity_id);
 CREATE INDEX catalog_personal_order_plays ON catalog_personal_sort_rows(profile_id,library_id,kind,play_count,entity_id);
 -- The viewing history across libraries, most recent first, for its own order.
 CREATE INDEX catalog_personal_history ON catalog_personal_sort_rows(profile_id,last_played_at,entity_id) WHERE last_played_at<>'';
+CREATE INDEX catalog_personal_history_title ON catalog_personal_sort_rows(profile_id,sort_key COLLATE NOCASE,entity_id) WHERE last_played_at<>'';
 CREATE TABLE catalog_personal_sort_buckets(
  profile_id TEXT NOT NULL,library_id INTEGER NOT NULL,kind INTEGER NOT NULL,
  axis INTEGER NOT NULL CHECK(axis BETWEEN 7 AND 9),value TEXT NOT NULL,total INTEGER NOT NULL CHECK(total>=0),
@@ -5151,6 +5199,30 @@ CREATE TRIGGER profile_show_progress_update AFTER UPDATE OF updated_at ON progre
  INSERT INTO profile_show_activity(profile_id,show_id,library_id,last_activity,last_item_id)
   SELECT NEW.profile_id,e.show_id,NEW.library_id,NEW.updated_at,NEW.item_id FROM catalog_episodes e WHERE e.entity_id=NEW.item_id
   ON CONFLICT(profile_id,show_id) DO UPDATE SET last_activity=excluded.last_activity,last_item_id=excluded.last_item_id WHERE excluded.last_activity>=profile_show_activity.last_activity;END;
+-- A profile's unfinished episodes by show, newest first (the progress writes
+-- keep it), so Continue Watching finds a show's partial episode among the
+-- few the profile started instead of walking the show's every episode.
+CREATE TABLE profile_show_partials(
+ profile_id TEXT NOT NULL,
+ item_id INTEGER NOT NULL,
+ show_id INTEGER NOT NULL,
+ updated_at TEXT NOT NULL,
+ PRIMARY KEY(profile_id,item_id)) WITHOUT ROWID, STRICT;
+CREATE INDEX profile_show_partials_show ON profile_show_partials(profile_id,show_id,updated_at DESC,item_id DESC);
+CREATE INDEX profile_show_partials_item ON profile_show_partials(item_id);
+CREATE TRIGGER profile_show_partials_insert AFTER INSERT ON progress_activity WHEN NEW.state!='ended' BEGIN
+ INSERT INTO profile_show_partials(profile_id,item_id,show_id,updated_at)
+  SELECT NEW.profile_id,NEW.item_id,e.show_id,NEW.updated_at FROM catalog_episodes e WHERE e.entity_id=NEW.item_id
+  ON CONFLICT(profile_id,item_id) DO UPDATE SET show_id=excluded.show_id,updated_at=excluded.updated_at;END;
+CREATE TRIGGER profile_show_partials_update AFTER UPDATE OF item_id,updated_at,state ON progress_activity BEGIN
+ DELETE FROM profile_show_partials WHERE profile_id=OLD.profile_id AND item_id=OLD.item_id AND (NEW.state='ended' OR OLD.item_id IS NOT NEW.item_id OR OLD.profile_id IS NOT NEW.profile_id);
+ INSERT INTO profile_show_partials(profile_id,item_id,show_id,updated_at)
+  SELECT NEW.profile_id,NEW.item_id,e.show_id,NEW.updated_at FROM catalog_episodes e WHERE e.entity_id=NEW.item_id AND NEW.state!='ended'
+  ON CONFLICT(profile_id,item_id) DO UPDATE SET show_id=excluded.show_id,updated_at=excluded.updated_at;END;
+CREATE TRIGGER profile_show_partials_delete AFTER DELETE ON progress_activity BEGIN
+ DELETE FROM profile_show_partials WHERE profile_id=OLD.profile_id AND item_id=OLD.item_id;END;
+CREATE TRIGGER profile_show_partials_episode_move AFTER UPDATE OF show_id ON catalog_episodes WHEN OLD.show_id IS NOT NEW.show_id BEGIN
+ UPDATE profile_show_partials SET show_id=NEW.show_id WHERE item_id=NEW.entity_id;END;
 CREATE TRIGGER continue_show_dismiss_insert AFTER INSERT ON continue_dismissals BEGIN
  INSERT INTO continue_show_dismissals(profile_id,show_id,item_id,playback_id,last_activity)
   SELECT NEW.profile_id,e.show_id,NEW.item_id,NEW.playback_id,COALESCE(a.last_activity,'') FROM catalog_episodes e LEFT JOIN profile_show_activity a ON a.profile_id=NEW.profile_id AND a.show_id=e.show_id WHERE e.entity_id=NEW.item_id

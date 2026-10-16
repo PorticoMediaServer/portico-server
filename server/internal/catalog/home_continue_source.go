@@ -29,6 +29,15 @@ func (s *Service) homeContinueSource(r HomeRequest, libraries, cutoffs, premiere
 	// previous slice's last key, so each show is evaluated once, and stop as
 	// soon as the maximum is filled: every later show's slot is older than every
 	// slot already chosen (B83). The walk never counts the profile's history.
+	// A started show the viewer may see none of is passed over by one key
+	// lookup in its library's class, never by testing its episodes.
+	visible, err := s.publishedClassesSQL("w.show_id", r.Libraries, r.Restrictions)
+	if err != nil {
+		return homeSource{}, err
+	}
+	if visible != "1" {
+		r.visibleShows = visible
+	}
 	shows := []homeCandidate{}
 	var after *showActivityKey
 	considered := 0
