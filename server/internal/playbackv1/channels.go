@@ -113,13 +113,6 @@ func (s *Service) channelReference(ctx context.Context, channelID, generation st
 	return ref, kind, nil
 }
 
-// deviceProfile is the native engine of the device's capability document,
-// which the linear plan follows: live channels always play in the platform's
-// own player.
-func (s *Service) deviceProfile(ctx context.Context, device string) playback.ClientProfile {
-	return s.deviceDocument(ctx, device).Profile(playback.EngineNative)
-}
-
 func (s *Service) startChannel(ctx context.Context, c Caller, key, startDigest string, req StartRequest) (SessionView, bool, error) {
 	if s.Channels == nil || !s.Channels.Configured() {
 		return SessionView{}, false, ErrChannelsUnavailable
@@ -176,13 +169,24 @@ func (s *Service) startChannel(ctx context.Context, c Caller, key, startDigest s
 	if c.Remote {
 		r.location = "remote"
 	}
-	profile := s.deviceProfile(ctx, c.DeviceID)
-	// The narrowed profile is what StartTx stores in
-	// playback_channel_sessions.client_profile_json, and linearWorkTx reads it
-	// back for every producer of that session (re-tunes and programme
-	// boundaries included), so the cap holds for the session's whole life.
+	document := s.deviceDocument(ctx, c.DeviceID)
+	profile := document.Profile(playback.EngineNative)
+	// A second engine that plays channels is planned beside the native one
+	// unless the viewer chose Native; the producer picks between them.
+	var mpv *playback.ClientProfile
+	if second := document.Profile(playback.EngineMPV); document.HasEngine(playback.EngineMPV) && second.LiveChannels && document.EngineSetting != playback.EngineSettingNative {
+		mpv = &second
+	}
+	// The narrowed profiles are what StartTx stores in
+	// playback_channel_sessions, and linearWorkTx reads them back for every
+	// producer of that session (re-tunes and programme boundaries included),
+	// so the cap holds for the session's whole life.
 	if c.Remote && c.AdminMaxVideoBitrateBPS > 0 {
 		profile = playback.WithVideoBitrateCeiling(profile, c.AdminMaxVideoBitrateBPS)
+		if mpv != nil {
+			narrowed := playback.WithVideoBitrateCeiling(*mpv, c.AdminMaxVideoBitrateBPS)
+			mpv = &narrowed
+		}
 	}
 	err = dbwork.WithWriteTxContext(ctx, s.DB, dbwork.ClassPlaybackStart, func(ctx context.Context, tx *sql.Tx) error {
 		if ref.Kind == "live-source" && s.TunerAvailable != nil {
@@ -198,7 +202,7 @@ func (s *Service) startChannel(ctx context.Context, c Caller, key, startDigest s
 			r.id, r.device, r.account, r.profile, r.authority, r.startKey, r.startDigest, r.kind, r.role, r.state, r.item, r.version, r.channel, r.queueID, r.entryID, r.transfer, r.group, r.request, r.media, r.presentation, r.audioTrack, r.subtitleTrack, r.location, r.endReason, r.message, r.partIndex, r.revision, r.generation, r.mediaGeneration, r.startPosition, r.position, r.lastSeq, r.bandwidth, r.lease, r.created, r.updated, r.ended, r.pausedSince); err != nil {
 			return err
 		}
-		if _, err := s.Channels.StartTx(ctx, tx, c.Principal, playback.ChannelStart{SessionID: r.id, Channel: ref, State: state, Profile: profile, LeaseUntil: time.UnixMilli(r.lease)}); err != nil {
+		if _, err := s.Channels.StartTx(ctx, tx, c.Principal, playback.ChannelStart{SessionID: r.id, Channel: ref, State: state, Profile: profile, MPVProfile: mpv, EngineSetting: document.EngineSetting, LeaseUntil: time.UnixMilli(r.lease)}); err != nil {
 			return err
 		}
 		if old.id != "" && old.ended == 0 {
@@ -258,6 +262,11 @@ func (s *Service) channelPresentation(r row) Presentation {
 	}
 	gen, _ := strconv.Atoi(st.Media.BufferGeneration)
 	p.Generation, p.URL = gen, st.Media.StreamURL
+	// The engine the producer made the stream for; native until it has.
+	p.Engine = playback.EngineNative
+	if st.Media.Engine == playback.EngineMPV {
+		p.Engine = playback.EngineMPV
+	}
 	ms := func(us string) int64 { n, _ := strconv.ParseInt(us, 10, 64); return n / 1000 }
 	l := &LinearView{ReservationRequiredAtMS: st.Media.ReservationRequiredAtMS, Name: st.Name, OriginMs: st.Media.OriginMS, WindowStartMs: ms(st.Media.WindowStartUS), WindowEndMs: ms(st.Media.WindowEndUS), LiveEdgeMs: ms(st.Media.LiveEdgeUS), State: st.Media.State, ErrorCode: st.Media.ErrorCode}
 	if l.State == "" {

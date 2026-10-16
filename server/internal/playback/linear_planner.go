@@ -54,3 +54,52 @@ func PlanLinearDelivery(source DeliverySource, client ClientProfile, q ControlQu
 	policy := ResolvedDeliveryPolicy{DirectPlay: "never", DirectStream: "allow", Transcode: "allow", AllowHDR: true}
 	return planDelivery(DeliveryInput{Source: &source, Client: client, Policy: policy, Target: target, Config: DefaultDeliveryConfiguration(), TranscodingEnabled: converting, Server: decoder.CurrentToolchain(), FMP4Output: fragmented})
 }
+
+// LinearEngines are the engines a channel may be planned for: the device's
+// native engine always, and mpv when the device's mpv plays channels and the
+// viewer has not chosen Native. Setting is the viewer's player setting.
+type LinearEngines struct {
+	Native  ClientProfile
+	MPV     *ClientProfile
+	Setting string
+}
+
+// PlanLinearEngines plans a live input for the device and says which engine
+// plays it, by the same rule as a title: with Automatic the native engine
+// unless its plan converts the picture or makes lossless sound lossy and mpv
+// keeps them; the engine the viewer chose otherwise, the other only when the
+// chosen one cannot play it at all. pinned keeps the engine a buffer is
+// already being played with (one playlist, one player).
+func PlanLinearEngines(source DeliverySource, engines LinearEngines, q ControlQuality, converting bool, packaging LinearPackaging, pinned string) (DeliveryPlan, string, error) {
+	plan := func(engine string) (DeliveryPlan, error) {
+		client := engines.Native
+		if engine == EngineMPV {
+			client = *engines.MPV
+		}
+		return PlanLinearDelivery(source, client, q, converting, packaging)
+	}
+	if engines.MPV == nil || pinned == EngineNative || engines.Setting == EngineSettingNative && pinned == "" {
+		p, err := plan(EngineNative)
+		return p, EngineNative, err
+	}
+	if pinned == EngineMPV {
+		p, err := plan(EngineMPV)
+		return p, EngineMPV, err
+	}
+	if engines.Setting == EngineSettingMPV {
+		if p, err := plan(EngineMPV); err == nil {
+			return p, EngineMPV, nil
+		}
+		p, err := plan(EngineNative)
+		return p, EngineNative, err
+	}
+	native, nativeErr := plan(EngineNative)
+	if nativeErr == nil && !engineCompromises(native) {
+		return native, EngineNative, nil
+	}
+	mpv, mpvErr := plan(EngineMPV)
+	if mpvErr == nil && (!engineCompromises(mpv) || nativeErr != nil) {
+		return mpv, EngineMPV, nil
+	}
+	return native, EngineNative, nativeErr
+}

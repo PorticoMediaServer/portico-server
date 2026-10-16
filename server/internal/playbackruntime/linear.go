@@ -67,9 +67,12 @@ type linearEntry struct {
 	selection   playback.LinearSelection
 	selections  map[int64]playback.LinearSelection
 	state, code string
-	logged      string // the last start failure written to the log
-	cancel      context.CancelFunc
-	requests    chan struct{}
+	// engine is the player engine the buffer's stream is made for; the first
+	// producer chooses it and later ones keep it.
+	engine   string
+	logged   string // the last start failure written to the log
+	cancel   context.CancelFunc
+	requests chan struct{}
 }
 
 func privateDirectory(path string) error {
@@ -323,6 +326,7 @@ func (l *LinearRuntime) runOccurrence(ctx context.Context, id string, entry *lin
 	}
 	entry.mu.Lock()
 	entry.buffer = buffer
+	entry.engine = ""
 	entry.generation = work.BufferOrdinal
 	entry.token = hex.EncodeToString(secret[:])
 	entry.selection = work.Selection
@@ -762,10 +766,16 @@ func (l *LinearRuntime) produceLive(ctx context.Context, w playback.LinearWork, 
 	} else if held {
 		packaging = playback.LinearTSOnly
 	}
-	plan, e := linearPlan(raw, w, packaging)
+	entry.mu.Lock()
+	pinned := entry.engine
+	entry.mu.Unlock()
+	plan, engine, e := linearEnginePlan(raw, w, packaging, pinned)
 	if e != nil {
 		return e
 	}
+	entry.mu.Lock()
+	entry.engine = engine
+	entry.mu.Unlock()
 	plan.HLSInput = gateway.HLS()
 	publisher, e := entry.buffer.Publisher(linearbuffer.Producer{ID: w.ProducerOrdinal, Fragmented: plan.Fragmented}, func() error { return l.checkProducerWithPatience(work, w) })
 	if e != nil {
@@ -900,8 +910,9 @@ func (l *LinearRuntime) Snapshot(id string) playback.LinearMedia {
 		return result
 	}
 	e.mu.Lock()
-	buffer, generation, producer, token, state, code, logo := e.buffer, e.generation, e.producer, e.token, e.state, e.code, e.selection.LogoItemID
+	buffer, generation, producer, token, state, code, logo, engine := e.buffer, e.generation, e.producer, e.token, e.state, e.code, e.selection.LogoItemID, e.engine
 	e.mu.Unlock()
+	result.Engine = engine
 	if buffer == nil {
 		return result
 	}

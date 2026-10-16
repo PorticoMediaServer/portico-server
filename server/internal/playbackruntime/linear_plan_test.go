@@ -142,3 +142,39 @@ func TestLinearPlanUsesFragmentedMP4WhereItKeepsTheSignal(t *testing.T) {
 		t.Fatalf("%+v %v", plan, err)
 	}
 }
+
+// With Automatic a channel plays in mpv when the native player would need its
+// picture converted and mpv takes it as it is; the viewer's choice and the
+// buffer's pinned engine win otherwise.
+func TestLinearEngineChoiceFollowsThePlayerSetting(t *testing.T) {
+	native := playback.BaselineClientProfile()
+	mpv := playback.BaselineClientProfile()
+	mpv.Engine, mpv.LiveChannels = playback.EngineMPV, true
+	mpv.Video = append(mpv.Video, playback.ClientVideoCodec{Codec: "mpeg2video", BitDepths: []int{8}, Interlaced: true, MaxWidth: 1920, MaxHeight: 1080})
+	mpv.Audio = append(mpv.Audio, playback.ClientAudioCodec{Codec: "ac3", MaxChannels: 6})
+	for i := range mpv.Transports {
+		if mpv.Transports[i].Transport == playback.TransportHLSTS {
+			mpv.Transports[i].Video = append(mpv.Transports[i].Video, "mpeg2video")
+			mpv.Transports[i].Audio = append(mpv.Transports[i].Audio, "ac3")
+		}
+	}
+	raw := []byte(`{"streams":[{"codec_type":"video","codec_name":"mpeg2video","profile":"Main","pix_fmt":"yuv420p","width":1920,"height":1080,"avg_frame_rate":"25/1","field_order":"tt"},{"codec_type":"audio","codec_name":"ac3","channels":6,"sample_rate":"48000"}]}`)
+	w := playback.LinearWork{ClientProfile: native, MPVProfile: &mpv, EngineSetting: playback.EngineSettingAutomatic, TranscodingEnabled: true}
+	w.Selection.Quality.AllowLossy = true
+	plan, engine, err := linearEnginePlan(raw, w, playback.LinearEither, "")
+	if err != nil || engine != playback.EngineMPV || plan.ConvertVideo || plan.ConvertAudio {
+		t.Fatalf("automatic: %s %+v %v", engine, plan, err)
+	}
+	if _, engine, _ = linearEnginePlan(raw, w, playback.LinearEither, playback.EngineNative); engine != playback.EngineNative {
+		t.Fatal("a pinned engine was changed")
+	}
+	w.EngineSetting = playback.EngineSettingNative
+	if plan, engine, err = linearEnginePlan(raw, w, playback.LinearEither, ""); err != nil || engine != playback.EngineNative || !plan.ConvertVideo {
+		t.Fatalf("native: %s %+v %v", engine, plan, err)
+	}
+	// Without a second engine that plays channels, the native engine plays them.
+	w.EngineSetting, w.MPVProfile = playback.EngineSettingAutomatic, nil
+	if _, engine, err = linearEnginePlan(raw, w, playback.LinearEither, ""); err != nil || engine != playback.EngineNative {
+		t.Fatalf("no mpv: %s %v", engine, err)
+	}
+}

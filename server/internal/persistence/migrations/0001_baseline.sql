@@ -3494,6 +3494,11 @@ CREATE TABLE playback_channel_sessions(
  selection_json TEXT NOT NULL,
  transport_json TEXT NOT NULL,
  client_profile_json TEXT NOT NULL DEFAULT '',
+ -- The device's mpv engine when it plays channels and the viewer has not
+ -- chosen Native, and the viewer's player setting: the producer plans for
+ -- the engine that keeps the most (LinearEngines).
+ mpv_profile_json TEXT NOT NULL DEFAULT '',
+ engine_setting TEXT NOT NULL DEFAULT 'automatic' CHECK(engine_setting IN('automatic','native','mpv')),
  source_revision INTEGER NOT NULL DEFAULT 1,
  retry_revision INTEGER NOT NULL DEFAULT 0,
  buffer_ordinal INTEGER NOT NULL DEFAULT 0,

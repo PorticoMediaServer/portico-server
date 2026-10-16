@@ -25485,6 +25485,9 @@ export const schemas = {
                   "evidence": {
                     "type": "string"
                   },
+                  "liveChannels": {
+                    "type": "boolean"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -25753,6 +25756,9 @@ export const schemas = {
                   },
                   "evidence": {
                     "type": "string"
+                  },
+                  "liveChannels": {
+                    "type": "boolean"
                   },
                   "name": {
                     "type": "string"
@@ -95528,6 +95534,9 @@ export const schemas = {
               "evidence": {
                 "type": "string"
               },
+              "liveChannels": {
+                "type": "boolean"
+              },
               "name": {
                 "type": "string"
               },
@@ -95796,6 +95805,9 @@ export const schemas = {
               },
               "evidence": {
                 "type": "string"
+              },
+              "liveChannels": {
+                "type": "boolean"
               },
               "name": {
                 "type": "string"

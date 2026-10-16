@@ -216,6 +216,8 @@ type LinearMedia struct {
 	State                   string           `json:"state"`
 	ErrorCode               string           `json:"errorCode"`
 	LogoURL                 string           `json:"logoUrl"`
+	// Engine is the player engine the stream was made for: "native" or "mpv".
+	Engine string `json:"engine,omitempty"`
 }
 
 // LinearDelivery is an owned source/presentation implementation.
@@ -226,7 +228,11 @@ type LinearDelivery interface {
 }
 
 type LinearWork struct {
-	ClientProfile                                                      ClientProfile
+	ClientProfile ClientProfile
+	// MPVProfile is the device's mpv engine when it plays channels and the
+	// viewer did not choose Native; EngineSetting is the viewer's setting.
+	MPVProfile                                                         *ClientProfile
+	EngineSetting                                                      string
 	PlaybackID                                                         string
 	Principal                                                          identity.Principal
 	FamilyID                                                           string

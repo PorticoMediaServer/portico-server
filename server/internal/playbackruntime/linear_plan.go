@@ -32,6 +32,14 @@ type linearProbeStream struct {
 // Plan from probed elementary streams and the admitted engine's declarations.
 // A conversion must produce a supported tuple, not merely a supported codec.
 func linearPlan(raw []byte, w playback.LinearWork, packaging playback.LinearPackaging) (decoder.LinearEncoding, error) {
+	plan, _, err := linearEnginePlan(raw, w, packaging, "")
+	return plan, err
+}
+
+// linearEnginePlan also says which of the device's engines the stream is made
+// for; pinned keeps the engine a buffer is already played with.
+func linearEnginePlan(raw []byte, w playback.LinearWork, packaging playback.LinearPackaging, pinned string) (decoder.LinearEncoding, string, error) {
+	engine := playback.EngineNative
 	var facts struct {
 		Streams []linearProbeStream `json:"streams"`
 		Format  struct {
@@ -40,7 +48,7 @@ func linearPlan(raw []byte, w playback.LinearWork, packaging playback.LinearPack
 	}
 	var plan decoder.LinearEncoding
 	if len(raw) > decoder.MaxProbeOutputBytes || json.Unmarshal(raw, &facts) != nil || len(facts.Streams) == 0 || len(facts.Streams) > 128 {
-		return plan, channelFault("source_probe_invalid", 422)
+		return plan, engine, channelFault("source_probe_invalid", 422)
 	}
 	var video, audio *linearProbeStream
 	for i := range facts.Streams {
@@ -53,16 +61,19 @@ func linearPlan(raw []byte, w playback.LinearWork, packaging playback.LinearPack
 		}
 	}
 	if video == nil && audio == nil {
-		return plan, channelFault("source_has_no_playable_stream", 422)
+		return plan, engine, channelFault("source_has_no_playable_stream", 422)
 	}
 	client := w.ClientProfile
 	if client.Version == 0 {
 		client = playback.BaselineClientProfile()
 	}
-	if !slices.ContainsFunc(client.Transports, func(t playback.ClientTransport) bool {
-		return t.Transport == playback.TransportHLSTS && packaging != playback.LinearFragmentedOnly || t.Transport == playback.TransportHLSFMP4 && packaging != playback.LinearTSOnly
-	}) {
-		return plan, channelFault("engine_transport_unavailable", 422)
+	transportFor := func(client playback.ClientProfile) bool {
+		return slices.ContainsFunc(client.Transports, func(t playback.ClientTransport) bool {
+			return t.Transport == playback.TransportHLSTS && packaging != playback.LinearFragmentedOnly || t.Transport == playback.TransportHLSFMP4 && packaging != playback.LinearTSOnly
+		})
+	}
+	if !transportFor(client) && (w.MPVProfile == nil || !transportFor(*w.MPVProfile)) {
+		return plan, engine, channelFault("engine_transport_unavailable", 422)
 	}
 	var sourceVideo *playback.SourceVideo
 	var sourceAudio *playback.SourceAudio
@@ -90,16 +101,17 @@ func linearPlan(raw []byte, w playback.LinearWork, packaging playback.LinearPack
 		sourceAudio = &playback.SourceAudio{Index: 1, Codec: audio.Codec, Channels: audio.Channels, Layout: audio.Layout, StreamDetail: assets.StreamDetail{Profile: audio.Profile, SampleRate: rate, BitRate: bitrate, BitDepth: depth}}
 	}
 	if sourceVideo != nil && (sourceVideo.Width < 1 || sourceVideo.Height < 1 || sourceVideo.Width > 32768 || sourceVideo.Height > 32768) {
-		return plan, channelFault("source_video_invalid", 422)
+		return plan, engine, channelFault("source_video_invalid", 422)
 	}
 	source := playback.DeliverySource{Container: "mpegts", Video: sourceVideo, DetailKnown: false}
 	if sourceAudio != nil {
 		source.Audio = []playback.SourceAudio{*sourceAudio}
 	}
 	source.BitRate, _ = strconv.ParseInt(facts.Format.Bitrate, 10, 64)
-	selected, err := playback.PlanLinearDelivery(source, client, w.Selection.Quality, w.TranscodingEnabled, packaging)
+	engines := playback.LinearEngines{Native: client, MPV: w.MPVProfile, Setting: w.EngineSetting}
+	selected, engine, err := playback.PlanLinearEngines(source, engines, w.Selection.Quality, w.TranscodingEnabled, packaging, pinned)
 	if err != nil {
-		return plan, channelFault("engine_codec_unavailable", 422)
+		return plan, engine, channelFault("engine_codec_unavailable", 422)
 	}
 	plan.Fragmented = selected.OutputContainer == "fmp4_hls"
 	plan.CopyHEVC = sourceVideo != nil && sourceVideo.Codec == "hevc" && selected.VideoAction == "copy"
@@ -107,10 +119,10 @@ func linearPlan(raw []byte, w playback.LinearWork, packaging playback.LinearPack
 	plan.Video, plan.Audio = video != nil, audio != nil
 	plan.ConvertVideo, plan.ConvertAudio = selected.VideoAction == "convert", selected.AudioAction == "convert"
 	if (plan.ConvertVideo || plan.ConvertAudio) && !q.AllowLossy && (plan.ConvertVideo || !selected.AudioLossless) {
-		return plan, channelFault("channel_quality_requires_original", 422)
+		return plan, engine, channelFault("channel_quality_requires_original", 422)
 	}
 	if selected.ToneMap && !q.AllowHDRToSDR {
-		return plan, channelFault("hdr_conversion_not_allowed", 422)
+		return plan, engine, channelFault("hdr_conversion_not_allowed", 422)
 	}
 	plan.HDRToSDR, plan.Deinterlace, plan.MaxFrameRate = selected.ToneMap, selected.Deinterlace, selected.MaxFrameRate
 	plan.MaxHeight, plan.VideoBitrate = selected.TargetHeight, selected.VideoBitrateBPS
@@ -118,5 +130,5 @@ func linearPlan(raw []byte, w playback.LinearWork, packaging playback.LinearPack
 	if plan.Target != nil {
 		plan.Level = plan.Target.VideoLevel
 	}
-	return plan, nil
+	return plan, engine, nil
 }

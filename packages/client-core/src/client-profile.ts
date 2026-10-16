@@ -72,6 +72,9 @@ export type EngineCapabilities={
  toneMapsHdr?:boolean;
  /** The engine can choose between audio tracks inside an original file. */
  embeddedAudioSwitching?:boolean;
+ /** A second engine (mpv) plays live channels: a timeshift window on the channel's own clock. The
+  * native engine always does; a second engine that does not say so is never given a channel. */
+ liveChannels?:boolean;
 };
 export type CapabilityDocument={
  version:typeof capabilityDocumentVersion;client:ClientIdentity;
@@ -122,7 +125,7 @@ function engineProblem(e:EngineCapabilities|undefined,path:string):string|null{
   if(!['direct','hls_ts','hls_fmp4'].includes(t.transport)||!tokens(t.containers,32)||!tokens(t.video,32)||!tokens(t.audio,48))return path+'.transports';
  }
  if(e.subtitleRendering!==undefined&&!(Array.isArray(e.subtitleRendering)&&e.subtitleRendering.length<=8&&e.subtitleRendering.every(x=>(subtitleRenderingKinds as readonly string[]).includes(x))))return path+'.subtitleRendering';
- if(!bool(e.toneMapsHdr)||!bool(e.embeddedAudioSwitching))return path+'.flags';
+ if(!bool(e.toneMapsHdr)||!bool(e.embeddedAudioSwitching)||!bool(e.liveChannels))return path+'.flags';
  return null;
 }
 

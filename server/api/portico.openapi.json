@@ -26966,6 +26966,9 @@
                       "evidence": {
                         "type": "string"
                       },
+                      "liveChannels": {
+                        "type": "boolean"
+                      },
                       "name": {
                         "type": "string"
                       },
@@ -27235,6 +27238,9 @@
                           },
                           "evidence": {
                             "type": "string"
+                          },
+                          "liveChannels": {
+                            "type": "boolean"
                           },
                           "name": {
                             "type": "string"
@@ -100701,6 +100707,9 @@
                   "evidence": {
                     "type": "string"
                   },
+                  "liveChannels": {
+                    "type": "boolean"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -100970,6 +100979,9 @@
                       },
                       "evidence": {
                         "type": "string"
+                      },
+                      "liveChannels": {
+                        "type": "boolean"
                       },
                       "name": {
                         "type": "string"
@@ -233595,6 +233607,9 @@
                                 "evidence": {
                                   "type": "string"
                                 },
+                                "liveChannels": {
+                                  "type": "boolean"
+                                },
                                 "name": {
                                   "type": "string"
                                 },
@@ -233864,6 +233879,9 @@
                                     },
                                     "evidence": {
                                       "type": "string"
+                                    },
+                                    "liveChannels": {
+                                      "type": "boolean"
                                     },
                                     "name": {
                                       "type": "string"
@@ -234389,6 +234407,9 @@
                           "evidence": {
                             "type": "string"
                           },
+                          "liveChannels": {
+                            "type": "boolean"
+                          },
                           "name": {
                             "type": "string"
                           },
@@ -234658,6 +234679,9 @@
                               },
                               "evidence": {
                                 "type": "string"
+                              },
+                              "liveChannels": {
+                                "type": "boolean"
                               },
                               "name": {
                                 "type": "string"
