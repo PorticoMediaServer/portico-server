@@ -181,8 +181,9 @@ export function ChannelEditor({value, onClose, onSaved}: {value: {config: Librar
     for (const [caps, lib] of [[movieCaps.capabilities, movieLibrary], [showCaps.capabilities, showLibrary]] as const) {
       for (const f of caps?.fields ?? []) if (!PERSONAL.has(f.id) && !byId.has(f.id) && lib) byId.set(f.id, {field: f, libraryId: lib.id});
     }
-    return [...byId.values()].sort((a, b) => fieldLabel(a.field.id, a.field.labelKey).localeCompare(fieldLabel(b.field.id, b.field.labelKey)));
-  }, [movieCaps.capabilities, showCaps.capabilities, movieLibrary, showLibrary]);
+    // The labels sort in the viewer's language: a new language sorts them again.
+    return [...byId.values()].sort((a, b) => fieldLabel(a.field.id, a.field.labelKey).localeCompare(fieldLabel(b.field.id, b.field.labelKey), i18n.locale));
+  }, [movieCaps.capabilities, showCaps.capabilities, movieLibrary, showLibrary, i18n]);
 
   const preview = useLivePreview(config, valid && !!rule?.query.libraryIds.length);
 

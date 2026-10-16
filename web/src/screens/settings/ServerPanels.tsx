@@ -24,7 +24,7 @@ import {BackgroundPauseRow, DownloadUsagePanel, FFmpegStatusRow, ResourceUsagePa
 import {RemoteSourcesPanel} from '../server/Storage';
 import {BackupsGroup} from '../server/Backups';
 import {RetentionRows, ScheduledJobsPanel, WindowsPanel} from '../server/MaintenanceWindows';
-import {CapabilitiesGroup, DetailWindowRow, MessageLogGroup} from '../server/Diagnostics';
+import {CapabilitiesGroup, DetailWindowRow, MessageLogGroup, SkippedPartsGroup} from '../server/Diagnostics';
 import {RecordsPanel, SupportExportPanel} from '../server/Logs';
 import {FeedbackPanel} from '../server/Feedback';
 import {PlayHistoryPanel} from '../server/PlayHistory';
@@ -76,6 +76,7 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.logs': return <MessageLogGroup />;
     case 'server.records': return <RecordsPanel />;
     case 'server.capabilities': return <CapabilitiesGroup />;
+    case 'server.skippedParts': return <SkippedPartsGroup />;
     case 'server.supportExport': return <SupportExportPanel />;
     case 'server.feedback': return <FeedbackPanel />;
     case 'server.stateFolder': return <StateFolder />;

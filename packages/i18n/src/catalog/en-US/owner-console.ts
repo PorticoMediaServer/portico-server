@@ -220,11 +220,9 @@ export const ownerConsoleMessages = {
   'server.thing.liveSources': 'Live TV sources',
   'server.thing.tuners': 'tuners',
   'server.thing.recordingRules': 'recording rules',
-  'server.thing.libraryChannels': 'Library Channels',
   'server.thing.usage': 'what is in use',
   'server.thing.downloads': 'downloads',
   'server.thing.diskUsage': 'disk usage',
   'server.thing.missingTitles': 'missing titles',
   'server.thing.storagePlaces': 'storage folders',
-  'server.thing.avoidedRoutes': 'playback problems',
 } as const;

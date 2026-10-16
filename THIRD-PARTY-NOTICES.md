@@ -81,13 +81,12 @@ alone is not a complete source bundle.
 | Manrope web interface font | OFL-1.1, `web/src/ui/fonts/OFL.txt` |
 | Liberation Sans 2.00.5 subtitle default | OFL-1.1, `third_party/libass-wasm/OFL-1.1.txt` |
 | Noto Sans Arabic, Hebrew, Thai, Devanagari, Bengali, Tamil | OFL-1.1, `third_party/subtitle-fonts/OFL-1.1.txt` |
-| Droid Sans Fallback, Chinese/Japanese glyphs | Apache-2.0, `third_party/subtitle-fonts/Apache-2.0.txt` |
+| Noto Sans CJK JP, decoder fallback and browser subtitles (served by the server) | OFL-1.1, `server/internal/mediaexec/fonts/NotoCJK-LICENSE` |
 | Decoder DejaVu fonts | Bitstream Vera/Arev font terms, DejaVu changes public domain; `server/internal/mediaexec/fonts/LICENSE` |
 | Lucide icons | ISC, `packages/design/LICENSE-LUCIDE` |
 
-Font file origins and digests are in each folder's provenance file. Droid Sans
-Fallback does not supply Korean Hangul; the current browser fallback set is
-not a claim of coverage for every script.
+Font file origins and digests are in each folder's provenance file. The
+browser fallback set is not a claim of coverage for every script.
 
 ## Server FFmpeg and FFprobe
 

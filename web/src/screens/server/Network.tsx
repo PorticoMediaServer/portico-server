@@ -66,7 +66,7 @@ export function AddressesRow() {
   if (!status?.addresses.length && !remote) return null;
   return (
     <>
-      {status?.addresses.length ? <SettingsRow label={t('web.connectivity.answersOn')} stack start control={<div style={{display: 'flex', flexDirection: 'column', gap: 4}}>{listedAddresses(status.addresses).map((a, i) => <Text key={`${i}:${a.address}`} variant="mono" tone="secondary" style={{fontSize: 12}}>{a.address} · {addressKind(t, a.class)}</Text>)}{status.omittedAddresses ? <Text variant="caption" tone="tertiary">{t('web.network.moreAddresses', {count: status.omittedAddresses})}</Text> : null}</div>} /> : null}
+      {status?.addresses.length ? <SettingsRow label={t('web.connectivity.answersOn')} stack start control={<div style={{display: 'flex', flexDirection: 'column', gap: 4}}>{listedAddresses(status.addresses).map((a, i) => <Text key={`${i}:${a.address}`} variant="mono" tone="secondary" style={{fontSize: '0.75rem'}}>{a.address} · {addressKind(t, a.class)}</Text>)}{status.omittedAddresses ? <Text variant="caption" tone="tertiary">{t('web.network.moreAddresses', {count: status.omittedAddresses})}</Text> : null}</div>} /> : null}
       {remote?.mappings.length ? <SettingsRow label={t('web.network.mappings')} stack start control={<KeyValue rows={remote.mappings.map(m => [m.protocol.toUpperCase(), `${sentence(m.state)} · ${t('server.address.port', {port: m.externalPort})}${m.errorCode ? ` · ${mappingProblem(t, m.errorCode)}` : ''}`])} />} /> : null}
     </>
   );

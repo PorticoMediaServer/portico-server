@@ -67247,6 +67247,15 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetSubtitleFontsCjkRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetSubtitleFontsCjkResponse": {
+    "format": "binary",
+    "type": "string"
+  },
   "GetSuggestionsRequest": {
     "properties": {},
     "required": [],

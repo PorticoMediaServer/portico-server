@@ -235,7 +235,7 @@ export function ChannelMapDialog({src, onClose}: {src: {id: string; name: string
         {action.notice ? <Notice tone="success" compact>{action.notice}</Notice> : null}
         <Input label={t('web.live.findChannel')} hideLabel placeholder={t('web.live.findChannel')} value={filter} onChange={e => setFilter(e.target.value)} />
         <div style={{maxHeight: '52vh', overflow: 'auto', border: '1px solid var(--line-soft)', borderRadius: 10}}>
-          <table style={{width: '100%', borderCollapse: 'collapse', fontSize: 14}}>
+          <table style={{width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem'}}>
             <thead><tr style={{textAlign: 'left', position: 'sticky', top: 0, background: 'var(--surface-raised)'}}>{(['channel', 'fromSource', 'number', 'guideId', 'hidden'] as const).map(h => <th key={h} style={{padding: '8px 12px', fontWeight: 600}}><Text variant="label" tone="tertiary">{t(`server.live.map.${h}`)}</Text></th>)}</tr></thead>
             <tbody>
               {shown.map(c => {

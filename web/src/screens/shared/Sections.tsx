@@ -261,6 +261,8 @@ export function LoadingGrid({density = 'poster'}: {density?: GridDensity}) {
  * the chosen set itself, in the smallest component that needs it.
  */
 export const EntryCard = React.memo(function EntryCard({entry, siblings, inShow, libraryId, selectable, rowShape, noSelect, origin, resume, arrived}: {entry: ContentEntry; /** The card has just appeared in a row that was already on screen: it fades in. */ arrived?: boolean; /** A Continue Watching card: the show as the title, what is left as the caption. */ resume?: boolean; noSelect?: boolean; origin?: EntryOrigin; /** The entries around this one (for shift-click range selection), read on demand. */ siblings: () => readonly ContentEntry[]; inShow?: boolean; libraryId?: string; selectable: boolean; /** The row's shared geometry, when the row mixes kinds. */ rowShape?: 'poster' | 'square'}) {
+  // The caption and labels come from catalogue helpers: reading the catalogue here redraws the card in a new language.
+  useI18n();
   const natural = shapeFor(entry.kind, inShow ? 'showWorkspace' : 'shelf');
   const shape = rowShape && natural !== 'landscape' ? rowShape : natural;
   const open = useOpenEntry();
