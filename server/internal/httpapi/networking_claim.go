@@ -3,6 +3,7 @@ package httpapi
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"portico.local/server/internal/identity"
@@ -39,12 +40,42 @@ func NetworkingClaimAuthorizer(id *identity.Service, origins []string, policies 
 		if e != nil || p.Authority != "local" || p.Role != "owner" {
 			return networking.ClaimRequestOwner{}, identity.ErrUnauthorized
 		}
+		resume, _ := json.Marshal(claimResume{p.Hash, p.AccountID, p.ProfileID, p.Epoch})
 		return networking.ClaimRequestOwner{Owner: networking.LocalOwner{AccountID: p.AccountID, ProfileID: p.ProfileID, Epoch: int64(p.Epoch)}, Guard: func(ctx context.Context, tx *sql.Tx) error {
 			_, e := id.SessionFamilyTx(ctx, tx, p)
 			if errors.Is(e, identity.ErrUnauthorized) {
 				return networking.ErrClaimOwnerRequired
 			}
 			return e
-		}}, nil
+		}, Resume: string(resume)}, nil
+	}
+}
+
+// claimResume notes the owner sign-in that asked for a web approval: the
+// digest the session store already keeps for its current token, and who it
+// belonged to.
+type claimResume struct {
+	Digest    string `json:"digest"`
+	AccountID string `json:"accountId"`
+	ProfileID string `json:"profileId"`
+	Epoch     int    `json:"epoch"`
+}
+
+// NetworkingClaimResume rebuilds, after a restart, the guard of the owner who
+// asked for a pending web approval: it holds while that same sign-in is still
+// current and still the local owner's, exactly as the guard it replaces.
+func NetworkingClaimResume(id *identity.Service) func(string) networking.ClaimRequestGuard {
+	return func(note string) networking.ClaimRequestGuard {
+		var r claimResume
+		if id == nil || json.Unmarshal([]byte(note), &r) != nil || r.Digest == "" {
+			return nil
+		}
+		return func(ctx context.Context, tx *sql.Tx) error {
+			p, e := id.PrincipalByDigestTx(ctx, tx, r.Digest)
+			if errors.Is(e, identity.ErrUnauthorized) || e == nil && (p.Authority != "local" || p.Role != "owner" || p.AccountID != r.AccountID || p.ProfileID != r.ProfileID || p.Epoch != r.Epoch) {
+				return networking.ErrClaimOwnerRequired
+			}
+			return e
+		}
 	}
 }

@@ -98,7 +98,7 @@ func (h *ClaimHandler) awaitWebClaim(w http.ResponseWriter, r *http.Request) {
 		h.failure(w, r, e)
 		return
 	}
-	watch, e := h.watchWebClaim(r.Context(), body.Expected, actor.Guard)
+	watch, e := h.watchWebClaim(r.Context(), body.Expected, actor.Guard, actor.Resume)
 	if e != nil {
 		h.failure(w, r, e)
 		return
@@ -138,7 +138,7 @@ const webClaimLifetime = 10 * time.Minute
 // (checked against the current claim under the owner's guard) when there is
 // none. The guard is the owner's who asked: if that sign-in ends before the
 // decision arrives, the approval is not applied.
-func (h *ClaimHandler) watchWebClaim(ctx context.Context, expected ClaimExpected, guard ClaimRequestGuard) (*webClaimWatch, error) {
+func (h *ClaimHandler) watchWebClaim(ctx context.Context, expected ClaimExpected, guard ClaimRequestGuard, resume string) (*webClaimWatch, error) {
 	if current, ok := h.webWatches.Load(expected.OperationID); ok {
 		return current.(*webClaimWatch), nil
 	}
@@ -165,6 +165,13 @@ func (h *ClaimHandler) watchWebClaim(ctx context.Context, expected ClaimExpected
 	if current, loaded := h.webWatches.LoadOrStore(expected.OperationID, watch); loaded {
 		return current.(*webClaimWatch), nil
 	}
+	if resume != "" {
+		// Kept so a restart before the decision picks the wait up again.
+		note, _ := json.Marshal(webClaimResume{expected, resume})
+		if _, e := dbwork.ExecWrite(ctx, h.store.db, dbwork.ClassInteractive, `UPDATE networking_web_claims SET watch=? WHERE operation_id=?`, string(note), expected.OperationID); e != nil {
+			log.Printf("The Portico Account approval wait was not saved for a restart: %v", e)
+		}
+	}
 	supervise.Go("networking.claim.web-watch", func() {
 		decided := false
 		defer func() {
@@ -184,6 +191,46 @@ func (h *ClaimHandler) watchWebClaim(ctx context.Context, expected ClaimExpected
 		watch.answer, decided = h.runWebClaimWatch(expected, guard, local)
 	})
 	return watch, nil
+}
+
+// webClaimResume is what a restart needs to wait on a pending approval again.
+type webClaimResume struct {
+	Expected ClaimExpected `json:"expected"`
+	Owner    string        `json:"owner"`
+}
+
+// ResumeWebClaims waits again, after a server restart, on every web approval
+// that was pending when the server stopped and has not expired. guard
+// rebuilds the asking owner's guard from its ClaimRequestOwner.Resume note;
+// the approval is applied only while that sign-in still holds, as before the
+// restart. A claim that moved on meanwhile is left alone.
+func (h *ClaimHandler) ResumeWebClaims(ctx context.Context, guard func(resume string) ClaimRequestGuard) {
+	if h == nil || guard == nil {
+		return
+	}
+	rows, e := h.store.db.QueryContext(ctx, `SELECT watch FROM networking_web_claims WHERE watch<>''`)
+	if e != nil {
+		log.Printf("Pending Portico Account approvals could not be read: %v", e)
+		return
+	}
+	var pending []webClaimResume
+	for rows.Next() {
+		var raw string
+		var note webClaimResume
+		if rows.Scan(&raw) == nil && json.Unmarshal([]byte(raw), &note) == nil && note.Owner != "" {
+			pending = append(pending, note)
+		}
+	}
+	_ = rows.Close()
+	for _, note := range pending {
+		g := guard(note.Owner)
+		if g == nil {
+			continue
+		}
+		if _, e := h.watchWebClaim(ctx, note.Expected, g, note.Owner); e != nil && e != ErrStale {
+			log.Printf("Waiting for the Portico Account approval could not resume: %v", e)
+		}
+	}
 }
 
 func webClaimAnswer(state string) []byte {

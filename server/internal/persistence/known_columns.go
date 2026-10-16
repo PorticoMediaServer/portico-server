@@ -3253,6 +3253,7 @@ networking_server_identities.public_key
 networking_server_identities.server_id
 networking_web_claims.operation_id
 networking_web_claims.request
+networking_web_claims.watch
 notice_broadcast_work.created
 notice_broadcast_work.delivered
 notice_broadcast_work.digest
