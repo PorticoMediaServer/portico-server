@@ -63,19 +63,40 @@ type Querier interface {
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 }
 
-// Resolve returns the integer id of the entity a public id names. An unknown
-// or malformed id is ErrNotFound, never a server error.
+// Resolve returns the integer id of the entity a public id names; the id of a
+// title merged into another names the one that stayed. An unknown or
+// malformed id is ErrNotFound, never a server error.
 func Resolve(ctx context.Context, q Querier, public string) (int64, error) {
 	raw, ok := Decode(public)
 	if !ok {
 		return 0, ErrNotFound
 	}
 	var id int64
-	err := q.QueryRowContext(ctx, `SELECT id FROM catalog_entities WHERE public_id=?`, raw).Scan(&id)
+	err := q.QueryRowContext(ctx, `SELECT id FROM catalog_entities WHERE public_id=?1
+ UNION ALL SELECT entity_id FROM catalog_merged_ids WHERE public_id=?1 LIMIT 1`, raw).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, ErrNotFound
 	}
 	return id, err
+}
+
+// Survivor returns the public id of the title that absorbed a merged-away
+// title, or "" when public names no merged title.
+func Survivor(ctx context.Context, q Querier, public string) (string, error) {
+	raw, ok := Decode(public)
+	if !ok {
+		return "", nil
+	}
+	var survivor []byte
+	err := q.QueryRowContext(ctx, `SELECT e.public_id FROM catalog_merged_ids m JOIN catalog_entities e ON e.id=m.entity_id
+ WHERE m.public_id=?1 AND NOT EXISTS(SELECT 1 FROM catalog_entities WHERE public_id=?1)`, raw).Scan(&survivor)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return Encode(survivor), nil
 }
 
 // Public returns the public id of an entity by its integer id.

@@ -176,6 +176,7 @@ type Registry struct {
 	authorize    Authorize
 	authorizeCtx AuthorizeContext
 	scopes       ScopeGate
+	rewrite      PathRewrite
 	routes       []Definition
 	bound        map[string]bool
 	frozen       bool
@@ -185,6 +186,13 @@ type Registry struct {
 // parsing or the handler. Public routes pass it too, so a route that only a
 // signed-in session may call refuses a key however it is reached.
 func (r *Registry) GateScopes(gate ScopeGate) { r.scopes = gate }
+
+// PathRewrite may replace a path value before the handler reads it, such as
+// an id that now names something else. q.Pattern is the matched route.
+type PathRewrite func(q *http.Request, name, value string) string
+
+// RewritePathValues installs the rewrite every matched path value passes.
+func (r *Registry) RewritePathValues(rewrite PathRewrite) { r.rewrite = rewrite }
 
 // Lookup returns the route that would serve method and escaped path.
 func (r *Registry) Lookup(method, escapedPath string) (Metadata, bool) {
@@ -390,10 +398,13 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 		r.errors.Write(w, "", &apierror.Error{Code: "not_found"})
 		return
 	}
+	q.Pattern = r.routes[best].Method + " " + r.routes[best].Path
 	for key, value := range values {
+		if r.rewrite != nil {
+			value = r.rewrite(q, key, value)
+		}
 		q.SetPathValue(key, value)
 	}
-	q.Pattern = r.routes[best].Method + " " + r.routes[best].Path
 	r.handlers[best](w, q)
 }
 func matchRoute(pattern, path string) (map[string]string, int, bool) {

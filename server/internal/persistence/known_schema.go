@@ -178,6 +178,7 @@ index catalog_facet_members_previous_group
 index catalog_identities_public
 index catalog_item_attribute_edges_first
 index catalog_item_attribute_edges_term
+index catalog_merged_ids_entity
 index catalog_missing_titles_library
 index catalog_missing_titles_time
 index catalog_movie_category_member_id
@@ -688,6 +689,7 @@ table catalog_item_availability_previous
 table catalog_item_details
 table catalog_kinds
 table catalog_libraries
+table catalog_merged_ids
 table catalog_missing_title_counts
 table catalog_missing_titles
 table catalog_movie_category_cursors

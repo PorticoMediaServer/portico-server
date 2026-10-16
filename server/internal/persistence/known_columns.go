@@ -987,6 +987,8 @@ catalog_libraries.library_id
 catalog_libraries.name
 catalog_libraries.retired
 catalog_libraries.root
+catalog_merged_ids.entity_id
+catalog_merged_ids.public_id
 catalog_missing_title_counts.library_id
 catalog_missing_title_counts.total
 catalog_missing_titles.entity_id

@@ -314,3 +314,39 @@ func TestResponseConformancePreservesRequiredAndNullableValues(t *testing.T) {
 		t.Fatal("oversized response accepted")
 	}
 }
+
+func TestPathRewriteReachesTypedAndHTTPHandlers(t *testing.T) {
+	r := New(nil, nil)
+	m := testMetadata()
+	m.ID, m.Method, m.Path, m.Access, m.Requires, m.BodyLimit = "read_item", "GET", "/v1/items/{id}", Public, ScopeOpen, 0
+	if err := Register(r, Route[struct{}, testResponse]{Metadata: m, Handler: func(_ context.Context, q *http.Request, _ struct{}) (testResponse, error) {
+		return testResponse{q.PathValue("id"), []string{}}, nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	h := testMetadata()
+	h.ID, h.Method, h.Path, h.Access, h.Requires, h.BodyLimit = "item_art", "GET", "/v1/items/{id}/art", Public, ScopeOpen, 0
+	if err := RegisterHTTP[struct{}, testResponse](r, h); err != nil {
+		t.Fatal(err)
+	}
+	r.RewritePathValues(func(q *http.Request, name, value string) string {
+		if name == "id" && value == "old" && strings.HasPrefix(q.Pattern, "GET /v1/items/") {
+			return "new"
+		}
+		return value
+	})
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/v1/items/old", nil))
+	if !strings.Contains(w.Body.String(), `"new"`) {
+		t.Fatal("typed route missed the rewrite", w.Body)
+	}
+	mux := http.NewServeMux()
+	seen := ""
+	if err := r.MountHTTP(mux, "GET /v1/items/{id}/art", http.HandlerFunc(func(_ http.ResponseWriter, q *http.Request) { seen = q.PathValue("id") })); err != nil {
+		t.Fatal(err)
+	}
+	mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest("GET", "/v1/items/old/art", nil))
+	if seen != "new" {
+		t.Fatal("HTTP route missed the rewrite", seen)
+	}
+}

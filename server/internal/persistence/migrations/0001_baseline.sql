@@ -66,6 +66,12 @@ CREATE TABLE catalog_identities(
  kind INTEGER NOT NULL,
  PRIMARY KEY(root,source_key)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_identities_public ON catalog_identities(public_id);
+-- A title merged into another keeps answering at its old public id: links,
+-- bookmarks and offline receipts that name it reach the title that stayed.
+CREATE TABLE catalog_merged_ids(
+ public_id BLOB PRIMARY KEY CHECK(length(public_id)=16),
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_merged_ids_entity ON catalog_merged_ids(entity_id);
 
 -- One asset table: physical evidence and probed facts. token is the asset's
 -- public id (assets are not entities; the format is unchanged).
