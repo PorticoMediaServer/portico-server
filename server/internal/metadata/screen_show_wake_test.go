@@ -142,3 +142,42 @@ func TestNewEpisodeStillWakesAShowNotYetMatched(t *testing.T) {
 		t.Fatalf("an unmatched show was not woken by a new episode: generation %d -> %d, status %q", generation, after, status)
 	}
 }
+
+// A file's analysis landing while its episode's fetch is in flight leaves the
+// fetch alone; with no fetch in flight it still wakes the episode.
+func TestEpisodeAnalysisDoesNotResetAnInFlightFetch(t *testing.T) {
+	_, db, _, _, _, settle := episodeFreshnessFixture(t)
+	settle()
+	var episode int64
+	var token string
+	if err := db.QueryRow(`SELECT w.target_id,a.token FROM screen_metadata_work w JOIN catalog_episodes e ON e.entity_id=w.target_id
+ JOIN catalog_asset_links l ON l.entity_id=e.entity_id JOIN catalog_assets a ON a.id=l.asset_id WHERE w.target_kind='item' ORDER BY w.target_id LIMIT 1`).Scan(&episode, &token); err != nil {
+		t.Fatal(err)
+	}
+	generation := func() (g int64) {
+		t.Helper()
+		if err := db.QueryRow(`SELECT generation FROM screen_metadata_work WHERE target_kind='item' AND target_id=?`, episode).Scan(&g); err != nil {
+			t.Fatal(err)
+		}
+		return g
+	}
+	if _, err := db.Exec(`UPDATE screen_metadata_work SET lease='held',lease_until='9999' WHERE target_kind='item' AND target_id=?`, episode); err != nil {
+		t.Fatal(err)
+	}
+	before := generation()
+	if _, err := db.Exec(`INSERT INTO inventory_video_names(asset_id,revision,title,show_title,year,season,number,edition,ids_digest) VALUES(?,'r1','Pilot','Show',0,1,1,'','')`, token); err != nil {
+		t.Fatal(err)
+	}
+	if after := generation(); after != before {
+		t.Fatalf("an in-flight episode fetch was reset by its file's analysis: generation %d -> %d", before, after)
+	}
+	if _, err := db.Exec(`UPDATE screen_metadata_work SET lease='',lease_until='' WHERE target_kind='item' AND target_id=?`, episode); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO inventory_video_names(asset_id,revision,title,show_title,year,season,number,edition,ids_digest) VALUES(?,'r2','Pilot','Show',0,1,1,'','')`, token); err != nil {
+		t.Fatal(err)
+	}
+	if after := generation(); after == before {
+		t.Fatal("an idle episode was not woken by its file's analysis")
+	}
+}
