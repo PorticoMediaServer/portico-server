@@ -88,3 +88,16 @@ test('an unselected manifest advertises rendering before a media grant is pinned
     assert.equal(drawnRenderingFor({deliveries: [entry]}, ['ass', 'pgs', 'vobsub', 'dvb']), undefined);
   }
 });
+
+test('an image original names where its forced-line count is read, and Forced only is offered only for a mix', async () => {
+  const {forcedChoiceOf, parseSubtitleLines} = await import('../src/subtitle-originals.ts');
+  const named = subtitleOriginals({deliveries: [{format: 'pgs', url: root + '/original.sup', linesUrl: root + '/lines'}]});
+  assert.deepEqual(named, [{format: 'pgs', url: root + '/original.sup', linesUrl: root + '/lines'}]);
+  // An address for another track is not taken.
+  assert.deepEqual(subtitleOriginals({deliveries: [{format: 'pgs', url: root + '/original.sup', linesUrl: '/v1/media/subtitles/grant_1/other/3/lines'}]}), [{format: 'pgs', url: root + '/original.sup'}]);
+  assert.equal(forcedChoiceOf(parseSubtitleLines({forced: 12, total: 900})), true);
+  assert.equal(forcedChoiceOf(parseSubtitleLines({forced: 0, total: 900})), false);
+  assert.equal(forcedChoiceOf(parseSubtitleLines({forced: 40, total: 40})), false);
+  assert.equal(parseSubtitleLines({forced: 5, total: 2}), undefined);
+  assert.equal(forcedChoiceOf(undefined), false);
+});

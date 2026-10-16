@@ -16,7 +16,7 @@ import {WebhooksPanel} from '../server/Webhooks';
 import {AssistantsPanel} from '../server/Assistants';
 import {MetadataSettingsPanel} from '../server/MetadataSettings';
 import {TranscodeStatusPanel} from '../server/Transcoding';
-import {AddressesRow, CertificateStatusRow, ConnectionRow, OwnCertificateStatusRow, RemoteStatusPanel} from '../server/Network';
+import {AddressesRow, CertificateStatusRow, ConnectionRow, OwnCertificateStatusRow, RemoteStatusPanel, SecureConnectionRow} from '../server/Network';
 import {AccountConnectionPanel, IdentityRows} from '../server/General';
 import {DiskUsagePanel, MissingTitlesPanel, RestartPanel, UpdatesPanel} from '../server/Maintenance';
 import {ClientReportsPanel, SetAsideTitlesPanel} from '../server/ClientReports';
@@ -24,7 +24,7 @@ import {BackgroundPauseRow, DownloadUsagePanel, FFmpegStatusRow, ResourceUsagePa
 import {RemoteSourcesPanel} from '../server/Storage';
 import {BackupsGroup} from '../server/Backups';
 import {RetentionRows, ScheduledJobsPanel, WindowsPanel} from '../server/MaintenanceWindows';
-import {CapabilitiesGroup, DetailWindowRow, MessageLogGroup} from '../server/Diagnostics';
+import {CapabilitiesGroup, DetailWindowRow, MessageLogGroup, SkippedPartsGroup} from '../server/Diagnostics';
 import {RecordsPanel, SupportExportPanel} from '../server/Logs';
 import {FeedbackPanel} from '../server/Feedback';
 import {PlayHistoryPanel} from '../server/PlayHistory';
@@ -32,7 +32,7 @@ import {StatePermissionsCard} from '../server/StatePermissions';
 import {PlaybackProblemsPanel} from '../server/PlaybackProblems';
 
 /** Panels that are rows inside their section's group; every other panel brings its own surface and heading. */
-const ROW_PANELS: ReadonlySet<SettingsCustomId> = new Set(['server.certificateStatus', 'server.addresses', 'server.connection', 'server.ownCertificateStatus', 'server.backgroundPause', 'server.ffmpegStatus', 'server.retention', 'server.detailWindow', 'server.identity']);
+const ROW_PANELS: ReadonlySet<SettingsCustomId> = new Set(['server.secureConnection', 'server.certificateStatus', 'server.addresses', 'server.connection', 'server.ownCertificateStatus', 'server.backgroundPause', 'server.ffmpegStatus', 'server.retention', 'server.detailWindow', 'server.identity']);
 export const panelIsGroup = (id: SettingsCustomId) => !ROW_PANELS.has(id);
 
 /** The Server pages' `custom` rows (settings-structure.ts), drawn with the web's own panels. */
@@ -60,6 +60,7 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.metadataSettings': return <MetadataSettingsPanel />;
     case 'server.transcodeStatus': return <TranscodeStatusPanel />;
     case 'server.remoteStatus': return <RemoteStatusPanel />;
+    case 'server.secureConnection': return <SecureConnectionRow />;
     case 'server.accountConnection': return <AccountConnectionPanel />;
     case 'server.certificateStatus': return <CertificateStatusRow />;
     case 'server.addresses': return <AddressesRow />;
@@ -76,6 +77,7 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.logs': return <MessageLogGroup />;
     case 'server.records': return <RecordsPanel />;
     case 'server.capabilities': return <CapabilitiesGroup />;
+    case 'server.skippedParts': return <SkippedPartsGroup />;
     case 'server.supportExport': return <SupportExportPanel />;
     case 'server.feedback': return <FeedbackPanel />;
     case 'server.stateFolder': return <StateFolder />;

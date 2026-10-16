@@ -85,7 +85,7 @@ func captureContainerUndo(ctx context.Context, tx *sql.Tx, profile, kind string,
 }
 
 func invalidateContainer(ctx context.Context, tx *sql.Tx, profile string, container int64) error {
-	_, e := tx.ExecContext(ctx, `INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT ?,cl.library_id,1 FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=? ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1`, profile, container)
+	_, e := tx.ExecContext(ctx, `INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT ?,cl.library_id,1,'' FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=? ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path`, profile, container)
 	return e
 }
 

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {QUIET_REFRESH_TRIES, quietRefreshStep} from '../src/app/quiet-refresh.ts';
+import {QUIET_REFRESH_TRIES, quietRefreshStep} from '../src/quiet-refresh.ts';
 
 test('a list the server says changed is read again quietly, a few times, before the notice shows', () => {
   let state = {tries: 0, lastAt: 0}, now = 100_000;

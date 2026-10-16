@@ -3,7 +3,7 @@ import test from 'node:test';
 import {
  accessTokenPrefix,apiKeyPrefix,apiScopePresets,createAccessToken,createApiKey,createWebhook,isApiCredentialSecret,listApiKeys,listMemberAccessTokens,listWebhookDeliveries,
  parseApiAccessOptions,parseApiCredential,parseIssuedApiCredential,parseIssuedWebhook,parsePathReport,parseTitlePage,parseWebhook,parseWebhookDelivery,parseWebhookDeliveryPage,parseWebhookList,
- presetOf,queryTitles,reportChangedPaths,revokeApiKey,sendWebhookTest,updateWebhook,type ApiAccessTransport,
+ changeWebhook,presetOf,queryTitles,reportChangedPaths,revokeApiKey,sendWebhookTest,updateWebhook,webhookChangeApplies,webhookEdits,type ApiAccessTransport,
 } from '../src/api-access.ts';
 
 const member={accountId:'owner',username:'sam',profileId:'p1',profile:'Sam'};
@@ -41,11 +41,11 @@ test('scope presets map to exact scope sets and back', () => {
  assert.equal(presetOf(['admin']),'admin');
  assert.equal(presetOf(['library']),undefined);
  assert.deepEqual(apiScopePresets.library,['read','playback','library']);
- const options=parseApiAccessOptions({scopes:[{id:'read'},{id:'playback'},{id:'library'},{id:'admin'}],maximumKeys:100,maximumTokens:25,tokensAllowed:false,requestsPerMinute:600});
+ const options=parseApiAccessOptions({scopes:[{id:'read'},{id:'playback'},{id:'library'},{id:'admin'}],maximumKeys:100,maximumTokens:25,tokensAllowed:false,requestsPerMinute:600,queryParameter:'apiKey'});
  assert.equal(options.tokensAllowed,false);
  // A scope this app does not know is not offered; a list of keys holding one is refused whole, never shown with a guessed scope.
- assert.deepEqual([...parseApiAccessOptions({scopes:[{id:'session'},{id:'read'},{id:'read'}],maximumKeys:1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1}).scopes],['read']);
- assert.throws(()=>parseApiAccessOptions({scopes:[{id:'read'}],maximumKeys:-1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1}));
+ assert.deepEqual([...parseApiAccessOptions({scopes:[{id:'session'},{id:'read'},{id:'read'}],maximumKeys:1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1,queryParameter:'apiKey'}).scopes],['read']);
+ assert.throws(()=>parseApiAccessOptions({scopes:[{id:'read'}],maximumKeys:-1,maximumTokens:1,tokensAllowed:true,requestsPerMinute:1,queryParameter:'apiKey'}));
 });
 
 test('credential services call the documented routes', async () => {
@@ -65,7 +65,7 @@ test('credential services call the documented routes', async () => {
  assert.deepEqual(revoked.calls[0],{path:'/v1/admin/api-keys/c%2F1',method:'DELETE',body:undefined});
 });
 
-const webhook={id:'w1',name:'Home',url:'http://192.168.1.2/hook',events:['playback.started','a.future.event'],enabled:true,secretHint:'abcd',createdAt:'2026-10-13T12:00:00Z',updatedAt:'2026-10-13T12:00:00Z',waiting:0,failing:2,dropped:1};
+const webhook={id:'w1',name:'Home',url:'http://192.168.1.2/hook',events:['playback.started','a.future.event'],enabled:true,secretHint:'abcd',createdAt:'2026-10-13T12:00:00Z',updatedAt:'2026-10-13T12:00:00Z',waiting:0,failing:2,dropped:1,revision:3};
 
 test('webhook documents are parsed strictly and keep event names a newer server may add', async () => {
  assert.deepEqual(parseWebhook(webhook).events,['playback.started','a.future.event']);
@@ -82,8 +82,8 @@ test('webhook documents are parsed strictly and keep event names a newer server 
  const made=recorder({webhook,secret:'whsec_x'});
  await createWebhook(made.transport,{name:'Home',url:webhook.url,events:['playback.started']});
  assert.deepEqual(made.calls[0],{path:'/v1/admin/webhooks',method:'POST',body:{name:'Home',url:webhook.url,events:['playback.started']}});
- await updateWebhook(made.transport,'w1',{enabled:false});
- assert.deepEqual(made.calls[1],{path:'/v1/admin/webhooks/w1',method:'PATCH',body:{enabled:false}});
+ await updateWebhook(made.transport,'w1',3,{enabled:false});
+ assert.deepEqual(made.calls[1],{path:'/v1/admin/webhooks/w1',method:'PATCH',body:{expectedRevision:3,enabled:false}});
  const test=recorder(delivery);
  await sendWebhookTest(test.transport,'w1');
  assert.equal(test.calls[0].path,'/v1/admin/webhooks/w1/test');
@@ -108,4 +108,25 @@ test('the title query and the paths-changed report', async () => {
  assert.deepEqual(out.jobIds,['j1']);
  assert.equal(out.paths[1].status,'outside_libraries');
  assert.throws(()=>parsePathReport({paths:[{path:'/x',status:'scanning'}],jobs:[]}));
+});
+
+test('a webhook edit made against an older copy is sent again quietly unless the same thing changed', async () => {
+ const was=parseWebhook(webhook);
+ const stale=()=>Object.assign(new Error('changed'),{code:'revision_mismatch',status:412});
+ // Someone renamed it; this owner turned it off: sent again against the new revision.
+ let now={...webhook,name:'Renamed',revision:4};const sent:unknown[]=[];
+ const t:ApiAccessTransport={request:async<T>(path:string,method?:string,body?:unknown)=>{if(method==='GET')return now as T;sent.push(body);if((body as {expectedRevision:number}).expectedRevision!==now.revision)throw stale();return {webhook:{...now,enabled:false,revision:5}} as T;}};
+ const out=await changeWebhook(t,was,{enabled:false});
+ assert.equal(out.webhook.revision,5);
+ assert.deepEqual(sent.map(b=>(b as {expectedRevision:number}).expectedRevision),[3,4]);
+ // Someone else turned it off already: nothing more is sent.
+ now={...webhook,enabled:false,revision:6};sent.length=0;
+ assert.equal((await changeWebhook(t,was,{enabled:false})).webhook.revision,6);
+ assert.equal(sent.length,1);
+ // Someone changed the address to something else: the conflict is shown.
+ now={...webhook,url:'http://10.0.0.9/other',revision:7};
+ await assert.rejects(changeWebhook(t,was,{url:'http://10.0.0.5/mine'}),/changed/);
+ assert.equal(webhookChangeApplies(was,parseWebhook({...webhook,revision:8}),{rotateSecret:true}),'send');
+ assert.deepEqual(webhookEdits(was,{name:'Home',url:webhook.url,events:['a.future.event','playback.started']}),{});
+ assert.deepEqual(webhookEdits(was,{name:'Hall',url:webhook.url,events:[...was.events]}),{name:'Hall'});
 });

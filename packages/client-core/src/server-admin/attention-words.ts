@@ -14,8 +14,10 @@ type Has = (id: string) => boolean;
 const TRANSIENT = new Set(['pending', 'searching', 'pending_search', 'pending_episodes', 'pending_children', 'pending_apply']);
 export const attentionInProgress = (reason: string): boolean => TRANSIENT.has(reason);
 
-/** Why the title is on the list, as a sentence. */
-export function attentionReason(t: Translate, has: Has, reason: string): string {
+/** Why the title is on the list, as a sentence; an album, track or book may have its own words for a reason. */
+export function attentionReason(t: Translate, has: Has, reason: string, kind?: string): string {
+  const own = kind ? `metadata.attention.${kind}.${reason}` : '';
+  if (own && has(own)) return t(own as MessageId);
   const id = `metadata.attention.${reason}`;
   return t(has(id) ? (id as MessageId) : 'metadata.attention.other');
 }
@@ -56,7 +58,7 @@ export function attentionCountText(count: AttentionCount | undefined, number: (n
 }
 
 /** Whether the server offers this action for the title. The server decides; the list never offers one it did not name. */
-export const attentionOffers = (entry: Pick<AttentionEntry, 'actions'>, action: 'accept' | 'search' | 'id' | 'dismiss' | 'parent'): boolean => entry.actions.includes(action);
+export const attentionOffers = (entry: Pick<AttentionEntry, 'actions'>, action: 'accept' | 'search' | 'id' | 'dismiss' | 'parent' | 'retry'): boolean => entry.actions.includes(action);
 
 /** A provider id as typed: the bare number, an IMDb id (tt…), or a provider address the server reads the id out of. Trimmed; empty is nothing to send. */
 export function typedProviderId(text: string): string | undefined {
@@ -64,5 +66,5 @@ export function typedProviderId(text: string): string | undefined {
   return value && value.length <= 2048 && !/[\x00-\x1f\s]/.test(value) ? value : undefined;
 }
 
-/** Libraries whose titles are matched with the film and TV providers: the only ones with a needs-attention list. */
-export const hasAttentionList = (libraryKind: string): boolean => libraryKind === 'movie' || libraryKind === 'tv' || libraryKind === 'anime';
+/** Libraries with a needs-attention list: film and TV titles the providers could not match, music MusicBrainz could not settle, books with no author. */
+export const hasAttentionList = (libraryKind: string): boolean => ['movie', 'tv', 'anime', 'music', 'audiobook'].includes(libraryKind);

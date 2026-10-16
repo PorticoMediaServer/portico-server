@@ -9,7 +9,7 @@ import {Button, Notice, Text} from '../../ui';
  * here (BE-hosted d37e441): it opens the approval page, where the person signs in and approves,
  * and waits for the decision; `onDone` refreshes the caller.
  */
-export function ClaimConnectButton({api, pin, hostedOrigin, onDone, size = 'sm'}: {api: HttpLocalApi; pin: ServerPin | undefined; hostedOrigin: string; onDone: () => void; size?: 'sm' | 'md'}) {
+export function ClaimConnectButton({api, pin, hostedOrigin, onDone, size = 'sm', label}: {api: HttpLocalApi; pin: ServerPin | undefined; hostedOrigin: string; onDone: () => void; size?: 'sm' | 'md'; label?: string}) {
   const i18n = useI18n();
   const connector = useClaimConnect(api, pin, hostedOrigin, onDone);
   const e = connector.error;
@@ -17,7 +17,7 @@ export function ClaimConnectButton({api, pin, hostedOrigin, onDone, size = 'sm'}
   const message = !e ? '' : known ? i18n.t(known) : errorText(e, 'claim', 'action');
   return (
     <>
-      <Button size={size} variant="primary" label={i18n.t('web.claim.connect')} iconAfter="external" loading={connector.busy} disabled={!pin} onClick={() => void connector.connect()} />
+      <Button size={size} variant="primary" label={label ?? i18n.t('web.claim.connect')} iconAfter="external" loading={connector.busy} disabled={!pin} onClick={() => void connector.connect()} />
       {connector.phase === 'waiting' ? <Text variant="caption" tone="secondary">{i18n.t('web.claim.waiting')}</Text> : null}
       {message ? <Notice tone="error" compact>{message}</Notice> : null}
     </>

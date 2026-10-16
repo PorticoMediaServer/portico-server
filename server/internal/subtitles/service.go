@@ -563,6 +563,7 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 	}
 	var originalObject mediaartifact.Object
 	var originalFiles []originalFile
+	var originalLines Lines
 	var originalHeader struct {
 		SkippedFonts int `json:"skippedFonts"`
 	}
@@ -586,7 +587,7 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 
 	if originalObject.Size > 0 {
 		var e error
-		originalFiles, e = s.sealOriginalFiles(ctx, pub.originalAsset, int64(pub.source.duration*1e6))
+		originalFiles, originalLines, e = s.sealOriginalFiles(ctx, pub.originalAsset, int64(pub.source.duration*1e6))
 		if e != nil {
 			return Receipt{}, e
 		}
@@ -627,7 +628,7 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 			}
 		}
 		if originalObject.Size > 0 {
-			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO subtitle_original_revisions VALUES(?,?,?,?,?)`, pub.cacheResource, pub.cacheRevision, originalObject.Digest, originalObject.Size, originalHeader.SkippedFonts); err != nil {
+			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO subtitle_original_revisions(resource_id,revision,digest,size,skipped_fonts,forced_lines,total_lines) VALUES(?,?,?,?,?,?,?)`, pub.cacheResource, pub.cacheRevision, originalObject.Digest, originalObject.Size, originalHeader.SkippedFonts, originalLines.Forced, originalLines.Total); err != nil {
 				return Receipt{}, err
 			}
 		}
@@ -705,7 +706,7 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 		return Receipt{}, e
 	}
 	if originalObject.Size > 0 {
-		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions VALUES(?,?,?,?,?)`, id, rev, originalObject.Digest, originalObject.Size, originalHeader.SkippedFonts); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions(resource_id,revision,digest,size,skipped_fonts,forced_lines,total_lines) VALUES(?,?,?,?,?,?,?)`, id, rev, originalObject.Digest, originalObject.Size, originalHeader.SkippedFonts, originalLines.Forced, originalLines.Total); e != nil {
 			return Receipt{}, e
 		}
 	}
@@ -714,7 +715,7 @@ func (s *Service) publish(ctx context.Context, p identity.Principal, item string
 		return Receipt{}, e
 	}
 	if pub.copyOriginalRevision > 0 {
-		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions SELECT resource_id,?,digest,size,skipped_fonts FROM subtitle_original_revisions WHERE resource_id=? AND revision=?`, rev, id, pub.copyOriginalRevision); e != nil {
+		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_revisions(resource_id,revision,digest,size,skipped_fonts,forced_lines,total_lines) SELECT resource_id,?,digest,size,skipped_fonts,forced_lines,total_lines FROM subtitle_original_revisions WHERE resource_id=? AND revision=?`, rev, id, pub.copyOriginalRevision); e != nil {
 			return Receipt{}, e
 		}
 		if _, e = tx.ExecContext(ctx, `INSERT INTO subtitle_original_files SELECT resource_id,?,part,name,format,encoding,digest,size FROM subtitle_original_files WHERE resource_id=? AND revision=?`, rev, id, pub.copyOriginalRevision); e != nil {

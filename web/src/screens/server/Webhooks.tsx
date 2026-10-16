@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useState} from 'react';
-import {createWebhook, deleteWebhook, listWebhookDeliveries, listWebhooks, sendWebhookTest, updateWebhook, type IssuedWebhook, type Webhook, type WebhookDelivery} from '@core/api-access.ts';
+import {changeWebhook, createWebhook, deleteWebhook, listWebhookDeliveries, listWebhooks, sendWebhookTest, webhookEdits, type IssuedWebhook, type Webhook, type WebhookDelivery} from '@core/api-access.ts';
 import {deliveryProblem, deliveryProgress, deliveryTone, webhookAddressOk, webhookEventGroups, webhookEventLabel, webhookTrouble} from '@core/server-admin/api-words.ts';
 import {problem, useAction, useRead} from '../../admin/console';
 import {usePollWhile} from '../../admin/poll-while';
@@ -57,10 +57,10 @@ export function WebhooksPanel() {
       {list?.items.map(w => {
         const trouble = webhookTrouble(t, w);
         return (
-          <SettingsRow key={w.id} icon="link" label={w.name} help={<><span style={{fontFamily: 'var(--font-mono)', fontSize: 12, overflowWrap: 'anywhere'}}>{w.url}</span>{` · ${t('api.webhooks.eventCount', {count: w.events.length})}`}</>}
+          <SettingsRow key={w.id} icon="link" label={w.name} help={<><span style={{fontFamily: 'var(--font-mono)', fontSize: '0.75rem', overflowWrap: 'anywhere'}}>{w.url}</span>{` · ${t('api.webhooks.eventCount', {count: w.events.length})}`}</>}
             state={trouble ? <Status tone={trouble.tone}>{trouble.text}</Status> : undefined}
             control={<div style={{display: 'flex', gap: 8, alignItems: 'center'}}>
-              <Switch checked={w.enabled} disabled={action.busy} label={t('api.webhooks.turnOn', {name: w.name})} onCheckedChange={on => void action.run(async () => { await updateWebhook(api, w.id, {enabled: on}); read.reload(); })} />
+              <Switch checked={w.enabled} disabled={action.busy} label={t('api.webhooks.turnOn', {name: w.name})} onCheckedChange={on => void action.run(async () => { await changeWebhook(api, w, {enabled: on}); read.reload(); })} />
               <Menu label={w.name} trigger={<Button size="sm" variant="ghost" icon="more" aria-label={t('api.webhooks.actions', {name: w.name})} />} items={menu(w)} onSelect={id => select(w, id)} />
             </div>} />
         );
@@ -71,11 +71,11 @@ export function WebhooksPanel() {
         onSave={draft => void action.run(async () => {
           const w = editing.webhook;
           const body = {name: draft.name.trim(), url: draft.url.trim(), events: draft.events};
-          shown(w ? await updateWebhook(api, w.id, body) : await createWebhook(api, {...body, ...(draft.secret ? {secret: draft.secret} : {})}));
+          shown(w ? await changeWebhook(api, w, webhookEdits(w, body)) : await createWebhook(api, {...body, ...(draft.secret ? {secret: draft.secret} : {})}));
         }).then(ok => { if (ok) setEditing(null); })} /> : null}
       <SecretDialog issued={issued} onClose={() => setIssued(undefined)} />
       <RotateDialog webhook={rotating} busy={action.busy} error={action.error} onClose={() => setRotating(undefined)}
-        onRotate={secret => void action.run(async () => { if (!rotating) return; shown(await updateWebhook(api, rotating.id, {rotateSecret: true, ...(secret ? {secret} : {})})); }).then(ok => { if (ok) setRotating(undefined); })} />
+        onRotate={secret => void action.run(async () => { if (!rotating) return; shown(await changeWebhook(api, rotating, secret ? {secret} : {rotateSecret: true})); }).then(ok => { if (ok) setRotating(undefined); })} />
       <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('api.webhooks.removeTitle', {name: removing?.name ?? ''})} body={t('api.webhooks.removeBody')} confirmLabel={t('action.removeShort')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error}
         onConfirm={() => void action.run(async () => { if (!removing) return; await deleteWebhook(api, removing.id); setRemoving(undefined); read.reload(); })} />
       {log ? <DeliveryLog webhook={log} onClose={() => { setLog(undefined); read.reload(); }} /> : null}
@@ -131,7 +131,7 @@ function SecretDialog({issued, onClose}: {issued?: IssuedWebhook; onClose: () =>
   return (
     <Dialog open={!!issued?.secret} onOpenChange={o => !o && onClose()} dismissable={false} title={t('api.webhooks.secretTitle')} width={500} actions={<Button variant="primary" label={t('web.access.copiedIt')} onClick={onClose} />}>
       <Notice tone="warning" compact>{t('api.webhooks.secretShownOnce')}</Notice>
-      <TextArea label={t('api.webhooks.secret')} readOnly rows={2} value={issued?.secret ?? ''} onFocus={e => e.currentTarget.select()} style={{fontFamily: 'var(--font-mono)', fontSize: 13}} />
+      <TextArea label={t('api.webhooks.secret')} readOnly rows={2} value={issued?.secret ?? ''} onFocus={e => e.currentTarget.select()} style={{fontFamily: 'var(--font-mono)', fontSize: '0.8125rem'}} />
       <div style={{display: 'flex', gap: 12, alignItems: 'center'}}><Button size="sm" variant="secondary" icon="copy" label={t('web.twoStep.copy')} onClick={() => void navigator.clipboard?.writeText(issued?.secret ?? '').then(() => setCopied(true), () => {})} /><span role="status">{copied ? <Text variant="caption" tone="tertiary">{t('api.credential.copied')}</Text> : null}</span></div>
     </Dialog>
   );

@@ -6,14 +6,15 @@
  * - Google Cast: Chromecasts, through the Cast SDK's own picker, where the SDK is available.
  * - Portico devices on this network: signed-in Portico players found by local-network discovery
  *   only (Bonjour/mDNS). Never a cloud or remote device list, and never a code to type.
- * - Televisions (Apple TV, Android TV, Fire TV) offer no casting UI at all: a TV is a receiver.
+ * - Televisions (Apple TV, Android TV, Fire TV, including Fire TV on Vega OS) offer no casting UI
+ *   at all: a TV is a receiver.
  *
  * With nothing to offer, the sheet says so (`empty`) rather than showing a dead list.
  */
 import type {IconId} from '../../../design/src/icons.ts';
 import type {MessageId} from '../../../i18n/src/index.ts';
 
-export type DestinationPlatform = 'ios' | 'ipados' | 'android' | 'web' | 'tvos' | 'androidtv' | 'firetv';
+export type DestinationPlatform = 'ios' | 'ipados' | 'android' | 'web' | 'tvos' | 'androidtv' | 'firetv' | 'vega';
 
 /** A signed-in Portico player found on the local network. */
 export type NearbyPlayer = Readonly<{id: string; name: string; kind: 'tv' | 'phone' | 'tablet' | 'computer'}>;
@@ -46,7 +47,7 @@ export type DestinationCapabilities = Readonly<{
 const playerGlyph: Record<NearbyPlayer['kind'], IconId> = {tv: 'tvDevice', phone: 'phone', tablet: 'tablet', computer: 'browser'};
 
 export function playOnDestinations(platform: DestinationPlatform, c: DestinationCapabilities = {}): Destinations {
-  if (platform === 'tvos' || platform === 'androidtv' || platform === 'firetv') return Object.freeze({offered: false, rows: []});
+  if (platform === 'tvos' || platform === 'androidtv' || platform === 'firetv' || platform === 'vega') return Object.freeze({offered: false, rows: []});
   const rows: DestinationRow[] = [];
   if (c.airplay) rows.push({kind: 'airplay', label: 'playOn.airplay', subtitle: 'playOn.airplaySubtitle', icon: 'airplay'});
   if (c.googleCast) rows.push({kind: 'googleCast', label: 'playOn.googleCast', icon: 'googleCast'});

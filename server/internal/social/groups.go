@@ -200,9 +200,10 @@ type record struct {
 	pauseAfter, endAfter                                              int64
 	endedReason                                                       string
 	createdMS, updatedMS                                              int64
+	readinessSummary                                                  string
 }
 
-const recordColumns = `id,name,authority,account_id,profile_id,host_member_id,host_authority,state,revision,playback_revision,queue_revision,reconnect_generation,event_ordinal,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=social_groups.item_id),''),current_entry_id,position_us,position_updated_ms,rate_numerator,rate_denominator,queue_position,shuffle,repeat_mode,last_command,last_command_id,resume_state,host_seen_ms,pause_after_seconds,end_after_seconds,ended_reason,created_at_ms,updated_at_ms,host_device_id,settings_revision,wait_until_ms,wait_resume_state,activity_seen_ms,governance_revision`
+const recordColumns = `id,name,authority,account_id,profile_id,host_member_id,host_authority,state,revision,playback_revision,queue_revision,reconnect_generation,event_ordinal,COALESCE((SELECT pid(public_id) FROM catalog_entities WHERE id=social_groups.item_id),''),current_entry_id,position_us,position_updated_ms,rate_numerator,rate_denominator,queue_position,shuffle,repeat_mode,last_command,last_command_id,resume_state,host_seen_ms,pause_after_seconds,end_after_seconds,ended_reason,created_at_ms,updated_at_ms,host_device_id,settings_revision,wait_until_ms,wait_resume_state,activity_seen_ms,governance_revision,readiness_summary`
 
 // resolveSocialItem maps a public item id to the integer the social tables
 // store (0 when there is none). A name that resolves to nothing stores 0; a
@@ -221,7 +222,7 @@ func resolveSocialItem(ctx context.Context, tx *sql.Tx, public string) (int64, e
 
 func scanRecord(row interface{ Scan(...any) error }) (record, error) {
 	var g record
-	e := row.Scan(&g.id, &g.name, &g.authority, &g.accountID, &g.profileID, &g.hostMemberID, &g.hostAuthority, &g.state, &g.revision, &g.playbackRevision, &g.queueRevision, &g.reconnect, &g.eventOrdinal, &g.itemID, &g.currentEntryID, &g.positionUS, &g.positionUpdatedMS, &g.rateNum, &g.rateDen, &g.queuePosition, &g.shuffle, &g.repeat, &g.lastCommand, &g.lastCommandID, &g.resumeState, &g.hostSeenMS, &g.pauseAfter, &g.endAfter, &g.endedReason, &g.createdMS, &g.updatedMS, &g.hostDevice, &g.settingsRevision, &g.waitUntilMS, &g.waitResumeState, &g.activitySeenMS, &g.governanceRevision)
+	e := row.Scan(&g.id, &g.name, &g.authority, &g.accountID, &g.profileID, &g.hostMemberID, &g.hostAuthority, &g.state, &g.revision, &g.playbackRevision, &g.queueRevision, &g.reconnect, &g.eventOrdinal, &g.itemID, &g.currentEntryID, &g.positionUS, &g.positionUpdatedMS, &g.rateNum, &g.rateDen, &g.queuePosition, &g.shuffle, &g.repeat, &g.lastCommand, &g.lastCommandID, &g.resumeState, &g.hostSeenMS, &g.pauseAfter, &g.endAfter, &g.endedReason, &g.createdMS, &g.updatedMS, &g.hostDevice, &g.settingsRevision, &g.waitUntilMS, &g.waitResumeState, &g.activitySeenMS, &g.governanceRevision, &g.readinessSummary)
 	return g, e
 }
 
@@ -999,6 +1000,31 @@ func timelineState(state string) string {
 		return "stopped"
 	}
 	return "paused"
+}
+
+// readinessSummary is the room's readiness counts alone, as members() counts
+// them, in one aggregate over the room's rows: a readiness report needs no
+// member list.
+func (s *Store) readinessSummary(ctx context.Context, tx *sql.Tx, g record) (ReadinessSummary, error) {
+	summary := ReadinessSummary{Aggregate: "ready"}
+	now := s.ms()
+	if e := tx.QueryRowContext(ctx, `SELECT count(*),
+ COALESCE(sum(readiness_at_ms<=0 OR ?2-readiness_at_ms>?3),0),
+ COALESCE(sum(NOT(readiness_at_ms<=0 OR ?2-readiness_at_ms>?3) AND readiness='ready'),0),
+ COALESCE(sum(NOT(readiness_at_ms<=0 OR ?2-readiness_at_ms>?3) AND readiness='lagging'),0)
+ FROM social_group_members WHERE group_id=?1 AND state='joined' AND ?2-max(seen_at_ms,joined_at_ms)<=?4`, g.id, now, ReadinessStaleSeconds*1000, MemberStaleSeconds*1000).Scan(&summary.MemberCount, &summary.Stale, &summary.Ready, &summary.Lagging); e != nil {
+		return summary, e
+	}
+	summary.Buffering = summary.MemberCount - summary.Stale - summary.Ready - summary.Lagging
+	switch {
+	case summary.Lagging > 0 || summary.Stale > 0:
+		summary.Aggregate = "lagging"
+	case summary.Buffering > 0:
+		summary.Aggregate = "buffering"
+	case summary.MemberCount == 0:
+		summary.Aggregate = "buffering"
+	}
+	return summary, nil
 }
 
 func (s *Store) members(ctx context.Context, tx *sql.Tx, g record) ([]Member, ReadinessSummary, error) {

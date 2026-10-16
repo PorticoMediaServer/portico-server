@@ -178,3 +178,8 @@ test('Hosted-backed surfaces name the Portico Account, never "your server"', () 
   assert.equal(presentError({status: 504, code: 'timeout'}, 'portico-account').messageId, 'error.account.timeout');
   assert.equal(presentError(offline, 'portico-account').title, 'Your Portico Account couldn’t load');
 });
+
+test('a picture height is a name, not an amount: 1080p, never 1,080p', () => {
+  assert.equal(createI18n({locale: 'en-US'}).t('quality.height', {height: 1080}), '1080p');
+  assert.equal(createI18n({locale: 'en-US'}).t('quality.height', {height: 2160}), '2160p');
+});

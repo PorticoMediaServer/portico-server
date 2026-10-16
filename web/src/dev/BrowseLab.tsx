@@ -35,7 +35,7 @@ export function BrowseLab() {
       <PageHeader title="Browse bar" />
       <Inset>
         <BrowseBar libraryId="" capabilities={capabilities} predicates={predicates} onChange={setPredicates} sort={sort} onSort={setSort} total={1234} onSave={() => {}} libraryKind="movie" pivot="titles" />
-        <pre style={{marginTop: 24, fontSize: 12}}>{JSON.stringify(predicates)}</pre>
+        <pre style={{marginTop: 24, fontSize: '0.75rem'}}>{JSON.stringify(predicates)}</pre>
       </Inset>
     </Page>
   );

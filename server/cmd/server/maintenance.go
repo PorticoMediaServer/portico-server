@@ -142,7 +142,17 @@ func runDatabaseHousekeeping(ctx context.Context, db *sql.DB) {
 				log.Printf("warn: Unknown sign-in attempt pruning failed: %v", err)
 				lastUnknownSweep = time.Now()
 			} else if count, _ := result.RowsAffected(); count < 100 {
-				lastUnknownSweep = time.Now()
+				// The per-account ledger decays the same way: a day after its
+				// last failure (and past any delay it set) a row says nothing an
+				// absent row would not, so it goes in the same bounded batches.
+				now := time.Now()
+				result, err = dbwork.ExecWrite(ctx, db, dbwork.ClassMaintenance, `DELETE FROM identity_credential_attempts WHERE rowid IN (SELECT rowid FROM identity_credential_attempts WHERE last_failure<? AND locked_until<? ORDER BY last_failure LIMIT 100)`, now.Add(-24*time.Hour).Unix(), now.Unix())
+				if err != nil {
+					log.Printf("warn: Sign-in attempt pruning failed: %v", err)
+					lastUnknownSweep = now
+				} else if count, _ := result.RowsAffected(); count < 100 {
+					lastUnknownSweep = now
+				}
 			}
 		}
 		if !integrity || time.Since(lastIntegrity) < interval {

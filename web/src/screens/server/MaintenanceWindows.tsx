@@ -46,7 +46,7 @@ export function WindowsPanel() {
               <Text variant="caption" tone="tertiary">{t('server.windows.hours')}</Text>
               {draft.windows.length > 1 ? <Button size="sm" variant="ghost" icon="trash" aria-label={t('web.maintenance.removeWindow')} onClick={() => form.set(d => ({...d, windows: d.windows.filter((_, n) => n !== i)}))} /> : null}
             </div>
-            <div style={{display: 'flex', gap: 12, flexWrap: 'wrap'}}>{doc.tasks.map(id => <label key={id} style={{display: 'flex', gap: 8, alignItems: 'center', fontSize: 13}}><Switch checked={w.tasks.includes(id)} onCheckedChange={v => change(i, {tasks: v ? [...w.tasks, id] : w.tasks.filter(x => x !== id)})} label={task(id)} />{task(id)}</label>)}</div>
+            <div style={{display: 'flex', gap: 12, flexWrap: 'wrap'}}>{doc.tasks.map(id => <label key={id} style={{display: 'flex', gap: 8, alignItems: 'center', fontSize: '0.8125rem'}}><Switch checked={w.tasks.includes(id)} onCheckedChange={v => change(i, {tasks: v ? [...w.tasks, id] : w.tasks.filter(x => x !== id)})} label={task(id)} />{task(id)}</label>)}</div>
           </div>} />
       )) : null}
     </SettingsGroup>

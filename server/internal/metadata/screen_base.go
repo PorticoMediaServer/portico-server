@@ -279,7 +279,12 @@ func readScreenBaseWithin(ctx context.Context, tx *sql.Tx, kind, id string, boun
 			rows.Close()
 			return b, err
 		}
-		_ = enc.Encode(embedded)
+		// An episode is matched by its show's identity and its own numbers, not
+		// by what its file's tags say, so a file's analysis arriving while its
+		// fetch is in flight does not discard that fetch.
+		if b.ItemKind != "episode" {
+			_ = enc.Encode(embedded)
+		}
 		r := naming.ReadWithEmbedded(relative, b.LibraryKind, embedded)
 		for _, e := range r.Editions {
 			if len(b.Editions) < 64 {

@@ -35,7 +35,7 @@ export function PlaybackProblemsPanel() {
         // The title the file belongs to leads; what failed, and when, is underneath.
         <SettingsRow key={group.sourceId} icon="warning" label={group.item?.title || t('server.routes.unknownTitle')}
           help={[...group.failures.map(line), t('server.routes.when', {when: i18n.dateTime(group.reportedAtMs), until: i18n.dateTime(group.expiresAtMs)})].join(' · ')}
-          state={group.failures[0]!.detail || group.failures[0]!.code ? <Text variant="mono" tone="tertiary" style={{fontSize: 12, overflowWrap: 'anywhere'}}>{group.failures[0]!.detail || group.failures[0]!.code}</Text> : undefined}
+          state={group.failures[0]!.detail || group.failures[0]!.code ? <Text variant="mono" tone="tertiary" style={{fontSize: '0.75rem', overflowWrap: 'anywhere'}}>{group.failures[0]!.detail || group.failures[0]!.code}</Text> : undefined}
           control={<>
             {group.item ? <Button size="sm" variant="ghost" label={t('action.details')} aria-label={t('server.routes.openTitle')} onClick={() => void navigate({to: '/media/$itemId', params: {itemId: group.item!.id}, search: {}})} /> : null}
             <Button size="sm" variant="ghost" label={t('server.routes.forget')} aria-label={t('server.routes.forgetFor')} disabled={action.busy} onClick={() => void action.run(async () => { await clearPlaybackFailureMemory(api, group.sourceId); read.reload(); }, t('server.routes.forgotten'))} />

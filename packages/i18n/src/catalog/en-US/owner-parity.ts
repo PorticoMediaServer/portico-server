@@ -36,4 +36,15 @@ export const ownerParityMessages = {
   // ── Merging titles from a phone ──
   'title.merge.find': 'Title to merge with',
   'title.merge.none': 'No other title matches.',
+  'title.merge.action': 'Merge with another title…',
+  // ── Owner wording on phones and tablets: each says what it is, not the nearest phrase ──
+  'api.tokens.share': 'Share or copy the token',
+  'api.webhooks.shareSecret': 'Share or copy the secret',
+  'api.mcp.shareAddress': 'Share or copy the address',
+  'server.reports.share': 'Share this report',
+  'api.webhooks.off': 'Off',
+  'server.metadata.keyUnsaved': 'Your new key is used once you save.',
+  'server.dashboard.freeSpace': 'Free space',
+  'server.dashboard.porticoFiles': 'Portico’s own files',
+  'server.people.hoursTimeHelp': 'Type a time, such as 8:30 or 20:15.',
 } as const;

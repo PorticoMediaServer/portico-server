@@ -163,6 +163,10 @@ type Service struct {
 	// Sessions Paused for Longer Than"). Nil or non-positive: the sweeper is
 	// off. Wired from console settings; a read error ends nothing on that tick.
 	PausedLimit func(context.Context) time.Duration
+	// OutsideHours reports whether an account is outside the hours its access
+	// schedule allows. The sweeper ends that account's running sessions with
+	// EndReasonOutsideHours, at most a minute after the hours close. Nil: off.
+	OutsideHours func(ctx context.Context, account string) bool
 	// ReadyWait bounds how long a start waits for its presentation before 202.
 	ReadyWait time.Duration
 	// ReadyCheck replaces the presentation readiness probe (tests).

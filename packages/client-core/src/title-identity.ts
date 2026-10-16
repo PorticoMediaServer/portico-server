@@ -85,7 +85,11 @@ export async function removeLibrary(api:TitleIdentityApi,libraryId:string,confir
 // ── Merging and splitting ───────────────────────────────────────────────────
 
 /** The kinds of title two of which the server will make one: a show takes the other's seasons and episodes; the rest take the other's files as versions. */
-export const MERGEABLE_KINDS:readonly string[]=Object.freeze(['movie','show','episode','song','audiobook_file','extra']);
+export const MERGEABLE_KINDS:readonly string[]=Object.freeze(['movie','show','episode','song','audiobook_file','extra','album','book','artist']);
+/** The kinds whose merge moves children (an album's songs, a book's files, an artist's albums) rather than files. */
+export const CONTAINER_MERGE_KINDS:readonly string[]=Object.freeze(['album','book','artist']);
+/** What a merge of this kind does, in words: the message id of the explanation shown before it. */
+export const mergeExplanation=(kind:string):'web.merge.body'|'web.merge.containerBody'=>CONTAINER_MERGE_KINDS.includes(kind)?'web.merge.containerBody':'web.merge.body';
 /** Whether two titles can be offered for merging: different titles of one kind, and not known to be in different libraries (a list inside one library need not name it on every entry; the server refuses a pair that is not in one library). */
 export function canMergeTitles(a:Readonly<{id:string;kind:string;libraryId?:string}>,b:Readonly<{id:string;kind:string;libraryId?:string}>):boolean{
  return a.id!==b.id&&a.kind===b.kind&&MERGEABLE_KINDS.includes(a.kind)&&(!a.libraryId||!b.libraryId||a.libraryId===b.libraryId);
@@ -130,6 +134,17 @@ export async function findLibraryFile(api:TitleIdentityApi,libraryId:string,file
  options.onProgress?.(raw.items.length);
  for(const row of raw.items){if(!obj(row)||row.assetId!==fileId)continue;if(!id(row.id)||!id(row.revision))invalid('library file');return Object.freeze({objectId:row.id,revision:row.revision});}
  return undefined;
+}
+
+/** Kinds whose files sit in an album or book, which an owner can separate by folder. */
+export const FOLDER_SPLITTABLE_KINDS:readonly string[]=Object.freeze(['song','audiobook_file']);
+
+/** Says the folder holding this file is an album (or book) of its own, not part of the one it was joined with. Returns the new album's or book's id. */
+export async function separateLibraryFolder(api:TitleIdentityApi,libraryId:string,file:LibraryFileRecord):Promise<string>{
+ if(!id(libraryId)||!id(file.objectId)||!id(file.revision))invalid('folder to separate');
+ const out=await api.request<unknown>(libraryBase(libraryId)+'/inventory/'+encodeURIComponent(file.objectId)+'/separate-folder','POST',{revision:file.revision});
+ if(!obj(out)||!id(out.itemId))invalid('separated album');
+ return out.itemId;
 }
 
 /** Says one file is not a version of the title it was grouped with: it becomes a title of its own, and the choice is remembered across scans. Returns the new title's id. */

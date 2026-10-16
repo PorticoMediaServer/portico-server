@@ -7,7 +7,7 @@ import {Dialog, Icon, Menu, Spinner, useCompact} from '../../ui';
 import {CollectionPicker, PlaylistPicker} from './EntryActions';
 import {runBulkSelection, type BulkProgress} from './bulk-job';
 import type {JobArgs, JobCommand, JobFailure} from '@core/bulk-jobs.ts';
-import {canMergeTitles, mergeTitles} from '@core/title-identity.ts';
+import {canMergeTitles, mergeExplanation, mergeTitles} from '@core/title-identity.ts';
 import {errorText} from '../../app/errors';
 import {Button, Checkbox, Notice, Text} from '../../ui';
 import s from './SelectionBar.module.css';
@@ -127,12 +127,12 @@ const Action = React.forwardRef<HTMLButtonElement, ActionProps>(function Action(
   );
 });
 
-type MergeTitle = Readonly<{id: string; title: string; year?: number; subtitle?: string}>;
+type MergeTitle = Readonly<{id: string; kind: string; title: string; year?: number; subtitle?: string}>;
 
 /**
  * Merge two titles that are really one (owners): choose the one that remains. The other's files
- * become versions of it (a show takes the other's seasons and episodes) and everyone's watch
- * history is combined. Nothing on disk changes.
+ * become versions of it (a show takes the other's seasons and episodes; an album, book or artist
+ * its songs, files or albums) and everyone's watch history is combined. Nothing on disk changes.
  */
 function MergeDialog({titles, onClose, onMerged}: {titles: readonly [MergeTitle, MergeTitle]; onClose: () => void; onMerged: () => void}) {
   const {t} = useI18n();
@@ -154,7 +154,7 @@ function MergeDialog({titles, onClose, onMerged}: {titles: readonly [MergeTitle,
         <Text as="span" variant="label" tone="secondary">{t('web.merge.keep')}</Text>
         {titles.map(x => <Checkbox key={x.id} radio checked={keep === x.id} disabled={busy} onCheckedChange={on => { if (on) setKeep(x.id); }} label={name(x)} />)}
       </div>
-      <Text as="p" variant="body" tone="secondary">{t('web.merge.body', {title: name(other)})}</Text>
+      <Text as="p" variant="body" tone="secondary">{t(mergeExplanation(other.kind), {title: name(other)})}</Text>
     </Dialog>
   );
 }

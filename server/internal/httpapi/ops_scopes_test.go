@@ -24,11 +24,13 @@ func TestOperationsCredentialScopesAndRestart(t *testing.T) {
 	if restarts != 0 {
 		t.Fatal("a refused request restarted the server")
 	}
-	for _, bearer := range []string{read.Secret, admin.Secret} {
-		w := f.call("POST", "/v1/diagnostics/client-logs", bearer, `{"body":"trace"}`)
-		if w.Code != 403 || registryErrorCode(t, w) != "session_required" {
-			t.Fatalf("credential uploaded a device report: %d %s", w.Code, w.Body)
-		}
+	// A report is the member's own: a key that may act for them sends one,
+	// one that may only read does not.
+	if w := f.call("POST", "/v1/diagnostics/client-logs", read.Secret, `{"body":"trace"}`); w.Code != 403 || registryErrorCode(t, w) != "insufficient_scope" {
+		t.Fatalf("a read key uploaded a report: %d %s", w.Code, w.Body)
+	}
+	if w := f.call("POST", "/v1/diagnostics/client-logs", admin.Secret, `{"body":"trace"}`); w.Code >= 300 {
+		t.Fatalf("an admin key could not upload a report: %d %s", w.Code, w.Body)
 	}
 	if w := f.call("GET", "/v1/admin/diagnostics/client-logs", admin.Secret, ""); w.Code != 200 {
 		t.Fatalf("admin key cannot list reports: %d %s", w.Code, w.Body)

@@ -46,6 +46,50 @@ type MemberQuery struct {
 	Limit  string
 }
 
+const memberColumns = `a.id,a.username,a.profile_id,m.role,m.disabled,m.disabled_ms,m.disabled_reason,m.revision,m.allowed_libraries,
+ COALESCE(l.revision,1),COALESCE(l.body,''),COALESCE(p.hosted_account_id,'')`
+const memberTables = `accounts a JOIN direct_memberships m ON m.account_id=a.id
+ LEFT JOIN access_limits l ON l.account_id=a.id LEFT JOIN account_portico_links p ON p.account_id=a.id`
+
+func scanMember(row interface{ Scan(...any) error }) (Member, error) {
+	var m Member
+	var libraries, body string
+	var disabledMs int64
+	if e := row.Scan(&m.AccountID, &m.Username, &m.ProfileID, &m.Role, &m.Disabled, &disabledMs, &m.DisabledReason, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID); e != nil {
+		return m, e
+	}
+	m.DisabledAt = disabledAt(disabledMs)
+	if e := json.Unmarshal([]byte(libraries), &m.AllowedLibraries); e != nil {
+		return m, e
+	}
+	if m.AllowedLibraries == nil {
+		m.AllowedLibraries = []string{}
+	}
+	m.Limits = DefaultLimits()
+	if body != "" {
+		if e := json.Unmarshal([]byte(body), &m.Limits); e != nil {
+			return m, e
+		}
+	}
+	m.Limits.MaximumAge = m.Limits.Ceiling()
+	return m, nil
+}
+
+// Member reads one member as the list shows it, so a console can read again
+// the record it is acting on without walking the list. An account that is not
+// a member is sql.ErrNoRows.
+func (s *Store) Member(ctx context.Context, auth Authorize, account string) (out Member, err error) {
+	if !validID(account) {
+		return out, invalid("accountId")
+	}
+	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
+		var e error
+		out, e = scanMember(tx.QueryRowContext(ctx, `SELECT `+memberColumns+` FROM `+memberTables+` WHERE a.id=?`, account))
+		return e
+	})
+	return
+}
+
 func (s *Store) Members(ctx context.Context, auth Authorize, q MemberQuery) (out MemberPage, err error) {
 	limit, err := pageLimit(q.Limit)
 	if err != nil {
@@ -57,34 +101,16 @@ func (s *Store) Members(ctx context.Context, auth Authorize, q MemberQuery) (out
 	}
 	out.Limit, out.Items = limit, []Member{}
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		rows, e := tx.QueryContext(ctx, `SELECT a.id,a.username,a.profile_id,m.role,m.disabled,m.disabled_ms,m.disabled_reason,m.revision,m.allowed_libraries,
- COALESCE(l.revision,1),COALESCE(l.body,''),COALESCE(p.hosted_account_id,'') FROM accounts a JOIN direct_memberships m ON m.account_id=a.id
- LEFT JOIN access_limits l ON l.account_id=a.id LEFT JOIN account_portico_links p ON p.account_id=a.id WHERE a.id>? ORDER BY a.id LIMIT ?`, after, limit+1)
+		rows, e := tx.QueryContext(ctx, `SELECT `+memberColumns+` FROM `+memberTables+` WHERE a.id>? ORDER BY a.id LIMIT ?`, after, limit+1)
 		if e != nil {
 			return e
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var m Member
-			var libraries, body string
-			var disabledMs int64
-			if e = rows.Scan(&m.AccountID, &m.Username, &m.ProfileID, &m.Role, &m.Disabled, &disabledMs, &m.DisabledReason, &m.Revision, &libraries, &m.LimitsRevision, &body, &m.HostedAccountID); e != nil {
+			m, e := scanMember(rows)
+			if e != nil {
 				return e
 			}
-			m.DisabledAt = disabledAt(disabledMs)
-			if e = json.Unmarshal([]byte(libraries), &m.AllowedLibraries); e != nil {
-				return e
-			}
-			if m.AllowedLibraries == nil {
-				m.AllowedLibraries = []string{}
-			}
-			m.Limits = DefaultLimits()
-			if body != "" {
-				if e = json.Unmarshal([]byte(body), &m.Limits); e != nil {
-					return e
-				}
-			}
-			m.Limits.MaximumAge = m.Limits.Ceiling()
 			out.Items = append(out.Items, m)
 		}
 		return rows.Err()

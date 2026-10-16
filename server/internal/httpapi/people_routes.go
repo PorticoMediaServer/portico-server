@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"net/http"
-	"portico.local/apikit/apierror"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/metadata"
@@ -226,10 +225,6 @@ func (d Dependencies) peopleRoutes(mux *http.ServeMux) {
 			return
 		}
 		out, e := d.Catalog.WithContext(r.Context()).ReorderCollection(r.PathValue("id"), body.ExpectedRevision, body.ItemIDs, body.AfterItemID)
-		if errors.Is(e, catalog.ErrPlaylistConflict) && standardErrors != nil {
-			standardErrors.Write(w, "", &apierror.Error{Code: "revision_mismatch"})
-			return
-		}
 		if e != nil {
 			failure(w, e)
 			return

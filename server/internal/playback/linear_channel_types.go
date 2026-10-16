@@ -216,6 +216,19 @@ type LinearMedia struct {
 	State                   string           `json:"state"`
 	ErrorCode               string           `json:"errorCode"`
 	LogoURL                 string           `json:"logoUrl"`
+	// Engine is the player engine the stream was made for: "native" or "mpv".
+	Engine string `json:"engine,omitempty"`
+	// Clocks map media time to the channel's timeline, for a player that
+	// reports media time rather than program dates (mpv).
+	Clocks []LinearClock `json:"clocks,omitempty"`
+}
+
+// LinearClock is one clock epoch: over [startUs, endUs) of the channel
+// timeline, channel position = media time + offsetUs.
+type LinearClock struct {
+	StartUS  string `json:"startUs"`
+	EndUS    string `json:"endUs"`
+	OffsetUS string `json:"offsetUs"`
 }
 
 // LinearDelivery is an owned source/presentation implementation.
@@ -226,7 +239,11 @@ type LinearDelivery interface {
 }
 
 type LinearWork struct {
-	ClientProfile                                                      ClientProfile
+	ClientProfile ClientProfile
+	// MPVProfile is the device's mpv engine when it plays channels and the
+	// viewer did not choose Native; EngineSetting is the viewer's setting.
+	MPVProfile                                                         *ClientProfile
+	EngineSetting                                                      string
 	PlaybackID                                                         string
 	Principal                                                          identity.Principal
 	FamilyID                                                           string

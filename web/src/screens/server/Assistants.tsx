@@ -20,7 +20,7 @@ export function AssistantsPanel() {
     <SettingsGroup title={t('api.mcp.title')} description={t('api.mcp.lede')}>
       <SettingsRow label={t('api.mcp.address')} help={t('api.mcp.addressHelp')} stack start
         control={<div style={{display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap'}}>
-          <Text variant="mono" style={{fontSize: 13, overflowWrap: 'anywhere'}}>{address}</Text>
+          <Text variant="mono" style={{fontSize: '0.8125rem', overflowWrap: 'anywhere'}}>{address}</Text>
           <Button size="sm" variant="secondary" icon="copy" label={t('web.twoStep.copy')} onClick={() => void navigator.clipboard?.writeText(address).then(() => setCopied(true), () => {})} />
           <span role="status">{copied ? <Text variant="caption" tone="tertiary">{t('api.credential.copied')}</Text> : null}</span>
         </div>} />

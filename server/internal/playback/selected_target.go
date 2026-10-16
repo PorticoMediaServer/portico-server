@@ -78,6 +78,11 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 			if p.OutputVideoCodec == "hevc" {
 				t.VideoLevel = decoder.HEVCOutputLevel(w, h, rate)
 			}
+			// A picture kept in HDR10 keeps the source's mastering description,
+			// so the display maps it as the original would have been mapped.
+			if t.DynamicRange == assets.RangeHDR10 {
+				t.MasterDisplay, t.MaxCLL = video.MasterDisplay, video.MaxCLL
+			}
 		}
 	}
 	if audio != nil {
@@ -137,10 +142,12 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 	return nil
 }
 
-func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, cap *ClientVideoCodec) {
-	if cap == nil {
+func boundConvertedPicture(p *DeliveryPlan, v *SourceVideo, codec *ClientVideoCodec) {
+	if codec == nil {
 		return
 	}
+	point := codec.forConversion(p.OutputBitDepth, v.Width, v.Height, v.FrameRate)
+	cap := &point
 	// Missing facts cannot justify a level for an arbitrarily large picture.
 	// Use a bounded conversion until a later scan supplies the source geometry.
 	if v.Width <= 0 || v.Height <= 0 {

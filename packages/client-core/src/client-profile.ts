@@ -45,7 +45,13 @@ export type ClientVideoCodec={codec:string;profiles?:string[];maxLevel?:number;b
  /** What the decoder decodes. Whether it can be shown is the display's list or the engine's `toneMapsHdr`. */
  dynamicRanges?:DynamicRange[];dolbyVisionProfiles?:number[];interlaced?:boolean;
  /** The only sample entries the engine plays from an original file (AVFoundation: `hvc1`, not `hev1`). */
- codecTags?:string[];evidence?:ProfileEvidence};
+ codecTags?:string[];
+ /** The decoder's operating points ("4K at 30, 1080p at 60"; 10-bit only to 1080p). When stated, a
+  * picture must also fit one that applies to its bit depth; the fields above stay the overall ceilings. */
+ limits?:ClientVideoLimit[];
+ evidence?:ProfileEvidence};
+/** One operating point of a video decoder. `bitDepths` absent: every depth the codec lists. */
+export type ClientVideoLimit={bitDepths?:number[];maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxLevel?:number};
 /** An audio codec the engine decodes itself. */
 export type ClientAudioCodec={codec:string;maxChannels?:number;maxSampleRate?:number;maxBitDepth?:number;objectAudio?:('atmos'|'dtsx')[];evidence?:ProfileEvidence};
 /** An audio codec the engine can hand to the audio output undecoded. Used only while
@@ -66,6 +72,9 @@ export type EngineCapabilities={
  toneMapsHdr?:boolean;
  /** The engine can choose between audio tracks inside an original file. */
  embeddedAudioSwitching?:boolean;
+ /** A second engine (mpv) plays live channels: a timeshift window on the channel's own clock. The
+  * native engine always does; a second engine that does not say so is never given a channel. */
+ liveChannels?:boolean;
 };
 export type CapabilityDocument={
  version:typeof capabilityDocumentVersion;client:ClientIdentity;
@@ -89,6 +98,9 @@ const tokens=(v:unknown,max:number)=>v===undefined||Array.isArray(v)&&v.length<=
 const rangeList=(v:unknown)=>v===undefined||Array.isArray(v)&&v.length<=8&&v.every(x=>ranges.includes(x as string));
 const bool=(v:unknown)=>v===undefined||typeof v==='boolean';
 
+const limitAccepted=(l:ClientVideoLimit)=>!!l&&typeof l==='object'&&int(l.maxWidth,32768)&&int(l.maxHeight,32768)&&num(l.maxFrameRate,1000)&&int(l.maxLevel,1000)&&!!(l.maxWidth||l.maxHeight||l.maxFrameRate||l.maxLevel)
+ &&(l.bitDepths===undefined||Array.isArray(l.bitDepths)&&l.bitDepths.length<=8&&l.bitDepths.every(x=>Number.isInteger(x)&&x>=1&&x<=16));
+
 function engineProblem(e:EngineCapabilities|undefined,path:string):string|null{
  if(!e||typeof e!=='object')return path;
  if(!evidences.includes(e.evidence))return path+'.evidence';
@@ -97,6 +109,7 @@ function engineProblem(e:EngineCapabilities|undefined,path:string):string|null{
  for(const v of e.video??[]){
   if(typeof v.codec!=='string'||!token.test(v.codec)||(v.profiles??[]).length>32||!(v.profiles??[]).every(x=>typeof x==='string'&&token.test(x.trim().toLowerCase().replace(/ /g,'_')))||!int(v.maxLevel,1000)||!int(v.maxWidth,32768)||!int(v.maxHeight,32768)||!num(v.maxFrameRate,1000)||!int(v.maxBitrateBps,2_000_000_000)||!rangeList(v.dynamicRanges)||!tokens(v.codecTags,8)||!bool(v.interlaced))return path+'.video.'+v.codec;
   if((v.bitDepths??[]).length>8||!(v.bitDepths??[]).every(x=>Number.isInteger(x)&&x>=1&&x<=16))return path+'.video.'+v.codec+'.bitDepths';
+  if(v.limits!==undefined&&!(Array.isArray(v.limits)&&v.limits.length<=16&&v.limits.every(limitAccepted)))return path+'.video.'+v.codec+'.limits';
   if((v.dolbyVisionProfiles??[]).length>16||!(v.dolbyVisionProfiles??[]).every(x=>Number.isInteger(x)&&x>=1&&x<=31))return path+'.video.'+v.codec+'.dolbyVisionProfiles';
   if(v.evidence!==undefined&&!evidences.includes(v.evidence))return path+'.video.'+v.codec+'.evidence';
  }
@@ -112,7 +125,7 @@ function engineProblem(e:EngineCapabilities|undefined,path:string):string|null{
   if(!['direct','hls_ts','hls_fmp4'].includes(t.transport)||!tokens(t.containers,32)||!tokens(t.video,32)||!tokens(t.audio,48))return path+'.transports';
  }
  if(e.subtitleRendering!==undefined&&!(Array.isArray(e.subtitleRendering)&&e.subtitleRendering.length<=8&&e.subtitleRendering.every(x=>(subtitleRenderingKinds as readonly string[]).includes(x))))return path+'.subtitleRendering';
- if(!bool(e.toneMapsHdr)||!bool(e.embeddedAudioSwitching))return path+'.flags';
+ if(!bool(e.toneMapsHdr)||!bool(e.embeddedAudioSwitching)||!bool(e.liveChannels))return path+'.flags';
  return null;
 }
 
@@ -482,12 +495,13 @@ export type WebProbeEnvironment={
 const mp4=(codecs:string)=>`video/mp4; codecs="${codecs}"`;
 const mp4Audio=(codecs:string)=>`audio/mp4; codecs="${codecs}"`;
 
-type VideoProbe={codec:string;contentType:string;tenBit?:string;dolbyVision?:Record<number,string>;hdr?:boolean};
+/** `uhd` (and `uhdTenBit`) name a level that covers 3840×2160: a decoder that answers by level refuses 4K at the plain probe's level 4.0. */
+type VideoProbe={codec:string;contentType:string;tenBit?:string;uhd:string;uhdTenBit?:string;dolbyVision?:Record<number,string>;hdr?:boolean};
 const videoProbes:VideoProbe[]=[
- {codec:'h264',contentType:mp4('avc1.640028'),tenBit:mp4('avc1.6e0028')},
- {codec:'hevc',contentType:mp4('hvc1.1.6.L120.90'),tenBit:mp4('hvc1.2.4.L153.B0'),dolbyVision:{5:mp4('dvh1.05.06'),8:mp4('dvh1.08.06')},hdr:true},
- {codec:'av1',contentType:mp4('av01.0.08M.08'),tenBit:mp4('av01.0.12M.10.0.110.09.16.09.0'),hdr:true},
- {codec:'vp9',contentType:'video/webm; codecs="vp09.00.40.08"',tenBit:'video/webm; codecs="vp09.02.40.10"',hdr:true},
+ {codec:'h264',contentType:mp4('avc1.640028'),tenBit:mp4('avc1.6e0028'),uhd:mp4('avc1.640033'),uhdTenBit:mp4('avc1.6e0033')},
+ {codec:'hevc',contentType:mp4('hvc1.1.6.L120.90'),tenBit:mp4('hvc1.2.4.L153.B0'),uhd:mp4('hvc1.1.6.L153.90'),dolbyVision:{5:mp4('dvh1.05.06'),8:mp4('dvh1.08.06')},hdr:true},
+ {codec:'av1',contentType:mp4('av01.0.08M.08'),tenBit:mp4('av01.0.12M.10.0.110.09.16.09.0'),uhd:mp4('av01.0.12M.08'),hdr:true},
+ {codec:'vp9',contentType:'video/webm; codecs="vp09.00.40.08"',tenBit:'video/webm; codecs="vp09.02.40.10"',uhd:'video/webm; codecs="vp09.00.51.08"',uhdTenBit:'video/webm; codecs="vp09.02.51.10"',hdr:true},
 ];
 const audioProbes:{codec:string;mse:string[];element:string[];channels:number;objectAudio?:('atmos')[]}[]=[
  {codec:'aac',mse:[mp4Audio('mp4a.40.2')],element:[mp4Audio('mp4a.40.2')],channels:6},
@@ -529,10 +543,21 @@ export async function probeWebProfile(env:WebProbeEnvironment):Promise<Capabilit
   if(probe.tenBit&&(element(probe.tenBit)||source(probe.tenBit)))entry.bitDepths=[8,10];
   // Resolution: ask about 4K and fall back to 1080p. A browser without
   // MediaCapabilities is assumed to stop at 1080p for anything but H.264.
-  const uhd=await ask({contentType:probe.tenBit&&entry.bitDepths!.includes(10)?probe.tenBit:probe.contentType,width:3840,height:2160,bitrate:40_000_000,framerate:30});
+  const uhd=await ask({contentType:probe.tenBit&&entry.bitDepths!.includes(10)?probe.uhdTenBit??probe.tenBit:probe.uhd,width:3840,height:2160,bitrate:40_000_000,framerate:30});
   if(uhd?.supported&&uhd.smooth){entry.maxWidth=4096;entry.maxHeight=2160;}
   else if(uhd===null&&probe.codec==='h264'){entry.maxWidth=4096;entry.maxHeight=2160;}
   else{entry.maxWidth=1920;entry.maxHeight=1080;}
+  // A decoder that is smooth at 4K30 but not at 4K60 still plays 1080p60: say both points, so a
+  // 1080p60 title is not converted for want of a 4K60 decoder.
+  if(uhd?.supported&&uhd.smooth){
+   const deep=!!probe.tenBit&&entry.bitDepths!.includes(10);
+   const uhd60=await ask({contentType:deep?probe.uhdTenBit??probe.tenBit!:probe.uhd??probe.contentType,width:3840,height:2160,bitrate:60_000_000,framerate:60});
+   if(uhd60&&!(uhd60.supported&&uhd60.smooth)){
+    const hd60=await ask({contentType:deep?probe.tenBit!:probe.contentType,width:1920,height:1080,bitrate:20_000_000,framerate:60});
+    if(hd60?.supported&&hd60.smooth)entry.limits=[{maxWidth:4096,maxHeight:2160,maxFrameRate:30},{maxWidth:1920,maxHeight:1080,maxFrameRate:60}];
+    else entry.maxFrameRate=30;
+   }
+  }
   if(probe.hdr&&entry.bitDepths!.includes(10)&&probe.tenBit){
    // What the decoder decodes is stated here; whether the result is shown well is the display's
    // list and the engine's `toneMapsHdr`. A browser that neither has an HDR display nor is known
@@ -667,7 +692,9 @@ export function appleProfile(options:{television:boolean;osVersion?:string;model
  * `AudioManager`. Kept here so the Android clients share one merge with tests. */
 export type AndroidNativeFacts={
  model?:string;osVersion?:string;
- decoders?:{codec:string;hardware?:boolean;maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxBitrateBps?:number;profiles?:string[];maxLevel?:number;tenBit?:boolean;hdr?:DynamicRange[];dolbyVisionProfiles?:number[]}[];
+ decoders?:{codec:string;hardware?:boolean;maxWidth?:number;maxHeight?:number;maxFrameRate?:number;maxBitrateBps?:number;profiles?:string[];maxLevel?:number;tenBit?:boolean;hdr?:DynamicRange[];dolbyVisionProfiles?:number[];
+  /** The decoder's operating points (`getSupportedFrameRatesFor` at the common picture sizes), when they differ. */
+  limits?:{maxWidth:number;maxHeight:number;maxFrameRate:number}[]}[];
  /** `maxChannels` absent or 0 means the decoder states no limit. */
  audioDecoders?:{codec:string;maxChannels?:number}[];
  /** `Display.getHdrCapabilities().getSupportedHdrTypes()`. */
@@ -691,7 +718,8 @@ export function androidProfile(options:{family?:'android'|'androidtv'|'firetv';t
  // A codec with only a software decoder states that decoder's limits, which say what it can
  // decode, not what it can decode in real time: it is held to 1080p.
  const soft=(d:{hardware?:boolean},value:number|undefined,cap:number)=>d.hardware===false?Math.min(value??cap,cap):value;
- const video:ClientVideoCodec[]=facts.decoders.map(d=>defined({codec:d.codec,profiles:d.profiles,maxLevel:d.maxLevel,bitDepths:d.tenBit?[8,10]:[8],maxWidth:soft(d,d.maxWidth,1920),maxHeight:soft(d,d.maxHeight,1080),maxFrameRate:d.maxFrameRate,maxBitrateBps:d.maxBitrateBps,dynamicRanges:['sdr' as DynamicRange,...(d.hdr??[]).filter(x=>x!=='sdr')],dolbyVisionProfiles:d.dolbyVisionProfiles??[],evidence:'probed' as const}));
+ const video:ClientVideoCodec[]=facts.decoders.map(d=>defined({codec:d.codec,profiles:d.profiles,maxLevel:d.maxLevel,bitDepths:d.tenBit?[8,10]:[8],maxWidth:soft(d,d.maxWidth,1920),maxHeight:soft(d,d.maxHeight,1080),maxFrameRate:d.maxFrameRate,maxBitrateBps:d.maxBitrateBps,dynamicRanges:['sdr' as DynamicRange,...(d.hdr??[]).filter(x=>x!=='sdr')],dolbyVisionProfiles:d.dolbyVisionProfiles??[],
+  limits:d.limits?.length?d.limits.slice(0,16).map(l=>({maxWidth:soft(d,l.maxWidth,1920),maxHeight:soft(d,l.maxHeight,1080),maxFrameRate:l.maxFrameRate})):undefined,evidence:'probed' as const}));
  const decoded=new Map((facts.audioDecoders??[]).map(x=>[x.codec,x]));
  // A decoder that states no channel limit keeps the declared one, or eight: it is not stereo.
  const channelsOf=(codec:string,fallback:number)=>decoded.get(codec)?.maxChannels||fallback;

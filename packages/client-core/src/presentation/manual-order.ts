@@ -45,3 +45,30 @@ export function movedOrder<T>(items: readonly T[], from: number, to: number): T[
   out.splice(to, 0, items[from]!);
   return out;
 }
+
+/**
+ * `moveRequest` over a list that is only partly on hand (a long library collection read a window
+ * at a time): `idAt` answers the entry at a place, or undefined when that place isn't loaded.
+ * Only the moved entry and the one it will follow need to be known.
+ */
+export function moveRequestAt(idAt: (index: number) => string | undefined, count: number, from: number, to: number): Readonly<{entryId: string; afterEntryId: string}> | undefined {
+  if (from < 0 || from >= count || to < 0 || to >= count || to === from) return undefined;
+  const entryId = idAt(from);
+  const afterEntryId = to === 0 ? '' : idAt(to < from ? to - 1 : to);
+  return entryId === undefined || afterEntryId === undefined ? undefined : Object.freeze({entryId, afterEntryId});
+}
+
+/**
+ * Where the entry now at place `index` stood before moves made since the list was last read
+ * (oldest first): what a long list shows at once, before the server's new order is read back.
+ */
+export function placeBeforeMoves(index: number, moves: readonly Readonly<{from: number; to: number}>[]): number {
+  let at = index;
+  for (let i = moves.length - 1; i >= 0; i--) {
+    const {from, to} = moves[i]!;
+    if (at === to) at = from;
+    else if (from < to && at >= from && at < to) at += 1;
+    else if (to < from && at > to && at <= from) at -= 1;
+  }
+  return at;
+}

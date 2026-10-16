@@ -61,25 +61,5 @@ export function certificateError(error:unknown):string{
  if(status===429)return 'A retry is already scheduled. The server will continue automatically.';
  return 'Certificate status could not be updated. Check the server connection and try again.';
 }
-export function certificateSummary(s:CertificateStatus):string{
- if(s.state==='paused')return 'Automatic HTTPS is paused. Remote TLS connections are not accepted.';
- // Off is said as off: the states below describe a certificate that was asked for.
- if(!s.config.enabled&&!s.tlsReady)return 'No certificate has been requested. Turn on “Request a certificate” to get one.';
- if(s.tlsReady&&s.environment==='staging')return 'A staging certificate is installed for testing. Devices will not publicly trust it.';
- if(s.tlsReady&&!s.listenerBound)return 'A valid certificate is installed, but the TLS listener is not running.';
- if(s.tlsReady&&s.state==='recovering')return 'HTTPS is using the previous valid certificate while replacement is prepared.';
- if(s.errorCode==='acme_account_configuration_or_retry'||s.errorCode==='dns_or_issuer_configuration')return 'The Hosted certificate service needs an operator configuration check or a provider retry. Any valid installed certificate remains available.';
- if(s.tlsReady&&s.state==='renewing')return 'HTTPS is ready. Renewal is in progress using the existing valid certificate.';
- if(s.tlsReady)return 'HTTPS is ready on this server. This does not confirm access from another network.';
- if(s.orderState==='reconciliation_required')return 'The certificate provider may have accepted a request. Operator reconciliation is required; no duplicate order will be created.';
- switch(s.state){
- case 'claim_required':case 'claim_pending':case 'authority_unavailable':return 'Complete this server’s account connection before enabling automatic HTTPS.';
- case 'configuration_required':return 'The server or Hosted certificate service needs operator configuration.';
- case 'expired':return 'The certificate has expired. Remote TLS is unavailable while the server attempts renewal.';
- case 'invalid':return 'Certificate material could not be validated. Remote TLS is unavailable; use local owner access to recover.';
- case 'retrying':return 'A certificate request will be retried automatically. The server keeps any existing valid certificate.';
- default:return 'The server is preparing its certificate. You can leave this page; work continues on the server.';
- }
-}
 export function certificateDate(value?:string):string{return value?new Date(value).toLocaleString():'Not yet available';}
 

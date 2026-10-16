@@ -49,11 +49,13 @@ export function ConnectionOverlay({children}: {children: React.ReactNode}) {
   // Something else answers at the saved address. The sign-in is kept and Portico keeps trying;
   // only the person can decide that their server really was set up again.
   const replaced = serverProblem?.kind === 'replaced';
+  // While open, only an address proving another identity covers the page (`shown`).
+  const mismatch = !unreachable && shown;
   const status = unreachable || shown ? (
     <div className={unreachable ? s.connectionStatus : s.connectionCover}>
       <StatusScreen
-        title={i18n.t(replaced ? 'web.connection.replacedTitle' : 'launch.reconnectingTitle')}
-        body={i18n.t(replaced ? 'web.connection.replacedBody' : 'web.connection.reconnectingBody', {server: name})}
+        title={i18n.t(replaced || mismatch ? 'web.connection.replacedTitle' : 'launch.reconnectingTitle')}
+        body={i18n.t(replaced ? 'web.connection.replacedBody' : mismatch ? 'web.connection.mismatchBody' : 'web.connection.reconnectingBody', {server: name})}
         action={{label: i18n.t('action.tryAgain'), onClick: serverProblem ? retryRestore : () => void api.recoverRoute().catch(() => {})}}
         secondaryAction={replaced ? {label: i18n.t('web.restore.useAnother'), onClick: disconnectServer} : undefined}
       />

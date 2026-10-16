@@ -15,11 +15,14 @@ type originalFile struct {
 	object                       mediaartifact.Object
 }
 
-func (s *Service) sealOriginalFiles(ctx context.Context, raw []byte, durationUS int64) ([]originalFile, error) {
+// sealOriginalFiles also counts an image subtitle's lines and forced lines
+// (headers only), kept with the original for a device's "Forced only".
+func (s *Service) sealOriginalFiles(ctx context.Context, raw []byte, durationUS int64) ([]originalFile, Lines, error) {
 	var a RenderAsset
 	if json.Unmarshal(raw, &a) != nil || a.Version != 2 {
-		return nil, ErrInput
+		return nil, Lines{}, ErrInput
 	}
+	lines := imageLines(a.Format, a.Data, a.Companion)
 	data := a.Data
 	if len(a.Authored) > 0 {
 		data = a.Authored
@@ -48,16 +51,16 @@ func (s *Service) sealOriginalFiles(ctx context.Context, raw []byte, durationUS 
 		return nil
 	}
 	if e := add("data", "", a.Format, a.Encoding, data); e != nil {
-		return nil, e
+		return nil, Lines{}, e
 	}
 	if e := add("companion", "", "vobsub", "", a.Companion); e != nil {
-		return nil, e
+		return nil, Lines{}, e
 	}
 	if a.Format == "ass" || a.Format == "ssa" {
 		if cues, e := ParseASSAsText(a.Data, durationUS); e == nil {
 			if document, e := textDocument(cues); e == nil {
 				if e = add("text", "", "text", "utf-8", document); e != nil {
-					return nil, e
+					return nil, Lines{}, e
 				}
 			}
 		}
@@ -65,10 +68,10 @@ func (s *Service) sealOriginalFiles(ctx context.Context, raw []byte, durationUS 
 
 	for i, f := range a.Fonts {
 		if e := add("font:"+strconv.Itoa(i), f.Name, "font", "", f.Data); e != nil {
-			return nil, e
+			return nil, Lines{}, e
 		}
 	}
-	return files, nil
+	return files, lines, nil
 }
 func publishOriginalFiles(ctx context.Context, tx *sql.Tx, id string, revision int64, files []originalFile) error {
 	for _, f := range files {
@@ -129,4 +132,26 @@ func (s *Service) OriginalFonts(ctx context.Context, p identity.Principal, item,
 		out.Fonts = append(out.Fonts, FontFile{Name: name, URL: base + "/fonts/" + part[len("font:"):]})
 	}
 	return out, rows.Err()
+}
+
+// OriginalLines is how many lines an image subtitle's original has, and how
+// many of them are forced, under the same grant and pin as its file.
+func (s *Service) OriginalLines(ctx context.Context, p identity.Principal, item, session, id string, revision int64) (Lines, error) {
+	var out Lines
+	if e := s.CheckOriginal(ctx, p, item, session, id, revision); e != nil {
+		return out, e
+	}
+	if e := s.ensureCached(ctx, p, item, id, revision); e != nil {
+		return out, e
+	}
+	snapshot, _, e := s.readTx(ctx, p, item)
+	if e != nil {
+		return out, e
+	}
+	defer snapshot.Rollback()
+	e = snapshot.Tx().QueryRowContext(ctx, `SELECT forced_lines,total_lines FROM subtitle_original_revisions WHERE resource_id=? AND revision=?`, id, revision).Scan(&out.Forced, &out.Total)
+	if e != nil {
+		return Lines{}, ErrUnsupported
+	}
+	return out, nil
 }

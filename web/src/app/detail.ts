@@ -3,7 +3,7 @@ import {DetailService, parseCreditPage, type DetailCredit, type DetailSnapshot, 
 import {fetchItemRecommendations, fetchShowRecommendations, type ItemRecommendations, type ShowRecommendations} from '@core/recommendations.ts';
 import {ShowWorkspaceService, type ShowWorkspaceRoute, type ShowWorkspaceSnapshot} from '@core/show-workspace.ts';
 import {usePooledService} from './freshness';
-import {titlesWithPersonalState} from '@core/freshness-hub.ts';
+import {titleWithPersonalState, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {compatContentApi} from '@core/presentation/index.ts';
 import {useSession} from './session';
 import {useViewerScope} from './viewer-scope';
@@ -19,11 +19,12 @@ export function useDetail(target: DetailTarget | null) {
   const {api} = useSession();
   const scope = useViewerScope();
   const key = target ? target.libraryId + '/' + target.itemId : '';
-  // The title's page is kept after Back and read again only when its library or this profile's state moved.
+  // The title's page is kept after Back and read again only when its library's content or this
+  // profile's state of this title (or of anything under it) moved.
   const {service, snapshot, document, memo} = usePooledService<DetailService, DetailSnapshot>(
     'detail:' + key,
     () => new DetailService({api, scope, requestId}),
-    target ? titlesWithPersonalState(target.libraryId) : [],
+    target ? titleWithPersonalState(target.libraryId, [target.itemId]) : [],
   );
   useEffect(() => {
     if (!target || memo.selected) return;
@@ -57,7 +58,7 @@ export function useShowWorkspace(route: ShowWorkspaceRoute | null) {
   const {service, snapshot, document, memo} = usePooledService<ShowWorkspaceService, ShowWorkspaceSnapshot>(
     'show:' + key,
     () => new ShowWorkspaceService({api: compatContentApi(api) as typeof api, scope}),
-    route ? titlesWithPersonalState(route.libraryId) : [],
+    route ? (route.showId ? titleWithPersonalState(route.libraryId, [route.showId]) : titlesWithPersonalState(route.libraryId)) : [],
   );
   useEffect(() => {
     if (!route || memo.selected) return;

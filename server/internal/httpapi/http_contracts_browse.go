@@ -67,10 +67,10 @@ func registerBrowseHTTPContracts(registry *apikit.Registry) error {
 	}
 	// internal/httpapi/browse_routes.go:125
 	if err := apikit.RegisterHTTP[struct{}, struct {
-		ServerID    string                  `json:"serverId"`
-		ViewerFence string                  `json:"viewerFence"`
-		Revision    int64                   `json:"revision"`
-		Order       []catalog.PinOrderEntry `json:"order"`
+		ServerID    string                   `json:"serverId"`
+		ViewerFence string                   `json:"viewerFence"`
+		Revision    int64                    `json:"revision"`
+		Order       []catalog.PinnedResource `json:"order"`
 	}](registry, apikit.Metadata{ID: "get_saved_pins_order", Method: "GET", Path: "/v1/saved-pins/order", Summary: "Read saved pins order", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}

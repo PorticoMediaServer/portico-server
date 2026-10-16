@@ -39,13 +39,13 @@ type PlaylistMutation struct {
 	ItemIDs          []string `json:"itemIds,omitempty"`
 	// UndoToken, on an add, puts back the occurrence a removal just took out
 	// (the removal's receipt carries it) in place of adding an item.
-	UndoToken string `json:"undoToken,omitempty"`
-	EntryIDs         []string `json:"entryIds,omitempty"`
-	AfterEntryID     *string  `json:"afterEntryId,omitempty"`
-	Authority        string   `json:"authority,omitempty"`
-	AccountID        string   `json:"accountId,omitempty"`
-	ProfileID        string   `json:"profileId,omitempty"`
-	Role             string   `json:"role,omitempty"`
+	UndoToken    string   `json:"undoToken,omitempty"`
+	EntryIDs     []string `json:"entryIds,omitempty"`
+	AfterEntryID *string  `json:"afterEntryId,omitempty"`
+	Authority    string   `json:"authority,omitempty"`
+	AccountID    string   `json:"accountId,omitempty"`
+	ProfileID    string   `json:"profileId,omitempty"`
+	Role         string   `json:"role,omitempty"`
 }
 type PlaylistReceipt struct {
 	ServerID    string `json:"serverId"`

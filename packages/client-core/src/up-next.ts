@@ -5,7 +5,8 @@
  * fixed number of seconds before the file ends. A marker in the first half of a title is not a
  * closing one (opening credits). An episode without a marker gets the offer for its last thirty
  * seconds. Nothing is offered when there is no next title, when the viewer turned credits prompts
- * off, or when the server wants to ask whether anyone is still watching.
+ * off, or when the server wants to ask whether anyone is still watching. The web and native players
+ * both use these rules.
  */
 export type ClosingMarker = Readonly<{id: string; kind: string; startSeconds: number; endSeconds: number; automaticSafe?: boolean}>;
 export type UpNextOffer = Readonly<{

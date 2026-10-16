@@ -340,11 +340,11 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 	tx := gated2.Tx()
 	defer gated2.Rollback()
 	now := s.millis()
-	var state, quality, item, authority, account, profile, artifactRef string
+	var state, quality, recipeID, item, authority, account, profile, artifactRef string
 	var bytesDone, bytesTotal, revision, modifiedNS int64
 	var hashState []byte
 	var present bool
-	e = tx.QueryRowContext(ctx, `SELECT state,quality,item_public,authority,account_id,profile_id,artifact_ref,bytes_done,bytes_total,revision,hash_state,source_modified_ns,NOT (`+titleGone+`) FROM download_preparations WHERE id=?`, id).Scan(&state, &quality, &item, &authority, &account, &profile, &artifactRef, &bytesDone, &bytesTotal, &revision, &hashState, &modifiedNS, &present)
+	e = tx.QueryRowContext(ctx, `SELECT state,quality,recipe,item_public,authority,account_id,profile_id,artifact_ref,bytes_done,bytes_total,revision,hash_state,source_modified_ns,NOT (`+titleGone+`) FROM download_preparations WHERE id=?`, id).Scan(&state, &quality, &recipeID, &item, &authority, &account, &profile, &artifactRef, &bytesDone, &bytesTotal, &revision, &hashState, &modifiedNS, &present)
 	if errors.Is(e, sql.ErrNoRows) {
 		return out, nil
 	}
@@ -431,9 +431,12 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 			if !ok {
 				return out, ErrInput
 			}
-			recipe := preparedProfile(found.Kind, rung)
+			recipe := recipeID
+			if recipe == "" {
+				recipe = preparedProfile(found.Kind, rung)
+			}
 			if !preparedmedia.Producible(recipe) {
-				return out, s.advanceOptimized(ctx, gated2, id, quality, found, now)
+				return out, s.advanceOptimized(ctx, gated2, id, quality, recipeID, found, now)
 			}
 			if _, e = tx.ExecContext(ctx, `UPDATE download_preparations SET state='running',revision=revision+(state<>'running'),updated_ms=? WHERE id=?`, now, id); e != nil {
 				return out, e
@@ -451,7 +454,7 @@ func (s *Service) prepare(ctx context.Context, id string) (plan, error) {
 			out.revision = revision
 			return out, gated2.Commit()
 		}
-		return out, s.advanceOptimized(ctx, gated2, id, quality, found, now)
+		return out, s.advanceOptimized(ctx, gated2, id, quality, recipeID, found, now)
 	}
 	file := pinned{asset: found.Asset, path: found.Path, size: found.Size, modifiedNS: found.ModifiedNS}
 	// Somebody has already read this exact file: the claim is ready at once.
@@ -500,13 +503,17 @@ func (s *Service) settle(ctx context.Context, tx *sql.Tx, id string, now int64) 
 
 // advanceOptimized resolves a ladder rung against prepared media. The bytes are
 // produced by internal/preparedmedia; downloads only observes them.
-func (s *Service) advanceOptimized(ctx context.Context, gatedArg *dbwork.Write, id, quality string, found source, now int64) error {
+func (s *Service) advanceOptimized(ctx context.Context, gatedArg *dbwork.Write, id, quality, recipe string, found source, now int64) error {
 	tx := gatedArg.Tx()
 	rung, ok := ladderRung(quality)
 	if !ok {
 		return terminal(ctx, gatedArg, id, StateFailed, ReasonFailed, now)
 	}
-	profileID := preparedProfile(found.Kind, rung)
+	// The recipe chosen for the device when the download was asked for.
+	profileID := recipe
+	if profileID == "" {
+		profileID = preparedProfile(found.Kind, rung)
+	}
 	versions, e := preparedmedia.VersionsTx(ctx, tx, found.Item)
 	if e != nil {
 		return e

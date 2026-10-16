@@ -6,7 +6,7 @@ import (
 )
 
 func TestAnalysisClosedRecipes(t *testing.T) {
-	for _, kind := range []string{"pcm", "loudness", "image", "trickplay", "scenes"} {
+	for _, kind := range []string{"pcm_shared", "image", "trickplay", "scenes"} {
 		args, err := AnalysisArgs("http://127.0.0.1:1234/input/test", AnalysisSpec{Kind: kind, StartUS: 1234567, IntervalUS: 1000000, MaxFrames: 12, MaxDurationUS: 60000000})
 		if err != nil {
 			t.Fatal(err)
@@ -26,7 +26,7 @@ func TestAnalysisClosedRecipes(t *testing.T) {
 			t.Fatal("discarded stream offset", joined)
 		}
 	}
-	for _, spec := range []AnalysisSpec{{Kind: "arbitrary-filter", MaxDurationUS: 1}, {Kind: "pcm"}, {Kind: "image", StartUS: -1, MaxDurationUS: 1}, {Kind: "image", StartUS: 2, MaxDurationUS: 2}, {Kind: "scenes", IntervalUS: 1, MaxFrames: 1, MaxDurationUS: 2}, {Kind: "trickplay", IntervalUS: 1000000, MaxFrames: 65537, MaxDurationUS: 60000000}} {
+	for _, spec := range []AnalysisSpec{{Kind: "arbitrary-filter", MaxDurationUS: 1}, {Kind: "pcm_shared"}, {Kind: "image", StartUS: -1, MaxDurationUS: 1}, {Kind: "image", StartUS: 2, MaxDurationUS: 2}, {Kind: "scenes", IntervalUS: 1, MaxFrames: 1, MaxDurationUS: 2}, {Kind: "trickplay", IntervalUS: 1000000, MaxFrames: 65537, MaxDurationUS: 60000000}} {
 		if _, err := AnalysisArgs("ignored", spec); err == nil {
 			t.Fatalf("accepted unsafe recipe %+v", spec)
 		}

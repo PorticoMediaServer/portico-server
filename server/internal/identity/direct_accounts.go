@@ -322,7 +322,15 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	var c directCaller
 	var grantEpoch int
 	var sessionRole string
-	if len(bearer) != 43 {
+	// An API key or personal access token acts as the member and profile that
+	// made it, but only on a request the edge resolved it on and whose route
+	// scope it holds (admitBearer): routes that must stay a signed-in
+	// session's (passwords, two-factor, ownership, keys) are refused there.
+	if CredentialShaped(bearer) {
+		if err := admitBearer(ctx, bearer); err != nil {
+			return c, err
+		}
+	} else if len(bearer) != 43 {
 		return c, ErrUnauthorized
 	}
 	record, err := s.familyTokenTx(ctx, tx, Digest(bearer))

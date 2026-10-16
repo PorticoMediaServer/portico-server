@@ -70,6 +70,14 @@ from `base.css` (`--surface-*`, `--text-*`, `--layer-*`) instead.
   `Card`'s overlay or `ListRow`'s `actions` slot.
 - Compact layout (≤720px) is decided by `useCompact()`; dialogs become bottom
   sheets and the player's five option boxes collapse to one Options sheet.
+- Open screens stay current without a Refresh button. `src/app/event-feed.ts`
+  reads the server's `/v1/events` stream (a `fetch` read as it arrives); every
+  tab signed in to the same server as the same viewer shares one stream, held
+  by Web Locks or, over plain HTTP, a lease in local storage. Only where neither
+  works does a tab fall back to its own long poll. The freshness hub
+  (`src/app/freshness.tsx`) turns the hints into quiet re-reads of what is on
+  screen; `src/app/quiet-refresh.ts` (`useRefreshRequiredRetry`) re-reads a list
+  the server refused as out of date before any notice is shown.
 
 ## Where the browser draws the picture
 

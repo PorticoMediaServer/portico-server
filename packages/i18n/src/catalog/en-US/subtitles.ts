@@ -22,4 +22,6 @@ export const drawnSubtitleMessages = {
   'player.upNext.watchCredits': 'Watch credits',
   'player.upNext.notNow': 'Not now',
   'player.upNext.startsIn': 'Starts in {time}',
+  'player.ended.outsideHoursTitle': 'Viewing hours are over',
+  'player.ended.outsideHours': 'This account can’t be used at this time of day, so playback stopped. Try again during its allowed hours.',
 } as const satisfies Record<string, string>;

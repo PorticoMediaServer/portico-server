@@ -253,6 +253,9 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 		return out, nil, err
 	}
 	out.PageInfo.Revision = revision
+	if anchor.Field == "lastPlayedAt" && sorts[0].Field == "groupOrder" {
+		return s.acrossHistory(request, pivot, sorts[0], out, limit)
+	}
 
 	// The group's members, and the titles that hold them or that they hold
 	// (a show for a saved episode, a saved show's episodes), each at its first
@@ -320,6 +323,13 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	out.PageInfo.Start = start
 
 	key, keyArgs, order, orderArgs := acrossOrder(sorts[0], request.profile)
+	// A title sort publishes where each letter starts, for the letter rail and
+	// for finding a place again after a refresh: one pass over the bounded group.
+	if sorts[0].Field == "title" && request.Cursor == "" && total > 0 {
+		if out.PositionIndex, err = s.acrossLetters(group+` SELECT letter,MIN(position) FROM (SELECT portico_letter(e.sort_key) AS letter,ROW_NUMBER() OVER (ORDER BY `+order+`)-1 AS position FROM `+from+` WHERE `+where+`) GROUP BY letter ORDER BY MIN(position)`, append(append(append([]any{}, memberArgs...), orderArgs...), args...)...); err != nil {
+			return out, nil, err
+		}
+	}
 	query := group + ` SELECT ` + browseRowColumns + `,` + key + ` FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?`
 	bound := append(append(append([]any{}, memberArgs...), keyArgs...), args...)
 	bound = append(append(bound, orderArgs...), limit, start)
@@ -330,6 +340,115 @@ func (s *Service) acrossSelect(request AcrossRequest) (BrowseResult, []browseRow
 	out.PageInfo.HasMore = start+len(selected) < total
 	if out.PageInfo.HasMore && request.Range == nil && len(selected) > 0 {
 		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: revision, Total: total, Expires: expires}, ContentRevision{})
+		if err != nil {
+			return out, nil, err
+		}
+	}
+	return out, selected, nil
+}
+
+// acrossLetters reads a letter index: each letter and the position its first
+// title holds in the list.
+func (s *Service) acrossLetters(query string, args ...any) ([]BrowsePositionAnchor, error) {
+	out := []BrowsePositionAnchor{}
+	rows, err := s.read().Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var anchor BrowsePositionAnchor
+		if err = rows.Scan(&anchor.Key, &anchor.Index); err != nil {
+			return nil, err
+		}
+		out = append(out, anchor)
+	}
+	return out, rows.Err()
+}
+
+// acrossHistory pages the viewing history across libraries in its own order
+// (most recent first, or oldest first) straight from the maintained per-title
+// last-played facts and their history index, so it runs past any number of
+// plays: a page reads its own rows from the index, filters and restrictions
+// applied as it goes, and the total is counted up to the totals limit and
+// then given as a lower bound that grows as the viewer pages on.
+func (s *Service) acrossHistory(request AcrossRequest, pivot browsePivot, selection BrowseSortSelection, out BrowseResult, limit int) (BrowseResult, []browseRow, error) {
+	kinds, err := acrossKinds(pivot)
+	if err != nil {
+		return out, nil, err
+	}
+	where := `personal.profile_id=? AND personal.last_played_at<>'' AND e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(kinds)) + `)`
+	args := append([]any{request.profile, idsJSON(request.libraries)}, kinds...)
+	compiler := &browseCompiler{profile: request.profile, restrictions: request.restriction, rows: request.Rows}
+	clause, err := compiler.compile(request.Query)
+	if err != nil {
+		return out, nil, err
+	}
+	where += " AND " + clause
+	args = append(args, compiler.args...)
+	if live, liveArgs := EntityRestrictionSQL("e.entity_id", request.restriction); live != "1" {
+		where += " AND " + live
+		args = append(args, liveArgs...)
+	}
+	from := `catalog_personal_sort_rows personal INDEXED BY catalog_personal_history CROSS JOIN catalog_browse_rows e ON e.entity_id=personal.entity_id CROSS JOIN catalog_entities ce ON ce.id=e.entity_id`
+	direction := "DESC"
+	if selection.Direction == "desc" {
+		direction = "ASC"
+	}
+	start, counted, total := 0, false, 0
+	scope := cursorScope{Viewer: request.fence, Profile: request.profile, View: "across:history:" + pivot.ID, Sort: canonicalSort([]BrowseSortSelection{selection}), Category: queryFingerprint(request.Query), Limit: limit}
+	expires := time.Now().Add(BrowseCursorTTLSecond * time.Second).Unix()
+	if request.Cursor != "" {
+		cursor, err := s.decodeRevisionCursor(request.Cursor, scope, ContentRevision{})
+		if err != nil {
+			return out, nil, err
+		}
+		if cursor.Fingerprint != out.PageInfo.Revision {
+			return out, nil, ErrStaleContinuation
+		}
+		if start, err = strconv.Atoi(cursor.Value); err != nil || start < 0 {
+			return out, nil, ErrCursor
+		}
+		expires, total, counted = cursor.Expires, cursor.Total, cursor.Total > 0
+	}
+	if request.Range != nil {
+		if request.Range.Start < 0 || len(request.Range.Revision) > 128 || len(request.Range.AnchorID) > 256 {
+			return out, nil, browseIssue("range", "range identity is invalid")
+		}
+		start = request.Range.Start
+	}
+	if !counted {
+		if err = s.read().QueryRow(`SELECT count(*) FROM (SELECT 1 FROM `+from+` WHERE `+where+` LIMIT ?)`, append(append([]any{}, args...), browseTotalThreshold+1)...).Scan(&total); err != nil {
+			return out, nil, err
+		}
+	}
+	capped := total > browseTotalThreshold || counted && total >= browseTotalThreshold
+	if capped && !counted {
+		total = browseTotalThreshold
+	}
+	if !capped && start > 0 && start >= total {
+		start = max(0, total-1)
+	}
+	out.PageInfo.Start = start
+	selected, err := s.queryBrowseKeyRows(`SELECT `+browseRowColumns+`,personal.last_played_at FROM `+from+` WHERE `+where+` ORDER BY personal.last_played_at `+direction+`,personal.entity_id `+direction+` LIMIT ? OFFSET ?`, "groupOrder", append(append([]any{}, args...), limit+1, start)...)
+	if err != nil {
+		return out, nil, err
+	}
+	more := len(selected) > limit
+	if more {
+		selected = selected[:limit]
+	}
+	if capped {
+		// Past the counted limit the total only says "at least": it grows with
+		// the pages read, and stays open while more remain.
+		total = max(total, start+len(selected))
+		if more {
+			total = max(total, start+len(selected)+1)
+		}
+	}
+	out.PageInfo.Total, out.PageInfo.TotalIsLowerBound, out.PageInfo.HasMore = total, capped && more, more
+	if more && request.Range == nil && len(selected) > 0 {
+		out.PageInfo.NextCursor, err = s.encodeRevisionCursor(cursorValue{Scope: scope, Value: strconv.Itoa(start + len(selected)), Fingerprint: out.PageInfo.Revision, Total: total, Expires: expires}, ContentRevision{})
 		if err != nil {
 			return out, nil, err
 		}
@@ -516,7 +635,7 @@ func (s *Service) FacetsAcross(viewer Viewer, request FacetRequest) (FacetPage, 
 // acrossQueue is what playing a list across libraries plays: its titles in
 // the order shown (the same members, conditions and order as its pages),
 // each title's playable items in their own order.
-func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, query *QueueQuery) (QueueSelection, error) {
+func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, query *QueueQuery, rows map[string][]int64) (QueueSelection, error) {
 	pivot, ok := acrossPivot(query.Pivot)
 	if !ok {
 		return QueueSelection{}, ErrBrowsePivot
@@ -532,7 +651,7 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 	if anchor == nil {
 		return QueueSelection{}, ErrBrowseAcrossGroup
 	}
-	members, memberArgs, ordered, err := acrossMembers(anchor, viewer.Profile, nil)
+	members, memberArgs, ordered, err := acrossMembers(anchor, viewer.Profile, rows)
 	if err != nil {
 		return QueueSelection{}, err
 	}
@@ -545,7 +664,7 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 	}
 	where := `e.library_id IN(SELECT id FROM catalog_libraries WHERE library_id IN(SELECT value FROM json_each(?))) AND e.kind IN(` + placeholders(len(kinds)) + `)`
 	args := append([]any{idsJSON(viewer.Libraries)}, kinds...)
-	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions}
+	compiler := &browseCompiler{profile: viewer.Profile, restrictions: viewer.Restrictions, rows: rows}
 	clause, err := compiler.compile(query.Query)
 	if err != nil {
 		return QueueSelection{}, err
@@ -570,7 +689,7 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
  LEFT JOIN catalog_songs song ON song.entity_id=i.id LEFT JOIN catalog_entities album ON album.id=song.album_id LEFT JOIN catalog_book_files part ON part.entity_id=i.id
  ORDER BY m.ordinal,COALESCE(season.number,1),COALESCE(ep.number,0),COALESCE(album.year,0),COALESCE(album.sort_key,''),COALESCE(album.id,0),COALESCE(song.disc_number,part.disc_number,1),COALESCE(song.track_number,part.part_number,0),i.id`
 	bound := append(append(append(append([]any{}, memberArgs...), orderArgs...), args...), visibleArgs...)
-	revision, err := s.acrossRevision(AcrossRequest{Query: query.Query, profile: viewer.Profile, fence: viewer.Fence, libraries: viewer.Libraries}, pivot, sorts)
+	revision, err := s.acrossRevision(AcrossRequest{Query: query.Query, Rows: rows, profile: viewer.Profile, fence: viewer.Fence, libraries: viewer.Libraries}, pivot, sorts)
 	if err != nil {
 		return QueueSelection{}, err
 	}

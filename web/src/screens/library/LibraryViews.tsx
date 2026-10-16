@@ -13,7 +13,8 @@ import type {SequenceContainer} from '../../app/container-play';
 import {useRead} from '../../admin/console';
 import {valueLabel} from './BrowseFilters';
 import type {PlaylistCard} from '@core/saved.ts';
-import {SavedSortControl, useSaved} from '../saved/Saved';
+import {PlaylistFilterControl, SavedSortControl, useSaved} from '../saved/Saved';
+import {playlistListFilters, type PlaylistListFilter} from '@core/saved.ts';
 import {Artwork, Button, Grid, Icon, Inset, ListRow, Notice, Skeleton, StateView, Surface, Text, WindowedGrid, type MenuAnchor, type WindowedGridHandle} from '../../ui';
 import s from './LibraryViews.module.css';
 
@@ -176,19 +177,20 @@ export function GenreCard({libraryId, entry, onOpen}: {libraryId: string; entry:
   );
 }
 
-/** Music › Playlists: the viewer's playlists, as on Saved. */
-export function LibraryPlaylists({sort, onSort}: {/** The order chosen on this tab; the list's own when none was. */ sort?: BrowseSortSelection; onSort: (next: BrowseSortSelection) => void}) {
+/** Music › Playlists: the viewer's playlists, as on Saved, with their sorts and their groups (mine, shared, pinned). */
+export function LibraryPlaylists({sort, onSort, filter, onFilter}: {/** The order chosen on this tab; the list's own when none was. */ sort?: BrowseSortSelection; onSort: (next: BrowseSortSelection) => void; filter?: string; onFilter: (next: string | undefined) => void}) {
   const {t} = useI18n();
   const navigate = useNavigate();
-  const route = useMemo(() => ({view: 'playlists' as const, ...(sort ? {sort: sort.field, direction: sort.direction} : {})}), [sort?.field, sort?.direction]); // eslint-disable-line react-hooks/exhaustive-deps
+  const group = filter && (playlistListFilters as readonly string[]).includes(filter) && filter !== 'all' ? filter as PlaylistListFilter : undefined;
+  const route = useMemo(() => ({view: 'playlists' as const, ...(sort ? {sort: sort.field, direction: sort.direction} : {}), ...(group ? {filter: group} : {})}), [sort?.field, sort?.direction, group]); // eslint-disable-line react-hooks/exhaustive-deps
   const saved = useSaved(route);
   const snapshot = saved.snapshot;
   const cards = (snapshot.projection?.sections ?? []).flatMap(section => section.entries).filter((e): e is PlaylistCard => e.kind === 'playlist');
   if (snapshot.phase === 'error' && !cards.length) return <Inset><Notice tone="error" action={{label: t('action.tryAgain'), onClick: saved.retry}}>{t('library.playlists.loadFailed')}</Notice></Inset>;
   if (snapshot.phase === 'loading' && !cards.length) return <Inset><Skeleton height={64} /></Inset>;
-  if (!cards.length) return <StateView icon="queue" title={t('web.saved.empty.playlists')} body={t('web.saved.empty.playlistsBody')} />;
   const projection = snapshot.projection;
-  // The same Sort control as every other tab, with the sorts the server offers a list of playlists.
-  const sortBar = projection?.sorts?.length ? <Inset><SavedSortControl sorts={projection.sorts} active={sort?.field ?? projection.query.sort ?? projection.sorts[0]?.id} direction={sort?.direction ?? (projection.query.direction === 'desc' ? 'desc' : 'asc')} onChange={(field, direction) => onSort({field, direction})} /></Inset> : null;
-  return <>{sortBar}<Inset><Surface padless>{cards.map(card => <ListRow key={card.id} icon="queue" title={card.title} subtitle={card.subtitle} meta={card.count != null ? t('web.saved.items', {count: card.count}) : undefined} trailingIcon="forward" onClick={() => void navigate({to: '/saved/$kind/$resourceId', params: {kind: 'playlist', resourceId: card.navigation.entityId}, search: {title: card.title}})} />)}</Surface></Inset></>;
+  // The same Sort control as every other tab, with the sorts the server offers a list of playlists, and its groups.
+  const bar = projection?.sorts?.length ? <Inset><div style={{display: 'flex', gap: 8, flexWrap: 'wrap'}}><SavedSortControl sorts={projection.sorts} active={sort?.field ?? projection.query.sort ?? projection.sorts[0]?.id} direction={sort?.direction ?? (projection.query.direction === 'desc' ? 'desc' : 'asc')} onChange={(field, direction) => onSort({field, direction})} /><PlaylistFilterControl filters={projection.filters ?? []} active={group} onChange={id => onFilter(id === 'all' ? undefined : id)} /></div></Inset> : null;
+  if (!cards.length) return <>{bar}{group ? <StateView icon="filter" title={t('playlists.filter.none')} action={{label: t('web.saved.showAll'), onClick: () => onFilter(undefined)}} /> : <StateView icon="queue" title={t('web.saved.empty.playlists')} body={t('web.saved.empty.playlistsBody')} />}</>;
+  return <>{bar}<Inset><Surface padless>{cards.map(card => <ListRow key={card.id} icon="queue" title={card.title} subtitle={card.subtitle} meta={card.count != null ? t('web.saved.items', {count: card.count}) : undefined} trailingIcon="forward" onClick={() => void navigate({to: '/saved/$kind/$resourceId', params: {kind: 'playlist', resourceId: card.navigation.entityId}, search: {title: card.title}})} />)}</Surface></Inset></>;
 }

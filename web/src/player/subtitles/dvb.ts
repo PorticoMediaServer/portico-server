@@ -6,11 +6,53 @@
  * canvases that list objects), colour tables, and the objects' run-length pixel data. Regions,
  * objects and colour tables stay until a page says to start afresh, so the state is carried from
  * packet to packet and what each page shows is kept, compactly, with its cue.
+ *
+ * An object is usually pixels. It can also be a string of characters (character-coded objects),
+ * which the receiver writes in its own font in the colours the region gives it; here that is the
+ * browser's sans-serif, drawn into the region's pixels like any other object. The newer progressive
+ * (compressed bitmap) objects are skipped.
  */
 import {bitmapDecodeLimits, type BitmapDecodeLimits, bitmapLimits, checkedSize, finishCues, yuvToRgb, type BitmapCue, type BitmapRect, type BitmapTrack} from './bitmap.ts';
 import {readMatroskaSubtitles, type MatroskaPacket} from './matroska.ts';
 
-type Placement = {id: number; x: number; y: number};
+/** Where an object sits in a region; a character object also names its letters' and their background's pixel codes. */
+type Placement = {id: number; x: number; y: number; fg?: number; bg?: number};
+
+/**
+ * Letters drawn for a character-coded object: a mask (1 where there is ink) no larger than
+ * `width`×`height`, or null when this place cannot draw text.
+ */
+export type TextRasterizer = (text: string, width: number, height: number) => Readonly<{width: number; height: number; mask: Uint8Array}> | null;
+
+/** Draws with an offscreen canvas in the browser's sans-serif, a line high (at most 48 pixels). */
+export const canvasText: TextRasterizer = (text, maxWidth, maxHeight) => {
+  if (typeof OffscreenCanvas !== 'function' || !text.trim() || maxWidth < 1 || maxHeight < 4) return null;
+  const height = Math.min(48, Math.floor(maxHeight)), size = Math.max(8, Math.round(height * 0.8));
+  const measure = new OffscreenCanvas(1, 1).getContext('2d');
+  if (!measure) return null;
+  measure.font = `${size}px sans-serif`;
+  const width = Math.min(Math.floor(maxWidth), Math.ceil(measure.measureText(text).width) + 2);
+  if (width < 1) return null;
+  const context = new OffscreenCanvas(width, height).getContext('2d');
+  if (!context) return null;
+  context.font = `${size}px sans-serif`;
+  // Only the ink's coverage is read (the default fill is opaque), so no colour is chosen here.
+  context.textBaseline = 'middle';
+  context.fillText(text, 1, height / 2);
+  const alpha = context.getImageData(0, 0, width, height).data, mask = new Uint8Array(width * height);
+  for (let i = 0; i < mask.length; i++) mask[i] = alpha[i * 4 + 3]! >= 96 ? 1 : 0;
+  return {width, height, mask};
+};
+
+/** A character object's codes as text: Unicode code units, with the C0 and C1 controls left out. */
+export function characterText(data: Uint8Array, from: number, count: number, to: number): string {
+  let text = '';
+  for (let i = 0, p = from; i < count && p + 2 <= to; i++, p += 2) {
+    const code = (data[p]! << 8) | data[p + 1]!;
+    if (code >= 0x20 && !(code >= 0x7f && code < 0xa0) && !(code >= 0xd800 && code < 0xe000)) text += String.fromCharCode(code);
+  }
+  return text;
+}
 type Region = {width: number; height: number; depth: 2 | 4 | 8; clut: number; pixels: Uint8Array; objects: Placement[]};
 type Clut = {2: Uint8ClampedArray; 4: Uint8ClampedArray; 8: Uint8ClampedArray};
 type Shown = {x: number; y: number; width: number; height: number; packed: Uint8Array; table: Uint8ClampedArray};
@@ -146,7 +188,7 @@ function drawField(data: Uint8Array, from: number, to: number, region: Region, x
   }
 }
 
-export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: readonly number[] | null, lower: BitmapDecodeLimits = {}): BitmapTrack {
+export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: readonly number[] | null, lower: BitmapDecodeLimits = {}, text: TextRasterizer = canvasText): BitmapTrack {
   const limits = bitmapDecodeLimits(lower);
   let statePixels = 0, retainedBytes = 0, workPixels = 0;
   const work = (count: number) => { workPixels += count; return workPixels <= limits.maxWorkPixels; };
@@ -191,8 +233,8 @@ export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: reado
         if (fill || fresh) { if (!fresh && !work(region.pixels.length)) { removeRegion(id); skipped++; continue; } region.pixels.fill(background); }
         region.objects = [];
         for (let q = body + 10; q + 6 <= end && region.objects.length < 256;) {
-          const kind = data[q + 2]! >> 6;
-          region.objects.push({id: view.getUint16(q), x: view.getUint16(q + 2) & 0xfff, y: view.getUint16(q + 4) & 0xfff});
+          const kind = data[q + 2]! >> 6, letters = (kind === 1 || kind === 2) && q + 8 <= end;
+          region.objects.push({id: view.getUint16(q), x: view.getUint16(q + 2) & 0xfff, y: view.getUint16(q + 4) & 0xfff, ...(letters ? {fg: data[q + 6]!, bg: data[q + 7]!} : {})});
           q += kind === 1 || kind === 2 ? 8 : 6;
         }
         regions.set(id, region);
@@ -210,6 +252,19 @@ export function parseDvbPackets(packets: readonly MatroskaPacket[], pages: reado
         }
       } else if (type === 0x13 && length >= 7) {
         const id = view.getUint16(body), method = (data[body + 2]! >> 2) & 3, keepOne = ((data[body + 2]! >> 1) & 1) === 1;
+        if (method === 1 && length >= 4) {
+          // A string of characters, written where the region places it in the region's own colours.
+          const letters = characterText(data, body + 4, data[body + 3]!, end);
+          for (const region of regions.values()) for (const placed of region.objects) {
+            if (placed.id !== id || !letters) continue;
+            const mask = placed.x < region.width && placed.y < region.height ? text(letters, region.width - placed.x, region.height - placed.y) : null;
+            if (!mask || !work(mask.width * mask.height)) { skipped++; continue; }
+            const top = region.depth === 2 ? 3 : region.depth === 4 ? 15 : 255, fg = (placed.fg ?? 1) & top, bg = (placed.bg ?? 0) & top;
+            for (let y = 0; y < mask.height && placed.y + y < region.height; y++)
+              for (let x = 0; x < mask.width && placed.x + x < region.width; x++) region.pixels[(placed.y + y) * region.width + placed.x + x] = mask.mask[y * mask.width + x] ? fg : bg;
+          }
+          continue;
+        }
         if (method !== 0) { skipped++; continue; }
         const top = view.getUint16(body + 3), bottom = view.getUint16(body + 5), first = body + 7;
         if (first + top + bottom > end) { skipped++; continue; }
