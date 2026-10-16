@@ -172,6 +172,15 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	// for it would publish six copies of the same AAC recipe under names like
 	// "4K 2160p", which describes nothing about an audio file.
 	device := playback.CapabilityDocumentTx(ctx, tx, p)
+	// A Dolby Vision picture with no base layer (profile 5) has nothing a
+	// prepared copy could show: its optimized steps are not offered, rather
+	// than offered and failed.
+	noBaseLayer := false
+	if !audioKind(found.Kind) && found.Asset != "" {
+		if facts, err := playback.DeliverySourceTx(ctx, tx, found.Asset); err == nil && facts.Video != nil && facts.Video.DynamicRange == assets.RangeDolbyVision {
+			noBaseLayer = decoder.DolbyVisionBaseRange(facts.Video.DolbyVisionProfile, facts.Video.DolbyVisionCompatibility) == ""
+		}
+	}
 	presets := playback.QualityLadder
 	if audioKind(found.Kind) {
 		preset, _ := playback.LadderPreset(canonicalAudioRung)
@@ -195,7 +204,7 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		recipe, recipeErr := preparedmedia.ProfileByID(option.PreparedProfileID)
 		// Finished versions remain usable without an available encoder. New
 		// work must pass the same recipe and inventory checks as the producer.
-		if recipeErr != nil || version == nil && !preparedmedia.Producible(option.PreparedProfileID) {
+		if recipeErr != nil || version == nil && (noBaseLayer || !preparedmedia.Producible(option.PreparedProfileID)) {
 			continue
 		}
 		targetSource := playback.DeliverySource{Container: "mp4", Audio: []playback.SourceAudio{{Codec: "aac", Channels: 2, StreamDetail: assets.StreamDetail{SampleRate: 48000}}}}
