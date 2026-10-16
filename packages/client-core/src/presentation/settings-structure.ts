@@ -109,7 +109,7 @@ export type SettingsCustomId =
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
   | 'server.identity' | 'server.updates' | 'server.restart' | 'server.clientReports'
   | 'server.setAsideTitles' | 'server.backgroundPause' | 'server.ffmpegStatus' | 'server.resourceUsage' | 'server.storageStatus' | 'server.downloadUsage'
-  | 'server.playbackProblems';
+  | 'server.playbackProblems' | 'server.skippedParts';
 
 type RowCopy = Readonly<{
   label: MessageId;
@@ -568,6 +568,8 @@ const serverPages: readonly AuthoredPage[] = [
     // Titles a rebuild could not finish, with why: present only while there are any.
     panel('setAside', 'server.setAsideTitles', 'server.setAside.title', {platforms: ['web', 'phone'], administrators: true}),
     panel('clientReports', 'server.clientReports', 'web.diagnostics.clientReports', {platforms: ['web', 'phone']}),
+    // What this app left out of the server's answers (a newer server, usually), on this device.
+    panel('skipped', 'server.skippedParts', 'settings.server.skippedParts', {platforms: ['web', 'phone'], description: 'settings.server.skippedPartsLede'}),
     panel('export', 'server.supportExport', 'settings.server.supportExport'),
     panel('feedback', 'server.feedback', 'settings.server.feedback'),
     panel('state', 'server.stateFolder'),

@@ -1,4 +1,5 @@
-import {useEffect, useRef, useState} from 'react';
+import {useEffect, useRef, useState, useSyncExternalStore} from 'react';
+import {resetSkippedParts, skippedParts, skippedVersion, subscribeSkipped} from '@core/tolerant.ts';
 import {readEventStream} from '@core/index.ts';
 import {retryAfterSeconds} from '../../bridge/protectedArtwork';
 import {logCategories, logLevels, parseLogEvent, parseLogPage, type LogCategory, type LogLevel, type LogRecord, type LogSettings} from '@core/admin/index.ts';
@@ -155,6 +156,24 @@ export function DetailWindowRow() {
   return (
     <SettingsRow label={t('settings.server.detailWindow')} help={on ? t('settings.server.detailWindow.until', {time: i18n.time(until!)}) : t('settings.server.detailWindow.help')} state={action.error || undefined}
       control={<Button size="sm" variant={on ? 'outline' : 'secondary'} label={on ? t('settings.server.detailWindow.stop') : t('settings.server.detailWindow.start')} loading={action.busy} onClick={() => void action.run(async () => { await setDetailWindow(deps, !on); await form.load(); })} />} />
+  );
+}
+
+/**
+ * What this app left out of the server's answers on this device (the tolerant readers' record):
+ * which document, which part, how many. The names are the readers' own, never anything the server
+ * sent. Empty is the normal state.
+ */
+export function SkippedPartsGroup() {
+  const {t} = useI18n();
+  useSyncExternalStore(subscribeSkipped, skippedVersion);
+  const parts = skippedParts();
+  return (
+    <SettingsGroup title={t('settings.server.skippedParts')} description={t('settings.server.skippedPartsLede')} action={parts.length ? <Button variant="ghost" size="sm" label={t('action.clearAll')} onClick={resetSkippedParts} /> : undefined}>
+      {parts.length ? [...parts].reverse().map(part => (
+        <SettingsRow key={part.document + '\n' + part.part} label={part.document} help={part.part} meta={<Text variant="caption" tone="tertiary">{t('settings.server.skippedPartsCount', {count: part.count})}</Text>} />
+      )) : <SettingsRow label={t('settings.server.skippedPartsNone')} />}
+    </SettingsGroup>
   );
 }
 
