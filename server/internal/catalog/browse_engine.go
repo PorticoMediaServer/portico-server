@@ -190,8 +190,12 @@ func browseBoundedSQL(columns, from, where string, args []any, expression, ident
 	}
 	order := expression + " " + direction + "," + identity + " " + direction
 	arm := `SELECT ` + identity + ` AS id,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where
+	// The tie arm orders by the identity alone: its key is fixed by equality,
+	// and SQLite does not see that an equality on an expression index's key
+	// satisfies an ORDER BY on the expression, so it would sort every tie
+	// (a whole library of equal durations) before the limit.
 	query := `WITH candidates AS (
- SELECT * FROM (` + arm + ` AND ` + expression + `=? AND ` + identity + tie + `? ORDER BY ` + order + ` LIMIT ?)
+ SELECT * FROM (` + arm + ` AND ` + expression + `=? AND ` + identity + tie + `? ORDER BY ` + identity + " " + direction + ` LIMIT ?)
  UNION ALL SELECT * FROM (` + arm + ` AND ` + expression + op + `? ORDER BY ` + order + ` LIMIT ?))
  SELECT ` + columns + ` FROM candidates page CROSS JOIN ` + from + ` WHERE ` + identity + `=page.id AND ` + where + `
  ORDER BY page.order_key ` + direction + `,page.id ` + direction + ` LIMIT ? OFFSET ?`
