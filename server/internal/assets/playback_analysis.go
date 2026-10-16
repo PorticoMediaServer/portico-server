@@ -65,23 +65,28 @@ func (p Probe) AnalyzePlayback(ctx context.Context, path string, f *Facts) {
 	if video == nil {
 		return
 	}
-	if (video.Codec == "hevc" || video.Codec == "av1") && video.ColorTransfer == "smpte2084" {
+	// HDR10+ and, where the container did not carry it, HDR10 static metadata
+	// travel in the first picture (SEI in HEVC elementary and MPEG-TS sources).
+	if (video.Codec == "hevc" || video.Codec == "av1" || video.Codec == "vp9") && video.ColorTransfer == "smpte2084" {
 		bounded, cancel := context.WithTimeout(ctx, 8*time.Second)
 		raw, e := p.analysisOutput(bounded, path, 1<<20, "-select_streams", "v:0", "-read_intervals", "%+#1", "-show_frames", "-show_entries", "frame=side_data_list", "-of", "json")
 		cancel()
 		if e == nil {
 			var doc struct {
 				Frames []struct {
-					Side []struct {
-						Type string `json:"side_data_type"`
-					} `json:"side_data_list"`
+					Side []probeSideData `json:"side_data_list"`
 				} `json:"frames"`
 			}
 			if json.Unmarshal(raw, &doc) == nil {
 				for _, frame := range doc.Frames {
 					for _, side := range frame.Side {
-						if strings.Contains(side.Type, "SMPTE2094-40") {
+						switch {
+						case strings.Contains(side.Type, "SMPTE2094-40"):
 							video.Detail.HDR10Plus = true
+						case side.Type == "Mastering display metadata" && video.Detail.MasterDisplay == "":
+							video.Detail.MasterDisplay = side.masteringDisplay()
+						case side.Type == "Content light level metadata" && video.Detail.MaxCLL == "":
+							video.Detail.MaxCLL = side.contentLightLevel()
 						}
 					}
 				}

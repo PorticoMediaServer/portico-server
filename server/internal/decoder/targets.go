@@ -226,7 +226,7 @@ func videoRateArgs(t ConversionTarget, encoder, preset string) []string {
 	case "libx264", "libx265":
 		out = append(out, "-preset", preset)
 	case "libsvtav1":
-		out = append(out, "-preset", "8", "-svtav1-params", "lp=2")
+		out = append(out, "-preset", "8", "-svtav1-params", "lp=2"+svtHDRParams(t))
 	case "libaom-av1":
 		out = append(out, "-cpu-used", "6", "-row-mt", "1")
 	case "librav1e":
@@ -340,4 +340,28 @@ func probeQualityArgs(spec backendSpec, device string, depth int) []string {
 		}
 	}
 	return append(filtered[:len(filtered)-4], append(hardwareQualityArgs(spec.encoder, 20), filtered[len(filtered)-4:]...)...)
+}
+
+// svtHDRParams carries HDR10 static metadata into SVT-AV1, which takes the
+// same ST 2086 layout as x265 but in plain units (0.0001-precise chromaticity,
+// cd/m² luminance). Values are only ever ones Normalized accepted.
+func svtHDRParams(t ConversionTarget) string {
+	if t.DynamicRange != "hdr10" {
+		return ""
+	}
+	out := ""
+	if t.MasterDisplay != "" && masteringDisplayPattern.MatchString(t.MasterDisplay) {
+		numbers := regexp.MustCompile(`[0-9]+`).FindAllString(t.MasterDisplay, -1)
+		if len(numbers) == 10 {
+			unit := func(raw string, per float64) string {
+				v, _ := strconv.ParseFloat(raw, 64)
+				return strconv.FormatFloat(v/per, 'f', 4, 64)
+			}
+			out += ":mastering-display=G(" + unit(numbers[0], 50000) + "," + unit(numbers[1], 50000) + ")B(" + unit(numbers[2], 50000) + "," + unit(numbers[3], 50000) + ")R(" + unit(numbers[4], 50000) + "," + unit(numbers[5], 50000) + ")WP(" + unit(numbers[6], 50000) + "," + unit(numbers[7], 50000) + ")L(" + unit(numbers[8], 10000) + "," + unit(numbers[9], 10000) + ")"
+		}
+	}
+	if t.MaxCLL != "" && maxCLLPattern.MatchString(t.MaxCLL) {
+		out += ":content-light=" + t.MaxCLL
+	}
+	return out
 }

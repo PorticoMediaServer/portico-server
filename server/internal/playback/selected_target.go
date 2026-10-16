@@ -78,6 +78,11 @@ func finishConversionTarget(p *DeliveryPlan, video *SourceVideo, audio *SourceAu
 			if p.OutputVideoCodec == "hevc" {
 				t.VideoLevel = decoder.HEVCOutputLevel(w, h, rate)
 			}
+			// A picture kept in HDR10 keeps the source's mastering description,
+			// so the display maps it as the original would have been mapped.
+			if t.DynamicRange == assets.RangeHDR10 {
+				t.MasterDisplay, t.MaxCLL = video.MasterDisplay, video.MaxCLL
+			}
 		}
 	}
 	if audio != nil {

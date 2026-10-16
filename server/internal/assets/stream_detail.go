@@ -10,7 +10,7 @@ import (
 // StreamDetailVersion is bumped whenever inspect learns a new fact. Delivery
 // planning refreshes an asset whose stored detail is older, so a library scanned
 // before a fact existed gains it the first time the title is played.
-const StreamDetailVersion = 1
+const StreamDetailVersion = 2
 
 // Dynamic range families. They name what a display has to be able to do, not the
 // transfer function: Dolby Vision profile 8.1 is "dolby_vision" with an HDR10
@@ -52,6 +52,12 @@ type StreamDetail struct {
 	DolbyVisionLevel         int  `json:"dolbyVisionLevel,omitempty"`
 	DolbyVisionCompatibility int  `json:"dolbyVisionCompatibility,omitempty"`
 	EnhancementLayer         bool `json:"enhancementLayer,omitempty"`
+	// HDR10 static metadata, in the encoder's own notation so a conversion can
+	// carry it unchanged: MasterDisplay is SMPTE ST 2086
+	// "G(x,y)B(x,y)R(x,y)WP(x,y)L(max,min)" (chromaticity in 0.00002 units,
+	// luminance in 0.0001 cd/m²) and MaxCLL is "MaxCLL,MaxFALL" in cd/m².
+	MasterDisplay string `json:"masterDisplay,omitempty"`
+	MaxCLL        string `json:"maxCll,omitempty"`
 	// Object audio carried inside a channel-based codec: "atmos" or "dtsx".
 	ObjectAudio string `json:"objectAudio,omitempty"`
 }
@@ -87,6 +93,20 @@ type probeSideData struct {
 	Level         int         `json:"dv_level"`
 	Enhancement   int         `json:"el_present_flag"`
 	Compatibility int         `json:"dv_bl_signal_compatibility_id"`
+	// Mastering display metadata (rationals as ffprobe prints them, "34000/50000").
+	RedX         string `json:"red_x"`
+	RedY         string `json:"red_y"`
+	GreenX       string `json:"green_x"`
+	GreenY       string `json:"green_y"`
+	BlueX        string `json:"blue_x"`
+	BlueY        string `json:"blue_y"`
+	WhiteX       string `json:"white_point_x"`
+	WhiteY       string `json:"white_point_y"`
+	MinLuminance string `json:"min_luminance"`
+	MaxLuminance string `json:"max_luminance"`
+	// Content light level metadata.
+	MaxContent json.Number `json:"max_content"`
+	MaxAverage json.Number `json:"max_average"`
 }
 
 func probeRate(s string) float64 {
@@ -203,6 +223,14 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 				if r, err := side.Rotation.Float64(); err == nil && !math.IsNaN(r) && math.Abs(r) <= 360 {
 					d.Rotation = ((int(math.Round(r)) % 360) + 360) % 360
 				}
+			case "Mastering display metadata":
+				if display := side.masteringDisplay(); display != "" {
+					d.MasterDisplay = display
+				}
+			case "Content light level metadata":
+				if level := side.contentLightLevel(); level != "" {
+					d.MaxCLL = level
+				}
 			case "DOVI configuration record":
 				if side.Profile > 0 && side.Profile < 32 {
 					d.DolbyVisionProfile, d.DolbyVisionLevel = side.Profile, side.Level
@@ -224,4 +252,57 @@ func streamDetail(kind, codec string, width, height int, s probeStreamDetail) St
 		d.ObjectAudio = objectAudio(codec, s.Profile)
 	}
 	return d
+}
+
+// rationalUnits reads an ffprobe rational ("34000/50000", or a plain number)
+// in the given units per whole, refusing anything outside 0..limit.
+func rationalUnits(raw string, units, limit int64) (int64, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || len(raw) > 32 {
+		return 0, false
+	}
+	n, d := raw, "1"
+	if a, b, ok := strings.Cut(raw, "/"); ok {
+		n, d = a, b
+	}
+	num, e1 := strconv.ParseFloat(n, 64)
+	den, e2 := strconv.ParseFloat(d, 64)
+	if e1 != nil || e2 != nil || den <= 0 || num < 0 || math.IsNaN(num) || math.IsInf(num, 0) {
+		return 0, false
+	}
+	v := int64(math.Round(num / den * float64(units)))
+	if v < 0 || v > limit {
+		return 0, false
+	}
+	return v, true
+}
+
+// masteringDisplay is the side data as SMPTE ST 2086 in x265's notation, or ""
+// when any part is missing or out of range: a partial description is worse
+// than none, because an encoder would write it as the truth.
+func (s probeSideData) masteringDisplay() string {
+	values := make([]int64, 0, 10)
+	for _, raw := range []string{s.GreenX, s.GreenY, s.BlueX, s.BlueY, s.RedX, s.RedY, s.WhiteX, s.WhiteY} {
+		v, ok := rationalUnits(raw, 50000, 50000)
+		if !ok {
+			return ""
+		}
+		values = append(values, v)
+	}
+	maxL, ok1 := rationalUnits(s.MaxLuminance, 10000, 99_999_999)
+	minL, ok2 := rationalUnits(s.MinLuminance, 10000, 99_999_999)
+	if !ok1 || !ok2 || maxL == 0 || minL >= maxL {
+		return ""
+	}
+	return "G(" + strconv.FormatInt(values[0], 10) + "," + strconv.FormatInt(values[1], 10) + ")B(" + strconv.FormatInt(values[2], 10) + "," + strconv.FormatInt(values[3], 10) + ")R(" + strconv.FormatInt(values[4], 10) + "," + strconv.FormatInt(values[5], 10) + ")WP(" + strconv.FormatInt(values[6], 10) + "," + strconv.FormatInt(values[7], 10) + ")L(" + strconv.FormatInt(maxL, 10) + "," + strconv.FormatInt(minL, 10) + ")"
+}
+
+// contentLightLevel is "MaxCLL,MaxFALL" in cd/m², or "" when absent or zero.
+func (s probeSideData) contentLightLevel() string {
+	cll, e1 := s.MaxContent.Int64()
+	fall, e2 := s.MaxAverage.Int64()
+	if e1 != nil || e2 != nil || cll <= 0 || fall < 0 || cll > 65535 || fall > 65535 {
+		return ""
+	}
+	return strconv.FormatInt(cll, 10) + "," + strconv.FormatInt(fall, 10)
 }
