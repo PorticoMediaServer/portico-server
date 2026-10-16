@@ -118,7 +118,7 @@ func (d Dependencies) browseAcrossCapabilitiesHandler(w http.ResponseWriter, r *
 func (d Dependencies) browseAcrossFacetsHandler(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	for key, values := range q {
-		if (key != "field" && key != "q" && key != "limit") || len(values) != 1 {
+		if (key != "field" && key != "q" && key != "limit" && key != "group" && key != "value") || len(values) != 1 {
 			failure(w, catalog.ErrCursor)
 			return
 		}
@@ -132,15 +132,35 @@ func (d Dependencies) browseAcrossFacetsHandler(w http.ResponseWriter, r *http.R
 		}
 		limit = min(parsed, 200)
 	}
-	_, viewer, e := d.acrossViewer(r)
+	p, viewer, e := d.acrossViewer(r)
 	if e != nil {
 		failure(w, e)
 		return
 	}
+	// A list's own facets: group names its condition (person, cast, crew,
+	// list, savedCollection, homeRow, watchlisted, favorite or lastPlayedAt)
+	// and value its subject, as the list's query names them.
+	var group *catalog.BrowseNode
+	if q.Has("group") {
+		group = &catalog.BrowseNode{Field: q.Get("group"), Operator: "equals", Value: q.Get("value")}
+		switch q.Get("group") {
+		case "watchlisted", "favorite":
+			group.Value = true
+		case "lastPlayedAt":
+			group.Operator, group.Value = "is-present", nil
+		}
+	}
 	var out catalog.FacetPage
 	e = d.compose(r, viewer.Restrictions, func(cat *catalog.Service) error {
+		var rows map[string][]int64
+		if group != nil {
+			var err error
+			if rows, err = d.resolveHomeRows(r, p, viewer, group, cat); err != nil {
+				return err
+			}
+		}
 		var err error
-		out, err = cat.FacetsAcross(viewer, catalog.FacetRequest{Field: q.Get("field"), Q: q.Get("q"), Limit: limit})
+		out, err = cat.FacetsAcross(viewer, catalog.FacetRequest{Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Group: group, Rows: rows})
 		return err
 	})
 	if e != nil {

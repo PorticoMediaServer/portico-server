@@ -23,8 +23,8 @@ func registerSearchSortRoutes(registry *apikit.Registry, d Dependencies) error {
 	}, Serve: d.browseAcrossCapabilitiesHandler}); err != nil {
 		return err
 	}
-	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, catalog.FacetPage]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "get_browse_facets", Method: "GET", Path: "/v1/browse/facets", Summary: "Read counted facet choices across the viewer's libraries", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
-		Query: []string{"field", "q", "limit"}, Errors: failures,
+	if err := apikit.RegisterRaw(registry, apikit.RawRoute[noBody, catalog.FacetPage]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "get_browse_facets", Method: "GET", Path: "/v1/browse/facets", Summary: "Read counted facet choices across the viewer's libraries, or within one list's titles", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200,
+		Query: []string{"field", "q", "limit", "group", "value"}, Errors: failures,
 	}, Serve: d.browseAcrossFacetsHandler}); err != nil {
 		return err
 	}

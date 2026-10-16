@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"portico.local/server/internal/sorttext"
 	"sort"
 	"strconv"
 	"strings"
@@ -468,12 +469,16 @@ func (s *Service) BrowseAcrossCapabilities(viewer Viewer, pivot string) (BrowseC
 }
 
 // FacetsAcross counts a facet's values over the viewer's libraries: each
-// library's maintained counts, added together by value.
+// library's maintained counts, added together by value. A list's own facets
+// (request.Group) are counted over the list's titles instead.
 func (s *Service) FacetsAcross(viewer Viewer, request FacetRequest) (FacetPage, error) {
 	out := FacetPage{Field: request.Field, Values: []FacetValue{}}
 	limit := request.Limit
 	if limit < 1 || limit > browseFacetLimit {
 		limit = browseFacetLimit
+	}
+	if request.Group != nil {
+		return s.facetsInGroup(viewer, request, limit)
 	}
 	merged := map[string]*FacetValue{}
 	for _, library := range viewer.Libraries {
@@ -576,4 +581,66 @@ func (s *Service) acrossQueue(ctx context.Context, tx *sql.Tx, viewer Viewer, qu
 	}
 	served, err := compactcatalog.SearchServingSQL(ctx, tx, compactcatalog.ServingSQL(query2))
 	return QueueSelection{SQL: served, Args: bound, Revision: revision}, err
+}
+
+// facetsInGroup counts a facet's values over one list's titles: its members
+// (at most acrossMaximum+1, as its pages read them) that the viewer may see,
+// a container counted by its own values. The cost follows the list, never the
+// libraries it spans.
+func (s *Service) facetsInGroup(viewer Viewer, request FacetRequest, limit int) (FacetPage, error) {
+	out := FacetPage{Field: request.Field, Values: []FacetValue{}}
+	if err := s.prepareViewer(viewer); err != nil {
+		return out, err
+	}
+	source, ok := facetSources[request.Field]
+	if !ok {
+		return out, browseIssue("field", "field is not a counted facet")
+	}
+	if len(request.Q) > 100 {
+		return out, browseIssue("q", "facet filter exceeds 100 characters")
+	}
+	anchor := acrossAnchor(request.Group)
+	if anchor == nil {
+		return out, ErrBrowseAcrossGroup
+	}
+	members, memberArgs, _, err := acrossMembers(anchor, viewer.Profile, request.Rows)
+	if err != nil {
+		return out, err
+	}
+	restriction, restrictionArgs := EntityRestrictionSQL("r.entity_id", viewer.EffectiveRestrictions())
+	where := "1"
+	if request.Field == "decade" || request.Field == "year" {
+		where = `e.year BETWEEN 1800 AND 2199`
+	}
+	query := `SELECT ` + source.Value + ` AS facet_value,` + source.Label + ` AS facet_label,count(DISTINCT e.entity_id) AS facet_count FROM (
+	 SELECT r.entity_id,COALESCE(r.item_id,r.entity_id) AS item_id,r.year FROM (` + members + `) m CROSS JOIN catalog_browse_rows r ON r.entity_id=m.id
+	 JOIN catalog_libraries l ON l.id=r.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE ` + restriction + `) e ` + source.Join + ` WHERE ` + where + `
+	 GROUP BY facet_value ORDER BY facet_count DESC,facet_label COLLATE NOCASE`
+	args := append(append(append([]any{}, memberArgs...), viewer.librariesJSON()), restrictionArgs...)
+	rows, err := s.read().Query(query, args...)
+	if err != nil {
+		return out, err
+	}
+	needle := sorttext.Fold(request.Q)
+	for rows.Next() {
+		var value FacetValue
+		if err = rows.Scan(&value.Value, &value.Label, &value.Count); err != nil {
+			rows.Close()
+			return out, err
+		}
+		if value.Value == "" || needle != "" && !strings.Contains(sorttext.Fold(value.Label), needle) {
+			continue
+		}
+		out.Values = append(out.Values, value)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
+	out.Total = len(out.Values)
+	if len(out.Values) > limit {
+		out.Values = out.Values[:limit]
+	}
+	return out, nil
 }
