@@ -646,6 +646,14 @@ func TestAdminKeyManagesTheAccountButNeverCredentials(t *testing.T) {
 	if w.Code != 200 || !strings.Contains(w.Body.String(), `"accountId":"owner"`) || strings.Contains(w.Body.String(), key.Secret) {
 		t.Fatalf("a key in the address: %d %s", w.Code, w.Body)
 	}
+	// From another site's page too: the key in the address is the token.
+	w = httptest.NewRecorder()
+	r = httptest.NewRequest("GET", "/v1/me?apiKey="+key.Secret, nil)
+	r.Header.Set("Origin", "https://tools.example")
+	f.handler.ServeHTTP(w, r)
+	if w.Code != 200 {
+		t.Fatalf("a key in the address from another origin: %d %s", w.Code, w.Body)
+	}
 	// Not on a change, and not a session token.
 	w = httptest.NewRecorder()
 	f.handler.ServeHTTP(w, httptest.NewRequest("POST", "/v1/direct/profiles?apiKey="+key.Secret, strings.NewReader(`{"name":"Guests"}`)))
