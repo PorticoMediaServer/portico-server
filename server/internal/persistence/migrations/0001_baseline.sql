@@ -367,6 +367,13 @@ CREATE TABLE catalog_people(
  revision INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE INDEX catalog_people_name ON catalog_people(sort_name,id);
 CREATE UNIQUE INDEX catalog_people_identity ON catalog_people(identity_key);
+-- Other names a person is known by: the "name:" key of someone first known
+-- only from local metadata, and the old page id, once a provider identified
+-- them and the two became one person.
+CREATE TABLE catalog_people_aliases(
+ alias TEXT PRIMARY KEY,
+ person_id INTEGER NOT NULL REFERENCES catalog_people(id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_people_aliases_person ON catalog_people_aliases(person_id);
 CREATE TABLE catalog_credits(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  ord INTEGER NOT NULL,

@@ -191,6 +191,7 @@ index catalog_movie_category_visible_item
 index catalog_movie_category_visible_pair
 index catalog_movie_category_visible_poster
 index catalog_movie_category_visible_rank
+index catalog_people_aliases_person
 index catalog_people_identity
 index catalog_people_name
 index catalog_personal_order_last
@@ -706,6 +707,7 @@ table catalog_movie_category_visible_pair_jobs
 table catalog_movie_category_visible_state
 table catalog_movie_category_visible_summaries
 table catalog_people
+table catalog_people_aliases
 table catalog_people_names
 table catalog_people_names_config
 table catalog_people_names_content

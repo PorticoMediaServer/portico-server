@@ -826,3 +826,18 @@ func (s *Service) SeparateFolder(ctx context.Context, library, object, revision 
 	})
 	return public, err
 }
+
+// SurvivingPersonID returns the page id a request naming a person should
+// use: the person someone first known by name alone became one with, or the
+// id itself.
+func (s *Service) SurvivingPersonID(ctx context.Context, token string) string {
+	if s == nil || s.db == nil || token == "" {
+		return token
+	}
+	var survivor string
+	if err := dbwork.ReadHandle(ctx, s.db).QueryRowContext(ctx, `SELECT p.token FROM catalog_people_aliases a JOIN catalog_people p ON p.id=a.person_id
+ WHERE a.alias='token:'||?1 AND NOT EXISTS(SELECT 1 FROM catalog_people WHERE token=?1)`, token).Scan(&survivor); err != nil {
+		return token
+	}
+	return survivor
+}

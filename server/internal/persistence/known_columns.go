@@ -1075,6 +1075,8 @@ catalog_people.provider_ids
 catalog_people.revision
 catalog_people.sort_name
 catalog_people.token
+catalog_people_aliases.alias
+catalog_people_aliases.person_id
 catalog_people_names.catalog_people_names
 catalog_people_names.name
 catalog_people_names.rank

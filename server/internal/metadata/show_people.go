@@ -16,7 +16,7 @@ import (
 const showPeopleSQL = `DELETE FROM show_people_credits WHERE show_id=?1;
 INSERT OR IGNORE INTO show_people_credits(show_id,identity_key,provider,credit_id,name,role,department,ordinal)
  SELECT sf.target_id,
-  CASE WHEN COALESCE(json_extract(j.value,'$.id'),'')<>'' THEN sf.provider||':'||json_extract(j.value,'$.id') ELSE 'name:'||lower(trim(json_extract(j.value,'$.name'))) END,
+  CASE WHEN COALESCE(json_extract(j.value,'$.id'),'')<>'' THEN sf.provider||':'||json_extract(j.value,'$.id') ELSE COALESCE((SELECT p.identity_key FROM catalog_people_aliases a JOIN catalog_people p ON p.id=a.person_id WHERE a.alias='name:'||lower(trim(json_extract(j.value,'$.name')))),'name:'||lower(trim(json_extract(j.value,'$.name')))) END,
   sf.provider,COALESCE(json_extract(j.value,'$.id'),''),trim(json_extract(j.value,'$.name')),COALESCE(json_extract(j.value,'$.role'),''),COALESCE(json_extract(j.value,'$.department'),''),CAST(j.key AS INTEGER)
  FROM screen_metadata_fields sf,json_each(CASE WHEN json_valid(sf.value) AND json_type(sf.value)='array' THEN sf.value ELSE '[]' END) j
  WHERE sf.target_kind='show' AND sf.target_id=?1 AND sf.field IN('credits','creditsOnline') AND CAST(j.key AS INTEGER)<128 AND trim(COALESCE(json_extract(j.value,'$.name'),''))<>'';

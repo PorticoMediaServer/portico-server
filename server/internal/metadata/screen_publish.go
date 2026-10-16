@@ -592,6 +592,11 @@ func screenCatalogCredits(provider string, credits []metadataprovider.ScreenCred
 			// people link keyed by provider person id, so a guest star is
 			// one person everywhere.
 			person.PersonKey = provider + ":" + c.ID
+		} else if strings.TrimSpace(c.Name) != "" {
+			// Someone named only by local metadata still has a page, under
+			// the name key a show's credits use; a provider that later names
+			// them on the same title makes the two one person.
+			person.PersonKey = compactcatalog.LocalPersonKey(c.Name)
 		}
 		out = append(out, person)
 	}
@@ -630,6 +635,14 @@ func (s *Service) screenCreditsBesideLocal(ctx context.Context, tx *sql.Tx, b sc
 	owned := map[string]bool{}
 	for _, c := range listed {
 		owned[strings.ToLower(strings.TrimSpace(c.Department))] = true
+	}
+	if b.TargetKind == "item" {
+		// The provider names the people the local list names only by name.
+		for _, c := range credits {
+			if err = compactcatalog.AdoptLocalPersonTx(ctx, tx, b.Entity, provider, c.ID, c.Name); err != nil {
+				return err
+			}
+		}
 	}
 	share := make([]metadataprovider.ScreenCredit, 0, len(credits))
 	for _, c := range credits {
