@@ -41,6 +41,12 @@ export function recordDecoderSkip(engine: BrowserEngine, family: string, skip: n
 
 /** Packets a decoder must see before the one it should output from, after a seek. */
 const PREROLL: Record<string, number> = {mp3: 3, aac: 2, opus: 4, vorbis: 2};
+/** Bytes of packets a cold decoder needs ahead of the packet before the target's. An MP3 frame's
+ * audio data can begin up to 511 bytes back, in earlier frames (the bit reservoir), and the frame
+ * before the target has to decode exactly too (its second half overlaps the target's first): with
+ * fewer, the first milliseconds after a part-way start differ from a continuous decode. Counted
+ * as whole packets (headers and side information included), so twice the reservoir. */
+const PREROLL_BYTES: Record<string, number> = {mp3: 1024};
 
 export type DecoderChoice = Readonly<{decoder: PacketDecoder; skip: number; via: string}>;
 
@@ -107,7 +113,7 @@ export class TrackStream {
     try {
       ({packets, rawStart} = demuxer.config.family === 'vorbis'
         ? {packets: demuxer.packets(signal), rawStart: 0}
-        : await startAt(demuxer, target - choice.skip, PREROLL[demuxer.config.family] ?? 0, signal, index));
+        : await startAt(demuxer, target - choice.skip, PREROLL[demuxer.config.family] ?? 0, signal, index, PREROLL_BYTES[demuxer.config.family] ?? 0));
     } catch (e) { choice.decoder.close(); throw e; }
     return new TrackStream({plan, choice, packets, rawStart, fromFrame: Math.max(0, fromFrame), pad: o.pad !== false});
   }
@@ -168,7 +174,7 @@ export class TrackStream {
  * so it has settled. `rawStart` is the raw index of the first packet's first frame. Packets are
  * skipped by their known lengths without decoding.
  */
-async function startAt(demuxer: Demuxer, target: number, preroll: number, signal?: AbortSignal, index?: SeekIndex): Promise<{packets: AsyncGenerator<Packet>; rawStart: number}> {
+async function startAt(demuxer: Demuxer, target: number, preroll: number, signal?: AbortSignal, index?: SeekIndex, prerollBytes = 0): Promise<{packets: AsyncGenerator<Packet>; rawStart: number}> {
   if (target <= 0) return {packets: demuxer.packets(signal), rawStart: 0};
   if (demuxer.seek) {
     const found = await demuxer.seek(target, preroll, signal);
@@ -178,12 +184,12 @@ async function startAt(demuxer: Demuxer, target: number, preroll: number, signal
     // The last entry at or before the target, or an earlier one when it leaves too few packets
     // before the target to settle the decoder. Only that much of the file is read.
     for (let i = lastAtOrBefore(index.frames, target); i >= 0; i--) {
-      const found = await walk(demuxer.packetsFrom(index.offsets[i]!, signal), index.frames[i]!, target, preroll);
+      const found = await walk(demuxer.packetsFrom(index.offsets[i]!, signal), index.frames[i]!, target, preroll, prerollBytes);
       if (found === 'counted') break;
       if (found !== 'short') return found;
     }
   }
-  const found = await walk(demuxer.packets(signal), 0, target, preroll);
+  const found = await walk(demuxer.packets(signal), 0, target, preroll, prerollBytes);
   if (typeof found === 'string') throw new DemuxError('This stream can’t be started part-way.');
   return found;
 }
@@ -200,11 +206,15 @@ export function lastAtOrBefore(frames: readonly number[], target: number): numbe
 
 /**
  * Walks packets starting at raw frame `raw` to the one holding `target`, keeping the `preroll`
- * before it. 'short': fewer than that came before the target (start earlier, unless this is the
- * stream's start); 'counted': a packet with no length in frames, so no exact start here.
+ * before it, and at least `prerollBytes` of packets ahead of the one before it. 'short': fewer
+ * than that came before the target (start earlier, unless this is the stream's start); 'counted':
+ * a packet with no length in frames, so no exact start here.
  */
-async function walk(all: AsyncGenerator<Packet>, raw: number, target: number, preroll: number): Promise<SeekResult | 'short' | 'counted'> {
+async function walk(all: AsyncGenerator<Packet>, raw: number, target: number, preroll: number, prerollBytes = 0): Promise<SeekResult | 'short' | 'counted'> {
   const recent: {packet: Packet; raw: number}[] = [];
+  // Bytes of the held packets other than the last two (the newest, and the one before it).
+  let ahead = 0;
+  const enough = () => recent.length >= preroll + 1 && ahead >= prerollBytes;
   const startRaw = raw;
   for (;;) {
     const next = await all.next();
@@ -212,11 +222,16 @@ async function walk(all: AsyncGenerator<Packet>, raw: number, target: number, pr
     const p = next.value;
     if (p.frames === undefined) { void all.return(undefined).catch(() => {}); return 'counted'; }
     recent.push({packet: p, raw});
-    if (recent.length > preroll + 1) recent.shift();
+    if (recent.length > 2) ahead += recent[recent.length - 3]!.packet.data.length;
+    // Drop the oldest while what remains is still enough.
+    while (recent.length > preroll + 1 && (recent.length > 2 ? ahead - recent[0]!.packet.data.length : 0) >= prerollBytes) {
+      if (recent.length > 2) ahead -= recent[0]!.packet.data.length;
+      recent.shift();
+    }
     if (raw + p.frames > target) break;
     raw += p.frames;
   }
-  if (startRaw > 0 && recent.length < preroll + 1) { void all.return(undefined).catch(() => {}); return 'short'; }
+  if (startRaw > 0 && !enough()) { void all.return(undefined).catch(() => {}); return 'short'; }
   const first = recent[0];
   const held = recent.map(r => r.packet);
   async function* chain(): AsyncGenerator<Packet> { yield* held; yield* all; }
