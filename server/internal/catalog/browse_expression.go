@@ -839,7 +839,8 @@ func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (stri
 	}
 	if _, counted := factGaps[field.ID]; counted && (node.Operator == "is-present" || node.Operator == "is-missing") {
 		// The counters name the few titles that lack the field, or the few
-		// that have it; those are tested, and the other answer is their
+		// that have it; those are the answer (tested again where a title's
+		// members are not just itself), and the other answer is their
 		// complement. Where both are many, or the list holds containers,
 		// each title is tested: the field's values are too many to select.
 		present := func() (string, error) {
@@ -851,27 +852,31 @@ func (c *browseCompiler) itemPredicate(field browseField, node BrowseNode) (stri
 		if err != nil {
 			return "", err
 		}
-		if gaps != "" {
-			clause, err := present()
-			if err != nil {
+		have := ""
+		if gaps == "" {
+			if have, err = c.factGapCandidates(field, true); err != nil {
 				return "", err
 			}
-			missing := "(" + gaps + "NOT " + clause + ")"
-			if node.Operator == "is-missing" {
-				return missing, nil
-			}
-			return "NOT " + missing, nil
 		}
-		have, err := c.factGapCandidates(field, true)
+		var clause string
+		lacking := gaps != ""
+		switch {
+		case lacking && c.itemPivot:
+			clause = "(" + gaps + "1)"
+		case have != "" && c.itemPivot:
+			clause = "(" + have + "1)"
+		case lacking:
+			clause, err = present()
+			clause = "(" + gaps + "NOT " + clause + ")"
+		default:
+			clause, err = present()
+			clause = "(" + have + clause + ")"
+		}
 		if err != nil {
 			return "", err
 		}
-		clause, err := present()
-		if err != nil {
-			return "", err
-		}
-		clause = "(" + have + clause + ")"
-		if node.Operator == "is-present" {
+		// clause holds the titles lacking the field, or else those having it.
+		if (node.Operator == "is-missing") == lacking {
 			return clause, nil
 		}
 		return "NOT " + clause, nil
