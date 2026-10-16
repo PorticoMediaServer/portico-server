@@ -1181,7 +1181,7 @@ export const webMessages = {
   'web.merge.title': 'Merge these two titles?',
   'web.merge.keep': 'Keep this one',
   'web.merge.body': '“{title}” becomes part of the one you keep: its files become versions of it, and everyone’s watch history is combined. Nothing on disk changes. A film’s version can be split off again from its Files list; two shows stay merged.',
-  'web.merge.containerBody': '“{title}” becomes part of the one you keep: its songs, files or albums join it, one both have becomes one with two versions, and everyone’s favourites, plays and progress are combined. Nothing on disk changes, and the two stay merged.',
+  'web.merge.containerBody': '“{title}” becomes part of the one you keep: its songs, files or albums join it, one both have becomes one with two versions, and everyone’s favorites, plays and progress are combined. Nothing on disk changes, and the two stay merged.',
   'web.selection.done': 'Done',
   'web.selection.addToPlaylist': 'Add {count} to a playlist',
   'web.selection.addToCollection': 'Add {count} to a collection',
