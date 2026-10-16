@@ -296,6 +296,7 @@ export function decodeGetStorageOperationsIdResponse(input: unknown): types.GetS
 export function decodeGetStorageSourceOperationsIdResponse(input: unknown): types.GetStorageSourceOperationsIdResponse { return decode("GetStorageSourceOperationsIdResponse", input) as types.GetStorageSourceOperationsIdResponse; }
 export function decodeGetStorageSourcesResponse(input: unknown): types.GetStorageSourcesResponse { return decode("GetStorageSourcesResponse", input) as types.GetStorageSourcesResponse; }
 export function decodeGetStorageStatusResponse(input: unknown): types.GetStorageStatusResponse { return decode("GetStorageStatusResponse", input) as types.GetStorageStatusResponse; }
+export function decodeGetSubtitleFontsCjkResponse(input: unknown): types.GetSubtitleFontsCjkResponse { return decode("GetSubtitleFontsCjkResponse", input) as types.GetSubtitleFontsCjkResponse; }
 export function decodeGetSuggestionsResponse(input: unknown): types.GetSuggestionsResponse { return decode("GetSuggestionsResponse", input) as types.GetSuggestionsResponse; }
 export function decodeGetSystemResponse(input: unknown): types.GetSystemResponse { return decode("GetSystemResponse", input) as types.GetSystemResponse; }
 export function decodeGetTopshelfResponse(input: unknown): types.GetTopshelfResponse { return decode("GetTopshelfResponse", input) as types.GetTopshelfResponse; }

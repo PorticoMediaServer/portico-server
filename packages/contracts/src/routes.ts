@@ -6683,6 +6683,28 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_subtitle_fonts_cjk",
+    "method": "GET",
+    "path": "/v1/subtitle-fonts/cjk",
+    "summary": "Read the Chinese, Japanese and Korean font for subtitles drawn in a browser",
+    "access": "public",
+    "requires": "open",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "responseContentType": "font/otf",
+    "http": true,
+    "admission": "media-body"
+  },
+  {
     "id": "get_suggestions",
     "method": "GET",
     "path": "/v1/suggestions",
@@ -15974,6 +15996,7 @@ export const routePaths = {
   "get_storage_source_operations_id": "/v1/storage/source-operations/{id}",
   "get_storage_sources": "/v1/storage/sources",
   "get_storage_status": "/v1/admin/storage/status",
+  "get_subtitle_fonts_cjk": "/v1/subtitle-fonts/cjk",
   "get_suggestions": "/v1/suggestions",
   "get_system": "/v1/system",
   "get_topshelf": "/v1/topshelf",
