@@ -995,6 +995,9 @@ type drivenSource struct {
 	// value side. absent is the value of a member item the value side has no
 	// row for: if the condition holds for it, the value side cannot select.
 	value, column, absent string
+	// profile is how many times the viewer's profile key is bound ahead of
+	// the condition (a scope over the viewer's own rows).
+	profile int
 }
 
 // resolutionClasses are the picture classes of the resolution field as height
@@ -1007,6 +1010,16 @@ const attributeJoinPrefix = `JOIN catalog_item_attribute_edges ca ON ca.item_id=
 // one. A predicate tested once per title would otherwise walk every title of
 // the pivot (and every member of a container) to find the few that match.
 func drivenMemberSource(field browseField) (drivenSource, bool) {
+	switch field.ID {
+	case "subtitle-file":
+		return drivenSource{from: `asset_subtitle_languages sl CROSS JOIN asset_subtitles track INDEXED BY asset_subtitles_language ON track.language=sl.language
+ CROSS JOIN asset_subtitle_facts facts ON facts.asset_id=track.asset_id AND facts.status='known' CROSS JOIN catalog_assets asset ON asset.token=track.asset_id AND facts.size=asset.size AND facts.modified_ns=asset.modified_ns
+ CROSS JOIN catalog_asset_links link INDEXED BY catalog_asset_links_asset ON link.asset_id=asset.id`, scope: "1", item: "link.entity_id", nameKey: "sl.language", keyOf: "track.language"}, true
+	case "subtitle-resource":
+		// A viewer's own and the shared subtitle uploads: few, read directly.
+		return drivenSource{from: `subtitle_resources resource JOIN subtitle_revisions revision ON revision.resource_id=resource.id AND revision.revision=resource.current_revision JOIN catalog_assets asset ON asset.token=resource.source_id AND asset.size=revision.source_size AND asset.modified_ns=revision.source_modified_ns`,
+			scope: `resource.deleted=0 AND (resource.scope='shared' OR resource.owner=?)`, item: "resource.item_id", profile: 1}, true
+	}
 	if field.Profile != 0 {
 		return drivenSource{}, false
 	}
@@ -1102,7 +1115,11 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 		where += " AND " + strings.ReplaceAll(body, "ca.source_value", "ca_term.value_key")
 	}
 	matching := `SELECT ` + source.item + ` AS item FROM ` + source.from + ` WHERE ` + where + ` AND (` + body + `)`
-	found, err := c.count(`SELECT count(*) FROM (`+matching+` LIMIT `+strconv.Itoa(drivenMaximum+1)+`)`, c.args[before:]...)
+	scoped := []any{}
+	for i := 0; i < source.profile; i++ {
+		scoped = append(scoped, c.profile)
+	}
+	found, err := c.count(`SELECT count(*) FROM (`+matching+` LIMIT `+strconv.Itoa(drivenMaximum+1)+`)`, append(append([]any{}, scoped...), c.args[before:]...)...)
 	if err != nil {
 		return "", false, err
 	}
@@ -1128,7 +1145,7 @@ func (c *browseCompiler) drivenExists(field browseField, source drivenSource, co
 		join = `catalog_browse_memberships bei ON ` + source.members
 	}
 	ids, err := c.ids(`SELECT DISTINCT bei.entity_id FROM `+source.from+` CROSS JOIN `+join+members+
-		` WHERE `+where+` AND (`+body+`) AND (`+restriction+`)`, append(append([]any{}, c.args[before:]...), args...)...)
+		` WHERE `+where+` AND (`+body+`) AND (`+restriction+`)`, append(append(append([]any{}, scoped...), c.args[before:]...), args...)...)
 	if err != nil {
 		return "", false, err
 	}

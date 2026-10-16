@@ -4134,6 +4134,24 @@ CREATE INDEX artwork_discovery_due ON artwork_discovery(status,next_attempt,kind
 CREATE INDEX artwork_jobs_claim ON artwork_jobs(status,(CASE WHEN role IN('poster','cover','backdrop') THEN 0 ELSE 1 END),created_at,id);
 CREATE INDEX artwork_jobs_storage_retry ON artwork_jobs(next_attempt) WHERE status='failed' AND error='storage_unavailable';
 CREATE INDEX asset_subtitles_asset ON asset_subtitles(asset_id,id);
+-- The languages subtitle tracks carry, each once with its track count, so a
+-- subtitle-language filter tests each language once and reads its tracks.
+CREATE INDEX asset_subtitles_language ON asset_subtitles(language,asset_id);
+CREATE TABLE asset_subtitle_languages(
+ language TEXT PRIMARY KEY,
+ tracks INTEGER NOT NULL) WITHOUT ROWID, STRICT;
+CREATE TRIGGER asset_subtitle_languages_join AFTER INSERT ON asset_subtitles BEGIN
+ INSERT INTO asset_subtitle_languages(language,tracks) VALUES(NEW.language,1) ON CONFLICT(language) DO UPDATE SET tracks=tracks+1;
+END;
+CREATE TRIGGER asset_subtitle_languages_leave AFTER DELETE ON asset_subtitles BEGIN
+ UPDATE asset_subtitle_languages SET tracks=tracks-1 WHERE language=OLD.language;
+ DELETE FROM asset_subtitle_languages WHERE language=OLD.language AND tracks<=0;
+END;
+CREATE TRIGGER asset_subtitle_languages_move AFTER UPDATE OF language ON asset_subtitles WHEN OLD.language IS NOT NEW.language BEGIN
+ UPDATE asset_subtitle_languages SET tracks=tracks-1 WHERE language=OLD.language;
+ DELETE FROM asset_subtitle_languages WHERE language=OLD.language AND tracks<=0;
+ INSERT INTO asset_subtitle_languages(language,tracks) VALUES(NEW.language,1) ON CONFLICT(language) DO UPDATE SET tracks=tracks+1;
+END;
 CREATE INDEX subtitle_resources_item ON subtitle_resources(item_id,source_id,deleted,scope,owner);
 CREATE INDEX subtitle_revisions_digest ON subtitle_revisions(digest);
 CREATE INDEX subtitle_candidates_expiry ON subtitle_provider_candidates(expires_at);

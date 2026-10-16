@@ -48,6 +48,7 @@ index artwork_uploads_entity
 index artwork_uploads_thumbnail
 index artwork_variants_digest
 index asset_subtitles_asset
+index asset_subtitles_language
 index audio_local_evidence_asset_id_fk
 index audio_local_field
 index audio_render_fact_requests_order
@@ -587,6 +588,7 @@ table asset_chapters
 table asset_stream_facts
 table asset_streams
 table asset_subtitle_facts
+table asset_subtitle_languages
 table asset_subtitles
 table audio_genre_projection
 table audio_local_evidence
@@ -1296,6 +1298,9 @@ trigger artwork_jobs_retention_insert
 trigger artwork_local_changed
 trigger artwork_source_changed
 trigger artwork_tvdb_selected
+trigger asset_subtitle_languages_join
+trigger asset_subtitle_languages_leave
+trigger asset_subtitle_languages_move
 trigger audio_genre_projection_reset
 trigger audio_metadata_library_created
 trigger authorization_account_deleted

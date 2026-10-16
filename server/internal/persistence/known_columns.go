@@ -323,6 +323,8 @@ asset_subtitle_facts.revision
 asset_subtitle_facts.size
 asset_subtitle_facts.status
 asset_subtitle_facts.timing_known
+asset_subtitle_languages.language
+asset_subtitle_languages.tracks
 asset_subtitles.asset_id
 asset_subtitles.format
 asset_subtitles.hearing_impaired
