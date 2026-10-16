@@ -31,6 +31,9 @@ type DownloadTrack struct {
 	Original  string `json:"original,omitempty"`
 	Companion bool   `json:"companion,omitempty"`
 	Fonts     int    `json:"fonts,omitempty"`
+	// Lines is an image track's line count and how many of its lines are
+	// forced, as /lines answers it (PGS and VobSub).
+	Lines *Lines `json:"lines,omitempty"`
 }
 
 // DownloadTracks lists the subtitle tracks of one file of a title that this
@@ -84,6 +87,22 @@ func (s *Service) DownloadTracks(ctx context.Context, p identity.Principal, item
 			}
 			if track.Fonts > 16 {
 				track.Fonts = 16
+			}
+		}
+		if track.Original == "pgs" || track.Original == "vobsub" {
+			// A download plays offline, where it cannot ask: it carries the
+			// count that tells the player whether "Forced only" means anything.
+			if e = s.ensureCached(ctx, p, item, r.ID, r.Revision); e != nil {
+				if ctx.Err() != nil {
+					return out, ErrUnavailable
+				}
+			} else {
+				var lines Lines
+				if e = s.db.QueryRowContext(ctx, `SELECT forced_lines,total_lines FROM subtitle_original_revisions WHERE resource_id=? AND revision=?`, r.ID, r.Revision).Scan(&lines.Forced, &lines.Total); e == nil {
+					track.Lines = &lines
+				} else if !errors.Is(e, sql.ErrNoRows) {
+					return out, e
+				}
 			}
 		}
 		if track.Text || track.Original != "" {

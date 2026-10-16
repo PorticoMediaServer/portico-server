@@ -311,7 +311,11 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 				return out, err
 			}
 			for _, track := range tracks {
-				out.Subtitles = append(out.Subtitles, downloads.BundleSubtitle{ID: track.ID, Revision: track.Revision, Language: track.Language, Title: track.Title, Default: track.Default, Forced: track.Forced, Files: subtitleFiles(track)})
+				bundled := downloads.BundleSubtitle{ID: track.ID, Revision: track.Revision, Language: track.Language, Title: track.Title, Default: track.Default, Forced: track.Forced, Files: subtitleFiles(track)}
+				if track.Lines != nil {
+					bundled.Lines = &downloads.BundleLines{Forced: track.Lines.Forced, Total: track.Lines.Total}
+				}
+				out.Subtitles = append(out.Subtitles, bundled)
 			}
 		}
 		if d.Analysis != nil && out.Media.VideoCodec != "" && out.SourceID != "" {

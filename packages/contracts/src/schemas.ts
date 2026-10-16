@@ -27348,6 +27348,25 @@ export const schemas = {
             "language": {
               "type": "string"
             },
+            "lines": {
+              "properties": {
+                "forced": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "total": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "forced",
+                "total"
+              ],
+              "type": "object"
+            },
             "revision": {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
