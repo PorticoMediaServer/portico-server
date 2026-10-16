@@ -26,6 +26,9 @@ import {announceRemoval, removeFromContinueWatching, type ContinueRemoval} from 
 import {recommendationViewer, startNotInterested} from '../../app/not-interested';
 import type {EntryOrigin} from '../../player/engine';
 import {useViewerScope} from '../../app/viewer-scope';
+import {separateArtist} from '@core/title-identity.ts';
+import {problem} from '../../admin/console';
+import {serverChanged} from '../../app/server-changes';
 
 /**
  * The actions menu for one entry, opened from a card's More control, a
@@ -73,7 +76,7 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
   const has = (id: string) => data?.actions.some(a => a.id === id && a.enabled) ?? false;
   // Nothing is on its way for an entry with no library to read it from: its rows are not held back.
   const loadingDetail = !!target && !data && snapshot.phase !== 'error';
-  const [mode, setMode] = useState<'actions' | 'playlist' | 'collection'>('actions');
+  const [mode, setMode] = useState<'actions' | 'playlist' | 'collection' | 'separateArtist'>('actions');
   const [notice, setNotice] = useState<string>();
   // WEB-DL-01: Download… only when the server offers at least one way to download this item.
   const [downloadable, setDownloadable] = useState<boolean>();
@@ -132,6 +135,7 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
     editMetadata: !!(local && repair),
     refreshMetadata: !!local && !!refreshMetadataPath(entry.kind, entry.id),
     delete: !!(owner && entry.playback),
+    separateArtist: !!(owner && entry.kind === 'album' && entry.navigation?.entityId),
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [entry, origin, queue, together.inRoom, together.canQueue, data, downloadable, downloads.state.unavailable, local, repair, owner, loadingDetail, containerWatched.state, containerWatched.carries]);
   const run = (id: EntryActionId) => {
@@ -169,8 +173,10 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
       case 'editMetadata': if (repair) editor?.open({targets: [repair], titles: [entry.title]}); onDone(); return;
       case 'refreshMetadata': refreshMetadata(); return;
       case 'delete': deleter?.open({itemIds: [entry.playback!.itemId], titles: [entry.title]}); onDone(); return;
+      case 'separateArtist': setMode('separateArtist'); return;
     }
   };
+  if (mode === 'separateArtist' && entry.navigation?.entityId) return <SeparateArtistPanel albumId={entry.navigation.entityId} libraryId={entry.libraryId} onBack={() => setMode('actions')} onDone={onDone} />;
   if (mode === 'collection') return <CollectionPicker itemId={entry.id} onBack={() => setMode('actions')} onDone={message => { setNotice(message); setMode('actions'); }} />;
   if (mode === 'playlist') return <PlaylistPicker itemId={entry.playback?.itemId ?? entry.id} itemTitles={[entry.title]} onBack={() => setMode('actions')} onDone={message => { setNotice(message); setMode('actions'); }} />;
   // WEB-TOGETHER-01: outside a group, "Watch Together" starts one with this title queued.
@@ -186,6 +192,39 @@ function Body({entry, origin, onDone}: {entry: ContentEntry; origin?: EntryOrigi
           {group.id === 'play' && startGroup ? <MenuRow icon="people" label={i18n.t('entry.group.together')} onSelect={() => { setPendingTogether({itemId: entry.playback!.itemId, title: entry.title}); void navigate({to: '/together'}); onDone(); }} /> : null}
         </React.Fragment>
       ))}
+    </>
+  );
+}
+
+/**
+ * "Not this artist…" (owners): the album, with its songs, moves to a new artist of the same name
+ * that Portico won't join back by itself; the new artist's page opens.
+ */
+function SeparateArtistPanel({albumId, libraryId, onBack, onDone}: {albumId: string; libraryId?: string; onBack: () => void; onDone: () => void}) {
+  const {t} = useI18n();
+  const {api} = useSession();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const move = () => {
+    setBusy(true); setError(undefined);
+    separateArtist(api, [albumId]).then(artistId => {
+      serverChanged();
+      onDone();
+      if (libraryId) void navigate({to: '/library/$libraryId/$view/$entityId', params: {libraryId, view: 'artist', entityId: artistId}});
+    }, e => { setError(problem(e, 'action') || t('title.separateArtist.failed')); setBusy(false); });
+  };
+  return (
+    <>
+      <MenuHeading title={t('title.separateArtist.title')} />
+      <div style={{padding: '0 4px 8px', display: 'flex', flexDirection: 'column', gap: 8, maxWidth: 360}}>
+        {error ? <Notice tone="error" compact>{error}</Notice> : null}
+        <Text as="p" variant="body" tone="secondary">{t('title.separateArtist.body')}</Text>
+        <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
+          <Button variant="ghost" label={t('action.back')} disabled={busy} onClick={onBack} />
+          <Button variant="primary" label={t('title.separateArtist.confirm')} loading={busy} onClick={move} />
+        </div>
+      </div>
     </>
   );
 }

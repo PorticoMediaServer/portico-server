@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/requestinput"
@@ -262,6 +263,48 @@ func mergeArtistChildrenTx(ctx context.Context, tx *sql.Tx, from, into int64) er
 	return nil
 }
 
+// authorFilesTx lists the files of the books whose author text names this
+// author, by every name the ledger keeps for it.
+func authorFilesTx(ctx context.Context, tx *sql.Tx, author int64) ([]int64, error) {
+	var library int64
+	if err := tx.QueryRowContext(ctx, `SELECT library_id FROM catalog_entities WHERE id=?`, author).Scan(&library); err != nil {
+		return nil, err
+	}
+	rows, err := tx.QueryContext(ctx, `SELECT source_key FROM catalog_identities WHERE public_id=(SELECT public_id FROM catalog_entities WHERE id=?) ORDER BY source_key LIMIT 64`, author)
+	if err != nil {
+		return nil, err
+	}
+	var names []string
+	for rows.Next() {
+		var key string
+		if err = rows.Scan(&key); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		if name, ok := strings.CutPrefix(key, "author:"); ok && strings.TrimSpace(name) != "" {
+			names = append(names, strings.TrimSpace(name))
+		}
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	var files []int64
+	for _, name := range names {
+		found, err := scanInt64s(tx.QueryContext(ctx, `SELECT f.entity_id FROM catalog_book_context c INDEXED BY catalog_book_context_author CROSS JOIN catalog_book_files f ON f.book_id=c.book_id
+ WHERE c.library_id=? AND c.author_key=? AND c.author_key!='' ORDER BY f.entity_id LIMIT ?`, library, name, containerMergeLimit+1))
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, found...)
+		if len(files) > containerMergeLimit {
+			return nil, ErrMergeTooLarge
+		}
+	}
+	return files, nil
+}
+
 // settleAbandonedArtistTx removes an album artist that a merge left with no
 // album and no song: retired when it has state of its own, deleted otherwise.
 func settleAbandonedArtistTx(ctx context.Context, tx *sql.Tx, artist int64) error {
@@ -320,6 +363,24 @@ func mergeContainerTx(ctx context.Context, tx *sql.Tx, from, into int64, kind co
 			return err
 		}
 		return absorbTx(ctx, tx, from, into, kind)
+	case compactcatalog.Author:
+		// A book names its author in text, and that text reaches the author
+		// through the identity ledger. Once the ledger's names for the absorbed
+		// author lead to the one that stays, its books' files join that author
+		// (and a later scan of them keeps them there).
+		files, err := authorFilesTx(ctx, tx, from)
+		if err != nil {
+			return err
+		}
+		if err = absorbTx(ctx, tx, from, into, kind); err != nil {
+			return err
+		}
+		for _, file := range files {
+			if err = compactcatalog.TouchTx(ctx, tx, compactcatalog.DomainBrowseEdges, file); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
 	return fmt.Errorf("%w: kind %d", ErrNotMergeable, kind)
 }

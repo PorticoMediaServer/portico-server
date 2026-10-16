@@ -6,7 +6,7 @@ import {currentI18n} from './i18n';
 import {useSession} from './session';
 import {useViewerScope} from './viewer-scope';
 import {usePooledService} from './freshness';
-import {titlesWithPersonalState} from '@core/freshness-hub.ts';
+import {listedTitlesWithPersonalState, titleIdsOf, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {RECOMMENDATIONS_RESET, recommendationViewer} from './not-interested';
 import {browseCountLabel as countLabel, isQuickFilterVisible as quickVisible, kindAwareQuickKey as quickKey, kindCaptionFor as kindCaption, libraryKindSingular as kindSingular, nounPivotFor as nounPivot, quickFilterLabelForKind as quickLabel, seeAllTarget as seeAll, type T as WordsT} from './library-words';
 
@@ -48,10 +48,13 @@ export function useContent(route: ContentRoute | null) {
   // read again in the background only when its library or this profile's state moved. A new
   // sort or filter of the same destination is the same document reading another route, so what
   // is on screen stays until the new order arrives.
+  // A container's page (an album, an artist, a collection) moves for this profile's state only of
+  // the container and the titles it shows; a library's own views follow all of it.
+  let made: LibraryContentService | undefined;
   const {service, snapshot, document, memo} = usePooledService<LibraryContentService, LibraryContentSnapshot>(
     route ? `content:${route.libraryId}:${route.view}:${route.entityId ?? ''}` : 'content:',
-    () => new LibraryContentService({api: compatContentApi(api) as typeof api, scope}),
-    route ? titlesWithPersonalState(route.libraryId) : [],
+    () => (made = new LibraryContentService({api: compatContentApi(api) as typeof api, scope})),
+    !route ? [] : route.entityId ? (() => { const libraryId = route.libraryId, entityId = route.entityId!; return () => listedTitlesWithPersonalState(libraryId, [entityId, ...titleIdsOf((made?.getSnapshot().sections ?? []).flatMap(s => s.entries))], false); })() : titlesWithPersonalState(route.libraryId),
   );
   useEffect(() => {
     if (!route || memo.selected === key) return;

@@ -20,6 +20,13 @@ export type BrowseNode=
  |Readonly<{not:BrowseNode}>
  |Readonly<{field:string;operator:BrowseOperator;value:BrowseScalar|readonly BrowseScalar[]|null}>;
 export type BrowseSortSelection=Readonly<{field:string;direction:BrowseDirection;seed?:number}>;
+/** Every field a query's conditions name, however deep. */
+export function browseFields(nodes:readonly BrowseNode[]):string[]{
+ const out:string[]=[];
+ const walk=(n:BrowseNode)=>{if('all' in n)n.all.forEach(walk);else if('any' in n)n.any.forEach(walk);else if('not' in n)walk(n.not);else if('field' in n)out.push(n.field);};
+ nodes.forEach(walk);
+ return out;
+}
 export type BrowseFacetSource=Readonly<{endpoint:string;field:string}>;
 export type BrowseFieldCapability=Readonly<{id:string;labelKey:string;type:BrowseValueType;operators:readonly BrowseOperator[];controlHint:BrowseControlHint;complexity:BrowseComplexity;cost:BrowseCost;applicableKinds:readonly string[];allowedValues?:readonly string[];facetSource?:BrowseFacetSource}>;
 /** `requiresGroup`: the group's own order (a playlist's, a season's, an album's), offered on a group's page and never on a library tab. */

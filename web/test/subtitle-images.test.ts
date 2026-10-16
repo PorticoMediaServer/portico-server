@@ -267,3 +267,28 @@ test('DVB: a character-coded object is written in the region in its own colours'
   assert.deepEqual(pixel(rect!, 0, 0), [0, 0, 0, 0], 'outside the box, the region as it was');
   assert.equal(characterText(Uint8Array.from([0, 0x41, 0, 0x0a, 0xac, 0x00, 0, 0x9b]), 0, 4, 8), 'A가', 'controls are left out, Korean is kept');
 });
+
+test('DVB: a progressively coded object is an 8-bit bitmap of PNG-filtered scanlines in a zlib stream', async () => {
+  const {deflateSync} = await import('node:zlib');
+  const {inflateZlib, unfilterScanlines} = await import('../src/player/subtitles/inflate.ts');
+  const page = 1;
+  // 3×2 pixels: [1,2,1] then [2,1,2]; the first row Sub-filtered, the second Up-filtered.
+  const scanlines = Uint8Array.from([1, 1, 1, 255, 2, 1, 255, 1]);
+  for (const level of [0, 9]) assert.deepEqual([...inflateZlib(deflateSync(scanlines, {level}), 64)!], [...scanlines], `zlib level ${level}`);
+  assert.deepEqual([...unfilterScanlines(scanlines, 3, 2)!], [1, 2, 1, 2, 1, 2]);
+  const z = [...deflateSync(scanlines)];
+  const object = [0x0f, 0x13, 0, page, 0, 9 + z.length, 0, 7, 2 << 2, 0, 3, 0, 2, z.length >> 8, z.length & 0xff, ...z];
+  // Region 5, 8×4 at 8 bits, places bitmap object 7 at (1, 1).
+  const region = [0x0f, 0x11, 0, page, 0, 16, 5, 8, 0, 8, 0, 4, 3 << 2, 0, 0, 0, 0, 7, 0x00, 1, 0, 1];
+  const show = [...dvbPage(page, 30, 2, [[5, 0, 0]]), ...region, ...dvbClut(page, 0, 8, [[1, 235, 128, 128, 0], [2, 16, 128, 128, 0]]), ...object];
+  const track = parseDvbPackets([{timeMs: 0, durationMs: null, data: Uint8Array.from(show)}], [page], {});
+  assert.equal(track.skipped, 0);
+  const [rect] = track.cues[0]!.paint();
+  assert.deepEqual(pixel(rect!, 1, 1), [255, 255, 255, 255], 'code 1');
+  assert.deepEqual(pixel(rect!, 2, 1), [0, 0, 0, 255], 'code 2');
+  assert.deepEqual(pixel(rect!, 1, 2), [0, 0, 0, 255], 'second row, unfiltered from the first');
+  assert.deepEqual(pixel(rect!, 0, 0), [0, 0, 0, 0], 'outside the object, the region as it was');
+  // A stream that says more than it holds, or is not zlib, is skipped and nothing else breaks.
+  assert.equal(inflateZlib(Uint8Array.from([0x78, 0x9c, 1, 2, 3, 4]), 64), null);
+  assert.equal(inflateZlib(deflateSync(new Uint8Array(100)), 50), null, 'more out than the bitmap can hold');
+});

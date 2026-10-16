@@ -61,7 +61,9 @@ export type DownloadGrant = Readonly<{preparationId: string; itemId: string; url
 /** One file that travels with a download; use the server's relative bundle path
  * under the download grant, independently of live subtitle media addresses. */
 export type DownloadBundleFile = Readonly<{path: string; contentType: string}>;
-export type DownloadBundleSubtitle = Readonly<{id: string; revision: number; language: string; title: string; default: boolean; forced: boolean; files: Readonly<Record<string, DownloadBundleFile>>}>;
+export type DownloadBundleSubtitle = Readonly<{id: string; revision: number; language: string; title: string; default: boolean; forced: boolean; files: Readonly<Record<string, DownloadBundleFile>>;
+  /** An image track's line count and how many are forced (PGS, VobSub), as `/lines` answers it while streaming. */
+  lines?: Readonly<{forced: number; total: number}>}>;
 export type DownloadBundleChapter = Readonly<{index: number; title: string; startSeconds: number; endSeconds: number; /** The chapter's thumbnail, when the library makes them. */ image?: DownloadBundleFile}>;
 /** The file's scrubbing previews: sprite sheets (`tiles`, in order) of frames every `intervalSeconds`. */
 export type DownloadBundleTrickplay = Readonly<{id: string; tileWidth: number; tileHeight: number; columns: number; rows: number; intervalSeconds: number; frameCount: number; durationSeconds: number; sourceOffsetSeconds: number; thumbnails: DownloadBundleFile; tiles: readonly DownloadBundleFile[]}>;
@@ -299,7 +301,8 @@ export function parseDownloadBundle(raw: unknown, preparationId: string): Downlo
     // A styled track brings its script, its plain-text reading and up to sixteen fonts.
     if (forms.length > 24) invalid();
     for (const form of forms) { if (!/^[a-z0-9]{1,16}$/.test(form)) invalid(); files[form] = bundleFile(v.files[form]); }
-    return Object.freeze({id: v.id, revision: v.revision, language: String(v.language ?? ''), title: String(v.title ?? ''), default: v.default, forced: v.forced, files: Object.freeze(files)});
+    const lines = object(v.lines) && count(v.lines.forced) && count(v.lines.total) && v.lines.forced <= v.lines.total ? Object.freeze({forced: v.lines.forced, total: v.lines.total}) : undefined;
+    return Object.freeze({id: v.id, revision: v.revision, language: String(v.language ?? ''), title: String(v.title ?? ''), default: v.default, forced: v.forced, files: Object.freeze(files), ...(lines ? {lines} : {})});
   });
   return Object.freeze({
     preparationId, itemId: raw.itemId, quality: raw.quality, qualityLabel: String(raw.qualityLabel ?? ''), title: parseDownloadTitle(raw.title), overview: String(raw.overview ?? ''),

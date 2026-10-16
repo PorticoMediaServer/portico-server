@@ -28851,6 +28851,25 @@
                 "language": {
                   "type": "string"
                 },
+                "lines": {
+                  "properties": {
+                    "forced": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "forced",
+                    "total"
+                  ],
+                  "type": "object"
+                },
                 "revision": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -109833,6 +109852,31 @@
         ],
         "type": "object"
       },
+      "SeparateArtistRequest": {
+        "properties": {
+          "albumIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "albumIds"
+        ],
+        "type": "object"
+      },
+      "SeparateArtistResponse": {
+        "properties": {
+          "artistId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "artistId"
+        ],
+        "type": "object"
+      },
       "SetContainerPersonalStateRequest": {
         "properties": {
           "expectedRevision": {
@@ -115346,508 +115390,74 @@
       },
       "SocialPostV1GroupsIdReadinessResponse": {
         "properties": {
-          "group": {
-            "properties": {
-              "authority": {
-                "properties": {
-                  "deviceId": {
-                    "type": "string"
-                  },
-                  "playbackId": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "state": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "deviceId",
-                  "playbackId",
-                  "state"
-                ],
-                "type": "object"
-              },
-              "createdAt": {
-                "type": "string"
-              },
-              "endedReason": {
-                "type": "string"
-              },
-              "eventOrdinal": {
-                "type": "string"
-              },
-              "governanceRevision": {
-                "type": "string"
-              },
-              "host": {
-                "properties": {
-                  "endAt": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "lastSeenAt": {
-                    "type": "string"
-                  },
-                  "pauseAt": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  },
-                  "presence": {
-                    "type": "string"
-                  }
-                },
-                "required": [
-                  "presence",
-                  "lastSeenAt",
-                  "pauseAt",
-                  "endAt"
-                ],
-                "type": "object"
-              },
-              "hostAuthority": {
-                "type": "string"
-              },
-              "hostMemberId": {
-                "type": "string"
-              },
-              "id": {
-                "type": "string"
-              },
-              "lastCommand": {
-                "type": "string"
-              },
-              "lastCommandId": {
-                "type": "string"
-              },
-              "members": {
-                "items": {
-                  "properties": {
-                    "displayName": {
-                      "type": "string"
-                    },
-                    "id": {
-                      "type": "string"
-                    },
-                    "joinedAt": {
-                      "type": "string"
-                    },
-                    "positionUs": {
-                      "type": "string"
-                    },
-                    "presence": {
-                      "type": "string"
-                    },
-                    "private": {
-                      "type": "boolean"
-                    },
-                    "readiness": {
-                      "type": "string"
-                    },
-                    "reportedAt": {
-                      "anyOf": [
-                        {
-                          "type": "string"
-                        },
-                        {
-                          "type": "null"
-                        }
-                      ]
-                    },
-                    "role": {
-                      "type": "string"
-                    },
-                    "state": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "id",
-                    "displayName",
-                    "private",
-                    "role",
-                    "state",
-                    "readiness",
-                    "positionUs",
-                    "reportedAt",
-                    "presence",
-                    "joinedAt"
-                  ],
-                  "type": "object"
-                },
-                "type": "array"
-              },
-              "name": {
-                "type": "string"
-              },
-              "permissions": {
-                "properties": {
-                  "canControl": {
-                    "type": "boolean"
-                  },
-                  "canManageQueue": {
-                    "type": "boolean"
-                  },
-                  "isHost": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "isHost",
-                  "canControl",
-                  "canManageQueue"
-                ],
-                "type": "object"
-              },
-              "playbackRevision": {
-                "type": "string"
-              },
-              "queue": {
-                "anyOf": [
-                  {
-                    "properties": {
-                      "eligibility": {
-                        "anyOf": [
-                          {
-                            "properties": {
-                              "blockedEntries": {
-                                "maximum": 9007199254740991,
-                                "minimum": -9007199254740991,
-                                "type": "integer"
-                              },
-                              "currentEntryBlocked": {
-                                "type": "boolean"
-                              },
-                              "members": {
-                                "items": {
-                                  "properties": {
-                                    "blockedEntryIds": {
-                                      "items": {
-                                        "type": "string"
-                                      },
-                                      "type": "array"
-                                    },
-                                    "displayName": {
-                                      "type": "string"
-                                    },
-                                    "memberId": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "memberId",
-                                    "displayName",
-                                    "blockedEntryIds"
-                                  ],
-                                  "type": "object"
-                                },
-                                "type": "array"
-                              }
-                            },
-                            "required": [
-                              "blockedEntries",
-                              "currentEntryBlocked",
-                              "members"
-                            ],
-                            "type": "object"
-                          },
-                          {
-                            "type": "null"
-                          }
-                        ]
-                      },
-                      "entries": {
-                        "items": {
-                          "properties": {
-                            "addedBy": {
-                              "type": "string"
-                            },
-                            "entryId": {
-                              "type": "string"
-                            },
-                            "itemId": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "position": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            },
-                            "unavailable": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "entryId",
-                            "position",
-                            "itemId",
-                            "unavailable",
-                            "addedBy"
-                          ],
-                          "type": "object"
-                        },
-                        "type": "array"
-                      },
-                      "position": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "revision": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "revision",
-                      "position",
-                      "entries",
-                      "eligibility"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ]
-              },
-              "queueRevision": {
-                "type": "string"
-              },
-              "readiness": {
-                "properties": {
-                  "aggregate": {
-                    "type": "string"
-                  },
-                  "buffering": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "lagging": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "memberCount": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "ready": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "stale": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "aggregate",
-                  "ready",
-                  "buffering",
-                  "lagging",
-                  "stale",
-                  "memberCount"
-                ],
-                "type": "object"
-              },
-              "reconnectGeneration": {
-                "type": "string"
-              },
-              "revision": {
-                "type": "string"
-              },
-              "settings": {
-                "properties": {
-                  "repeatMode": {
-                    "type": "string"
-                  },
-                  "shuffleEnabled": {
-                    "type": "boolean"
-                  }
-                },
-                "required": [
-                  "shuffleEnabled",
-                  "repeatMode"
-                ],
-                "type": "object"
-              },
-              "settingsRevision": {
-                "type": "string"
-              },
-              "state": {
-                "type": "string"
-              },
-              "sync": {
-                "properties": {
-                  "noCorrectionUnderMs": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "rateCorrectionMaxMs": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "rateCorrectionMaximum": {
-                    "type": "string"
-                  },
-                  "rateCorrectionMinimum": {
-                    "type": "string"
-                  },
-                  "seekAtOrOverMs": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  }
-                },
-                "required": [
-                  "noCorrectionUnderMs",
-                  "rateCorrectionMinimum",
-                  "rateCorrectionMaximum",
-                  "rateCorrectionMaxMs",
-                  "seekAtOrOverMs"
-                ],
-                "type": "object"
-              },
-              "timeline": {
-                "properties": {
-                  "anchorAt": {
-                    "type": "string"
-                  },
-                  "anchorPositionUs": {
-                    "type": "string"
-                  },
-                  "currentEntryId": {
-                    "type": "string"
-                  },
-                  "itemId": {
-                    "type": "string"
-                  },
-                  "queuePosition": {
-                    "maximum": 9007199254740991,
-                    "minimum": -9007199254740991,
-                    "type": "integer"
-                  },
-                  "rate": {
-                    "properties": {
-                      "denominator": {
-                        "type": "string"
-                      },
-                      "numerator": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "numerator",
-                      "denominator"
-                    ],
-                    "type": "object"
-                  },
-                  "state": {
-                    "type": "string"
-                  },
-                  "waitUntil": {
-                    "anyOf": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "type": "null"
-                      }
-                    ]
-                  }
-                },
-                "required": [
-                  "itemId",
-                  "currentEntryId",
-                  "state",
-                  "anchorPositionUs",
-                  "anchorAt",
-                  "rate",
-                  "queuePosition",
-                  "waitUntil"
-                ],
-                "type": "object"
-              },
-              "updatedAt": {
-                "type": "string"
-              },
-              "viewerMemberId": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "id",
-              "name",
-              "state",
-              "hostAuthority",
-              "hostMemberId",
-              "revision",
-              "playbackRevision",
-              "settingsRevision",
-              "governanceRevision",
-              "queueRevision",
-              "reconnectGeneration",
-              "lastCommand",
-              "lastCommandId",
-              "endedReason",
-              "eventOrdinal",
-              "createdAt",
-              "updatedAt",
-              "permissions",
-              "authority",
-              "host",
-              "timeline",
-              "settings",
-              "sync",
-              "readiness",
-              "members",
-              "queue",
-              "viewerMemberId"
-            ],
-            "type": "object"
+          "groupId": {
+            "type": "string"
+          },
+          "playbackRevision": {
+            "type": "string"
           },
           "protocolVersion": {
             "type": "string"
           },
+          "readiness": {
+            "properties": {
+              "aggregate": {
+                "type": "string"
+              },
+              "buffering": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "lagging": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "memberCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ready": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "stale": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "aggregate",
+              "ready",
+              "buffering",
+              "lagging",
+              "stale",
+              "memberCount"
+            ],
+            "type": "object"
+          },
+          "revision": {
+            "type": "string"
+          },
           "serverTime": {
+            "type": "string"
+          },
+          "state": {
             "type": "string"
           }
         },
         "required": [
           "protocolVersion",
           "serverTime",
-          "group"
+          "groupId",
+          "state",
+          "revision",
+          "playbackRevision",
+          "readiness"
         ],
         "type": "object"
       },
@@ -159154,7 +158764,7 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book or artist: its songs, files or albums) and everyone's state combined",
+        "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book, artist or author: its songs, files, albums or books) and everyone's state combined",
         "x-access": "owner",
         "x-admission": "admin-heavy",
         "x-cost": "page_sized",
@@ -159167,6 +158777,96 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
+        "x-scope": "library"
+      }
+    },
+    "/v1/admin/titles/separate-artist": {
+      "post": {
+        "operationId": "separate_artist",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "albumIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "albumIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "artistId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "artistId"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Say that some albums are not by the artist they are filed under: they move, with their songs' credits, to a new artist of the same name that is never joined back automatically; at least one album stays",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 8192,
         "x-scope": "library"
       }
     },
@@ -178784,6 +178484,25 @@
                           "language": {
                             "type": "string"
                           },
+                          "lines": {
+                            "properties": {
+                              "forced": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "total": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "forced",
+                              "total"
+                            ],
+                            "type": "object"
+                          },
                           "revision": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -194535,508 +194254,74 @@
               "application/json": {
                 "schema": {
                   "properties": {
-                    "group": {
-                      "properties": {
-                        "authority": {
-                          "properties": {
-                            "deviceId": {
-                              "type": "string"
-                            },
-                            "playbackId": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "state": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "deviceId",
-                            "playbackId",
-                            "state"
-                          ],
-                          "type": "object"
-                        },
-                        "createdAt": {
-                          "type": "string"
-                        },
-                        "endedReason": {
-                          "type": "string"
-                        },
-                        "eventOrdinal": {
-                          "type": "string"
-                        },
-                        "governanceRevision": {
-                          "type": "string"
-                        },
-                        "host": {
-                          "properties": {
-                            "endAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "lastSeenAt": {
-                              "type": "string"
-                            },
-                            "pauseAt": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            },
-                            "presence": {
-                              "type": "string"
-                            }
-                          },
-                          "required": [
-                            "presence",
-                            "lastSeenAt",
-                            "pauseAt",
-                            "endAt"
-                          ],
-                          "type": "object"
-                        },
-                        "hostAuthority": {
-                          "type": "string"
-                        },
-                        "hostMemberId": {
-                          "type": "string"
-                        },
-                        "id": {
-                          "type": "string"
-                        },
-                        "lastCommand": {
-                          "type": "string"
-                        },
-                        "lastCommandId": {
-                          "type": "string"
-                        },
-                        "members": {
-                          "items": {
-                            "properties": {
-                              "displayName": {
-                                "type": "string"
-                              },
-                              "id": {
-                                "type": "string"
-                              },
-                              "joinedAt": {
-                                "type": "string"
-                              },
-                              "positionUs": {
-                                "type": "string"
-                              },
-                              "presence": {
-                                "type": "string"
-                              },
-                              "private": {
-                                "type": "boolean"
-                              },
-                              "readiness": {
-                                "type": "string"
-                              },
-                              "reportedAt": {
-                                "anyOf": [
-                                  {
-                                    "type": "string"
-                                  },
-                                  {
-                                    "type": "null"
-                                  }
-                                ]
-                              },
-                              "role": {
-                                "type": "string"
-                              },
-                              "state": {
-                                "type": "string"
-                              }
-                            },
-                            "required": [
-                              "id",
-                              "displayName",
-                              "private",
-                              "role",
-                              "state",
-                              "readiness",
-                              "positionUs",
-                              "reportedAt",
-                              "presence",
-                              "joinedAt"
-                            ],
-                            "type": "object"
-                          },
-                          "type": "array"
-                        },
-                        "name": {
-                          "type": "string"
-                        },
-                        "permissions": {
-                          "properties": {
-                            "canControl": {
-                              "type": "boolean"
-                            },
-                            "canManageQueue": {
-                              "type": "boolean"
-                            },
-                            "isHost": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "isHost",
-                            "canControl",
-                            "canManageQueue"
-                          ],
-                          "type": "object"
-                        },
-                        "playbackRevision": {
-                          "type": "string"
-                        },
-                        "queue": {
-                          "anyOf": [
-                            {
-                              "properties": {
-                                "eligibility": {
-                                  "anyOf": [
-                                    {
-                                      "properties": {
-                                        "blockedEntries": {
-                                          "maximum": 9007199254740991,
-                                          "minimum": -9007199254740991,
-                                          "type": "integer"
-                                        },
-                                        "currentEntryBlocked": {
-                                          "type": "boolean"
-                                        },
-                                        "members": {
-                                          "items": {
-                                            "properties": {
-                                              "blockedEntryIds": {
-                                                "items": {
-                                                  "type": "string"
-                                                },
-                                                "type": "array"
-                                              },
-                                              "displayName": {
-                                                "type": "string"
-                                              },
-                                              "memberId": {
-                                                "type": "string"
-                                              }
-                                            },
-                                            "required": [
-                                              "memberId",
-                                              "displayName",
-                                              "blockedEntryIds"
-                                            ],
-                                            "type": "object"
-                                          },
-                                          "type": "array"
-                                        }
-                                      },
-                                      "required": [
-                                        "blockedEntries",
-                                        "currentEntryBlocked",
-                                        "members"
-                                      ],
-                                      "type": "object"
-                                    },
-                                    {
-                                      "type": "null"
-                                    }
-                                  ]
-                                },
-                                "entries": {
-                                  "items": {
-                                    "properties": {
-                                      "addedBy": {
-                                        "type": "string"
-                                      },
-                                      "entryId": {
-                                        "type": "string"
-                                      },
-                                      "itemId": {
-                                        "anyOf": [
-                                          {
-                                            "type": "string"
-                                          },
-                                          {
-                                            "type": "null"
-                                          }
-                                        ]
-                                      },
-                                      "position": {
-                                        "maximum": 9007199254740991,
-                                        "minimum": -9007199254740991,
-                                        "type": "integer"
-                                      },
-                                      "unavailable": {
-                                        "type": "boolean"
-                                      }
-                                    },
-                                    "required": [
-                                      "entryId",
-                                      "position",
-                                      "itemId",
-                                      "unavailable",
-                                      "addedBy"
-                                    ],
-                                    "type": "object"
-                                  },
-                                  "type": "array"
-                                },
-                                "position": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "revision": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "revision",
-                                "position",
-                                "entries",
-                                "eligibility"
-                              ],
-                              "type": "object"
-                            },
-                            {
-                              "type": "null"
-                            }
-                          ]
-                        },
-                        "queueRevision": {
-                          "type": "string"
-                        },
-                        "readiness": {
-                          "properties": {
-                            "aggregate": {
-                              "type": "string"
-                            },
-                            "buffering": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            },
-                            "lagging": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            },
-                            "memberCount": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            },
-                            "ready": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            },
-                            "stale": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            }
-                          },
-                          "required": [
-                            "aggregate",
-                            "ready",
-                            "buffering",
-                            "lagging",
-                            "stale",
-                            "memberCount"
-                          ],
-                          "type": "object"
-                        },
-                        "reconnectGeneration": {
-                          "type": "string"
-                        },
-                        "revision": {
-                          "type": "string"
-                        },
-                        "settings": {
-                          "properties": {
-                            "repeatMode": {
-                              "type": "string"
-                            },
-                            "shuffleEnabled": {
-                              "type": "boolean"
-                            }
-                          },
-                          "required": [
-                            "shuffleEnabled",
-                            "repeatMode"
-                          ],
-                          "type": "object"
-                        },
-                        "settingsRevision": {
-                          "type": "string"
-                        },
-                        "state": {
-                          "type": "string"
-                        },
-                        "sync": {
-                          "properties": {
-                            "noCorrectionUnderMs": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            },
-                            "rateCorrectionMaxMs": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            },
-                            "rateCorrectionMaximum": {
-                              "type": "string"
-                            },
-                            "rateCorrectionMinimum": {
-                              "type": "string"
-                            },
-                            "seekAtOrOverMs": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            }
-                          },
-                          "required": [
-                            "noCorrectionUnderMs",
-                            "rateCorrectionMinimum",
-                            "rateCorrectionMaximum",
-                            "rateCorrectionMaxMs",
-                            "seekAtOrOverMs"
-                          ],
-                          "type": "object"
-                        },
-                        "timeline": {
-                          "properties": {
-                            "anchorAt": {
-                              "type": "string"
-                            },
-                            "anchorPositionUs": {
-                              "type": "string"
-                            },
-                            "currentEntryId": {
-                              "type": "string"
-                            },
-                            "itemId": {
-                              "type": "string"
-                            },
-                            "queuePosition": {
-                              "maximum": 9007199254740991,
-                              "minimum": -9007199254740991,
-                              "type": "integer"
-                            },
-                            "rate": {
-                              "properties": {
-                                "denominator": {
-                                  "type": "string"
-                                },
-                                "numerator": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "numerator",
-                                "denominator"
-                              ],
-                              "type": "object"
-                            },
-                            "state": {
-                              "type": "string"
-                            },
-                            "waitUntil": {
-                              "anyOf": [
-                                {
-                                  "type": "string"
-                                },
-                                {
-                                  "type": "null"
-                                }
-                              ]
-                            }
-                          },
-                          "required": [
-                            "itemId",
-                            "currentEntryId",
-                            "state",
-                            "anchorPositionUs",
-                            "anchorAt",
-                            "rate",
-                            "queuePosition",
-                            "waitUntil"
-                          ],
-                          "type": "object"
-                        },
-                        "updatedAt": {
-                          "type": "string"
-                        },
-                        "viewerMemberId": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "id",
-                        "name",
-                        "state",
-                        "hostAuthority",
-                        "hostMemberId",
-                        "revision",
-                        "playbackRevision",
-                        "settingsRevision",
-                        "governanceRevision",
-                        "queueRevision",
-                        "reconnectGeneration",
-                        "lastCommand",
-                        "lastCommandId",
-                        "endedReason",
-                        "eventOrdinal",
-                        "createdAt",
-                        "updatedAt",
-                        "permissions",
-                        "authority",
-                        "host",
-                        "timeline",
-                        "settings",
-                        "sync",
-                        "readiness",
-                        "members",
-                        "queue",
-                        "viewerMemberId"
-                      ],
-                      "type": "object"
+                    "groupId": {
+                      "type": "string"
+                    },
+                    "playbackRevision": {
+                      "type": "string"
                     },
                     "protocolVersion": {
                       "type": "string"
                     },
+                    "readiness": {
+                      "properties": {
+                        "aggregate": {
+                          "type": "string"
+                        },
+                        "buffering": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "lagging": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "memberCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "ready": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "stale": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "aggregate",
+                        "ready",
+                        "buffering",
+                        "lagging",
+                        "stale",
+                        "memberCount"
+                      ],
+                      "type": "object"
+                    },
+                    "revision": {
+                      "type": "string"
+                    },
                     "serverTime": {
+                      "type": "string"
+                    },
+                    "state": {
                       "type": "string"
                     }
                   },
                   "required": [
                     "protocolVersion",
                     "serverTime",
-                    "group"
+                    "groupId",
+                    "state",
+                    "revision",
+                    "playbackRevision",
+                    "readiness"
                   ],
                   "type": "object"
                 }

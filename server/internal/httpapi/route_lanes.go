@@ -428,6 +428,7 @@ var routeLanes = map[string]string{
 	"POST /v1/admin/state-permissions:fix":                                       "admin-heavy",
 	"POST /v1/admin/storage-usage/{category}/cleanup":                            "admin",
 	"POST /v1/admin/titles/merge":                                                "admin-heavy",
+	"POST /v1/admin/titles/separate-artist":                                      "admin",
 	"POST /v1/admin/webhooks":                                                    "admin",
 	"POST /v1/admin/webhooks/{id}/test":                                          "admin",
 	"POST /v1/albums/{id}/metadata/musicbrainz/policy":                           "default",

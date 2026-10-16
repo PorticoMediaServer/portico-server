@@ -8198,7 +8198,7 @@ export const routes = [
     "id": "merge_titles",
     "method": "POST",
     "path": "/v1/admin/titles/merge",
-    "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book or artist: its songs, files or albums) and everyone's state combined",
+    "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book, artist or author: its songs, files, albums or books) and everyone's state combined",
     "access": "owner",
     "requires": "library",
     "lane": "default",
@@ -13372,6 +13372,26 @@ export const routes = [
     "admission": "expensive"
   },
   {
+    "id": "separate_artist",
+    "method": "POST",
+    "path": "/v1/admin/titles/separate-artist",
+    "summary": "Say that some albums are not by the artist they are filed under: they move, with their songs' credits, to a new artist of the same name that is never joined back automatically; at least one album stays",
+    "access": "owner",
+    "requires": "library",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 8192,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "invalid_request",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "admin"
+  },
+  {
     "id": "set_container_personal_state",
     "method": "PUT",
     "path": "/v1/containers/{kind}/{id}/personal-state",
@@ -16495,6 +16515,7 @@ export const routePaths = {
   "save_live_source": "/v1/admin/live-sources",
   "save_queue_as_playlist": "/v1/queues/{id}:save-as-playlist",
   "search": "/v1/search",
+  "separate_artist": "/v1/admin/titles/separate-artist",
   "set_container_personal_state": "/v1/containers/{kind}/{id}/personal-state",
   "set_live_settings": "/v1/admin/live/settings",
   "set_live_source_configuration": "/v1/admin/live-sources/{id}/configuration",

@@ -121,6 +121,16 @@ type BundleSubtitle struct {
 	// "sub" is the pictures beside a VobSub index; "font0" onward are a styled
 	// script's attached fonts.
 	Files map[string]BundleFile `json:"files"`
+	// Lines is an image track's line count and how many are forced (PGS,
+	// VobSub), so an offline player offers "Forced only" exactly where the
+	// streaming one does.
+	Lines *BundleLines `json:"lines,omitempty"`
+}
+
+// BundleLines counts an image subtitle track's lines.
+type BundleLines struct {
+	Forced int `json:"forced"`
+	Total  int `json:"total"`
 }
 
 // BundleMedia is the downloaded file itself, as a player needs to know it
