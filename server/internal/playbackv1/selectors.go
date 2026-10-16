@@ -31,10 +31,10 @@ func (s Selector) isQuery() bool { return s.Query != nil || s.Saved != nil }
 
 type ContainerRef struct {
 	Kind string `json:"kind"`
-	ID   string `json:"id"`
+	ID   string `json:"id" ref:"title"`
 }
 type ItemList struct {
-	IDs []string `json:"ids"`
+	IDs []string `json:"ids" ref:"title"`
 }
 
 // Order is a segment's order: its source order or a seeded shuffle.
