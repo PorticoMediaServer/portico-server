@@ -876,7 +876,6 @@ func searchContext(kind string) (string, string) {
 // small projection, so an offset page is both cheap and stable under the
 // response's revision fence.
 func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g searchGroupDefinition, match, scopeHash, fingerprint string, rev ContentRevision, pageSize int, out *SearchGroupResult) error {
-	raw, _ := json.Marshal(r.Libraries)
 	libraries := r.Libraries
 	if r.AllLibraries {
 		all, e := s.allLibraryIDs(ctx)
@@ -884,17 +883,9 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 			return e
 		}
 		libraries = all
-		raw, _ = json.Marshal(libraries)
 	}
 	viewer := Viewer{Profile: r.Profile, Fence: r.ViewerFence, Libraries: libraries, Restrictions: r.Restrictions}
 	if e := s.prepareViewer(viewer); e != nil {
-		return e
-	}
-	restriction, bound := ItemRestrictionSQL("i.id", viewer.EffectiveRestrictions())
-	extra, extraArgs := searchCJKPredicate("portico_search_fold(people.name)", r.Q)
-	countArgs := append([]any{match, string(raw)}, bound...)
-	countArgs = append(countArgs, extraArgs...)
-	if e := s.read().QueryRowContext(ctx, `SELECT count(*) FROM catalog_people_names JOIN catalog_people people ON people.id=catalog_people_names.rowid WHERE catalog_people_names MATCH ? AND EXISTS(SELECT 1 FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=people.id AND `+restriction+`)`+extra, countArgs...).Scan(&out.TotalCount); e != nil {
 		return e
 	}
 	sortID := resolveSearchSort(g, r.Sort)
@@ -912,10 +903,13 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 			return ErrCursor
 		}
 	}
-	people, e := s.peopleMatches(r.Q, match, viewer, pageSize+1, offset, sortID, r.Direction)
+	people, total, exact, e := s.peopleMatches(r.Q, match, viewer, pageSize+1, offset, sortID, r.Direction)
 	if e != nil {
 		return e
 	}
+	// The matches are counted up to peopleRankedMaximum; a broader name
+	// search says so rather than counting every match.
+	out.TotalCount, out.TotalCountExact = total, exact
 	more := len(people) > pageSize
 	if more {
 		people = people[:pageSize]

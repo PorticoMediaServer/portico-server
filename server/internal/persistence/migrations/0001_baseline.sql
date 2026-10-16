@@ -371,6 +371,41 @@ CREATE TABLE catalog_credits(
  PRIMARY KEY(entity_id,ord)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_credits_person ON catalog_credits(person_id,entity_id);
 CREATE INDEX catalog_credits_provider_person ON catalog_credits(provider,provider_person_id,entity_id) WHERE provider_person_id<>'';
+-- A person's credits counted per library and department, kept by the credit
+-- writes themselves: the people list and search say how many credits a person
+-- has, and in which departments, without reading every credit.
+CREATE TABLE catalog_person_credit_counts(
+ person_id INTEGER NOT NULL,
+ library_id INTEGER NOT NULL,
+ department_id INTEGER NOT NULL,
+ credits INTEGER NOT NULL,
+ PRIMARY KEY(person_id,library_id,department_id)) WITHOUT ROWID, STRICT;
+CREATE TRIGGER catalog_person_credit_counts_join AFTER INSERT ON catalog_credits WHEN NEW.person_id IS NOT NULL BEGIN
+ INSERT INTO catalog_person_credit_counts(person_id,library_id,department_id,credits) SELECT NEW.person_id,e.library_id,NEW.department_id,1 FROM catalog_entities e WHERE e.id=NEW.entity_id
+  ON CONFLICT(person_id,library_id,department_id) DO UPDATE SET credits=credits+1;
+END;
+CREATE TRIGGER catalog_person_credit_counts_leave AFTER DELETE ON catalog_credits WHEN OLD.person_id IS NOT NULL BEGIN
+ UPDATE catalog_person_credit_counts SET credits=credits-1 WHERE person_id=OLD.person_id AND department_id=OLD.department_id AND library_id=(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id);
+ DELETE FROM catalog_person_credit_counts WHERE person_id=OLD.person_id AND department_id=OLD.department_id AND library_id=(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id) AND credits<=0;
+END;
+CREATE TRIGGER catalog_person_credit_counts_move AFTER UPDATE OF person_id,department_id,entity_id ON catalog_credits
+ WHEN (OLD.person_id,OLD.department_id,OLD.entity_id) IS NOT (NEW.person_id,NEW.department_id,NEW.entity_id) BEGIN
+ UPDATE catalog_person_credit_counts SET credits=credits-1 WHERE OLD.person_id IS NOT NULL AND person_id=OLD.person_id AND department_id=OLD.department_id AND library_id=(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id);
+ DELETE FROM catalog_person_credit_counts WHERE OLD.person_id IS NOT NULL AND person_id=OLD.person_id AND department_id=OLD.department_id AND library_id=(SELECT library_id FROM catalog_entities WHERE id=OLD.entity_id) AND credits<=0;
+ INSERT INTO catalog_person_credit_counts(person_id,library_id,department_id,credits) SELECT NEW.person_id,e.library_id,NEW.department_id,1 FROM catalog_entities e WHERE NEW.person_id IS NOT NULL AND e.id=NEW.entity_id
+  ON CONFLICT(person_id,library_id,department_id) DO UPDATE SET credits=credits+1;
+END;
+-- An entity's credits leave before the entity, while its library is still known.
+CREATE TRIGGER catalog_person_credit_counts_entity_delete BEFORE DELETE ON catalog_entities BEGIN
+ DELETE FROM catalog_credits WHERE entity_id=OLD.id;
+END;
+CREATE TRIGGER catalog_person_credit_counts_entity_move AFTER UPDATE OF library_id ON catalog_entities WHEN OLD.library_id IS NOT NEW.library_id BEGIN
+ UPDATE catalog_person_credit_counts SET credits=credits-(SELECT count(*) FROM catalog_credits c WHERE c.entity_id=NEW.id AND c.person_id=catalog_person_credit_counts.person_id AND c.department_id=catalog_person_credit_counts.department_id)
+  WHERE library_id=OLD.library_id AND EXISTS(SELECT 1 FROM catalog_credits c WHERE c.entity_id=NEW.id AND c.person_id=catalog_person_credit_counts.person_id AND c.department_id=catalog_person_credit_counts.department_id);
+ DELETE FROM catalog_person_credit_counts WHERE library_id=OLD.library_id AND credits<=0 AND person_id IN(SELECT person_id FROM catalog_credits WHERE entity_id=NEW.id);
+ INSERT INTO catalog_person_credit_counts(person_id,library_id,department_id,credits) SELECT person_id,NEW.library_id,department_id,count(*) FROM catalog_credits WHERE entity_id=NEW.id AND person_id IS NOT NULL GROUP BY person_id,department_id
+  ON CONFLICT(person_id,library_id,department_id) DO UPDATE SET credits=credits+excluded.credits;
+END;
 
 -- Genres and every other open vocabulary (Direct Design §3.4).
 CREATE TABLE catalog_term_sources(

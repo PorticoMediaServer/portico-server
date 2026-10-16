@@ -344,7 +344,7 @@ func (s *Service) People(viewer Viewer, server, q string, limit int) (PeopleDire
 	if out.Revision, e = s.peopleRevision(viewer.Libraries, viewer.Profile); e != nil {
 		return out, e
 	}
-	summaries, e := s.peopleMatches(normalized, match, viewer, limit, 0, "relevance", "desc")
+	summaries, _, _, e := s.peopleMatches(normalized, match, viewer, limit, 0, "relevance", "desc")
 	if e != nil {
 		return out, e
 	}
@@ -352,64 +352,120 @@ func (s *Service) People(viewer Viewer, server, q string, limit int) (PeopleDire
 	return out, nil
 }
 
+// peopleRankedMaximum is the most matching people a name search ranks by
+// relevance (bm25 with the exact-name and name-prefix boosts). A broader
+// search (a letter or two typed) reads people in name order instead, those
+// whose name starts with the typed text first, so its cost follows the page.
+const peopleRankedMaximum = 1000
+
+// peopleWalkWindow is how many people a broad name search reads in name order
+// for one page before it ranks the matches after all.
+const peopleWalkWindow = 20000
+
+// personCreditedSQL is "this person has a credit the viewer can see" over the
+// person id expression. An unrestricted viewer reads the maintained counts; a
+// restricted one tests the restriction on the person's credits.
+func personCreditedSQL(viewer Viewer, person string) (string, []any) {
+	restrictions := viewer.EffectiveRestrictions()
+	if !restrictions.Active() {
+		return `EXISTS(SELECT 1 FROM catalog_person_credit_counts pcc JOIN catalog_libraries l ON l.id=pcc.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pcc.person_id=` + person + `)`, []any{viewer.librariesJSON()}
+	}
+	restriction, bound := ItemRestrictionSQL("i.id", restrictions)
+	return `EXISTS(SELECT 1 FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=` + person + ` AND ` + restriction + `)`, append([]any{viewer.librariesJSON()}, bound...)
+}
+
+// personCreditCountSQL counts the person's credits the viewer can see.
+func personCreditCountSQL(viewer Viewer, person string) (string, []any) {
+	restrictions := viewer.EffectiveRestrictions()
+	if !restrictions.Active() {
+		return `(SELECT COALESCE(sum(pcc.credits),0) FROM catalog_person_credit_counts pcc JOIN catalog_libraries l ON l.id=pcc.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pcc.person_id=` + person + `)`, []any{viewer.librariesJSON()}
+	}
+	restriction, bound := ItemRestrictionSQL("i.id", restrictions)
+	return `(SELECT count(*) FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=` + person + ` AND ` + restriction + `)`, append([]any{viewer.librariesJSON()}, bound...)
+}
+
 // peopleMatches is shared by the directory and the search people group. offset
-// and the sort are applied by the caller's paging contract.
-func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset int, order, direction string) ([]PersonSummary, error) {
-	restriction, bound := ItemRestrictionSQL("i.id", viewer.EffectiveRestrictions())
-	// Relevance is bm25 over the name index with an exact-name and a name-prefix
-	// boost, so "ada" surfaces Ada before Adaline without client-side ranking.
-	// The page is chosen first; credits are counted only for its people (a
-	// select-list count would run for every match before the sort).
-	relevance := `(-bm25(catalog_people_names))+(CASE WHEN portico_search_fold(people.name)=? THEN 1000 ELSE 0 END)+(CASE WHEN portico_search_fold(people.name) LIKE ? ESCAPE '\' THEN 100 ELSE 0 END)`
-	relevanceArgs := []any{facettext.SearchFold(q), searchPrefix(facettext.SearchFold(q))}
-	inner, outer := `ORDER BY rel DESC,people.sort_name,people.id`, `ORDER BY page.rel DESC,page.sort_name,page.id`
-	if order == "title" {
-		relevance, relevanceArgs = `0`, nil
-		dir := strings.ToUpper(direction)
-		inner, outer = `ORDER BY people.sort_name `+dir+`,people.id `+dir, `ORDER BY page.sort_name `+dir+`,page.id `+dir
-	}
-	args := []any{viewer.librariesJSON()}
-	args = append(args, bound...)
-	args = append(args, relevanceArgs...)
-	args = append(args, match, viewer.librariesJSON())
-	args = append(args, bound...)
+// and the sort are applied by the caller's paging contract. total counts the
+// matches up to peopleRankedMaximum; exact is false beyond it.
+func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset int, order, direction string) (out []PersonSummary, total int, exact bool, e error) {
+	credited, creditedArgs := personCreditedSQL(viewer, "people.id")
 	extra, extraArgs := searchCJKPredicate("portico_search_fold(people.name)", q)
-	args = append(args, extraArgs...)
-	args = append(args, limit, offset)
-	rows, e := s.read().Query(`SELECT page.token,page.name,page.sort_name,(SELECT count(*) FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=page.id AND `+restriction+`) credits
-	 FROM (SELECT people.id,people.token,people.name,people.sort_name,`+relevance+` AS rel FROM catalog_people_names JOIN catalog_people people ON people.id=catalog_people_names.rowid WHERE catalog_people_names MATCH ? AND EXISTS(SELECT 1 FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=people.id AND `+restriction+`) `+extra+inner+` LIMIT ? OFFSET ?) page `+outer, args...)
-	if e != nil {
-		return nil, e
+	matched := `catalog_people_names JOIN catalog_people people ON people.id=catalog_people_names.rowid WHERE catalog_people_names MATCH ? AND ` + credited + extra
+	matchedArgs := append(append([]any{match}, creditedArgs...), extraArgs...)
+	if e = s.read().QueryRow(`SELECT count(*) FROM (SELECT 1 FROM `+matched+` LIMIT `+strconv.Itoa(peopleRankedMaximum+1)+`)`, matchedArgs...).Scan(&total); e != nil {
+		return nil, 0, false, e
 	}
-	out := []PersonSummary{}
+	exact = total <= peopleRankedMaximum
+	if !exact {
+		total = peopleRankedMaximum
+	}
+	ids := []int64(nil)
+	if !exact {
+		var walked bool
+		ids, walked, e = s.peopleNameWalk(q, match, viewer, limit, offset, order, direction)
+		if e != nil {
+			return nil, 0, false, e
+		}
+		if !walked {
+			ids = nil
+		}
+	}
+	count, countArgs := personCreditCountSQL(viewer, "page.id")
+	var rows *sql.Rows
+	if ids != nil {
+		raw, _ := json.Marshal(ids)
+		rows, e = s.read().Query(`SELECT page.token,page.name,page.sort_name,`+count+` FROM json_each(?) j CROSS JOIN catalog_people page ON page.id=j.value ORDER BY j.key`, append(countArgs, string(raw))...)
+	} else {
+		// Relevance is bm25 over the name index with an exact-name and a name-prefix
+		// boost, so "ada" surfaces Ada before Adaline without client-side ranking.
+		// The page is chosen first; credits are counted only for its people.
+		relevance := `(-bm25(catalog_people_names))+(CASE WHEN portico_search_fold(people.name)=? THEN 1000 ELSE 0 END)+(CASE WHEN portico_search_fold(people.name) LIKE ? ESCAPE '\' THEN 100 ELSE 0 END)`
+		relevanceArgs := []any{facettext.SearchFold(q), searchPrefix(facettext.SearchFold(q))}
+		inner, outer := `ORDER BY rel DESC,people.sort_name,people.id`, `ORDER BY page.rel DESC,page.sort_name,page.id`
+		if order == "title" {
+			relevance, relevanceArgs = `0`, nil
+			dir := strings.ToUpper(direction)
+			inner, outer = `ORDER BY people.sort_name `+dir+`,people.id `+dir, `ORDER BY page.sort_name `+dir+`,page.id `+dir
+		}
+		args := append([]any{}, countArgs...)
+		args = append(args, relevanceArgs...)
+		args = append(args, matchedArgs...)
+		args = append(args, limit, offset)
+		rows, e = s.read().Query(`SELECT page.token,page.name,page.sort_name,`+count+` credits
+	 FROM (SELECT people.id,people.token,people.name,people.sort_name,`+relevance+` AS rel FROM `+matched+` `+inner+` LIMIT ? OFFSET ?) page `+outer, args...)
+	}
+	if e != nil {
+		return nil, 0, false, e
+	}
+	out = []PersonSummary{}
 	for rows.Next() {
 		var v PersonSummary
 		v.Roles = []string{}
 		if e = rows.Scan(&v.ID, &v.Name, &v.SortName, &v.CreditCount); e != nil {
 			rows.Close()
-			return nil, e
+			return nil, 0, false, e
 		}
 		out = append(out, v)
 	}
 	e = rows.Err()
 	rows.Close()
 	if e != nil {
-		return nil, e
+		return nil, 0, false, e
 	}
 	// The portrait and the roles used to be a query each, per person: a hundred
 	// results were two hundred and one statements for one directory page. They
 	// are the same two questions asked of a list of ids, so they are asked once.
-	ids := make([]string, 0, len(out))
+	tokens := make([]string, 0, len(out))
 	for i := range out {
-		ids = append(ids, out[i].ID)
+		tokens = append(tokens, out[i].ID)
 	}
-	digests, e := s.portraitDigests(ids, viewer)
+	digests, e := s.portraitDigests(tokens, viewer)
 	if e != nil {
-		return nil, e
+		return nil, 0, false, e
 	}
-	roles, e := s.peopleRoles(ids, viewer)
+	roles, e := s.peopleRoles(tokens, viewer)
 	if e != nil {
-		return nil, e
+		return nil, 0, false, e
 	}
 	for i := range out {
 		out[i].PortraitURL = personPortraitURL(out[i].ID, digests[out[i].ID])
@@ -417,7 +473,68 @@ func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset in
 			out[i].Roles = named
 		}
 	}
-	return out, nil
+	return out, total, exact, nil
+}
+
+// peopleNameWalk pages a broad name search in name order without ranking its
+// matches: for relevance, the people whose name starts with the typed text
+// first, then the rest; for the name sort, everyone in name order. Each
+// person read is tested against the name index by its id. ok is false when
+// peopleWalkWindow people held neither the page nor the end of the list.
+func (s *Service) peopleNameWalk(q, match string, viewer Viewer, limit, offset int, order, direction string) (ids []int64, ok bool, e error) {
+	credited, creditedArgs := personCreditedSQL(viewer, "people.id")
+	extra, extraArgs := searchCJKPredicate("portico_search_fold(people.name)", q)
+	test := ` AND EXISTS(SELECT 1 FROM catalog_people_names WHERE catalog_people_names MATCH ? AND rowid=people.id) AND ` + credited + extra
+	testArgs := append(append([]any{match}, creditedArgs...), extraArgs...)
+	want := offset + limit
+	dir := "ASC"
+	if order == "title" && direction == "desc" {
+		dir = "DESC"
+	}
+	walk := func(bound string, boundArgs []any, n int) ([]int64, bool, error) {
+		// The window is a bounded run of the name index; the walk stops at n.
+		window := `SELECT people.id FROM catalog_people people INDEXED BY catalog_people_name WHERE 1` + bound + ` ORDER BY people.sort_name ` + dir + `,people.id ` + dir + ` LIMIT ` + strconv.Itoa(peopleWalkWindow)
+		found, err := s.entityIDs(`SELECT people.id FROM (`+window+`) w CROSS JOIN catalog_people people ON people.id=w.id WHERE 1`+test+` ORDER BY people.sort_name `+dir+`,people.id `+dir+` LIMIT ?`, append(append(append([]any{}, boundArgs...), testArgs...), n)...)
+		if err != nil {
+			return nil, false, err
+		}
+		if len(found) >= n {
+			return found, true, nil
+		}
+		var scanned int
+		if err = s.read().QueryRow(`SELECT count(*) FROM (`+window+`)`, boundArgs...).Scan(&scanned); err != nil {
+			return nil, false, err
+		}
+		return found, scanned < peopleWalkWindow, nil
+	}
+	if order == "title" {
+		found, done, err := walk("", nil, want)
+		if err != nil || !done {
+			return nil, false, err
+		}
+		if offset >= len(found) {
+			return []int64{}, true, nil
+		}
+		return found[offset:], true, nil
+	}
+	lower := strings.ToLower(q)
+	prefix := ` AND people.sort_name>=? AND people.sort_name<?`
+	prefixArgs := []any{lower, lower + "\U0010ffff"}
+	first, done, err := walk(prefix, prefixArgs, want)
+	if err != nil || !done {
+		return nil, false, err
+	}
+	if len(first) < want {
+		rest, done, err := walk(` AND NOT (people.sort_name>=? AND people.sort_name<?)`, prefixArgs, want-len(first))
+		if err != nil || !done {
+			return nil, false, err
+		}
+		first = append(first, rest...)
+	}
+	if offset >= len(first) {
+		return []int64{}, true, nil
+	}
+	return first[offset:], true, nil
 }
 
 // portraitDigests resolves the portrait thumbnail digest for a page of people in
@@ -464,19 +581,27 @@ func (s *Service) peopleRoles(ids []string, viewer Viewer) (map[string][]string,
 	if len(ids) == 0 {
 		return out, nil
 	}
-	restriction, bound := ItemRestrictionSQL("i.id", viewer.EffectiveRestrictions())
-	args := make([]any, 0, len(ids)+1+len(bound))
-	args = append(args, viewer.librariesJSON())
+	query := `SELECT p.token,dept.label,sum(pcc.credits) AS n FROM catalog_person_credit_counts pcc
+	 JOIN catalog_people p ON p.id=pcc.person_id
+	 JOIN catalog_libraries l ON l.id=pcc.library_id AND l.library_id IN(SELECT value FROM json_each(?))
+	 JOIN catalog_credit_labels dept ON dept.id=pcc.department_id
+ WHERE p.token IN (` + placeholders(len(ids)) + `) AND dept.label<>''
+ GROUP BY p.token,dept.label ORDER BY p.token,n DESC,dept.label`
+	args := []any{viewer.librariesJSON()}
 	for _, id := range ids {
 		args = append(args, id)
 	}
-	args = append(args, bound...)
-	rows, e := s.read().Query(`SELECT p.token,dept.label,count(*) AS n FROM catalog_credits pc
+	if restrictions := viewer.EffectiveRestrictions(); restrictions.Active() {
+		restriction, bound := ItemRestrictionSQL("i.id", restrictions)
+		query = `SELECT p.token,dept.label,count(*) AS n FROM catalog_credits pc
 	 JOIN catalog_people p ON p.id=pc.person_id
 	 JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?))
 	 JOIN catalog_credit_labels dept ON dept.id=pc.department_id
- WHERE p.token IN (`+placeholders(len(ids))+`) AND dept.label<>'' AND `+restriction+`
- GROUP BY p.token,dept.label ORDER BY p.token,n DESC,dept.label`, args...)
+ WHERE p.token IN (` + placeholders(len(ids)) + `) AND dept.label<>'' AND ` + restriction + `
+ GROUP BY p.token,dept.label ORDER BY p.token,n DESC,dept.label`
+		args = append(args, bound...)
+	}
+	rows, e := s.read().Query(query, args...)
 	if e != nil {
 		return nil, e
 	}

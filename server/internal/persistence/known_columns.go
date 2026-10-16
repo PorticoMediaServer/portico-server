@@ -1086,6 +1086,10 @@ catalog_people_names_docsize.sz
 catalog_people_names_idx.pgno
 catalog_people_names_idx.segid
 catalog_people_names_idx.term
+catalog_person_credit_counts.credits
+catalog_person_credit_counts.department_id
+catalog_person_credit_counts.library_id
+catalog_person_credit_counts.person_id
 catalog_personal_play_totals.entity_id
 catalog_personal_play_totals.profile_id
 catalog_personal_play_totals.total
