@@ -1,3 +1,4 @@
+import {routePath, routePrefix} from '../../contracts/src/routes.ts';
 import {parseClaimStatus, type ClaimExpected, type ClaimStatus} from './claim-onboarding.ts';
 import type {HttpLocalApi} from './index.ts';
 import type {ServerPin} from './route-identity.ts';
@@ -22,7 +23,7 @@ export type WebClaimStatus = ClaimStatus & {approvalUrl?: string; claimCode?: st
 type Api = Pick<HttpLocalApi, 'request'>;
 
 const post = async (api: Api, pin: ServerPin, action: string, body: unknown, signal?: AbortSignal): Promise<WebClaimStatus> => {
-  const raw = await api.request<Record<string, unknown>>(`/v1/networking/claim/${action}`, 'POST', body, signal);
+  const raw = await api.request<Record<string, unknown>>(routePrefix('post_networking_claim_approve', 3) + action, 'POST', body, signal);
   const status = parseClaimStatus(raw, pin) as WebClaimStatus;
   const approvalUrl = typeof raw?.approvalUrl === 'string' ? raw.approvalUrl : undefined;
   const claimCode = typeof raw?.claimCode === 'string' ? raw.claimCode : undefined;
@@ -41,7 +42,7 @@ export function safeApprovalUrl(url: string | undefined, hostedOrigin: string): 
 
 /** Steps 1 and 2: prepare (when needed) and register the claim; returns the approval URL and the expected operation. */
 export async function beginWebClaim(api: Api, pin: ServerPin, signal?: AbortSignal): Promise<{status: WebClaimStatus; expected: ClaimExpected}> {
-  let status = parseClaimStatus(await api.request('/v1/networking/claim', 'GET', undefined, signal), pin) as WebClaimStatus;
+  let status = parseClaimStatus(await api.request(routePath('get_networking_claim'), 'GET', undefined, signal), pin) as WebClaimStatus;
   // No account here: the approver on web.getportico.tv becomes the owner.
   if (status.actions.includes('prepare')) status = await post(api, pin, 'prepare', {expected: status.identity}, signal);
   if (!status.operation) throw new ClaimError('claim_unavailable');
@@ -54,7 +55,7 @@ export async function beginWebClaim(api: Api, pin: ServerPin, signal?: AbortSign
 export async function awaitWebClaim(api: Api, pin: ServerPin, expected: ClaimExpected, signal?: AbortSignal): Promise<WebClaimStatus> {
   // The server answers with the final claim status, or `{state: 'approval_closed' | 'approval_changed'}`
   // when the person denied, the code expired, or the claim changed underneath.
-  const raw = await api.request<Record<string, unknown>>('/v1/networking/claim/await-approval', 'POST', {expected}, signal);
+  const raw = await api.request<Record<string, unknown>>(routePath('post_networking_claim_await_approval'), 'POST', {expected}, signal);
   if (raw?.state === 'approval_closed' || raw?.state === 'approval_changed') throw new ClaimError(raw.state);
   let status = parseClaimStatus(raw, pin) as WebClaimStatus;
   if (status.operation && status.actions.includes('continue') && !status.approvalRequired) status = await post(api, pin, 'continue', {expected: status.operation}, signal);
