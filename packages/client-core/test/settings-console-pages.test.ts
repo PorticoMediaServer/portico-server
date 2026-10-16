@@ -59,6 +59,19 @@ test('remote access carries the home networks, the address to give out, proxies,
   assert.ok(limit && limit.kind === 'server-setting' && limit.control.type === 'number' && limit.control.empty?.stores === 0);
 });
 
+test('secure connection comes first on remote access: its status, a switch once there is a connection, then the owner\'s own certificate', () => {
+  for (const platform of ['web', 'phone'] as const) {
+    const remote = page(server(platform), 'remote')!;
+    const secure = remote.sections.find(s => s.id === 'secure')!;
+    assert.equal(secure.title, 'settings.server.secure.title');
+    assert.deepEqual(secure.rows.map(r => (r.kind === 'server-setting' ? `${r.form}.${r.key}` : r.kind === 'custom' ? r.id : '')), ['server.secureConnection', 'certificate.enabled', 'server.certificateStatus']);
+    const toggle = secure.rows.find(r => r.kind === 'server-setting')!;
+    assert.ok(toggle.kind === 'server-setting' && toggle.when?.key === 'claimed' && toggle.when.equals === true);
+    const order = remote.sections.map(s => s.id);
+    assert.ok(order.indexOf('secure') < order.indexOf('ownCertificate') && order.indexOf('ownCertificate') < order.indexOf('reach'), order.join());
+  }
+});
+
 test('background work speed is one named choice beside background priority', () => {
   const rows = page(server('web'), 'schedule')!.sections.flatMap(s => s.rows);
   const speed = rows.find(r => r.kind === 'server-setting' && r.key === 'backgroundSpeed');

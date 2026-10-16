@@ -5,6 +5,7 @@ import {parseConnectivityStatus, parseLogSettings, type ConnectivityPolicy, type
 import {parseDVRDocument, parseEnvelope, parseLiveDefaultsDocument, folderTemplateProblems, type DVRDefaults, type DVRDocument, type LiveDefaults} from '../administration.ts';
 import {loadRemoteAccess, saveRemoteAccess, type RemoteAccess, type RemoteConfiguration} from '../remote-access.ts';
 import {loadCertificate, saveCertificate, type CertificateApi, type CertificateConfig, type CertificateStatus} from '../certificates.ts';
+import {certificateClaimed} from './secure-connection.ts';
 import type {HttpLocalApi} from '../index.ts';
 import {DraftForm, type Loaded} from './draft-form.ts';
 
@@ -95,12 +96,20 @@ export function remoteAccessForm(deps: ServerFormDeps): DraftForm<RemoteConfigur
   });
 }
 
-export function certificateForm(deps: ServerFormDeps): DraftForm<CertificateConfig, CertificateStatus> {
+/**
+ * The certificate settings, plus `claimed`: whether the server has a Portico Account connection
+ * for the certificate service to work with. It is read-only (never sent back) and lets the
+ * Secure connection switch appear only once there is something to switch.
+ */
+export type CertificateDraft = CertificateConfig & Readonly<{claimed: boolean}>;
+
+export function certificateForm(deps: ServerFormDeps): DraftForm<CertificateDraft, CertificateStatus> {
   const api: CertificateApi = {requestCertificate: (action, body, signal) => (action === 'status' ? deps.api.request(routePath("get_networking_certificate"), 'GET', undefined, signal) : deps.api.request(routePath(action==='config'?'post_networking_certificate_config':'post_networking_certificate_retry'), 'POST', body, signal))};
   const bounded = () => { const c = new AbortController(); setTimeout(() => c.abort(), 15_000); return c.signal; };
-  return new DraftForm<CertificateConfig, CertificateStatus>({
-    load: async signal => { const status = await orAbsent(loadCertificate(api, signal)); return status && {value: status.config, status}; },
-    save: async (draft, _saved, status) => { const next = await saveCertificate(api, status!, draft, bounded()); return {value: next.config, status: next}; },
+  const draft = (status: CertificateStatus): CertificateDraft => ({...status.config, claimed: certificateClaimed(status)});
+  return new DraftForm<CertificateDraft, CertificateStatus>({
+    load: async signal => { const status = await orAbsent(loadCertificate(api, signal)); return status && {value: draft(status), status}; },
+    save: async (value, _saved, status) => { const next = await saveCertificate(api, status!, value, bounded()); return {value: draft(next), status: next}; },
   });
 }
 

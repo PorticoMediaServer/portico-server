@@ -1,7 +1,8 @@
 import {useEffect, useRef, useState} from 'react';
 import {initializeServer, resumeServerSetup} from '@core/setup-onboarding.ts';
 import {passwordStrength} from '@core/password-strength.ts';
-import type {SystemInfo} from '@core/index.ts';
+import type {HttpLocalApi, LocalSession, SystemInfo} from '@core/index.ts';
+import {ClaimError, awaitWebClaim, beginWebClaim, claimErrorMessage, safeApprovalUrl} from '../../app/claim-connect';
 import {useSession} from '../../app/session';
 import {currentI18n, useI18n} from '../../app/i18n';
 import {errorText} from '../../app/errors';
@@ -16,8 +17,13 @@ type Mode = 'hosted' | 'local';
  * ONB-01: first run. A fresh server used to open on a sign-in form for an
  * account that did not exist. When the bundled web finds `setupRequired`, it
  * shows this instead: name the server, choose how people sign in, create the
- * owner. Setup is then done: everything after (away-from-home access, the first library, a
- * Portico Account) lives in Server settings, and an empty Home points the owner to Add library.
+ * owner. With a Portico Account (the recommended choice), setup carries straight on into
+ * approving the server in that account (a window opens on the account's own page, where the
+ * person signs in if they need to): the server is then connected and asks for its certificate
+ * at once, so a secure connection is on from the start (Justin, 15 Oct). The server waits for
+ * the decision itself, so closing this page doesn't lose it; "Do this later" leaves the
+ * connection to Server settings › Remote access. Everything else (away-from-home access, the
+ * first library) lives in Server settings, and an empty Home points the owner to Add library.
  *
  * The setup secret comes from `POST /v1/setup/browser`, which the server answers
  * for any browser on an allowed origin (no setup code, even remotely); the draft
@@ -37,6 +43,11 @@ export function ServerSetup({system}: {system: SystemInfo}) {
   const [error, setError] = useState('');
   const [resuming, setResuming] = useState(true);
   const inspecting = useRef(false);
+  // The Portico Account step, after the owner exists: the signed-in session waits here until the
+  // server is approved (or the person chooses to do it later).
+  const [connecting, setConnecting] = useState<{api: HttpLocalApi; issued: LocalSession; url?: string; error?: unknown}>();
+  const claimRun = useRef<AbortController | null>(null);
+  useEffect(() => () => claimRun.current?.abort(), []);
 
   // The server's identity is pinned before anything secret is exchanged.
   useEffect(() => {
@@ -74,15 +85,58 @@ export function ServerSetup({system}: {system: SystemInfo}) {
     if (!valid || busy || !direct.pin) return;
     setBusy(true);
     setError('');
+    // Opened during the click, so pop-up blockers allow it; it is pointed at the approval page once known.
+    const win = mode === 'hosted' ? openClaimWindow() : null;
     try {
       const api = await direct.pairedApi();
       const {setupToken} = await api.request<{serverId: string; setupToken: string}>('/v1/setup/browser', 'POST', {});
       const issued = await initializeServer(api, browserSetupDraft(direct.pin.serverId), {setupToken, name: name.trim(), username: username.trim(), password, authMode: mode, recoverySaved: mode === 'hosted' ? saved : true, interactive: true}, AbortSignal.timeout(30000));
       setPassword('');
       setConfirm('');
+      if (mode === 'hosted') void connectAccount(api, issued, win);
+      else await direct.acceptIssued(api, issued);
+    } catch (e) {
+      closeBlank(win);
+      setError(setupMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  /** Connect the new server to the Portico Account that approves it; then the owner is signed in. */
+  const connectAccount = async (api: HttpLocalApi, issued: LocalSession, win: Window | null) => {
+    claimRun.current?.abort();
+    const controller = new AbortController();
+    claimRun.current = controller;
+    setConnecting({api, issued});
+    try {
+      api.setAccessToken(issued.accessToken);
+      const pin = api.getRouteConnection()?.pin ?? direct.pin;
+      if (!pin) throw new ClaimError('claim_unavailable');
+      const {status, expected} = await beginWebClaim(api, pin, controller.signal);
+      const url = safeApprovalUrl(status.approvalUrl, session.hostedUrl);
+      if (!url) throw new ClaimError('claim_unavailable');
+      if (win && !win.closed) { win.opener = null; win.location.href = url; }
+      if (!controller.signal.aborted) setConnecting({api, issued, url});
+      await awaitWebClaim(api, pin, expected, controller.signal);
+      if (controller.signal.aborted) return;
       await direct.acceptIssued(api, issued);
     } catch (e) {
-      setError(setupMessage(e));
+      if (controller.signal.aborted) return;
+      closeBlank(win);
+      setConnecting(current => current && {...current, error: e});
+    } finally {
+      if (claimRun.current === controller) claimRun.current = null;
+    }
+  };
+  const connectLater = async () => {
+    if (!connecting) return;
+    claimRun.current?.abort();
+    setBusy(true);
+    try {
+      await direct.acceptIssued(connecting.api, connecting.issued);
+    } catch (e) {
+      setConnecting({...connecting, error: e});
     } finally {
       setBusy(false);
     }
@@ -91,13 +145,31 @@ export function ServerSetup({system}: {system: SystemInfo}) {
   if (!direct.pin || resuming) {
     return <AuthFrame legal={false}>{session.error && !direct.pin ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => void direct.inspect()}}>{session.error}</Notice> : <Loading label={t('web.setup.preparing')} />}</AuthFrame>;
   }
+  if (connecting) {
+    const known = connecting.error ? claimErrorMessage(connecting.error) : undefined;
+    const failure = !connecting.error ? '' : known ? t(known) : errorText(connecting.error, 'claim', 'action');
+    return (
+      <AuthFrame title={t('web.setup.connectTitle', {server: name.trim()})} lede={t('web.setup.connectLede')}>
+        <div className={s.stack}>
+          {failure ? (
+            <Notice tone="error" action={{label: t('web.setup.connectRetry'), onClick: () => void connectAccount(connecting.api, connecting.issued, openClaimWindow())}}>{failure}</Notice>
+          ) : (
+            <Loading label={t('web.claim.waiting')} />
+          )}
+          {connecting.url && !failure ? <Button variant="secondary" block label={t('web.setup.connectOpen')} iconAfter="external" href={connecting.url} target="portico-claim" rel="noopener noreferrer" /> : null}
+          <Button variant="ghost" block label={t('web.setup.connectLater')} loading={busy} onClick={() => void connectLater()} />
+          <Text as="p" variant="caption" tone="tertiary" center>{t('web.setup.connectLaterHelp')}</Text>
+        </div>
+      </AuthFrame>
+    );
+  }
   return (
     <AuthFrame title={t('web.setup.welcome')} lede={t('web.setup.welcomeLede')} wide>
       <form className={s.stack} onSubmit={e => { e.preventDefault(); void submit(); }}>
         <Input label={t('web.general.serverName')} value={name} onChange={e => setName(e.target.value)} maxLength={80} help={t('web.setup.serverNameHelp')} required />
         <fieldset className={s.setupChoice} role="radiogroup" aria-label={t('web.setup.howSignIn')}>
           <legend className={s.setupLegend}>{t('web.setup.howSignIn')}</legend>
-          <ModeCard selected={mode === 'hosted'} onSelect={() => setMode('hosted')} icon="account" title={t('web.direct.useAccount')} badge={t('web.setup.recommended')} body={t('web.setup.hostedBody')} />
+          <ModeCard selected={mode === 'hosted'} onSelect={() => setMode('hosted')} icon="account" title={t('web.direct.useAccount')} badge={t('web.setup.recommended')} body={t('web.setup.hostedBodySecure')} />
           <ModeCard selected={mode === 'local'} onSelect={() => setMode('local')} icon="server" title={t('web.setup.localAccounts')} body={t('web.setup.localBody')} />
         </fieldset>
         <Text as="p" variant="bodyStrong">{mode === 'hosted' ? t('web.setup.recoveryTitleHosted') : t('web.setup.recoveryTitleLocal')}</Text>
@@ -109,7 +181,7 @@ export function ServerSetup({system}: {system: SystemInfo}) {
         {mode === 'hosted' ? <Checkbox checked={saved} onCheckedChange={setSaved} label={t('web.setup.savedPassword')} /> : null}
         {error ? <Notice tone="error">{error}</Notice> : null}
         <Button variant="primary" type="submit" size="lg" block label={mode === 'hosted' ? t('web.setup.createRecoveryOwner') : t('web.setup.createOwner')} loading={busy} disabled={!valid} />
-        {mode === 'hosted' ? <Text as="p" variant="caption" tone="tertiary" center>{t('web.setup.nextConnect')}</Text> : null}
+        {mode === 'hosted' ? <Text as="p" variant="caption" tone="tertiary" center>{t('web.setup.nextConnectSecure')}</Text> : null}
       </form>
     </AuthFrame>
   );
@@ -126,6 +198,14 @@ function ModeCard({selected, onSelect, icon, title, body, badge}: {selected: boo
       <span className={cx(s.setupRadio, selected && s.setupRadioOn)} aria-hidden />
     </button>
   );
+}
+
+/** The Portico Account window, opened blank during a click and pointed at the approval page once it is known. */
+function openClaimWindow(): Window | null {
+  return typeof window !== 'undefined' ? window.open('', 'portico-claim') : null;
+}
+function closeBlank(win: Window | null) {
+  try { if (win && !win.closed && win.location.href === 'about:blank') win.close(); } catch { /* already elsewhere */ }
 }
 
 /** A server left named "Portico" is indistinguishable from every other one; suggest the host. */

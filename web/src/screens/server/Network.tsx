@@ -1,9 +1,13 @@
+import {useEffect} from 'react';
 import {checkRemoteAccess, remoteAccessHelp, type RemoteAccess, type RemoteConfiguration} from '@core/remote-access.ts';
-import {certificateDate, certificateSummary, retryCertificate, type CertificateApi, type CertificateConfig, type CertificateStatus} from '@core/certificates.ts';
+import {certificateDate, retryCertificate, type CertificateApi, type CertificateConfig, type CertificateStatus} from '@core/certificates.ts';
 import type {ConnectivityStatus} from '@core/server-administration.ts';
-import type {ConnectivityDraft} from '@core/server-admin/server-forms.ts';
+import type {CertificateDraft, ConnectivityDraft} from '@core/server-admin/server-forms.ts';
 import type {HttpLocalApi} from '@core/index.ts';
-import {addressKind, certificateBadge, connectionLine, connectivityWarning, listedAddresses, mappingProblem, ownCertificateLine, remoteStatusLine} from '@core/server-admin/status-words.ts';
+import {secureConnectionView} from '@core/server-admin/secure-connection.ts';
+import {ClaimConnectButton} from '../auth/ClaimConnectButton';
+import {useClaimStatus} from './General';
+import {addressKind, connectionLine, connectivityWarning, listedAddresses, mappingProblem, ownCertificateLine, remoteStatusLine} from '@core/server-admin/status-words.ts';
 import {sentence, useAction} from '../../admin/console';
 import {useSession} from '../../app/session';
 import {useI18n} from '../../app/i18n';
@@ -39,7 +43,7 @@ export function RemoteStatusPanel() {
   );
 }
 
-/** The certificate's state and details, above its two settings. */
+/** The certificate's details and any problem with getting it, under the Secure connection status line. */
 export function CertificateStatusRow() {
   const {api} = useSession();
   const {t} = useI18n();
@@ -48,10 +52,8 @@ export function CertificateStatusRow() {
   const st = state.status;
   if (!st) return null;
   const certApi: CertificateApi = {requestCertificate: (act, body, signal) => (act === 'status' ? api.request('/v1/networking/certificate', 'GET', undefined, signal) : api.request(`/v1/networking/certificate/${act}`, 'POST', body, signal))};
-  const badge = certificateBadge(t, st);
   return (
     <>
-      <SettingsRow label={t('web.general.status')} state={certificateSummary(st)} control={<Badge tone={badge.tone} dot>{badge.label}</Badge>} />
       {st.dnsName || st.notAfter ? <SettingsRow label={t('web.network.certDetails')} stack start control={<KeyValue rows={[...(st.dnsName ? [[t('server.cert.name'), st.dnsName] as [string, string]] : []), ...(st.issuer ? [[t('server.cert.issuer'), st.issuer] as [string, string]] : []), [t('server.cert.expires'), certificateDate(st.notAfter)], [t('server.cert.renews'), certificateDate(st.renewAt)], ...(st.routeUrl ? [[t('server.cert.secureAddress'), st.routeUrl] as [string, string]] : [])]} />} /> : null}
       {st.errorCode ? <div style={{padding: '0 16px 12px'}}><Notice tone="warning" compact action={{label: t('action.tryAgain'), onClick: () => void action.run(async () => { await retryCertificate(certApi, AbortSignal.timeout(15000)); await form.load(); })}}>{t('web.network.certificateProblem')}{st.nextAttemptAt ? ` · ${t('server.cert.nextAttempt', {when: certificateDate(st.nextAttemptAt)})}` : ''}</Notice></div> : null}
     </>
@@ -93,4 +95,34 @@ export function OwnCertificateStatusRow() {
   const line = ownCertificateLine(t, status?.tls.customCertificate, iso => i18n.date(iso));
   if (!line) return null;
   return <SettingsRow label={t('web.general.status')} control={<Status tone={line.tone}>{line.text}</Status>} />;
+}
+
+/**
+ * Secure connection › status: whether devices reach this server encrypted, in one sentence, and
+ * the one step that turns it on when it isn't (connecting the server to a Portico Account; the
+ * certificate then follows by itself). Without a Portico Account the sentence points to the
+ * owner's own certificate instead. Plain HTTP keeps working either way.
+ */
+export function SecureConnectionRow() {
+  const session = useSession();
+  const {t} = useI18n();
+  const certificate = useServerForm<CertificateDraft, CertificateStatus>('certificate');
+  const connectivity = useServerForm<ConnectivityDraft, ConnectivityStatus>('connectivity');
+  const claim = useClaimStatus();
+  const view = secureConnectionView({certificate: certificate.state.status, own: connectivity.state.status?.tls.customCertificate, claim: claim.state?.status});
+  const pin = session.api.getRouteConnection()?.pin;
+  // While the certificate is on its way, look again every so often; nothing else needs doing.
+  const reload = certificate.form.load;
+  useEffect(() => {
+    if (view.state !== 'starting') return;
+    const timer = setInterval(() => void reload(), 15000);
+    return () => clearInterval(timer);
+  }, [view.state, reload]);
+  const connected = () => { claim.refresh(); void certificate.form.load(); };
+  return (
+    <>
+      <SettingsRow label={t('web.general.status')} state={t(view.body, view.address ? {address: view.address} : undefined)} control={<Badge tone={view.tone} dot>{t(view.badge)}</Badge>} />
+      {view.canConnect || view.state === 'waiting' ? <SettingsRow label={t('settings.server.secure.connect')} help={t('settings.server.secure.connectHelp')} control={<ClaimConnectButton api={session.api} pin={pin} hostedOrigin={session.hostedUrl} onDone={connected} label={t('settings.server.secure.connect')} />} /> : null}
+    </>
+  );
 }

@@ -17,6 +17,7 @@ import {channelBuilderMessages} from './en-US/channel-builder.ts';
 import {drawnSubtitleMessages} from './en-US/subtitles.ts';
 import {ownerConsoleMessages} from './en-US/owner-console.ts';
 import {ownerParityMessages} from './en-US/owner-parity.ts';
+import {secureConnectionMessages} from './en-US/secure-connection.ts';
 
 export const enUS = {
   'browse.field.search': 'Search',
@@ -142,7 +143,6 @@ export const enUS = {
   'signIn.error.pinInvalid': 'That PIN isn’t right. Try again.',
   'signIn.error.expired': 'That took too long. Start again.',
   'web.signIn.error.clock': 'This device and the server don’t agree on the time. Check the date and time on this device, then try again.',
-  'signIn.plainHttp.link': 'How to turn on a secure connection',
   // A device whose saved sign-in can no longer be read (the system lost the key that protects it).
   'signIn.cleanupUnconfirmed': 'Portico couldn’t confirm that the saved sign-in was removed.',
   'signIn.unusedSession': 'Portico couldn’t end an unused sign-in. It will expire on its own.',
@@ -2237,6 +2237,7 @@ export const enUS = {
   ...ownerConsoleMessages,
   // ── Owner tools on every client (catalog/en-US/owner-parity.ts) ──
   ...ownerParityMessages,
+  ...secureConnectionMessages,
 } as const satisfies Record<string, string>;
 
 export type MessageId = keyof typeof enUS;
