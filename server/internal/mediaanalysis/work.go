@@ -92,35 +92,48 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	if err != nil {
 		return false, "", err
 	}
-	stage := ""
-	for _, op := range catalog.DeepScanOperations {
+	// due says whether a stage is next for this file: allowed, not done, not
+	// given up on, and not waiting for a retry. wait is true for the last.
+	due := func(op string) (ready, wait bool, code string, err error) {
 		if !p.Allows(op) {
-			continue
+			return false, false, "", nil
 		}
 		var complete bool
 		err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM analysis_heads h JOIN analysis_results r ON r.id=h.result_id WHERE h.object_id=? AND h.source_revision=? AND h.stage=? AND r.algorithm=? AND r.root_incarnation=? AND r.configuration_generation=? AND r.retired_ms=0 AND (?='' OR r.evidence=?))`, request.ObjectID, request.SourceRevision, op, Algorithm, b.Source.Incarnation, b.Source.Generation, b.ProbeEvidence, b.ProbeEvidence).Scan(&complete)
-		if err != nil {
-			return false, "", err
+		if err != nil || complete {
+			return false, false, "", err
 		}
-		if complete {
-			continue
-		}
-		var state, code string
+		var state string
 		var attempt int
 		var next int64
 		err = tx.QueryRowContext(ctx, `SELECT state,attempt,next_ms,error_code FROM analysis_stage_runs WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=?`, request.JobID, request.ObjectID, request.SourceRevision, request.PolicyRevision, op, b.WorkAlgorithm).Scan(&state, &attempt, &next, &code)
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return false, "", err
+			return false, false, "", err
 		}
 		if state == "failed" || state == "unsupported" {
-			warning = code
-			continue
+			return false, false, code, nil
 		}
 		if next > nowMS() {
+			return false, true, "", nil
+		}
+		return true, false, "", nil
+	}
+	stage := ""
+	for _, op := range catalog.DeepScanOperations {
+		ready, wait, code, e := due(op)
+		if e != nil {
+			return false, "", e
+		}
+		if code != "" {
+			warning = code
+		}
+		if wait {
 			return false, "", nil
 		}
-		stage = op
-		break
+		if ready {
+			stage = op
+			break
+		}
 	}
 	if stage == "" {
 		return true, warning, gated.Commit()
@@ -143,30 +156,69 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	if stage != "checksum" && b.BasicRevision != b.SourceRevision {
 		return false, "", ErrConflict
 	}
-	var attempt int
-	err = tx.QueryRowContext(ctx, `INSERT INTO analysis_stage_runs(job_id,object_id,source_revision,policy_revision,stage,algorithm,state,attempt,updated_ms) VALUES(?,?,?,?,?,?,'running',1,?) ON CONFLICT(job_id,object_id,source_revision,policy_revision,stage,algorithm) DO UPDATE SET state='running',attempt=attempt+1,processed_bytes=0,error_code='',next_ms=0,updated_ms=excluded.updated_ms RETURNING attempt`, request.JobID, request.ObjectID, request.SourceRevision, request.PolicyRevision, stage, b.WorkAlgorithm, nowMS()).Scan(&attempt)
-	if err != nil {
-		return false, "", err
+	// One decode of the audio serves every audio stage that is due with this
+	// one; one decode of the video serves trickplay and scene detection.
+	stages := []string{stage}
+	var group []string
+	switch {
+	case isSharedAudioStage(stage):
+		group = sharedAudioStages
+	case isSharedVideoStage(stage):
+		if _, _, _, _, ok := s.sharedVideoPlan(b); ok {
+			group = sharedVideoStages
+		}
 	}
-	if err = gated.Commit(); err != nil {
-		return false, "", err
+	if group != nil {
+		for _, op := range group {
+			if op == stage {
+				continue
+			}
+			ready, _, _, e := due(op)
+			if e != nil {
+				return false, "", e
+			}
+			if ready {
+				stages = append(stages, op)
+			}
+		}
 	}
 	// Restart-safe output identity is recorded by the durable job + source/policy
 	// stage attempt. A new attempt cannot overwrite a retired result, including
 	// target A → B → A. Acquisition evidence is never inferred from this identity.
-	publication := token(request.JobID, request.ObjectID, request.SourceRevision, fmt.Sprint(request.PolicyRevision), stage, b.WorkAlgorithm, fmt.Sprint(attempt))
+	publications := map[string]string{}
+	for _, op := range stages {
+		var attempt int
+		err = tx.QueryRowContext(ctx, `INSERT INTO analysis_stage_runs(job_id,object_id,source_revision,policy_revision,stage,algorithm,state,attempt,updated_ms) VALUES(?,?,?,?,?,?,'running',1,?) ON CONFLICT(job_id,object_id,source_revision,policy_revision,stage,algorithm) DO UPDATE SET state='running',attempt=attempt+1,processed_bytes=0,error_code='',next_ms=0,updated_ms=excluded.updated_ms RETURNING attempt`, request.JobID, request.ObjectID, request.SourceRevision, request.PolicyRevision, op, b.WorkAlgorithm, nowMS()).Scan(&attempt)
+		if err != nil {
+			return false, "", err
+		}
+		publications[op] = token(request.JobID, request.ObjectID, request.SourceRevision, fmt.Sprint(request.PolicyRevision), op, b.WorkAlgorithm, fmt.Sprint(attempt))
+	}
+	if err = gated.Commit(); err != nil {
+		return false, "", err
+	}
+	// Every stage of this run fails, or is put back, together.
+	fail := func(cause error) (bool, string, error) {
+		var first error
+		for _, op := range stages {
+			if _, _, e := s.stageFailure(ctx, b, op, cause); e != nil && first == nil {
+				first = e
+			}
+		}
+		return false, "", first
+	}
 	if input == nil {
 		input, err = s.options.Open(ctx, b.ItemID, b.AssetID)
 		if err != nil {
-			return s.stageFailure(ctx, b, stage, err)
+			return fail(err)
 		}
 		defer input.Close()
 	}
 	if input.Size() <= 0 || input.Size() > s.options.MaxInputBytes {
-		return s.stageFailure(ctx, b, stage, ErrBudget)
+		return fail(ErrBudget)
 	}
 	if err = input.Validate(ctx); err != nil {
-		return s.stageFailure(ctx, b, stage, err)
+		return fail(err)
 	}
 	counted := &countedInput{Input: input, limit: s.options.MaxInputBytes * 4, progress: func(n int64) {
 		_, _ = dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia, `UPDATE analysis_stage_runs SET processed_bytes=?,updated_ms=? WHERE job_id=? AND object_id=? AND source_revision=? AND policy_revision=? AND stage=? AND algorithm=? AND state='running'`, n, nowMS(), request.JobID, request.ObjectID, request.SourceRevision, request.PolicyRevision, stage, b.WorkAlgorithm)
@@ -175,44 +227,56 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	if stage != "checksum" {
 		tool, err = toolHash(s.options.FFmpeg)
 		if err != nil {
-			return s.stageFailure(ctx, b, stage, err)
+			return fail(err)
 		}
 	}
 	var used int64
 	if err = s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(size),0) FROM (SELECT MAX(size) AS size FROM analysis_artifacts GROUP BY digest)`).Scan(&used); err != nil {
-		return s.stageFailure(ctx, b, stage, err)
+		return fail(err)
 	}
 	if used >= s.cacheLimit(ctx) {
-		return s.stageFailure(ctx, b, stage, ErrBudget)
+		return fail(ErrBudget)
 	}
 	runner := s.options.Decoder(counted)
 	decode := func(ctx context.Context, key string, spec decoder.AnalysisSpec, consume func(io.Reader) error) error {
 		spec.PhysicalLock = physical
 		return runner(ctx, key, spec, consume)
 	}
-	result, err := s.produce(ctx, b, stage, counted, decode, publication)
+	results := map[string]produced{}
+	switch {
+	case isSharedAudioStage(stage):
+		results, err = s.produceSharedAudio(ctx, b, stages, decode, publications)
+	case isSharedVideoStage(stage) && len(stages) == 2:
+		results, err = s.produceSharedVideo(ctx, b, decode, publications)
+	default:
+		results[stage], err = s.produce(ctx, b, stage, counted, decode, publications[stage])
+	}
 	defer func() {
-		for _, a := range result.Artifacts {
-			if a.RetainedKey != "" {
-				_ = s.artifacts.RemoveRetained(a.RetainedKey)
+		for _, result := range results {
+			for _, a := range result.Artifacts {
+				if a.RetainedKey != "" {
+					_ = s.artifacts.RemoveRetained(a.RetainedKey)
+				}
 			}
 		}
 	}()
 	if err != nil {
-		return s.stageFailure(ctx, b, stage, err)
+		return fail(err)
 	}
 	if err = input.Validate(ctx); err != nil {
-		return s.stageFailure(ctx, b, stage, err)
+		return fail(err)
 	}
 	if stage != "checksum" {
 		current, e := toolHash(s.options.FFmpeg)
 		if e != nil || current != tool {
-			return s.stageFailure(ctx, b, stage, ErrConflict)
+			return fail(ErrConflict)
 		}
 	}
 	counted.progress(counted.total.Load())
-	if err = s.publish(ctx, b, stage, publication, input.Evidence(), tool, result); err != nil {
-		return s.stageFailure(ctx, b, stage, err)
+	for _, op := range stages {
+		if err = s.publish(ctx, b, op, publications[op], input.Evidence(), tool, results[op]); err != nil {
+			return fail(err)
+		}
 	}
 	return false, "", nil
 }

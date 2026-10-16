@@ -64,13 +64,13 @@ function vobSubField(rows: number[][]): number[] {
   }
   return out;
 }
-export type SubpictureOptions = {x: number; y: number; colours: [number, number, number, number]; alphas: [number, number, number, number]; stopAfterMs?: number; forced?: boolean};
+export type SubpictureOptions = {x: number; y: number; colours: [number, number, number, number]; alphas: [number, number, number, number]; stopAfterMs?: number; forced?: boolean; /** Further commands in the first sequence (a CHG_COLCON). */ extra?: number[]};
 /** One subpicture unit. `colours` and `alphas` are for pixel values 0 to 3. */
 export function subpicture(p: ReturnType<typeof picture>, o: SubpictureOptions): number[] {
   const rows = rowsOf(p), top = vobSubField(rows.filter((_, y) => y % 2 === 0)), bottom = vobSubField(rows.filter((_, y) => y % 2 === 1));
   const control = 4 + top.length + bottom.length, x2 = o.x + p.width - 1, y2 = o.y + p.height - 1;
   const nib = (v: number[]) => [(v[3]! << 4) | v[2]!, (v[1]! << 4) | v[0]!];
-  const first = [0x03, ...nib(o.colours), 0x04, ...nib(o.alphas), 0x05, o.x >> 4, ((o.x & 15) << 4) | (x2 >> 8), x2 & 255, o.y >> 4, ((o.y & 15) << 4) | (y2 >> 8), y2 & 255, 0x06, ...u16(4), ...u16(4 + top.length), o.forced ? 0x00 : 0x01, 0xff];
+  const first = [0x03, ...nib(o.colours), 0x04, ...nib(o.alphas), 0x05, o.x >> 4, ((o.x & 15) << 4) | (x2 >> 8), x2 & 255, o.y >> 4, ((o.y & 15) << 4) | (y2 >> 8), y2 & 255, 0x06, ...u16(4), ...u16(4 + top.length), ...(o.extra ?? []), o.forced ? 0x00 : 0x01, 0xff];
   const second = control + 4 + first.length;
   const stop = o.stopAfterMs === undefined ? [] : [...u16(Math.round(o.stopAfterMs * 90 / 1024)), ...u16(second), 0x02, 0xff];
   const body = [...top, ...bottom, ...u16(0), ...u16(stop.length ? second : control), ...first, ...stop];

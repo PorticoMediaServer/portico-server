@@ -75,11 +75,10 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 	}
 	args = append(args, "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8,mpeg,mpegvideo", "-probesize", "8388608", "-analyzeduration", "10000000", "-i", input, "-map_metadata", "-1", "-map_chapters", "-1", "-threads", "1")
 	switch s.Kind {
-	case "pcm":
-		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-ac", "1", "-af", "aresample=11025:async=1:first_pts=0", "-ar", "11025", "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1")
-	case "loudness":
-		// ametadata's file=- writes metadata to stdout; null emits no media bytes.
-		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", "ebur128=metadata=1:peak=true,ametadata=mode=print:file=-", "-f", "null", "pipe:1")
+	case "pcm_shared":
+		// One decode for every audio analysis (waveform, fingerprint, loudness): the
+		// first audio track as 48 kHz stereo, the rate loudness is measured at.
+		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-ac", "2", "-af", "aresample=48000:async=1:first_pts=0", "-ar", "48000", "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1")
 	case "audio_flac", "audio_opus", "audio_aac":
 		if s.AudioStart < 0 || s.AudioFrames <= 0 || s.AudioOut <= 0 || s.AudioRate < 8000 || s.AudioRate > 768000 || s.AudioChannels < 1 || s.AudioChannels > 8 {
 			return nil, ErrInvalidConfiguration

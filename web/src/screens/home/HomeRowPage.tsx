@@ -11,7 +11,10 @@ import {useViewerScope} from '../../app/viewer-scope';
 import {useFreshDocument} from '../../app/freshness';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 
-import {Inset, Page, PageHeader} from '../../ui';
+import {Button, Inset, Page, PageHeader} from '../../ui';
+import {usePlayerActions} from '../../player/PlayerContext';
+import {groupSequence, homeRowSequence} from '../../app/container-play';
+import type {ContentEntry} from '@core/library-content.ts';
 import {LoadingGrid, SectionView} from '../shared/Sections';
 import {GroupBar, GroupGrid} from '../shared/GroupBrowse';
 import {acrossGroup, useGroupBrowse, type GroupChoice} from '../../app/group-browse';
@@ -26,7 +29,7 @@ import {useI18n} from '../../app/i18n';
  * The library's sort and filters apply to the row's titles across libraries (`homeRow`): the row's
  * own order stands until a sort or filter is chosen, and stays the order under a filter.
  */
-const rowDependencies = Object.freeze([dependsOn.libraries, ...titlesWithPersonalState()]);
+const rowDependencies = Object.freeze([dependsOn.libraries, dependsOn.list('recommendations'), ...titlesWithPersonalState()]);
 
 export function HomeRowPageScreen() {
   const {t} = useI18n();
@@ -54,9 +57,21 @@ export function HomeRowPageScreen() {
   const row = state.row;
   const title = row ? homeRowTitle(row.id, row.title, libraryName, row.titleText) : '';
   const entries = withoutHidden({entries: state.entries}, notInterested.hidden).entries;
+  // Play and Shuffle play the whole row from the server: as it stands now in its own order, or as
+  // sorted and filtered here. The first title shown is where Play starts.
+  const player = usePlayerActions();
+  const first = group.active ? firstPlayable(group.collection) : entries.find(e => e.playback);
+  const play = (shuffle: boolean) => {
+    if (!first) return;
+    player.playSequence([first], 0, 0, group.active ? groupSequence(group, {shuffle}) : homeRowSequence(rowId, entries.map(e => e.kind), {shuffle}));
+  };
+  const actions = first ? <>
+    <Button variant="primary" icon="play" label={t('action.play')} onClick={() => play(false)} />
+    <Button variant="secondary" icon="shuffle" label={t('title.shuffle')} onClick={() => play(true)} />
+  </> : undefined;
   return (
     <Page>
-      <PageHeader title={title || ' '} onBack={back} backLabel={t('action.back')} />
+      <PageHeader title={title || ' '} onBack={back} backLabel={t('action.back')} actions={actions} />
       {state.phase === 'loading' && !state.entries.length ? <LoadingGrid density={row?.artworkShape === 'square' ? 'square' : 'poster'} /> : null}
       {state.phase === 'error' && !row ? <ErrorState error={state.error} context="home" retry={() => void pager.load()} refresh={() => void pager.load()} /> : null}
       {state.error && row ? <Inset><ErrorNotice error={state.error} context="home" retry={() => void pager.more()} refresh={() => void pager.load()} /></Inset> : null}
@@ -74,4 +89,14 @@ export function HomeRowPageScreen() {
       ) : null}
     </Page>
   );
+}
+
+/** The first playable title of a sorted or filtered row that has been read. */
+function firstPlayable(list: {itemAt(index: number): ContentEntry | undefined} | undefined): ContentEntry | undefined {
+  for (let i = 0; i < 50; i++) {
+    const entry = list?.itemAt(i);
+    if (!entry) return undefined;
+    if (entry.playback) return entry;
+  }
+  return undefined;
 }

@@ -5,12 +5,13 @@ import {routePath} from "../../../contracts/src/routes.ts";
  * due" is safe, how a window's time is typed. One copy, for every client.
  */
 import type {DAVConfiguration} from '../remote-sources.ts';
+import type {StorageManagementService} from '../storage-management.ts';
+import {ALREADY_DONE} from '../freshness-actions.ts';
 import type {FeedbackStatus} from '../console.ts';
 import type {AccessTier} from '../server-administration.ts';
-import {presetOf, type ApiScope, type ApiScopePreset} from '../api-access.ts';
 import type {FilesystemPage} from '../administration.ts';
-import type {LibraryAdminJob, LibraryManagementService, ManagedLibrary} from '../library-management.ts';
-import type {ScanTier, SourceSettings} from '../library-inventory.ts';
+import type {LibraryManagementService, ManagedLibrary} from '../library-management.ts';
+import type {SourceSettings} from '../library-inventory.ts';
 import type {MessageId} from '../../../i18n/src/index.ts';
 
 // ── Maintenance windows and schedules ───────────────────────────────────────────────────────
@@ -63,8 +64,29 @@ export function stableStorageOperationId() {
 export function mountCommandSucceeded(mutation: {phase: string}): boolean {
   return mutation.phase === 'accepted';
 }
-export function davCommandSucceeded(state: {ambiguous: boolean; receipt: unknown}): boolean {
-  return !state.ambiguous && !!state.receipt;
+/**
+ * Sends a start, stop, restart or remove to an rclone mount. A mount's revision also moves as it
+ * starts and stops by itself, so a command can meet a revision that moved for no reason the owner
+ * would see: the mount is read again and the same command sent once more, silently. If it is no
+ * longer offered (or the mount is already going), it has already happened: `ALREADY_DONE`.
+ * `ids` is the command's stable operation id, released before the second send.
+ */
+export async function sendMountCommand(mounts: Pick<StorageManagementService, 'getSnapshot' | 'act' | 'remove' | 'revalidate'>, ids: {release(): void}, mountId: string, command: 'start' | 'stop' | 'restart' | 'delete'): Promise<typeof ALREADY_DONE | undefined> {
+  const send = (revision: number) => (command === 'delete' ? mounts.remove(mountId, revision) : mounts.act(mountId, command, revision));
+  const current = mounts.getSnapshot().data?.mounts.find(x => x.id === mountId);
+  if (!current) throw Object.assign(new Error('request_failed'), {code: 'storage_command_conflict'});
+  await send(current.controlRevision);
+  if (mounts.getSnapshot().mutation.phase !== 'conflict') return undefined;
+  ids.release();
+  await mounts.revalidate();
+  const fresh = mounts.getSnapshot().data?.mounts.find(x => x.id === mountId);
+  if (!fresh || fresh.removalPending) return command === 'delete' ? ALREADY_DONE : undefined;
+  if (!fresh.actions.includes(command)) return ALREADY_DONE;
+  await send(fresh.controlRevision);
+  return undefined;
+}
+export function davCommandSucceeded(state: {ambiguous: boolean; receipt: unknown; alreadyDone?: boolean}): boolean {
+  return !state.ambiguous && (!!state.receipt || state.alreadyDone === true);
 }
 export type WebDavDraft = {name: string; root: string; username: string; password: string; insecureLocal: boolean};
 /**
@@ -79,13 +101,6 @@ export function davConfiguration(source: {generation: number} | null, draft: Web
   if (root === '') return {name, root: '', username: '', password: draft.password, keepPassword: draft.password === '', keepConnection: true, insecureLocal: draft.insecureLocal, expectedGeneration: source.generation};
   return {name, root, username: draft.username, password: draft.password, keepPassword: false, keepConnection: false, insecureLocal: draft.insecureLocal, expectedGeneration: source.generation};
 }
-
-// ── Viewer feedback ─────────────────────────────────────────────────────────────────────────
-
-export const feedbackStatusLabel: Readonly<Record<FeedbackStatus, string>> = {open: 'Open', 'in-progress': 'In progress', resolved: 'Resolved', closed: 'Closed'};
-const feedbackCategories: Readonly<Record<string, string>> = {playback: 'Playback', metadata: 'Metadata', subtitles: 'Subtitles', other: 'Other'};
-/** CD-38: an unknown category shows as it is, never blank. */
-export const feedbackCategoryLabel = (category: string): string => feedbackCategories[category] ?? category;
 
 // ── Live TV sources and Library Channels ────────────────────────────────────────────────────
 
@@ -123,12 +138,19 @@ export function regenerationBody(channel: {revision: number; replacementBoundary
 /** CD-07: the server allows at most 100 rows a page; every list stays on that limit and follows nextCursor. */
 export const accessLists = {members: routePath("get_admin_access_members"), invitations: routePath("get_admin_access_invitations"), devices: routePath("get_admin_access_devices"), apiKeys: routePath("list_api_keys")} as const;
 export const accessListPath = (list: keyof typeof accessLists, cursor = '') => `${accessLists[list]}?limit=100${cursor ? '&cursor=' + encodeURIComponent(cursor) : ''}`;
-export const tierLabels: Readonly<Record<AccessTier, string>> = {owner: 'Owner', admin: 'Administrator', member: 'Member'};
-/** A key's access, as the simple picker offers it: four ready-made choices of scopes. */
-export const scopeLabels: Readonly<Record<ApiScopePreset, string>> = {read: 'Read only', playback: 'Playback', library: 'Library management', admin: 'Full access'};
-export const scopeHelp: Readonly<Record<ApiScopePreset, string>> = {read: 'Browse and read, nothing else.', playback: 'Browse, play and control playback.', library: 'Also scan, match and edit libraries.', admin: 'Everything this account can do.'};
-/** The words for a key's scopes in a list: the preset's name when they are one, otherwise each scope. */
-export const scopesLabel = (scopes: readonly ApiScope[]): string => { const preset = presetOf(scopes); return preset ? scopeLabels[preset] : scopes.map(scope => scopeLabels[scope]).join(', '); };
+/** One member, invitation or device read by its id, as its list shows it. */
+export const accessRecordPath = (kind: 'members' | 'invitations' | 'devices', id: string) => kind === 'members' ? routePath('get_admin_access_member', {id}) : kind === 'invitations' ? routePath('get_admin_access_invitation', {id}) : routePath('get_admin_access_device', {id});
+/**
+ * Reads one access record again, for a change the server said was made against an older copy of
+ * it. A record that is gone (404) is `undefined`, so the change ends with the server's first answer.
+ */
+export async function readAccessRecord<T>(api: {request<R>(path: string): Promise<R>}, kind: 'members' | 'invitations' | 'devices', id: string, parse: (raw: unknown) => T): Promise<T | undefined> {
+  try { return parse(await api.request<unknown>(accessRecordPath(kind, id))); } catch (error) {
+    const e = error as {status?: unknown; code?: unknown} | null;
+    if (e?.status === 404 || e?.code === 'not_found') return undefined;
+    throw error;
+  }
+}
 /** An account made on this server. `hostedAccountId`: a Portico Account member, whose password lives at the Portico Account. */
 /** `disabledAt` and `disabledReason` are present while the account is off: when, and whether an owner or administrator turned it off (`owner`) or the person left at their Portico Account (`left`). */
 export type DirectMember = {id: string; username: string; primaryProfileId: string; role: AccessTier; revision: number; disabled: boolean; allowedLibraries: string[]; hostedAccountId?: string; disabledAt?: string; disabledReason?: string};
@@ -140,9 +162,6 @@ export function memberOffLine(member: Pick<DirectMember, 'disabled' | 'disabledA
 
 // ── Libraries ───────────────────────────────────────────────────────────────────────────────
 
-export const scanJobLabels: Readonly<Record<LibraryAdminJob['status'], string>> = {queued: 'Queued', running: 'Scanning', paused: 'Paused', complete: 'Up to date', complete_with_warnings: 'Finished with warnings', failed: 'Failed', cancelled: 'Canceled'};
-export const scanTierLabels: Readonly<Record<ScanTier, string>> = {file_list_only: 'File list only', basic: 'Basic', complete: 'Complete', custom: 'Custom'};
-export const scanTierHelp: Readonly<Record<ScanTier, string>> = {file_list_only: 'Just find files. No file details or artwork.', basic: 'Read file details (length, resolution, audio) and local artwork.', complete: 'Everything, including previews, loudness and fingerprints.', custom: 'Choose exactly which steps run.'};
 
 /** CD-08: a new folder starts from the loaded configuration revision; zero is never submittable. */
 export function addSourceSettings(revision: number): SourceSettings {

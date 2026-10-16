@@ -718,8 +718,11 @@ func (s *Service) dispatchScreenChildren(ctx context.Context, p *screenClaim) er
 	if err != nil {
 		return err
 	}
+	// An episode whose fetch is in flight is left to finish: its claim is
+	// fenced by the show's publication it was claimed under, so a result for an
+	// earlier one is discarded and fetched again when it publishes.
 	for _, id := range ids {
-		_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='item' AND target_id=? AND selection_mode<>'owner'
+		_, err = tx.ExecContext(ctx, `UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error='' WHERE target_kind='item' AND target_id=? AND selection_mode<>'owner' AND lease=''
  AND NOT (status='matched' AND force_refresh=0 AND EXISTS(
  SELECT 1 FROM screen_metadata_publications parent JOIN screen_metadata_publications episode ON episode.id=screen_metadata_work.accepted_publication
  JOIN metadata_document_freshness f ON f.provider=episode.provider AND f.kind='episode' AND f.resource=episode.provider_id||'@'||episode.language||':'||episode.region

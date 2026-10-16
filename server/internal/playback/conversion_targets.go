@@ -81,7 +81,7 @@ func chooseVideoOutput(v *SourceVideo, client ClientProfile, transports []Client
 	})
 	for _, o := range ordered {
 		codec := client.videoCodec(o.Codec)
-		if codec == nil || (len(codec.BitDepths) > 0 && !containsInt(codec.BitDepths, o.BitDepth)) {
+		if codec == nil || !codec.decodesDepth(o.BitDepth) {
 			continue
 		}
 		profile := "high"

@@ -57,6 +57,10 @@ type ChannelStart struct {
 	Channel   LinearReference
 	State     string
 	Profile   ClientProfile
+	// MPVProfile and EngineSetting are the device's second engine, when it
+	// plays channels, and the viewer's player setting (LinearEngines).
+	MPVProfile    *ClientProfile
+	EngineSetting string
 	// LeaseUntil is the v1 session's lease end (the tuner binding follows it).
 	LeaseUntil time.Time
 }
@@ -84,8 +88,16 @@ func (c *ChannelSessions) StartTx(ctx context.Context, tx *sql.Tx, p identity.Pr
 	selection, _ := json.Marshal(selected)
 	transport, _ := json.Marshal(LinearDesired{State: in.State})
 	profile, _ := json.Marshal(in.Profile)
-	if _, err = tx.ExecContext(ctx, `INSERT INTO playback_channel_sessions(session_id,authority,account_id,profile_id,server_id,role,account_epoch,family_id,kind,source_id,channel_id,selection_json,transport_json,client_profile_json,created_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		in.SessionID, p.Authority, p.AccountID, p.ProfileID, p.ServerID, p.Role, p.Epoch, family.ID, selected.Reference.Kind, selected.Reference.SourceID, selected.Reference.ChannelID, string(selection), string(transport), string(profile), now.UnixMilli()); err != nil {
+	mpv := []byte{}
+	if in.MPVProfile != nil {
+		mpv, _ = json.Marshal(in.MPVProfile)
+	}
+	setting := in.EngineSetting
+	if !controlOneOf(setting, EngineSettingAutomatic, EngineSettingNative, EngineSettingMPV) {
+		setting = EngineSettingAutomatic
+	}
+	if _, err = tx.ExecContext(ctx, `INSERT INTO playback_channel_sessions(session_id,authority,account_id,profile_id,server_id,role,account_epoch,family_id,kind,source_id,channel_id,selection_json,transport_json,client_profile_json,mpv_profile_json,engine_setting,created_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		in.SessionID, p.Authority, p.AccountID, p.ProfileID, p.ServerID, p.Role, p.Epoch, family.ID, selected.Reference.Kind, selected.Reference.SourceID, selected.Reference.ChannelID, string(selection), string(transport), string(profile), string(mpv), setting, now.UnixMilli()); err != nil {
 		return LinearSelection{}, err
 	}
 	if err = c.linear.BindTx(ctx, tx, in.SessionID, selected, in.LeaseUntil); err != nil {
@@ -117,10 +129,11 @@ func (c *ChannelSessions) linearWorkTx(ctx context.Context, tx *sql.Tx, id strin
 	w := LinearWork{PlaybackID: id}
 	var selection, transport, profile string
 	var ended, v1Ended, lease int64
-	err := tx.QueryRowContext(ctx, `SELECT c.authority,c.account_id,c.profile_id,c.server_id,c.role,c.account_epoch,c.family_id,c.selection_json,c.transport_json,c.client_profile_json,
+	var mpvProfile string
+	err := tx.QueryRowContext(ctx, `SELECT c.authority,c.account_id,c.profile_id,c.server_id,c.role,c.account_epoch,c.family_id,c.selection_json,c.transport_json,c.client_profile_json,c.mpv_profile_json,c.engine_setting,
  c.source_revision,c.retry_revision,c.buffer_ordinal,c.producer_ordinal,c.ended_ms,v.ended_ms,v.lease_expires_ms,p.revision,p.transcoding_enabled
  FROM playback_channel_sessions c JOIN playback_v1_sessions v ON v.id=c.session_id JOIN playback_owner_policy p ON p.singleton=1 WHERE c.session_id=?`, id).Scan(
-		&w.Principal.Authority, &w.Principal.AccountID, &w.Principal.ProfileID, &w.Principal.ServerID, &w.Principal.Role, &w.Principal.Epoch, &w.FamilyID, &selection, &transport, &profile,
+		&w.Principal.Authority, &w.Principal.AccountID, &w.Principal.ProfileID, &w.Principal.ServerID, &w.Principal.Role, &w.Principal.Epoch, &w.FamilyID, &selection, &transport, &profile, &mpvProfile, &w.EngineSetting,
 		&w.SourceRevision, &w.RetryRevision, &w.BufferOrdinal, &w.ProducerOrdinal, &ended, &v1Ended, &lease, &w.PolicyRevision, &w.TranscodingEnabled)
 	if errors.Is(err, sql.ErrNoRows) {
 		return w, controlFault("not_found", 404)
@@ -148,6 +161,11 @@ func (c *ChannelSessions) linearWorkTx(ctx context.Context, tx *sql.Tx, id strin
 	if profile != "" {
 		if parsed, err := ParseClientProfile([]byte(profile)); err == nil {
 			w.ClientProfile = parsed
+		}
+	}
+	if mpvProfile != "" {
+		if parsed, err := ParseClientProfile([]byte(mpvProfile)); err == nil && parsed.Engine == EngineMPV && parsed.LiveChannels {
+			w.MPVProfile = &parsed
 		}
 	}
 	if err = json.Unmarshal([]byte(selection), &w.Selection); err != nil {

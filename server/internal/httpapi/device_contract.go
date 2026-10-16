@@ -29,7 +29,7 @@ func registerDeviceRoutes(registry *apikit.Registry, d Dependencies) error {
 	}}); err != nil {
 		return err
 	}
-	if err := apikit.Register(registry, apikit.Route[struct{}, DevicesDocument]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "get_devices", Method: "GET", Path: "/v1/devices", Summary: "List this account's devices", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.PageSized, Query: []string{"installationId"}, Status: 200, Errors: []string{"unauthorized", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (DevicesDocument, error) {
+	if err := apikit.Register(registry, apikit.Route[struct{}, DevicesDocument]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "get_devices", Method: "GET", Path: "/v1/devices", Summary: "List this account's devices", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Cost: apikit.PageSized, Query: []string{"installationId"}, Status: 200, Errors: []string{"unauthorized", "invalid_request", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (DevicesDocument, error) {
 		current := r.URL.Query()["installationId"]
 		if len(current) > 1 || len(current) == 1 && len(current[0]) > 128 {
 			return DevicesDocument{}, &apierror.Error{Code: "invalid_request"}
@@ -46,13 +46,13 @@ func registerDeviceRoutes(registry *apikit.Registry, d Dependencies) error {
 	}}); err != nil {
 		return err
 	}
-	if err := apikit.Register(registry, apikit.Route[identity.DeviceEdit, identity.Device]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "patch_device", Method: "PATCH", Path: "/v1/devices/{id}", Summary: "Edit this account's device record", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body identity.DeviceEdit) (identity.Device, error) {
+	if err := apikit.Register(registry, apikit.Route[identity.DeviceEdit, identity.Device]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "patch_device", Method: "PATCH", Path: "/v1/devices/{id}", Summary: "Edit this account's device record", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body identity.DeviceEdit) (identity.Device, error) {
 		out, err := d.Identity.EditDevice(ctx, directBearer(r), r.PathValue("id"), body)
 		return out, foundationAuthErrorOrNil(err)
 	}}); err != nil {
 		return err
 	}
-	if err := apikit.Register(registry, apikit.Route[DeviceApprovalRequest, identity.Device]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "post_device_approval", Method: "POST", Path: "/v1/devices/{id}/approval", Summary: "Approve or deny a pending device", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body DeviceApprovalRequest) (identity.Device, error) {
+	if err := apikit.Register(registry, apikit.Route[DeviceApprovalRequest, identity.Device]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "post_device_approval", Method: "POST", Path: "/v1/devices/{id}/approval", Summary: "Approve or deny a pending device", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Cost: apikit.Constant, BodyLimit: 4096, Status: 200, Errors: []string{"unauthorized", "not_permitted", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, body DeviceApprovalRequest) (identity.Device, error) {
 		out, err := d.Identity.ApproveDevice(ctx, directBearer(r), r.PathValue("id"), body.Approved)
 		return out, foundationAuthErrorOrNil(err)
 	}}); err != nil {
@@ -64,13 +64,13 @@ func registerDeviceRoutes(registry *apikit.Registry, d Dependencies) error {
 	}}); err != nil {
 		return err
 	}
-	if err := apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "delete_device_sessions", Method: "DELETE", Path: "/v1/devices/{id}/sessions", Summary: "Sign out every session on this device", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
+	if err := apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "delete_device_sessions", Method: "DELETE", Path: "/v1/devices/{id}/sessions", Summary: "Sign out every session on this device", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
 		err := d.Identity.SignOutDevice(ctx, directBearer(r), r.PathValue("id"))
 		return struct{}{}, foundationAuthErrorOrNil(err)
 	}}); err != nil {
 		return err
 	}
-	return apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "delete_device", Method: "DELETE", Path: "/v1/devices/{id}", Summary: "Forget a device and sign out its sessions", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
+	return apikit.Register(registry, apikit.Route[struct{}, struct{}]{Metadata: apikit.Metadata{Admission: laneAuth, ID: "delete_device", Method: "DELETE", Path: "/v1/devices/{id}", Summary: "Forget a device and sign out its sessions", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Cost: apikit.Constant, Status: 204, Errors: []string{"unauthorized", "invalid_request", "not_found", "internal"}}, Handler: func(ctx context.Context, r *http.Request, _ struct{}) (struct{}, error) {
 		err := d.Identity.ForgetDevice(ctx, directBearer(r), r.PathValue("id"))
 		return struct{}{}, foundationAuthErrorOrNil(err)
 	}})

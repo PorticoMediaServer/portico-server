@@ -29,7 +29,9 @@ type chapterCursor struct {
 // Only the head result of the asset's live inventory revision counts: a
 // replaced file must drop its thumbnails before the sweep retires them, and a
 // retired or superseded result never publishes a URL.
-func chapterThumbnails(ctx context.Context, tx *sql.Tx, asset string) (map[int]bool, error) {
+// ChapterThumbnails is which chapters of a library file have a current
+// thumbnail, by chapter_index (the downloads bundle names the same images).
+func ChapterThumbnails(ctx context.Context, tx *sql.Tx, asset string) (map[int]bool, error) {
 	out := map[int]bool{}
 	rows, e := tx.QueryContext(ctx, `SELECT a.ordinal FROM analysis_artifacts a
  JOIN analysis_results r ON r.id=a.result_id
@@ -118,7 +120,7 @@ func (s *Service) Chapters(ctx context.Context, p identity.Principal, scope Offe
 	}
 	// Chapter images are part of the projected facts. A set that gains or loses
 	// previews must invalidate a held revision, not silently change its rows.
-	thumbnails, e := chapterThumbnails(ctx, tx, out.Scope.SourceID)
+	thumbnails, e := ChapterThumbnails(ctx, tx, out.Scope.SourceID)
 	if e != nil {
 		return out, e
 	}

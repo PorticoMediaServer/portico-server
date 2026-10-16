@@ -53,8 +53,9 @@ export function v1ChannelId(ref: ChannelReference): string {
 
 type Programme = Readonly<{id: string; itemId?: string; title: string; startMs: number; endMs: number}>;
 type Linear = Readonly<{
-  reservationRequiredAtMs?:number;name: string; programme?: Programme; next?: Programme; originMs: number; windowStartMs: number; windowEndMs: number; liveEdgeMs: number;
+  reservationRequiredAtMs?:number;nowMs?:number;name: string; programme?: Programme; next?: Programme; originMs: number; windowStartMs: number; windowEndMs: number; liveEdgeMs: number;
   state: string; errorCode?: string; seek?: Readonly<{id: string; live?: boolean; positionMs?: number; acknowledged: boolean; error?: string}>; confirmedPositionMs?: number;
+  clocks?: readonly Readonly<{startMs: number; endMs: number; offsetMs: number}>[];
 }>;
 type Session = Readonly<{id: string; revision: string; state: string; presentation: Readonly<{generation: number; url: string; linear?: Linear}>; end?: Readonly<{reason: string; message?: string}>}>;
 
@@ -68,8 +69,13 @@ function parseProgramme(v: unknown): Programme | undefined {
   return v as Programme;
 }
 
-/** Reads a v1 channel session (the fields this control uses). */
-export function parseChannelSession(v: unknown): Session {
+/**
+ * Reads a v1 channel session (the fields this control uses), as it arrives. A tuner deadline comes
+ * with the server's clock (`nowMs`); it is moved onto this device's clock here, at receipt, so
+ * every player's countdown and the automatic stop run against server time whatever this device's
+ * clock says (off only by the response's travel time).
+ */
+export function parseChannelSession(v: unknown, now: () => number = Date.now): Session {
   if (!obj(v) || typeof v.id !== 'string' || typeof v.revision !== 'string' || typeof v.state !== 'string' || !obj(v.presentation) || !int(v.presentation.generation) || typeof v.presentation.url !== 'string') throw new Error('Unreadable channel session.');
   const l = v.presentation.linear;
   if (l !== undefined) {
@@ -78,6 +84,12 @@ export function parseChannelSession(v: unknown): Session {
     parseProgramme(l.programme); parseProgramme(l.next);
     if (l.seek !== undefined && (!obj(l.seek) || typeof l.seek.id !== 'string' || typeof l.seek.acknowledged !== 'boolean' || l.seek.positionMs !== undefined && !int(l.seek.positionMs))) throw new Error('Unreadable channel seek.');
     if (l.confirmedPositionMs !== undefined && !int(l.confirmedPositionMs)) throw new Error('Unreadable channel position.');
+    if (l.clocks !== undefined && !(Array.isArray(l.clocks) && l.clocks.length <= 64 && l.clocks.every((c: unknown) => obj(c) && int(c.startMs) && int(c.endMs) && int(c.offsetMs)))) throw new Error('Unreadable channel clock.');
+    if (l.nowMs !== undefined && !int(l.nowMs)) throw new Error('Unreadable server clock.');
+    if (l.reservationRequiredAtMs !== undefined && l.nowMs !== undefined) {
+      const {nowMs, ...rest} = l;
+      return {...v, presentation: {...v.presentation, linear: {...rest, reservationRequiredAtMs: Math.max(0, l.reservationRequiredAtMs - nowMs + Math.round(now()))}}} as Session;
+    }
   }
   return v as Session;
 }
@@ -92,7 +104,7 @@ export function channelView(s: Session, channel: ChannelReference): ChannelView 
   const linear: ChannelProjection = Object.freeze({
     channel, name: l?.name ?? '', programme: programme(l?.programme), next: programme(l?.next), desired,
     media: Object.freeze({... (l?.reservationRequiredAtMs===undefined?{}:{reservationRequiredAtMs:l.reservationRequiredAtMs}),streamUrl: s.presentation.url, bufferGeneration: generation, presentationGeneration: generation, originMs: l?.originMs ?? 0, windowRevision: '1',
-      windowStartUs: us(l?.windowStartMs ?? 0), windowEndUs: us(l?.windowEndMs ?? 0), liveEdgeUs: us(l?.liveEdgeMs ?? 0), gaps: [], state: l?.state ?? 'preparing', errorCode: l?.errorCode ?? '', logoUrl: ''}),
+      windowStartUs: us(l?.windowStartMs ?? 0), windowEndUs: us(l?.windowEndMs ?? 0), liveEdgeUs: us(l?.liveEdgeMs ?? 0), gaps: [], state: l?.state ?? 'preparing', errorCode: l?.errorCode ?? '', logoUrl: '', ...(l?.clocks?.length ? {clocks: Object.freeze(l.clocks.map(c => Object.freeze({startMs: c.startMs, endMs: c.endMs, offsetMs: c.offsetMs})))} : {})}),
     overlay: {enabled: false, corner: 'top-right', sizePercent: 8, insetPercent: 3, treatment: 'original'},
     confirmedPositionUs: l?.confirmedPositionMs !== undefined ? us(l.confirmedPositionMs) : null,
     acknowledgedSeekCommandId: l?.seek?.acknowledged ? l.seek.id : null,

@@ -982,6 +982,7 @@ catalog_item_details.tagline
 catalog_item_details.tags
 catalog_item_version_counts.item_id
 catalog_item_version_counts.versions
+catalog_kept_apart.entity_id
 catalog_kinds.browsable
 catalog_kinds.container
 catalog_kinds.id
@@ -995,6 +996,8 @@ catalog_libraries.library_id
 catalog_libraries.name
 catalog_libraries.retired
 catalog_libraries.root
+catalog_merged_ids.entity_id
+catalog_merged_ids.public_id
 catalog_missing_title_counts.library_id
 catalog_missing_title_counts.total
 catalog_missing_titles.entity_id
@@ -1080,6 +1083,8 @@ catalog_people.provider_ids
 catalog_people.revision
 catalog_people.sort_name
 catalog_people.token
+catalog_people_aliases.alias
+catalog_people_aliases.person_id
 catalog_people_names.catalog_people_names
 catalog_people_names.name
 catalog_people_names.rank
@@ -1188,6 +1193,7 @@ catalog_playlists.owner_profile
 catalog_playlists.revision
 catalog_playlists.summary
 catalog_playlists.token
+catalog_playlists.updated_at
 catalog_rec_df.facet
 catalog_rec_df.works
 catalog_rec_facets.entity_id
@@ -1688,6 +1694,7 @@ download_preparations.profile_key
 download_preparations.quality
 download_preparations.ready_ms
 download_preparations.reason
+download_preparations.recipe
 download_preparations.revision
 download_preparations.source_asset_id
 download_preparations.source_modified_ns
@@ -2305,6 +2312,13 @@ listening_book_series.book_id
 listening_book_series.library_id
 listening_book_series.series_key
 listening_book_series.series_name
+listening_metadata_attention.dismissed_generation
+listening_metadata_attention.entity_id
+listening_metadata_attention.generation
+listening_metadata_attention.kind
+listening_metadata_attention.library_id
+listening_metadata_attention.reason
+listening_metadata_attention.retired
 live_allocation_reconcile_cursor.cursor
 live_allocation_reconcile_cursor.singleton
 live_allocations.account_id
@@ -3464,9 +3478,11 @@ playback_channel_sessions.client_profile_json
 playback_channel_sessions.confirmed_position_us
 playback_channel_sessions.created_ms
 playback_channel_sessions.ended_ms
+playback_channel_sessions.engine_setting
 playback_channel_sessions.error_code
 playback_channel_sessions.family_id
 playback_channel_sessions.kind
+playback_channel_sessions.mpv_profile_json
 playback_channel_sessions.observation_generation
 playback_channel_sessions.observation_sequence
 playback_channel_sessions.producer_ordinal
@@ -4419,6 +4435,7 @@ social_groups.queue_position
 social_groups.queue_revision
 social_groups.rate_denominator
 social_groups.rate_numerator
+social_groups.readiness_summary
 social_groups.reconnect_generation
 social_groups.repeat_mode
 social_groups.resume_state
@@ -4514,10 +4531,12 @@ subtitle_original_files.resource_id
 subtitle_original_files.revision
 subtitle_original_files.size
 subtitle_original_revisions.digest
+subtitle_original_revisions.forced_lines
 subtitle_original_revisions.resource_id
 subtitle_original_revisions.revision
 subtitle_original_revisions.size
 subtitle_original_revisions.skipped_fonts
+subtitle_original_revisions.total_lines
 subtitle_provider_candidates.actor
 subtitle_provider_candidates.attribution
 subtitle_provider_candidates.expires_at
@@ -4750,6 +4769,7 @@ viewer_revisions.library_id
 viewer_revisions.observation_revision
 viewer_revisions.profile_id
 viewer_revisions.revision
+viewer_revisions.title_path
 webhook_deliveries.attempts
 webhook_deliveries.created_ms
 webhook_deliveries.data

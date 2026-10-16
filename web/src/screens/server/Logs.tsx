@@ -48,7 +48,7 @@ function Record({record}: {record: EvidenceRecord}) {
         </div>
         <div className={s.streamMeta}><span>{when(i18n, record.at)}</span>{record.target ? <span>{record.target}</span> : null}{record.fields ? Object.entries(record.fields).map(([k, v]) => <span key={k}>{sentence(k)} {v}</span>) : null}</div>
       </div>
-      <Text variant="mono" tone="muted" style={{fontSize: 11}}>#{record.sequence}</Text>
+      <Text variant="mono" tone="muted" style={{fontSize: '0.6875rem'}}>#{record.sequence}</Text>
     </div>
   );
 }

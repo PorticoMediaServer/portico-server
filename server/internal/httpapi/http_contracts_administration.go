@@ -17,6 +17,14 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct{}, access.MemberPage](registry, apikit.Metadata{ID: "get_admin_access_members", Method: "GET", Path: "/v1/admin/access/members", Summary: "Read server access members", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "limit"}, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
+	// internal/httpapi/admin_access.go: one member
+	if err := apikit.RegisterHTTP[struct{}, access.Member](registry, apikit.Metadata{ID: "get_admin_access_member", Method: "GET", Path: "/v1/admin/access/members/{id}", Summary: "Read one member as the members list shows it", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+	// internal/httpapi/admin_access.go: one invitation
+	if err := apikit.RegisterHTTP[struct{}, access.Invitation](registry, apikit.Metadata{ID: "get_admin_access_invitation", Method: "GET", Path: "/v1/admin/access/invitations/{id}", Summary: "Read one invitation as the invitations list shows it", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
 	// internal/httpapi/admin_access.go:40
 	if err := apikit.RegisterHTTP[access.RoleChange, access.Member](registry, apikit.Metadata{ID: "put_admin_access_members_id_role", Method: "PUT", Path: "/v1/admin/access/members/{id}/role", Summary: "Save server access members role", Access: apikit.Admin, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, AdminScope: "access", Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err

@@ -42,10 +42,21 @@ const (
 //	playback — play, control playback, and change the caller's own watch
 //	           state, lists, preferences and recordings.
 //	library  — scan, match, edit and delete what is in the libraries.
-//	admin    — everything else the member behind the credential may administer.
-//	session  — only a signed-in session may call it. Signing in and out,
-//	           changing passwords, approving devices and creating keys or
-//	           tokens are here: a credential can never mint or widen another.
+//	admin    — everything else the member behind the credential may administer:
+//	           server settings, profiles, members, devices and sessions.
+//	session  — only a signed-in session may call it, each for its own reason:
+//	           signing in and out, renewing and registering (a credential is
+//	           not a sign-in); passwords, two-factor and PIN recovery (a
+//	           credential must not change what proves the person); creating,
+//	           listing and ending keys and tokens, ownership and pairing a
+//	           screen or a TV code (a credential never mints or widens
+//	           another); accepting an invitation (the invitee's own sign-up);
+//	           remembered accounts and choosing a profile (sign-in screens on
+//	           one device); the networking claim and identity proofs.
+//
+// A key or token also travels as the apiKey query parameter on a GET or HEAD,
+// so an address can work on its own; the server takes it out of the address
+// before anything reads the request.
 type Scope string
 
 const (
@@ -176,6 +187,7 @@ type Registry struct {
 	authorize    Authorize
 	authorizeCtx AuthorizeContext
 	scopes       ScopeGate
+	rewrite      PathRewrite
 	routes       []Definition
 	bound        map[string]bool
 	frozen       bool
@@ -185,6 +197,13 @@ type Registry struct {
 // parsing or the handler. Public routes pass it too, so a route that only a
 // signed-in session may call refuses a key however it is reached.
 func (r *Registry) GateScopes(gate ScopeGate) { r.scopes = gate }
+
+// PathRewrite may replace a path value before the handler reads it, such as
+// an id that now names something else. q.Pattern is the matched route.
+type PathRewrite func(q *http.Request, name, value string) string
+
+// RewritePathValues installs the rewrite every matched path value passes.
+func (r *Registry) RewritePathValues(rewrite PathRewrite) { r.rewrite = rewrite }
 
 // Lookup returns the route that would serve method and escaped path.
 func (r *Registry) Lookup(method, escapedPath string) (Metadata, bool) {
@@ -390,10 +409,13 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 		r.errors.Write(w, "", &apierror.Error{Code: "not_found"})
 		return
 	}
+	q.Pattern = r.routes[best].Method + " " + r.routes[best].Path
 	for key, value := range values {
+		if r.rewrite != nil {
+			value = r.rewrite(q, key, value)
+		}
 		q.SetPathValue(key, value)
 	}
-	q.Pattern = r.routes[best].Method + " " + r.routes[best].Path
 	r.handlers[best](w, q)
 }
 func matchRoute(pattern, path string) (map[string]string, int, bool) {

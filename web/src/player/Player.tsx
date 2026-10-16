@@ -16,6 +16,7 @@ import {SubtitleSurface} from './subtitle-surface';
 import {SubtitleOverlay} from './subtitles/overlay';
 import {webPlaybackResourceKey} from '../playback-v1/web-playback';
 import {fixedQuality, offeredQualities, qualityChoiceOf, qualityRequest, type FixedQuality, type QualityChoice} from '@core/playback-v1/choices.ts';
+import {connectionTooSlow} from '@core/playback-v1/quality.ts';
 import {ownerStopOf} from './owner-stop';
 import {TUNER_RESERVED, tunerHandover, tunerHandoverLines} from '@core/live-handover.ts';
 import {shortcutKey} from './shortcut-key';
@@ -471,6 +472,8 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
   const handover = state.phase !== 'error' ? tunerHandover(tunerDeadline, clock) : undefined;
   const handoverLines = handover ? tunerHandoverLines(handover, i18n.t, ms => i18n.time(ms)) : undefined;
   const tunerReserved = state.ended?.reason === TUNER_RESERVED;
+  // N20: the account's allowed hours closed while it played; the server ended the session and says why.
+  const outsideHours = state.ended?.reason === 'outside_allowed_hours';
   // FEAT-07: channel up/down from the guide's lineup.
   const surf = (delta: 1 | -1) => { const next = surfChannel(delta); const raw = next ? legacyChannel(next) : undefined; if (raw) engine.tune(raw); };
   const audioPlan = state.audio;
@@ -588,7 +591,12 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
     if (choice === qualityChoice) return;
     engine.setQualityChoice(choice);
     engine.playback.forgetAutomaticStep();
-    void service.changePlayback({quality: qualityRequest(choice)}).catch(() => setNotice(i18n.t('web.player.quality.changeFailed')));
+    void service.changePlayback({quality: qualityRequest(choice)}).catch(error => {
+      // Too slow for that quality: name the widest one the connection carries, when the server found one.
+      const slow = connectionTooSlow(error);
+      if (!slow) { setNotice(i18n.t('web.player.quality.changeFailed')); return; }
+      setNotice(slow.fits ? i18n.t('player.quality.tooSlow', {quality: slow.fits.height >= 2160 ? i18n.t('quality.4k') : i18n.t('quality.height', {height: slow.fits.height})}) : i18n.t('player.quality.tooSlowAny'));
+    });
   };
   const chosenFixed = fixedQuality(qualityChoice);
   const currentSource = offersData?.sources.find(x => x.id === offersData.current?.sourceId) ?? offersData?.sources[0];
@@ -751,7 +759,12 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
           <span>{handoverLines[1]}</span>
         </div>
       ) : null}
-      {state.phase === 'error' && !ownerStopped && !tunerReserved ? (
+      {outsideHours ? (
+        <div className={s.errorState} role="alert">
+          <StateView icon="info" title={i18n.t('player.ended.outsideHoursTitle')} body={i18n.t('player.ended.outsideHours')} action={{label: i18n.t(isAudio ? 'action.close' : 'action.back'), onClick: close}} />
+        </div>
+      ) : null}
+      {state.phase === 'error' && !ownerStopped && !tunerReserved && !outsideHours ? (
         // Two honest cases: something another try can fix, and a title that cannot be played here at all.
         <div className={s.errorState} role="alert">
           {failed.permanent

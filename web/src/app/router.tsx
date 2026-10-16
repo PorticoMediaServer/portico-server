@@ -133,7 +133,7 @@ export const saved = createRoute({
   getParentRoute: () => app,
   path: '/saved',
   // `library` and `filters` are the library toolbar's on My List and Favorites (one library's part of the list).
-  validateSearch: (raw: Record<string, unknown>): {view?: string; sort?: string; direction?: 'asc' | 'desc'; filter?: 'all' | 'unwatched' | 'inProgress'; period?: '24h' | '7d' | '30d' | '90d' | 'all'; library?: string; filters?: string} => ({view: str(raw.view), sort: str(raw.sort), direction: oneOf(raw.direction, ['asc', 'desc'] as const), filter: oneOf(raw.filter, ['all', 'unwatched', 'inProgress'] as const), period: oneOf(raw.period, ['24h', '7d', '30d', '90d', 'all'] as const), library: str(raw.library), filters: filtersParam(raw.filters)}),
+  validateSearch: (raw: Record<string, unknown>): {view?: string; sort?: string; direction?: 'asc' | 'desc'; filter?: 'all' | 'unwatched' | 'inProgress' | 'mine' | 'shared' | 'pinned'; period?: '24h' | '7d' | '30d' | '90d' | 'all'; library?: string; filters?: string} => ({view: str(raw.view), sort: str(raw.sort), direction: oneOf(raw.direction, ['asc', 'desc'] as const), filter: oneOf(raw.filter, ['all', 'unwatched', 'inProgress', 'mine', 'shared', 'pinned'] as const), period: oneOf(raw.period, ['24h', '7d', '30d', '90d', 'all'] as const), library: str(raw.library), filters: filtersParam(raw.filters)}),
   component: SavedScreen,
 });
 export const savedResource = createRoute({

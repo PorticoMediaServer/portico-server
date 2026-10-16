@@ -15,21 +15,21 @@ import (
 // AdminSession is one active playback on the server (spec §14, Now Playing):
 // who, on what device, what, how it's delivered and from where.
 type AdminSession struct {
-	ID            string     `json:"id"`
-	Protocol      string     `json:"protocol"` // "v1"
-	User          AdminName  `json:"user"`
-	Profile       AdminName  `json:"profile"`
-	Device        AdminName  `json:"device"`
-	Item          *AdminItem `json:"item,omitempty"`
-	Kind          string     `json:"kind"` // "vod" | "audio" | "channel"
-	State         string     `json:"state"`
-	PositionMs    int64      `json:"positionMs"`
+	ID         string     `json:"id"`
+	Protocol   string     `json:"protocol"` // "v1"
+	User       AdminName  `json:"user"`
+	Profile    AdminName  `json:"profile"`
+	Device     AdminName  `json:"device"`
+	Item       *AdminItem `json:"item,omitempty"`
+	Kind       string     `json:"kind"` // "vod" | "audio" | "channel"
+	State      string     `json:"state"`
+	PositionMs int64      `json:"positionMs"`
 	// DurationMs is the length of the version being played; absent for a
 	// channel or when the files do not say.
-	DurationMs    int64      `json:"durationMs,omitempty"`
-	Decision      Decisions  `json:"decision"`
-	BitrateKbps   int        `json:"bitrateKbps,omitempty"`
-	BandwidthKbps int64      `json:"bandwidthKbps,omitempty"`
+	DurationMs    int64     `json:"durationMs,omitempty"`
+	Decision      Decisions `json:"decision"`
+	BitrateKbps   int       `json:"bitrateKbps,omitempty"`
+	BandwidthKbps int64     `json:"bandwidthKbps,omitempty"`
 	// Engine is the player engine the device is playing with (native or mpv);
 	// Quality is the quality in force. Both are absent for a channel.
 	Engine    string   `json:"engine,omitempty"`

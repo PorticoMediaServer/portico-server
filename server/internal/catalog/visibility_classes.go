@@ -80,7 +80,8 @@ func (s *Service) RunVisibilityRebuilder(ctx context.Context) {
 			}
 		}
 		for _, request := range requests {
-			if ctx.Err() != nil {
+			// The owner's pause holds the builder between classes too.
+			if !dbwork.WaitBackground(ctx) {
 				return
 			}
 			// A library without a revision row is gone or not yet created.
@@ -357,10 +358,12 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 	}
 	clause, clauseArgs := visibilityMembershipSQL(`e.entity_id`, r)
 	var cursor int64
+	started := time.Now()
 	for {
-		if err = ctx.Err(); err != nil {
+		if err = visibilityBoundary(ctx, started); err != nil {
 			return err
 		}
+		started = time.Now()
 		var upper sql.NullInt64
 		err = dbwork.ReadHandle(ctx, s.db).QueryRowContext(ctx,
 			visibilityChunkSQL, libraryID, cursor).Scan(&upper)
@@ -408,6 +411,12 @@ func (s *Service) RebuildVisibilityClass(ctx context.Context, library string, r 
 			return queryErr
 		}
 		for off := 0; off < len(batch); off += compactcatalog.BatchLimit {
+			if off > 0 {
+				if err = visibilityBoundary(ctx, started); err != nil {
+					return err
+				}
+				started = time.Now()
+			}
 			chunk := batch[off:min(off+compactcatalog.BatchLimit, len(batch))]
 			err = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 				for _, e := range chunk {
@@ -462,7 +471,12 @@ func (s *Service) clearVisibilityGeneration(ctx context.Context, classID, genera
 		`DELETE FROM compact_visibility_blocks WHERE class_id=? AND generation=?`, classID, generation); err != nil {
 		return err
 	}
+	started := time.Now()
 	for {
+		if err := visibilityBoundary(ctx, started); err != nil {
+			return err
+		}
+		started = time.Now()
 		result, err := dbwork.ExecWrite(ctx, s.db, dbwork.ClassBackgroundMedia,
 			`DELETE FROM compact_visibility_rows WHERE class_id=? AND generation=? AND entity_id IN
  (SELECT entity_id FROM compact_visibility_rows WHERE class_id=? AND generation=? LIMIT 8)`,

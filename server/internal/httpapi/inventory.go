@@ -209,6 +209,13 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		switch r.PathValue("action") {
 		case "associate":
 			e = d.Catalog.AssociateInventoryVersion(r.Context(), r.PathValue("id"), r.PathValue("object"), body.Revision, body.ItemID, authorize)
+		case "separate-folder":
+			// separate-folder: this file's folder is an album or book of its own.
+			var container string
+			if container, e = d.Catalog.SeparateFolder(r.Context(), r.PathValue("id"), r.PathValue("object"), body.Revision, authorize); e == nil {
+				write(w, 200, map[string]any{"itemId": container})
+				return
+			}
 		case "separate":
 			var item string
 			if item, e = d.Catalog.SeparateInventoryVersion(r.Context(), r.PathValue("id"), r.PathValue("object"), body.Revision, authorize); e == nil {

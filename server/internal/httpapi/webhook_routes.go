@@ -24,9 +24,12 @@ func webhookErrorDefinitions() []apierror.Definition {
 
 func webhookRouteError(err error) error {
 	var fields *webhooks.ValidationError
+	var stale *webhooks.RevisionError
 	switch {
 	case err == nil:
 		return nil
+	case errors.As(err, &stale):
+		return &apierror.Error{Code: "revision_mismatch", Current: stale.Current, Cause: err}
 	case errors.As(err, &fields):
 		out := &apierror.Error{Code: "invalid_request"}
 		for _, name := range fields.Fields {
@@ -95,7 +98,23 @@ func registerWebhookRoutes(registry *apikit.Registry, d Dependencies) error {
 	if err != nil {
 		return err
 	}
-	err = apikit.Register(registry, apikit.Route[webhooks.Change, webhooks.Issued]{Metadata: meta("update_webhook", "PATCH", "/v1/admin/webhooks/{id}", "Change a webhook, turn it on or off, or replace its secret", 200, 8192, nil, append([]string{"body_too_large"}, found...)),
+	err = apikit.Register(registry, apikit.Route[struct{}, webhooks.Webhook]{Metadata: meta("get_webhook", "GET", "/v1/admin/webhooks/{id}", "Read one webhook", 200, 0, nil, found),
+		Handler: func(ctx context.Context, r *http.Request, _ struct{}) (webhooks.Webhook, error) {
+			empty := webhooks.Webhook{Events: []string{}}
+			store, auth, err := prepare(r)
+			if err != nil {
+				return empty, err
+			}
+			out, err := store.Get(ctx, auth, r.PathValue("id"))
+			if err != nil {
+				return empty, webhookRouteError(err)
+			}
+			return out, nil
+		}})
+	if err != nil {
+		return err
+	}
+	err = apikit.Register(registry, apikit.Route[webhooks.Change, webhooks.Issued]{Metadata: meta("update_webhook", "PATCH", "/v1/admin/webhooks/{id}", "Change a webhook, turn it on or off, or replace its secret; fenced by its revision", 200, 8192, nil, append([]string{"body_too_large", "revision_mismatch"}, found...)),
 		Handler: func(ctx context.Context, r *http.Request, body webhooks.Change) (webhooks.Issued, error) {
 			empty := webhooks.Issued{Webhook: webhooks.Webhook{Events: []string{}}}
 			store, auth, err := prepare(r)

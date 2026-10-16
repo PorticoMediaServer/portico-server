@@ -21,7 +21,6 @@ export const channelBuilderMessages = {
   'builder.matchAny': 'any of these',
   'builder.addCondition': 'Add a condition',
   'builder.addGroup': 'Add a group',
-  'builder.group': 'Group: {mode}',
   'builder.exclude': 'Exclude matches',
   'builder.remove': 'Remove',
   'builder.noConditions': 'No conditions: everything in the chosen libraries plays.',
@@ -95,6 +94,4 @@ export const channelBuilderMessages = {
   'builder.empty.title': 'No Library Channels yet',
   'builder.empty.body': 'A Library Channel plays your own movies and shows on a schedule, like a TV channel. Describe what it plays, like “only movies from 1985” or “nothing but one show”.',
   'builder.empty.create': 'Create a channel',
-  'builder.fromTemplate': 'Start from a template',
-  'builder.templateUnavailable': '{name}: {reason}',
 } as const;

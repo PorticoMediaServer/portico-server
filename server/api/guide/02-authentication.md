@@ -145,6 +145,7 @@ blocking a device ends sessions. Ordinary permission changes apply live.
 4. `POST /v1/quick-connect/cancel` with the device code cancels an unused attempt.
 
 Source: `internal/httpapi/onboarding.go`, `internal/identity/quick_connect.go`.
-Store tokens privately. Browser requests are origin-checked; a third-party
-browser origin needs the owner's explicit API-origin allowance. Native clients
-can omit Origin. Use returned verification URLs rather than hard-code Hosted.
+Store tokens privately. A browser page on another origin may call any route
+with a token in `Authorization` and nothing to configure; without a token it
+gets `403 origin_not_allowed`, so sign-in and setup stay with the server's own
+web app. Native clients can omit Origin. Use returned verification URLs rather than hard-code Hosted.

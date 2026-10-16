@@ -38,8 +38,8 @@ test('only the actions the server names are offered', () => {
 });
 
 test('only film, TV and anime libraries have the list', () => {
-  for (const kind of ['movie', 'tv', 'anime']) assert.equal(hasAttentionList(kind), true, kind);
-  for (const kind of ['music', 'audiobook', '']) assert.equal(hasAttentionList(kind), false, kind);
+  for (const kind of ['movie', 'tv', 'anime', 'music', 'audiobook']) assert.equal(hasAttentionList(kind), true, kind);
+  for (const kind of ['home', '']) assert.equal(hasAttentionList(kind), false, kind);
 });
 
 test('a typed provider ID is trimmed and refused when it has spaces or is empty', () => {

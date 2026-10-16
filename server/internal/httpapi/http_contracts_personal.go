@@ -64,27 +64,27 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/playlists.go:131
-	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "patch_playlists_id", Method: "PATCH", Path: "/v1/playlists/{id}", Summary: "Change playlists", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "patch_playlists_id", Method: "PATCH", Path: "/v1/playlists/{id}", Summary: "Change playlists", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playlists.go:131
-	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "delete_playlists_id", Method: "DELETE", Path: "/v1/playlists/{id}", Summary: "Remove playlists", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "delete_playlists_id", Method: "DELETE", Path: "/v1/playlists/{id}", Summary: "Remove playlists", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playlists.go:131
-	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "post_playlists_id_entries", Method: "POST", Path: "/v1/playlists/{id}/entries", Summary: "Run playlists entries", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "post_playlists_id_entries", Method: "POST", Path: "/v1/playlists/{id}/entries", Summary: "Run playlists entries", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playlists.go:131
-	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "delete_playlists_id_entries_entryId", Method: "DELETE", Path: "/v1/playlists/{id}/entries/{entryId}", Summary: "Remove playlists entries", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "delete_playlists_id_entries_entryId", Method: "DELETE", Path: "/v1/playlists/{id}/entries/{entryId}", Summary: "Remove playlists entries", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playlists.go:131
-	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "put_playlists_id_shares", Method: "PUT", Path: "/v1/playlists/{id}/shares", Summary: "Save playlists shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "put_playlists_id_shares", Method: "PUT", Path: "/v1/playlists/{id}/shares", Summary: "Save playlists shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/playlists.go:131
-	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "delete_playlists_id_shares", Method: "DELETE", Path: "/v1/playlists/{id}/shares", Summary: "Remove playlists shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[catalog.PlaylistMutation, catalog.PlaylistReceipt](registry, apikit.Metadata{ID: "delete_playlists_id_shares", Method: "DELETE", Path: "/v1/playlists/{id}/shares", Summary: "Remove playlists shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:55
@@ -124,7 +124,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
 		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
-	}](registry, apikit.Metadata{ID: "patch_saved_resources_id", Method: "PATCH", Path: "/v1/saved-resources/{id}", Summary: "Change saved resources", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "patch_saved_resources_id", Method: "PATCH", Path: "/v1/saved-resources/{id}", Summary: "Change saved resources", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:140
@@ -138,7 +138,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
 		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
-	}](registry, apikit.Metadata{ID: "delete_saved_resources_id", Method: "DELETE", Path: "/v1/saved-resources/{id}", Summary: "Remove saved resources", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "delete_saved_resources_id", Method: "DELETE", Path: "/v1/saved-resources/{id}", Summary: "Remove saved resources", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:140
@@ -152,7 +152,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
 		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
-	}](registry, apikit.Metadata{ID: "put_saved_resources_id_entries", Method: "PUT", Path: "/v1/saved-resources/{id}/entries", Summary: "Save saved resources entries", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "put_saved_resources_id_entries", Method: "PUT", Path: "/v1/saved-resources/{id}/entries", Summary: "Save saved resources entries", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:140
@@ -180,7 +180,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
 		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
-	}](registry, apikit.Metadata{ID: "put_saved_resources_id_shares", Method: "PUT", Path: "/v1/saved-resources/{id}/shares", Summary: "Save saved resources shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "put_saved_resources_id_shares", Method: "PUT", Path: "/v1/saved-resources/{id}/shares", Summary: "Save saved resources shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:140
@@ -194,7 +194,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 			Deleted    bool   `json:"deleted"`
 		} `json:"current,omitempty"`
 		ReceiptLifetimeSeconds int `json:"receiptLifetimeSeconds"`
-	}](registry, apikit.Metadata{ID: "delete_saved_resources_id_shares", Method: "DELETE", Path: "/v1/saved-resources/{id}/shares", Summary: "Remove saved resources shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "delete_saved_resources_id_shares", Method: "DELETE", Path: "/v1/saved-resources/{id}/shares", Summary: "Remove saved resources shares", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:221
@@ -208,7 +208,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 		PinRevision int64  `json:"pinRevision"`
 		Pinned      bool   `json:"pinned"`
 		Deleted     bool   `json:"deleted"`
-	}](registry, apikit.Metadata{ID: "put_saved_pins_kind_id", Method: "PUT", Path: "/v1/saved-pins/{kind}/{id}", Summary: "Save saved pins", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "put_saved_pins_kind_id", Method: "PUT", Path: "/v1/saved-pins/{kind}/{id}", Summary: "Save saved pins", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "revision_mismatch", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:240

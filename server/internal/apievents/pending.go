@@ -4,8 +4,11 @@ import (
 	"context"
 	"database/sql"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"strings"
+
+	"portico.local/server/internal/entityid"
 )
 
 // Flush publishes bounded, coalesced hints. It runs only after a committed
@@ -45,7 +48,7 @@ func Flush(ctx context.Context, tx *sql.Tx, limit int) (int, error) {
 		}
 		var data any
 		if json.Valid([]byte(h.data)) {
-			data = json.RawMessage(h.data)
+			data = json.RawMessage(publicTitles(h.data))
 		}
 		if err = Append(tx, audience, h.kind, h.resource, h.id, h.revision, data); err != nil {
 			return 0, err
@@ -55,4 +58,40 @@ func Flush(ctx context.Context, tx *sql.Tx, limit int) (int, error) {
 		}
 	}
 	return len(hints), nil
+}
+
+// publicTitles turns a personal hint's titles path (hex public ids, the title
+// first and then its parent and grandparent, as the schema's triggers write
+// it) into the public ids a client knows them by. Anything it cannot read is
+// left out, which means "any title".
+func publicTitles(data string) string {
+	if !strings.Contains(data, `"titles"`) {
+		return data
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal([]byte(data), &fields) != nil {
+		return data
+	}
+	var path string
+	if json.Unmarshal(fields["titles"], &path) != nil {
+		return data
+	}
+	delete(fields, "titles")
+	ids := []string{}
+	for _, part := range strings.Split(path, "/") {
+		raw, err := hex.DecodeString(part)
+		if err != nil || len(raw) != entityid.Size {
+			ids = nil
+			break
+		}
+		ids = append(ids, entityid.Encode(raw))
+	}
+	if len(ids) > 0 {
+		fields["titles"], _ = json.Marshal(ids)
+	}
+	out, err := json.Marshal(fields)
+	if err != nil {
+		return data
+	}
+	return string(out)
 }

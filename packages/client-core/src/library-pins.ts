@@ -1,3 +1,4 @@
+import {routePath,encodedRoutePath} from '../../contracts/src/routes.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {firstOfEach,keepReadable} from './tolerant.ts';
 /** Pinned libraries and pinned-resource order. The arrangement is server state:
@@ -5,7 +6,11 @@ import {firstOfEach,keepReadable} from './tolerant.ts';
  * Nothing here re-orders locally or remembers a pin the server did not confirm. */
 export type PinnedResourceKind='collection'|'view'|'playlist';
 export type PinOrderEntry=Readonly<{kind:PinnedResourceKind;id:string}>;
-export type PinOrder=Readonly<{serverId:string;viewerFence:string;revision:number;order:readonly PinOrderEntry[]}>;
+/** A pinned collection, saved view or playlist as navigation shows it: its name, and the pin
+ * revision an unpin sends back. The read lists every pin the viewer can still open, arranged ones
+ * first; a save answers with the arrangement alone (no names), so a client reads again after it. */
+export type PinnedResource=Readonly<PinOrderEntry&{name:string;pinRevision:number}>;
+export type PinOrder=Readonly<{serverId:string;viewerFence:string;revision:number;order:readonly PinnedResource[]}>;
 export type LibraryNavigationPins=Readonly<{pinnedLibraryIds:readonly string[];revision:number}>;
 export type PinnedLibrary=Readonly<{id:string;name:string;kind:string;defaultView:string;pinned:boolean}>;
 
@@ -22,7 +27,8 @@ export function parsePinOrder(raw:unknown,serverId:string):PinOrder{
  if(!obj(raw)||raw.serverId!==serverId||!id(raw.viewerFence)||!count(raw.revision))bad();
  const order=rows(raw.order,200).map(v=>{
   if(!obj(v)||!id(v.id)||!str(v.kind,32)||!kinds.includes(v.kind))bad();
-  return {kind:v.kind as PinnedResourceKind,id:v.id};
+  if(v.name!==undefined&&!str(v.name,512)||v.pinRevision!==undefined&&!count(v.pinRevision))bad();
+  return {kind:v.kind as PinnedResourceKind,id:v.id,name:typeof v.name==='string'?v.name:'',pinRevision:typeof v.pinRevision==='number'?v.pinRevision:0};
  });
  if(new Set(order.map(entry=>entry.kind+':'+entry.id)).size!==order.length)bad();
  return freeze({serverId,viewerFence:raw.viewerFence,revision:raw.revision,order});
@@ -63,4 +69,54 @@ export function pinOrderRequest(expectedRevision:number,order:readonly PinOrderE
 export function libraryNavigationRequest(expectedRevision:number,pinnedLibraryIds:readonly string[]):Readonly<{expectedRevision:number;pinnedLibraryIds:readonly string[]}>{
  if(!count(expectedRevision)||pinnedLibraryIds.length>100||new Set(pinnedLibraryIds).size!==pinnedLibraryIds.length||pinnedLibraryIds.some(entry=>!id(entry)))bad('Those library pins cannot be saved.');
  return freeze({expectedRevision,pinnedLibraryIds:[...pinnedLibraryIds]});
+}
+
+export interface PinsApi{request<T>(path:string,method?:string,body?:unknown,signal?:AbortSignal):Promise<T>}
+
+/** The viewer's pinned collections, saved views and playlists, in their arrangement. */
+export async function readPinOrder(api:PinsApi,serverId:string,signal?:AbortSignal):Promise<PinOrder>{
+ return parsePinOrder(await api.request<unknown>(routePath("get_saved_pins_order"),'GET',undefined,signal),serverId);
+}
+/** Saves a new arrangement of the pins; the caller reads the pins again for their names. */
+export async function savePinOrder(api:PinsApi,serverId:string,expectedRevision:number,order:readonly PinOrderEntry[]):Promise<PinOrder>{
+ return parsePinOrder(await api.request<unknown>(routePath("put_saved_pins_order"),'PUT',pinOrderRequest(expectedRevision,order.map(entry=>({kind:entry.kind,id:entry.id})))),serverId);
+}
+/** Pins or unpins one collection, saved view or playlist. `pinRevision` is the one last read. */
+export async function setResourcePin(api:PinsApi,kind:PinnedResourceKind,resourceId:string,pinned:boolean,pinRevision:number,operationId:string):Promise<Readonly<{pinned:boolean;pinRevision:number}>>{
+ if(!kinds.includes(kind)||!id(resourceId)||!count(pinRevision)||!/^[A-Za-z0-9_-]{1,128}$/.test(operationId))bad('That pin cannot be saved.');
+ const raw=await api.request<unknown>(encodedRoutePath("put_saved_pins_kind_id",{"kind":kind,"id":encodeURIComponent(resourceId)}),'PUT',{operationId,expectedRevision:pinRevision,pinned});
+ if(!obj(raw)||typeof raw.pinned!=='boolean'||!count(raw.pinRevision))bad();
+ return freeze({pinned:raw.pinned,pinRevision:raw.pinRevision});
+}
+export async function readLibraryNavigation(api:PinsApi,signal?:AbortSignal):Promise<LibraryNavigationPins>{
+ return parseLibraryNavigationPins(await api.request<unknown>(routePath("get_me_library_navigation"),'GET',undefined,signal));
+}
+export async function saveLibraryNavigation(api:PinsApi,expectedRevision:number,pinnedLibraryIds:readonly string[]):Promise<LibraryNavigationPins>{
+ return parseLibraryNavigationPins(await api.request<unknown>(routePath("put_me_library_navigation"),'PUT',libraryNavigationRequest(expectedRevision,pinnedLibraryIds)));
+}
+
+/** The pinned libraries after pinning (at the end) or unpinning one. */
+export function withLibraryPinned(pinned:readonly string[],libraryId:string,pin:boolean):readonly string[]{
+ const rest=pinned.filter(entry=>entry!==libraryId);
+ return freeze(pin?[...rest,libraryId]:rest);
+}
+/** An arrangement with one entry moved by `by` places (clamped); unchanged when it cannot move. */
+export function movedPin<T>(order:readonly T[],index:number,by:number):readonly T[]{
+ const to=Math.max(0,Math.min(order.length-1,index+by));
+ if(index<0||index>=order.length||to===index)return order;
+ const next=[...order];
+ const [entry]=next.splice(index,1);
+ next.splice(to,0,entry!);
+ return Object.freeze(next);
+}
+/** Run a pin change, and when another device changed the pins meanwhile, read them again and
+ * apply the same change once more (a person never sees that conflict unless their pin really
+ * changed). `apply` receives the fresh state and returns the request to send. */
+export async function withPinRetry<S,R>(read:()=>Promise<S>,apply:(state:S)=>Promise<R>,state?:S):Promise<R>{
+ try{return await apply(state??await read());}
+ catch(error){
+  const code=(error as {code?:unknown}|null)?.code;
+  if(code!=='pin_order_conflict'&&code!=='revision_mismatch'&&code!=='revision_conflict'&&code!=='conflict'&&(error as {status?:unknown}|null)?.status!==409)throw error;
+  return apply(await read());
+ }
 }

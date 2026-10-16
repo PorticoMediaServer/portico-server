@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {cueAt, finishCues, type BitmapRect} from '../src/player/subtitles/bitmap.ts';
 import {decodePgsRuns, parsePgs} from '../src/player/subtitles/pgs.ts';
 import {parseVobSub, parseVobSubIndex} from '../src/player/subtitles/vobsub.ts';
-import {packRuns, parseDvb, readDvbString, unpackRuns} from '../src/player/subtitles/dvb.ts';
+import {characterText, packRuns, parseDvb, parseDvbPackets, readDvbString, unpackRuns} from '../src/player/subtitles/dvb.ts';
 import {readMatroskaSubtitles} from '../src/player/subtitles/matroska.ts';
 import {BitWriter, bytes, dvbClut, dvbLine8, dvbObject, dvbPage, dvbRegion, matroska, pgsEnd, pgsObject, pgsPalette, pgsPresentation, pgsRuns, pgsWindows, picture, programStream, stamp, subpicture} from './helpers/subtitle-samples.ts';
 
@@ -231,4 +231,39 @@ test('cues are put in order, never overlap, and the one on screen is found', () 
   const cases: [number, number][] = [[0, -1], [999, -1], [1000, 0], [2999, 0], [3000, 1], [3500, -1], [4999, -1], [6999, 2], [16999, 3], [17000, -1]];
   for (const [time, want] of cases) assert.equal(cueAt(cues, time), want, `at ${time} ms`);
   assert.equal(cueAt([], 5), -1);
+});
+
+test('VobSub: colours that change part-way along lines (CHG_COLCON)', () => {
+  const art = picture('1111111111', '1111111111', '1111111111', '1111111111');
+  // Lines 401–402 (picture coordinates): from column 104 the value 1 is palette entry 1 (red), opaque.
+  const range = [401 >> 8, 401 & 0xff, 0x10 | (402 >> 8), 402 & 0xff];
+  const point = [0x00, 104, 0x00, 0x10, 0x00, 0xf0];
+  const block = [...range, ...point, 0x0f, 0xff, 0xff, 0xff];
+  const extra = [0x07, (block.length + 2) >> 8, (block.length + 2) & 0xff, ...block];
+  const unit = programStream(subpicture(art, {x: 100, y: 400, colours: [0, 4, 1, 3], alphas: [0, 15, 15, 15], stopAfterMs: 1000, extra}), 1000);
+  const track = parseVobSub(index([`timestamp: ${stamp(1000)}, filepos: ${(0).toString(16).padStart(9, '0')}`]), Uint8Array.from(unit));
+  const [rect] = track.cues[0]!.paint();
+  assert.deepEqual(pixel(rect!, 0, 0), [255, 255, 255, 255], 'a line outside the range keeps the plain colours');
+  assert.deepEqual(pixel(rect!, 3, 1), [255, 255, 255, 255], 'left of the change point too');
+  assert.deepEqual(pixel(rect!, 4, 1), [255, 0, 0, 255], 'from the change point on: the new colour');
+  assert.deepEqual(pixel(rect!, 9, 2), [255, 0, 0, 255]);
+  assert.deepEqual(pixel(rect!, 4, 3), [255, 255, 255, 255], 'and after the last line of the range, the plain colours again');
+});
+
+test('DVB: a character-coded object is written in the region in its own colours', () => {
+  const page = 1;
+  const codes = [...'Hi'].flatMap(c => [0, c.charCodeAt(0)]);
+  const object = [0x0f, 0x13, 0, page, 0, 4 + codes.length, 0, 7, 1 << 2, codes.length / 2, ...codes];
+  // The region places object 7 at (1, 1) as a character object (type 1), letters in code 1 on code 2.
+  const region = [0x0f, 0x11, 0, page, 0, 18, 5, 8, 0, 8, 0, 4, 3 << 2, 0, 0, 0, 0, 7, 0x40, 1, 0, 1, 1, 2];
+  const show = [...dvbPage(page, 30, 2, [[5, 0, 0]]), ...region, ...dvbClut(page, 0, 8, [[1, 235, 128, 128, 0], [2, 16, 128, 128, 0]]), ...object];
+  const drawn: string[] = [];
+  const text = (letters: string, width: number, height: number) => { drawn.push(`${letters} ${width}x${height}`); return {width: 2, height: 2, mask: Uint8Array.from([1, 0, 0, 1])}; };
+  const track = parseDvbPackets([{timeMs: 0, durationMs: null, data: Uint8Array.from(show)}], [page], {}, text);
+  assert.deepEqual(drawn, ['Hi 7x3'], 'drawn where the region places it, no larger than what is left of the region');
+  const [rect] = track.cues[0]!.paint();
+  assert.deepEqual(pixel(rect!, 1, 1), [255, 255, 255, 255], 'ink in the foreground code');
+  assert.deepEqual(pixel(rect!, 2, 1), [0, 0, 0, 255], 'the rest of the letters\' box in the background code');
+  assert.deepEqual(pixel(rect!, 0, 0), [0, 0, 0, 0], 'outside the box, the region as it was');
+  assert.equal(characterText(Uint8Array.from([0, 0x41, 0, 0x0a, 0xac, 0x00, 0, 0x9b]), 0, 4, 8), 'A가', 'controls are left out, Korean is kept');
 });

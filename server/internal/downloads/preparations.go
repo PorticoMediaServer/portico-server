@@ -8,6 +8,7 @@ import (
 	"portico.local/server/internal/contentaccess"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/entityid"
+	"portico.local/server/internal/playback"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
@@ -188,11 +189,12 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 		if !errors.Is(err, sql.ErrNoRows) {
 			return out, err
 		}
-		if reason := qualityReason(ctx, tx, r.Quality, found); reason != "" {
+		recipe := chooseRecipe(ctx, tx, playback.CapabilityDocumentTx(ctx, tx, p), r.Quality, found)
+		if reason := qualityReason(ctx, tx, r.Quality, recipe, found); reason != "" {
 			out.Rejected = append(out.Rejected, Rejection{item, reason})
 			continue
 		}
-		estimate, estimated := estimateBytes(r.Quality, found)
+		estimate, estimated := estimateBytes(r.Quality, recipe, found)
 		if err = storageRoom(tx, r.Quality, estimate); errors.Is(err, ErrStorageFull) {
 			out.Rejected = append(out.Rejected, Rejection{item, ReasonStorageFull})
 			refused++
@@ -209,8 +211,8 @@ func (s *Service) Submit(ctx context.Context, p identity.Principal, r Request, g
 		if err != nil {
 			return out, err
 		}
-		if _, err = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,source_asset_id,quality,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?)`,
-			id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, library, titleSnapshot(title), found.Asset, r.Quality, origin, batch, estimate, flag, now, now); err != nil {
+		if _, err = tx.ExecContext(ctx, `INSERT INTO download_preparations(id,profile_key,authority,account_id,profile_id,item_id,item_public,library_id,title_json,source_asset_id,quality,recipe,origin,batch_id,state,bytes_total,estimated,created_ms,updated_ms) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,'queued',?,?,?,?)`,
+			id, key, p.Authority, p.AccountID, p.ProfileID, entity, item, library, titleSnapshot(title), found.Asset, r.Quality, recipe, origin, batch, estimate, flag, now, now); err != nil {
 			return out, err
 		}
 		fresh, err := readPreparation(tx.QueryRowContext(ctx, `SELECT `+preparationColumns+` FROM download_preparations WHERE id=?`, id))

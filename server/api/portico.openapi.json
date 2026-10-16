@@ -806,6 +806,34 @@
                   },
                   "linear": {
                     "properties": {
+                      "clocks": {
+                        "items": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "offsetMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "startMs",
+                            "endMs",
+                            "offsetMs"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
                       "confirmedPositionMs": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -851,6 +879,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -1011,6 +1044,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -1598,6 +1634,34 @@
                   },
                   "linear": {
                     "properties": {
+                      "clocks": {
+                        "items": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "offsetMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "startMs",
+                            "endMs",
+                            "offsetMs"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
                       "confirmedPositionMs": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -1643,6 +1707,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -1803,6 +1872,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -5347,6 +5419,34 @@
               },
               "linear": {
                 "properties": {
+                  "clocks": {
+                    "items": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "startMs",
+                        "endMs",
+                        "offsetMs"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "confirmedPositionMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -5392,6 +5492,11 @@
                       "endMs"
                     ],
                     "type": "object"
+                  },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "originMs": {
                     "maximum": 9007199254740991,
@@ -5552,6 +5657,9 @@
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -6080,6 +6188,34 @@
                   },
                   "linear": {
                     "properties": {
+                      "clocks": {
+                        "items": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "offsetMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "startMs",
+                            "endMs",
+                            "offsetMs"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
                       "confirmedPositionMs": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -6125,6 +6261,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -6285,6 +6426,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -9408,6 +9552,34 @@
                   },
                   "linear": {
                     "properties": {
+                      "clocks": {
+                        "items": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "offsetMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "startMs",
+                            "endMs",
+                            "offsetMs"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
                       "confirmedPositionMs": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -9453,6 +9625,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -9613,6 +9790,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -9819,6 +9999,11 @@
               "name": {
                 "type": "string"
               },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "secretHint": {
                 "type": "string"
               },
@@ -9845,7 +10030,8 @@
               "updatedAt",
               "waiting",
               "failing",
-              "dropped"
+              "dropped",
+              "revision"
             ],
             "type": "object"
           }
@@ -12941,6 +13127,67 @@
         ],
         "type": "object"
       },
+      "GetAdminAccessDeviceRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetAdminAccessDeviceResponse": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "app": {
+            "type": "string"
+          },
+          "appVersion": {
+            "type": "string"
+          },
+          "firstSeenAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "lastSeenAt": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "trust": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "accountId",
+          "username",
+          "name",
+          "platform",
+          "app",
+          "appVersion",
+          "trust",
+          "firstSeenAt",
+          "lastSeenAt",
+          "revision"
+        ],
+        "type": "object"
+      },
       "GetAdminAccessDevicesRequest": {
         "properties": {},
         "required": [],
@@ -13026,6 +13273,67 @@
         ],
         "type": "object"
       },
+      "GetAdminAccessInvitationRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetAdminAccessInvitationResponse": {
+        "properties": {
+          "acceptedAt": {
+            "type": "string"
+          },
+          "accountId": {
+            "type": "string"
+          },
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "code": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "porticoUsername": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "role": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "email",
+          "role",
+          "allowedLibraries",
+          "state",
+          "createdAt",
+          "expiresAt",
+          "revision"
+        ],
+        "type": "object"
+      },
       "GetAdminAccessInvitationsRequest": {
         "properties": {},
         "required": [],
@@ -13104,6 +13412,182 @@
         "required": [
           "limit",
           "items"
+        ],
+        "type": "object"
+      },
+      "GetAdminAccessMemberRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetAdminAccessMemberResponse": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "allowedLibraries": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "disabled": {
+            "type": "boolean"
+          },
+          "disabledAt": {
+            "type": "string"
+          },
+          "disabledReason": {
+            "type": "string"
+          },
+          "hostedAccountId": {
+            "type": "string"
+          },
+          "limits": {
+            "properties": {
+              "allowUnrated": {
+                "type": "boolean"
+              },
+              "channelPolicy": {
+                "properties": {
+                  "channels": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "mode": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "mode",
+                  "channels"
+                ],
+                "type": "object"
+              },
+              "maxContentRating": {
+                "type": "string"
+              },
+              "maxStreams": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "maximumAge": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "ratingSystem": {
+                "type": "string"
+              },
+              "remoteBitrateKbps": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "schedule": {
+                "properties": {
+                  "timezone": {
+                    "type": "string"
+                  },
+                  "windows": {
+                    "items": {
+                      "properties": {
+                        "days": {
+                          "items": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "type": "array"
+                        },
+                        "endMinute": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMinute": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "days",
+                        "startMinute",
+                        "endMinute"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "timezone",
+                  "windows"
+                ],
+                "type": "object"
+              },
+              "tagPolicy": {
+                "properties": {
+                  "deniedLabels": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "deniedLabels"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "maxStreams",
+              "remoteBitrateKbps",
+              "ratingSystem",
+              "maxContentRating",
+              "maximumAge",
+              "allowUnrated",
+              "schedule",
+              "channelPolicy",
+              "tagPolicy"
+            ],
+            "type": "object"
+          },
+          "limitsRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "role": {
+            "type": "string"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "accountId",
+          "username",
+          "profileId",
+          "role",
+          "disabled",
+          "revision",
+          "allowedLibraries",
+          "limitsRevision",
+          "limits"
         ],
         "type": "object"
       },
@@ -23226,6 +23710,9 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "queryParameter": {
+            "type": "string"
+          },
           "requestsPerMinute": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -23254,7 +23741,8 @@
           "maximumKeys",
           "maximumTokens",
           "tokensAllowed",
-          "requestsPerMinute"
+          "requestsPerMinute",
+          "queryParameter"
         ],
         "type": "object"
       },
@@ -26966,6 +27454,9 @@
                       "evidence": {
                         "type": "string"
                       },
+                      "liveChannels": {
+                        "type": "boolean"
+                      },
                       "name": {
                         "type": "string"
                       },
@@ -27055,6 +27546,45 @@
                             },
                             "interlaced": {
                               "type": "boolean"
+                            },
+                            "limits": {
+                              "items": {
+                                "properties": {
+                                  "bitDepths": {
+                                    "items": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "type": "array"
+                                  },
+                                  "maxFrameRate": {
+                                    "type": "number"
+                                  },
+                                  "maxHeight": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "maxLevel": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "maxWidth": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "maxWidth",
+                                  "maxHeight",
+                                  "maxFrameRate"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "maxBitrateBps": {
                               "maximum": 9007199254740991,
@@ -27197,6 +27727,9 @@
                           "evidence": {
                             "type": "string"
                           },
+                          "liveChannels": {
+                            "type": "boolean"
+                          },
                           "name": {
                             "type": "string"
                           },
@@ -27286,6 +27819,45 @@
                                 },
                                 "interlaced": {
                                   "type": "boolean"
+                                },
+                                "limits": {
+                                  "items": {
+                                    "properties": {
+                                      "bitDepths": {
+                                        "items": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "type": "array"
+                                      },
+                                      "maxFrameRate": {
+                                        "type": "number"
+                                      },
+                                      "maxHeight": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "maxLevel": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "maxWidth": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "maxWidth",
+                                      "maxHeight",
+                                      "maxFrameRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
                                 },
                                 "maxBitrateBps": {
                                   "maximum": 9007199254740991,
@@ -28125,6 +28697,21 @@
                 "endSeconds": {
                   "type": "number"
                 },
+                "image": {
+                  "properties": {
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "contentType"
+                  ],
+                  "type": "object"
+                },
                 "index": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -28321,6 +28908,94 @@
               "onServer"
             ],
             "type": "object"
+          },
+          "trickplay": {
+            "properties": {
+              "columns": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "durationSeconds": {
+                "type": "number"
+              },
+              "frameCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "id": {
+                "type": "string"
+              },
+              "intervalSeconds": {
+                "type": "number"
+              },
+              "rows": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "sourceOffsetSeconds": {
+                "type": "number"
+              },
+              "thumbnails": {
+                "properties": {
+                  "contentType": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "path",
+                  "contentType"
+                ],
+                "type": "object"
+              },
+              "tileHeight": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "tileWidth": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "tiles": {
+                "items": {
+                  "properties": {
+                    "contentType": {
+                      "type": "string"
+                    },
+                    "path": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "path",
+                    "contentType"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "id",
+              "tileWidth",
+              "tileHeight",
+              "columns",
+              "rows",
+              "intervalSeconds",
+              "frameCount",
+              "durationSeconds",
+              "sourceOffsetSeconds",
+              "thumbnails",
+              "tiles"
+            ],
+            "type": "object"
           }
         },
         "required": [
@@ -28338,6 +29013,15 @@
           "subtitles"
         ],
         "type": "object"
+      },
+      "GetDownloadChapterImageRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetDownloadChapterImageResponse": {
+        "format": "binary",
+        "type": "string"
       },
       "GetDownloadOptionsRequest": {
         "properties": {},
@@ -29091,6 +29775,24 @@
         "type": "object"
       },
       "GetDownloadSubtitleResponse": {
+        "format": "binary",
+        "type": "string"
+      },
+      "GetDownloadTrickplayThumbnailsRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetDownloadTrickplayThumbnailsResponse": {
+        "format": "binary",
+        "type": "string"
+      },
+      "GetDownloadTrickplayTileRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetDownloadTrickplayTileResponse": {
         "format": "binary",
         "type": "string"
       },
@@ -41447,6 +42149,9 @@
                               "format": {
                                 "type": "string"
                               },
+                              "linesUrl": {
+                                "type": "string"
+                              },
                               "url": {
                                 "type": "string"
                               }
@@ -41572,6 +42277,9 @@
                                   "type": "string"
                                 },
                                 "format": {
+                                  "type": "string"
+                                },
+                                "linesUrl": {
                                   "type": "string"
                                 },
                                 "url": {
@@ -58270,6 +58978,9 @@
                             "format": {
                               "type": "string"
                             },
+                            "linesUrl": {
+                              "type": "string"
+                            },
                             "url": {
                               "type": "string"
                             }
@@ -58677,6 +59388,34 @@
               },
               "linear": {
                 "properties": {
+                  "clocks": {
+                    "items": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "startMs",
+                        "endMs",
+                        "offsetMs"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "confirmedPositionMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -58722,6 +59461,11 @@
                       "endMs"
                     ],
                     "type": "object"
+                  },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "originMs": {
                     "maximum": 9007199254740991,
@@ -58882,6 +59626,9 @@
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -63141,11 +63888,21 @@
                 },
                 "kind": {
                   "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "pinRevision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
                 "kind",
-                "id"
+                "id",
+                "name",
+                "pinRevision"
               ],
               "type": "object"
             },
@@ -69747,6 +70504,15 @@
         ],
         "type": "object"
       },
+      "GetSubtitleFontsCjkRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetSubtitleFontsCjkResponse": {
+        "format": "binary",
+        "type": "string"
+      },
       "GetSuggestionsRequest": {
         "properties": {},
         "required": [],
@@ -70697,6 +71463,9 @@
                       "format": {
                         "type": "string"
                       },
+                      "linesUrl": {
+                        "type": "string"
+                      },
                       "url": {
                         "type": "string"
                       }
@@ -70822,6 +71591,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "url": {
@@ -71067,6 +71839,9 @@
                       "format": {
                         "type": "string"
                       },
+                      "linesUrl": {
+                        "type": "string"
+                      },
                       "url": {
                         "type": "string"
                       }
@@ -71264,6 +72039,30 @@
         ],
         "type": "object"
       },
+      "GetV1MediaSubtitlesGrantResourceRevisionLinesRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetV1MediaSubtitlesGrantResourceRevisionLinesResponse": {
+        "properties": {
+          "forced": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "total": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "forced",
+          "total"
+        ],
+        "type": "object"
+      },
       "GetV1MediaSubtitlesGrantResourceRevisionOriginalAssRequest": {
         "properties": {},
         "required": [],
@@ -71382,6 +72181,77 @@
       "GetV1MediaSubtitlesGrantResourceRevisionVttResponse": {
         "format": "binary",
         "type": "string"
+      },
+      "GetWebhookRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetWebhookResponse": {
+        "properties": {
+          "createdAt": {
+            "type": "string"
+          },
+          "dropped": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "events": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "failing": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "secretHint": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          },
+          "waiting": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "url",
+          "events",
+          "enabled",
+          "secretHint",
+          "createdAt",
+          "updatedAt",
+          "waiting",
+          "failing",
+          "dropped",
+          "revision"
+        ],
+        "type": "object"
       },
       "HeadDownloadArtifactRequest": {
         "properties": {},
@@ -75594,6 +76464,11 @@
                 "name": {
                   "type": "string"
                 },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "secretHint": {
                   "type": "string"
                 },
@@ -75620,7 +76495,8 @@
                 "updatedAt",
                 "waiting",
                 "failing",
-                "dropped"
+                "dropped",
+                "revision"
               ],
               "type": "object"
             },
@@ -76154,6 +77030,34 @@
                   },
                   "linear": {
                     "properties": {
+                      "clocks": {
+                        "items": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "offsetMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "startMs",
+                            "endMs",
+                            "offsetMs"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
                       "confirmedPositionMs": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -76199,6 +77103,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -76359,6 +77268,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -96452,6 +97364,9 @@
                       "format": {
                         "type": "string"
                       },
+                      "linesUrl": {
+                        "type": "string"
+                      },
                       "url": {
                         "type": "string"
                       }
@@ -97111,6 +98026,34 @@
               },
               "linear": {
                 "properties": {
+                  "clocks": {
+                    "items": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "startMs",
+                        "endMs",
+                        "offsetMs"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "confirmedPositionMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -97156,6 +98099,11 @@
                       "endMs"
                     ],
                     "type": "object"
+                  },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "originMs": {
                     "maximum": 9007199254740991,
@@ -97316,6 +98264,9 @@
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -100623,6 +101574,9 @@
                   "evidence": {
                     "type": "string"
                   },
+                  "liveChannels": {
+                    "type": "boolean"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -100712,6 +101666,45 @@
                         },
                         "interlaced": {
                           "type": "boolean"
+                        },
+                        "limits": {
+                          "items": {
+                            "properties": {
+                              "bitDepths": {
+                                "items": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "type": "array"
+                              },
+                              "maxFrameRate": {
+                                "type": "number"
+                              },
+                              "maxHeight": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "maxLevel": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "maxWidth": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "maxWidth",
+                              "maxHeight",
+                              "maxFrameRate"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
                         },
                         "maxBitrateBps": {
                           "maximum": 9007199254740991,
@@ -100854,6 +101847,9 @@
                       "evidence": {
                         "type": "string"
                       },
+                      "liveChannels": {
+                        "type": "boolean"
+                      },
                       "name": {
                         "type": "string"
                       },
@@ -100943,6 +101939,45 @@
                             },
                             "interlaced": {
                               "type": "boolean"
+                            },
+                            "limits": {
+                              "items": {
+                                "properties": {
+                                  "bitDepths": {
+                                    "items": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "type": "array"
+                                  },
+                                  "maxFrameRate": {
+                                    "type": "number"
+                                  },
+                                  "maxHeight": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "maxLevel": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "maxWidth": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "maxWidth",
+                                  "maxHeight",
+                                  "maxFrameRate"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
                             },
                             "maxBitrateBps": {
                               "maximum": 9007199254740991,
@@ -105922,6 +106957,34 @@
                   },
                   "linear": {
                     "properties": {
+                      "clocks": {
+                        "items": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "offsetMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "startMs",
+                            "endMs",
+                            "offsetMs"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
                       "confirmedPositionMs": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -105967,6 +107030,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -106127,6 +107195,9 @@
                           "type": "string"
                         },
                         "format": {
+                          "type": "string"
+                        },
+                        "linesUrl": {
                           "type": "string"
                         },
                         "trackId": {
@@ -117850,6 +118921,34 @@
               },
               "linear": {
                 "properties": {
+                  "clocks": {
+                    "items": {
+                      "properties": {
+                        "endMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "offsetMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "startMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "startMs",
+                        "endMs",
+                        "offsetMs"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
                   "confirmedPositionMs": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -117895,6 +118994,11 @@
                       "endMs"
                     ],
                     "type": "object"
+                  },
+                  "nowMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "originMs": {
                     "maximum": 9007199254740991,
@@ -118055,6 +119159,9 @@
                       "type": "string"
                     },
                     "format": {
+                      "type": "string"
+                    },
+                    "linesUrl": {
                       "type": "string"
                     },
                     "trackId": {
@@ -118820,6 +119927,34 @@
                   },
                   "linear": {
                     "properties": {
+                      "clocks": {
+                        "items": {
+                          "properties": {
+                            "endMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "offsetMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "startMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "startMs",
+                            "endMs",
+                            "offsetMs"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
                       "confirmedPositionMs": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -118865,6 +120000,11 @@
                           "endMs"
                         ],
                         "type": "object"
+                      },
+                      "nowMs": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "originMs": {
                         "maximum": 9007199254740991,
@@ -119027,6 +120167,9 @@
                         "format": {
                           "type": "string"
                         },
+                        "linesUrl": {
+                          "type": "string"
+                        },
                         "trackId": {
                           "type": "string"
                         },
@@ -119179,6 +120322,11 @@
             },
             "type": "array"
           },
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "name": {
             "type": "string"
           },
@@ -119192,7 +120340,9 @@
             "type": "string"
           }
         },
-        "required": [],
+        "required": [
+          "expectedRevision"
+        ],
         "type": "object"
       },
       "UpdateWebhookResponse": {
@@ -119230,6 +120380,11 @@
               "name": {
                 "type": "string"
               },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "secretHint": {
                 "type": "string"
               },
@@ -119256,7 +120411,8 @@
               "updatedAt",
               "waiting",
               "failing",
-              "dropped"
+              "dropped",
+              "revision"
             ],
             "type": "object"
           }
@@ -120344,6 +121500,129 @@
         "x-scope": "admin"
       }
     },
+    "/v1/admin/access/devices/{id}": {
+      "get": {
+        "operationId": "get_admin_access_device",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "app": {
+                      "type": "string"
+                    },
+                    "appVersion": {
+                      "type": "string"
+                    },
+                    "firstSeenAt": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "lastSeenAt": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "platform": {
+                      "type": "string"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "trust": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "accountId",
+                    "username",
+                    "name",
+                    "platform",
+                    "app",
+                    "appVersion",
+                    "trust",
+                    "firstSeenAt",
+                    "lastSeenAt",
+                    "revision"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read one member's device as the devices list shows it",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "invalid_request",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "security",
+        "x-scope": "admin"
+      }
+    },
     "/v1/admin/access/devices/{id}/trust": {
       "put": {
         "operationId": "put_admin_access_device_trust",
@@ -120495,7 +121774,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/admin/access/invitations": {
@@ -120808,6 +122087,129 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 65536,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/access/invitations/{id}": {
+      "get": {
+        "operationId": "get_admin_access_invitation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "acceptedAt": {
+                      "type": "string"
+                    },
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "allowedLibraries": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "email": {
+                      "type": "string"
+                    },
+                    "expiresAt": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "porticoUsername": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "email",
+                    "role",
+                    "allowedLibraries",
+                    "state",
+                    "createdAt",
+                    "expiresAt",
+                    "revision"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read one invitation as the invitations list shows it",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
         "x-scope": "admin"
       }
     },
@@ -121214,6 +122616,244 @@
         "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/access/members/{id}": {
+      "get": {
+        "operationId": "get_admin_access_member",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "accountId": {
+                      "type": "string"
+                    },
+                    "allowedLibraries": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "disabled": {
+                      "type": "boolean"
+                    },
+                    "disabledAt": {
+                      "type": "string"
+                    },
+                    "disabledReason": {
+                      "type": "string"
+                    },
+                    "hostedAccountId": {
+                      "type": "string"
+                    },
+                    "limits": {
+                      "properties": {
+                        "allowUnrated": {
+                          "type": "boolean"
+                        },
+                        "channelPolicy": {
+                          "properties": {
+                            "channels": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "mode": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "mode",
+                            "channels"
+                          ],
+                          "type": "object"
+                        },
+                        "maxContentRating": {
+                          "type": "string"
+                        },
+                        "maxStreams": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "maximumAge": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "ratingSystem": {
+                          "type": "string"
+                        },
+                        "remoteBitrateKbps": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "schedule": {
+                          "properties": {
+                            "timezone": {
+                              "type": "string"
+                            },
+                            "windows": {
+                              "items": {
+                                "properties": {
+                                  "days": {
+                                    "items": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "type": "array"
+                                  },
+                                  "endMinute": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMinute": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "days",
+                                  "startMinute",
+                                  "endMinute"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "timezone",
+                            "windows"
+                          ],
+                          "type": "object"
+                        },
+                        "tagPolicy": {
+                          "properties": {
+                            "deniedLabels": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "deniedLabels"
+                          ],
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "maxStreams",
+                        "remoteBitrateKbps",
+                        "ratingSystem",
+                        "maxContentRating",
+                        "maximumAge",
+                        "allowUnrated",
+                        "schedule",
+                        "channelPolicy",
+                        "tagPolicy"
+                      ],
+                      "type": "object"
+                    },
+                    "limitsRevision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "profileId": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "role": {
+                      "type": "string"
+                    },
+                    "username": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "accountId",
+                    "username",
+                    "profileId",
+                    "role",
+                    "disabled",
+                    "revision",
+                    "allowedLibraries",
+                    "limitsRevision",
+                    "limits"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read one member as the members list shows it",
+        "x-access": "admin_scope",
+        "x-admission": "admin",
+        "x-cost": "constant",
         "x-error-codes": [
           "invalid_request",
           "unauthorized",
@@ -157438,7 +159078,7 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions and everyone's state combined",
+        "summary": "Say that two titles of one library are the same title: the first becomes part of the second, with its files as versions (an album, book or artist: its songs, files or albums) and everyone's state combined",
         "x-access": "owner",
         "x-admission": "admin-heavy",
         "x-cost": "page_sized",
@@ -158100,6 +159740,11 @@
                           "name": {
                             "type": "string"
                           },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "secretHint": {
                             "type": "string"
                           },
@@ -158126,7 +159771,8 @@
                           "updatedAt",
                           "waiting",
                           "failing",
-                          "dropped"
+                          "dropped",
+                          "revision"
                         ],
                         "type": "object"
                       },
@@ -158271,6 +159917,11 @@
                         "name": {
                           "type": "string"
                         },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "secretHint": {
                           "type": "string"
                         },
@@ -158297,7 +159948,8 @@
                         "updatedAt",
                         "waiting",
                         "failing",
-                        "dropped"
+                        "dropped",
+                        "revision"
                       ],
                       "type": "object"
                     }
@@ -158425,6 +160077,139 @@
         "x-lane": "default",
         "x-scope": "admin"
       },
+      "get": {
+        "operationId": "get_webhook",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "dropped": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "events": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "failing": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "secretHint": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "waiting": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "name",
+                    "url",
+                    "events",
+                    "enabled",
+                    "secretHint",
+                    "createdAt",
+                    "updatedAt",
+                    "waiting",
+                    "failing",
+                    "dropped",
+                    "revision"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read one webhook",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "not_found",
+          "unauthorized",
+          "not_permitted",
+          "insufficient_scope",
+          "invalid_request",
+          "administration_unavailable",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      },
       "patch": {
         "operationId": "update_webhook",
         "parameters": [
@@ -158451,6 +160236,11 @@
                     },
                     "type": "array"
                   },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "name": {
                     "type": "string"
                   },
@@ -158464,7 +160254,9 @@
                     "type": "string"
                   }
                 },
-                "required": [],
+                "required": [
+                  "expectedRevision"
+                ],
                 "type": "object"
               }
             }
@@ -158510,6 +160302,11 @@
                         "name": {
                           "type": "string"
                         },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "secretHint": {
                           "type": "string"
                         },
@@ -158536,7 +160333,8 @@
                         "updatedAt",
                         "waiting",
                         "failing",
-                        "dropped"
+                        "dropped",
+                        "revision"
                       ],
                       "type": "object"
                     }
@@ -158581,19 +160379,21 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Change a webhook, turn it on or off, or replace its secret",
+        "summary": "Change a webhook, turn it on or off, or replace its secret; fenced by its revision",
         "x-access": "owner",
         "x-admission": "admin",
         "x-cost": "page_sized",
         "x-error-codes": [
           "body_too_large",
+          "revision_mismatch",
           "not_found",
           "unauthorized",
           "not_permitted",
           "insufficient_scope",
           "invalid_request",
           "administration_unavailable",
-          "internal"
+          "internal",
+          "revision_required"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 8192,
@@ -164934,7 +166734,7 @@
           "target_unavailable"
         ],
         "x-lane": "default",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/cast/reconnect": {
@@ -169167,7 +170967,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "post": {
         "operationId": "post_device",
@@ -169391,7 +171191,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "patch": {
         "operationId": "patch_device",
@@ -169553,7 +171353,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/devices/{id}/approval": {
@@ -169711,7 +171511,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/devices/{id}/sessions": {
@@ -169773,7 +171573,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/devices/{id}/sessions/bind": {
@@ -169998,7 +171798,7 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 1576960,
-        "x-scope": "session"
+        "x-scope": "playback"
       }
     },
     "/v1/direct": {
@@ -170183,7 +171983,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "read"
       }
     },
     "/v1/direct/members": {
@@ -170300,7 +172100,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "post": {
         "operationId": "post_direct_members",
@@ -170448,7 +172248,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/members/{id}": {
@@ -170534,7 +172334,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "patch": {
         "operationId": "patch_direct_members_id",
@@ -170639,7 +172439,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/members/{id}/deletion-preview": {
@@ -170765,7 +172565,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/ownership": {
@@ -171622,7 +173422,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/avatars": {
@@ -171940,7 +173740,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/{id}": {
@@ -172028,7 +173828,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "patch": {
         "operationId": "patch_direct_profiles_id",
@@ -172265,7 +174065,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/{id}/avatar": {
@@ -172328,7 +174128,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       },
       "post": {
         "operationId": "post_direct_profiles_id_avatar",
@@ -172466,7 +174266,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 5242880,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/{id}/deletion-preview": {
@@ -172570,7 +174370,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/{id}/pin-reset": {
@@ -172787,7 +174587,7 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 4096,
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/profiles/{id}/restrictions": {
@@ -173811,7 +175611,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/sessions/sign-out-everywhere": {
@@ -173930,7 +175730,7 @@
           "internal"
         ],
         "x-lane": "security",
-        "x-scope": "session"
+        "x-scope": "admin"
       }
     },
     "/v1/direct/sign-in": {
@@ -174982,6 +176782,97 @@
         "x-scope": "open"
       }
     },
+    "/v1/downloads/artifacts/{grant}/chapters/{source}/{index}/image": {
+      "get": {
+        "operationId": "get_download_chapter_image",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "source",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "index",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Fetch one chapter thumbnail that travels with a download",
+        "x-access": "public",
+        "x-admission": "media",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_download_grant",
+          "downloads_not_allowed",
+          "download_unavailable",
+          "download_not_ready",
+          "download_source_offline",
+          "downloads_unavailable",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
+      }
+    },
     "/v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt": {
       "get": {
         "operationId": "get_download_subtitle",
@@ -175154,6 +177045,180 @@
           }
         },
         "summary": "Fetch one file of a styled or picture subtitle track that travels with a download",
+        "x-access": "public",
+        "x-admission": "media",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_download_grant",
+          "downloads_not_allowed",
+          "download_unavailable",
+          "download_not_ready",
+          "download_source_offline",
+          "downloads_unavailable",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
+      }
+    },
+    "/v1/downloads/artifacts/{grant}/trickplay/{set}/thumbnails.vtt": {
+      "get": {
+        "operationId": "get_download_trickplay_thumbnails",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "set",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Fetch the scrubbing preview track that travels with a download",
+        "x-access": "public",
+        "x-admission": "media",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_download_grant",
+          "downloads_not_allowed",
+          "download_unavailable",
+          "download_not_ready",
+          "download_source_offline",
+          "downloads_unavailable",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
+      }
+    },
+    "/v1/downloads/artifacts/{grant}/trickplay/{set}/tiles/{tile}": {
+      "get": {
+        "operationId": "get_download_trickplay_tile",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "set",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "tile",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Fetch one scrubbing preview sheet that travels with a download",
         "x-access": "public",
         "x-admission": "media",
         "x-cost": "constant",
@@ -176505,6 +178570,21 @@
                           "endSeconds": {
                             "type": "number"
                           },
+                          "image": {
+                            "properties": {
+                              "contentType": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "contentType"
+                            ],
+                            "type": "object"
+                          },
                           "index": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -176699,6 +178779,94 @@
                         "kind",
                         "title",
                         "onServer"
+                      ],
+                      "type": "object"
+                    },
+                    "trickplay": {
+                      "properties": {
+                        "columns": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "durationSeconds": {
+                          "type": "number"
+                        },
+                        "frameCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "intervalSeconds": {
+                          "type": "number"
+                        },
+                        "rows": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "sourceOffsetSeconds": {
+                          "type": "number"
+                        },
+                        "thumbnails": {
+                          "properties": {
+                            "contentType": {
+                              "type": "string"
+                            },
+                            "path": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "path",
+                            "contentType"
+                          ],
+                          "type": "object"
+                        },
+                        "tileHeight": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "tileWidth": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "tiles": {
+                          "items": {
+                            "properties": {
+                              "contentType": {
+                                "type": "string"
+                              },
+                              "path": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "path",
+                              "contentType"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "tileWidth",
+                        "tileHeight",
+                        "columns",
+                        "rows",
+                        "intervalSeconds",
+                        "frameCount",
+                        "durationSeconds",
+                        "sourceOffsetSeconds",
+                        "thumbnails",
+                        "tiles"
                       ],
                       "type": "object"
                     }
@@ -213288,6 +215456,9 @@
                                         "format": {
                                           "type": "string"
                                         },
+                                        "linesUrl": {
+                                          "type": "string"
+                                        },
                                         "url": {
                                           "type": "string"
                                         }
@@ -213413,6 +215584,9 @@
                                             "type": "string"
                                           },
                                           "format": {
+                                            "type": "string"
+                                          },
+                                          "linesUrl": {
                                             "type": "string"
                                           },
                                           "url": {
@@ -217243,6 +219417,9 @@
                                       "format": {
                                         "type": "string"
                                       },
+                                      "linesUrl": {
+                                        "type": "string"
+                                      },
                                       "url": {
                                         "type": "string"
                                       }
@@ -217592,6 +219769,9 @@
                                 "format": {
                                   "type": "string"
                                 },
+                                "linesUrl": {
+                                  "type": "string"
+                                },
                                 "url": {
                                   "type": "string"
                                 }
@@ -217717,6 +219897,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "url": {
@@ -218039,6 +220222,9 @@
                                   "type": "string"
                                 },
                                 "format": {
+                                  "type": "string"
+                                },
+                                "linesUrl": {
                                   "type": "string"
                                 },
                                 "url": {
@@ -218894,6 +221080,9 @@
                                   "type": "string"
                                 },
                                 "format": {
+                                  "type": "string"
+                                },
+                                "linesUrl": {
                                   "type": "string"
                                 },
                                 "url": {
@@ -233147,6 +235336,9 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "queryParameter": {
+                      "type": "string"
+                    },
                     "requestsPerMinute": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -233175,7 +235367,8 @@
                     "maximumKeys",
                     "maximumTokens",
                     "tokensAllowed",
-                    "requestsPerMinute"
+                    "requestsPerMinute",
+                    "queryParameter"
                   ],
                   "type": "object"
                 }
@@ -233455,6 +235648,9 @@
                                 "evidence": {
                                   "type": "string"
                                 },
+                                "liveChannels": {
+                                  "type": "boolean"
+                                },
                                 "name": {
                                   "type": "string"
                                 },
@@ -233544,6 +235740,45 @@
                                       },
                                       "interlaced": {
                                         "type": "boolean"
+                                      },
+                                      "limits": {
+                                        "items": {
+                                          "properties": {
+                                            "bitDepths": {
+                                              "items": {
+                                                "maximum": 9007199254740991,
+                                                "minimum": -9007199254740991,
+                                                "type": "integer"
+                                              },
+                                              "type": "array"
+                                            },
+                                            "maxFrameRate": {
+                                              "type": "number"
+                                            },
+                                            "maxHeight": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": -9007199254740991,
+                                              "type": "integer"
+                                            },
+                                            "maxLevel": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": -9007199254740991,
+                                              "type": "integer"
+                                            },
+                                            "maxWidth": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": -9007199254740991,
+                                              "type": "integer"
+                                            }
+                                          },
+                                          "required": [
+                                            "maxWidth",
+                                            "maxHeight",
+                                            "maxFrameRate"
+                                          ],
+                                          "type": "object"
+                                        },
+                                        "type": "array"
                                       },
                                       "maxBitrateBps": {
                                         "maximum": 9007199254740991,
@@ -233686,6 +235921,9 @@
                                     "evidence": {
                                       "type": "string"
                                     },
+                                    "liveChannels": {
+                                      "type": "boolean"
+                                    },
                                     "name": {
                                       "type": "string"
                                     },
@@ -233775,6 +236013,45 @@
                                           },
                                           "interlaced": {
                                             "type": "boolean"
+                                          },
+                                          "limits": {
+                                            "items": {
+                                              "properties": {
+                                                "bitDepths": {
+                                                  "items": {
+                                                    "maximum": 9007199254740991,
+                                                    "minimum": -9007199254740991,
+                                                    "type": "integer"
+                                                  },
+                                                  "type": "array"
+                                                },
+                                                "maxFrameRate": {
+                                                  "type": "number"
+                                                },
+                                                "maxHeight": {
+                                                  "maximum": 9007199254740991,
+                                                  "minimum": -9007199254740991,
+                                                  "type": "integer"
+                                                },
+                                                "maxLevel": {
+                                                  "maximum": 9007199254740991,
+                                                  "minimum": -9007199254740991,
+                                                  "type": "integer"
+                                                },
+                                                "maxWidth": {
+                                                  "maximum": 9007199254740991,
+                                                  "minimum": -9007199254740991,
+                                                  "type": "integer"
+                                                }
+                                              },
+                                              "required": [
+                                                "maxWidth",
+                                                "maxHeight",
+                                                "maxFrameRate"
+                                              ],
+                                              "type": "object"
+                                            },
+                                            "type": "array"
                                           },
                                           "maxBitrateBps": {
                                             "maximum": 9007199254740991,
@@ -234171,6 +236448,9 @@
                           "evidence": {
                             "type": "string"
                           },
+                          "liveChannels": {
+                            "type": "boolean"
+                          },
                           "name": {
                             "type": "string"
                           },
@@ -234260,6 +236540,45 @@
                                 },
                                 "interlaced": {
                                   "type": "boolean"
+                                },
+                                "limits": {
+                                  "items": {
+                                    "properties": {
+                                      "bitDepths": {
+                                        "items": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "type": "array"
+                                      },
+                                      "maxFrameRate": {
+                                        "type": "number"
+                                      },
+                                      "maxHeight": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "maxLevel": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "maxWidth": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "maxWidth",
+                                      "maxHeight",
+                                      "maxFrameRate"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
                                 },
                                 "maxBitrateBps": {
                                   "maximum": 9007199254740991,
@@ -234402,6 +236721,9 @@
                               "evidence": {
                                 "type": "string"
                               },
+                              "liveChannels": {
+                                "type": "boolean"
+                              },
                               "name": {
                                 "type": "string"
                               },
@@ -234491,6 +236813,45 @@
                                     },
                                     "interlaced": {
                                       "type": "boolean"
+                                    },
+                                    "limits": {
+                                      "items": {
+                                        "properties": {
+                                          "bitDepths": {
+                                            "items": {
+                                              "maximum": 9007199254740991,
+                                              "minimum": -9007199254740991,
+                                              "type": "integer"
+                                            },
+                                            "type": "array"
+                                          },
+                                          "maxFrameRate": {
+                                            "type": "number"
+                                          },
+                                          "maxHeight": {
+                                            "maximum": 9007199254740991,
+                                            "minimum": -9007199254740991,
+                                            "type": "integer"
+                                          },
+                                          "maxLevel": {
+                                            "maximum": 9007199254740991,
+                                            "minimum": -9007199254740991,
+                                            "type": "integer"
+                                          },
+                                          "maxWidth": {
+                                            "maximum": 9007199254740991,
+                                            "minimum": -9007199254740991,
+                                            "type": "integer"
+                                          }
+                                        },
+                                        "required": [
+                                          "maxWidth",
+                                          "maxHeight",
+                                          "maxFrameRate"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "type": "array"
                                     },
                                     "maxBitrateBps": {
                                       "maximum": 9007199254740991,
@@ -235588,6 +237949,125 @@
                 "schema": {
                   "format": "binary",
                   "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read or change authorized subtitles",
+        "x-access": "public",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "invalid_request",
+          "internal",
+          "subtitle_unavailable",
+          "subtitle_not_found",
+          "subtitle_renderer_platform_unsupported",
+          "subtitle_renderer_configuration",
+          "subtitle_conflict",
+          "subtitle_operation_conflict",
+          "subtitle_capacity",
+          "subtitle_unsupported",
+          "subtitle_invalid_input"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
+      }
+    },
+    "/v1/media/subtitles/{grant}/{resource}/{revision}/lines": {
+      "get": {
+        "operationId": "get_v1_media_subtitles_grant_resource_revision_lines",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "resource",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "revision",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "segment",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "forced": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "total": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "forced",
+                    "total"
+                  ],
+                  "type": "object"
                 }
               }
             },
@@ -248380,6 +250860,34 @@
                         },
                         "linear": {
                           "properties": {
+                            "clocks": {
+                              "items": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "startMs",
+                                  "endMs",
+                                  "offsetMs"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
                             "confirmedPositionMs": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -248425,6 +250933,11 @@
                                 "endMs"
                               ],
                               "type": "object"
+                            },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "originMs": {
                               "maximum": 9007199254740991,
@@ -248585,6 +251098,9 @@
                                 "type": "string"
                               },
                               "format": {
+                                "type": "string"
+                              },
+                              "linesUrl": {
                                 "type": "string"
                               },
                               "trackId": {
@@ -249095,6 +251611,34 @@
                         },
                         "linear": {
                           "properties": {
+                            "clocks": {
+                              "items": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "startMs",
+                                  "endMs",
+                                  "offsetMs"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
                             "confirmedPositionMs": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -249140,6 +251684,11 @@
                                 "endMs"
                               ],
                               "type": "object"
+                            },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "originMs": {
                               "maximum": 9007199254740991,
@@ -249300,6 +251849,9 @@
                                 "type": "string"
                               },
                               "format": {
+                                "type": "string"
+                              },
+                              "linesUrl": {
                                 "type": "string"
                               },
                               "trackId": {
@@ -249855,6 +252407,34 @@
                         },
                         "linear": {
                           "properties": {
+                            "clocks": {
+                              "items": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "startMs",
+                                  "endMs",
+                                  "offsetMs"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
                             "confirmedPositionMs": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -249900,6 +252480,11 @@
                                 "endMs"
                               ],
                               "type": "object"
+                            },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "originMs": {
                               "maximum": 9007199254740991,
@@ -250060,6 +252645,9 @@
                                 "type": "string"
                               },
                               "format": {
+                                "type": "string"
+                              },
+                              "linesUrl": {
                                 "type": "string"
                               },
                               "trackId": {
@@ -250914,6 +253502,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -251264,6 +253853,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -253092,6 +255682,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -253272,6 +255863,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -253860,6 +256452,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -254030,6 +256623,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -255674,6 +258268,34 @@
                             },
                             "linear": {
                               "properties": {
+                                "clocks": {
+                                  "items": {
+                                    "properties": {
+                                      "endMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "offsetMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "startMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "startMs",
+                                      "endMs",
+                                      "offsetMs"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
                                 "confirmedPositionMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -255719,6 +258341,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -255879,6 +258506,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -256830,6 +259460,34 @@
                             },
                             "linear": {
                               "properties": {
+                                "clocks": {
+                                  "items": {
+                                    "properties": {
+                                      "endMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "offsetMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "startMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "startMs",
+                                      "endMs",
+                                      "offsetMs"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
                                 "confirmedPositionMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -256875,6 +259533,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -257035,6 +259698,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -257877,6 +260543,34 @@
                             },
                             "linear": {
                               "properties": {
+                                "clocks": {
+                                  "items": {
+                                    "properties": {
+                                      "endMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "offsetMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "startMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "startMs",
+                                      "endMs",
+                                      "offsetMs"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
                                 "confirmedPositionMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -257922,6 +260616,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -258082,6 +260781,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -258752,6 +261454,34 @@
                             },
                             "linear": {
                               "properties": {
+                                "clocks": {
+                                  "items": {
+                                    "properties": {
+                                      "endMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "offsetMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "startMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "startMs",
+                                      "endMs",
+                                      "offsetMs"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
                                 "confirmedPositionMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -258797,6 +261527,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -258957,6 +261692,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -259759,6 +262497,34 @@
                             },
                             "linear": {
                               "properties": {
+                                "clocks": {
+                                  "items": {
+                                    "properties": {
+                                      "endMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "offsetMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "startMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "startMs",
+                                      "endMs",
+                                      "offsetMs"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
                                 "confirmedPositionMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -259804,6 +262570,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -259964,6 +262735,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -260819,6 +263593,34 @@
                             },
                             "linear": {
                               "properties": {
+                                "clocks": {
+                                  "items": {
+                                    "properties": {
+                                      "endMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "offsetMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "startMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "startMs",
+                                      "endMs",
+                                      "offsetMs"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
                                 "confirmedPositionMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -260864,6 +263666,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -261024,6 +263831,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -261691,6 +264501,34 @@
                             },
                             "linear": {
                               "properties": {
+                                "clocks": {
+                                  "items": {
+                                    "properties": {
+                                      "endMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "offsetMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      },
+                                      "startMs": {
+                                        "maximum": 9007199254740991,
+                                        "minimum": -9007199254740991,
+                                        "type": "integer"
+                                      }
+                                    },
+                                    "required": [
+                                      "startMs",
+                                      "endMs",
+                                      "offsetMs"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "type": "array"
+                                },
                                 "confirmedPositionMs": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -261736,6 +264574,11 @@
                                     "endMs"
                                   ],
                                   "type": "object"
+                                },
+                                "nowMs": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
                                 },
                                 "originMs": {
                                   "maximum": 9007199254740991,
@@ -261896,6 +264739,9 @@
                                     "type": "string"
                                   },
                                   "format": {
+                                    "type": "string"
+                                  },
+                                  "linesUrl": {
                                     "type": "string"
                                   },
                                   "trackId": {
@@ -262381,6 +265227,34 @@
                         },
                         "linear": {
                           "properties": {
+                            "clocks": {
+                              "items": {
+                                "properties": {
+                                  "endMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "offsetMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "startMs": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "startMs",
+                                  "endMs",
+                                  "offsetMs"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
                             "confirmedPositionMs": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -262426,6 +265300,11 @@
                                 "endMs"
                               ],
                               "type": "object"
+                            },
+                            "nowMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
                             },
                             "originMs": {
                               "maximum": 9007199254740991,
@@ -262586,6 +265465,9 @@
                                 "type": "string"
                               },
                               "format": {
+                                "type": "string"
+                              },
+                              "linesUrl": {
                                 "type": "string"
                               },
                               "trackId": {
@@ -265478,11 +268360,21 @@
                           },
                           "kind": {
                             "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          },
+                          "pinRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
                           "kind",
-                          "id"
+                          "id",
+                          "name",
+                          "pinRevision"
                         ],
                         "type": "object"
                       },
@@ -265837,6 +268729,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "browsing",
@@ -266850,6 +269743,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -267471,6 +270365,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -269498,6 +272393,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -270344,6 +273240,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -270697,6 +273594,7 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "default",
@@ -279677,6 +282575,67 @@
         "x-lane": "default",
         "x-max-body-bytes": 65536,
         "x-scope": "admin"
+      }
+    },
+    "/v1/subtitle-fonts/cjk": {
+      "get": {
+        "operationId": "get_subtitle_fonts_cjk",
+        "responses": {
+          "200": {
+            "content": {
+              "font/otf": {
+                "schema": {
+                  "format": "binary",
+                  "type": "string"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the Chinese, Japanese and Korean font for subtitles drawn in a browser",
+        "x-access": "public",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "open"
       }
     },
     "/v1/suggestions": {

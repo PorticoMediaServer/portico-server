@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strconv"
+	"time"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/requestinput"
 )
@@ -26,6 +28,22 @@ type PinOrder struct {
 	Revision int64           `json:"revision"`
 	Order    []PinOrderEntry `json:"order"`
 }
+
+// PinnedResource is one pinned collection, saved view or playlist as the
+// viewer's navigation shows it: what it is and its name.
+type PinnedResource struct {
+	Kind string `json:"kind"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// PinRevision is what an unpin sends as its expected revision.
+	PinRevision int64 `json:"pinRevision"`
+}
+
+// PinnedResources is the viewer's pins in their arrangement.
+type PinnedResources struct {
+	Revision int64            `json:"revision"`
+	Order    []PinnedResource `json:"order"`
+}
 type LibraryNavigation struct {
 	PinnedLibraryIDs []string `json:"pinnedLibraryIds"`
 	Revision         int64    `json:"revision"`
@@ -37,24 +55,33 @@ func pinOrderRevision(q personalReader, owner string) (int64, error) {
 	return revision, e
 }
 
-// PinOrder reads the viewer's arrangement. Pinned resources with no recorded
-// position are not invented here; they sort after the arranged ones by name.
-func (s *Service) PinOrder(a ResourceActor) (PinOrder, error) {
-	out := PinOrder{Order: []PinOrderEntry{}}
+// PinOrder reads the viewer's pinned collections, saved views and playlists
+// in their arrangement: every one they pinned and may still open, the arranged
+// ones first in their order, then the rest by name; at most maximumPinOrder.
+// A pin on something deleted or no longer shared is simply not listed.
+func (s *Service) PinOrder(a ResourceActor) (PinnedResources, error) {
+	out := PinnedResources{Order: []PinnedResource{}}
 	owner := actorKey(a)
 	revision, e := pinOrderRevision(s.read(), owner)
 	if e != nil {
 		return out, e
 	}
 	out.Revision = revision
-	rows, e := s.read().Query(`SELECT kind,resource_id FROM saved_pin_order WHERE owner_key=? ORDER BY position,resource_id`, owner)
+	rows, e := s.read().Query(`SELECT p.kind,p.resource_id,COALESCE(r.name,l.name,'') AS pin_name,p.revision FROM saved_pins p
+ LEFT JOIN saved_pin_order o ON o.owner_key=p.owner_key AND o.kind=p.kind AND o.resource_id=p.resource_id
+ LEFT JOIN saved_resources r ON p.kind IN('collection','view') AND r.id=p.resource_id AND r.kind=p.kind AND r.deleted=0
+  AND (r.owner_key=p.owner_key OR EXISTS(SELECT 1 FROM saved_resource_shares share WHERE share.resource_id=r.id AND share.authority=? AND share.account_id=? AND share.profile_id=?) OR (r.kind='collection' AND r.visibility='server'))
+ LEFT JOIN catalog_playlists l ON p.kind='playlist' AND l.token=p.resource_id AND l.deleted=0
+  AND (l.owner_authority=? AND l.owner_account=? AND l.owner_profile=? OR EXISTS(SELECT 1 FROM playlist_shares share WHERE share.playlist_id=l.token AND share.authority=? AND share.account_id=? AND share.profile_id=?))
+ WHERE p.owner_key=? AND p.pinned=1 AND (r.id IS NOT NULL OR l.id IS NOT NULL)
+ ORDER BY o.position IS NULL,o.position,lower(pin_name),p.resource_id LIMIT ?`, a.Authority, a.AccountID, a.ProfileID, a.Authority, a.AccountID, a.ProfileID, a.Authority, a.AccountID, a.ProfileID, owner, maximumPinOrder)
 	if e != nil {
 		return out, e
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var entry PinOrderEntry
-		if e = rows.Scan(&entry.Kind, &entry.ID); e != nil {
+		var entry PinnedResource
+		if e = rows.Scan(&entry.Kind, &entry.ID, &entry.Name, &entry.PinRevision); e != nil {
 			return out, e
 		}
 		out.Order = append(out.Order, entry)
@@ -117,6 +144,9 @@ func (s *Service) SetPinOrder(a ResourceActor, expected int64, order []PinOrderE
 	}
 	revision++
 	if _, e = tx.Exec(`INSERT INTO saved_pin_order_revisions(owner_key,revision) VALUES(?,?) ON CONFLICT(owner_key) DO UPDATE SET revision=excluded.revision`, owner, revision); e != nil {
+		return out, e
+	}
+	if e = hintPinsChanged(tx, owner, "pins"); e != nil {
 		return out, e
 	}
 	if e = gated.Commit(); e != nil {
@@ -205,6 +235,9 @@ func (s *Service) SetLibraryNavigation(a ResourceActor, expected int64, librarie
 	if _, e = tx.Exec(`INSERT INTO library_navigation_revisions(owner_key,revision) VALUES(?,?) ON CONFLICT(owner_key) DO UPDATE SET revision=excluded.revision`, owner, revision); e != nil {
 		return out, e
 	}
+	if e = hintPinsChanged(tx, owner, "library-navigation"); e != nil {
+		return out, e
+	}
 	if e = gated2.Commit(); e != nil {
 		return out, e
 	}
@@ -245,4 +278,13 @@ func (s *Service) LibrariesForViewer(a ResourceActor) ([]Library, error) {
 		}
 	}
 	return out, nil
+}
+
+// hintPinsChanged tells the viewer's other devices that their pins moved, so
+// the rail and Saved there follow within the feed's usual delay.
+func hintPinsChanged(tx *sql.Tx, owner, what string) error {
+	_, e := tx.Exec(`INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision)
+ VALUES(?,'personal.changed','personal',?,?)
+ ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision`, "personal:"+owner, what, strconv.FormatInt(time.Now().UnixNano(), 10))
+	return e
 }

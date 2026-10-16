@@ -3,7 +3,8 @@
  * from outside the owner's home networks (`GET /v1/networking/connection`, read with
  * `HttpLocalApi.connection()`; open to anyone who can reach the server). The server alone decides
  * what counts as outside the home: the owner's home networks setting is the one definition, and
- * the app never guesses from an address.
+ * the app never guesses from an address. The line says where the owner turns on a secure
+ * connection (Server settings › Remote access); there is no help page to send anyone to.
  */
 import type {ConnectionDocument} from './server-administration.ts';
 
@@ -20,6 +21,3 @@ export async function plainHttpOutsideHome(api: ConnectionReader, signal?: Abort
     return false;
   }
 }
-
-/** Where the note's link goes: how an owner turns on an encrypted connection. */
-export const SECURE_CONNECTION_HELP_URL = 'https://getportico.tv/docs/remote/enable-remote-access';

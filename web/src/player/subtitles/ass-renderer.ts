@@ -73,7 +73,7 @@ export class StyledSubtitleRenderer implements DrawnSubtitleRenderer {
     if (!/^\s*\[events\]/im.test(text)) throw new Error('This subtitle has no lines to draw.');
     const Engine = await (this.options.load ?? loadLibass)();
     if (context.signal.aborted || this.disposed) throw new Error('Subtitle loading was cancelled.');
-    const fonts = [...(source.fonts ?? []).slice(0, subtitleFileLimits.fonts), ...(this.options.fallbackFonts ?? fallbackFontsFor)(text)];
+    const fonts = [...(source.fonts ?? []).slice(0, subtitleFileLimits.fonts), ...(this.options.fallbackFonts ?? (t => fallbackFontsFor(t, script => (script === 'cjk' ? source.cjkFont : undefined))))(text)];
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('The subtitle renderer took too long to start.')), this.options.readyTimeoutMs ?? 45000);
       context.signal.addEventListener('abort', () => reject(new Error('Subtitle loading was cancelled.')), {once: true});

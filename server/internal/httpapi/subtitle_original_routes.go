@@ -114,6 +114,19 @@ func (d Dependencies) originalSubtitleRoute(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	base := subtitles.MediaBaseURL(r.PathValue("grant"), id, revision)
+	if strings.HasSuffix(r.URL.Path, "/lines") {
+		lines, e := d.Subtitles.OriginalLines(r.Context(), p, item, session, id, revision)
+		if e != nil {
+			subtitleFailure(w, e)
+			return
+		}
+		if e = check(); e != nil {
+			subtitleFailure(w, e)
+			return
+		}
+		write(w, 200, lines)
+		return
+	}
 	if strings.HasSuffix(r.URL.Path, "/fonts") {
 		fonts, e := d.Subtitles.OriginalFonts(r.Context(), p, item, session, id, revision, base)
 		if e != nil {

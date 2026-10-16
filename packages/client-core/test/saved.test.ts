@@ -87,10 +87,10 @@ test('lost mutation response retries identical operation/body rather than adding
  const writes:any[]=[];const s=setup(async(p,m,b)=>{if(m==='GET')return isContent(p)?projection():resource();writes.push(b);if(writes.length===1)return new Promise(()=>{});return receipt(b);},10);await s.select({view:'playlist',playlistId:'playlist'});await assert.rejects(s.mutate({action:'add',itemId:'movie'}),/timed out/);assert.deepEqual(s.getSnapshot().pending,[]);assert.equal(s.getSnapshot().mutationError!.code,'timeout');await s.retryMutation();await tick();assert.deepEqual(writes[0],writes[1]);assert.equal(s.getSnapshot().lastReceipt!.entryId,'new-entry');
 });
 test('a playlist change that lost a race is read again and sent with the current revision, without a conflict shown',async()=>{
- let revision=0;const writes:any[]=[];const s=setup(async(p,m,b)=>{if(m==='GET')return isContent(p)?projection('playlist',revision):resource(revision);writes.push(b);if(writes.length===1){revision=4;throw Object.assign(new Error('Changed'),{code:'playlist_conflict'});}return receipt(b,++revision);});await s.select({view:'playlist',playlistId:'playlist'});await s.mutate({action:'rename',name:'New'});await tick();assert.equal(writes.length,2);assert.notEqual(writes[0].operationId,writes[1].operationId);assert.equal(writes[1].expectedRevision,4);assert.equal(s.getSnapshot().mutationError,null);assert.deepEqual(s.getSnapshot().pending,[]);assert.equal(s.getSnapshot().playlist!.revision,5);
+ let revision=0;const writes:any[]=[];const s=setup(async(p,m,b)=>{if(m==='GET')return isContent(p)?projection('playlist',revision):resource(revision);writes.push(b);if(writes.length===1){revision=4;throw Object.assign(new Error('Changed'),{code:'revision_mismatch',status:412});}return receipt(b,++revision);});await s.select({view:'playlist',playlistId:'playlist'});await s.mutate({action:'rename',name:'New'});await tick();assert.equal(writes.length,2);assert.notEqual(writes[0].operationId,writes[1].operationId);assert.equal(writes[1].expectedRevision,4);assert.equal(s.getSnapshot().mutationError,null);assert.deepEqual(s.getSnapshot().pending,[]);assert.equal(s.getSnapshot().playlist!.revision,5);
 });
 test('a playlist change that keeps losing is shown, and an explicit retry uses a new operation and revision',async()=>{
- let revision=0;const writes:any[]=[];let losing=true;const s=setup(async(p,m,b)=>{if(m==='GET')return isContent(p)?projection('playlist',revision):resource(revision);writes.push(b);if(losing){revision++;throw Object.assign(new Error('Changed'),{code:'playlist_conflict'});}return receipt(b,++revision);});await s.select({view:'playlist',playlistId:'playlist'});await assert.rejects(s.mutate({action:'rename',name:'New'}),/Changed/);await tick();assert.equal(writes.length,3);assert.equal(s.getSnapshot().playlist!.revision,3);assert.deepEqual(s.getSnapshot().pending,[]);losing=false;await s.retryMutation();await tick();assert.notEqual(writes[2].operationId,writes[3].operationId);assert.equal(writes[3].expectedRevision,3);
+ let revision=0;const writes:any[]=[];let losing=true;const s=setup(async(p,m,b)=>{if(m==='GET')return isContent(p)?projection('playlist',revision):resource(revision);writes.push(b);if(losing){revision++;throw Object.assign(new Error('Changed'),{code:'revision_mismatch',status:412});}return receipt(b,++revision);});await s.select({view:'playlist',playlistId:'playlist'});await assert.rejects(s.mutate({action:'rename',name:'New'}),/Changed/);await tick();assert.equal(writes.length,3);assert.equal(s.getSnapshot().playlist!.revision,3);assert.deepEqual(s.getSnapshot().pending,[]);losing=false;await s.retryMutation();await tick();assert.notEqual(writes[2].operationId,writes[3].operationId);assert.equal(writes[3].expectedRevision,3);
 });
 test('editor cannot rename/share/delete and partial-page reorder is rejected before transport',async()=>{
  let writes=0;const s=setup(async(p,m)=>{if(m!=='GET')writes++;const r=resource(0,3);r.role='editor';r.actions=['add','remove','reorder'];delete (r as any).shares;return isContent(p)?projection():r;});await s.select({view:'playlist',playlistId:'playlist'});assert.throws(()=>s.mutate({action:'rename',name:'X'}));assert.throws(()=>s.mutate({action:'delete'}));assert.throws(()=>s.mutate({action:'reorder',entryIds:['entry']}));assert.equal(writes,0);
@@ -255,10 +255,12 @@ test('CD-17: selecting, paging and reloading each filter produces the intended U
   assert.equal(s.getSnapshot().projection!.query.category,'all');
   s.dispose();
  }
- // Filter for other views is rejected before transport.
+ // A filter another view does not offer is rejected before transport; the list of playlists has its own groups.
  {
   const s=setup(async()=>projection('playlists',0,[]));
-  assert.throws(()=>s.select({view:'playlists',filter:'all' as any}));
+  assert.throws(()=>s.select({view:'playlists',filter:'unwatched' as any}));
+  assert.throws(()=>s.select({view:'collections',filter:'all' as any}));
+  assert.doesNotThrow(()=>void s.select({view:'playlists',filter:'mine'}).catch(()=>{}));
   assert.throws(()=>s.select({view:'watchlist',filter:'everything' as any}));
   s.dispose();
  }
@@ -311,4 +313,20 @@ test('a removal answers its undo token, and Undo sends it back to put that occur
  await s.mutate({action:'restore',undoToken:'undo-1'});
  assert.equal(writes.length,2);assert.equal(writes[1].m,'POST');assert.match(writes[1].p,/\/v1\/playlists\/playlist\/entries$/);assert.equal(writes[1].b.undoToken,'undo-1');assert.equal(writes[1].b.itemId,undefined);
  assert.throws(()=>s.mutate({action:'restore',undoToken:''} as any));
+});
+test('a playlist paged past its first page is read again through every page on screen, as one first page',async()=>{
+ let ids=Array.from({length:90},(_,i)=>'e'+i);const reads:string[]=[];
+ const s=setup(async p=>{
+  if(!isContent(p))return resource(0,ids.length);
+  const at=Number(new URL('http://x'+p).searchParams.get('cursor')??0);reads.push(String(at));
+  return projection('playlist',0,ids.slice(at,at+40).map(occurrence),at+40<ids.length?String(at+40):'');
+ });
+ await s.select({view:'playlist',playlistId:'playlist'});await s.next('entries');await s.next('entries');
+ assert.equal(s.getSnapshot().pagination.cursor,'80');reads.length=0;
+ ids=ids.filter(id=>id!=='e50');await s.revalidate();
+ assert.deepEqual(reads,['0','40','80']);assert.equal(s.getSnapshot().pagination.cursor,null);assert.deepEqual(s.getSnapshot().pagination.history,[]);
+ const shown=s.getSnapshot().projection!.sections[0].entries.map(e=>e.id);assert.equal(shown.length,89);assert(!shown.includes('e50'));
+ assert.deepEqual(s.getSnapshot().pagination.next,[]);
+ // Shown as one long first page now: the next change reads it all again too, never only its first 40.
+ reads.length=0;ids=['n',...ids];await s.revalidate();assert.deepEqual(reads,['0','40','80']);assert.equal(s.getSnapshot().projection!.sections[0].entries.length,90);assert.equal(s.getSnapshot().phase,'ready');
 });

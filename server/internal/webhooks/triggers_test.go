@@ -182,6 +182,17 @@ func TestEveryEventTriggerRunsAndQueuesItsEvent(t *testing.T) {
 	run(`UPDATE metadata_publication_heads SET metadata_revision=metadata_revision+1 WHERE item_id=?`, film.ID)
 	expect(TitleUpdated, 1, `"title":"Film"`)
 
+	// A show's own details (overview, artwork) changing is an update to it too.
+	show := c.Show(library, "Show", 2001)
+	run(`UPDATE webhook_deliveries SET attempts=1 WHERE type IN('title.added','title.updated')`)
+	run(`UPDATE catalog_shows SET overview='New overview' WHERE entity_id=?`, show.ID)
+	expect(TitleUpdated, 2)
+	run(`UPDATE webhook_deliveries SET attempts=1 WHERE type='title.updated'`)
+	run(`INSERT INTO catalog_item_details(entity_id,poster_url) VALUES(?,'artwork:show') ON CONFLICT(entity_id) DO UPDATE SET poster_url=excluded.poster_url`, show.ID)
+	expect(TitleUpdated, 3)
+	run(`UPDATE catalog_shows SET overview='New overview' WHERE entity_id=?`, show.ID)
+	expect(TitleUpdated, 3)
+
 	// A member's private recordings library is never reported.
 	private := c.Library("recorded", "Recorded TV", "movie", "/recorded")
 	run(`INSERT INTO dvr_private_libraries(library_id,authority,account_id,profile_id) VALUES('recorded','local','member','profile')`)

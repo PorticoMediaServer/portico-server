@@ -30,7 +30,7 @@ func TestQueueKeysMatchEveryBrowseOrder(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer close()
-				plan, err := s.QueueKeysTx(context.Background(), tx, v, ResourceActor{}, &QueueQuery{LibraryID: "a", Pivot: "movies", Sort: selection}, "")
+				plan, err := s.QueueKeysTx(context.Background(), tx, v, ResourceActor{}, &QueueQuery{LibraryID: "a", Pivot: "movies", Sort: selection}, "", nil)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -78,7 +78,7 @@ func TestQueueKeysResolveSavedViewsAndSharedCollections(t *testing.T) {
 			return nil, err
 		}
 		defer close()
-		plan, err := s.QueueKeysTx(context.Background(), tx, viewer, a, nil, id)
+		plan, err := s.QueueKeysTx(context.Background(), tx, viewer, a, nil, id, nil)
 		if err != nil {
 			return nil, err
 		}

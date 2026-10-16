@@ -41,6 +41,13 @@ export const dependsOn = Object.freeze({
   personal: (libraryId: string = ALL): FreshnessDependency => `personal:${libraryId}`,
   /** This profile's playback position (a resume bar moving on another device). */
   progress: (libraryId: string = ALL): FreshnessDependency => `progress:${libraryId}`,
+  /**
+   * This profile's state of one title (or anything under it), for a page about that title: it
+   * moves when a hint names the title, or when a hint for its library names none.
+   */
+  personalTitle: (libraryId: string, titleId: string): readonly FreshnessDependency[] => [`personal:title:${titleId}`, `personal:any:${libraryId}`],
+  /** The same for a playback position. */
+  progressTitle: (libraryId: string, titleId: string): readonly FreshnessDependency[] => [`progress:title:${titleId}`, `progress:any:${libraryId}`],
   /** A settings document: the server's, or this profile's preferences. */
   settings: (document: 'server' | 'preferences'): FreshnessDependency => `settings:${document}`,
   /**
@@ -64,7 +71,25 @@ export type ServerList =
   | 'clientReports' | 'feedback' | 'downloads' | 'remoteSources' | 'liveSources' | 'tuners'
   | 'recordingGroups' | 'recordingStorage' | 'libraryChannels' | 'playbackProblems'
   /** The Watch Together rooms this profile is in (heard by the profile). */
-  | 'togetherGroups';
+  | 'togetherGroups'
+  /** This profile's own recordings and rules, and its own downloads (heard by the profile). */
+  | 'myRecordings' | 'myDownloads'
+  /** The TV guide was brought in again, or a source turned on or off (heard by everyone). */
+  | 'guide'
+  /** Home's Trending and Popular rows may have moved (heard by everyone). */
+  | 'recommendations';
+
+/**
+ * Everything a page about one title depends on: its library's content, and this profile's state of
+ * that title. `titleIds` are the ids the page shows (the title, and the show of an episode when
+ * known); a personal hint about another title of the library does not move it.
+ */
+export function titleWithPersonalState(libraryId: string, titleIds: readonly string[]): readonly FreshnessDependency[] {
+  const out: FreshnessDependency[] = [dependsOn.content(libraryId)];
+  for (const id of new Set(titleIds.filter(Boolean))) out.push(...dependsOn.personalTitle(libraryId, id), ...dependsOn.progressTitle(libraryId, id));
+  if (out.length === 1) out.push(dependsOn.personal(libraryId), dependsOn.progress(libraryId));
+  return [...new Set(out)];
+}
 
 /** Everything a screen of titles with personal marks depends on, for one library or all of them. */
 export function titlesWithPersonalState(libraryId?: string): readonly FreshnessDependency[] {
@@ -411,6 +436,10 @@ export class FreshnessHub {
         const progress = change.counters.observation === undefined ? change.type === 'progress.changed' : differs(`progress:${id}`, change.counters.observation);
         if (personal) moved.push(dependsOn.personal(id), dependsOn.personal());
         if (progress) moved.push(dependsOn.progress(id), dependsOn.progress());
+        // A hint that names its title moves only the pages about that title (or a title above it);
+        // one that names none moves every title page of the library.
+        if (personal) moved.push(...(change.titles ? change.titles.map(t => `personal:title:${t}`) : [`personal:any:${id}`]));
+        if (progress) moved.push(...(change.titles ? change.titles.map(t => `progress:title:${t}`) : [`progress:any:${id}`]));
       } else if (change.type === 'settings.changed') {
         if (differs(`settings:${id}`, change.revision)) moved.push(`settings:${id}`);
       }

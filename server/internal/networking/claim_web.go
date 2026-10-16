@@ -12,7 +12,6 @@ import (
 	"portico.local/server/internal/claimweb"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/supervise"
-	"strconv"
 	"time"
 )
 
@@ -51,7 +50,7 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	if account == UnboundAccount {
 		account = ""
 	}
-	q := claimweb.Request{Kind: "portico.claim.web.v1", Audience: transport.origin, OperationID: v.OperationID, ServerID: v.ServerID, AccountID: account, PublicKey: base64.RawURLEncoding.EncodeToString(v.PublicKey), LocalGeneration: v.LocalGeneration, Name: h.name(), Address: address, IssuedAt: now, ExpiresAt: now.Add(10 * time.Minute)}
+	q := claimweb.Request{Kind: "portico.claim.web.v1", Audience: transport.origin, OperationID: v.OperationID, ServerID: v.ServerID, AccountID: account, PublicKey: base64.RawURLEncoding.EncodeToString(v.PublicKey), LocalGeneration: v.LocalGeneration, Name: h.name(), Address: address, IssuedAt: now, ExpiresAt: now.Add(webClaimLifetime)}
 	raw, _ := json.Marshal(q)
 	signature, e := h.signer.Sign(ctx, v.Binding, raw)
 	if e != nil {
@@ -73,6 +72,19 @@ func (h *ClaimHandler) beginWebClaim(ctx context.Context, v Intent, address stri
 	_, e = dbwork.ExecWrite(ctx, h.store.db, dbwork.ClassInteractive, `INSERT INTO networking_web_claims(operation_id,request) VALUES(?,?) ON CONFLICT(operation_id) DO NOTHING`, v.OperationID, string(encoded))
 	return out, e
 }
+
+// webClaimWatch is the one wait for Hosted's decision on a web claim. It
+// belongs to the server, not to the page that asked for it: the claim installs
+// (and the certificate is asked for) when the person approves, whether or not
+// the page that opened the approval is still open. A page that waits again
+// joins the same watch, and a late one reads the answer it left.
+type webClaimWatch struct {
+	done   chan struct{}
+	answer []byte
+}
+
+// awaitWebClaim holds the page's request open until the watch has an answer:
+// the final claim status, or `{state: approval_closed | approval_changed}`.
 func (h *ClaimHandler) awaitWebClaim(w http.ResponseWriter, r *http.Request) {
 	actor, e := h.authorize(r)
 	if e != nil || actor.Guard == nil {
@@ -86,95 +98,29 @@ func (h *ClaimHandler) awaitWebClaim(w http.ResponseWriter, r *http.Request) {
 		h.failure(w, r, e)
 		return
 	}
-	if _, loaded := h.webWaiters.LoadOrStore(body.Expected.OperationID, true); loaded {
-		h.failure(w, r, stepFailure("approval already awaited", ErrUnavailable))
-		return
-	}
-	defer h.webWaiters.Delete(body.Expected.OperationID)
-	var saved string
-	var local localWebClaim
-	if e = h.store.db.QueryRowContext(r.Context(), `SELECT request FROM networking_web_claims WHERE operation_id=?`, body.Expected.OperationID).Scan(&saved); e != nil || json.Unmarshal([]byte(saved), &local) != nil {
-		h.failure(w, r, ErrStale)
-		return
-	}
-	ctx, cancel := context.WithDeadline(r.Context(), local.ExpiresAt)
-	defer cancel()
-	// Capture locally authorized intent without retaining a lifecycle lease while
-	// a person decides in the web browser. Reset/cancel remains immediately usable.
-	e = h.runner.Do(ctx, func(ctx context.Context) error {
-		guarded, e := guardedClaimRequest(ctx, h.store, actor.Guard)
-		if e != nil {
-			return e
-		}
-		_, e = h.expected(guarded, body.Expected)
-		return e
-	})
+	watch, e := h.watchWebClaim(r.Context(), body.Expected, actor.Guard)
 	if e != nil {
 		h.failure(w, r, e)
 		return
 	}
-	t, ok := h.transport.(*HTTPTransport)
-	if !ok {
-		h.failure(w, r, stepFailure("hosted transport", ErrUnavailable))
-		return
-	}
-	raw, _ := json.Marshal(local.Signed)
-	request, e := http.NewRequestWithContext(ctx, "POST", t.origin+"/v1/server-claims/events", bytes.NewReader(raw))
-	if e != nil {
-		h.failure(w, r, e)
-		return
-	}
-	request.Header.Set("Content-Type", "application/json")
-	client := *t.client
-	client.Timeout = 0
-	response, e := client.Do(request)
-	if e != nil {
-		h.failure(w, r, stepFailure("hosted approval events", e))
-		return
-	}
-	defer response.Body.Close()
-	if response.StatusCode != 200 {
-		h.failure(w, r, stepFailureDetail("hosted approval events", "HTTP "+strconv.Itoa(response.StatusCode), ErrUnavailable))
-		return
-	}
-	_ = http.NewResponseController(w).SetWriteDeadline(local.ExpiresAt.Add(time.Second))
+	deadline := time.Now().Add(webClaimLifetime + time.Minute)
+	_ = http.NewResponseController(w).SetWriteDeadline(deadline)
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(200)
 	_, _ = w.Write([]byte(" "))
 	_ = http.NewResponseController(w).Flush()
-	type decision struct {
-		Status   string          `json:"status"`
-		Envelope json.RawMessage `json:"approvalEnvelope"`
-	}
-	type received struct {
-		decision decision
-		err      error
-	}
-	done := make(chan received, 1)
-	supervise.Go("networking.claim.web-decision", func() {
-		var d decision
-		e := json.NewDecoder(io.LimitReader(response.Body, 32<<10)).Decode(&d)
-		done <- received{d, e}
-	})
-	timer := time.NewTicker(25 * time.Second)
-	defer timer.Stop()
-	var d decision
-wait:
+	ticker := time.NewTicker(25 * time.Second)
+	defer ticker.Stop()
 	for {
 		select {
-		case v := <-done:
-			if v.err != nil || v.decision.Status != "approved" {
-				_ = json.NewEncoder(w).Encode(map[string]string{"state": "approval_closed"})
-				return
-			}
-			d = v.decision
-			break wait
-		case <-ctx.Done():
-			// A63: the headers are out, so the answer is always JSON.
-			_ = json.NewEncoder(w).Encode(map[string]string{"state": "approval_closed"})
+		case <-watch.done:
+			_, _ = w.Write(watch.answer)
 			return
-		case <-timer.C:
+		case <-r.Context().Done():
+			// The page went away; the watch carries on without it.
+			return
+		case <-ticker.C:
 			if _, e = w.Write([]byte(" ")); e != nil {
 				return
 			}
@@ -183,13 +129,111 @@ wait:
 			}
 		}
 	}
-	var status ClaimStatus
-	e = h.runner.Do(ctx, func(ctx context.Context) error {
-		ctx, e = guardedClaimRequest(ctx, h.store, actor.Guard)
+}
+
+// webClaimLifetime matches the signed request's own expiry (beginWebClaim).
+const webClaimLifetime = 10 * time.Minute
+
+// watchWebClaim returns the running watch for this operation, starting one
+// (checked against the current claim under the owner's guard) when there is
+// none. The guard is the owner's who asked: if that sign-in ends before the
+// decision arrives, the approval is not applied.
+func (h *ClaimHandler) watchWebClaim(ctx context.Context, expected ClaimExpected, guard ClaimRequestGuard) (*webClaimWatch, error) {
+	if current, ok := h.webWatches.Load(expected.OperationID); ok {
+		return current.(*webClaimWatch), nil
+	}
+	var saved string
+	var local localWebClaim
+	if e := h.store.db.QueryRowContext(ctx, `SELECT request FROM networking_web_claims WHERE operation_id=?`, expected.OperationID).Scan(&saved); e != nil || json.Unmarshal([]byte(saved), &local) != nil || !time.Now().Before(local.ExpiresAt) {
+		return nil, ErrStale
+	}
+	e := h.runner.Do(ctx, func(ctx context.Context) error {
+		guarded, e := guardedClaimRequest(ctx, h.store, guard)
 		if e != nil {
 			return e
 		}
-		v, e := h.expected(ctx, body.Expected)
+		_, e = h.expected(guarded, expected)
+		return e
+	})
+	if e != nil {
+		return nil, e
+	}
+	if _, ok := h.transport.(*HTTPTransport); !ok {
+		return nil, stepFailure("hosted transport", ErrUnavailable)
+	}
+	watch := &webClaimWatch{done: make(chan struct{})}
+	if current, loaded := h.webWatches.LoadOrStore(expected.OperationID, watch); loaded {
+		return current.(*webClaimWatch), nil
+	}
+	supervise.Go("networking.claim.web-watch", func() {
+		decided := false
+		defer func() {
+			if watch.answer == nil {
+				watch.answer = webClaimAnswer("approval_closed")
+			}
+			close(watch.done)
+			if !decided {
+				// Hosted could not be asked (or the stream broke): the next wait asks again.
+				h.webWatches.CompareAndDelete(expected.OperationID, watch)
+				return
+			}
+			// A page that asks again shortly afterwards reads this answer; after
+			// the request's own expiry a new web approval starts a new watch.
+			time.AfterFunc(time.Until(local.ExpiresAt)+time.Minute, func() { h.webWatches.CompareAndDelete(expected.OperationID, watch) })
+		}()
+		watch.answer, decided = h.runWebClaimWatch(expected, guard, local)
+	})
+	return watch, nil
+}
+
+func webClaimAnswer(state string) []byte {
+	raw, _ := json.Marshal(map[string]string{"state": state})
+	return raw
+}
+
+// runWebClaimWatch waits on Hosted's decision stream for one signed web claim
+// and, when it is approved, installs the claim and wakes the certificate and
+// remote-access work at once.
+func (h *ClaimHandler) runWebClaimWatch(expected ClaimExpected, guard ClaimRequestGuard, local localWebClaim) ([]byte, bool) {
+	ctx, cancel := context.WithDeadline(context.Background(), local.ExpiresAt)
+	defer cancel()
+	t := h.transport.(*HTTPTransport)
+	raw, _ := json.Marshal(local.Signed)
+	request, e := http.NewRequestWithContext(ctx, "POST", t.origin+"/v1/server-claims/events", bytes.NewReader(raw))
+	if e != nil {
+		return nil, false
+	}
+	request.Header.Set("Content-Type", "application/json")
+	client := *t.client
+	client.Timeout = 0
+	response, e := client.Do(request)
+	if e != nil {
+		log.Printf("Waiting for the Portico Account approval failed: %v", stepFailure("hosted approval events", e))
+		return nil, false
+	}
+	defer response.Body.Close()
+	if response.StatusCode != 200 {
+		log.Printf("Waiting for the Portico Account approval failed: HTTP %d", response.StatusCode)
+		return nil, false
+	}
+	var d struct {
+		Status   string          `json:"status"`
+		Envelope json.RawMessage `json:"approvalEnvelope"`
+	}
+	// Hosted keeps the stream alive with spaces; the decoder skips them.
+	if e = json.NewDecoder(io.LimitReader(response.Body, 32<<10)).Decode(&d); e != nil {
+		return nil, false
+	}
+	if d.Status != "approved" {
+		return webClaimAnswer("approval_closed"), true
+	}
+	var status ClaimStatus
+	e = h.runner.Do(ctx, func(ctx context.Context) error {
+		ctx, e := guardedClaimRequest(ctx, h.store, guard)
+		if e != nil {
+			return e
+		}
+		v, e := h.expected(ctx, expected)
 		if e != nil {
 			return e
 		}
@@ -214,8 +258,7 @@ wait:
 	})
 	if e != nil {
 		log.Printf("Claim approval from the web could not be applied: %v", e)
-		_ = json.NewEncoder(w).Encode(map[string]string{"state": "approval_changed"})
-		return
+		return webClaimAnswer("approval_changed"), true
 	}
 	if h.certificates != nil {
 		h.certificates.Wake()
@@ -223,5 +266,9 @@ wait:
 	if h.remote != nil {
 		h.remote.Invalidate()
 	}
-	_ = json.NewEncoder(w).Encode(status)
+	out, e := json.Marshal(status)
+	if e != nil {
+		return webClaimAnswer("approval_changed"), true
+	}
+	return out, true
 }

@@ -14,6 +14,7 @@ import (
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/downloads"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/metadata"
 	"portico.local/server/internal/subtitles"
 )
@@ -145,6 +146,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		// Fetched with no credential at all: the address is the permission, and
 		// taking the address is what needs the playback scope.
 		"get_download_artifact": apikit.ScopeOpen, "head_download_artifact": apikit.ScopeOpen, "get_download_artwork": apikit.ScopeOpen, "get_download_subtitle": apikit.ScopeOpen, "get_download_subtitle_original": apikit.ScopeOpen,
+		"get_download_trickplay_thumbnails": apikit.ScopeOpen, "get_download_trickplay_tile": apikit.ScopeOpen, "get_download_chapter_image": apikit.ScopeOpen,
 		"put_download_settings": apikit.ScopeAdmin,
 	}
 	scope := func(id string) apikit.Scope {
@@ -180,7 +182,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 			return laneDefault
 		case "get_download_subtitle":
 			return laneMedia
-		case "get_download_subtitle_original":
+		case "get_download_subtitle_original", "get_download_trickplay_thumbnails", "get_download_trickplay_tile", "get_download_chapter_image":
 			return laneMedia
 		case "get_download_usage":
 			return laneDefault
@@ -311,6 +313,9 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 			for _, track := range tracks {
 				out.Subtitles = append(out.Subtitles, downloads.BundleSubtitle{ID: track.ID, Revision: track.Revision, Language: track.Language, Title: track.Title, Default: track.Default, Forced: track.Forced, Files: subtitleFiles(track)})
 			}
+		}
+		if d.Analysis != nil && out.Media.VideoCodec != "" && out.SourceID != "" {
+			out.Trickplay = d.downloadTrickplay(ctx, p, out.ItemID, out.SourceID)
 		}
 		return out, nil
 	})
@@ -452,6 +457,55 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		http.ServeContent(body, q, "", time.Time{}, io.NewSectionReader(reader, 0, size))
 	})
 
+	// The scrubbing previews and chapter thumbnails of a download's file, so the
+	// offline player shows them with no server in reach. They are the same
+	// stored images the item routes serve, read under the transfer address.
+	preview := func(w http.ResponseWriter, q *http.Request, read func(context.Context, mediaanalysis.Access) (mediaanalysis.Image, error)) {
+		scope, ok := d.downloadExtra(w, q, r)
+		if !ok {
+			return
+		}
+		if d.Analysis == nil {
+			r.Errors().Write(w, "", &apierror.Error{Code: "not_found"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(q.Context(), 20*time.Second)
+		defer cancel()
+		out, e := read(ctx, d.downloadAnalysis(scope.Principal, scope.LibraryID, scope.ItemID))
+		if e != nil {
+			r.Errors().Write(w, "", downloadPreviewError(e))
+			return
+		}
+		w.Header().Set("Content-Type", out.MIME)
+		w.Header().Set("Cache-Control", "private, no-store")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Content-Length", strconv.Itoa(len(out.Data)))
+		_, _ = w.Write(out.Data)
+	}
+	rawRoute("get_download_trickplay_thumbnails", "GET", "/v1/downloads/artifacts/{grant}/trickplay/{set}/thumbnails.vtt", "Fetch the scrubbing preview track that travels with a download", apikit.Media, nil, func(w http.ResponseWriter, q *http.Request) {
+		preview(w, q, func(ctx context.Context, a mediaanalysis.Access) (mediaanalysis.Image, error) {
+			track, e := d.Analysis.Thumbnails(ctx, a, q.PathValue("set"))
+			return mediaanalysis.Image{MIME: "text/vtt; charset=utf-8", Data: []byte(track)}, e
+		})
+	})
+	rawRoute("get_download_trickplay_tile", "GET", "/v1/downloads/artifacts/{grant}/trickplay/{set}/tiles/{tile}", "Fetch one scrubbing preview sheet that travels with a download", apikit.Media, nil, func(w http.ResponseWriter, q *http.Request) {
+		raw, found := strings.CutSuffix(q.PathValue("tile"), ".jpg")
+		tile, e := strconv.Atoi(raw)
+		if !found || e != nil || raw != strconv.Itoa(tile) || tile < 0 || tile >= downloads.MaxBundleTrickplayTiles {
+			r.Errors().Write(w, "", &apierror.Error{Code: "not_found"})
+			return
+		}
+		preview(w, q, func(ctx context.Context, a mediaanalysis.Access) (mediaanalysis.Image, error) {
+			return d.Analysis.Tile(ctx, a, q.PathValue("set"), tile)
+		})
+	})
+	rawRoute("get_download_chapter_image", "GET", "/v1/downloads/artifacts/{grant}/chapters/{source}/{index}/image", "Fetch one chapter thumbnail that travels with a download", apikit.Media, nil, func(w http.ResponseWriter, q *http.Request) {
+		preview(w, q, func(ctx context.Context, a mediaanalysis.Access) (mediaanalysis.Image, error) {
+			// The chapter's identity is the playing projection's own `{sourceId}:{index}`.
+			return d.Analysis.ChapterImage(ctx, a, q.PathValue("source")+":"+q.PathValue("index"))
+		})
+	})
+
 	v1Route(r, route("issue_download_receipts", "POST", "/v1/downloads/receipts", "Take signed offline permission for ready downloads", apikit.Device, apikit.Default, apikit.PageSized, 201, 32768, nil), func(ctx context.Context, q *http.Request, body downloadReceiptsBody) (downloadReceiptResults, error) {
 		p, _, e := d.downloadViewer(q)
 		if e != nil {
@@ -567,6 +621,53 @@ func (d Dependencies) downloadExtra(w http.ResponseWriter, q *http.Request, r *a
 		return scope, false
 	}
 	return scope, true
+}
+
+// downloadAnalysis is the media-analysis access for a download's previews:
+// the viewer the download (or its transfer address) stands for, on the
+// title's library, rechecked inside every read.
+func (d Dependencies) downloadAnalysis(p identity.Principal, library, item string) mediaanalysis.Access {
+	return mediaanalysis.Access{ServerID: d.Identity.ID(), LibraryID: library, ItemID: item, Authority: p.Authority, AccountID: p.AccountID, ProfileID: p.ProfileID, SessionHash: p.Hash, Authorize: func(tx *sql.Tx) error {
+		return d.resourceAuthorize(tx, p, library)
+	}}
+}
+
+// downloadTrickplay names the scrubbing preview set of a download's file in its
+// bundle: the current set made from that very file, when there is one.
+// Previews are an extra: anything that stops them leaves the bundle without.
+func (d Dependencies) downloadTrickplay(ctx context.Context, p identity.Principal, item, source string) *downloads.BundleTrickplay {
+	library, e := d.Catalog.WithContext(ctx).LibraryForItem(item)
+	if e != nil {
+		return nil
+	}
+	view, e := d.Analysis.Trickplay(ctx, d.downloadAnalysis(p, library, item))
+	if e != nil {
+		return nil
+	}
+	for _, set := range view.Sets {
+		if set.SourceID != source || set.Stale || set.TileCount < 1 || set.TileCount > downloads.MaxBundleTrickplayTiles {
+			continue
+		}
+		out := &downloads.BundleTrickplay{ID: set.ID, TileWidth: set.TileWidth, TileHeight: set.TileHeight, Columns: set.Columns, Rows: set.Rows, IntervalSeconds: set.IntervalSeconds, FrameCount: set.FrameCount, DurationSeconds: set.DurationSeconds, SourceOffsetSeconds: set.SourceOffsetSeconds,
+			Thumbnails: downloads.BundleFile{Path: downloads.TrickplayThumbnailsPath(set.ID), ContentType: "text/vtt"}, Tiles: make([]downloads.BundleFile, 0, set.TileCount)}
+		for tile := 0; tile < set.TileCount; tile++ {
+			out.Tiles = append(out.Tiles, downloads.BundleFile{Path: downloads.TrickplayTilePath(set.ID, tile), ContentType: "image/jpeg"})
+		}
+		return out
+	}
+	return nil
+}
+
+// downloadPreviewError says what a failed preview read means to the device:
+// no such image is an ordinary answer, a sign-in that ended renews the address.
+func downloadPreviewError(e error) error {
+	switch {
+	case errors.Is(e, identity.ErrUnauthorized), errors.Is(e, identity.ErrForbidden):
+		return &apierror.Error{Code: "invalid_download_grant", Cause: e}
+	case errors.Is(e, context.DeadlineExceeded), errors.Is(e, context.Canceled):
+		return &apierror.Error{Code: "download_not_ready", RetryAfterSeconds: 30, Cause: e}
+	}
+	return &apierror.Error{Code: "not_found", Cause: e}
 }
 
 // subtitleDownloadError says what a failed read of a download's subtitle file

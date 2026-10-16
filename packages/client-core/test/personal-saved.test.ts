@@ -22,7 +22,7 @@ test('collection network retry preserves exact operation and original CAS revisi
  await s.select({view:'resource',resourceId:'collection'});assert.equal(await s.mutate({action:'entries',addItemIds:['item']}),false);assert(s.getSnapshot().retryPending);assert(await s.retry());assert.deepEqual(writes[0],writes[1]);assert.equal(writes[0].expectedRevision,1);assert.equal(s.getSnapshot().resource?.revision,2);s.dispose();
 });
 test('CAS conflict refresh requires an explicit rebase with a different operation ID',async()=>{
- const writes:any[]=[];let revision=1;const s=setup(async(p,m,b)=>{if(m==='GET')return content(resource({revision}));writes.push(b);if(writes.length===1){revision=5;throw Object.assign(new Error('Changed'),{code:'playlist_conflict'});}revision=6;return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'collection',revision,deleted:false}};});
+ const writes:any[]=[];let revision=1;const s=setup(async(p,m,b)=>{if(m==='GET')return content(resource({revision}));writes.push(b);if(writes.length===1){revision=5;throw Object.assign(new Error('Changed'),{code:'revision_mismatch',status:412});}revision=6;return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'collection',revision,deleted:false}};});
  await s.select({view:'resource',resourceId:'collection'});await s.mutate({action:'update',name:'Changed'});assert(s.getSnapshot().mutationError?.conflict);assert.equal(writes.length,1);assert.equal(s.getSnapshot().resource?.revision,5);assert(await s.rebase());assert.notEqual(writes[0].operationId,writes[1].operationId);assert.equal(writes[1].expectedRevision,5);s.dispose();
 });
 test('current deletion status on replay does not resurrect a previously created collection',async()=>{
@@ -109,4 +109,24 @@ test('a collection move sends the entry and its new neighbour; a move refused be
  await assert.rejects(()=>viewer.mutate({action:'reorder',entryIds:['e1']}),/not currently/);viewer.dispose();
  const editor=setup(async()=>content(resource({role:'editor',actions:['pin','entries','reorder']})));await editor.select({view:'resource',resourceId:'collection'});
  assert.deepEqual(editor.getSnapshot().resource?.actions,['pin','entries','reorder']);editor.dispose();
+});
+test('a collection paged past its first page is read again through every page on screen, and a move keeps the viewer where they are',async()=>{
+ // 100 members, 40 a page: the cursor names where the page starts.
+ let order=Array.from({length:100},(_,i)=>'m'+i);let revision=1;const reads:string[]=[];
+ const s=setup(async(p,m,b)=>{
+  if(m==='GET'){const at=Number(new URL('http://x'+p).searchParams.get('cursor')??0);reads.push(String(at));const ids=order.slice(at,at+40);return {resource:resource({revision,actions:['pin','update','delete','entries','reorder','share']}),entries:ids.map(id=>({id,hidden:false,media:media(id)})),nextCursor:at+40<order.length?String(at+40):''};}
+  const from=order.indexOf(b.entryIds[0]);order.splice(from,1);order.splice(b.afterEntryId?order.indexOf(b.afterEntryId)+1:0,0,b.entryIds[0]);revision++;
+  return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'collection',revision,deleted:false}};
+ });
+ await s.select({view:'resource',resourceId:'collection'});await s.next();await s.next();
+ assert.equal(s.getSnapshot().cursor,'80');reads.length=0;
+ // A change elsewhere: the first page is read again, through the page in view, as one first page.
+ order=['new',...order];await s.revalidate();
+ assert.deepEqual(reads,['0','40','80']);assert.equal(s.getSnapshot().cursor,null);assert.deepEqual(s.getSnapshot().history,[]);
+ assert.equal(s.getSnapshot().entries.length,101);assert.equal(s.getSnapshot().entries[0].id,'new');assert.equal(s.getSnapshot().nextCursor,'');
+ // A move deep in the list: no loading state, every entry still on screen, in the server's new order.
+ reads.length=0;const loading:boolean[]=[];const off=s.subscribe(()=>loading.push(s.getSnapshot().loading));
+ assert(await s.mutate({action:'reorder',entryIds:['m90'],afterEntryId:''}));off();
+ assert(!loading.includes(true));assert.equal(s.getSnapshot().entries.length,101);assert.equal(s.getSnapshot().entries[0].id,'m90');assert.equal(s.getSnapshot().resource?.revision,2);
+ s.dispose();
 });

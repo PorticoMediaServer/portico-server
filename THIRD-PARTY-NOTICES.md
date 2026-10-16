@@ -81,13 +81,12 @@ alone is not a complete source bundle.
 | Manrope web interface font | OFL-1.1, `web/src/ui/fonts/OFL.txt` |
 | Liberation Sans 2.00.5 subtitle default | OFL-1.1, `third_party/libass-wasm/OFL-1.1.txt` |
 | Noto Sans Arabic, Hebrew, Thai, Devanagari, Bengali, Tamil | OFL-1.1, `third_party/subtitle-fonts/OFL-1.1.txt` |
-| Droid Sans Fallback, Chinese/Japanese glyphs | Apache-2.0, `third_party/subtitle-fonts/Apache-2.0.txt` |
+| Noto Sans CJK JP, decoder fallback and browser subtitles (served by the server) | OFL-1.1, `server/internal/mediaexec/fonts/NotoCJK-LICENSE` |
 | Decoder DejaVu fonts | Bitstream Vera/Arev font terms, DejaVu changes public domain; `server/internal/mediaexec/fonts/LICENSE` |
 | Lucide icons | ISC, `packages/design/LICENSE-LUCIDE` |
 
-Font file origins and digests are in each folder's provenance file. Droid Sans
-Fallback does not supply Korean Hangul; the current browser fallback set is
-not a claim of coverage for every script.
+Font file origins and digests are in each folder's provenance file. The
+browser fallback set is not a claim of coverage for every script.
 
 ## Server FFmpeg and FFprobe
 
@@ -109,70 +108,47 @@ recipes rather than the completed platform bundles; it cannot establish the
 complete dependency list of a release artifact that has not been inspected.
 Do not substitute a PATH binary and describe it as the qualified build.
 
-## Native mpv builds (separate client repository)
+## Native media engine (separate client repository)
 
-These are fetched by the native clients, not embedded in the Go server. They
-use different FFmpeg builds from the server's qualified toolchain.
+The phone, tablet and television apps carry a second player engine, mpv, built
+by Portico itself from pinned source in the client repository
+(`third_party/media-engine/`, every source URL and SHA-256 in its
+`sources.lock.json`). It is not embedded in the Go server. The same recipe
+builds Android (Android, Android TV, Fire TV) and Apple (iPhone, iPad, Apple
+TV), each library as its own replaceable dynamic library (`.so` on Android, a
+framework on Apple). The whole engine is LGPL-2.1-or-later: FFmpeg is
+configured without `--enable-gpl`, `--enable-version3` or `--enable-nonfree`,
+and mpv is built with `-Dgpl=false`. FFmpeg is the same version the server pins.
 
-**Apple:** both Xcode projects pin
-[MPVKit 1.1.0-n9.0.2](https://github.com/mpvkit/MPVKit/tree/1.1.0-n9.0.2), selecting
-`MPVKit`, not its separate `MPVKit-GPL` product. The package's own licence is
-LGPL-3.0. Its recipe names mpv 0.41.0 and FFmpeg n9.0.2 with version-3 terms.
-The selected product's framework dependencies are:
+| Component | Version | Licence |
+| --- | --- | --- |
+| FFmpeg (decoders, demuxers, parsers; no encoders or muxers) | 8.1.2 | LGPL-2.1-or-later |
+| OpenSSL | 3.5.9 | Apache-2.0 |
+| mpv (libmpv) | 0.41.0 | LGPL-2.1-or-later |
+| libass | 0.17.5 | ISC |
+| FreeType | 2.15.0 | FTL |
+| HarfBuzz | 14.6.0 | MIT |
+| FriBidi | 1.0.17 | LGPL-2.1-or-later |
+| libunibreak | 8.0 | Zlib |
+| dav1d | 1.5.4 | BSD-2-Clause |
+| libplacebo | 7.360.1 | LGPL-2.1-or-later |
+| Little CMS 2 | 2.19.1 | MIT |
+| libdovi | 3.4.0 | MIT |
+| uchardet | 0.0.8 | LGPL-2.1-or-later (tri-licence) |
+| libiconv (Android only) | 1.19 | LGPL-2.1-or-later |
+| MoltenVK (Apple only; Khronos release build) | 1.4.2 | Apache-2.0 |
+| glslang (Apple only; linked into libplacebo) | 16.6.0 | BSD-3-Clause and others |
 
-| Framework/library | Licence |
-| --- | --- |
-| libmpv | LGPL-2.1-or-later for the LGPL build |
-| libavcodec, libavdevice, libavfilter, libavformat, libavutil, libswresample, libswscale | FFmpeg LGPL-3.0-or-later in this version-3, non-GPL build |
-| OpenSSL libssl/libcrypto 3.3.5 | Apache-2.0 |
-| libass | ISC |
-| FreeType | FTL or GPL-2.0-or-later |
-| FriBidi | LGPL-2.1-or-later |
-| HarfBuzz, libunibreak | MIT-style / Zlib respectively |
-| MoltenVK, shaderc and its SPIR-V/glslang parts | Apache-2.0, with BSD-3-Clause notices in glslang |
-| Little CMS 2 | MIT |
-| libplacebo | LGPL-2.1-or-later |
-| libdovi | MIT |
-| GMP | LGPL-3.0-or-later or GPL-2.0-or-later |
-| Nettle/Hogweed | LGPL-3.0-or-later or GPL-2.0-or-later |
-| GnuTLS | LGPL-2.1-or-later for the library; retain its per-file notices |
-| dav1d, uavs3d | BSD-2-Clause / BSD-3-Clause respectively |
-| uchardet | MPL-1.1 or GPL-2.0-or-later or LGPL-2.1-or-later |
-| libbluray | LGPL-2.1-or-later |
+zlib and, on Android, the C++ runtime are the platform's own. The engines the
+apps used before (MPVKit on Apple, media-kit's libmpv on Android) are no longer
+used, and nothing from them ships: no GnuTLS, Nettle, GMP, mbedTLS, libbluray,
+libsmbclient or uavs3d (`verify.py` fails a build that contains any of them).
 
-The selected Apple product also links system frameworks/libraries, including
-AVFoundation, VideoToolbox, AudioToolbox, Metal, zlib, bzip2, iconv, Expat and
-libxml2; these are supplied by the operating system rather than redistributed
-framework archives. The package declares a macOS-only LuaJIT dependency (MIT);
-that dependency is not selected for the current iOS/tvOS apps. GPL libsmbclient
-belongs to the unselected GPL product.
-
-**Android/Android TV/Fire TV:**
-[media-kit libmpv-android-video-build v1.1.11](https://github.com/media-kit/libmpv-android-video-build/releases/tag/v1.1.11),
-`full` flavour. `apps/native/android/portico-mpv/build.gradle` pins SHA-256 for
-`full-arm64-v8a.jar`, `full-armeabi-v7a.jar`, `full-x86.jar`, `full-x86_64.jar`
-and takes only `libmpv.so` from each. The upstream full-flavour recipe disables
-GPL/nonfree and enables FFmpeg version 3; its dependency declarations identify:
-
-| Component | Licence |
-| --- | --- |
-| Build scripts | MIT for default/full |
-| mpv (revision `78d43740f52db817d98bcf24fb30a76ab6fa13ff`) | LGPL-2.1-or-later for `gpl=false` |
-| FFmpeg 6.0 | LGPL-3.0-or-later for this configuration |
-| libass 0.17.1 | ISC |
-| FreeType 2.13.0 | FTL or GPL-2.0-or-later |
-| HarfBuzz 7.2.0 | MIT-style |
-| FriBidi 1.0.12 | LGPL-2.1-or-later |
-| dav1d 1.2.0 | BSD-2-Clause |
-| mbedTLS 3.4.0 | Apache-2.0 or GPL-2.0-or-later |
-| libxml2 2.10.3 | MIT |
-
-The native pin has artifact hashes but no matching source commit for that release.
-The recipe inventory above was checked against upstream source available at the
-release date; it does not prove the archives were built from that exact commit.
-Native distribution must retain full library notices and the matching source,
-patches and build instructions; this server notice does not prove that a native
-app's licence screen or source delivery is complete.
+The client repository's `collect-notices.sh` produces the full licence texts
+and the corresponding source bundle a release must carry, and each app shows
+the engine's components in Settings › About › Open-source licenses. This server
+notice summarises; it does not prove that a particular native release carries
+its notices and source.
 
 ## Container and release tools
 

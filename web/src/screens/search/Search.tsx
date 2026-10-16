@@ -18,7 +18,7 @@ import {useFreshDocument} from '../../app/freshness';
 import {dependsOn, titlesWithPersonalState} from '@core/freshness-hub.ts';
 
 import {useI18n, type I18n} from '../../app/i18n';
-import {useQuietRefresh} from '../../app/quiet-refresh';
+import {useRefreshRequiredRetry} from '../../app/quiet-refresh';
 
 type ChipId = SearchGroup | 'all';
 /** The type chips, in the one authored order (client-core `search-model.ts`); result sections follow it. */
@@ -71,7 +71,7 @@ export function SearchScreen() {
   useFreshDocument(searchDependencies, context => mem.service.revalidate(context), () => mem.service.getSnapshot().phase === 'ready');
   const service = mem.service;
   const snapshot: SearchSnapshot = useSyncExternalStore(service.subscribe, service.getSnapshot);
-  const changedStuck = useQuietRefresh(snapshot.phase === 'refresh-required', () => service.refresh());
+  const changedStuck = useRefreshRequiredRetry(snapshot.phase === 'refresh-required', () => service.refresh());
   const address = useSearch({from: '/app/search'});
   const navigate = useNavigate();
   // A linked search (`?q=`) wins over the remembered one.
@@ -220,6 +220,8 @@ function isContent(entry: SearchEntry): entry is ContentEntry {
 }
 /** PERF-28: memoised on the entry, so typing (which re-renders the page) doesn't re-render every card. */
 const ResultCard = React.memo(function ResultCard({entry}: {entry: SearchEntry}) {
+  // Captions come from catalogue helpers: reading the catalogue here redraws the card in a new language.
+  useI18n();
   const open = useOpenEntry();
   const hrefOf = useEntryHref();
   const router = useRouter();

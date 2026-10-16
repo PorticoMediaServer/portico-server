@@ -70,6 +70,16 @@ CREATE TABLE catalog_identities(
  kind INTEGER NOT NULL,
  PRIMARY KEY(root,source_key)) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_identities_public ON catalog_identities(public_id);
+-- A title merged into another keeps answering at its old public id: links,
+-- bookmarks and offline receipts that name it reach the title that stayed.
+CREATE TABLE catalog_merged_ids(
+ public_id BLOB PRIMARY KEY CHECK(length(public_id)=16),
+ entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_merged_ids_entity ON catalog_merged_ids(entity_id);
+-- A title the owner separated from another: provider identity never joins it
+-- automatically again (the owner still can).
+CREATE TABLE catalog_kept_apart(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE) STRICT;
 
 -- One asset table: physical evidence and probed facts. token is the asset's
 -- public id (assets are not entities; the format is unchanged).
@@ -356,6 +366,7 @@ CREATE TABLE catalog_playlists(
  deleted INTEGER NOT NULL DEFAULT 0 CHECK(deleted IN(0,1)),
  created_at TEXT NOT NULL,
  entry_count INTEGER NOT NULL DEFAULT 0 CHECK(entry_count>=0),
+ updated_at TEXT NOT NULL DEFAULT '',
  UNIQUE(owner_authority,owner_account,owner_profile,creation_operation)) STRICT;
 CREATE INDEX catalog_playlists_owner ON catalog_playlists(owner_authority,owner_account,owner_profile,deleted,name COLLATE NOCASE,id);
 CREATE TABLE catalog_playlist_entries(
@@ -384,6 +395,13 @@ CREATE TABLE catalog_people(
  revision INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE INDEX catalog_people_name ON catalog_people(sort_name,id);
 CREATE UNIQUE INDEX catalog_people_identity ON catalog_people(identity_key);
+-- Other names a person is known by: the "name:" key of someone first known
+-- only from local metadata, and the old page id, once a provider identified
+-- them and the two became one person.
+CREATE TABLE catalog_people_aliases(
+ alias TEXT PRIMARY KEY,
+ person_id INTEGER NOT NULL REFERENCES catalog_people(id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
+CREATE INDEX catalog_people_aliases_person ON catalog_people_aliases(person_id);
 CREATE TABLE catalog_credits(
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
  ord INTEGER NOT NULL,
@@ -1547,7 +1565,10 @@ CREATE TABLE policy(server_id TEXT PRIMARY KEY,revision INTEGER NOT NULL,payload
 CREATE TABLE restriction_outbox(operation_id TEXT PRIMARY KEY,local_revision INTEGER NOT NULL UNIQUE,body TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'pending') STRICT;
 CREATE TABLE restrictions(profile_id TEXT PRIMARY KEY,revision INTEGER NOT NULL,revoked INTEGER NOT NULL DEFAULT 0,allowed_libraries TEXT NOT NULL DEFAULT '[]') STRICT;
 CREATE TABLE library_revisions(library_id TEXT PRIMARY KEY REFERENCES libraries(id) ON DELETE CASCADE,revision INTEGER NOT NULL,order_revision INTEGER NOT NULL DEFAULT 1) STRICT;
-CREATE TABLE viewer_revisions(profile_id TEXT NOT NULL,library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,revision INTEGER NOT NULL,observation_revision INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(profile_id,library_id)) STRICT;
+-- title_path names the title the latest change was about, with its parent and
+-- grandparent ("self/parent/grandparent", hex public ids), so the change hint
+-- can say which title moved; '' when it was not about one title.
+CREATE TABLE viewer_revisions(profile_id TEXT NOT NULL,library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,revision INTEGER NOT NULL,observation_revision INTEGER NOT NULL DEFAULT 0,title_path TEXT NOT NULL DEFAULT '',PRIMARY KEY(profile_id,library_id)) STRICT;
 CREATE TABLE personal_receipts(account_id TEXT NOT NULL,profile_id TEXT NOT NULL,item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,response TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT '',PRIMARY KEY(account_id,profile_id,item_id,operation_id)) STRICT;
 CREATE TABLE metadata_details(item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,provider TEXT NOT NULL,provider_id TEXT NOT NULL,source_url TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(item_id,provider)) STRICT;
 CREATE TABLE metadata_ratings(item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,provider TEXT NOT NULL,value REAL NOT NULL,scale REAL NOT NULL,votes INTEGER NOT NULL,source_url TEXT NOT NULL,observed_at TEXT NOT NULL,PRIMARY KEY(item_id,provider)) STRICT;
@@ -1874,6 +1895,7 @@ CREATE TABLE subtitle_render_revisions(
  FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_original_revisions(
  resource_id TEXT NOT NULL,revision INTEGER NOT NULL,digest TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>0),skipped_fonts INTEGER NOT NULL DEFAULT 0,
+ forced_lines INTEGER NOT NULL DEFAULT 0 CHECK(forced_lines>=0),total_lines INTEGER NOT NULL DEFAULT 0 CHECK(total_lines>=forced_lines),
  PRIMARY KEY(resource_id,revision),FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_original_files(
  resource_id TEXT NOT NULL,revision INTEGER NOT NULL,part TEXT NOT NULL,name TEXT NOT NULL,
@@ -2479,6 +2501,58 @@ CREATE TRIGGER screen_attention_update AFTER UPDATE OF status,accepted_publicati
  AND NEW.status IN('matched','matched_work','pending_children','delegated_tvdb')
  AND (NEW.selection_mode IN('owner','legacy') OR COALESCE((SELECT confidence FROM screen_metadata_publications WHERE id=NEW.accepted_publication),1)>=0.9);
 END;
+-- Music and audiobooks wait for the owner here, beside the film and TV list
+-- and in the same per-library counts: an album MusicBrainz could not settle
+-- or offers a choice for, a track that needs a choice, and a book whose tags
+-- leave it without an author.
+CREATE TABLE listening_metadata_attention(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN('album','song','book')),
+ library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+ reason TEXT NOT NULL,generation INTEGER NOT NULL,
+ dismissed_generation INTEGER NOT NULL DEFAULT -1,
+ retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))) STRICT;
+CREATE INDEX listening_metadata_attention_library ON listening_metadata_attention(library_id,entity_id) WHERE dismissed_generation<>generation;
+CREATE INDEX listening_metadata_attention_active ON listening_metadata_attention(entity_id) WHERE retired=0 AND dismissed_generation<>generation;
+CREATE TRIGGER listening_attention_count_insert AFTER INSERT ON listening_metadata_attention WHEN NEW.retired=0 AND NEW.dismissed_generation<>NEW.generation BEGIN
+ INSERT INTO screen_metadata_attention_counts(library_id,total) VALUES(NEW.library_id,1)
+ ON CONFLICT(library_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER listening_attention_count_delete AFTER DELETE ON listening_metadata_attention WHEN OLD.retired=0 AND OLD.dismissed_generation<>OLD.generation BEGIN
+ UPDATE screen_metadata_attention_counts SET total=total-1 WHERE library_id=OLD.library_id;
+END;
+CREATE TRIGGER listening_attention_count_update AFTER UPDATE OF library_id,retired,dismissed_generation,generation ON listening_metadata_attention BEGIN
+ UPDATE screen_metadata_attention_counts SET total=total-1 WHERE library_id=OLD.library_id AND OLD.retired=0 AND OLD.dismissed_generation<>OLD.generation;
+ INSERT INTO screen_metadata_attention_counts(library_id,total) SELECT NEW.library_id,1 WHERE NEW.retired=0 AND NEW.dismissed_generation<>NEW.generation
+ ON CONFLICT(library_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER listening_attention_retire AFTER UPDATE OF retired ON catalog_entities WHEN OLD.retired<>NEW.retired AND NEW.kind IN(6,7,8) BEGIN
+ UPDATE listening_metadata_attention SET retired=NEW.retired WHERE entity_id=NEW.id;
+END;
+CREATE TRIGGER listening_attention_music_insert AFTER INSERT ON mb_jobs WHEN NEW.status='needs_selection' OR NEW.kind='album' AND NEW.status='unresolved' BEGIN
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,NEW.kind,(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id),NEW.status,NEW.generation,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1)
+ WHERE (SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id) IS NOT NULL
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=excluded.generation,retired=excluded.retired;
+END;
+CREATE TRIGGER listening_attention_music_update AFTER UPDATE OF status,generation ON mb_jobs WHEN OLD.status IS NOT NEW.status OR OLD.generation IS NOT NEW.generation BEGIN
+ DELETE FROM listening_metadata_attention WHERE entity_id=NEW.entity_id AND NOT(NEW.status='needs_selection' OR NEW.kind='album' AND NEW.status='unresolved');
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,NEW.kind,(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id),NEW.status,NEW.generation,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1)
+ WHERE (NEW.status='needs_selection' OR NEW.kind='album' AND NEW.status='unresolved') AND (SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id) IS NOT NULL
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=excluded.generation,retired=excluded.retired;
+END;
+CREATE TRIGGER listening_attention_book_insert AFTER INSERT ON catalog_books WHEN trim(NEW.author)='' BEGIN
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,'book',library_id,'no_author',1,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1) FROM catalog_libraries WHERE id=NEW.library_id
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=generation+1;
+END;
+CREATE TRIGGER listening_attention_book_update AFTER UPDATE OF author ON catalog_books WHEN (trim(OLD.author)='') IS NOT (trim(NEW.author)='') BEGIN
+ DELETE FROM listening_metadata_attention WHERE entity_id=NEW.entity_id AND trim(NEW.author)<>'';
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,'book',library_id,'no_author',1,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1) FROM catalog_libraries WHERE id=NEW.library_id AND trim(NEW.author)=''
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=generation+1;
+END;
 CREATE TABLE screen_metadata_fields(
  target_kind TEXT NOT NULL,target_id INTEGER NOT NULL,field TEXT NOT NULL,value TEXT NOT NULL,
  provider TEXT NOT NULL,source_kind TEXT NOT NULL,source_url TEXT NOT NULL,confidence REAL NOT NULL,
@@ -2683,6 +2757,8 @@ CREATE TABLE social_groups(
   governance_revision INTEGER NOT NULL DEFAULT 1,
   wait_until_ms INTEGER NOT NULL DEFAULT 0,
   activity_seen_ms INTEGER NOT NULL DEFAULT 0,
+  -- The readiness summary the room last told its members, so a report that changes nothing is not re-broadcast.
+  readiness_summary TEXT NOT NULL DEFAULT '',
   wait_resume_state TEXT NOT NULL DEFAULT 'paused' CHECK(wait_resume_state IN ('playing','paused','ready')),
   queue_revision INTEGER NOT NULL DEFAULT 1,
   reconnect_generation INTEGER NOT NULL DEFAULT 1,
@@ -2914,7 +2990,11 @@ CREATE TABLE download_preparations(
  item_id INTEGER NOT NULL, item_public TEXT NOT NULL DEFAULT '', library_id TEXT NOT NULL,
  title_json TEXT NOT NULL DEFAULT '',
  source_asset_id TEXT NOT NULL DEFAULT '',
- quality TEXT NOT NULL, origin TEXT NOT NULL CHECK(origin IN('item','items','container','next')),
+ quality TEXT NOT NULL,
+ -- The prepared recipe the quality resolved to for the asking device (HEVC
+ -- keeping HDR and surround where it plays them); '' for the original.
+ recipe TEXT NOT NULL DEFAULT '',
+ origin TEXT NOT NULL CHECK(origin IN('item','items','container','next')),
  batch_id TEXT NOT NULL DEFAULT '',
  state TEXT NOT NULL CHECK(state IN('queued','running','ready','paused','failed','unavailable','cancelled','expired')),
  reason TEXT NOT NULL DEFAULT '',
@@ -3580,6 +3660,11 @@ CREATE TABLE playback_channel_sessions(
  selection_json TEXT NOT NULL,
  transport_json TEXT NOT NULL,
  client_profile_json TEXT NOT NULL DEFAULT '',
+ -- The device's mpv engine when it plays channels and the viewer has not
+ -- chosen Native, and the viewer's player setting: the producer plans for
+ -- the engine that keeps the most (LinearEngines).
+ mpv_profile_json TEXT NOT NULL DEFAULT '',
+ engine_setting TEXT NOT NULL DEFAULT 'automatic' CHECK(engine_setting IN('automatic','native','mpv')),
  source_revision INTEGER NOT NULL DEFAULT 1,
  retry_revision INTEGER NOT NULL DEFAULT 0,
  buffer_ordinal INTEGER NOT NULL DEFAULT 0,
@@ -3839,6 +3924,8 @@ CREATE TABLE catalog_personal_sort_rows(
 CREATE INDEX catalog_personal_order_rating ON catalog_personal_sort_rows(profile_id,library_id,kind,rating,entity_id);
 CREATE INDEX catalog_personal_order_last ON catalog_personal_sort_rows(profile_id,library_id,kind,last_played_at,entity_id);
 CREATE INDEX catalog_personal_order_plays ON catalog_personal_sort_rows(profile_id,library_id,kind,play_count,entity_id);
+-- The viewing history across libraries, most recent first, for its own order.
+CREATE INDEX catalog_personal_history ON catalog_personal_sort_rows(profile_id,last_played_at,entity_id) WHERE last_played_at<>'';
 CREATE TABLE catalog_personal_sort_buckets(
  profile_id TEXT NOT NULL,library_id INTEGER NOT NULL,kind INTEGER NOT NULL,
  axis INTEGER NOT NULL CHECK(axis BETWEEN 7 AND 9),value TEXT NOT NULL,total INTEGER NOT NULL CHECK(total>=0),
@@ -4301,6 +4388,7 @@ CREATE INDEX quick_connect_expiry_v1 ON quick_connect_v1(expires_at);
 CREATE INDEX api_idempotency_expiry ON api_idempotency(expires_at);
 CREATE INDEX identity_refresh_predecessors_family ON identity_refresh_predecessors(family_id);
 CREATE INDEX identity_unknown_attempts_age ON identity_unknown_attempts(last_failure);
+CREATE INDEX identity_credential_attempts_age ON identity_credential_attempts(last_failure);
 CREATE INDEX authorization_families_retention ON authorization_session_families(revoked,authorization_horizon,id);
 CREATE INDEX authorization_families_horizon ON authorization_session_families(authorization_horizon,id);
 CREATE INDEX networking_mappings_expiry ON networking_mappings(expires_at);
@@ -4408,9 +4496,9 @@ CREATE INDEX playback_v1_sessions_paused ON playback_v1_sessions(paused_since_ms
 
 -- ===== triggeres
 CREATE TRIGGER library_revision_create AFTER INSERT ON libraries BEGIN INSERT INTO library_revisions(library_id,revision) VALUES(NEW.id,1);END;
-CREATE TRIGGER revision_progress_INSERT AFTER INSERT ON progress_activity BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) VALUES(NEW.profile_id,NEW.library_id,1) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
-CREATE TRIGGER revision_progress_UPDATE AFTER UPDATE ON progress_activity WHEN (OLD.state='ended') IS NOT (NEW.state='ended') OR OLD.item_id IS NOT NEW.item_id BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) VALUES(NEW.profile_id,NEW.library_id,1) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
-CREATE TRIGGER revision_progress_DELETE AFTER DELETE ON progress_activity BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) VALUES(OLD.profile_id,OLD.library_id,1) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
+CREATE TRIGGER revision_progress_INSERT AFTER INSERT ON progress_activity BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) VALUES(NEW.profile_id,NEW.library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.item_id),'')) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;END;
+CREATE TRIGGER revision_progress_UPDATE AFTER UPDATE ON progress_activity WHEN (OLD.state='ended') IS NOT (NEW.state='ended') OR OLD.item_id IS NOT NEW.item_id BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) VALUES(NEW.profile_id,NEW.library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.item_id),'')) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;END;
+CREATE TRIGGER revision_progress_DELETE AFTER DELETE ON progress_activity BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) VALUES(OLD.profile_id,OLD.library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=OLD.item_id),'')) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;END;
 CREATE TRIGGER library_revision_update AFTER UPDATE ON libraries BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=NEW.id;END;
 CREATE TRIGGER playlist_share_insert AFTER INSERT ON playlist_shares BEGIN
  INSERT INTO playlist_directory_revisions VALUES(NEW.authority,NEW.account_id,NEW.profile_id,1) ON CONFLICT(authority,account_id,profile_id) DO UPDATE SET revision=revision+1; END;
@@ -4942,11 +5030,11 @@ CREATE VIEW listening_book_context AS
 CREATE TRIGGER revision_episode_asset_boundaries_INSERT AFTER INSERT ON episode_asset_boundaries BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
 CREATE TRIGGER revision_episode_asset_boundaries_UPDATE AFTER UPDATE ON episode_asset_boundaries BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
 CREATE TRIGGER revision_episode_asset_boundaries_DELETE AFTER DELETE ON episode_asset_boundaries BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=OLD.item_id);END;
-CREATE TRIGGER book_resume_revision_insert AFTER INSERT ON book_resume BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.book_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
-CREATE TRIGGER book_resume_revision_update AFTER UPDATE ON book_resume WHEN OLD.item_id IS NOT NEW.item_id BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.book_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
-CREATE TRIGGER book_resume_revision_delete AFTER DELETE ON book_resume BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT OLD.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=OLD.book_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
-CREATE TRIGGER personal_revision_insert AFTER INSERT ON personal_items BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
-CREATE TRIGGER personal_revision_update AFTER UPDATE ON personal_items WHEN OLD.revision IS NOT NEW.revision OR OLD.watched IS NOT NEW.watched OR OLD.watchlisted IS NOT NEW.watchlisted OR OLD.favorite IS NOT NEW.favorite OR OLD.rating IS NOT NEW.rating OR OLD.not_interested IS NOT NEW.not_interested OR (OLD.last_played_at='' AND NEW.last_played_at<>'') BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;END;
+CREATE TRIGGER book_resume_revision_insert AFTER INSERT ON book_resume BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT NEW.profile_id,cl.library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.book_id),'') FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.book_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;END;
+CREATE TRIGGER book_resume_revision_update AFTER UPDATE ON book_resume WHEN OLD.item_id IS NOT NEW.item_id BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT NEW.profile_id,cl.library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.book_id),'') FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.book_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;END;
+CREATE TRIGGER book_resume_revision_delete AFTER DELETE ON book_resume BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT OLD.profile_id,cl.library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=OLD.book_id),'') FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=OLD.book_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;END;
+CREATE TRIGGER personal_revision_insert AFTER INSERT ON personal_items BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT NEW.profile_id,cl.library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.item_id),'') FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;END;
+CREATE TRIGGER personal_revision_update AFTER UPDATE ON personal_items WHEN OLD.revision IS NOT NEW.revision OR OLD.watched IS NOT NEW.watched OR OLD.watchlisted IS NOT NEW.watchlisted OR OLD.favorite IS NOT NEW.favorite OR OLD.rating IS NOT NEW.rating OR OLD.not_interested IS NOT NEW.not_interested OR (OLD.last_played_at='' AND NEW.last_played_at<>'') BEGIN INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT NEW.profile_id,cl.library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.item_id),'') FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;END;
 CREATE TRIGGER metadata_detail_revision AFTER INSERT ON metadata_details BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
 CREATE TRIGGER metadata_detail_revision_update AFTER UPDATE ON metadata_details BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
 CREATE TRIGGER tvdb_episode_link_insert AFTER INSERT ON tvdb_episode_links BEGIN UPDATE library_revisions SET revision=revision+1 WHERE library_id=(SELECT cl.library_id FROM catalog_entities ce JOIN catalog_libraries cl ON cl.id=ce.library_id WHERE ce.id=NEW.item_id);END;
@@ -4988,9 +5076,12 @@ CREATE TRIGGER tvdb_publication_item_source AFTER UPDATE OF source_revision ON m
 CREATE TRIGGER artwork_source_changed AFTER UPDATE OF source_revision,identity_revision ON metadata_publication_heads WHEN OLD.source_revision IS NOT NEW.source_revision OR OLD.identity_revision IS NOT NEW.identity_revision BEGIN
  UPDATE artwork_entity_heads SET revision=revision+1 WHERE entity_id=NEW.item_id OR entity_id IN(SELECT book_id FROM catalog_book_files WHERE entity_id=NEW.item_id);
  INSERT INTO artwork_dirty VALUES('item',NEW.item_id) ON CONFLICT(kind,entity_id) DO NOTHING;END;
+-- An episode whose fetch is in flight keeps it: its tags are not among its
+-- matching inputs (films' are).
 CREATE TRIGGER screen_wake_video_names_INSERT AFTER INSERT ON inventory_video_names BEGIN
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
- WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id);
+ WHERE target_id IN(SELECT l.entity_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id WHERE a.token=NEW.asset_id)
+  AND (lease='' OR NOT EXISTS(SELECT 1 FROM catalog_episodes ep WHERE ep.entity_id=screen_metadata_work.target_id));
  UPDATE screen_metadata_work SET status='pending',generation=generation+1,revision=revision+1,lease='',lease_until='',next_attempt='',error=''
  WHERE target_kind='show' AND target_id IN(SELECT ep.show_id FROM catalog_assets a JOIN catalog_asset_links l ON l.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=l.entity_id WHERE a.token=NEW.asset_id) AND lease='' AND NOT(accepted_publication<>'' AND status IN('matched','pending_children'));END;
 CREATE TRIGGER screen_wake_video_names_UPDATE AFTER UPDATE ON inventory_video_names BEGIN
@@ -5981,6 +6072,9 @@ CREATE TRIGGER playlist_directory_insert AFTER INSERT ON catalog_playlists BEGIN
 CREATE TRIGGER playlist_directory_update AFTER UPDATE ON catalog_playlists BEGIN
  INSERT INTO playlist_directory_revisions VALUES(NEW.owner_authority,NEW.owner_account,NEW.owner_profile,1) ON CONFLICT(authority,account_id,profile_id) DO UPDATE SET revision=revision+1;
  INSERT INTO playlist_directory_revisions SELECT authority,account_id,profile_id,1 FROM playlist_shares WHERE playlist_id=NEW.token ON CONFLICT(authority,account_id,profile_id) DO UPDATE SET revision=revision+1;END;
+-- A playlist's last change (its entries, name or description), for the "Last changed" sort.
+CREATE TRIGGER catalog_playlists_updated AFTER UPDATE OF revision,name,summary ON catalog_playlists WHEN OLD.revision IS NOT NEW.revision OR OLD.name IS NOT NEW.name OR OLD.summary IS NOT NEW.summary BEGIN
+ UPDATE catalog_playlists SET updated_at=strftime('%Y-%m-%dT%H:%M:%SZ','now') WHERE id=NEW.id;END;
 -- ===== prepared media sources (assets TEXT id -> catalog_assets token)
 CREATE TRIGGER prepared_media_source_insert AFTER INSERT ON catalog_assets BEGIN INSERT OR IGNORE INTO prepared_media_source_revisions(asset_id) VALUES(NEW.token);END;
 CREATE TRIGGER prepared_media_source_update AFTER UPDATE OF path,size,modified_ns,container ON catalog_assets WHEN OLD.path IS NOT NEW.path OR OLD.size IS NOT NEW.size OR OLD.modified_ns IS NOT NEW.modified_ns OR OLD.container IS NOT NEW.container BEGIN UPDATE prepared_media_source_revisions SET revision=revision+1 WHERE asset_id=NEW.token;END;
@@ -6291,6 +6385,33 @@ CREATE TRIGGER webhook_title_metadata_updated AFTER UPDATE OF metadata_revision 
  INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
   FROM catalog_entities e WHERE e.id=NEW.item_id AND e.kind IN(1,2,4,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
 END;
+-- A show's, album's or book's own details (overview, artwork and the like)
+-- change without touching its title or year; those changes are updates too.
+CREATE TRIGGER webhook_show_details_updated AFTER UPDATE OF original_title,tagline,overview,content_rating,studio,network,country,tags,labels ON catalog_shows
+ WHEN (OLD.original_title IS NOT NEW.original_title OR OLD.tagline IS NOT NEW.tagline OR OLD.overview IS NOT NEW.overview OR OLD.content_rating IS NOT NEW.content_rating OR OLD.studio IS NOT NEW.studio OR OLD.network IS NOT NEW.network OR OLD.country IS NOT NEW.country OR OLD.tags IS NOT NEW.tags OR OLD.labels IS NOT NEW.labels) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_album_details_updated AFTER UPDATE OF overview,label,tags,release_date,release_country ON catalog_albums
+ WHEN (OLD.overview IS NOT NEW.overview OR OLD.label IS NOT NEW.label OR OLD.tags IS NOT NEW.tags OR OLD.release_date IS NOT NEW.release_date OR OLD.release_country IS NOT NEW.release_country) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_book_details_updated AFTER UPDATE OF author,narrator,overview,series,series_position,tags,labels ON catalog_books
+ WHEN (OLD.author IS NOT NEW.author OR OLD.narrator IS NOT NEW.narrator OR OLD.overview IS NOT NEW.overview OR OLD.series IS NOT NEW.series OR OLD.series_position IS NOT NEW.series_position OR OLD.tags IS NOT NEW.tags OR OLD.labels IS NOT NEW.labels) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_container_art_updated AFTER UPDATE OF overview,poster_url,backdrop_url,original_title,tagline ON catalog_item_details
+ WHEN (OLD.overview IS NOT NEW.overview OR OLD.poster_url IS NOT NEW.poster_url OR OLD.backdrop_url IS NOT NEW.backdrop_url OR OLD.original_title IS NOT NEW.original_title OR OLD.tagline IS NOT NEW.tagline) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_container_art_added AFTER INSERT ON catalog_item_details
+ WHEN (NEW.overview<>'' OR NEW.poster_url<>'' OR NEW.backdrop_url<>'') AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
 CREATE TRIGGER webhook_title_removed BEFORE DELETE ON catalog_entities
  WHEN OLD.kind IN(1,2,4,6,8) AND OLD.retired=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.removed,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=OLD.library_id) BEGIN
  INSERT INTO webhook_events(type,subject,data) VALUES('title.removed',lower(hex(OLD.public_id)),json_object('entity',lower(hex(OLD.public_id)),'kind',OLD.kind,'title',OLD.title,'year',OLD.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=OLD.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=OLD.parent_id)));
@@ -6515,12 +6636,15 @@ CREATE TRIGGER browse_order_update AFTER UPDATE ON catalog_browse_rows
  WHEN OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.sort_key IS NOT NEW.sort_key OR OLD.year IS NOT NEW.year OR OLD.added_text IS NOT NEW.added_text OR OLD.duration_max IS NOT NEW.duration_max OR OLD.rating_max IS NOT NEW.rating_max OR OLD.available IS NOT NEW.available OR OLD.rating_key IS NOT NEW.rating_key OR OLD.label_key IS NOT NEW.label_key OR OLD.release_key IS NOT NEW.release_key OR OLD.latest_aired_key IS NOT NEW.latest_aired_key OR OLD.critic_key IS NOT NEW.critic_key OR OLD.episode_count IS NOT NEW.episode_count OR OLD.album_key IS NOT NEW.album_key OR OLD.artist_key IS NOT NEW.artist_key OR OLD.track_key IS NOT NEW.track_key OR OLD.file_size IS NOT NEW.file_size OR OLD.resolution_key IS NOT NEW.resolution_key OR OLD.random_key IS NOT NEW.random_key BEGIN
  UPDATE library_revisions SET order_revision=order_revision+1 WHERE library_id IN(SELECT library_id FROM catalog_libraries WHERE id IN(OLD.library_id,NEW.library_id)); END;
 CREATE TRIGGER progress_observation_update AFTER UPDATE ON progress_activity BEGIN
- INSERT INTO viewer_revisions(profile_id,library_id,revision,observation_revision) VALUES(NEW.profile_id,NEW.library_id,0,1) ON CONFLICT(profile_id,library_id) DO UPDATE SET observation_revision=observation_revision+1; END;
+ INSERT INTO viewer_revisions(profile_id,library_id,revision,observation_revision,title_path) VALUES(NEW.profile_id,NEW.library_id,0,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.item_id),'')) ON CONFLICT(profile_id,library_id) DO UPDATE SET observation_revision=observation_revision+1,title_path=excluded.title_path; END;
 CREATE TRIGGER progress_replay_membership AFTER UPDATE OF playback_id ON progress
  WHEN OLD.playback_id IS NOT NEW.playback_id AND EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=OLD.profile_id AND d.item_id=OLD.item_id AND d.playback_id=OLD.playback_id) BEGIN
- INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,cl.library_id,1 FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1; END;
+ INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT NEW.profile_id,cl.library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.item_id),'') FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.item_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path; END;
 
 -- Change hints are coalesced by audience and resource before entering the ring.
+-- A personal hint names the title it was about (data.titles) only while every
+-- change it stands for was about that title or one of its ancestors; two
+-- unrelated titles leave it unnamed, which means "any title in the library".
 CREATE TABLE api_change_pending(audience TEXT NOT NULL,type TEXT NOT NULL,resource_kind TEXT NOT NULL,resource_id TEXT NOT NULL,revision TEXT NOT NULL,data TEXT NOT NULL DEFAULT '',PRIMARY KEY(audience,type,resource_kind,resource_id)) WITHOUT ROWID, STRICT;
 CREATE TRIGGER history_observation_hint_insert AFTER INSERT ON personal_activity_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'progress.changed','personal','history',CAST(NEW.revision AS TEXT),json_object('observation',CAST(NEW.revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
@@ -6529,9 +6653,9 @@ CREATE TRIGGER history_observation_hint_update AFTER UPDATE OF revision ON perso
 CREATE TRIGGER library_change_hint AFTER UPDATE OF revision,order_revision ON library_revisions BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('library:'||NEW.library_id,'library.changed','library',NEW.library_id,CAST(NEW.revision AS TEXT),json_object('content',CAST(NEW.revision AS TEXT),'contentOrder',CAST(NEW.order_revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
 CREATE TRIGGER personal_change_hint AFTER INSERT ON viewer_revisions BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'personal.changed','library',NEW.library_id,CAST(NEW.revision AS TEXT),json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,'personal.changed','library',NEW.library_id,CAST(NEW.revision AS TEXT),CASE WHEN NEW.title_path<>'' THEN json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT),'titles',NEW.title_path) ELSE json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT)) END) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=CASE WHEN json_extract(api_change_pending.data,'$.titles') IS NULL OR json_extract(excluded.data,'$.titles') IS NULL THEN json_remove(excluded.data,'$.titles') WHEN json_extract(excluded.data,'$.titles')=json_extract(api_change_pending.data,'$.titles') OR json_extract(excluded.data,'$.titles') LIKE '%/'||json_extract(api_change_pending.data,'$.titles') THEN excluded.data WHEN json_extract(api_change_pending.data,'$.titles') LIKE '%/'||json_extract(excluded.data,'$.titles') THEN json_set(excluded.data,'$.titles',json_extract(api_change_pending.data,'$.titles')) ELSE json_remove(excluded.data,'$.titles') END; END;
 CREATE TRIGGER personal_change_hint_update AFTER UPDATE ON viewer_revisions BEGIN
- INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,CASE WHEN OLD.revision IS NOT NEW.revision THEN 'personal.changed' ELSE 'progress.changed' END,'library',NEW.library_id,CAST(NEW.revision AS TEXT),json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT))) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=excluded.data; END;
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision,data) VALUES('personal:'||NEW.profile_id,CASE WHEN OLD.revision IS NOT NEW.revision THEN 'personal.changed' ELSE 'progress.changed' END,'library',NEW.library_id,CAST(NEW.revision AS TEXT),CASE WHEN NEW.title_path<>'' THEN json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT),'titles',NEW.title_path) ELSE json_object('personal',CAST(NEW.revision AS TEXT),'observation',CAST(NEW.observation_revision AS TEXT)) END) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision,data=CASE WHEN json_extract(api_change_pending.data,'$.titles') IS NULL OR json_extract(excluded.data,'$.titles') IS NULL THEN json_remove(excluded.data,'$.titles') WHEN json_extract(excluded.data,'$.titles')=json_extract(api_change_pending.data,'$.titles') OR json_extract(excluded.data,'$.titles') LIKE '%/'||json_extract(api_change_pending.data,'$.titles') THEN excluded.data WHEN json_extract(api_change_pending.data,'$.titles') LIKE '%/'||json_extract(excluded.data,'$.titles') THEN json_set(excluded.data,'$.titles',json_extract(api_change_pending.data,'$.titles')) ELSE json_remove(excluded.data,'$.titles') END; END;
 CREATE TRIGGER server_settings_hint AFTER UPDATE ON console_documents WHEN NEW.scope='server' BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','settings.changed','settings','server',CAST(NEW.revision AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 
@@ -6891,13 +7015,13 @@ END;
 
 -- Publish exact personal order changes, including repeated completed plays.
 CREATE TRIGGER browse_personal_order_insert AFTER INSERT ON catalog_personal_sort_rows WHEN NEW.rating>0 OR NEW.last_played_at<>'' OR NEW.play_count>0 BEGIN
- INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,library_id,1 FROM catalog_libraries WHERE id=NEW.library_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT NEW.profile_id,library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.entity_id),'') FROM catalog_libraries WHERE id=NEW.library_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;
 END;
 CREATE TRIGGER browse_personal_order_delete AFTER DELETE ON catalog_personal_sort_rows WHEN OLD.rating>0 OR OLD.last_played_at<>'' OR OLD.play_count>0 BEGIN
- INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT OLD.profile_id,library_id,1 FROM catalog_libraries WHERE id=OLD.library_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT OLD.profile_id,library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=OLD.entity_id),'') FROM catalog_libraries WHERE id=OLD.library_id ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;
 END;
 CREATE TRIGGER browse_personal_order_update AFTER UPDATE OF library_id,kind,rating,last_played_at,play_count ON catalog_personal_sort_rows WHEN OLD.library_id IS NOT NEW.library_id OR OLD.kind IS NOT NEW.kind OR OLD.rating IS NOT NEW.rating OR OLD.last_played_at IS NOT NEW.last_played_at OR OLD.play_count IS NOT NEW.play_count BEGIN
- INSERT INTO viewer_revisions(profile_id,library_id,revision) SELECT NEW.profile_id,library_id,1 FROM catalog_libraries WHERE id IN(OLD.library_id,NEW.library_id) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1;
+ INSERT INTO viewer_revisions(profile_id,library_id,revision,title_path) SELECT NEW.profile_id,library_id,1,COALESCE((SELECT lower(hex(te.public_id))||COALESCE('/'||lower(hex(tp.public_id)),'')||COALESCE('/'||lower(hex(tg.public_id)),'') FROM catalog_entities te LEFT JOIN catalog_entities tp ON tp.id=te.parent_id LEFT JOIN catalog_entities tg ON tg.id=tp.parent_id WHERE te.id=NEW.entity_id),'') FROM catalog_libraries WHERE id IN(OLD.library_id,NEW.library_id) ON CONFLICT(profile_id,library_id) DO UPDATE SET revision=revision+1,title_path=excluded.title_path;
 END;
 
 
@@ -7905,6 +8029,49 @@ CREATE TRIGGER playback_route_failures_playback_problems_list_update AFTER UPDAT
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','playbackProblems',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 CREATE TRIGGER playback_route_failures_playback_problems_list_delete AFTER DELETE ON playback_route_failures BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('admin','list.changed','list','playbackProblems',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+-- The viewer's own Guide, Recordings and Downloads screens: one hint each,
+-- so they read again when something changed rather than on a clock. The guide
+-- is everyone's ('server'): a source brought in again, turned on or off. A
+-- profile hears its own recordings and rules, and its own downloads.
+CREATE TRIGGER live_sources_guide_list_insert AFTER INSERT ON live_sources BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','list.changed','list','guide',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_sources_guide_list_update AFTER UPDATE OF name,state,active_generation ON live_sources BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','list.changed','list','guide',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER live_sources_guide_list_delete AFTER DELETE ON live_sources BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','list.changed','list','guide',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_recordings_my_recordings_list_insert AFTER INSERT ON dvr_recordings BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','myRecordings',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_recordings_my_recordings_list_update AFTER UPDATE OF state,start_ms,end_ms,keep,reason,item_id,rule_id ON dvr_recordings BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','myRecordings',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_recordings_my_recordings_list_delete AFTER DELETE ON dvr_recordings BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||OLD.authority||':'||OLD.account_id||':'||OLD.profile_id,'list.changed','list','myRecordings',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_rules_my_recordings_list_insert AFTER INSERT ON dvr_rules BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','myRecordings',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_rules_my_recordings_list_update AFTER UPDATE OF revision,enabled,deleted,config_json ON dvr_rules BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','myRecordings',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER dvr_rules_my_recordings_list_delete AFTER DELETE ON dvr_rules BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||OLD.authority||':'||OLD.account_id||':'||OLD.profile_id,'list.changed','list','myRecordings',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER download_preparations_my_downloads_list_insert AFTER INSERT ON download_preparations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','myDownloads',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER download_preparations_my_downloads_list_update AFTER UPDATE OF state ON download_preparations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','myDownloads',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER download_preparations_my_downloads_list_delete AFTER DELETE ON download_preparations BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||OLD.authority||':'||OLD.account_id||':'||OLD.profile_id,'list.changed','list','myDownloads',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER download_receipts_my_downloads_list_insert AFTER INSERT ON download_receipts BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','myDownloads',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER download_receipts_my_downloads_list_update AFTER UPDATE OF revoked_ms ON download_receipts BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','myDownloads',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER download_receipts_my_downloads_list_delete AFTER DELETE ON download_receipts BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||OLD.authority||':'||OLD.account_id||':'||OLD.profile_id,'list.changed','list','myDownloads',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+-- Home's Trending and Popular rows move with what the provider says is trending
+-- and with what people on this server start watching, not with this profile:
+-- one hint for everyone, coalesced, when either moves.
+CREATE TRIGGER metadata_discovery_recommendations_list_insert AFTER INSERT ON metadata_discovery_items BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','list.changed','list','recommendations',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER metadata_discovery_recommendations_list_delete AFTER DELETE ON metadata_discovery_items BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','list.changed','list','recommendations',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
+CREATE TRIGGER personal_history_recommendations_list_insert AFTER INSERT ON personal_history BEGIN
+ INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('server','list.changed','list','recommendations',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;
 -- Watch Together: the rooms a profile is in, for its own devices.
 CREATE TRIGGER social_group_members_together_list_insert AFTER INSERT ON social_group_members BEGIN
  INSERT INTO api_change_pending(audience,type,resource_kind,resource_id,revision) VALUES('profile:'||NEW.authority||':'||NEW.account_id||':'||NEW.profile_id,'list.changed','list','togetherGroups',CAST(CAST((julianday('now')-2440587.5)*86400000 AS INTEGER) AS TEXT)) ON CONFLICT(audience,type,resource_kind,resource_id) DO UPDATE SET revision=excluded.revision; END;

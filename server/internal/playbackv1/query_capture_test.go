@@ -24,7 +24,7 @@ func queryBuildFixture(t *testing.T) (*Service, *catalogtest.Catalog, snapshot) 
 	s := New(c.DB, nil, nil)
 	p := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"}}
 	s.QueryKeys = func(ctx context.Context, tx *sql.Tx, p identity.Principal, sel Selector) (catalog.QueueSelection, error) {
-		return catalog.New(c.DB).QueueKeysTx(ctx, tx, catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: "f", Libraries: []string{"movies"}}, catalog.ResourceActor{}, sel.Query, "")
+		return catalog.New(c.DB).QueueKeysTx(ctx, tx, catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: "f", Libraries: []string{"movies"}}, catalog.ResourceActor{}, sel.Query, "", nil)
 	}
 	in := SegmentInput{Source: Selector{Query: &catalog.QueueQuery{LibraryID: "movies", Pivot: "movies"}}}
 	snap, err := s.buildSnapshot(context.Background(), p, "q_test", in, "source", MaxQueueKeys, nil, scanBudget{keys: 256})

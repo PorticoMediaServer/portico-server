@@ -577,6 +577,13 @@ const (
 	PausedTimeoutMessage   = "Playback stopped after a long pause."
 )
 
+// EndReasonOutsideHours is why a session ended when its account's allowed
+// hours closed while it played; OutsideHoursMessage is what its viewer is told.
+const (
+	EndReasonOutsideHours = "outside_allowed_hours"
+	OutsideHoursMessage   = "This account cannot be used at this time of day."
+)
+
 // sweeper ends sessions whose lease lapsed (spec §5.8, invariant 4). It runs
 // only while sessions exist: it sleeps until the earliest lease, is kicked
 // when a session starts, and exits when none remain. Nothing polls idly.
@@ -587,6 +594,8 @@ type sweeper struct {
 	// pausedAt is when the paused-too-long sweep last ran (at most once a
 	// minute, so the common case costs one indexed read per minute).
 	pausedAt time.Time
+	// hoursAt is when the allowed-hours sweep last ran (also once a minute).
+	hoursAt time.Time
 }
 
 func (w *sweeper) kick(s *Service) {
@@ -640,7 +649,77 @@ func (w *sweeper) run(s *Service) {
 		}
 		s.ExpireLapsed(ctx)
 		s.sweepPausedIfDue(ctx)
+		s.sweepHoursIfDue(ctx)
 	}
+}
+
+// sweepHoursIfDue ends the sessions of accounts whose allowed hours have
+// closed, at most once a minute.
+func (s *Service) sweepHoursIfDue(ctx context.Context) {
+	s.sweep.mu.Lock()
+	if s.now().Sub(s.sweep.hoursAt) < time.Minute {
+		s.sweep.mu.Unlock()
+		return
+	}
+	s.sweep.hoursAt = s.now()
+	s.sweep.mu.Unlock()
+	s.EndOutsideHours(ctx)
+}
+
+// EndOutsideHours ends every running session of an account that is now
+// outside its allowed hours (a member's access schedule). Admission refuses a
+// new playback then; this tells a playback already running, through the
+// session's end and its session.updated event, instead of letting it fail on
+// its next request. The cost is one read of the accounts with running
+// sessions (at most 256) and one schedule check per account, once a minute.
+func (s *Service) EndOutsideHours(ctx context.Context) int {
+	if s.OutsideHours == nil {
+		return 0
+	}
+	rows, err := s.DB.QueryContext(ctx, `SELECT DISTINCT account_id FROM playback_v1_sessions WHERE ended_ms=0 LIMIT 256`)
+	if err != nil {
+		return 0
+	}
+	var accounts []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil && id != "" {
+			accounts = append(accounts, id)
+		}
+	}
+	rows.Close()
+	ended := 0
+	for _, account := range accounts {
+		if !s.OutsideHours(ctx, account) {
+			continue
+		}
+		ids, err := s.runningSessionsOf(ctx, account)
+		if err != nil {
+			continue
+		}
+		for _, id := range ids {
+			if s.End(ctx, id, EndReasonOutsideHours, OutsideHoursMessage) == nil {
+				ended++
+			}
+		}
+	}
+	return ended
+}
+
+func (s *Service) runningSessionsOf(ctx context.Context, account string) ([]string, error) {
+	rows, err := s.DB.QueryContext(ctx, `SELECT id FROM playback_v1_sessions WHERE ended_ms=0 AND account_id=? LIMIT 64`, account)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []string
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) == nil {
+			ids = append(ids, id)
+		}
+	}
+	return ids, rows.Err()
 }
 
 // sweepPausedIfDue ends sessions paused past the limit, at most once a minute.

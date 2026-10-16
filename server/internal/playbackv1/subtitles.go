@@ -115,7 +115,7 @@ func (s *Service) applySubtitles(ctx context.Context, p identity.Principal, item
 			// The original file, for a device that draws styled or image subtitles itself.
 			for _, d := range plan.Selected.Deliveries {
 				if d.Format != "text" {
-					out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: d.Format, URL: d.URL, CompanionURL: d.CompanionURL, FontsURL: d.FontsURL})
+					out.files = append(out.files, SubtitleFile{TrackID: plan.Selected.ID, Format: d.Format, URL: d.URL, CompanionURL: d.CompanionURL, FontsURL: d.FontsURL, LinesURL: d.LinesURL})
 				}
 			}
 			out.shown = &PresentationSubtitle{TrackID: plan.Selected.ID, Kind: subtitleKindOf(plan.Selected.Format), Delivery: "device"}

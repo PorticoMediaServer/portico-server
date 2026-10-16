@@ -202,6 +202,9 @@ var nonSessionCredential = map[string]string{
 	"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         "download transfer grant, resolved and reauthorized by downloadExtra",
 	"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    "download transfer grant, resolved and reauthorized by downloadExtra",
 	"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": "download transfer grant, resolved and reauthorized by downloadExtra",
+	"GET /v1/downloads/artifacts/{grant}/trickplay/{set}/thumbnails.vtt":         "download transfer grant, resolved and reauthorized by downloadExtra",
+	"GET /v1/downloads/artifacts/{grant}/trickplay/{set}/tiles/{tile}":           "download transfer grant, resolved and reauthorized by downloadExtra",
+	"GET /v1/downloads/artifacts/{grant}/chapters/{source}/{index}/image":        "download transfer grant, resolved and reauthorized by downloadExtra",
 
 	"GET /v1/topshelf":                                                   "Top Shelf device token",
 	"GET /v1/topshelf/art/{id}":                                          "Top Shelf device token",
@@ -220,6 +223,7 @@ var nonSessionCredential = map[string]string{
 	"GET /v1/media/subtitles/{grant}/{resource}/{revision}/original.sub": "media grant",
 	"GET /v1/media/subtitles/{grant}/{resource}/{revision}/original.mks": "media grant",
 	"GET /v1/media/subtitles/{grant}/{resource}/{revision}/fonts":        "media grant",
+	"GET /v1/media/subtitles/{grant}/{resource}/{revision}/lines":        "media grant",
 	"GET /v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}": "media grant",
 }
 
@@ -289,6 +293,9 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/downloads/artifacts/{grant}/artwork/{role}":                         exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
 		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}.vtt":    exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
 		"GET /v1/downloads/artifacts/{grant}/subtitles/{resource}/{revision}/{file}": exempt("download transfer grant rechecked against current item and library visibility by downloadExtra"),
+		"GET /v1/downloads/artifacts/{grant}/trickplay/{set}/thumbnails.vtt":         exempt("download transfer grant rechecked against current item and library visibility by downloadExtra and the analysis read"),
+		"GET /v1/downloads/artifacts/{grant}/trickplay/{set}/tiles/{tile}":           exempt("download transfer grant rechecked against current item and library visibility by downloadExtra and the analysis read"),
+		"GET /v1/downloads/artifacts/{grant}/chapters/{source}/{index}/image":        exempt("download transfer grant rechecked against current item and library visibility by downloadExtra and the analysis read"),
 		// The list for the session's own device (any other device is not this
 		// session's to read). A request whose container has since become hidden
 		// is checked in the download-request-security subtest.
@@ -393,6 +400,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/admin/metadata/settings":                                    exempt(reasonAdmin),
 		"GET /v1/admin/access-tokens":                                        exempt(reasonAdmin),
 		"GET /v1/admin/webhooks":                                             exempt(reasonAdmin),
+		"GET /v1/admin/webhooks/{id}":                                        exempt(reasonAdmin),
 		"GET /v1/admin/webhooks/{id}/deliveries":                             exempt(reasonAdmin),
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}.vtt":          exempt(reasonGrant),
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/original.ass": exempt(reasonGrant),
@@ -402,6 +410,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/original.sub": exempt(reasonGrant),
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/original.mks": exempt(reasonGrant),
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/fonts":        exempt(reasonGrant),
+		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/lines":        exempt(reasonGrant),
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}": exempt(reasonGrant),
 		"GET /v1/admin/ingestion/jobs/{id}":                                  static("/v1/admin/ingestion/jobs/unknown"),
 		"GET /v1/downloads/requests/{id}":                                    static("/v1/downloads/requests/unknown"),
@@ -409,16 +418,17 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/jobs/{id}/failures":                                         static("/v1/jobs/unknown/failures"),
 		"GET /v1/containers/{kind}/{id}/personal-state":                      perEntity("/v1/containers/show/", "show", "/personal-state"),
 		// Health, identity, device and server description.
-		"GET ":                      exempt("the web app shell and first-run setup page (installation.go); static, no catalogue data"),
-		"GET /health/live":          exempt(reasonNoTitles),
-		"GET /health/ready":         exempt(reasonNoTitles),
-		"GET /receiver/cast/":       exempt("static Cast receiver page"),
-		"GET /v1/attribution":       exempt(reasonNoTitles),
-		"GET /v1/auth/capabilities": exempt(reasonNoTitles),
-		"GET /v1/capabilities":      exempt(reasonNoTitles),
-		"GET /v1/devices":           exempt(reasonNoTitles),
-		"GET /v1/direct":            exempt(reasonNoTitles),
-		"GET /v1/direct/members":    exempt(reasonAdmin),
+		"GET ":                                          exempt("the web app shell and first-run setup page (installation.go); static, no catalogue data"),
+		"GET /health/live":                              exempt(reasonNoTitles),
+		"GET /health/ready":                             exempt(reasonNoTitles),
+		"GET /v1/subtitle-fonts/cjk":                    exempt(reasonNoTitles),
+		"GET /receiver/cast/":                           exempt("static Cast receiver page"),
+		"GET /v1/attribution":                           exempt(reasonNoTitles),
+		"GET /v1/auth/capabilities":                     exempt(reasonNoTitles),
+		"GET /v1/capabilities":                          exempt(reasonNoTitles),
+		"GET /v1/devices":                               exempt(reasonNoTitles),
+		"GET /v1/direct":                                exempt(reasonNoTitles),
+		"GET /v1/direct/members":                        exempt(reasonAdmin),
 		"GET /v1/direct/members/{id}/deletion-preview":  exempt(reasonAdmin),
 		"GET /v1/direct/pin-recovery":                   exempt(reasonNoTitles),
 		"GET /v1/direct/profiles/avatars":               exempt(reasonNoTitles),
@@ -482,6 +492,9 @@ func restrictionRoutes() map[string]restrictionRoute {
 
 		// Owner-only administration.
 		"GET /v1/admin/api-keys":                                exempt(reasonAdmin),
+		"GET /v1/admin/access/members/{id}":                     exempt(reasonAdmin),
+		"GET /v1/admin/access/invitations/{id}":                 exempt(reasonAdmin),
+		"GET /v1/admin/access/devices/{id}":                     exempt(reasonAdmin),
 		"GET /v1/admin/access/devices":                          exempt(reasonAdmin),
 		"GET /v1/admin/access/invitations":                      exempt(reasonAdmin),
 		"GET /v1/admin/access/members":                          exempt(reasonAdmin),

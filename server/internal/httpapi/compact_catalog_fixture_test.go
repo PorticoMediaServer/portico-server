@@ -319,10 +319,10 @@ func tl6Itoa(value int64) string { return strconv.FormatInt(value, 10) }
 const tl6RaceDetector = false
 
 type tl6CurrentPlaybackHTTPFixture struct {
-	d            Dependencies
-	h            http.Handler
-	token, proof string
-	t            *testing.T
+	d     Dependencies
+	h     http.Handler
+	token string
+	t     *testing.T
 }
 
 func tl6CurrentPlaybackHTTP(t *testing.T) *tl6CurrentPlaybackHTTPFixture {
@@ -395,7 +395,7 @@ func tl6CurrentPlaybackHTTP(t *testing.T) *tl6CurrentPlaybackHTTPFixture {
 		}
 	})
 	d := Dependencies{Origins: []string{"http://127.0.0.1:19412"}, DB: db, Identity: id, Catalog: catalog.New(db), Hosted: cached, Storage: store, Mounts: managed, PlaybackRuntime: rt}
-	return &tl6CurrentPlaybackHTTPFixture{d: d, h: New(d), token: session.AccessToken, proof: strings.Repeat("p", 43), t: t}
+	return &tl6CurrentPlaybackHTTPFixture{d: d, h: New(d), token: session.AccessToken, t: t}
 }
 
 func (f *tl6CurrentPlaybackHTTPFixture) call(method, path string, body any) *httptest.ResponseRecorder {
@@ -410,7 +410,6 @@ func (f *tl6CurrentPlaybackHTTPFixture) call(method, path string, body any) *htt
 	}
 	r := httptest.NewRequest(method, path, bytes.NewReader(raw))
 	r.Header.Set("Authorization", "Bearer "+f.token)
-	r.Header.Set("X-Playback-Controller-Token", f.proof)
 	if body != nil {
 		r.Header.Set("Content-Type", "application/json")
 	}

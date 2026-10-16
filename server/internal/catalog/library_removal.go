@@ -6,6 +6,7 @@ import (
 	"errors"
 	"portico.local/server/internal/requestinput"
 	"strings"
+	"sync"
 	"time"
 
 	"portico.local/server/internal/compactcatalog"
@@ -279,11 +280,23 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 		if _, err = tx.ExecContext(ctx, `SAVEPOINT library_container`); err != nil {
 			return false, err
 		}
-		if e := forceRemoveContainerTx(ctx, tx, id); e != nil {
+		e := forceRemoveContainerTx(ctx, tx, id)
+		if e != nil {
+			// Something outside the catalogue still names it: those references
+			// go with it, since nothing can reach the library any more.
 			if _, err = tx.ExecContext(ctx, `ROLLBACK TO library_container`); err != nil {
 				return false, err
 			}
-		} else {
+			if e = clearReferencesTx(ctx, tx, "catalog_entities", id); e == nil {
+				e = forceRemoveContainerTx(ctx, tx, id)
+			}
+			if e != nil {
+				if _, err = tx.ExecContext(ctx, `ROLLBACK TO library_container`); err != nil {
+					return false, err
+				}
+			}
+		}
+		if e == nil {
 			removed++
 		}
 		if _, err = tx.ExecContext(ctx, `RELEASE library_container`); err != nil {
@@ -319,6 +332,20 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 			return false, err
 		}
 	}
+	// Rows elsewhere that still name the library by either id, and that the
+	// steps above do not know about, go too; a removed library leaves no row.
+	if err = clearReferencesTx(ctx, tx, "libraries", library); err != nil {
+		return false, err
+	}
+	var catalogHandle int64
+	if err = tx.QueryRowContext(ctx, `SELECT id FROM catalog_libraries WHERE library_id=?`, library).Scan(&catalogHandle); err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return false, err
+	}
+	if catalogHandle != 0 {
+		if err = clearReferencesTx(ctx, tx, "catalog_libraries", catalogHandle); err != nil {
+			return false, err
+		}
+	}
 	if _, err = tx.ExecContext(ctx, `SAVEPOINT library_row`); err != nil {
 		return false, err
 	}
@@ -342,6 +369,65 @@ func removeLibraryBatchTx(ctx context.Context, tx *sql.Tx, library string) (bool
 	}
 	_, err = tx.ExecContext(ctx, `RELEASE library_row`)
 	return true, err
+}
+
+// referenceColumns lists, per parent table, every child (table, column) whose
+// foreign key neither cascades nor clears on delete. The schema is fixed for
+// the life of the process, so it is read once.
+var referenceColumns = struct {
+	sync.Mutex
+	byParent map[string][][2]string
+}{}
+
+func restrictingReferences(ctx context.Context, tx *sql.Tx, parent string) ([][2]string, error) {
+	referenceColumns.Lock()
+	defer referenceColumns.Unlock()
+	if referenceColumns.byParent == nil {
+		rows, err := tx.QueryContext(ctx, `SELECT f."table",m.name,f."from" FROM sqlite_schema m JOIN pragma_foreign_key_list(m.name) f
+ WHERE m.type='table' AND f."table" IN('libraries','catalog_libraries','catalog_entities') AND upper(f.on_delete) NOT IN('CASCADE','SET NULL') ORDER BY m.name,f."from"`)
+		if err != nil {
+			return nil, err
+		}
+		found := map[string][][2]string{}
+		for rows.Next() {
+			var p, table, column string
+			if err = rows.Scan(&p, &table, &column); err != nil {
+				rows.Close()
+				return nil, err
+			}
+			found[p] = append(found[p], [2]string{table, column})
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return nil, err
+		}
+		referenceColumns.byParent = found
+	}
+	return referenceColumns.byParent[parent], nil
+}
+
+// clearReferencesTx deletes the rows that still name one row of parent
+// through a restricting foreign key: the last step of taking a removed library
+// apart, after every known derived row has gone in bounded slices. A row of
+// the catalogue's own hierarchy is never deleted here; the removal steps above
+// take those apart in order.
+func clearReferencesTx(ctx context.Context, tx *sql.Tx, parent string, id any) error {
+	refs, err := restrictingReferences(ctx, tx, parent)
+	if err != nil {
+		return err
+	}
+	for _, ref := range refs {
+		table, column := ref[0], ref[1]
+		switch table {
+		case "catalog_entities", "catalog_libraries", "libraries", "library_sources", "library_scan_policies":
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, `DELETE FROM "`+table+`" WHERE "`+column+`"=?`, id); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // forceRemoveContainerTx removes a show, season, album, artist, book, author

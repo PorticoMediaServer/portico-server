@@ -31,7 +31,7 @@ func clientReportError(err error) error {
 func registerClientReports(registry *apikit.Registry, d Dependencies) error {
 	store := d.Access.ClientLogs
 	errs := []string{"unauthorized", "invalid_request", "device_session_required", "client_log_budget", "internal"}
-	err := apikit.Register(registry, apikit.Route[servicelog.ClientUploadRequest, servicelog.ClientUpload]{Metadata: apikit.Metadata{Admission: laneUpload, ID: "post_client_log", Method: "POST", Path: "/v1/diagnostics/client-logs", Summary: "Send a client report to this server", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: (servicelog.MaxClientUploadBytes * 6) + 4096, Status: 201, Errors: errs}, Handler: func(ctx context.Context, r *http.Request, body servicelog.ClientUploadRequest) (servicelog.ClientUpload, error) {
+	err := apikit.Register(registry, apikit.Route[servicelog.ClientUploadRequest, servicelog.ClientUpload]{Metadata: apikit.Metadata{Admission: laneUpload, ID: "post_client_log", Method: "POST", Path: "/v1/diagnostics/client-logs", Summary: "Send a client report to this server", Access: apikit.Device, Requires: apikit.ScopePlayback, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: (servicelog.MaxClientUploadBytes * 6) + 4096, Status: 201, Errors: errs}, Handler: func(ctx context.Context, r *http.Request, body servicelog.ClientUploadRequest) (servicelog.ClientUpload, error) {
 		if store == nil {
 			return servicelog.ClientUpload{}, &apierror.Error{Code: "internal"}
 		}

@@ -17,6 +17,56 @@ import (
 type PreparedRecipe struct {
 	AudioOnly, DropChapters, BoundedFragments bool
 	Width, Height, VideoKbps, AudioKbps       int
+	// VideoCodec is "h264" (empty) or "hevc". An HEVC recipe keeps the
+	// source's HDR10 or HLG picture at 10 bits and its surround sound up to
+	// 5.1; an H.264 recipe is SDR and stereo, tone-mapping an HDR source.
+	VideoCodec string
+	// Source is what the encode was told about the source it reads. Its zero
+	// value is an SDR source with stereo sound.
+	Source PreparedSource
+}
+
+// PreparedSource is what a prepared encode needs to know of its source beyond
+// the recipe: the picture's range and depth (and the Dolby Vision layers to
+// leave behind) and each audio track's channel count, in source order.
+type PreparedSource struct {
+	DynamicRange  string
+	BitDepth      int
+	DolbyVision   bool
+	MasterDisplay string
+	MaxCLL        string
+	AudioChannels []int
+}
+
+// PreparedChannels is the channel count a prepared recipe writes for a source
+// track: stereo for an ordinary recipe; for a surround recipe mono and stereo
+// stay as they are and anything wider becomes 5.1, which every first-party
+// player decodes as AAC.
+func PreparedChannels(surround bool, source int) int {
+	switch {
+	case !surround:
+		return 2
+	case source == 1:
+		return 1
+	case source <= 2:
+		return 2
+	default:
+		return 6
+	}
+}
+
+func preparedAudioKbps(channels int) int {
+	switch channels {
+	case 1:
+		return 96
+	case 2:
+		return 192
+	}
+	return 384
+}
+
+func preparedHDR(r PreparedRecipe) bool {
+	return r.Source.DynamicRange == "hdr10" || r.Source.DynamicRange == "hlg"
 }
 
 func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, error) {
@@ -24,7 +74,17 @@ func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, erro
 	if validate {
 		return append(args, "-map", "0:v?", "-map", "0:a?", "-sn", "-dn", "-f", "null", "-"), nil
 	}
-	if r.AudioKbps != 192 && r.AudioKbps != 96 {
+	hevc := r.VideoCodec == "hevc"
+	if r.VideoCodec != "" && r.VideoCodec != "h264" && !hevc || hevc && r.AudioOnly {
+		return nil, ErrInvalidConfiguration
+	}
+	if hevc && r.AudioKbps != 384 || !hevc && r.AudioKbps != 192 && r.AudioKbps != 96 {
+		return nil, ErrInvalidConfiguration
+	}
+	if r.Source.DynamicRange != "" && r.Source.DynamicRange != "sdr" && !preparedHDR(r) || len(r.Source.AudioChannels) > 16 {
+		return nil, ErrInvalidConfiguration
+	}
+	if r.Source.MasterDisplay != "" && !masteringDisplayPattern.MatchString(r.Source.MasterDisplay) || r.Source.MaxCLL != "" && !maxCLLPattern.MatchString(r.Source.MaxCLL) {
 		return nil, ErrInvalidConfiguration
 	}
 	if r.AudioOnly {
@@ -34,7 +94,53 @@ func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, erro
 			return nil, ErrInvalidConfiguration
 		}
 		scale := fmt.Sprintf("scale=w='max(2,trunc(min(min(iw*sar,%d),%d*dar)/2)*2)':h='max(2,trunc(min(min(ih,%d),%d/dar)/2)*2)',setsar=1", r.Width, r.Height, r.Height, r.Width)
-		args = append(args, "-map", "0:v:0", "-map", "0:a?", "-vf", scale, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-profile:v", "high", "-level:v", strconv.FormatFloat(float64(H264OutputLevel(r.Width, r.Height, 60))/10, 'f', 1, 64), "-fpsmax", "60", "-fps_mode", "vfr", "-crf", "21", "-maxrate", strconv.Itoa(r.VideoKbps)+"k", "-bufsize", strconv.Itoa(r.VideoKbps*2)+"k", "-threads", "2")
+		rate := []string{"-fpsmax", "60", "-fps_mode", "vfr", "-maxrate", strconv.Itoa(r.VideoKbps) + "k", "-bufsize", strconv.Itoa(r.VideoKbps*2) + "k", "-threads", "2"}
+		if !hevc {
+			// An HDR source becomes a standard picture here: scaled in its own
+			// range, then tone-mapped on the processor, never written flat.
+			if preparedHDR(r) {
+				scale += "," + SoftwareToneMap("hable")
+			}
+			args = append(args, "-map", "0:v:0", "-map", "0:a?", "-vf", scale, "-c:v", "libx264", "-preset", "medium", "-pix_fmt", "yuv420p", "-profile:v", "high", "-level:v", strconv.FormatFloat(float64(H264OutputLevel(r.Width, r.Height, 60))/10, 'f', 1, 64), "-crf", "21")
+			args = append(args, rate...)
+			if preparedHDR(r) {
+				args = append(args, "-color_primaries", "bt709", "-color_trc", "bt709", "-colorspace", "bt709", "-color_range", "tv")
+			}
+		} else {
+			// HEVC keeps the source's depth (ten bits for HDR) and its range,
+			// with HDR10's mastering description carried in the stream.
+			deep := preparedHDR(r) || r.Source.BitDepth >= 10
+			pixel, profile := "yuv420p", "main"
+			if deep {
+				pixel, profile = "yuv420p10le", "main10"
+			}
+			params := "pools=2:frame-threads=1:repeat-headers=1:log-level=error"
+			color := []string{}
+			if preparedHDR(r) {
+				transfer := "smpte2084"
+				if r.Source.DynamicRange == "hlg" {
+					transfer = "arib-std-b67"
+				}
+				color = []string{"-color_primaries", "bt2020", "-color_trc", transfer, "-colorspace", "bt2020nc", "-color_range", "tv"}
+				if r.Source.DynamicRange == "hdr10" {
+					params += ":hdr10=1"
+					if r.Source.MasterDisplay != "" {
+						params += ":master-display=" + r.Source.MasterDisplay
+					}
+					if r.Source.MaxCLL != "" {
+						params += ":max-cll=" + r.Source.MaxCLL
+					}
+				}
+			}
+			args = append(args, "-map", "0:v:0", "-map", "0:a?", "-vf", scale, "-c:v", "libx265", "-preset", "fast", "-pix_fmt", pixel, "-profile:v", profile, "-tag:v", "hvc1", "-crf", "22", "-x265-params", params)
+			args = append(args, rate...)
+			args = append(args, color...)
+			if r.Source.DolbyVision {
+				// Only the base layer is kept; no Dolby Vision unit may survive
+				// into a stream that is not described as Dolby Vision.
+				args = append(args, "-bsf:v", "filter_units=remove_types=62|63")
+			}
+		}
 	}
 	if r.DropChapters {
 		// Chapter positions are not copied into a derivative with a new clock.
@@ -45,7 +151,16 @@ func preparedArgs(input string, r PreparedRecipe, validate bool) ([]string, erro
 		// at one-second intervals, including audio with no video keyframes.
 		args = append(args, "-frag_duration", "1000000")
 	}
-	return append(args, "-sn", "-dn", "-map_metadata", "-1", "-c:a", "aac", "-b:a", strconv.Itoa(r.AudioKbps)+"k", "-ac", "2", "-ar", "48000", "-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"), nil
+	args = append(args, "-sn", "-dn", "-map_metadata", "-1", "-c:a", "aac")
+	if hevc && len(r.Source.AudioChannels) > 0 {
+		for i, channels := range r.Source.AudioChannels {
+			out := PreparedChannels(true, channels)
+			args = append(args, "-ac:a:"+strconv.Itoa(i), strconv.Itoa(out), "-b:a:"+strconv.Itoa(i), strconv.Itoa(preparedAudioKbps(out))+"k")
+		}
+	} else {
+		args = append(args, "-b:a", strconv.Itoa(min(r.AudioKbps, 192))+"k", "-ac", "2")
+	}
+	return append(args, "-ar", "48000", "-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-f", "mp4", "pipe:1"), nil
 }
 func preparedCommand(executable, input string, res *EndpointReservation, recipe PreparedRecipe, validate bool, libraries ...string) (*exec.Cmd, string, error) {
 	if !filepath.IsAbs(executable) || filepath.Clean(executable) != executable || len(libraries) > 256 {
@@ -128,7 +243,12 @@ func RunPreparedValidate(ctx context.Context, s *storage.Supervisor, key, execut
 }
 
 func validPreparedVideo(r PreparedRecipe) bool {
-	for _, p := range [][3]int{{640, 360, 1000}, {854, 480, 2000}, {1280, 720, 2500}, {1920, 1080, 5000}, {2560, 1440, 12000}, {3840, 2160, 20000}} {
+	ladder := [][3]int{{640, 360, 1000}, {854, 480, 2000}, {1280, 720, 2500}, {1920, 1080, 5000}, {2560, 1440, 12000}, {3840, 2160, 20000}}
+	if r.VideoCodec == "hevc" {
+		// The same pictures at 70% of the H.264 rate, as conversions use.
+		ladder = [][3]int{{1280, 720, 1750}, {1920, 1080, 3500}, {2560, 1440, 8400}, {3840, 2160, 14000}}
+	}
+	for _, p := range ladder {
 		if r.Width == p[0] && r.Height == p[1] && r.VideoKbps == p[2] {
 			return true
 		}

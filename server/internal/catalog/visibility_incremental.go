@@ -68,10 +68,12 @@ func (s *Service) refreshVisibilityClass(ctx context.Context, library string, r 
 		return s.RebuildVisibilityClass(ctx, library, r)
 	}
 	clause, clauseArgs := visibilityMembershipSQL("e.entity_id", r)
+	started := time.Now()
 	for {
-		if err := ctx.Err(); err != nil {
+		if err := visibilityBoundary(ctx, started); err != nil {
 			return err
 		}
+		started = time.Now()
 		applied := 0
 		err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
 			applied = 0
@@ -201,6 +203,20 @@ func updateVisibleEntity(ctx context.Context, tx *sql.Tx, classID, generation, l
 		 ON CONFLICT(class_id,generation,library_id,kind,head,decade) DO UPDATE SET total=total+1`, classID, generation, libraryID, next.kind, next.head, next.decade); err != nil {
 			return err
 		}
+	}
+	return nil
+}
+
+// visibilityBoundary is the builder's cooperative boundary between write
+// batches, outside any transaction: the owner's "pause background work" holds
+// the builder here, foreground pressure gets a brief opening, and cancellation
+// stops it. Published classes keep serving while the builder waits.
+func visibilityBoundary(ctx context.Context, batchStarted time.Time) error {
+	if !dbwork.PaceBackground(ctx, batchStarted) {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return context.Canceled
 	}
 	return nil
 }

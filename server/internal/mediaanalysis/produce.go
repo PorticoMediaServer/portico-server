@@ -1,7 +1,6 @@
 package mediaanalysis
 
 import (
-	"bufio"
 	"bytes"
 	"context"
 	"crypto/sha256"
@@ -37,11 +36,11 @@ func (m Marker) end() int64   { n, _ := strconv.ParseInt(m.EndUS, 10, 64); retur
 func candidate(kind string, start, end int64, confidence float64, provenance string) Marker {
 	return Marker{Kind: kind, Title: strings.ToUpper(kind[:1]) + kind[1:] + " candidate", StartUS: fmt.Sprint(start), EndUS: fmt.Sprint(end), Confidence: confidence, Provenance: provenance}
 }
-func (s *Service) produce(ctx context.Context, b binding, stage string, input Input, decode Decode, key string) (out produced, err error) {
-	out.Artifacts = []artifactOutput{}
-	out.Markers = []Marker{}
+// adder returns the function a stage stores one generated artifact with,
+// counting the stage's output against its budget.
+func (s *Service) adder(ctx context.Context, key string, out *produced) func(data []byte, kind, mime string, index int, start, end int64, w, h int) error {
 	generated := int64(0)
-	add := func(data []byte, kind, mime string, index int, start, end int64, w, h int) error {
+	return func(data []byte, kind, mime string, index int, start, end int64, w, h int) error {
 		generated += int64(len(data))
 		if generated > s.stageLimit(ctx) {
 			return ErrBudget
@@ -70,6 +69,11 @@ func (s *Service) produce(ctx context.Context, b binding, stage string, input In
 		out.Artifacts = append(out.Artifacts, artifactOutput{Object: object, RetainedKey: retained, Kind: kind, MIME: mime, Ordinal: index, StartUS: start, EndUS: end, Width: w, Height: h})
 		return nil
 	}
+}
+func (s *Service) produce(ctx context.Context, b binding, stage string, input Input, decode Decode, key string) (out produced, err error) {
+	out.Artifacts = []artifactOutput{}
+	out.Markers = []Marker{}
+	add := s.adder(ctx, key, &out)
 	if stage == "checksum" {
 		h := sha256.New()
 		for pos := int64(0); pos < input.Size(); {
@@ -96,63 +100,6 @@ func (s *Service) produce(ctx context.Context, b binding, stage string, input In
 	}
 	spec := decoder.AnalysisSpec{MaxDurationUS: b.DurationUS, SourceVideo: decoder.PreviewVideoFacts{DynamicRange: b.Video.DynamicRange, DolbyVisionProfile: b.Video.DolbyVisionProfile, DolbyVisionCompatibility: b.Video.DolbyVisionCompatibility}}
 	switch stage {
-	case "waveform", "fingerprint":
-		if b.AudioCodec == "" {
-			out.Summary = map[string]any{"status": "not_applicable", "reason": "no_audio_stream"}
-			return out, nil
-		}
-		spec.Kind = "pcm"
-		var summary any
-		err = decode(ctx, key, spec, func(r io.Reader) error { var e error; summary, e = analyzePCM(r, b.DurationUS, stage); return e })
-		if err == nil {
-			out.Summary = summary
-			err = add([]byte(jsonString(summary)), stage, "application/json", 0, 0, b.DurationUS, 0, 0)
-		}
-	case "loudness":
-		if b.AudioCodec == "" {
-			out.Summary = map[string]any{"status": "not_applicable", "reason": "no_audio_stream"}
-			return out, nil
-		}
-		spec.Kind = "loudness"
-		values := map[string]float64{}
-		frames := int64(0)
-		err = decode(ctx, key, spec, func(r io.Reader) error {
-			scan := bufio.NewScanner(r)
-			scan.Buffer(make([]byte, 4096), 65536)
-			for scan.Scan() {
-				line := scan.Text()
-				if strings.HasPrefix(line, "frame:") {
-					frames++
-					if frames > b.DurationUS/100000+600 {
-						return ErrBudget
-					}
-				}
-				k, v, ok := strings.Cut(line, "=")
-				if !ok || !strings.HasPrefix(k, "lavfi.r128.") {
-					continue
-				}
-				n, e := strconv.ParseFloat(v, 64)
-				if e != nil || math.IsNaN(n) || math.IsInf(n, 0) {
-					continue
-				}
-				values[strings.TrimPrefix(k, "lavfi.r128.")] = n
-			}
-			return scan.Err()
-		})
-		if err == nil {
-			integrated, ok := values["I"]
-			if !ok || frames == 0 {
-				return out, ErrUnsupported
-			}
-			summary := map[string]any{"algorithm": "EBU-R128", "integratedLUFS": integrated, "frames": frames, "normalizationApplied": false}
-			if lra, ok := values["LRA"]; ok {
-				summary["loudnessRangeLU"] = lra
-			}
-			if peak, ok := values["true_peak"]; ok {
-				summary["truePeakLinear"] = peak
-			}
-			out.Summary = summary
-		}
 	case "chapter_images":
 		if b.VideoCodec == "" {
 			out.Summary = map[string]any{"status": "not_applicable", "reason": "no_video_stream"}
