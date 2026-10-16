@@ -41,9 +41,9 @@ type V1Choice struct {
 	// Engine pins the player engine (a re-plan of a playing presentation whose
 	// engine must not change under the viewer); empty lets planning choose.
 	Engine string
-	// RememberedAudioLanguage is the audio language this profile last chose
-	// for the show or film; it is tried before the preferred languages.
-	RememberedAudioLanguage string
+	// CarriedAudioLanguage is the audio language picked in the player earlier
+	// in this playback; it is tried before the preferred languages.
+	CarriedAudioLanguage string
 	// AdminMaxVideoBitrateBPS is the member's remote bitrate cap from access
 	// admission (spec §5.3); zero means none.
 	AdminMaxVideoBitrateBPS int

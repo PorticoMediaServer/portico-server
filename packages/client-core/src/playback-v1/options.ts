@@ -42,12 +42,6 @@ export class PlaybackOptionsClient {
     const r = await call(this.http, {method: 'GET', path: encodedRoutePath("get_playback_options", {"itemId": enc(itemId)}) + (query(preview)), signal});
     return parseOptions(r.body);
   }
-
-  /** Forgets the audio and subtitle choice remembered for this title's show or film (`preferred.reason`
-   * `last_used`): the next start goes back to the profile's language preferences. */
-  async forgetTrackMemory(itemId: string, signal?: AbortSignal): Promise<void> {
-    await call(this.http, {method: 'DELETE', path: encodedRoutePath("forget_playback_track_memory", {"itemId": enc(itemId)}), signal});
-  }
 }
 
 /** What a plan does, for one-line labels and the technical details panel. */
@@ -78,7 +72,8 @@ export function defaultSelection(o: PlaybackOptions): Readonly<{version?: MediaV
   const version = o.versions.find(v => v.id === o.preferred?.versionId) ?? o.versions[0];
   if (!version) return Object.freeze({});
   const audio = version.audio.find(a => a.id === o.preferred?.audioId) ?? version.audio.find(a => a.default) ?? version.audio[0];
-  const subtitle = o.preferred ? version.subtitles.find(s => s.id === o.preferred!.subtitleId) : version.subtitles.find(s => s.forced && (!audio?.language || s.language === audio.language));
+  // With the server's preference the subtitle is the server's to choose at the start (the viewer's Settings).
+  const subtitle = o.preferred ? undefined : version.subtitles.find(s => s.forced && (!audio?.language || s.language === audio.language));
   return Object.freeze({version, audio, subtitle});
 }
 

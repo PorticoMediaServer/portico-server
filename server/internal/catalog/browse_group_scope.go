@@ -257,7 +257,7 @@ func (s *Service) groupOrderSource(target *BrowseNode, rows map[string][]int64) 
 	case "collection":
 		return up(`SELECT cm.item_id AS id,ROW_NUMBER() OVER (ORDER BY cm.order_key,cm.item_id) AS pos FROM catalog_collection_members cm WHERE cm.collection_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?))`), []any{value}, nil
 	case "list":
-		return up(`SELECT entry.item_id AS id,entry.position AS pos FROM catalog_playlists list JOIN catalog_playlist_entries entry ON entry.playlist_id=list.id WHERE list.token=? AND list.deleted=0 AND entry.item_id IS NOT NULL`), []any{value}, nil
+		return up(`SELECT entry.item_id AS id,ROW_NUMBER() OVER (ORDER BY entry.order_key,entry.id) AS pos FROM catalog_playlists list JOIN catalog_playlist_entries entry ON entry.playlist_id=list.id WHERE list.token=? AND list.deleted=0 AND entry.item_id IS NOT NULL`), []any{value}, nil
 	case "homeRow":
 		ids, ok := rows[value]
 		if !ok {

@@ -502,18 +502,14 @@ type AudioRender struct {
 	Downmixed      bool             `json:"downmixed,omitempty"`
 	Trim           *AudioRenderTrim `json:"trim,omitempty"`
 	Gain           *AudioRenderGain `json:"gain,omitempty"`
-	// DeepStart: a direct plan in a container with no seek index (MP3, ADTS,
-	// Ogg) starts part-way from this route instead (`?fromFrame=N`): lossless
-	// FLAC at the plan's own rate, so its frames are the plan's frames.
-	DeepStart *AudioRenderDeepStart `json:"deepStart,omitempty"`
+	// SeekIndex: a direct plan in a container with no seek index of its own
+	// (MP3, ADTS, Ogg) has the server's at this route: byte offsets at packet
+	// or page boundaries and the raw frame each starts at, so the client reads
+	// from the nearest one with a Range request and decodes to the exact frame.
+	SeekIndex *AudioRenderSeekIndex `json:"seekIndex,omitempty"`
 }
-type AudioRenderDeepStart struct {
-	URL        string `json:"url"`
-	Container  string `json:"container"`
-	Codec      string `json:"codec"`
-	SampleRate int    `json:"sampleRate"`
-	Channels   int    `json:"channels"`
-	BitDepth   int    `json:"bitDepth,omitempty"`
+type AudioRenderSeekIndex struct {
+	URL string `json:"url"`
 }
 type AudioRenderTrim struct {
 	StartFrames int64  `json:"startFrames"`
@@ -545,8 +541,8 @@ func audioRenderOf(p *playback.AudioPlan) *AudioRender {
 	if p.Gain != nil {
 		out.Gain = &AudioRenderGain{TrackDB: p.Gain.TrackDB, AlbumDB: p.Gain.AlbumDB, TrackPeak: p.Gain.TrackPeak, AlbumPeak: p.Gain.AlbumPeak, Source: p.Gain.Source}
 	}
-	if d := p.DeepStart; d != nil && p.Mode == "direct" {
-		out.DeepStart = &AudioRenderDeepStart{URL: d.URL, Container: d.Container, Codec: d.Codec, SampleRate: d.SampleRate, Channels: d.Channels, BitDepth: d.BitDepth}
+	if x := p.SeekIndex; x != nil && p.Mode == "direct" {
+		out.SeekIndex = &AudioRenderSeekIndex{URL: x.URL}
 	}
 	return out
 }

@@ -109,17 +109,13 @@ type Marker struct {
 }
 
 // Preferred is what a start that names nothing would play: the version this
-// device plays best, the audio and subtitle tracks (this profile's last
-// choice for the show or film, else its languages, else the file's default)
-// and the viewer's saved quality for where the request comes from.
+// device plays best, the audio track (the viewer's preferred languages, else
+// the file's default) and the viewer's saved quality for where the request
+// comes from.
 type Preferred struct {
-	VersionID  string `json:"versionId"`
-	AudioID    string `json:"audioId,omitempty"`
-	SubtitleID string `json:"subtitleId,omitempty"`
-	// SubtitlesOff is true when the profile last turned subtitles off for
-	// this show or film.
-	SubtitlesOff bool `json:"subtitlesOff,omitempty"`
-	// Reason is why the tracks: "last_used", "profile_language" or "default".
+	VersionID string `json:"versionId"`
+	AudioID   string `json:"audioId,omitempty"`
+	// Reason is why the audio track: "profile_language" or "default".
 	Reason  string  `json:"reason"`
 	Quality Quality `json:"quality"`
 }
@@ -566,32 +562,10 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	if err != nil {
 		return Options{}, err
 	}
-	memory := TrackMemory{}
-	if !audioOnly {
-		memory = s.trackMemory(ctx, p, item)
-	}
-	if choice.AudioStream == nil {
-		choice.RememberedAudioLanguage = memory.AudioLanguage
-	}
 	// The preview's subtitle, when there is one: a known track of this version,
-	// drawn by the device or burned into the video. Without one, the track
-	// this profile last chose for the show or film is what a start would use.
-	subtitleID, remembered := preview.SubtitleID, false
-	if subtitleID == "" && memory.SubtitleMode != "" {
-		var tracks []subtitles.Resource
-		for _, r := range catalog.Resources {
-			if r.SourceID == version.ID && r.Enabled {
-				tracks = append(tracks, r)
-			}
-		}
-		if r := rememberedSubtitle(memory, subtitles.PlaybackPlan{Resources: tracks}); r != nil {
-			remembered = true
-			subtitleID = "none"
-			if r.TrackID != TrackOff {
-				subtitleID = string(r.TrackID)
-			}
-		}
-	}
+	// drawn by the device or burned into the video. Without one, the viewer's
+	// Settings decide, as they do for a start.
+	subtitleID := preview.SubtitleID
 	burnable := false
 	if subtitleID != "" && subtitleID != "none" {
 		known := false
@@ -652,14 +626,6 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 	}
 	done()
 	out.Preferred = &Preferred{VersionID: version.ID, Reason: "default", Quality: savedQuality(reach.SavedQuality)}
-	if remembered {
-		out.Preferred.Reason = "last_used"
-		if subtitleID == "none" {
-			out.Preferred.SubtitlesOff = true
-		} else {
-			out.Preferred.SubtitleID = subtitleID
-		}
-	}
 	if s.Playback != nil {
 		plan, err := s.Playback.PlanV1(ctx, p, item, choice)
 		switch {
@@ -675,13 +641,8 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 				out.Preferred.AudioID = streamID("a", plan.AudioStream)
 			}
 			if plan.Trace != nil && plan.Trace.Audio != nil {
-				switch plan.Trace.Audio.ChosenBy {
-				case "remembered":
-					out.Preferred.Reason = "last_used"
-				case "preferred_language":
-					if !remembered {
-						out.Preferred.Reason = "profile_language"
-					}
+				if plan.Trace.Audio.ChosenBy == "preferred_language" {
+					out.Preferred.Reason = "profile_language"
 				}
 			}
 		case errors.Is(err, playback.ErrTranscodingDisabled):

@@ -379,6 +379,10 @@ audio_render_facts.sample_rate
 audio_render_facts.size
 audio_render_facts.start_frames
 audio_render_facts.trim_source
+audio_seek_index.asset_id
+audio_seek_index.entries
+audio_seek_index.modified_ns
+audio_seek_index.size
 audio_source_metadata.asset_id
 audio_source_metadata.issue
 audio_source_metadata.library_id
@@ -783,6 +787,7 @@ catalog_collections.entity_id
 catalog_collections.library_id
 catalog_collections.member_count
 catalog_collections.name_key
+catalog_collections.revision
 catalog_container_added.added_text
 catalog_container_added.container_id
 catalog_container_added.item_id
@@ -3706,12 +3711,6 @@ playback_subtitle_state.resource_id
 playback_subtitle_state.resource_revision
 playback_subtitle_state.revision
 playback_subtitle_state.session_id
-playback_track_memory.audio_language
-playback_track_memory.item_id
-playback_track_memory.profile_id
-playback_track_memory.subtitle_language
-playback_track_memory.subtitle_mode
-playback_track_memory.updated_ms
 playback_v1_prepared.cancel_reason
 playback_v1_prepared.create_key
 playback_v1_prepared.created_ms
@@ -4150,6 +4149,7 @@ saved_pins.resource_id
 saved_pins.revision
 saved_resource_entries.id
 saved_resource_entries.item_id
+saved_resource_entries.order_key
 saved_resource_entries.resource_id
 saved_resource_generation.id
 saved_resource_generation.revision

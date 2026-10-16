@@ -616,6 +616,10 @@ export interface PlaybackJournal {
 export type PlaybackOptions = {
   /** Live TV and Library Channels on v1 sessions (spec §18.6): V1ChannelControl. */
   channels?: ChannelPlayback;
+  /** A new playback (`playbackRun`) is about to start: put back to the Settings whatever the
+   * player changed for the last one that the server plans from (a player engine chosen in the
+   * player), and resolve when the server has it. The start waits for it. */
+  beforeFreshPlayback?: () => Promise<void>;
   journal?: PlaybackJournal;
   deferRecovery?: boolean;
   startupTimeoutMs?: number;
@@ -659,6 +663,12 @@ export type PlaybackSnapshot = {
   audio: AudioSelectionSnapshot;
   revision: number;
   intentId: number;
+  /** One continuous playback. A start the viewer asks for (Play on a title, a new queue, a
+   * download) begins a new one; the queue moving on (autoplay, Up Next, Next and Previous, a
+   * retry or restart in place) stays in it. A choice made in the player (speed, subtitle
+   * position, Forced only, picture fill) lasts while this stays the same and goes back to the
+   * Settings when it changes; the audio and subtitle tracks are carried by the server. */
+  playbackRun: number;
   seekRevision: number;
   pendingSeek?: Readonly<{revision: number; positionSeconds: number}>;
   seekError?: string;
@@ -702,11 +712,14 @@ export class PlaybackService {
   private nativePolicyRevision=0;private nativePolicyKey="";
   private listeningClock=new ListeningDeadlineClock(()=>{this.pause();this.update({listeningDeadlines:this.listeningClock.getSnapshot(),error:'Listening timer paused playback.'});});
   private options: PlaybackOptions;
+  /** `beforeFreshPlayback` for the playback being started, awaited before its first request. */
+  private freshReady?: Promise<void>;
   private snapshot: PlaybackSnapshot = {
     audioEffects: {settings:defaultAudioEffects,rendering:false,rate:1,notice:""},
     audio: emptyAudio(),
     revision: 0,
     intentId: 0,
+    playbackRun: 0,
     seekRevision: 0,
     phase: "idle",
     intent: "paused",
@@ -1127,15 +1140,20 @@ export class PlaybackService {
   setQueueConnection(connection:{error?:string;retry?:()=>void}){this.queueConnection=connection;this.update({});}
   getQueueController(){return this.queue;}
   installQueue(queue:QueueController){this.queue=queue;this.update({});return()=>{if(this.queue===queue){this.queue=undefined;this.update({});}};}
-  beginQueueIntent(itemId?:string):number{
+  /** `fresh`: the viewer started a new playback (a new queue), not the queue moving on. */
+  beginQueueIntent(itemId?:string,fresh=false):number{
     // Live uses another lane and never becomes a queue replacement predecessor.
     if(this.snapshot.channel)this.leave(false);
-    if(!this.snapshot.session){this.clearStartup();this.update({phase:'starting',intent:'playing',itemId,error:undefined});}
-    else this.update({intent:'playing',error:undefined});
+    const run=fresh?{playbackRun:this.snapshot.playbackRun+1}:{};
+    if(fresh&&this.options.beforeFreshPlayback)this.freshReady=this.options.beforeFreshPlayback().catch(()=>{});
+    if(!this.snapshot.session){this.clearStartup();this.update({phase:'starting',intent:'playing',itemId,error:undefined,...run});}
+    else this.update({intent:'playing',error:undefined,...run});
     return this.snapshot.intentId;
   }
   async prepareQueueIntent(intentId:number):Promise<boolean>{
     if(this.snapshot.intentId!==intentId||this.snapshot.channel)return false;
+    const fresh=this.freshReady;this.freshReady=undefined;
+    await fresh;
     await this.channels?.recover();
     return this.snapshot.intentId===intentId&&!this.snapshot.channel;
   }
@@ -1219,6 +1237,7 @@ export class PlaybackService {
     if(this.queue)return this.queue.playItem(itemId,startPosition,prepared,quality,audioStream,choices);
     if(prepared){this.queueFailed(itemId,"Prepared playback requires the device queue. Reconnect it before choosing a version.");return Promise.resolve();}
     if(this.options.queueRequired){if(this.snapshot.channel)this.leave();this.queueFailed(itemId,this.queueConnection.error??'The device queue is still connecting. Retry once it is ready.');return Promise.resolve();}
+    this.update({playbackRun:this.snapshot.playbackRun+1});
     return this.startPlayback(itemId, startPosition, "playing");
   }
   /**
@@ -1230,6 +1249,7 @@ export class PlaybackService {
   playLocal(itemId: string, session: () => PlaybackSession, startPosition?: number): Promise<void> {
     this.escalations = 0;
     this.lastPlay = { itemId, local: session };
+    this.update({ playbackRun: this.snapshot.playbackRun + 1 });
     return this.startLocal(itemId, session, startPosition, "playing");
   }
   private async startLocal(itemId: string, make: () => PlaybackSession, startPosition: number | undefined, intent: "playing" | "paused"): Promise<void> {
@@ -1967,6 +1987,7 @@ export * from './prepared-media.ts';
 export * from './trickplay.ts';
 export {PlayerChaptersService} from './player-chapters.ts';
 export type {PlayerChapter,PlayerChaptersData,PlayerChaptersTarget,PlayerChaptersSnapshot} from './player-chapters.ts';
+export {PlayerSessionChoices,playerSessionChoices} from './player-session-choices.ts';
 export * from './listening.ts';
 export * from './preferences.ts';
 export {parseSegmentMarkers,parseSegmentMarkerSet,canSkipAutomatically,type SegmentMarker,type SegmentMarkerKind,type SegmentMarkerSet} from './segment-markers.ts';

@@ -1242,23 +1242,6 @@ export const routes = [
     "admission": "admin-heavy"
   },
   {
-    "id": "forget_playback_track_memory",
-    "method": "DELETE",
-    "path": "/v1/items/{itemId}/playback-memory",
-    "summary": "Forget the audio and subtitle choice remembered for this title's show or film",
-    "access": "viewer_item_restrictions",
-    "requires": "playback",
-    "lane": "default",
-    "cost": "constant",
-    "bodyLimit": 0,
-    "errors": [
-      "unauthorized",
-      "not_found"
-    ],
-    "status": 204,
-    "admission": "default"
-  },
-  {
     "id": "get_admin_access_devices",
     "method": "GET",
     "path": "/v1/admin/access/devices",
@@ -5388,6 +5371,26 @@ export const routes = [
     ],
     "status": 200,
     "responseContentType": "application/octet-stream",
+    "http": true,
+    "admission": "media-body"
+  },
+  {
+    "id": "get_media_grant_audio_index",
+    "method": "GET",
+    "path": "/v1/media/{grant}/audio-index",
+    "summary": "Read the seek index of media audio",
+    "access": "device",
+    "requires": "playback",
+    "lane": "media",
+    "cost": "constant",
+    "bodyLimit": 0,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
     "http": true,
     "admission": "media-body"
   },
@@ -12803,6 +12806,28 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "reorder_library_collection",
+    "method": "PUT",
+    "path": "/v1/collections/{id}/order",
+    "summary": "Move titles of a library collection (at most 200), fenced by its revision",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "browsing"
+  },
+  {
     "id": "reorder_playlist_window",
     "method": "PUT",
     "path": "/v1/playlists/{id}/order",
@@ -12824,6 +12849,28 @@ export const routes = [
       "revision_required"
     ],
     "status": 200,
+    "admission": "default"
+  },
+  {
+    "id": "reorder_saved_collection",
+    "method": "PUT",
+    "path": "/v1/saved-resources/{id}/order",
+    "summary": "Move entries of a personal collection (at most 200), fenced by its revision",
+    "access": "device",
+    "requires": "playback",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
     "admission": "default"
   },
   {
@@ -15688,7 +15735,6 @@ export const routePaths = {
   "delete_webhook": "/v1/admin/webhooks/{id}",
   "download_client_log": "/v1/admin/diagnostics/client-logs/{id}/download",
   "empty_missing_titles": "/v1/admin/missing-titles/empty",
-  "forget_playback_track_memory": "/v1/items/{itemId}/playback-memory",
   "get_admin_access_devices": "/v1/admin/access/devices",
   "get_admin_access_invitations": "/v1/admin/access/invitations",
   "get_admin_access_members": "/v1/admin/access/members",
@@ -15871,6 +15917,7 @@ export const routePaths = {
   "get_media_grant": "/v1/media/{grant}",
   "get_media_grant_audio": "/v1/media/{grant}/audio",
   "get_media_grant_audio_converted": "/v1/media/{grant}/audio-converted",
+  "get_media_grant_audio_index": "/v1/media/{grant}/audio-index",
   "get_media_grant_file": "/v1/media/{grant}/{file}",
   "get_media_linear_playbackId_generation_token_name": "/v1/media/linear/{playbackId}/{generation}/{token}/{name}",
   "get_metadata_attention": "/v1/libraries/{id}/metadata/attention",
@@ -16195,7 +16242,9 @@ export const routePaths = {
   "refresh_shows_metadata": "/v1/shows/{id}/metadata/refresh",
   "remove_library": "/v1/admin/libraries/{id}",
   "remove_queue_entry": "/v1/queues/{id}/entries/{entryId}",
+  "reorder_library_collection": "/v1/collections/{id}/order",
   "reorder_playlist_window": "/v1/playlists/{id}/order",
+  "reorder_saved_collection": "/v1/saved-resources/{id}/order",
   "report_changed_paths": "/v1/libraries/paths-changed",
   "report_playback_timeline": "/v1/playback/sessions/{id}/timeline",
   "revalidate_download_receipts": "/v1/downloads/receipts/revalidate",

@@ -46,8 +46,8 @@ export function acrossCondition(group: AcrossGroup, value = ''): BrowseNode {
  */
 export const acrossPivot = (group: AcrossGroup): 'titles' | 'items' => (group === 'list' || group === 'history' ? 'items' : 'titles');
 
-/** Whether a group across libraries has an order of its own on the server (a playlist's, a row's, the history's most recent first). */
-export const acrossOwnOrder = (group: AcrossGroup): boolean => group === 'list' || group === 'homeRow' || group === 'history';
+/** Whether a group across libraries has an order of its own on the server (a playlist's, a personal collection's, a row's, the history's most recent first). */
+export const acrossOwnOrder = (group: AcrossGroup): boolean => group === 'list' || group === 'savedCollection' || group === 'homeRow' || group === 'history';
 
 /**
  * The surface a group is entered through, by the field that names it, for a vocabulary that lists

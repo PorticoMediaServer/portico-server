@@ -4,7 +4,7 @@ import {acrossGroup, entityGroups, itemPivot, titlePivot} from '../src/app/group
 import {browsePageSource} from '../src/app/browse-page-source.ts';
 
 test('a collection lists the library\'s titles, kept to the collection, in its own order first', () => {
-  assert.deepEqual(entityGroups('lib', 'movie', {kind: 'collection', id: 'c1'}), {titles: {libraryId: 'lib', libraryKind: 'movie', pivot: 'movies', base: [{field: 'collection', operator: 'equals', value: 'c1'}], own: 'collection'}});
+  assert.deepEqual(entityGroups('lib', 'movie', {kind: 'collection', id: 'c1'}), {titles: {libraryId: 'lib', libraryKind: 'movie', pivot: 'movies', base: [{field: 'collection', operator: 'equals', value: 'c1'}], own: 'collection', always: true}}, 'a collection lists in its own order');
   assert.equal(entityGroups('lib', 'tv', {kind: 'collection', id: 'c1'}).titles?.pivot, 'shows');
   assert.equal(entityGroups('lib', 'anime', {kind: 'collection', id: 'c1'}).titles?.pivot, 'shows');
   assert.equal(entityGroups('lib', 'audiobook', {kind: 'collection', id: 'c1'}).titles?.pivot, 'books');

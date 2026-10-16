@@ -19,8 +19,9 @@ type Querier interface {
 // asset row describes now (size and mtime). Stale or missing: ok is false.
 func Read(ctx context.Context, q Querier, asset string) (Facts, bool, error) {
 	var f Facts
-	err := q.QueryRowContext(ctx, `SELECT f.container,f.codec,f.sample_rate,f.channels,f.bit_depth,f.raw_frames,f.duration_frames,f.start_frames,f.end_frames,f.trim_source,f.decoder_config,f.codec_profile,f.bit_rate
- FROM audio_render_facts f JOIN catalog_assets a ON a.token=f.asset_id AND a.size=f.size AND a.modified_ns=f.modified_ns WHERE f.asset_id=?`, asset).Scan(&f.Container, &f.Codec, &f.SampleRate, &f.Channels, &f.BitDepth, &f.RawFrames, &f.DurationFrames, &f.StartFrames, &f.EndFrames, &f.TrimSource, &f.DecoderConfig, &f.Profile, &f.BitRate)
+	err := q.QueryRowContext(ctx, `SELECT f.container,f.codec,f.sample_rate,f.channels,f.bit_depth,f.raw_frames,f.duration_frames,f.start_frames,f.end_frames,f.trim_source,f.decoder_config,f.codec_profile,f.bit_rate,
+ EXISTS(SELECT 1 FROM audio_seek_index x WHERE x.asset_id=f.asset_id AND x.size=a.size AND x.modified_ns=a.modified_ns)
+ FROM audio_render_facts f JOIN catalog_assets a ON a.token=f.asset_id AND a.size=f.size AND a.modified_ns=f.modified_ns WHERE f.asset_id=?`, asset).Scan(&f.Container, &f.Codec, &f.SampleRate, &f.Channels, &f.BitDepth, &f.RawFrames, &f.DurationFrames, &f.StartFrames, &f.EndFrames, &f.TrimSource, &f.DecoderConfig, &f.Profile, &f.BitRate, &f.HasSeekIndex)
 	if errors.Is(err, sql.ErrNoRows) {
 		return f, false, nil
 	}
@@ -56,7 +57,35 @@ func Save(ctx context.Context, db *sql.DB, asset string, f Facts) error {
 	if _, err = tx.ExecContext(ctx, `DELETE FROM audio_render_fact_failures WHERE asset_id=?`, asset); err != nil {
 		return err
 	}
+	// The seek index belongs to the same measurement: replaced or removed with it.
+	if len(f.SeekIndex) > 0 {
+		_, err = tx.ExecContext(ctx, `INSERT INTO audio_seek_index(asset_id,size,modified_ns,entries) SELECT token,size,modified_ns,? FROM catalog_assets WHERE token=?
+ ON CONFLICT(asset_id) DO UPDATE SET size=excluded.size,modified_ns=excluded.modified_ns,entries=excluded.entries`, f.SeekIndex, asset)
+	} else {
+		_, err = tx.ExecContext(ctx, `DELETE FROM audio_seek_index WHERE asset_id=?`, asset)
+	}
+	if err != nil {
+		return err
+	}
 	return gated.Commit()
+}
+
+// ReadSeekIndex returns an asset's seek index when it is fresh (made from the
+// file the asset row describes now); ok is false when there is none.
+func ReadSeekIndex(ctx context.Context, q Querier, asset string) (*SeekIndex, bool, error) {
+	var data []byte
+	err := q.QueryRowContext(ctx, `SELECT x.entries FROM audio_seek_index x JOIN catalog_assets a ON a.token=x.asset_id AND a.size=x.size AND a.modified_ns=x.modified_ns WHERE x.asset_id=?`, asset).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, err
+	}
+	x, err := DecodeSeekIndex(data)
+	if err != nil {
+		return nil, false, err
+	}
+	return x, true, nil
 }
 
 // Fail records that an asset couldn't be measured, until its file changes.

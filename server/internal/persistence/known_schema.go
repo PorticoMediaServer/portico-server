@@ -449,7 +449,6 @@ index playback_route_failures_recent
 index playback_sessions_asset_id_fk
 index playback_sessions_item_id_fk
 index playback_sessions_session_hash
-index playback_track_memory_item
 index playback_v1_prepared_age
 index playback_v1_prepared_queue
 index playback_v1_prepared_session
@@ -497,6 +496,7 @@ index saved_entry_undo_item_id_fk
 index saved_entry_undo_list
 index saved_pin_order_position
 index saved_resource_entries_item_id_fk
+index saved_resource_entries_order
 index saved_resource_owner
 index saved_resource_receipts_expiry
 index saved_resource_shared
@@ -591,6 +591,7 @@ table audio_metadata_policies
 table audio_render_fact_failures
 table audio_render_fact_requests
 table audio_render_facts
+table audio_seek_index
 table audio_source_metadata
 table audio_tag_evidence
 table authorization_family_grants
@@ -1091,7 +1092,6 @@ table playback_source_versions
 table playback_subtitle_pins
 table playback_subtitle_presentations
 table playback_subtitle_state
-table playback_track_memory
 table playback_v1_prepared
 table playback_v1_sessions
 table playback_vod_intervals
@@ -1409,6 +1409,7 @@ trigger catalog_browse_sort_parent_title
 trigger catalog_collection_member_count_delete
 trigger catalog_collection_member_count_insert
 trigger catalog_collection_member_count_move
+trigger catalog_collection_member_order
 trigger catalog_collection_visible_class_delete
 trigger catalog_collection_visible_class_insert
 trigger catalog_collection_visible_class_repoint

@@ -94,3 +94,19 @@ test('a collection removal carries its undo token, and Undo sends the token alon
  assert.equal(writes[1].undoToken,'undo-1');assert.equal(writes[1].addItemIds,undefined);assert.equal(writes[1].removeEntryIds,undefined);assert.equal(s.getSnapshot().result?.undo,undefined);
  await assert.rejects(()=>s.mutate({action:'entries',undoToken:'undo-1',removeEntryIds:['member']}),/Invalid/);s.dispose();
 });
+test('a collection move sends the entry and its new neighbour; a move refused because the collection changed is made again once, silently',async()=>{
+ const writes:any[]=[];const paths:string[]=[];let revision=3;const s=setup(async(p,m,b)=>{if(m==='GET')return content(resource({revision,actions:['pin','update','delete','entries','reorder','share']}),[{id:'e1',hidden:false,media:media('a')},{id:'e2',hidden:false,media:media('b')}]);paths.push(p);writes.push(b);if(writes.length===1){revision=4;throw Object.assign(new Error('Changed'),{code:'revision_mismatch'});}revision=5;return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'collection',revision,deleted:false}};});
+ await s.select({view:'resource',resourceId:'collection'});
+ assert.equal(await s.mutate({action:'reorder',entryIds:['e2'],afterEntryId:''}),true);
+ assert.deepEqual(paths,['/v1/saved-resources/collection/order','/v1/saved-resources/collection/order']);
+ assert.deepEqual([writes[0].expectedRevision,writes[1].expectedRevision],[3,4]);
+ assert.deepEqual(writes[1].entryIds,['e2']);assert.equal(writes[1].afterEntryId,'');assert.notEqual(writes[0].operationId,writes[1].operationId);
+ assert.equal(s.getSnapshot().mutationError,null);
+ await assert.rejects(()=>s.mutate({action:'reorder',entryIds:['e1','e1']}),/Invalid collection order/);
+ s.dispose();
+ // An editor may move entries; a viewer is not offered it.
+ const viewer=setup(async()=>content(resource({role:'viewer',actions:['pin']})));await viewer.select({view:'resource',resourceId:'collection'});
+ await assert.rejects(()=>viewer.mutate({action:'reorder',entryIds:['e1']}),/not currently/);viewer.dispose();
+ const editor=setup(async()=>content(resource({role:'editor',actions:['pin','entries','reorder']})));await editor.select({view:'resource',resourceId:'collection'});
+ assert.deepEqual(editor.getSnapshot().resource?.actions,['pin','entries','reorder']);editor.dispose();
+});

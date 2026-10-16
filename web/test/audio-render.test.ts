@@ -117,36 +117,31 @@ test('the position is what is heard: the output path’s latency is taken off th
   assert.equal(heard, (Math.floor((t.f.ctx.currentTime - 0.2) * 44100) - start) / 44100, 'scheduled frames the speakers have not played yet are not counted');
 });
 
-test('an MP3 started part-way reads from the server’s exact start, not the file’s prefix', bounded, async ctx => {
+test('an MP3 started part-way asks for the server’s seek index once and never for a conversion', bounded, async ctx => {
   const {DecodeAudioRender} = await import('../src/bridge/DecodeAudioRender.ts');
-  const {encodeFlac} = await import('./helpers/flac-writer.ts');
   const t = setup();
   const mp3 = file('album-mp3-01.mp3'), rate = 44100, total = rate * 120, from = rate * 40;
-  const sig = (n: number) => 0.5 * Math.sin(2 * Math.PI * 441 * n / rate);
   const asked: string[] = [];
   (globalThis as any).fetch = async (url: string, init: RequestInit) => {
     asked.push(url);
-    if (url.startsWith('/deep')) {
-      const at = Number(new URL(url, 'http://x').searchParams.get('fromFrame')), n = rate;
-      const l = new Float32Array(n), r = new Float32Array(n);
-      for (let i = 0; i < n; i++) l[i] = r[i] = sig(at + i);
-      return new Response(encodeFlac(l, r, rate), {headers: {'X-Audio-Trim-Start': '0', 'X-Audio-Trim-End': '0'}});
-    }
+    if (url === '/long.idx') return new Response(JSON.stringify({version: 1, offsets: [0, 4096], frames: [0, 1152]}), {headers: {'Content-Type': 'application/json'}});
     const [a, b] = String((init.headers as Record<string, string>).Range).replace('bytes=', '').split('-').map(Number), last = Math.min(mp3.length - 1, b!);
     return new Response(mp3.slice(a!, last + 1), {status: 206, headers: {'Content-Range': `bytes ${a}-${last}/${mp3.length}`}});
   };
-  const plan = {version: 2, mode: 'direct', id: 'long', url: '/long.mp3', container: 'mp3', codec: 'mp3', sampleRate: rate, channels: 2, bytes: mp3.length, durationFrames: total, trim: {startFrames: 1105, endFrames: 0, source: 'lame'},
-    deepStart: {url: '/deep', container: 'flac', codec: 'flac', sampleRate: rate, channels: 2, bitDepth: 16}};
+  const plan = {version: 2, mode: 'direct', id: 'long', url: '/long.mp3', container: 'mp3', codec: 'mp3', sampleRate: rate, channels: 2, bytes: mp3.length, durationFrames: total, trim: {startFrames: 1105, endFrames: 0, source: 'lame'}, seekIndex: {url: '/long.idx'}};
   const render = new DecodeAudioRender(t.service, (p: string) => p, {addEventListener() {}, removeEventListener() {}, volume: 1, muted: false} as any);
   ctx.after(() => render.dispose());
   const feed = (render as any).reader(plan, false);
-  const source = await feed.open(from);
-  const block = await source.read(1024);
+  // No decoder for MP3 in this runtime: the start is the ordinary player's, after the index was read.
+  assert.equal(await feed.open(from), undefined);
+  assert.equal(await feed.open(from + rate), undefined);
   feed.close();
-  assert.ok(asked.includes('/deep?fromFrame=' + from), asked.join(' '));
-  assert.ok(Math.abs(block.channels[0][0] - sig(from)) < 0.001 && Math.abs(block.channels[0][500] - sig(from + 500)) < 0.001, 'the first frame heard is the frame asked for');
-  // A prepared next track starts at its beginning and never uses the part-way start.
-  const prepared = (render as any).reader(plan, true);
-  assert.equal(await prepared.open(from), undefined);
-  prepared.close();
+  assert.equal(asked.filter(u => u === '/long.idx').length, 1, 'the index is read once per presentation');
+  assert.ok(!asked.some(u => u.includes('audio-converted') || u.includes('fromFrame')), asked.join(' '));
+  // A start at the beginning needs no index.
+  asked.length = 0;
+  const fresh = (render as any).reader(plan, false);
+  await fresh.open(0);
+  fresh.close();
+  assert.ok(!asked.includes('/long.idx'));
 });

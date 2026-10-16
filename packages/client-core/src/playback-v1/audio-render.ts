@@ -43,12 +43,29 @@ export type AudioRenderV2 = Readonly<{
   downmixed?: boolean;
   trim?: AudioTrim;
   gain?: AudioGain;
-  /** `direct` in a container with no seek index (MP3, ADTS, Ogg): where a part-way start reads
-   * from instead (`?fromFrame=N`), lossless FLAC at `sampleRate`, so its frames are the plan's. */
-  deepStart?: AudioDeepStart;
+  /** `direct` in a container with no seek index of its own (MP3, ADTS, Ogg): the server's
+   * (`parseSeekIndex`), so a part-way start reads the file from the nearest entry with a Range
+   * request and decodes to the exact frame. Nothing is converted. */
+  seekIndex?: Readonly<{url: string}>;
 }>;
 
-export type AudioDeepStart = Readonly<{url: string; container: string; codec: string; sampleRate: number; channels: number; bitDepth?: number}>;
+/** A file's seek index: `offsets[i]` is a packet (MP3, ADTS) or page (Ogg) boundary and
+ * `frames[i]` the raw frame decoding from there starts at (from the first audio packet, as the
+ * plan's trim counts; a Vorbis entry is the page granule before it). Both rise. */
+export type SeekIndex = Readonly<{offsets: readonly number[]; frames: readonly number[]}>;
+
+/** Reads `GET …/audio-index`. Undefined when it is not a well-formed index (the start then reads
+ * the file from its beginning, as it would without one). */
+export function parseSeekIndex(v: unknown): SeekIndex | undefined {
+  if (!isObj(v) || v.version !== 1 || !Array.isArray(v.offsets) || !Array.isArray(v.frames)) return undefined;
+  const offsets = v.offsets, frames = v.frames;
+  if (!offsets.length || offsets.length > 4096 || offsets.length !== frames.length) return undefined;
+  for (let i = 0; i < offsets.length; i++) {
+    if (count(offsets[i]) === undefined || count(frames[i]) === undefined) return undefined;
+    if (i > 0 && (offsets[i] <= offsets[i - 1] || frames[i] < frames[i - 1])) return undefined;
+  }
+  return Object.freeze({offsets: Object.freeze([...offsets] as number[]), frames: Object.freeze([...frames] as number[])});
+}
 
 /** A plan an engine can play: direct or converted, with everything gapless needs. */
 export type PlayableAudioRender = AudioRenderV2 & Readonly<{mode: 'direct' | 'converted'; url: string; container: string; codec: string; sampleRate: number; channels: number; durationFrames: number; trim: AudioTrim}>;
@@ -72,10 +89,7 @@ export function parseAudioRenderV2(v: unknown): AudioRenderV2 | undefined {
   const trim = isObj(v.trim) ? v.trim : undefined;
   const startFrames = count(trim?.startFrames), endFrames = count(trim?.endFrames);
   const gain = isObj(v.gain) ? v.gain : undefined;
-  const deep = mode === 'direct' && isObj(v.deepStart) ? v.deepStart : undefined;
-  const deepStart = deep && text(deep.url) && text(deep.container, 32) && text(deep.codec, 32) && count(deep.sampleRate, 768_000) && count(deep.channels, 32) && deep.sampleRate === v.sampleRate
-    ? Object.freeze({url: deep.url as string, container: deep.container as string, codec: deep.codec as string, sampleRate: deep.sampleRate as number, channels: deep.channels as number, ...(count(deep.bitDepth, 64) ? {bitDepth: deep.bitDepth as number} : {})})
-    : undefined;
+  const seekIndex = mode === 'direct' && isObj(v.seekIndex) && text(v.seekIndex.url) ? Object.freeze({url: v.seekIndex.url as string}) : undefined;
   const plan = {
     version: 2 as const, mode, id: v.id,
     ...(reason ? {reason} : {}),
@@ -95,7 +109,7 @@ export function parseAudioRenderV2(v: unknown): AudioRenderV2 | undefined {
       ...(finite(gain.albumPeak, 1e-6, 64) !== undefined ? {albumPeak: gain.albumPeak as number} : {}),
       source: text(gain.source, 32) ?? '',
     })} : {}),
-    ...(deepStart ? {deepStart} : {}),
+    ...(seekIndex ? {seekIndex} : {}),
   };
   if (!plan.url || !plan.container || !plan.codec || !plan.sampleRate || !plan.channels || !plan.durationFrames || !plan.trim) {
     return Object.freeze({version: 2, mode: 'unavailable', id: v.id, ...(reason ? {reason} : {})});

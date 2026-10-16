@@ -601,42 +601,6 @@
                       "decoderConfig": {
                         "type": "string"
                       },
-                      "deepStart": {
-                        "properties": {
-                          "bitDepth": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "channels": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "codec": {
-                            "type": "string"
-                          },
-                          "container": {
-                            "type": "string"
-                          },
-                          "sampleRate": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "url": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "url",
-                          "container",
-                          "codec",
-                          "sampleRate",
-                          "channels"
-                        ],
-                        "type": "object"
-                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -686,6 +650,17 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "seekIndex": {
+                        "properties": {
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url"
+                        ],
+                        "type": "object"
                       },
                       "trim": {
                         "properties": {
@@ -1418,42 +1393,6 @@
                       "decoderConfig": {
                         "type": "string"
                       },
-                      "deepStart": {
-                        "properties": {
-                          "bitDepth": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "channels": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "codec": {
-                            "type": "string"
-                          },
-                          "container": {
-                            "type": "string"
-                          },
-                          "sampleRate": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "url": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "url",
-                          "container",
-                          "codec",
-                          "sampleRate",
-                          "channels"
-                        ],
-                        "type": "object"
-                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -1503,6 +1442,17 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "seekIndex": {
+                        "properties": {
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url"
+                        ],
+                        "type": "object"
                       },
                       "trim": {
                         "properties": {
@@ -5192,42 +5142,6 @@
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -5277,6 +5191,17 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {
@@ -5950,42 +5875,6 @@
                       "decoderConfig": {
                         "type": "string"
                       },
-                      "deepStart": {
-                        "properties": {
-                          "bitDepth": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "channels": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "codec": {
-                            "type": "string"
-                          },
-                          "container": {
-                            "type": "string"
-                          },
-                          "sampleRate": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "url": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "url",
-                          "container",
-                          "codec",
-                          "sampleRate",
-                          "channels"
-                        ],
-                        "type": "object"
-                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -6035,6 +5924,17 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "seekIndex": {
+                        "properties": {
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url"
+                        ],
+                        "type": "object"
                       },
                       "trim": {
                         "properties": {
@@ -9303,42 +9203,6 @@
                       "decoderConfig": {
                         "type": "string"
                       },
-                      "deepStart": {
-                        "properties": {
-                          "bitDepth": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "channels": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "codec": {
-                            "type": "string"
-                          },
-                          "container": {
-                            "type": "string"
-                          },
-                          "sampleRate": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "url": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "url",
-                          "container",
-                          "codec",
-                          "sampleRate",
-                          "channels"
-                        ],
-                        "type": "object"
-                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -9388,6 +9252,17 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "seekIndex": {
+                        "properties": {
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url"
+                        ],
+                        "type": "object"
                       },
                       "trim": {
                         "properties": {
@@ -11708,6 +11583,9 @@
             },
             "type": "array"
           },
+          "afterEntryId": {
+            "type": "string"
+          },
           "authority": {
             "type": "string"
           },
@@ -11804,6 +11682,12 @@
               "presentation"
             ],
             "type": "object"
+          },
+          "entryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "expectedRevision": {
             "maximum": 9007199254740991,
@@ -11979,6 +11863,9 @@
             },
             "type": "array"
           },
+          "afterEntryId": {
+            "type": "string"
+          },
           "authority": {
             "type": "string"
           },
@@ -12075,6 +11962,12 @@
               "presentation"
             ],
             "type": "object"
+          },
+          "entryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "expectedRevision": {
             "maximum": 9007199254740991,
@@ -13046,16 +12939,6 @@
           "writable",
           "truncated"
         ],
-        "type": "object"
-      },
-      "ForgetPlaybackTrackMemoryRequest": {
-        "properties": {},
-        "required": [],
-        "type": "object"
-      },
-      "ForgetPlaybackTrackMemoryResponse": {
-        "properties": {},
-        "required": [],
         "type": "object"
       },
       "GetAdminAccessDevicesRequest": {
@@ -25525,13 +25408,19 @@
           },
           "name": {
             "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
         },
         "required": [
           "id",
           "libraryId",
           "name",
-          "itemCount"
+          "itemCount",
+          "revision"
         ],
         "type": "object"
       },
@@ -46928,13 +46817,19 @@
                 },
                 "name": {
                   "type": "string"
+                },
+                "revision": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 }
               },
               "required": [
                 "id",
                 "libraryId",
                 "name",
-                "itemCount"
+                "itemCount",
+                "revision"
               ],
               "type": "object"
             },
@@ -53850,6 +53745,42 @@
         "format": "binary",
         "type": "string"
       },
+      "GetMediaGrantAudioIndexRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetMediaGrantAudioIndexResponse": {
+        "properties": {
+          "frames": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "offsets": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "version": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "version",
+          "offsets",
+          "frames"
+        ],
+        "type": "object"
+      },
       "GetMediaGrantAudioRequest": {
         "properties": {},
         "required": [],
@@ -58146,12 +58077,6 @@
               "reason": {
                 "type": "string"
               },
-              "subtitleId": {
-                "type": "string"
-              },
-              "subtitlesOff": {
-                "type": "boolean"
-              },
               "versionId": {
                 "type": "string"
               }
@@ -58547,42 +58472,6 @@
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -58632,6 +58521,17 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {
@@ -76049,42 +75949,6 @@
                       "decoderConfig": {
                         "type": "string"
                       },
-                      "deepStart": {
-                        "properties": {
-                          "bitDepth": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "channels": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "codec": {
-                            "type": "string"
-                          },
-                          "container": {
-                            "type": "string"
-                          },
-                          "sampleRate": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "url": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "url",
-                          "container",
-                          "codec",
-                          "sampleRate",
-                          "channels"
-                        ],
-                        "type": "object"
-                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -76134,6 +75998,17 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "seekIndex": {
+                        "properties": {
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url"
+                        ],
+                        "type": "object"
                       },
                       "trim": {
                         "properties": {
@@ -77342,13 +77217,19 @@
           },
           "name": {
             "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
         },
         "required": [
           "id",
           "libraryId",
           "name",
-          "itemCount"
+          "itemCount",
+          "revision"
         ],
         "type": "object"
       },
@@ -78712,6 +78593,9 @@
             },
             "type": "array"
           },
+          "afterEntryId": {
+            "type": "string"
+          },
           "authority": {
             "type": "string"
           },
@@ -78808,6 +78692,12 @@
               "presentation"
             ],
             "type": "object"
+          },
+          "entryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "expectedRevision": {
             "maximum": 9007199254740991,
@@ -86384,13 +86274,19 @@
               },
               "name": {
                 "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               }
             },
             "required": [
               "id",
               "libraryId",
               "name",
-              "itemCount"
+              "itemCount",
+              "revision"
             ],
             "type": "object"
           },
@@ -90722,13 +90618,19 @@
           },
           "name": {
             "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           }
         },
         "required": [
           "id",
           "libraryId",
           "name",
-          "itemCount"
+          "itemCount",
+          "revision"
         ],
         "type": "object"
       },
@@ -95174,6 +95076,9 @@
             },
             "type": "array"
           },
+          "afterEntryId": {
+            "type": "string"
+          },
           "authority": {
             "type": "string"
           },
@@ -95270,6 +95175,12 @@
               "presentation"
             ],
             "type": "object"
+          },
+          "entryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "expectedRevision": {
             "maximum": 9007199254740991,
@@ -96995,42 +96906,6 @@
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -97080,6 +96955,17 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {
@@ -104549,6 +104435,9 @@
             },
             "type": "array"
           },
+          "afterEntryId": {
+            "type": "string"
+          },
           "authority": {
             "type": "string"
           },
@@ -104645,6 +104534,12 @@
               "presentation"
             ],
             "type": "object"
+          },
+          "entryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "expectedRevision": {
             "maximum": 9007199254740991,
@@ -104820,6 +104715,9 @@
             },
             "type": "array"
           },
+          "afterEntryId": {
+            "type": "string"
+          },
           "authority": {
             "type": "string"
           },
@@ -104916,6 +104814,12 @@
               "presentation"
             ],
             "type": "object"
+          },
+          "entryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "expectedRevision": {
             "maximum": 9007199254740991,
@@ -105813,42 +105717,6 @@
                       "decoderConfig": {
                         "type": "string"
                       },
-                      "deepStart": {
-                        "properties": {
-                          "bitDepth": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "channels": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "codec": {
-                            "type": "string"
-                          },
-                          "container": {
-                            "type": "string"
-                          },
-                          "sampleRate": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "url": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "url",
-                          "container",
-                          "codec",
-                          "sampleRate",
-                          "channels"
-                        ],
-                        "type": "object"
-                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -105898,6 +105766,17 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "seekIndex": {
+                        "properties": {
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url"
+                        ],
+                        "type": "object"
                       },
                       "trim": {
                         "properties": {
@@ -106391,6 +106270,60 @@
         ],
         "type": "object"
       },
+      "ReorderLibraryCollectionRequest": {
+        "properties": {
+          "afterItemId": {
+            "type": "string"
+          },
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "itemIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "expectedRevision",
+          "itemIds"
+        ],
+        "type": "object"
+      },
+      "ReorderLibraryCollectionResponse": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "itemCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "libraryId",
+          "name",
+          "itemCount",
+          "revision"
+        ],
+        "type": "object"
+      },
       "ReorderPlaylistWindowRequest": {
         "additionalProperties": false,
         "properties": {
@@ -106463,6 +106396,286 @@
           "playlistId",
           "revision",
           "deleted"
+        ],
+        "type": "object"
+      },
+      "ReorderSavedCollectionRequest": {
+        "properties": {
+          "accountId": {
+            "type": "string"
+          },
+          "addItemIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "afterEntryId": {
+            "type": "string"
+          },
+          "authority": {
+            "type": "string"
+          },
+          "definition": {
+            "properties": {
+              "libraryId": {
+                "type": "string"
+              },
+              "pivot": {
+                "type": "string"
+              },
+              "presentation": {
+                "type": "string"
+              },
+              "query": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                    "properties": {
+                      "all": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "any": {
+                        "items": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "maxItems": 40,
+                        "minItems": 1,
+                        "type": "array"
+                      },
+                      "field": {
+                        "type": "string"
+                      },
+                      "not": {
+                        "additionalProperties": {},
+                        "properties": {},
+                        "required": [],
+                        "type": "object"
+                      },
+                      "operator": {
+                        "type": "string"
+                      },
+                      "value": {}
+                    },
+                    "required": [],
+                    "type": "object"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sort": {
+                "items": {
+                  "properties": {
+                    "direction": {
+                      "type": "string"
+                    },
+                    "field": {
+                      "type": "string"
+                    },
+                    "seed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "field",
+                    "direction"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "libraryId",
+              "pivot",
+              "query",
+              "sort",
+              "presentation"
+            ],
+            "type": "object"
+          },
+          "entryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "expectedRevision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "operationId": {
+            "type": "string"
+          },
+          "profileId": {
+            "type": "string"
+          },
+          "removeEntryIds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "role": {
+            "type": "string"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "undoToken": {
+            "type": "string"
+          },
+          "visibility": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "operationId",
+          "expectedRevision"
+        ],
+        "type": "object"
+      },
+      "ReorderSavedCollectionResponse": {
+        "properties": {
+          "current": {
+            "properties": {
+              "deleted": {
+                "type": "boolean"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "resourceId",
+              "revision",
+              "deleted"
+            ],
+            "type": "object"
+          },
+          "receipt": {
+            "properties": {
+              "deleted": {
+                "type": "boolean"
+              },
+              "entries": {
+                "properties": {
+                  "added": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "failed": {
+                    "items": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "itemId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "itemId",
+                        "code"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "removed": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "unchanged": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "added",
+                  "removed",
+                  "unchanged",
+                  "failed"
+                ],
+                "type": "object"
+              },
+              "operationId": {
+                "type": "string"
+              },
+              "resourceId": {
+                "type": "string"
+              },
+              "revision": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "undoToken": {
+                "type": "string"
+              },
+              "undoUntil": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "operationId",
+              "resourceId",
+              "revision",
+              "deleted"
+            ],
+            "type": "object"
+          },
+          "receiptLifetimeSeconds": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "serverId": {
+            "type": "string"
+          },
+          "viewerFence": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "viewerFence",
+          "receipt",
+          "receiptLifetimeSeconds"
         ],
         "type": "object"
       },
@@ -117432,42 +117645,6 @@
                   "decoderConfig": {
                     "type": "string"
                   },
-                  "deepStart": {
-                    "properties": {
-                      "bitDepth": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "channels": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "codec": {
-                        "type": "string"
-                      },
-                      "container": {
-                        "type": "string"
-                      },
-                      "sampleRate": {
-                        "maximum": 9007199254740991,
-                        "minimum": -9007199254740991,
-                        "type": "integer"
-                      },
-                      "url": {
-                        "type": "string"
-                      }
-                    },
-                    "required": [
-                      "url",
-                      "container",
-                      "codec",
-                      "sampleRate",
-                      "channels"
-                    ],
-                    "type": "object"
-                  },
                   "downmixed": {
                     "type": "boolean"
                   },
@@ -117517,6 +117694,17 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "seekIndex": {
+                    "properties": {
+                      "url": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "url"
+                    ],
+                    "type": "object"
                   },
                   "trim": {
                     "properties": {
@@ -118427,42 +118615,6 @@
                       "decoderConfig": {
                         "type": "string"
                       },
-                      "deepStart": {
-                        "properties": {
-                          "bitDepth": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "channels": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "codec": {
-                            "type": "string"
-                          },
-                          "container": {
-                            "type": "string"
-                          },
-                          "sampleRate": {
-                            "maximum": 9007199254740991,
-                            "minimum": -9007199254740991,
-                            "type": "integer"
-                          },
-                          "url": {
-                            "type": "string"
-                          }
-                        },
-                        "required": [
-                          "url",
-                          "container",
-                          "codec",
-                          "sampleRate",
-                          "channels"
-                        ],
-                        "type": "object"
-                      },
                       "downmixed": {
                         "type": "boolean"
                       },
@@ -118512,6 +118664,17 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "seekIndex": {
+                        "properties": {
+                          "url": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "url"
+                        ],
+                        "type": "object"
                       },
                       "trim": {
                         "properties": {
@@ -165432,13 +165595,19 @@
                     },
                     "name": {
                       "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
                     "id",
                     "libraryId",
                     "name",
-                    "itemCount"
+                    "itemCount",
+                    "revision"
                   ],
                   "type": "object"
                 }
@@ -165540,13 +165709,19 @@
                     },
                     "name": {
                       "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
                     "id",
                     "libraryId",
                     "name",
-                    "itemCount"
+                    "itemCount",
+                    "revision"
                   ],
                   "type": "object"
                 }
@@ -166307,13 +166482,19 @@
                         },
                         "name": {
                           "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         }
                       },
                       "required": [
                         "id",
                         "libraryId",
                         "name",
-                        "itemCount"
+                        "itemCount",
+                        "revision"
                       ],
                       "type": "object"
                     },
@@ -166415,6 +166596,136 @@
           "unauthorized",
           "not_permitted",
           "not_found",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-max-body-bytes": 65536,
+        "x-scope": "library"
+      }
+    },
+    "/v1/collections/{id}/order": {
+      "put": {
+        "operationId": "reorder_library_collection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "afterItemId": {
+                    "type": "string"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "itemIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "expectedRevision",
+                  "itemIds"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "itemCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "libraryId",
+                    "name",
+                    "itemCount",
+                    "revision"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Move titles of a library collection (at most 200), fenced by its revision",
+        "x-access": "owner",
+        "x-admission": "browsing",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
           "internal"
         ],
         "x-lane": "browsing",
@@ -216442,66 +216753,6 @@
         "x-scope": "read"
       }
     },
-    "/v1/items/{itemId}/playback-memory": {
-      "delete": {
-        "operationId": "forget_playback_track_memory",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "itemId",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "204": {
-            "description": "Success"
-          },
-          "default": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "properties": {
-                    "error": {
-                      "properties": {
-                        "code": {
-                          "type": "string"
-                        },
-                        "message": {
-                          "type": "string"
-                        }
-                      },
-                      "required": [
-                        "code",
-                        "message"
-                      ],
-                      "type": "object"
-                    }
-                  },
-                  "required": [
-                    "error"
-                  ],
-                  "type": "object"
-                }
-              }
-            },
-            "description": "Request refused or unavailable"
-          }
-        },
-        "summary": "Forget the audio and subtitle choice remembered for this title's show or film",
-        "x-access": "viewer_item_restrictions",
-        "x-admission": "default",
-        "x-cost": "constant",
-        "x-error-codes": [
-          "unauthorized",
-          "not_found"
-        ],
-        "x-lane": "default",
-        "x-scope": "playback"
-      }
-    },
     "/v1/items/{itemId}/playback-options": {
       "get": {
         "operationId": "get_playback_options",
@@ -216782,12 +217033,6 @@
                         },
                         "reason": {
                           "type": "string"
-                        },
-                        "subtitleId": {
-                          "type": "string"
-                        },
-                        "subtitlesOff": {
-                          "type": "boolean"
                         },
                         "versionId": {
                           "type": "string"
@@ -223240,13 +223485,19 @@
                           },
                           "name": {
                             "type": "string"
+                          },
+                          "revision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
                           "id",
                           "libraryId",
                           "name",
-                          "itemCount"
+                          "itemCount",
+                          "revision"
                         ],
                         "type": "object"
                       },
@@ -223360,13 +223611,19 @@
                     },
                     "name": {
                       "type": "string"
+                    },
+                    "revision": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
                     "id",
                     "libraryId",
                     "name",
-                    "itemCount"
+                    "itemCount",
+                    "revision"
                   ],
                   "type": "object"
                 }
@@ -236901,6 +237158,103 @@
         "x-scope": "playback"
       }
     },
+    "/v1/media/{grant}/audio-index": {
+      "get": {
+        "operationId": "get_media_grant_audio_index",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "grant",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "frames": {
+                      "items": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "offsets": {
+                      "items": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "version": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "offsets",
+                    "frames"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read the seek index of media audio",
+        "x-access": "device",
+        "x-admission": "media-body",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "media",
+        "x-scope": "playback"
+      }
+    },
     "/v1/media/{grant}/{file}": {
       "get": {
         "operationId": "get_media_grant_file",
@@ -247805,42 +248159,6 @@
                             "decoderConfig": {
                               "type": "string"
                             },
-                            "deepStart": {
-                              "properties": {
-                                "bitDepth": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "channels": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "codec": {
-                                  "type": "string"
-                                },
-                                "container": {
-                                  "type": "string"
-                                },
-                                "sampleRate": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "url": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "url",
-                                "container",
-                                "codec",
-                                "sampleRate",
-                                "channels"
-                              ],
-                              "type": "object"
-                            },
                             "downmixed": {
                               "type": "boolean"
                             },
@@ -247890,6 +248208,17 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "seekIndex": {
+                              "properties": {
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "url"
+                              ],
+                              "type": "object"
                             },
                             "trim": {
                               "properties": {
@@ -248545,42 +248874,6 @@
                             "decoderConfig": {
                               "type": "string"
                             },
-                            "deepStart": {
-                              "properties": {
-                                "bitDepth": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "channels": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "codec": {
-                                  "type": "string"
-                                },
-                                "container": {
-                                  "type": "string"
-                                },
-                                "sampleRate": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "url": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "url",
-                                "container",
-                                "codec",
-                                "sampleRate",
-                                "channels"
-                              ],
-                              "type": "object"
-                            },
                             "downmixed": {
                               "type": "boolean"
                             },
@@ -248630,6 +248923,17 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "seekIndex": {
+                              "properties": {
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "url"
+                              ],
+                              "type": "object"
                             },
                             "trim": {
                               "properties": {
@@ -249330,42 +249634,6 @@
                             "decoderConfig": {
                               "type": "string"
                             },
-                            "deepStart": {
-                              "properties": {
-                                "bitDepth": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "channels": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "codec": {
-                                  "type": "string"
-                                },
-                                "container": {
-                                  "type": "string"
-                                },
-                                "sampleRate": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "url": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "url",
-                                "container",
-                                "codec",
-                                "sampleRate",
-                                "channels"
-                              ],
-                              "type": "object"
-                            },
                             "downmixed": {
                               "type": "boolean"
                             },
@@ -249415,6 +249683,17 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "seekIndex": {
+                              "properties": {
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "url"
+                              ],
+                              "type": "object"
                             },
                             "trim": {
                               "properties": {
@@ -255174,42 +255453,6 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
-                                "deepStart": {
-                                  "properties": {
-                                    "bitDepth": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "channels": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "codec": {
-                                      "type": "string"
-                                    },
-                                    "container": {
-                                      "type": "string"
-                                    },
-                                    "sampleRate": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "url": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "url",
-                                    "container",
-                                    "codec",
-                                    "sampleRate",
-                                    "channels"
-                                  ],
-                                  "type": "object"
-                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -255259,6 +255502,17 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "seekIndex": {
+                                  "properties": {
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "type": "object"
                                 },
                                 "trim": {
                                   "properties": {
@@ -256355,42 +256609,6 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
-                                "deepStart": {
-                                  "properties": {
-                                    "bitDepth": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "channels": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "codec": {
-                                      "type": "string"
-                                    },
-                                    "container": {
-                                      "type": "string"
-                                    },
-                                    "sampleRate": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "url": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "url",
-                                    "container",
-                                    "codec",
-                                    "sampleRate",
-                                    "channels"
-                                  ],
-                                  "type": "object"
-                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -256440,6 +256658,17 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "seekIndex": {
+                                  "properties": {
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "type": "object"
                                 },
                                 "trim": {
                                   "properties": {
@@ -257427,42 +257656,6 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
-                                "deepStart": {
-                                  "properties": {
-                                    "bitDepth": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "channels": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "codec": {
-                                      "type": "string"
-                                    },
-                                    "container": {
-                                      "type": "string"
-                                    },
-                                    "sampleRate": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "url": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "url",
-                                    "container",
-                                    "codec",
-                                    "sampleRate",
-                                    "channels"
-                                  ],
-                                  "type": "object"
-                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -257512,6 +257705,17 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "seekIndex": {
+                                  "properties": {
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "type": "object"
                                 },
                                 "trim": {
                                   "properties": {
@@ -258327,42 +258531,6 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
-                                "deepStart": {
-                                  "properties": {
-                                    "bitDepth": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "channels": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "codec": {
-                                      "type": "string"
-                                    },
-                                    "container": {
-                                      "type": "string"
-                                    },
-                                    "sampleRate": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "url": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "url",
-                                    "container",
-                                    "codec",
-                                    "sampleRate",
-                                    "channels"
-                                  ],
-                                  "type": "object"
-                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -258412,6 +258580,17 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "seekIndex": {
+                                  "properties": {
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "type": "object"
                                 },
                                 "trim": {
                                   "properties": {
@@ -259359,42 +259538,6 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
-                                "deepStart": {
-                                  "properties": {
-                                    "bitDepth": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "channels": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "codec": {
-                                      "type": "string"
-                                    },
-                                    "container": {
-                                      "type": "string"
-                                    },
-                                    "sampleRate": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "url": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "url",
-                                    "container",
-                                    "codec",
-                                    "sampleRate",
-                                    "channels"
-                                  ],
-                                  "type": "object"
-                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -259444,6 +259587,17 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "seekIndex": {
+                                  "properties": {
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "type": "object"
                                 },
                                 "trim": {
                                   "properties": {
@@ -260444,42 +260598,6 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
-                                "deepStart": {
-                                  "properties": {
-                                    "bitDepth": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "channels": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "codec": {
-                                      "type": "string"
-                                    },
-                                    "container": {
-                                      "type": "string"
-                                    },
-                                    "sampleRate": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "url": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "url",
-                                    "container",
-                                    "codec",
-                                    "sampleRate",
-                                    "channels"
-                                  ],
-                                  "type": "object"
-                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -260529,6 +260647,17 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "seekIndex": {
+                                  "properties": {
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "type": "object"
                                 },
                                 "trim": {
                                   "properties": {
@@ -261341,42 +261470,6 @@
                                 "decoderConfig": {
                                   "type": "string"
                                 },
-                                "deepStart": {
-                                  "properties": {
-                                    "bitDepth": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "channels": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "codec": {
-                                      "type": "string"
-                                    },
-                                    "container": {
-                                      "type": "string"
-                                    },
-                                    "sampleRate": {
-                                      "maximum": 9007199254740991,
-                                      "minimum": -9007199254740991,
-                                      "type": "integer"
-                                    },
-                                    "url": {
-                                      "type": "string"
-                                    }
-                                  },
-                                  "required": [
-                                    "url",
-                                    "container",
-                                    "codec",
-                                    "sampleRate",
-                                    "channels"
-                                  ],
-                                  "type": "object"
-                                },
                                 "downmixed": {
                                   "type": "boolean"
                                 },
@@ -261426,6 +261519,17 @@
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
+                                },
+                                "seekIndex": {
+                                  "properties": {
+                                    "url": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "url"
+                                  ],
+                                  "type": "object"
                                 },
                                 "trim": {
                                   "properties": {
@@ -262056,42 +262160,6 @@
                             "decoderConfig": {
                               "type": "string"
                             },
-                            "deepStart": {
-                              "properties": {
-                                "bitDepth": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "channels": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "codec": {
-                                  "type": "string"
-                                },
-                                "container": {
-                                  "type": "string"
-                                },
-                                "sampleRate": {
-                                  "maximum": 9007199254740991,
-                                  "minimum": -9007199254740991,
-                                  "type": "integer"
-                                },
-                                "url": {
-                                  "type": "string"
-                                }
-                              },
-                              "required": [
-                                "url",
-                                "container",
-                                "codec",
-                                "sampleRate",
-                                "channels"
-                              ],
-                              "type": "object"
-                            },
                             "downmixed": {
                               "type": "boolean"
                             },
@@ -262141,6 +262209,17 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "seekIndex": {
+                              "properties": {
+                                "url": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "url"
+                              ],
+                              "type": "object"
                             },
                             "trim": {
                               "properties": {
@@ -266079,6 +266158,9 @@
                     },
                     "type": "array"
                   },
+                  "afterEntryId": {
+                    "type": "string"
+                  },
                   "authority": {
                     "type": "string"
                   },
@@ -266175,6 +266257,12 @@
                       "presentation"
                     ],
                     "type": "object"
+                  },
+                  "entryIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
@@ -266425,6 +266513,9 @@
                     },
                     "type": "array"
                   },
+                  "afterEntryId": {
+                    "type": "string"
+                  },
                   "authority": {
                     "type": "string"
                   },
@@ -266521,6 +266612,12 @@
                       "presentation"
                     ],
                     "type": "object"
+                  },
+                  "entryIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
@@ -267037,6 +267134,9 @@
                     },
                     "type": "array"
                   },
+                  "afterEntryId": {
+                    "type": "string"
+                  },
                   "authority": {
                     "type": "string"
                   },
@@ -267133,6 +267233,12 @@
                       "presentation"
                     ],
                     "type": "object"
+                  },
+                  "entryIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
@@ -269055,6 +269161,9 @@
                     },
                     "type": "array"
                   },
+                  "afterEntryId": {
+                    "type": "string"
+                  },
                   "authority": {
                     "type": "string"
                   },
@@ -269151,6 +269260,12 @@
                       "presentation"
                     ],
                     "type": "object"
+                  },
+                  "entryIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
@@ -269374,6 +269489,362 @@
         "x-scope": "playback"
       }
     },
+    "/v1/saved-resources/{id}/order": {
+      "put": {
+        "operationId": "reorder_saved_collection",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "accountId": {
+                    "type": "string"
+                  },
+                  "addItemIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "afterEntryId": {
+                    "type": "string"
+                  },
+                  "authority": {
+                    "type": "string"
+                  },
+                  "definition": {
+                    "properties": {
+                      "libraryId": {
+                        "type": "string"
+                      },
+                      "pivot": {
+                        "type": "string"
+                      },
+                      "presentation": {
+                        "type": "string"
+                      },
+                      "query": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                            "properties": {
+                              "all": {
+                                "items": {
+                                  "additionalProperties": {},
+                                  "properties": {},
+                                  "required": [],
+                                  "type": "object"
+                                },
+                                "maxItems": 40,
+                                "minItems": 1,
+                                "type": "array"
+                              },
+                              "any": {
+                                "items": {
+                                  "additionalProperties": {},
+                                  "properties": {},
+                                  "required": [],
+                                  "type": "object"
+                                },
+                                "maxItems": 40,
+                                "minItems": 1,
+                                "type": "array"
+                              },
+                              "field": {
+                                "type": "string"
+                              },
+                              "not": {
+                                "additionalProperties": {},
+                                "properties": {},
+                                "required": [],
+                                "type": "object"
+                              },
+                              "operator": {
+                                "type": "string"
+                              },
+                              "value": {}
+                            },
+                            "required": [],
+                            "type": "object"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sort": {
+                        "items": {
+                          "properties": {
+                            "direction": {
+                              "type": "string"
+                            },
+                            "field": {
+                              "type": "string"
+                            },
+                            "seed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "field",
+                            "direction"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "libraryId",
+                      "pivot",
+                      "query",
+                      "sort",
+                      "presentation"
+                    ],
+                    "type": "object"
+                  },
+                  "entryIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "expectedRevision": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "profileId": {
+                    "type": "string"
+                  },
+                  "removeEntryIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "role": {
+                    "type": "string"
+                  },
+                  "summary": {
+                    "type": "string"
+                  },
+                  "undoToken": {
+                    "type": "string"
+                  },
+                  "visibility": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "expectedRevision"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "current": {
+                      "properties": {
+                        "deleted": {
+                          "type": "boolean"
+                        },
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "resourceId",
+                        "revision",
+                        "deleted"
+                      ],
+                      "type": "object"
+                    },
+                    "receipt": {
+                      "properties": {
+                        "deleted": {
+                          "type": "boolean"
+                        },
+                        "entries": {
+                          "properties": {
+                            "added": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "failed": {
+                              "items": {
+                                "properties": {
+                                  "code": {
+                                    "type": "string"
+                                  },
+                                  "itemId": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "itemId",
+                                  "code"
+                                ],
+                                "type": "object"
+                              },
+                              "type": "array"
+                            },
+                            "removed": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "unchanged": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            }
+                          },
+                          "required": [
+                            "added",
+                            "removed",
+                            "unchanged",
+                            "failed"
+                          ],
+                          "type": "object"
+                        },
+                        "operationId": {
+                          "type": "string"
+                        },
+                        "resourceId": {
+                          "type": "string"
+                        },
+                        "revision": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "undoToken": {
+                          "type": "string"
+                        },
+                        "undoUntil": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "operationId",
+                        "resourceId",
+                        "revision",
+                        "deleted"
+                      ],
+                      "type": "object"
+                    },
+                    "receiptLifetimeSeconds": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    },
+                    "viewerFence": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "serverId",
+                    "viewerFence",
+                    "receipt",
+                    "receiptLifetimeSeconds"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Move entries of a personal collection (at most 200), fenced by its revision",
+        "x-access": "device",
+        "x-admission": "default",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "revision_mismatch",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 65536,
+        "x-scope": "playback"
+      }
+    },
     "/v1/saved-resources/{id}/share-candidates": {
       "get": {
         "operationId": "get_saved_resources_id_share_candidates",
@@ -269536,6 +270007,9 @@
                     },
                     "type": "array"
                   },
+                  "afterEntryId": {
+                    "type": "string"
+                  },
                   "authority": {
                     "type": "string"
                   },
@@ -269632,6 +270106,12 @@
                       "presentation"
                     ],
                     "type": "object"
+                  },
+                  "entryIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
@@ -269880,6 +270360,9 @@
                     },
                     "type": "array"
                   },
+                  "afterEntryId": {
+                    "type": "string"
+                  },
                   "authority": {
                     "type": "string"
                   },
@@ -269976,6 +270459,12 @@
                       "presentation"
                     ],
                     "type": "object"
+                  },
+                  "entryIds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
                   },
                   "expectedRevision": {
                     "maximum": 9007199254740991,

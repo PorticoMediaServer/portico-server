@@ -1,7 +1,8 @@
 import {createDecoder, type PacketDecoder, type Planar} from './decoder';
 import {openDemuxer} from './demux';
 import {JsFlacDecoder} from './flac-decoder';
-import {DemuxError, u16le, type ByteReader, type Demuxer, type Packet, type TrackConfig} from './types';
+import {DemuxError, u16le, type ByteReader, type Demuxer, type Packet, type SeekResult, type TrackConfig} from './types';
+import type {SeekIndex} from '@core/playback-v1/audio-render.ts';
 
 /**
  * One track, decoded and trimmed exactly (§18.1, §9.6 rule 2): `read()` returns the track's frames
@@ -85,13 +86,17 @@ export class TrackStream {
     this.remaining = Math.max(0, o.plan.durationFrames - o.fromFrame);
   }
 
-  /** Opens `plan` from trimmed frame `fromFrame` (a seek). Undefined when no decoder here can play it. */
-  static async open(plan: TrackPlan, reader: ByteReader, fromFrame = 0, signal?: AbortSignal, o: {pad?: boolean} = {}): Promise<TrackStream | undefined> {
+  /** Opens `plan` from trimmed frame `fromFrame` (a seek). Undefined when no decoder here can play
+   * it. `index` reads the server's seek index of a stream with none of its own (MP3, ADTS, Ogg). */
+  static async open(plan: TrackPlan, reader: ByteReader, fromFrame = 0, signal?: AbortSignal, o: {pad?: boolean; index?: () => Promise<SeekIndex | undefined>} = {}): Promise<TrackStream | undefined> {
     const demuxer = await openDemuxer(plan.container, reader);
     if (demuxer.config.sampleRate !== plan.sampleRate) throw new DemuxError('The file’s sample rate isn’t the plan’s.');
-    // Unindexed compressed streams cannot locate an exact deep frame without fetching the
-    // prefix. The ordinary player owns those seeks (including its codec preroll and VBR index).
-    if (fromFrame > plan.sampleRate * 30 && !demuxer.seek && !demuxer.locate) return undefined;
+    // A stream with no index of its own starts part-way from the server's: read from the nearest
+    // entry, never what comes before it.
+    const index = fromFrame > 0 && !demuxer.seek && demuxer.packetsFrom && demuxer.config.family !== 'vorbis' && o.index ? await o.index() : undefined;
+    // Without one, a deep frame can't be found without fetching the prefix: the ordinary player
+    // owns that seek (including its codec preroll and VBR index).
+    if (fromFrame > plan.sampleRate * 30 && !demuxer.seek && !demuxer.locate && !index) return undefined;
     const choice = await chooseDecoder(demuxer.config);
     if (!choice) return undefined;
     // A decoder that has discarded more than the intended leading trim cannot reconstruct
@@ -102,7 +107,7 @@ export class TrackStream {
     try {
       ({packets, rawStart} = demuxer.config.family === 'vorbis'
         ? {packets: demuxer.packets(signal), rawStart: 0}
-        : await startAt(demuxer, target - choice.skip, PREROLL[demuxer.config.family] ?? 0, signal));
+        : await startAt(demuxer, target - choice.skip, PREROLL[demuxer.config.family] ?? 0, signal, index));
     } catch (e) { choice.decoder.close(); throw e; }
     return new TrackStream({plan, choice, packets, rawStart, fromFrame: Math.max(0, fromFrame), pad: o.pad !== false});
   }
@@ -163,25 +168,55 @@ export class TrackStream {
  * so it has settled. `rawStart` is the raw index of the first packet's first frame. Packets are
  * skipped by their known lengths without decoding.
  */
-async function startAt(demuxer: Demuxer, target: number, preroll: number, signal?: AbortSignal): Promise<{packets: AsyncGenerator<Packet>; rawStart: number}> {
+async function startAt(demuxer: Demuxer, target: number, preroll: number, signal?: AbortSignal, index?: SeekIndex): Promise<{packets: AsyncGenerator<Packet>; rawStart: number}> {
   if (target <= 0) return {packets: demuxer.packets(signal), rawStart: 0};
   if (demuxer.seek) {
     const found = await demuxer.seek(target, preroll, signal);
     if (found) return found;
   }
-  const all = demuxer.packets(signal);
+  if (index && demuxer.packetsFrom) {
+    // The last entry at or before the target, or an earlier one when it leaves too few packets
+    // before the target to settle the decoder. Only that much of the file is read.
+    for (let i = lastAtOrBefore(index.frames, target); i >= 0; i--) {
+      const found = await walk(demuxer.packetsFrom(index.offsets[i]!, signal), index.frames[i]!, target, preroll);
+      if (found === 'counted') break;
+      if (found !== 'short') return found;
+    }
+  }
+  const found = await walk(demuxer.packets(signal), 0, target, preroll);
+  if (typeof found === 'string') throw new DemuxError('This stream can’t be started part-way.');
+  return found;
+}
+
+/** Index of the last of `frames` (rising) at or before `target`, or -1. */
+export function lastAtOrBefore(frames: readonly number[], target: number): number {
+  let lo = 0, hi = frames.length - 1, found = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (frames[mid]! <= target) { found = mid; lo = mid + 1; } else hi = mid - 1;
+  }
+  return found;
+}
+
+/**
+ * Walks packets starting at raw frame `raw` to the one holding `target`, keeping the `preroll`
+ * before it. 'short': fewer than that came before the target (start earlier, unless this is the
+ * stream's start); 'counted': a packet with no length in frames, so no exact start here.
+ */
+async function walk(all: AsyncGenerator<Packet>, raw: number, target: number, preroll: number): Promise<SeekResult | 'short' | 'counted'> {
   const recent: {packet: Packet; raw: number}[] = [];
-  let raw = 0;
+  const startRaw = raw;
   for (;;) {
     const next = await all.next();
     if (next.done) break;
     const p = next.value;
-    if (p.frames === undefined) throw new DemuxError('This stream can’t be started part-way.');
+    if (p.frames === undefined) { void all.return(undefined).catch(() => {}); return 'counted'; }
     recent.push({packet: p, raw});
     if (recent.length > preroll + 1) recent.shift();
     if (raw + p.frames > target) break;
     raw += p.frames;
   }
+  if (startRaw > 0 && recent.length < preroll + 1) { void all.return(undefined).catch(() => {}); return 'short'; }
   const first = recent[0];
   const held = recent.map(r => r.packet);
   async function* chain(): AsyncGenerator<Packet> { yield* held; yield* all; }

@@ -85,27 +85,30 @@ export async function openMp3(reader: ByteReader): Promise<Demuxer> {
   if (!first) throw new DemuxError('No MPEG audio frames were found.');
   const start = base + at;
   const config: TrackConfig = Object.freeze({codec: 'mp3', family: 'mp3', sampleRate: first.sampleRate, numberOfChannels: first.channels});
+  /** Frames from `from`; the file's first frame is dropped when it is an info frame. */
+  async function* frames(from: number, signal?: AbortSignal): AsyncGenerator<Packet> {
+    const c = new Cursor(reader, from, 1 << 16, signal);
+    let index = from === start ? 0 : 1;
+    while (await c.need(4)) {
+      const v = c.view;
+      const h = mp3Header(v, 0);
+      if (!h || h.sampleRate !== first!.sampleRate || h.layer !== first!.layer) {
+        // Trailing tags (ID3v1, APE) or junk: resynchronize, or stop at the end.
+        if (ascii(v, 0, 3) === 'TAG' || ascii(v, 0, 8) === 'APETAGEX') return;
+        c.skip(1);
+        continue;
+      }
+      if (!(await c.need(h.length))) return; // a truncated last frame is not audio
+      const data = c.view.slice(0, h.length);
+      const offset = c.pos;
+      c.skip(h.length);
+      if (index++ === 0 && isInfoFrame(data, 0, h)) continue;
+      yield {data, frames: h.frames, offset};
+    }
+  }
   return {
     config,
-    async *packets(signal?: AbortSignal): AsyncGenerator<Packet> {
-      const c = new Cursor(reader, start, 1 << 16, signal);
-      let index = 0;
-      while (await c.need(4)) {
-        const v = c.view;
-        const h = mp3Header(v, 0);
-        if (!h || h.sampleRate !== first!.sampleRate || h.layer !== first!.layer) {
-          // Trailing tags (ID3v1, APE) or junk: resynchronize, or stop at the end.
-          if (ascii(v, 0, 3) === 'TAG' || ascii(v, 0, 8) === 'APETAGEX') return;
-          c.skip(1);
-          continue;
-        }
-        if (!(await c.need(h.length))) return; // a truncated last frame is not audio
-        const data = c.view.slice(0, h.length);
-        const offset = c.pos;
-        c.skip(h.length);
-        if (index++ === 0 && isInfoFrame(data, 0, h)) continue;
-        yield {data, frames: h.frames, offset};
-      }
-    },
+    packets: signal => frames(start, signal),
+    packetsFrom: (offset, signal) => frames(Math.max(start, offset), signal),
   };
 }

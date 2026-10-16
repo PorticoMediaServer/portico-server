@@ -99,7 +99,7 @@ type TraceAudio struct {
 	Channels    int    `json:"channels,omitempty"`
 	Language    string `json:"language,omitempty"`
 	ObjectAudio string `json:"objectAudio,omitempty"`
-	// Why this track: explicit, remembered, preferred_language, default, first.
+	// Why this track: explicit, carried, preferred_language, default, first.
 	ChosenBy string `json:"chosenBy"`
 	Tracks   int    `json:"tracks"`
 }
@@ -278,11 +278,11 @@ func (p ClientProfile) passthroughDeclared(codec string) bool {
 }
 
 // chooseAudio picks the programme audio for a session: the viewer's explicit
-// choice, else the language this profile last chose for the show or film, else
+// choice, else the language picked earlier in this playback, else
 // the first track in a preferred language, else the container's default, else
 // the first track. A commentary is never chosen automatically while an
 // ordinary track exists.
-func chooseAudio(tracks []SourceAudio, explicit int, remembered string, preferred []string) (*SourceAudio, string) {
+func chooseAudio(tracks []SourceAudio, explicit int, carried string, preferred []string) (*SourceAudio, string) {
 	if len(tracks) == 0 {
 		return nil, ""
 	}
@@ -293,10 +293,10 @@ func chooseAudio(tracks []SourceAudio, explicit int, remembered string, preferre
 			}
 		}
 	}
-	if want := languageKey(remembered); want != "" {
+	if want := languageKey(carried); want != "" {
 		for i := range tracks {
 			if languageKey(tracks[i].Language) == want && !tracks[i].Commentary {
-				return &tracks[i], "remembered"
+				return &tracks[i], "carried"
 			}
 		}
 	}

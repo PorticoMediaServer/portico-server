@@ -189,8 +189,6 @@ export class SubtitleOverlay {
     this.sync();
   }
 
-  /** The picture moved to another window (Picture in Picture keeps the page's own player): measure again. */
-  relayout(): void { this.geometry = null; this.layout(); this.sync(); }
 
   /** The viewer's timing correction, in seconds (positive shows the subtitle later). */
   setDelay(seconds: number): void { this.delay = Number.isFinite(seconds) ? seconds : 0; this.sync(); }

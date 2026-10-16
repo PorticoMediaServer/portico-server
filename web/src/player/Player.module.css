@@ -7,9 +7,6 @@
 .stage.audio .video { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 /* Styled and image subtitles are drawn here, over the picture and under everything the viewer can press. Its box is set by the overlay. */
 .subtitleCanvas { position: absolute; left: 0; top: 0; display: none; pointer-events: none; }
-/* The picture's box: the video and its subtitle canvas. In a Picture in Picture window of the page's own it fills that window. */
-.pictureHome, .picture { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; }
-.picture.pictureAway { position: fixed; background: #000; /* lint-design-allow: player-canvas black per PC-VISUAL 4.3 */ }
 .tap { position: absolute; inset: 0; cursor: default; }
 .hidden { cursor: none; }
 .chrome { position: absolute; inset: 0; pointer-events: none; opacity: 1; transition: opacity var(--motion-standard) var(--ease-out); }

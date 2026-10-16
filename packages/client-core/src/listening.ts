@@ -74,6 +74,8 @@ export class ListeningService {
  private listeners=new Set<()=>void>();private disposed=false;private connected=false;private abort=new AbortController();private unsubscribe?:()=>void;private interval?:ReturnType<typeof setInterval>;
  private contextGeneration=0;private timerGeneration=0;private prefGeneration=0;private itemId='';private lastRateKey='';private lastActivity:number;private chapters?:PlayerChaptersService;private sessionKey='';
  private pausedBook?:{session:string;at:number};
+ /** A speed chosen in the player: for this playback only (`playbackRun`), never saved. */
+ private heldRate?:{run:number;kind:string;rate:number};
  private activityRevision=0;private activityAtMs=Date.now();
  private readonly scope:QueueScope;private readonly request:ListeningRequest;private readonly playback:PlaybackService;private readonly now:()=>number;
  /** PERF-24: whether an item can be a listening item (a song or audiobook file), when the caller
@@ -85,7 +87,7 @@ export class ListeningService {
  private publish(patch:Partial<ListeningSnapshot>){if(this.disposed)return;this.state=Object.freeze({...this.state,...patch});this.syncNativePolicy();for(const fn of this.listeners)fn();}
  private syncNativePolicy(){
   const timer=this.state.timer;
-  this.playback.setListeningPolicy?.({preferences:this.state.preferences?{musicRate:this.state.preferences.musicRate,bookRate:this.state.preferences.bookRate,autoplayNext:this.state.preferences.autoplayNext,passoutMinutes:this.state.preferences.passoutMinutes}:null,
+  this.playback.setListeningPolicy?.({preferences:this.state.preferences?{musicRate:this.rateFor('song'),bookRate:this.rateFor('audiobook_file'),autoplayNext:this.state.preferences.autoplayNext,passoutMinutes:this.state.preferences.passoutMinutes}:null,
    activityRevision:this.activityRevision,activityAtMs:this.activityAtMs,timerRevision:this.timerGeneration,
    timer:timer?{choice:timer.choice,label:timer.label,...(timer.wallDeadline===undefined?{}:{wallDeadline:timer.wallDeadline}),...(timer.endSeconds===undefined?{}:{endSeconds:timer.endSeconds}),...(timer.itemId?{itemId:timer.itemId}:{}),...(timer.bookId?{bookId:timer.bookId}:{}),...(timer.sessionId?{sessionId:timer.sessionId,generation:timer.generation}:{}),...(timer.libraryId?{libraryId:timer.libraryId}:{})}:null});
  }
@@ -96,9 +98,16 @@ export class ListeningService {
   try{const p=parseListeningPreferences(listeningData(await this.request(routePath("put_listening_preferences"),next,'PUT',this.abort.signal),this.scope));if(this.disposed||g!==this.prefGeneration)return;this.interact();this.publish({phase:'ready',preferences:p,error:null});this.applyRate();}
   catch(e){if(this.disposed||g!==this.prefGeneration)return;const conflict=object(e)&&e.code==='listening_preferences_conflict';this.publish({phase:'error',error:conflict?'These preferences changed on another device. Reload them before saving again.':'The preference save could not be confirmed. Reload to recover its actual result.'});throw new Error(this.state.error!);}
  }
- async setRate(rate:number){const context=this.state.context;if(!context||!['song','audiobook_file'].includes(context.kind))throw new Error('Choose a music or audiobook item first.');await this.savePreferences(context.kind==='song'?{musicRate:rate}:{bookRate:rate});}
+ /** The speed for this playback, chosen in the player. Settings keep the default a new playback
+  * starts at; this goes on through the queue and is forgotten when the viewer starts something new. */
+ async setRate(rate:number){const context=this.state.context,p=this.state.preferences;if(!context||!['song','audiobook_file'].includes(context.kind))throw new Error('Choose a music or audiobook item first.');
+  if(!p)throw new Error('Load listening preferences before changing the speed.');
+  parseListeningPreferences(context.kind==='song'?{...p,musicRate:rate}:{...p,bookRate:rate});
+  this.heldRate={run:this.run(),kind:context.kind,rate};this.interact();this.applyRate();}
+ private run(){return this.playback.getSnapshot().playbackRun??0;}
+ private rateFor(kind:string){const p=this.state.preferences,held=this.heldRate;if(held&&held.kind===kind&&held.run===this.run())return held.rate;return kind==='audiobook_file'?p?.bookRate??1:p?.musicRate??1;}
  interact(){if(this.disposed)return;this.lastActivity=this.now();this.activityAtMs=Date.now();this.activityRevision++;if(this.state.stopped)this.publish({stopped:false,message:null});else this.syncNativePolicy();}
- private applyRate(){const p=this.state.preferences,c=this.state.context,s=this.playback.getSnapshot();if(!p||!c||!['song','audiobook_file'].includes(c.kind)){this.lastRateKey='';if(this.state.rate!==1)this.publish({rate:1});return;}const rate=c.kind==='audiobook_file'?p.bookRate:p.musicRate;const key=`${s.session?.id??''}:${s.session?.generation??0}:${rate}`;
+ private applyRate(){const p=this.state.preferences,c=this.state.context,s=this.playback.getSnapshot();if(!p||!c||!['song','audiobook_file'].includes(c.kind)){this.lastRateKey='';if(this.state.rate!==1)this.publish({rate:1});return;}const rate=this.rateFor(c.kind);const key=`${s.session?.id??''}:${s.session?.generation??0}:${rate}`;
   if(this.state.rate!==rate)this.publish({rate});if(key!==this.lastRateKey){this.lastRateKey=key;if(s.session&&!s.channel&&!this.playback.isNativeListening?.())this.playback.setPlaybackRate(rate);}
  }
  private observe(){if(this.disposed)return;const p=this.playback.getSnapshot();let item=p.channel?'':p.itemId??'';

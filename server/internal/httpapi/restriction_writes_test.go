@@ -404,7 +404,6 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.ass": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.sup": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"DELETE /v1/items/{itemId}/subtitles/{resource}":                      perHidden("DELETE", "/v1/items/ID/subtitles/matrix-resource", `{}`, "item"),
-		"DELETE /v1/items/{itemId}/playback-memory":                           perHidden("DELETE", "/v1/items/ID/playback-memory", "", "item"),
 		"PUT /v1/items/{itemId}/subtitles/{resource}":                         perHidden("PUT", "/v1/items/ID/subtitles/matrix-resource", `{}`, "item"),
 		"POST /v1/items/{itemId}/subtitles/remote":                            perHidden("POST", "/v1/items/ID/subtitles/remote", `{}`, "item"),
 		"POST /v1/items/{itemId}/subtitles/search":                            perHidden("POST", "/v1/items/ID/subtitles/search", `{}`, "item"),
@@ -495,6 +494,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 			body := fmt.Sprintf(`{"operationId":"OP","expectedRevision":%d,"addItemIds":["ID"]}`, revision)
 			return perHidden("PUT", "/v1/saved-resources/"+m.savedResource+"/entries", body, "item").probes(m)
 		}),
+		"PUT /v1/saved-resources/{id}/order":  writeExempt(reasonOwnObject),
 		"PUT /v1/saved-resources/{id}/shares": writeExempt(reasonOwnObject),
 		"PUT /v1/shows/{id}/metadata/screen":  writeExempt("owner-only metadata/analysis/preparation mutation; member refused (manual_metadata_test, musicbrainz_test and analysis owner checks)"),
 		"PUT /v1/storage/sources/webdav/{id}": writeExempt("owner-only storage configuration; no member catalogue mutation (mounts_test and owner checks in router.go)"),
@@ -532,6 +532,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/shows/{id}/metadata/tvdb/retry":                         perHidden("POST", "/v1/shows/ID/metadata/tvdb/retry", `{}`, "show"),
 		"PATCH /v1/collections/{id}":                                      perHidden("PATCH", "/v1/collections/ID", `{"name":"x"}`, "collection"),
 		"DELETE /v1/collections/{id}":                                     perHidden("DELETE", "/v1/collections/ID", "", "collection"),
+		"PUT /v1/collections/{id}/order":                                  perHidden("PUT", "/v1/collections/ID/order", `{"expectedRevision":1,"itemIds":["x"]}`, "collection"),
 		"POST /v1/collections/{id}/items:batch": writeProbes(func(m *restrictionEnv) []idProbe {
 			out := perHidden("POST", "/v1/collections/ID/items:batch", `{"addItemIds":[]}`, "collection").probes(m)
 			if visible := m.visibleEntities["collection"]; len(visible) > 0 {

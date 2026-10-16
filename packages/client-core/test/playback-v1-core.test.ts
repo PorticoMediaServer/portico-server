@@ -80,7 +80,6 @@ test('options: tolerant parse, plan summary, default selection, markers and prev
   // The quality menu, the saved default and the engine come with the options.
   assert.deepEqual(o.qualities.map(q => q.mode === 'fixed' ? q.id : q.mode), ['original', 'automatic', '2160p', '1080p', '720p']);
   assert.equal(o.preferred?.quality.mode, 'original');
-  assert.equal(o.preferred?.subtitlesOff, false);
   assert.equal(o.plan?.engine, 'native');
   assert.equal(o.plan?.streams[1]?.to, 'eac3');
   const fixed = await client.options('movie-1', {quality: {mode: 'fixed', id: '720p'}});

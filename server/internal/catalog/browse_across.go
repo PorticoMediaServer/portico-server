@@ -116,9 +116,10 @@ func acrossMembers(anchor *BrowseNode, profile string, rows map[string][]int64) 
 		}
 		return `SELECT credit.entity_id AS id,min(credit.ord) AS pos FROM catalog_people person CROSS JOIN catalog_credits credit INDEXED BY catalog_credits_person ON credit.person_id=person.id JOIN catalog_credit_labels dept ON dept.id=credit.department_id WHERE person.token=?` + role + ` GROUP BY credit.entity_id` + limit, []any{value}, false, nil
 	case "list":
-		return `SELECT entry.item_id AS id,entry.position AS pos FROM catalog_playlists list JOIN catalog_playlist_entries entry ON entry.playlist_id=list.id WHERE list.token=? AND list.deleted=0 AND entry.item_id IS NOT NULL ORDER BY entry.position` + limit, []any{value}, true, nil
+		// A playlist's order is its order keys (a reorder moves keys, not positions).
+		return `SELECT entry.item_id AS id,ROW_NUMBER() OVER (ORDER BY entry.order_key,entry.id) AS pos FROM catalog_playlists list JOIN catalog_playlist_entries entry INDEXED BY catalog_playlist_entries_page ON entry.playlist_id=list.id WHERE list.token=? AND list.deleted=0 AND entry.item_id IS NOT NULL ORDER BY entry.order_key,entry.id` + limit, []any{value}, true, nil
 	case "savedCollection":
-		return `SELECT sre.item_id AS id,0 AS pos FROM saved_resource_entries sre WHERE sre.resource_id=? AND sre.item_id IS NOT NULL` + limit, []any{value}, false, nil
+		return `SELECT sre.item_id AS id,ROW_NUMBER() OVER (ORDER BY sre.order_key,sre.id) AS pos FROM saved_resource_entries sre INDEXED BY saved_resource_entries_order WHERE sre.resource_id=? AND sre.item_id IS NOT NULL ORDER BY sre.order_key,sre.id` + limit, []any{value}, true, nil
 	case "homeRow":
 		ids, ok := rows[value]
 		if !ok {

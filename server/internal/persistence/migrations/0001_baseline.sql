@@ -300,7 +300,10 @@ CREATE TABLE catalog_collections(
  library_id INTEGER NOT NULL REFERENCES catalog_libraries(id),
  name_key TEXT NOT NULL,
  created_at TEXT NOT NULL,
- member_count INTEGER NOT NULL DEFAULT 0 CHECK(member_count>=0)) STRICT;
+ member_count INTEGER NOT NULL DEFAULT 0 CHECK(member_count>=0),
+ -- Moves with every membership or order change (triggers below): the fence an
+ -- owner's reorder is made against.
+ revision INTEGER NOT NULL DEFAULT 1) STRICT;
 CREATE UNIQUE INDEX catalog_collections_name ON catalog_collections(library_id,name_key);
 CREATE TABLE catalog_collection_members(
  collection_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
@@ -2220,7 +2223,10 @@ CREATE TABLE personal_conflicts(id TEXT PRIMARY KEY,profile_id TEXT NOT NULL,ite
 CREATE TABLE personal_activity_receipts(profile_id TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,response TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(profile_id,operation_id)) STRICT;
 CREATE TABLE saved_resources(id TEXT PRIMARY KEY,kind TEXT NOT NULL CHECK(kind IN('collection','view')),owner_key TEXT NOT NULL,owner_authority TEXT NOT NULL,owner_account TEXT NOT NULL,owner_profile TEXT NOT NULL,name TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '',definition TEXT NOT NULL DEFAULT '{}',revision INTEGER NOT NULL DEFAULT 1,deleted INTEGER NOT NULL DEFAULT 0,created_at TEXT NOT NULL, visibility TEXT NOT NULL DEFAULT 'private' CHECK(visibility IN('private','server'))) STRICT;
 CREATE TABLE saved_resource_shares(resource_id TEXT NOT NULL REFERENCES saved_resources(id) ON DELETE CASCADE,authority TEXT NOT NULL,account_id TEXT NOT NULL,profile_id TEXT NOT NULL,role TEXT NOT NULL CHECK(role IN('viewer','editor')),PRIMARY KEY(resource_id,authority,account_id,profile_id)) STRICT;
-CREATE TABLE saved_resource_entries(id TEXT PRIMARY KEY,resource_id TEXT NOT NULL REFERENCES saved_resources(id) ON DELETE CASCADE,item_id INTEGER REFERENCES catalog_entities(id) ON DELETE SET NULL,UNIQUE(resource_id,item_id)) STRICT;
+-- order_key is a collection's own order (the playlist keys: never ending in the
+-- lowest digit, so a key between two neighbours always exists): new entries
+-- append, a reorder rewrites only the moved entries' keys.
+CREATE TABLE saved_resource_entries(id TEXT PRIMARY KEY,resource_id TEXT NOT NULL REFERENCES saved_resources(id) ON DELETE CASCADE,item_id INTEGER REFERENCES catalog_entities(id) ON DELETE SET NULL,order_key TEXT NOT NULL DEFAULT '',UNIQUE(resource_id,item_id)) STRICT;
 CREATE TABLE saved_resource_receipts(owner_key TEXT NOT NULL,operation_id TEXT NOT NULL,request_hash TEXT NOT NULL,response TEXT NOT NULL,created_at TEXT NOT NULL,PRIMARY KEY(owner_key,operation_id)) STRICT;
 -- A playlist or collection entry just removed, kept for its Undo (30 seconds):
 -- the same occurrence id, item and playlist order key go back. One live token
@@ -2943,21 +2949,6 @@ CREATE TABLE playback_route_failures(
  PRIMARY KEY(session_hash,asset_id,engine,route)
  ) STRICT;
 CREATE INDEX playback_route_failures_recent ON playback_route_failures(reported_at_ms DESC);
--- The audio and subtitle choice a profile last made for a show (item_id is the
--- show, for every episode of it) or a film, kept as languages so it carries
--- from one file to the next. subtitle_mode: '' nothing remembered, 'off'
--- subtitles were turned off, 'on' a track in subtitle_language was chosen.
-CREATE TABLE playback_track_memory(
- profile_id TEXT NOT NULL,
- item_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE,
- audio_language TEXT NOT NULL DEFAULT '',
- subtitle_mode TEXT NOT NULL DEFAULT '' CHECK(subtitle_mode IN ('','off','on')),
- subtitle_language TEXT NOT NULL DEFAULT '',
- updated_ms INTEGER NOT NULL,
- PRIMARY KEY(profile_id,item_id)
- ) WITHOUT ROWID, STRICT;
--- Removing a title finds its remembered tracks by this, not by reading the table.
-CREATE INDEX playback_track_memory_item ON playback_track_memory(item_id);
 CREATE TABLE identity_refresh_credentials(
  family_id TEXT PRIMARY KEY REFERENCES authorization_session_families(id) ON DELETE CASCADE,
  device_id TEXT NOT NULL REFERENCES identity_devices(id),
@@ -3463,6 +3454,16 @@ CREATE TABLE audio_render_facts(
  measured_ms INTEGER NOT NULL,
  CHECK(start_frames+duration_frames+end_frames=raw_frames)
 ) WITHOUT ROWID, STRICT;
+-- An MP3, ADTS or Ogg file's seek index (audiofacts.EncodeSeekIndex): byte
+-- offsets at packet or page boundaries and the raw frame each starts at, one
+-- every few seconds, at most 4096 entries. Derived data, fenced like the facts:
+-- it counts only while the asset's size and mtime are the ones it was made from.
+CREATE TABLE audio_seek_index(
+ asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
+ size INTEGER NOT NULL,
+ modified_ns INTEGER NOT NULL,
+ entries BLOB NOT NULL CHECK(length(entries) BETWEEN 2 AND 131072)
+) STRICT;
 CREATE TABLE audio_render_fact_failures(
  asset_id TEXT PRIMARY KEY REFERENCES catalog_assets(token) ON DELETE CASCADE,
  size INTEGER NOT NULL,
@@ -4097,6 +4098,7 @@ CREATE INDEX personal_explicit_events_expiry ON personal_explicit_events(created
 CREATE INDEX personal_event_ancestor ON personal_explicit_events(profile_id,item_id,field,base_revision);
 CREATE UNIQUE INDEX personal_conflict_open ON personal_conflicts(profile_id,item_id,field) WHERE resolved=0;
 CREATE INDEX saved_resource_owner ON saved_resources(owner_key,kind,deleted,name COLLATE NOCASE,id);
+CREATE INDEX saved_resource_entries_order ON saved_resource_entries(resource_id,order_key,id);
 CREATE INDEX saved_resource_shared ON saved_resource_shares(authority,account_id,profile_id,resource_id);
 CREATE INDEX playback_personal_claim_item ON playback_personal_claims(profile_key,item_id,accepted_ordinal);
 CREATE INDEX lyric_resources_item ON lyric_resources(item_id,asset_id,source_version,deleted);
@@ -5240,10 +5242,13 @@ END;
 -- A collection's member count follows its member rows, whichever path adds or
 -- removes them (an item's delete cascades its memberships away).
 CREATE TRIGGER catalog_collection_member_count_insert AFTER INSERT ON catalog_collection_members BEGIN
- UPDATE catalog_collections SET member_count=member_count+1 WHERE entity_id=NEW.collection_id;
+ UPDATE catalog_collections SET member_count=member_count+1,revision=revision+1 WHERE entity_id=NEW.collection_id;
 END;
 CREATE TRIGGER catalog_collection_member_count_delete AFTER DELETE ON catalog_collection_members BEGIN
- UPDATE catalog_collections SET member_count=member_count-1 WHERE entity_id=OLD.collection_id AND member_count>0;
+ UPDATE catalog_collections SET member_count=member_count-1,revision=revision+1 WHERE entity_id=OLD.collection_id AND member_count>0;
+END;
+CREATE TRIGGER catalog_collection_member_order AFTER UPDATE OF order_key ON catalog_collection_members WHEN OLD.order_key IS NOT NEW.order_key BEGIN
+ UPDATE catalog_collections SET revision=revision+1 WHERE entity_id=NEW.collection_id;
 END;
 CREATE TRIGGER catalog_collection_member_count_move AFTER UPDATE OF collection_id ON catalog_collection_members WHEN OLD.collection_id<>NEW.collection_id BEGIN
  UPDATE catalog_collections SET member_count=member_count-1 WHERE entity_id=OLD.collection_id AND member_count>0;

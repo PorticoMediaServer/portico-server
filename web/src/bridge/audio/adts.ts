@@ -30,19 +30,21 @@ export async function openAdts(reader: ByteReader): Promise<Demuxer> {
   const asc = new Uint8Array([(objectType << 3) | (first.rateIndex >> 1), ((first.rateIndex & 1) << 7) | (first.channels << 3)]);
   const config: TrackConfig = Object.freeze({codec: `mp4a.40.${objectType}`, family: 'aac', sampleRate: RATES[first.rateIndex]!, numberOfChannels: first.channels, description: asc});
   const start = base + at;
+  async function* frames(from: number, signal?: AbortSignal): AsyncGenerator<Packet> {
+    const c = new Cursor(reader, from, 1 << 16, signal);
+    while (await c.need(7)) {
+      const h = header(c.view, 0);
+      if (!h || h.rateIndex !== first!.rateIndex) { c.skip(1); continue; }
+      if (!(await c.need(h.length))) return;
+      const offset = c.pos;
+      const data = c.view.slice(h.headerLength, h.length);
+      c.skip(h.length);
+      yield {data, frames: 1024 * h.blocks, offset};
+    }
+  }
   return {
     config,
-    async *packets(signal?: AbortSignal): AsyncGenerator<Packet> {
-      const c = new Cursor(reader, start, 1 << 16, signal);
-      while (await c.need(7)) {
-        const h = header(c.view, 0);
-        if (!h || h.rateIndex !== first!.rateIndex) { c.skip(1); continue; }
-        if (!(await c.need(h.length))) return;
-        const offset = c.pos;
-        const data = c.view.slice(h.headerLength, h.length);
-        c.skip(h.length);
-        yield {data, frames: 1024 * h.blocks, offset};
-      }
-    },
+    packets: signal => frames(start, signal),
+    packetsFrom: (offset, signal) => frames(Math.max(start, offset), signal),
   };
 }
