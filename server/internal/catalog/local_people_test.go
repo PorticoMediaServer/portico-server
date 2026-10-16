@@ -43,7 +43,9 @@ func TestLocalPeopleHavePagesAndJoinTheProviderPerson(t *testing.T) {
 	if got := s.SurvivingPersonID(context.Background(), token); got != provider {
 		t.Fatalf("old person page id leads to %q, want %q", got, provider)
 	}
-	c.Write(func(ctx context.Context, tx *sql.Tx) error { return compactcatalog.SetCreditsTx(ctx, tx, film.ID, "nfo", local) })
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetCreditsTx(ctx, tx, film.ID, "nfo", local)
+	})
 	if n := rows(t, c, `SELECT count(*) FROM catalog_people`); n != 1 {
 		t.Fatalf("a later local credit made a second person: %d people", n)
 	}
