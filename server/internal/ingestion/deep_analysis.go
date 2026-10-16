@@ -12,11 +12,40 @@ import (
 	"portico.local/server/internal/mediaanalysis"
 )
 
+// Deep analysis decodes the file one or more times, so its time budget follows
+// the file: a floor for start-up and small files, plus whichever is larger of a
+// pass over its bytes at a slow-storage rate and a few passes over its running
+// time. The ceiling still bounds a stalled or hostile input.
+const (
+	deepAnalysisFloor        = 10 * time.Minute
+	deepAnalysisCeiling      = 24 * time.Hour
+	deepAnalysisBytesPerSec  = 8 << 20 // slow network storage
+	deepAnalysisRealtimeRate = 3       // passes over the running time
+)
+
+func deepAnalysisBudget(size int64, durationSeconds float64) time.Duration {
+	byBytes := time.Duration(0)
+	if size > 0 {
+		byBytes = time.Duration(size/deepAnalysisBytesPerSec) * time.Second
+	}
+	byTime := time.Duration(0)
+	if durationSeconds > 0 && durationSeconds < float64(deepAnalysisCeiling/time.Second) {
+		byTime = time.Duration(durationSeconds*deepAnalysisRealtimeRate) * time.Second
+	}
+	return min(deepAnalysisCeiling, deepAnalysisFloor+max(byBytes, byTime))
+}
+
 func (s *Service) analyzeDeep(parent context.Context, job, object, revision string, policy catalog.ScanPolicy, source catalog.LibrarySource) error {
 	if s.DeepAnalysis == nil {
 		return s.analysisOutcome(parent, job, object, revision, policy.Revision, true, "analysis_worker_unavailable")
 	}
-	ctx, cancel := context.WithTimeout(parent, 6*time.Hour)
+	var size int64
+	var duration float64
+	if err := dbwork.ReadHandle(parent, s.db).QueryRowContext(parent,
+		`SELECT o.size,COALESCE(a.duration,0) FROM inventory_objects o LEFT JOIN catalog_assets a ON a.token=o.asset_id WHERE o.id=?`, object).Scan(&size, &duration); err != nil && err != sql.ErrNoRows {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(parent, deepAnalysisBudget(size, duration))
 	defer cancel()
 	stopped := make(chan struct{})
 	watchDone := make(chan struct{})
