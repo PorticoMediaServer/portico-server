@@ -2,6 +2,7 @@ package catalog
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"portico.local/server/internal/facettext"
@@ -33,22 +34,17 @@ func (s *Service) prefixSearchCandidates(ctx context.Context, r SearchRequest, k
 		}
 	}
 	ids := make([][]int64, len(terms))
-	wide := make([]bool, len(terms))
 	lead, total := -1, int64(^uint64(0)>>1)
 	raw, _ := json.Marshal(r.Libraries)
 	for i, term := range terms {
 		var err error
 		ids[i], err = s.prefixTermIDs(ctx, term, kind, r.Libraries)
-		if errors.Is(err, errPrefixFallback) && facettext.NumericSearchTerm(term) {
-			wide[i] = true
-			continue
-		}
 		if err != nil {
 			return "", nil, "", err
 		}
-		if r.Direction == "asc" && len(ids[i]) > 1 {
-			wide[i] = true
-			continue
+		if len(ids[i]) == 0 {
+			// A word no title carries: nothing matches.
+			return `SELECT 0 entity_id,'' entity_pid,0 ord WHERE 0`, nil, term, nil
 		}
 		list, _ := json.Marshal(ids[i])
 		var count int64
@@ -62,9 +58,6 @@ func (s *Service) prefixSearchCandidates(ctx context.Context, r SearchRequest, k
 	if frozenLead != "" {
 		for i, word := range terms {
 			if word == frozenLead {
-				if wide[i] {
-					return "", nil, "", errPrefixFallback
-				}
 				lead = i
 			}
 		}
@@ -76,11 +69,6 @@ func (s *Service) prefixSearchCandidates(ctx context.Context, r SearchRequest, k
 	extraArgs := []any{}
 	for i, list := range ids {
 		if i != lead {
-			if wide[i] {
-				extra += ` AND EXISTS(SELECT 1 FROM catalog_search_prefix_rows other INDEXED BY catalog_search_prefix_rows_entity JOIN catalog_search_prefix_terms word ON word.id=other.term_id WHERE other.entity_id=p.entity_id AND (word.terminal=0 AND word.prefix=? OR word.terminal=1 AND word.prefix>=? AND word.prefix<?))`
-				extraArgs = append(extraArgs, terms[i], terms[i], terms[i]+"\U0010ffff")
-				continue
-			}
 			raw, _ := json.Marshal(list)
 			extra += ` AND EXISTS(SELECT 1 FROM catalog_search_prefix_rows other INDEXED BY catalog_search_prefix_rows_entity WHERE other.entity_id=p.entity_id AND other.term_id IN(SELECT value FROM json_each(?)))`
 			extraArgs = append(extraArgs, string(raw))
@@ -239,34 +227,16 @@ func (s *Service) prefixSearchTotal(ctx context.Context, r SearchRequest, kind i
 
 var errPrefixFallback = errors.New("prefix dictionary requires the full-text selector")
 
-// Numeric ranges enumerate at most 128 terminal keys. A larger range keeps
-// the full-text selector; no matches are silently truncated.
+// prefixTermIDs is the posting term of one typed word: none when no title
+// carries the word, else exactly one (every word prefix is its own term).
 func (s *Service) prefixTermIDs(ctx context.Context, term string, kind int, libraries []string) ([]int64, error) {
-	query := `SELECT id FROM catalog_search_prefix_terms WHERE terminal=0 AND prefix=?`
-	args := []any{term}
-	if facettext.NumericSearchTerm(term) {
-		query = `SELECT id FROM catalog_search_prefix_terms WHERE terminal=0 AND prefix=? UNION ALL SELECT id FROM(SELECT t.id FROM catalog_search_prefix_terms t WHERE t.terminal=1 AND t.prefix>=? AND t.prefix<? AND EXISTS(SELECT 1 FROM catalog_search_prefix_counts c WHERE c.term_id=t.id AND c.kind=? AND c.library_id IN(SELECT id FROM catalog_libraries WHERE retired=0 AND library_id IN(SELECT value FROM json_each(?))) AND c.total>0) ORDER BY t.prefix LIMIT 129)`
-		raw, _ := json.Marshal(libraries)
-		args = []any{term, term, term + "\U0010ffff", kind, string(raw)}
+	var id int64
+	err := s.read().QueryRowContext(ctx, `SELECT id FROM catalog_search_prefix_terms WHERE prefix=?`, term).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return []int64{}, nil
 	}
-	rows, err := s.read().QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	ids := []int64{}
-	for rows.Next() {
-		var id int64
-		if err = rows.Scan(&id); err != nil {
-			return nil, err
-		}
-		ids = append(ids, id)
-	}
-	if err = rows.Err(); err != nil {
-		return nil, err
-	}
-	if len(ids) > 128 {
-		return nil, errPrefixFallback
-	}
-	return ids, nil
+	return []int64{id}, nil
 }

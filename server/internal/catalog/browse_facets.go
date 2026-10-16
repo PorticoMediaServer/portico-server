@@ -39,6 +39,12 @@ type FacetRequest struct {
 	// Restrictions must match the browse request whose facets these are, or the
 	// counts would advertise titles the page itself refuses to show.
 	Restrictions identity.ContentRestrictions
+	// Group, for a list across libraries, is the list's group condition (a
+	// person, playlist, collection, Home row, My List, Favorites or the
+	// history): values are counted over the list's own titles. Rows are the
+	// Home rows it names, resolved by the caller.
+	Group *BrowseNode
+	Rows  map[string][]int64
 }
 
 // facetSource describes how one facet is counted. Join is appended after

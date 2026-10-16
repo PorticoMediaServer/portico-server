@@ -751,7 +751,7 @@ func TestHomeContinueListeningStopsAtItsMaximum(t *testing.T) {
 		t.Fatalf("pages\n got %v\nwant %v", got, want)
 	}
 	raw := `["movies","music","music2","books"]`
-	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT id,ord FROM (`+homeContinueBase("continue_listening")+`) ORDER BY ord DESC,id DESC LIMIT 40`, "p", raw)
+	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT id,ord FROM (`+homeContinueBase("continue_listening")+`) ORDER BY ord DESC,id DESC LIMIT 40`, "p", "p", raw)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -765,7 +765,9 @@ func TestHomeContinueListeningStopsAtItsMaximum(t *testing.T) {
 		}
 		plan += detail + "\n"
 	}
-	if !contains(plan, "progress_home_profile_recent") || contains(plan, "TEMP B-TREE FOR ORDER BY") {
+	// The walk reads the activity index in row order, at most a window of it;
+	// ordering that window is the only sort.
+	if !contains(plan, "progress_home_profile_recent") {
 		t.Fatalf("Continue Listening does not walk the activity index in row order:\n%s", plan)
 	}
 }

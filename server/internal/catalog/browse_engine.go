@@ -190,8 +190,12 @@ func browseBoundedSQL(columns, from, where string, args []any, expression, ident
 	}
 	order := expression + " " + direction + "," + identity + " " + direction
 	arm := `SELECT ` + identity + ` AS id,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where
+	// The tie arm orders by the identity alone: its key is fixed by equality,
+	// and SQLite does not see that an equality on an expression index's key
+	// satisfies an ORDER BY on the expression, so it would sort every tie
+	// (a whole library of equal durations) before the limit.
 	query := `WITH candidates AS (
- SELECT * FROM (` + arm + ` AND ` + expression + `=? AND ` + identity + tie + `? ORDER BY ` + order + ` LIMIT ?)
+ SELECT * FROM (` + arm + ` AND ` + expression + `=? AND ` + identity + tie + `? ORDER BY ` + identity + " " + direction + ` LIMIT ?)
  UNION ALL SELECT * FROM (` + arm + ` AND ` + expression + op + `? ORDER BY ` + order + ` LIMIT ?))
  SELECT ` + columns + ` FROM candidates page CROSS JOIN ` + from + ` WHERE ` + identity + `=page.id AND ` + where + `
  ORDER BY page.order_key ` + direction + `,page.id ` + direction + ` LIMIT ? OFFSET ?`
@@ -439,6 +443,11 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 
 	where, args := browseScopeSQL(request.Library, pivot)
 	compiler := &browseCompiler{profile: request.Profile, restrictions: request.Restrictions, count: s.countRows, ids: s.entityIDs, itemPivot: playablePivot(pivot), rows: request.Rows}
+	for _, member := range entityKindMembers(pivot) {
+		if kind, err := compactcatalog.ParseKind(member); err == nil {
+			compiler.kinds = append(compiler.kinds, int(kind))
+		}
+	}
 	clause, err := compiler.compile(request.Query)
 	if err != nil {
 		return out, nil, err
@@ -606,7 +615,9 @@ func (s *Service) browseSelect(request BrowseRequest) (BrowseResult, []browseRow
 			var rank int
 			var found bool
 			var err error
-			if primary.Ordering == -2 {
+			if primary.Ordering == -2 && primary.Blocks > 0 && shape.summary.classKey == "" {
+				rank, found, err = s.browseAnchorRankIn(shape, request.Range.AnchorID, primary.Blocks)
+			} else if primary.Ordering == -2 {
 				rank, found, err = s.indexedFactAnchorRank(shape, request.Range.AnchorID)
 			} else {
 				rank, found, err = s.browseAnchorRank(shape, request.Range.AnchorID)
@@ -718,7 +729,9 @@ func (s *Service) browseProjection(profile string, rows []browseRow) ([]ContentE
 		for _, id := range containerIDs {
 			args = append(args, id)
 		}
-		rows, err := s.read().Query(`SELECT m.entity_id,count(*) FROM catalog_browse_memberships m WHERE m.entity_id IN (`+placeholders(len(containerIDs))+`) GROUP BY m.entity_id`, args...)
+		// A card's count is its maintained membership counter, not a pass
+		// over an artist's songs or a show's episodes.
+		rows, err := s.read().Query(`SELECT m.entity_id,m.members FROM catalog_browse_member_links m WHERE m.entity_id IN (`+placeholders(len(containerIDs))+`)`, args...)
 		if err != nil {
 			return nil, err
 		}

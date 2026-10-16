@@ -2887,7 +2887,7 @@ export const routes = [
     "id": "get_browse_facets",
     "method": "GET",
     "path": "/v1/browse/facets",
-    "summary": "Read counted facet choices across the viewer's libraries",
+    "summary": "Read counted facet choices across the viewer's libraries, or within one list's titles",
     "access": "device",
     "requires": "read",
     "lane": "browsing",
@@ -2896,7 +2896,9 @@ export const routes = [
     "query": [
       "field",
       "q",
-      "limit"
+      "limit",
+      "group",
+      "value"
     ],
     "errors": [
       "invalid_request",

@@ -161,10 +161,12 @@ func catalogOrder(sortID, kind, q string) searchOrder {
 	switch sortID {
 	case "title":
 		return searchOrder{`e.sort_key`, nil, false}
+	// The browse row's year and added date, read by key: joined instead, the
+	// serving view (two generations) is read whole.
 	case "releaseYear":
-		return searchOrder{`CAST(COALESCE(e.year,0) AS REAL)`, nil, true}
+		return searchOrder{`CAST(COALESCE((SELECT wb.year FROM catalog_browse_rows wb WHERE wb.entity_id=e.id),0) AS REAL)`, nil, true}
 	case "dateAdded":
-		return searchOrder{`COALESCE(detail.added_text,'')`, nil, false}
+		return searchOrder{`COALESCE((SELECT wb.added_text FROM catalog_browse_rows wb WHERE wb.entity_id=e.id),'')`, nil, false}
 	}
 	return searchScore(q)
 }
@@ -336,7 +338,8 @@ func (s *Service) Search(ctx context.Context, r SearchRequest) (SearchEnvelope, 
 					result.ErrorCode = "search_group_timeout"
 				}
 			}
-			if groupErr := failures[index]; groupErr == nil && g.source != "catalog" {
+			// Live channels count exactly; people say for themselves.
+			if groupErr := failures[index]; groupErr == nil && g.source == "live" {
 				result.TotalCountExact = true
 			}
 			results[index] = result
@@ -583,11 +586,9 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	contextJoin, subtitle := searchContext(g.kind)
 	order := catalogOrder(sortID, g.kind, r.Q)
 	// Only the columns needed to rank matches belong before the page boundary.
-	// Date-added is a wire-preserved item detail; the other sorts are narrow.
+	// Release year and date added are the browse row's, as their ordered
+	// indexes (searchWalks) hold them.
 	orderJoin := ""
-	if sortID == "dateAdded" {
-		orderJoin = ` LEFT JOIN catalog_item_details detail ON detail.entity_id=e.id `
-	}
 	args := append([]any{}, order.args...)
 	args = append(args, match)
 	args = append(args, filterArgs...)
@@ -658,26 +659,20 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 		// A continuation retains its ranking model even when a growing numeric
 		// dictionary now needs the full-text selector. Its signature still binds
 		// every viewer, library, query and sort field.
-		keyPredicate := `t.terminal=0 AND t.prefix=?`
-		keyArgs := []any{prefixLead}
-		if facettext.NumericSearchTerm(prefixLead) {
-			keyPredicate = `(t.terminal=0 AND t.prefix=? OR t.terminal=1 AND t.prefix>=? AND t.prefix<?)`
-			keyArgs = []any{prefixLead, prefixLead, prefixLead + "\U0010ffff"}
-		}
-		order = searchOrder{expr: `CASE WHEN d.title_fold=? THEN 3 ELSE COALESCE((SELECT max(p.tier) FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity JOIN catalog_search_prefix_terms t ON t.id=p.term_id WHERE p.entity_id=d.entity_id AND (` + keyPredicate + `)),0) END`, numeric: true}
-		order.args = append([]any{facettext.SearchFold(r.Q)}, keyArgs...)
+		order = searchOrder{expr: `CASE WHEN d.title_fold=? THEN 3 ELSE COALESCE((SELECT max(p.tier) FROM catalog_search_prefix_rows p INDEXED BY catalog_search_prefix_rows_entity WHERE p.entity_id=d.entity_id AND p.term_id=(SELECT id FROM catalog_search_prefix_terms WHERE prefix=?)),0) END`, numeric: true}
+		order.args = []any{facettext.SearchFold(r.Q), prefixLead}
 		args = append(append(append([]any{}, order.args...), match), filterArgs...)
 		ranked = `SELECT d.entity_id entity_id,d.entity_pid entity_pid,` + order.expr + ` ord FROM ` + candidates + ` WHERE 1` + where
 		tie = "entity_id"
 		countGroup = func() error { out.TotalCount, out.TotalCountExact = len(out.Items), false; return nil }
 	}
-	// Title order breaks ties by the internal identity, so a page taken
-	// from the title index and one ranked from the full-text matches continue
-	// each other.
+	// Title, release year and date added break ties by the internal
+	// identity, so a page taken from an ordered index and one ranked from the
+	// full-text matches continue each other.
 	internal := prefix
-	if sortID == "title" && !prefix {
+	if _, walks := searchWalks[sortID]; walks && !prefix {
 		internal, tie = true, "entity_id"
-		if walked, ok, err := s.searchTitleWalk(ctx, r, int(kind), where, filterArgs, pageSize+1, scopeHash, g, rev); err != nil {
+		if walked, ok, err := s.searchTitleWalk(ctx, r, int(kind), sortID, where, filterArgs, pageSize+1, scopeHash, g, rev); err != nil {
 			return err
 		} else if ok {
 			ranked, args = `SELECT json_extract(value,'$[0]') entity_id,json_extract(value,'$[1]') entity_pid,json_extract(value,'$[2]') ord FROM json_each(?)`, []any{walked}
@@ -881,7 +876,6 @@ func searchContext(kind string) (string, string) {
 // small projection, so an offset page is both cheap and stable under the
 // response's revision fence.
 func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g searchGroupDefinition, match, scopeHash, fingerprint string, rev ContentRevision, pageSize int, out *SearchGroupResult) error {
-	raw, _ := json.Marshal(r.Libraries)
 	libraries := r.Libraries
 	if r.AllLibraries {
 		all, e := s.allLibraryIDs(ctx)
@@ -889,17 +883,9 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 			return e
 		}
 		libraries = all
-		raw, _ = json.Marshal(libraries)
 	}
 	viewer := Viewer{Profile: r.Profile, Fence: r.ViewerFence, Libraries: libraries, Restrictions: r.Restrictions}
 	if e := s.prepareViewer(viewer); e != nil {
-		return e
-	}
-	restriction, bound := ItemRestrictionSQL("i.id", viewer.EffectiveRestrictions())
-	extra, extraArgs := searchCJKPredicate("portico_search_fold(people.name)", r.Q)
-	countArgs := append([]any{match, string(raw)}, bound...)
-	countArgs = append(countArgs, extraArgs...)
-	if e := s.read().QueryRowContext(ctx, `SELECT count(*) FROM catalog_people_names JOIN catalog_people people ON people.id=catalog_people_names.rowid WHERE catalog_people_names MATCH ? AND EXISTS(SELECT 1 FROM catalog_credits pc JOIN catalog_entities i ON i.id=pc.entity_id JOIN catalog_libraries l ON l.id=i.library_id AND l.library_id IN(SELECT value FROM json_each(?)) WHERE pc.person_id=people.id AND `+restriction+`)`+extra, countArgs...).Scan(&out.TotalCount); e != nil {
 		return e
 	}
 	sortID := resolveSearchSort(g, r.Sort)
@@ -917,10 +903,13 @@ func (s *Service) searchPeopleGroup(ctx context.Context, r SearchRequest, g sear
 			return ErrCursor
 		}
 	}
-	people, e := s.peopleMatches(r.Q, match, viewer, pageSize+1, offset, sortID, r.Direction)
+	people, total, exact, e := s.peopleMatches(r.Q, match, viewer, pageSize+1, offset, sortID, r.Direction)
 	if e != nil {
 		return e
 	}
+	// The matches are counted up to peopleRankedMaximum; a broader name
+	// search says so rather than counting every match.
+	out.TotalCount, out.TotalCountExact = total, exact
 	more := len(people) > pageSize
 	if more {
 		people = people[:pageSize]

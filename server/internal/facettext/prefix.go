@@ -12,18 +12,19 @@ const IndexedSearchPrefixRunes = 12
 const NumericSearchPrefixRunes = 6
 
 type SearchPrefix struct {
-	Prefix   string `json:"prefix"`
-	Tier     int    `json:"tier"`
-	Terminal int    `json:"terminal"`
+	Prefix string `json:"prefix"`
+	Tier   int    `json:"tier"`
 }
 
 func NumericSearchTerm(word string) bool {
 	return word != "" && !strings.ContainsFunc(word, func(r rune) bool { return !unicode.IsNumber(r) })
 }
 
-// Text prefixes have direct postings. Numeric words share their six-character
-// terminal key: short numeric queries expand a bounded dictionary range rather
-// than storing six identical copies of long padded numbers in every document.
+// Every word prefix has a direct posting, so every typed word is one term with
+// a maintained count and the rarest word can lead a search. A numeric word
+// posts its first six characters' prefixes (a longer number is its first six);
+// a typed number is then one term like any word, never a range of numbers
+// whose size grows with the library.
 func SearchPrefixes(document, title string) string {
 	prefixes := map[string]SearchPrefix{}
 	titleTerms := map[string]bool{}
@@ -36,12 +37,10 @@ func SearchPrefixes(document, title string) string {
 		}
 		runes := []rune(word)
 		last := min(len(runes), IndexedSearchPrefixRunes)
-		first, terminal := 1, 0
 		if NumericSearchTerm(word) {
 			last = min(last, NumericSearchPrefixRunes)
-			first, terminal = last, 1
 		}
-		for n := first; n <= last; n++ {
+		for n := 1; n <= last; n++ {
 			prefix := string(runes[:n])
 			tier := 0
 			if titleTerms[word] {
@@ -50,9 +49,8 @@ func SearchPrefixes(document, title string) string {
 			if strings.HasPrefix(title, prefix) {
 				tier = 2
 			}
-			key := string(rune(terminal)) + prefix
-			if old, ok := prefixes[key]; !ok || tier > old.Tier {
-				prefixes[key] = SearchPrefix{prefix, tier, terminal}
+			if old, ok := prefixes[prefix]; !ok || tier > old.Tier {
+				prefixes[prefix] = SearchPrefix{prefix, tier}
 			}
 		}
 	}
@@ -60,12 +58,7 @@ func SearchPrefixes(document, title string) string {
 	for _, p := range prefixes {
 		out = append(out, p)
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Prefix == out[j].Prefix {
-			return out[i].Terminal < out[j].Terminal
-		}
-		return out[i].Prefix < out[j].Prefix
-	})
+	sort.Slice(out, func(i, j int) bool { return out[i].Prefix < out[j].Prefix })
 	raw, _ := json.Marshal(out)
 	return string(raw)
 }

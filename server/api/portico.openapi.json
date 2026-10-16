@@ -165598,6 +165598,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "group",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "value",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -165681,7 +165697,7 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Read counted facet choices across the viewer's libraries",
+        "summary": "Read counted facet choices across the viewer's libraries, or within one list's titles",
         "x-access": "device",
         "x-admission": "browsing",
         "x-cost": "page_sized",

@@ -18,6 +18,10 @@ type showActivityKey struct {
 	showID       int64
 }
 
+// nextEpisodeWindow is how many of a show's later episodes Continue Watching
+// tests for the next one the viewer may watch.
+const nextEpisodeWindow = 64
+
 func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, showID string, after *showActivityKey, detail ...bool) (string, []any) {
 	page := len(detail) > 0 && detail[0]
 	partialDismissal := ` AND NOT EXISTS(SELECT 1 FROM continue_dismissals d WHERE d.profile_id=p.profile_id AND d.item_id=p.item_id AND d.playback_id=p.playback_id)`
@@ -77,7 +81,9 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
 	// that passes. Testing every later episode before ordering them cost a
 	// whole show for each started show, mostly for a restricted viewer whose
 	// next allowed episode is near. The ordered list keeps its LIMIT so SQLite
-	// neither flattens it nor drops its order.
+	// neither flattens it nor drops its order; it holds the next
+	// nextEpisodeWindow episodes, so a show the viewer may see none of soon
+	// costs that many tests, not the rest of the show.
 	base := `SELECT chosen.id,chosen.ord FROM (SELECT COALESCE(
   ` + partial(true) + `,
   ` + partial(false) + `,
@@ -90,7 +96,7 @@ func homeShowContinuation(r HomeRequest, cutoffs, premieres string, window int, 
       OR e2.numbering!='absolute' AND previous.numbering!='absolute' AND
        (COALESCE(s2.number,0)>COALESCE(ps.number,0) OR COALESCE(s2.number,0)=COALESCE(ps.number,0) AND e2.number>previous.number))
     AND (COALESCE(s2.number,0)>0 OR COALESCE(ps.number,0)=0)
-   ORDER BY COALESCE(s2.number,0),e2.number,e2.entity_id LIMIT 9223372036854775807) next
+   ORDER BY COALESCE(s2.number,0),e2.number,e2.entity_id LIMIT ` + strconv.Itoa(nextEpisodeWindow) + `) next
    CROSS JOIN catalog_entities i2 ON i2.id=next.id
    WHERE EXISTS(SELECT 1 FROM catalog_libraries cl WHERE cl.id=i2.library_id AND cl.library_id=w.library_id) AND ` + homeVisible("i2.id") + `
     AND ` + personalstate.CompactSQL("w.profile_id", "i2.id") + `=0

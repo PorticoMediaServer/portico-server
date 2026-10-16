@@ -56,6 +56,11 @@ func (s *Service) indexedFactPage(p pageShape, definition browseSort, desc bool)
 		if definition.ID == "random" {
 			return s.seededRandomRange(p, definition, desc)
 		}
+		// A fact order's counted blocks serve an unrestricted viewer's direct
+		// position: the block holding it, then a walk inside the block.
+		if definition.Blocks > 0 && p.positional() && p.summary.classKey == "" {
+			return s.positionPage(p, definition.Blocks, desc, p.start, p.limit)
+		}
 		return s.filteredRangePage(p)
 	}
 	if definition.ID == "random" {
