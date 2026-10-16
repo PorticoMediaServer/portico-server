@@ -4417,7 +4417,7 @@ export const schemas = {
         },
         "type": "array"
       },
-      "heartbeatAfterSeconds": {
+      "heartbeatAfterMs": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
@@ -4487,7 +4487,7 @@ export const schemas = {
     },
     "required": [
       "signingCertificate",
-      "heartbeatAfterSeconds",
+      "heartbeatAfterMs",
       "presenceExpiresAt",
       "memberSequence",
       "memberDigestMatches",

@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"time"
 
 	"portico.local/hosted/internal/directory"
 	"portico.local/hosted/trust"
@@ -34,7 +33,7 @@ func (s *Store) ServerHeartbeat(ctx context.Context, authority directory.ServerA
 		return result, e
 	}
 	after, _ := directory.CheckIn(wakeable)
-	result.HeartbeatAfterSeconds = int(after / time.Second)
+	result.HeartbeatAfterMs = after.Milliseconds()
 	if q.WakeRevision > 0 {
 		if _, e = tx.ExecContext(ctx, `UPDATE wake_state SET acked_revision=GREATEST(acked_revision,LEAST(desired_revision,$2)) WHERE server_id=$1`, server, q.WakeRevision); e != nil {
 			return result, e

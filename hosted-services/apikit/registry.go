@@ -42,10 +42,21 @@ const (
 //	playback — play, control playback, and change the caller's own watch
 //	           state, lists, preferences and recordings.
 //	library  — scan, match, edit and delete what is in the libraries.
-//	admin    — everything else the member behind the credential may administer.
-//	session  — only a signed-in session may call it. Signing in and out,
-//	           changing passwords, approving devices and creating keys or
-//	           tokens are here: a credential can never mint or widen another.
+//	admin    — everything else the member behind the credential may administer:
+//	           server settings, profiles, members, devices and sessions.
+//	session  — only a signed-in session may call it, each for its own reason:
+//	           signing in and out, renewing and registering (a credential is
+//	           not a sign-in); passwords, two-factor and PIN recovery (a
+//	           credential must not change what proves the person); creating,
+//	           listing and ending keys and tokens, ownership and pairing a
+//	           screen or a TV code (a credential never mints or widens
+//	           another); accepting an invitation (the invitee's own sign-up);
+//	           remembered accounts and choosing a profile (sign-in screens on
+//	           one device); the networking claim and identity proofs.
+//
+// A key or token also travels as the apiKey query parameter on a GET or HEAD,
+// so an address can work on its own; the server takes it out of the address
+// before anything reads the request.
 type Scope string
 
 const (
@@ -176,6 +187,8 @@ type Registry struct {
 	authorize    Authorize
 	authorizeCtx AuthorizeContext
 	scopes       ScopeGate
+	rewrite      PathRewrite
+	refs         Refs
 	routes       []Definition
 	bound        map[string]bool
 	frozen       bool
@@ -185,6 +198,13 @@ type Registry struct {
 // parsing or the handler. Public routes pass it too, so a route that only a
 // signed-in session may call refuses a key however it is reached.
 func (r *Registry) GateScopes(gate ScopeGate) { r.scopes = gate }
+
+// PathRewrite may replace a path value before the handler reads it, such as
+// an id that now names something else. q.Pattern is the matched route.
+type PathRewrite func(q *http.Request, name, value string) string
+
+// RewritePathValues installs the rewrite every matched path value passes.
+func (r *Registry) RewritePathValues(rewrite PathRewrite) { r.rewrite = rewrite }
 
 // Lookup returns the route that would serve method and escaped path.
 func (r *Registry) Lookup(method, escapedPath string) (Metadata, bool) {
@@ -215,6 +235,11 @@ type replyKey struct{}
 type reply struct {
 	status int
 	header http.Header
+	// For a GET: what the client holds (If-None-Match), and whether the handler
+	// found it current before composing anything (Conditional).
+	ifNoneMatch string
+	conditional bool
+	notModified bool
 }
 
 // SetStatus overrides the route's declared success status for this request (a
@@ -231,6 +256,35 @@ func SetHeader(ctx context.Context, key, value string) {
 	if r, ok := ctx.Value(replyKey{}).(*reply); ok && !strings.ContainsAny(key+value, "\r\n") {
 		r.header.Set(key, value)
 	}
+}
+
+// Conditional names this GET response's validator before the handler composes
+// it, and reports whether the client already holds that version. On true the
+// handler returns at once with a zero response and no error: the registry
+// answers 304 without building, marshalling or hashing a body. The tag must
+// change whenever the bytes could (revisions, the viewer's authority fence,
+// the request's own parameters); it replaces the body-digest validator.
+func Conditional(ctx context.Context, tag string) bool {
+	r, ok := ctx.Value(replyKey{}).(*reply)
+	if !ok || !r.conditional || tag == "" || strings.ContainsAny(tag, "\"\r\n") {
+		return false
+	}
+	quoted := "\"" + tag + "\""
+	r.header.Set("ETag", quoted)
+	r.notModified = holds(r.ifNoneMatch, quoted)
+	return r.notModified
+}
+
+// holds is the If-None-Match comparison: a list of entity tags, or `*`. The
+// weak comparison applies, so W/ and the strong form match.
+func holds(header, tag string) bool {
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" || candidate != "" && strings.TrimPrefix(candidate, "W/") == strings.TrimPrefix(tag, "W/") {
+			return true
+		}
+	}
+	return false
 }
 
 func New(authorize Authorize, catalogue *apierror.Registry) *Registry {
@@ -356,10 +410,17 @@ func (r *Registry) ServeHTTP(w http.ResponseWriter, q *http.Request) {
 		r.errors.Write(w, "", &apierror.Error{Code: "not_found"})
 		return
 	}
+	q.Pattern = r.routes[best].Method + " " + r.routes[best].Path
 	for key, value := range values {
+		if r.rewrite != nil {
+			value = r.rewrite(q, key, value)
+		}
 		q.SetPathValue(key, value)
 	}
-	q.Pattern = r.routes[best].Method + " " + r.routes[best].Path
+	if !r.routes[best].HTTP {
+		// A mounted HTTP handler rewrites its own query on the way in.
+		r.rewriteQuery(q)
+	}
 	r.handlers[best](w, q)
 }
 func matchRoute(pattern, path string) (map[string]string, int, bool) {
@@ -494,6 +555,7 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 	if err := r.define(m, reflect.TypeFor[Request](), reflect.TypeFor[Response](), true); err != nil {
 		return err
 	}
+	refs := r.bodyRefPaths(reflect.TypeFor[Request]())
 	r.handlers = append(r.handlers, func(w http.ResponseWriter, q *http.Request) {
 		fail := func(err error) { r.errors.Write(w, "", err) }
 		q, ok := r.admit(w, q, m)
@@ -529,11 +591,20 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 				fail(&apierror.Error{Code: "revision_required"})
 				return
 			}
+			// An id that now names something else (a merged-away title) is
+			// replaced once the document is known to be valid.
+			if next := r.rewriteBody(q, raw, refs); !bytes.Equal(next, raw) {
+				request = *new(Request)
+				if err = json.Unmarshal(next, &request); err != nil {
+					fail(&apierror.Error{Code: "invalid_request", Cause: err})
+					return
+				}
+			}
 		} else if m.BodyLimit == 0 && !empty {
 			fail(&apierror.Error{Code: "invalid_request"})
 			return
 		}
-		out := &reply{header: http.Header{}}
+		out := &reply{header: http.Header{}, conditional: m.Method == "GET", ifNoneMatch: q.Header.Get("If-None-Match")}
 		q = q.WithContext(context.WithValue(q.Context(), replyKey{}, out))
 		response, err := route.Handler(q.Context(), q, request)
 		if err != nil {
@@ -551,6 +622,14 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 			w.WriteHeader(204)
 			return
 		}
+		// A validator the handler named (Conditional, or a revision through
+		// SetHeader) is compared before the body is marshalled: an unchanged
+		// answer costs no encoding, hashing or writing.
+		if m.Method == "GET" && (out.notModified || w.Header().Get("ETag") != "" && holds(out.ifNoneMatch, w.Header().Get("ETag"))) {
+			w.Header().Set("Cache-Control", "private, no-cache")
+			w.WriteHeader(304)
+			return
+		}
 		raw, err := marshalResponse(response)
 		if err != nil {
 			fail(err)
@@ -564,11 +643,9 @@ func Register[Request, Response any](r *Registry, route Route[Request, Response]
 				w.Header().Set("ETag", tag)
 			}
 			w.Header().Set("Cache-Control", "private, no-cache")
-			for _, candidate := range strings.Split(q.Header.Get("If-None-Match"), ",") {
-				if strings.TrimPrefix(strings.TrimSpace(candidate), "W/") == tag || strings.TrimSpace(candidate) == "*" {
-					w.WriteHeader(304)
-					return
-				}
+			if holds(out.ifNoneMatch, tag) {
+				w.WriteHeader(304)
+				return
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")

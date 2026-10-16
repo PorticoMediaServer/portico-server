@@ -78,7 +78,7 @@ Hosted profiles (`/v1/profiles*`, `/v1/account/profiles*`) for server access. Ow
 
 Removed server calls: `GET /v1/servers/{id}/policy`, `POST …/policy/ack`, `POST …/attachments/redeem`,
 `POST …/restrictions`. The 30-day policy renewal is gone; the check-in carries no policy revision.
-Check-in body `{wakeRevision, memberSequence, memberDigest}` → `{heartbeatAfterSeconds, presenceExpiresAt,
+Check-in body `{wakeRevision, memberSequence, memberDigest}` → `{heartbeatAfterMs, presenceExpiresAt,
 routeLabel, memberSequence, memberDigestMatches, cleanupPending}`.
 
 ### Hosted → server
