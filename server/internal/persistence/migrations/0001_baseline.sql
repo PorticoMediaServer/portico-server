@@ -5151,6 +5151,30 @@ CREATE TRIGGER profile_show_progress_update AFTER UPDATE OF updated_at ON progre
  INSERT INTO profile_show_activity(profile_id,show_id,library_id,last_activity,last_item_id)
   SELECT NEW.profile_id,e.show_id,NEW.library_id,NEW.updated_at,NEW.item_id FROM catalog_episodes e WHERE e.entity_id=NEW.item_id
   ON CONFLICT(profile_id,show_id) DO UPDATE SET last_activity=excluded.last_activity,last_item_id=excluded.last_item_id WHERE excluded.last_activity>=profile_show_activity.last_activity;END;
+-- A profile's unfinished episodes by show, newest first (the progress writes
+-- keep it), so Continue Watching finds a show's partial episode among the
+-- few the profile started instead of walking the show's every episode.
+CREATE TABLE profile_show_partials(
+ profile_id TEXT NOT NULL,
+ item_id INTEGER NOT NULL,
+ show_id INTEGER NOT NULL,
+ updated_at TEXT NOT NULL,
+ PRIMARY KEY(profile_id,item_id)) WITHOUT ROWID, STRICT;
+CREATE INDEX profile_show_partials_show ON profile_show_partials(profile_id,show_id,updated_at DESC,item_id DESC);
+CREATE INDEX profile_show_partials_item ON profile_show_partials(item_id);
+CREATE TRIGGER profile_show_partials_insert AFTER INSERT ON progress_activity WHEN NEW.state!='ended' BEGIN
+ INSERT INTO profile_show_partials(profile_id,item_id,show_id,updated_at)
+  SELECT NEW.profile_id,NEW.item_id,e.show_id,NEW.updated_at FROM catalog_episodes e WHERE e.entity_id=NEW.item_id
+  ON CONFLICT(profile_id,item_id) DO UPDATE SET show_id=excluded.show_id,updated_at=excluded.updated_at;END;
+CREATE TRIGGER profile_show_partials_update AFTER UPDATE OF item_id,updated_at,state ON progress_activity BEGIN
+ DELETE FROM profile_show_partials WHERE profile_id=OLD.profile_id AND item_id=OLD.item_id AND (NEW.state='ended' OR OLD.item_id IS NOT NEW.item_id OR OLD.profile_id IS NOT NEW.profile_id);
+ INSERT INTO profile_show_partials(profile_id,item_id,show_id,updated_at)
+  SELECT NEW.profile_id,NEW.item_id,e.show_id,NEW.updated_at FROM catalog_episodes e WHERE e.entity_id=NEW.item_id AND NEW.state!='ended'
+  ON CONFLICT(profile_id,item_id) DO UPDATE SET show_id=excluded.show_id,updated_at=excluded.updated_at;END;
+CREATE TRIGGER profile_show_partials_delete AFTER DELETE ON progress_activity BEGIN
+ DELETE FROM profile_show_partials WHERE profile_id=OLD.profile_id AND item_id=OLD.item_id;END;
+CREATE TRIGGER profile_show_partials_episode_move AFTER UPDATE OF show_id ON catalog_episodes WHEN OLD.show_id IS NOT NEW.show_id BEGIN
+ UPDATE profile_show_partials SET show_id=NEW.show_id WHERE item_id=NEW.entity_id;END;
 CREATE TRIGGER continue_show_dismiss_insert AFTER INSERT ON continue_dismissals BEGIN
  INSERT INTO continue_show_dismissals(profile_id,show_id,item_id,playback_id,last_activity)
   SELECT NEW.profile_id,e.show_id,NEW.item_id,NEW.playback_id,COALESCE(a.last_activity,'') FROM catalog_episodes e LEFT JOIN profile_show_activity a ON a.profile_id=NEW.profile_id AND a.show_id=e.show_id WHERE e.entity_id=NEW.item_id
