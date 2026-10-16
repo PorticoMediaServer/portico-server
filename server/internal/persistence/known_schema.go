@@ -349,6 +349,8 @@ index library_sources_due
 index library_sources_library
 index listening_book_series_key
 index listening_group_names
+index listening_metadata_attention_active
+index listening_metadata_attention_library
 index live_allocations_capacity
 index live_channel_choices_groups
 index live_icon_jobs_due
@@ -900,6 +902,7 @@ table library_scan_policies
 table library_sources
 table listening_book_groups
 table listening_book_series
+table listening_metadata_attention
 table live_allocation_reconcile_cursor
 table live_allocations
 table live_channel_attributes
@@ -1780,6 +1783,14 @@ trigger library_navigation_revisions_bound_delete
 trigger library_navigation_revisions_bound_insert
 trigger library_revision_create
 trigger library_revision_update
+trigger listening_attention_book_insert
+trigger listening_attention_book_update
+trigger listening_attention_count_delete
+trigger listening_attention_count_insert
+trigger listening_attention_count_update
+trigger listening_attention_music_insert
+trigger listening_attention_music_update
+trigger listening_attention_retire
 trigger listening_series_asset_delete
 trigger listening_series_asset_insert
 trigger listening_series_book_library

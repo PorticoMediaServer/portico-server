@@ -2395,6 +2395,58 @@ CREATE TRIGGER screen_attention_update AFTER UPDATE OF status,accepted_publicati
  AND NEW.status IN('matched','matched_work','pending_children','delegated_tvdb')
  AND (NEW.selection_mode IN('owner','legacy') OR COALESCE((SELECT confidence FROM screen_metadata_publications WHERE id=NEW.accepted_publication),1)>=0.9);
 END;
+-- Music and audiobooks wait for the owner here, beside the film and TV list
+-- and in the same per-library counts: an album MusicBrainz could not settle
+-- or offers a choice for, a track that needs a choice, and a book whose tags
+-- leave it without an author.
+CREATE TABLE listening_metadata_attention(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE,
+ kind TEXT NOT NULL CHECK(kind IN('album','song','book')),
+ library_id TEXT NOT NULL REFERENCES libraries(id) ON DELETE CASCADE,
+ reason TEXT NOT NULL,generation INTEGER NOT NULL,
+ dismissed_generation INTEGER NOT NULL DEFAULT -1,
+ retired INTEGER NOT NULL DEFAULT 0 CHECK(retired IN(0,1))) STRICT;
+CREATE INDEX listening_metadata_attention_library ON listening_metadata_attention(library_id,entity_id) WHERE dismissed_generation<>generation;
+CREATE INDEX listening_metadata_attention_active ON listening_metadata_attention(entity_id) WHERE retired=0 AND dismissed_generation<>generation;
+CREATE TRIGGER listening_attention_count_insert AFTER INSERT ON listening_metadata_attention WHEN NEW.retired=0 AND NEW.dismissed_generation<>NEW.generation BEGIN
+ INSERT INTO screen_metadata_attention_counts(library_id,total) VALUES(NEW.library_id,1)
+ ON CONFLICT(library_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER listening_attention_count_delete AFTER DELETE ON listening_metadata_attention WHEN OLD.retired=0 AND OLD.dismissed_generation<>OLD.generation BEGIN
+ UPDATE screen_metadata_attention_counts SET total=total-1 WHERE library_id=OLD.library_id;
+END;
+CREATE TRIGGER listening_attention_count_update AFTER UPDATE OF library_id,retired,dismissed_generation,generation ON listening_metadata_attention BEGIN
+ UPDATE screen_metadata_attention_counts SET total=total-1 WHERE library_id=OLD.library_id AND OLD.retired=0 AND OLD.dismissed_generation<>OLD.generation;
+ INSERT INTO screen_metadata_attention_counts(library_id,total) SELECT NEW.library_id,1 WHERE NEW.retired=0 AND NEW.dismissed_generation<>NEW.generation
+ ON CONFLICT(library_id) DO UPDATE SET total=total+1;
+END;
+CREATE TRIGGER listening_attention_retire AFTER UPDATE OF retired ON catalog_entities WHEN OLD.retired<>NEW.retired AND NEW.kind IN(6,7,8) BEGIN
+ UPDATE listening_metadata_attention SET retired=NEW.retired WHERE entity_id=NEW.id;
+END;
+CREATE TRIGGER listening_attention_music_insert AFTER INSERT ON mb_jobs WHEN NEW.status='needs_selection' OR NEW.kind='album' AND NEW.status='unresolved' BEGIN
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,NEW.kind,(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id),NEW.status,NEW.generation,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1)
+ WHERE (SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id) IS NOT NULL
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=excluded.generation,retired=excluded.retired;
+END;
+CREATE TRIGGER listening_attention_music_update AFTER UPDATE OF status,generation ON mb_jobs WHEN OLD.status IS NOT NEW.status OR OLD.generation IS NOT NEW.generation BEGIN
+ DELETE FROM listening_metadata_attention WHERE entity_id=NEW.entity_id AND NOT(NEW.status='needs_selection' OR NEW.kind='album' AND NEW.status='unresolved');
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,NEW.kind,(SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id),NEW.status,NEW.generation,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1)
+ WHERE (NEW.status='needs_selection' OR NEW.kind='album' AND NEW.status='unresolved') AND (SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.id=NEW.entity_id) IS NOT NULL
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=excluded.generation,retired=excluded.retired;
+END;
+CREATE TRIGGER listening_attention_book_insert AFTER INSERT ON catalog_books WHEN trim(NEW.author)='' BEGIN
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,'book',library_id,'no_author',1,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1) FROM catalog_libraries WHERE id=NEW.library_id
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=generation+1;
+END;
+CREATE TRIGGER listening_attention_book_update AFTER UPDATE OF author ON catalog_books WHEN (trim(OLD.author)='') IS NOT (trim(NEW.author)='') BEGIN
+ DELETE FROM listening_metadata_attention WHERE entity_id=NEW.entity_id AND trim(NEW.author)<>'';
+ INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,retired)
+ SELECT NEW.entity_id,'book',library_id,'no_author',1,COALESCE((SELECT retired FROM catalog_entities WHERE id=NEW.entity_id),1) FROM catalog_libraries WHERE id=NEW.library_id AND trim(NEW.author)=''
+ ON CONFLICT(entity_id) DO UPDATE SET reason=excluded.reason,generation=generation+1;
+END;
 CREATE TABLE screen_metadata_fields(
  target_kind TEXT NOT NULL,target_id INTEGER NOT NULL,field TEXT NOT NULL,value TEXT NOT NULL,
  provider TEXT NOT NULL,source_kind TEXT NOT NULL,source_url TEXT NOT NULL,confidence REAL NOT NULL,

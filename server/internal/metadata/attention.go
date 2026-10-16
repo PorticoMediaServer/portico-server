@@ -79,18 +79,29 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
  LEFT JOIN screen_metadata_attention_counts a ON a.library_id=l.id WHERE (?='' OR l.id=?)`, library, library).Scan(&out.Total); err != nil {
 		return out, err
 	}
-	scope := ""
+	scope, listeningScope := "", ""
 	args := []any{after, includeInProgress}
 	if library != "" {
-		scope = " AND a.library_id=?"
+		scope, listeningScope = " AND a.library_id=?3", " AND l.library_id=?3"
 		args = append(args, library)
+	} else {
+		args = append(args, "")
 	}
 	args = append(args, limit+1)
-	rows, err := tx.QueryContext(ctx, `SELECT a.library_id,a.entity_id,a.target_kind,e.title,w.generation,a.reason,a.confidence,k.name,COALESCE(pid(parent.public_id),''),p.enabled,c.confirmed,pid(e.public_id) FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN screen_metadata_work w ON w.target_kind=a.target_kind AND w.target_id=a.entity_id
+	// Film and TV titles come from the matcher's list, music and audiobooks
+	// from their own; one entity is only ever on one of them.
+	rows, err := tx.QueryContext(ctx, `SELECT library_id,entity_id,target_kind,title,generation,reason,confidence,kind_name,parent,enabled,confirmed,public FROM (
+ SELECT a.library_id,a.entity_id,a.target_kind,e.title,w.generation,a.reason,a.confidence,k.name kind_name,COALESCE(pid(parent.public_id),'') parent,p.enabled,c.confirmed,pid(e.public_id) public FROM screen_metadata_attention a JOIN catalog_entities e ON e.id=a.entity_id JOIN screen_metadata_work w ON w.target_kind=a.target_kind AND w.target_id=a.entity_id
  JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_entities parent ON parent.id=w.parent_id
  JOIN screen_metadata_policies p ON p.library_id=a.library_id CROSS JOIN screen_metadata_consent c
  JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0
- WHERE e.retired=0 AND a.retired=0 AND c.singleton=1 AND a.entity_id>? AND a.dismissed_generation<>a.generation AND (? OR a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply'))`+scope+` ORDER BY a.entity_id LIMIT ?`, args...)
+ WHERE e.retired=0 AND a.retired=0 AND c.singleton=1 AND a.entity_id>?1 AND a.dismissed_generation<>a.generation AND (?2 OR a.reason NOT IN('pending','searching','pending_search','pending_episodes','pending_children','pending_apply'))`+scope+`
+ UNION ALL
+ SELECT l.library_id,l.entity_id,l.kind,e.title,l.generation,l.reason,0,k.name,COALESCE(pid(parent.public_id),''),1,1,pid(e.public_id) FROM listening_metadata_attention l JOIN catalog_entities e ON e.id=l.entity_id
+ JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_entities parent ON parent.id=e.parent_id
+ JOIN catalog_libraries cl ON cl.id=e.library_id AND cl.retired=0
+ WHERE e.retired=0 AND l.retired=0 AND l.entity_id>?1 AND l.dismissed_generation<>l.generation`+listeningScope+`
+) ORDER BY entity_id LIMIT ?4`, args...)
 	if err != nil {
 		return out, err
 	}
@@ -108,7 +119,13 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
 			break
 		}
 		e.Actions = []string{"dismiss"}
-		if e.ItemKind == "episode" {
+		if listeningAttentionKind(e.Kind) {
+			// Music and books are settled on their own page; an album or track
+			// can be looked up again.
+			if e.Kind != "book" {
+				e.Actions = append(e.Actions, "retry")
+			}
+		} else if e.ItemKind == "episode" {
 			if e.ParentID != "" {
 				e.Actions = append(e.Actions, "parent")
 			}
@@ -129,6 +146,9 @@ func (s *Service) AttentionFiltered(ctx context.Context, library, cursor string,
 	requested := make([][2]any, len(ids))
 	for i, id := range ids {
 		requested[i] = [2]any{out.Entries[i].Kind, id}
+		if listeningAttentionKind(out.Entries[i].Kind) {
+			requested[i] = [2]any{"", id}
+		}
 	}
 	raw, err := json.Marshal(requested)
 	if err != nil {
@@ -195,7 +215,15 @@ type AttentionCommand struct {
 	Order            string `json:"order,omitempty"`
 }
 
+// listeningAttentionKind reports the list entries that are music or audiobooks.
+func listeningAttentionKind(kind string) bool {
+	return kind == "album" || kind == "song" || kind == "book"
+}
+
 func (s *Service) AttentionAction(ctx context.Context, library string, in AttentionCommand, actor MBActor, authorize func(*sql.Tx) error) error {
+	if listeningAttentionKind(in.Kind) && in.ExpectedRevision >= 1 {
+		return s.listeningAttentionAction(ctx, library, in, authorize)
+	}
 	if (in.Kind != "item" && in.Kind != "show") || in.ExpectedRevision < 1 {
 		return ErrRepairInput
 	}
@@ -378,4 +406,47 @@ func (s *Service) AttentionCounts(ctx context.Context) (AttentionCounts, error) 
 		out.Libraries = append(out.Libraries, v)
 	}
 	return out, rows.Err()
+}
+
+// listeningAttentionAction dismisses a music or audiobook entry, or looks an
+// album or track up again. The entry must still be what the owner saw.
+func (s *Service) listeningAttentionAction(ctx context.Context, library string, in AttentionCommand, authorize func(*sql.Tx) error) error {
+	if in.Action != "dismiss" && (in.Action != "retry" || in.Kind == "book") {
+		return ErrRepairInput
+	}
+	var mbRevision int64
+	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassInteractive, func(tx *sql.Tx) error {
+		if authorize != nil {
+			if err := authorize(tx); err != nil {
+				return err
+			}
+		}
+		entity, err := resolveEntity(ctx, tx, in.EntityID)
+		if err != nil {
+			return err
+		}
+		var found, kind string
+		var generation int64
+		if err = tx.QueryRowContext(ctx, `SELECT library_id,kind,generation FROM listening_metadata_attention WHERE entity_id=?`, entity).Scan(&found, &kind, &generation); err != nil {
+			return err
+		}
+		if found != library || kind != in.Kind {
+			return ErrRepairInput
+		}
+		if generation != in.ExpectedRevision {
+			return ErrScreenConflict
+		}
+		if in.Action == "dismiss" {
+			_, err = tx.ExecContext(ctx, `UPDATE listening_metadata_attention SET dismissed_generation=generation WHERE entity_id=?`, entity)
+			return err
+		}
+		return tx.QueryRowContext(ctx, `SELECT revision FROM mb_jobs WHERE kind=? AND entity_id=?`, in.Kind, entity).Scan(&mbRevision)
+	})
+	if err != nil || in.Action == "dismiss" {
+		return err
+	}
+	if err = s.RetryMusicBrainz(in.Kind, in.EntityID, mbRevision, authorize); errors.Is(err, ErrMBConflict) {
+		return ErrScreenConflict
+	}
+	return err
 }

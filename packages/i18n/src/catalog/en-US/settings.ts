@@ -275,7 +275,7 @@ export const settingsMessages = {
   'settings.server.missingTitlesRuleHelp': 'Watch history is kept either way, and returns if a title is added again.',
   'settings.server.missingTitlesRule.immediately': 'Right away',
   'settings.server.missingTitlesRule.after_days': 'After a number of days',
-  'settings.server.missingTitlesRule.never': 'Never',
+  'settings.server.missingTitlesRule.never': 'Never (keep until I remove them)',
   'settings.server.missingTitlesDays': 'Keep missing titles for',
   'settings.server.schedule': 'Schedule',
   'settings.server.windows': 'Maintenance windows',
