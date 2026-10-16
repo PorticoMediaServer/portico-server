@@ -114,6 +114,17 @@ export function listedTitlesWithPersonalState(libraryId: string | undefined, tit
   return out;
 }
 
+/** The ids a personal hint may name for these entries: the entry's own, the title its page is about, and what it plays. */
+export function titleIdsOf(entries: readonly Readonly<{id: string; navigation?: Readonly<{entityId?: string}>; playback?: Readonly<{itemId?: string}>}>[]): string[] {
+  const out: string[] = [];
+  for (const e of entries) {
+    out.push(e.id);
+    if (e.navigation?.entityId && e.navigation.entityId !== e.id) out.push(e.navigation.entityId);
+    if (e.playback?.itemId && e.playback.itemId !== e.id) out.push(e.playback.itemId);
+  }
+  return out;
+}
+
 /** Everything a screen of titles with personal marks depends on, for one library or all of them. */
 export function titlesWithPersonalState(libraryId?: string): readonly FreshnessDependency[] {
   return [dependsOn.content(libraryId), dependsOn.order(libraryId), dependsOn.personal(libraryId), dependsOn.progress(libraryId)];

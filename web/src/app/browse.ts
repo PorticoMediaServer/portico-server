@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react';
 import {currentI18n} from './i18n';
 import {createWindowedCollection, type FetchPage, type WindowedCollection} from '@core/collections/index.ts';
-import {listedTitlesWithPersonalState, readsPersonalState} from '@core/freshness-hub.ts';
+import {listedTitlesWithPersonalState, readsPersonalState, titleIdsOf} from '@core/freshness-hub.ts';
 import {browseFields} from '@core/browse.ts';
 import {usePooled} from './freshness';
 import type {ContentEntry} from '@core/library-content.ts';
@@ -58,13 +58,6 @@ export const BROWSE_PAGE = 60;
 
 type BrowseStore = {collection?: WindowedCollection<ContentEntry>; /** What a quiet read asks for: the filters and sort on screen now. */ source?: () => FetchPage<ContentEntry>; getSnapshot(): unknown; subscribe(listener: () => void): () => void; dispose(): void};
 const idleStore = (): BrowseStore => ({getSnapshot: () => undefined, subscribe: () => () => {}, dispose: () => {}});
-
-/** The ids a personal hint may name for these entries: the entry's own, and the title its page is about. */
-export function titleIdsOf(entries: readonly ContentEntry[]): string[] {
-  const out: string[] = [];
-  for (const e of entries) { out.push(e.id); if (e.navigation?.entityId && e.navigation.entityId !== e.id) out.push(e.navigation.entityId); if (e.playback?.itemId && e.playback.itemId !== e.id) out.push(e.playback.itemId); }
-  return out;
-}
 
 export function useBrowseCollection(input: {libraryId?: string; pivot?: string; /** What the list is of (a collection's titles, an album's songs). Always applied; the viewer's filters only narrow it. */ base?: readonly BrowseNode[]; predicates: readonly Predicate[]; sort?: BrowseSortSelection; enabled: boolean; pageSize?: number}) {
   const {api} = useSession();

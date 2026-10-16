@@ -23,8 +23,7 @@ function lifeDate(i18n: I18n, value: string): string {
 import {ErrorNotice, ErrorState} from '../../app/errors';
 import {useViewerScope} from '../../app/viewer-scope';
 import {useFreshDocument} from '../../app/freshness';
-import {listedTitlesWithPersonalState} from '@core/freshness-hub.ts';
-import {titleIdsOf} from '../../app/browse';
+import {listedTitlesWithPersonalState, titleIdsOf} from '@core/freshness-hub.ts';
 import {useI18n, type I18n} from '../../app/i18n';
 import {acrossGroup, useGroupBrowse, type GroupChoice} from '../../app/group-browse';
 import {GroupBar, GroupGrid} from '../shared/GroupBrowse';

@@ -6,8 +6,7 @@ import {currentI18n} from './i18n';
 import {useSession} from './session';
 import {useViewerScope} from './viewer-scope';
 import {usePooledService} from './freshness';
-import {listedTitlesWithPersonalState, titlesWithPersonalState} from '@core/freshness-hub.ts';
-import {titleIdsOf} from './browse';
+import {listedTitlesWithPersonalState, titleIdsOf, titlesWithPersonalState} from '@core/freshness-hub.ts';
 import {RECOMMENDATIONS_RESET, recommendationViewer} from './not-interested';
 import {browseCountLabel as countLabel, isQuickFilterVisible as quickVisible, kindAwareQuickKey as quickKey, kindCaptionFor as kindCaption, libraryKindSingular as kindSingular, nounPivotFor as nounPivot, quickFilterLabelForKind as quickLabel, seeAllTarget as seeAll, type T as WordsT} from './library-words';
 
