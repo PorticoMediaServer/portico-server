@@ -37,7 +37,11 @@ func (s *Service) filteredRangePage(p pageShape) ([]browseRow, error) {
 	}
 	from, where, scopeArgs := "catalog_browse_rows e", p.where, p.args
 	live, liveArgs := "1", []any(nil)
-	class := p.request.Query == nil && p.summary.classKey != "" && !primary.Profile
+	// An availability filter alone is answered by the published class too:
+	// its rows carry their availability, and its counts gave the total.
+	availability := p.request.Query != nil && p.request.Query.Field == "availability" && p.kind != 0
+	class := (p.request.Query == nil || availability) && p.summary.classKey != "" && !primary.Profile
+	row := "e"
 	if class {
 		from = `compact_visibility_rows v CROSS JOIN catalog_browse_rows e ON e.entity_id=v.entity_id`
 		if p.unrestricted != "" {
@@ -48,10 +52,24 @@ func (s *Service) filteredRangePage(p pageShape) ([]browseRow, error) {
 			where, scopeArgs = p.unrestricted, p.unrestrictedArgs
 			live, liveArgs = p.live, p.liveArgs
 		}
+		if availability && primary.ClassKey != "" && p.unrestricted != "" {
+			// The class's own order and availability: a deep position walks
+			// the class's index alone, never a browse row or a live test
+			// before the page.
+			compiler := browseCompiler{}
+			field, _ := browseFieldByID("availability")
+			field.Entity = "v.availability_state"
+			predicate, err := compiler.entityPredicate(field, *p.request.Query)
+			if err != nil {
+				return nil, err
+			}
+			from, row, where, scopeArgs = `compact_visibility_rows v`, "v", predicate, compiler.args
+			expression = primary.ClassKey
+		}
 		where = `v.class_id=? AND v.generation=? AND v.library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND v.kind=? AND (` + where + `)`
 		scopeArgs = append([]any{p.summary.classID, p.summary.generation, p.request.Library, p.kind}, scopeArgs...)
 	}
-	query := `WITH page AS MATERIALIZED (SELECT e.entity_id AS entity_id,e.sort_key AS sort_key,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?)
+	query := `WITH page AS MATERIALIZED (SELECT ` + row + `.entity_id AS entity_id,` + row + `.sort_key AS sort_key,` + expression + ` AS order_key FROM ` + from + ` WHERE ` + where + ` ORDER BY ` + order + ` LIMIT ? OFFSET ?)
  SELECT ` + browseRowColumns + `,page.order_key FROM page CROSS JOIN catalog_browse_rows e ON e.entity_id=page.entity_id
  CROSS JOIN catalog_entities ce ON ce.id=e.entity_id WHERE ` + live + ` ORDER BY ` + strings.NewReplacer("order_key", "page.order_key", "entity_id", "page.entity_id", "sort_key", "page.sort_key").Replace(order)
 	selectRows := func(limit, offset int) ([]browseRow, error) {

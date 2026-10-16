@@ -23,6 +23,9 @@ type HomeRequest struct {
 	Now  time.Time
 	// Restrictions is applied to every row by homeSource; see restrictions.go.
 	Restrictions identity.ContentRestrictions
+	// visibleShows, when set, is a first test of a started show (w.show_id)
+	// against the published visibility classes (publishedClassesSQL).
+	visibleShows string
 }
 
 func (r HomeRequest) scoped() HomeRequest {

@@ -356,7 +356,11 @@ func (s *Service) homeEngineSource(r HomeRequest, spec homeRowSpec) (homeSource,
 	// current restriction to its entities on every read. Candidates are public
 	// ids, so they resolve to integer entities for the predicate.
 	if restriction, args := EntityRestrictionSQL("(SELECT id FROM catalog_entities WHERE public_id=pid_blob(candidate.id))", r.Restrictions); restriction != "1" {
-		src.base = `SELECT id,ord FROM (` + src.base + `) candidate WHERE ` + restriction
+		published, err := s.publishedClassesSQL("(SELECT id FROM catalog_entities WHERE public_id=pid_blob(candidate.id))", r.Libraries, r.Restrictions)
+		if err != nil {
+			return homeSource{}, err
+		}
+		src.base = `SELECT id,ord FROM (` + src.base + `) candidate WHERE ` + published + ` AND ` + restriction
 		src.args = append(src.args, args...)
 		src.total = nil
 	}

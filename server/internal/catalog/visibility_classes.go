@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
 	"sort"
 	"strings"
@@ -218,6 +219,40 @@ func (s *Service) publishedVisibilityClass(library string, r identity.ContentRes
 	}
 	s.queueVisibilityClass(library, r)
 	return key, 0, false, nil
+}
+
+// publishedClassesSQL is a first test of an entity (an integer id
+// expression) against the published visibility classes of the viewer's
+// libraries: false when its library's class does not hold it. A container
+// the viewer may see none of is then refused by one key lookup, before the
+// live restriction walks its members. A library whose class is not yet
+// published passes, and the live restriction decides alone.
+func (s *Service) publishedClassesSQL(entity string, libraries []string, r identity.ContentRestrictions) (string, error) {
+	if !r.Active() {
+		return "1", nil
+	}
+	arms := []string{}
+	for _, library := range libraries {
+		key, generation, ready, err := s.publishedVisibilityClass(library, r)
+		if err != nil {
+			return "", err
+		}
+		if !ready {
+			continue
+		}
+		var classID, libraryID int64
+		if err = s.read().QueryRow(`SELECT c.id,c.library_id FROM compact_visibility_classes c WHERE c.class_key=?`, key).Scan(&classID, &libraryID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				continue
+			}
+			return "", err
+		}
+		arms = append(arms, fmt.Sprintf(` WHEN %d THEN EXISTS(SELECT 1 FROM compact_visibility_rows v WHERE v.class_id=%d AND v.generation=%d AND v.entity_id=%s)`, libraryID, classID, generation, entity))
+	}
+	if len(arms) == 0 {
+		return "1", nil
+	}
+	return `(CASE (SELECT library_id FROM catalog_entities WHERE id=` + entity + `)` + strings.Join(arms, "") + ` ELSE 1 END)`, nil
 }
 
 func (s *Service) visibilitySummary(library string, kinds []string, r identity.ContentRestrictions) (browseSummary, bool, error) {

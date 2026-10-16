@@ -12,7 +12,7 @@ import (
 	"portico.local/server/internal/dbwork"
 )
 
-func TestContinueFallbackStartsWithShowMembers(t *testing.T) {
+func TestContinueFallbackStartsWithTheShowsPartialEpisodes(t *testing.T) {
 	sizes := []int{256}
 	switch os.Getenv("PORTICO_PERFORMANCE_TIER") {
 	case "release":
@@ -48,7 +48,9 @@ func TestContinueFallbackStartsWithShowMembers(t *testing.T) {
 			c.Exec(`ANALYZE`)
 			query, args := homeShowContinuation(HomeRequest{Profile: "p", Libraries: []string{"tv"}}, `{"tv":"2026-01-01T00:00:00Z"}`, `{}`, 1, "", nil)
 			plan := seekCapacityPlan(t, c.DB, query, args...)
-			if !strings.Contains(plan, "SEARCH e2 USING COVERING INDEX catalog_episodes_show (show_id=?)") && !strings.Contains(plan, "SEARCH e2 USING COVERING INDEX catalog_episodes_position (show_id=?)") {
+			// The fallback starts from the profile's unfinished episodes of
+			// the show, never the history nor the show's every episode.
+			if !strings.Contains(plan, "SEARCH ps USING COVERING INDEX profile_show_partials_show (profile_id=? AND show_id=?)") {
 				t.Fatalf("fallback not show-indexed: %s", plan)
 			}
 			start := time.Now()

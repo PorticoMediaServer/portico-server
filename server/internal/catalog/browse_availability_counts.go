@@ -36,7 +36,14 @@ func (s *Service) availabilitySummary(library string, kinds []string, node *Brow
 			}
 			args = append(args, compiler.args...)
 			err = s.read().QueryRow(`SELECT COALESCE(sum(total),0) FROM compact_visibility_availability_counts WHERE class_id=(SELECT id FROM compact_visibility_classes WHERE class_key=?) AND generation=? AND library_id=(SELECT id FROM catalog_libraries WHERE library_id=?) AND kind IN (`+placeholders(len(kinds))+`) AND `+predicate, args...).Scan(&out.total)
+			if err == nil {
+				// A deep page reads the same class's rows (filteredRangePage).
+				err = s.read().QueryRow(`SELECT id FROM compact_visibility_classes WHERE class_key=?`, key).Scan(&out.classID)
+			}
 			out.exact = err == nil
+			if out.exact {
+				out.classKey, out.generation = key, generation
+			}
 			return out, err
 		}
 	}

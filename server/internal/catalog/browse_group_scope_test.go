@@ -509,3 +509,59 @@ func TestHistoryAcrossLibrariesRunsPastTheTotalsLimit(t *testing.T) {
 		t.Fatalf("filtered history, oldest first: %v", titles)
 	}
 }
+
+// A history longer than the members a list reads is still sorted by title and
+// queued whole, from the profile's own rows.
+func TestHistoryAcrossLibrariesSortsAndQueuesPastTheMembersLimit(t *testing.T) {
+	c := catalogtest.Open(t)
+	movies := c.Library("m", "Movies", "movie", "/m")
+	owner := identity.PersonalKey(identity.Viewer{Authority: "local", AccountID: "account", ProfileID: "profile"})
+	names := []string{"Zulu", "Alpha", "Mike", "Kilo", "Echo"}
+	for at, name := range names {
+		film := c.Movie(movies, "/m/"+name+".mkv", name, 2001)
+		c.Exec(`INSERT INTO personal_items(profile_id,item_id,last_played_at,revision) VALUES(?,?,?,1)`, owner, film.ID, fmt.Sprintf("2026-10-0%dT00:00:00Z", at+1))
+	}
+	c.Drain()
+	// A renamed title moves in the history's title order.
+	c.Exec(`UPDATE catalog_entities SET title='Bravo',sort_title='',sort_key='bravo' WHERE title='Mike'`)
+	c.Exec(`UPDATE catalog_browse_rows SET title='Bravo',sort_key='bravo' WHERE title='Mike'`)
+	before := acrossMaximum
+	acrossMaximum = 2
+	defer func() { acrossMaximum = before }()
+	s := New(c.DB)
+	v := Viewer{Profile: owner, Fence: "f", Libraries: []string{"m"}}
+	history := BrowseNode{Field: "lastPlayedAt", Operator: "is-present"}
+	for _, tc := range []struct {
+		sort BrowseSortSelection
+		want []string
+	}{
+		{BrowseSortSelection{Field: "title", Direction: "asc"}, []string{"Alpha", "Bravo", "Echo", "Kilo", "Zulu"}},
+		{BrowseSortSelection{Field: "title", Direction: "desc"}, []string{"Zulu", "Kilo", "Echo", "Bravo", "Alpha"}},
+		{BrowseSortSelection{Field: "lastPlayed", Direction: "desc"}, []string{"Echo", "Kilo", "Bravo", "Alpha", "Zulu"}},
+	} {
+		if titles := entryTitles(walkAcross(t, s, v, AcrossRequest{Pivot: "titles", Query: &history, Sort: []BrowseSortSelection{tc.sort}, Limit: 2})); !reflect.DeepEqual(titles, tc.want) {
+			t.Fatalf("%v: %v", tc.sort, titles)
+		}
+		tx, done, err := dbwork.BeginRead(context.Background(), c.DB)
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan, err := s.QueueKeysTx(context.Background(), tx, v, ResourceActor{}, &QueueQuery{LibraryID: AcrossLibraries, Pivot: "items", Query: &history, Sort: []BrowseSortSelection{tc.sort}}, "", nil)
+		if err != nil {
+			done()
+			t.Fatal(err)
+		}
+		rows, err := tx.QueryContext(context.Background(), plan.SQL, plan.Args...)
+		queued := 0
+		for err == nil && rows.Next() {
+			queued++
+		}
+		if rows != nil {
+			rows.Close()
+		}
+		done()
+		if err != nil || queued != len(names) {
+			t.Fatalf("%v: queued %d of %d (%v)", tc.sort, queued, len(names), err)
+		}
+	}
+}
