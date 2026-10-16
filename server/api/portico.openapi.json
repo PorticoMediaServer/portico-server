@@ -118182,6 +118182,26 @@
         ],
         "type": "object"
       },
+      "StartAppSetupRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "StartAppSetupResponse": {
+        "properties": {
+          "serverId": {
+            "type": "string"
+          },
+          "setupToken": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "serverId",
+          "setupToken"
+        ],
+        "type": "object"
+      },
       "StartBrowserSetupRequest": {
         "properties": {},
         "required": [],
@@ -274994,6 +275014,91 @@
         ],
         "x-lane": "security",
         "x-max-body-bytes": 65536,
+        "x-scope": "session"
+      }
+    },
+    "/v1/setup/app": {
+      "post": {
+        "operationId": "start_app_setup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "serverId": {
+                      "type": "string"
+                    },
+                    "setupToken": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "serverId",
+                    "setupToken"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Start first-run setup from an app",
+        "x-access": "public",
+        "x-admission": "default",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "invalid_request",
+          "rate_limited",
+          "setup_already_complete",
+          "internal"
+        ],
+        "x-lane": "security",
+        "x-max-body-bytes": 4096,
         "x-scope": "session"
       }
     },

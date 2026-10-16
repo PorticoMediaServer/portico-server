@@ -1255,6 +1255,8 @@ export type SocialPostV1ReceiversIdHeartbeatRequest = { "keyFingerprint": string
 export type SocialPostV1ReceiversIdHeartbeatResponse = { "protocolVersion": string; "receiver": { "authorizationRevision": string; "createdAt": string; "deviceId": string; "displayName": string; "grantPolicy": string; "id": string; "keyFingerprint": string; "kind": string; "lastSeenAt": string; "platform": string; "presence": string; "state": string; "supportedCommands": Array<string> }; "serverTime": string };
 export type SocialPutV1CastConfigurationRequest = { "applicationId": string; "protocolVersion": string };
 export type SocialPutV1CastConfigurationResponse = { "applicationId": string; "protocolVersion": string; "receiverUrl": string };
+export type StartAppSetupRequest = {  };
+export type StartAppSetupResponse = { "serverId": string; "setupToken": string };
 export type StartBrowserSetupRequest = {  };
 export type StartBrowserSetupResponse = { "serverId": string; "setupToken": string };
 export type StartPlaybackSessionRequest = { "audio"?: { "channels"?: number; "trackId": string }; "channelGeneration"?: string; "channelId"?: string; "itemId"?: string; "network"?: string; "partIndex"?: number; "quality"?: { "id"?: string; "maxAudioBitrateKbps"?: number; "maxHeight"?: number; "maxVideoBitrateKbps"?: number; "mode": string; "step"?: string }; "queue"?: { "entryId": string; "queueId": string }; "replacesSessionId"?: string; "startFrom"?: string; "startPositionMs"?: number; "state"?: string; "subtitles"?: { "delivery"?: string; "trackId": string }; "throughputKbps"?: number; "transferId"?: string; "versionId"?: string };
@@ -1902,6 +1904,7 @@ export type RouteContracts = {
 "social_post_v1_receivers_id_grants_grantId_decision": { request: SocialPostV1ReceiversIdGrantsGrantIdDecisionRequest; response: SocialPostV1ReceiversIdGrantsGrantIdDecisionResponse };
 "social_post_v1_receivers_id_heartbeat": { request: SocialPostV1ReceiversIdHeartbeatRequest; response: SocialPostV1ReceiversIdHeartbeatResponse };
 "social_put_v1_cast_configuration": { request: SocialPutV1CastConfigurationRequest; response: SocialPutV1CastConfigurationResponse };
+"start_app_setup": { request: StartAppSetupRequest; response: StartAppSetupResponse };
 "start_browser_setup": { request: StartBrowserSetupRequest; response: StartBrowserSetupResponse };
 "start_playback_session": { request: StartPlaybackSessionRequest; response: StartPlaybackSessionResponse };
 "stop_playback_session": { request: StopPlaybackSessionRequest; response: StopPlaybackSessionResponse };

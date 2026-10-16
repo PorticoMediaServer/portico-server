@@ -43,6 +43,14 @@ export const secureConnectionMessages = {
   'web.setup.connectLaterHelp': 'You can connect any time in Settings › Remote access. Until then, devices connect with plain HTTP.',
   'web.setup.connectRetry': 'Start again',
 
+  // ── First run from the Portico app on a phone or tablet ──
+  'setup.app.found': 'Nobody has set up this server yet. You can set it up from here.',
+  'setup.app.start': 'Set up this server',
+  'setup.app.nextWithAccount': 'Next, this server joins {account} and gets its secure connection by itself.',
+  'setup.app.connecting': 'Connecting {server} to {account}',
+  'setup.app.connectLede': 'Your Portico Account opens in the browser. Sign in there if you need to, approve this server, then come back here.',
+  'setup.app.notSetUp': 'This server isn’t set up yet. Set it up from the Portico app on a phone or tablet, or open its address in a browser.',
+
   // ── Signed-out screens over plain HTTP from outside the home ──
   'signIn.plainHttp.owner': 'The server’s owner can turn on a secure connection in Settings › Remote access.',
 } as const;

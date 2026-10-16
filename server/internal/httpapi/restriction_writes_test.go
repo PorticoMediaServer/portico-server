@@ -650,6 +650,7 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/quick-connect/decision":                   writeExempt(reasonOwnSession),
 		"POST /v1/quick-connect/review":                     writeExempt(reasonOwnSession),
 		"POST /v1/setup":                                    writeExempt(reasonSignIn),
+		"POST /v1/setup/app":                                writeExempt(reasonSignIn),
 		"POST /v1/setup/browser":                            writeExempt(reasonSignIn),
 		"POST /v1/setup/resume":                             writeExempt(reasonSignIn),
 		"POST /v1/hosted/wake":                              writeExempt(reasonNetworking),

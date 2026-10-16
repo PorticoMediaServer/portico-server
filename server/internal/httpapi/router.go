@@ -1191,7 +1191,7 @@ func New(d Dependencies) http.Handler {
 		origin := r.Header.Get("Origin")
 		if origin != "" {
 			allowed := d.browserOriginAllowed(r, origin)
-			if r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/setup/browser" {
+			if r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/setup/browser" || r.URL.Path == "/v1/setup/app" {
 				allowed = d.sameRequestOrigin(r, origin)
 			}
 			if !allowed {

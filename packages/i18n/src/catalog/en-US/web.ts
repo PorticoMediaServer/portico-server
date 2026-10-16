@@ -1612,7 +1612,6 @@ export const webMessages = {
   'web.access.copyLink': 'Copy link',
   'web.access.devicesWaiting': '{count, plural, one {# device is} other {# devices are}} waiting for your approval.',
   'web.access.devicesLede': 'Every device that has signed in to this server.',
-  'web.access.deviceMeta': '{platform} · last seen {when}',
   'web.access.block': 'Block',
   'web.access.apiKeys': 'API keys',
   'web.access.noApiKeys': 'No API keys.',
