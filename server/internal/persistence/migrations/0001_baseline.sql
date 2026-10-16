@@ -72,6 +72,10 @@ CREATE TABLE catalog_merged_ids(
  public_id BLOB PRIMARY KEY CHECK(length(public_id)=16),
  entity_id INTEGER NOT NULL REFERENCES catalog_entities(id) ON DELETE CASCADE) WITHOUT ROWID, STRICT;
 CREATE INDEX catalog_merged_ids_entity ON catalog_merged_ids(entity_id);
+-- A title the owner separated from another: provider identity never joins it
+-- automatically again (the owner still can).
+CREATE TABLE catalog_kept_apart(
+ entity_id INTEGER PRIMARY KEY REFERENCES catalog_entities(id) ON DELETE CASCADE) STRICT;
 
 -- One asset table: physical evidence and probed facts. token is the asset's
 -- public id (assets are not entities; the format is unchanged).

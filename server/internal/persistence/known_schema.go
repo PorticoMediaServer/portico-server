@@ -689,6 +689,7 @@ table catalog_item_attribute_edges
 table catalog_item_availability
 table catalog_item_availability_previous
 table catalog_item_details
+table catalog_kept_apart
 table catalog_kinds
 table catalog_libraries
 table catalog_merged_ids

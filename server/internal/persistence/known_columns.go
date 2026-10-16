@@ -974,6 +974,7 @@ catalog_item_details.release_date
 catalog_item_details.studio
 catalog_item_details.tagline
 catalog_item_details.tags
+catalog_kept_apart.entity_id
 catalog_kinds.browsable
 catalog_kinds.container
 catalog_kinds.id

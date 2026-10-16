@@ -23,8 +23,9 @@ var ErrNotMergeable = requestinput.New("titles of different kinds or libraries c
 
 // MergeTitlesTx makes from part of into and removes from. Both must be of one
 // kind in one library. A show takes the other show's seasons and episodes
-// (same-numbered ones merge in turn); a film, episode, track or book part
-// takes the other's files as versions.
+// (same-numbered ones merge in turn), an album its tracks and a book its parts
+// (likewise), an artist its albums; a film, episode, track or book part takes
+// the other's files as versions.
 func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 	if from == into {
 		return nil
@@ -47,6 +48,10 @@ func MergeTitlesTx(ctx context.Context, tx *sql.Tx, from, into int64) error {
 		}
 	case compactcatalog.Season:
 		return fmt.Errorf("%w: seasons merge with their shows", ErrNotMergeable)
+	case compactcatalog.Album, compactcatalog.Artist, compactcatalog.Book:
+		if err := mergeListeningChildrenTx(ctx, tx, from, into, fromKind); err != nil {
+			return err
+		}
 	case compactcatalog.Movie, compactcatalog.Episode, compactcatalog.Track, compactcatalog.Part, compactcatalog.Extra:
 	default:
 		return fmt.Errorf("%w: kind %d", ErrNotMergeable, fromKind)
@@ -421,6 +426,124 @@ func reparentSeasonTx(ctx context.Context, tx *sql.Tx, season, into int64, intoK
 	return compactcatalog.TouchEntityTx(ctx, tx, season)
 }
 
+// mergeListeningChildrenTx moves an album's tracks, a book's parts or an
+// artist's albums under another of the same kind. A track or part the other
+// already has at the same disc and number absorbs the incoming one, so two
+// copies of one release become versions of each track.
+func mergeListeningChildrenTx(ctx context.Context, tx *sql.Tx, from, into int64, kind compactcatalog.Kind) error {
+	type child struct {
+		id           int64
+		disc, number sql.NullInt64
+	}
+	read := func(query string) ([]child, error) {
+		rows, err := tx.QueryContext(ctx, query, from)
+		if err != nil {
+			return nil, err
+		}
+		defer rows.Close()
+		var out []child
+		for rows.Next() {
+			var c child
+			if err = rows.Scan(&c.id, &c.disc, &c.number); err != nil {
+				return nil, err
+			}
+			out = append(out, c)
+		}
+		return out, rows.Err()
+	}
+	switch kind {
+	case compactcatalog.Artist:
+		albums, err := read(`SELECT entity_id,NULL,NULL FROM catalog_albums WHERE artist_id=? ORDER BY entity_id`)
+		if err != nil {
+			return err
+		}
+		for _, a := range albums {
+			if _, err = tx.ExecContext(ctx, `UPDATE catalog_entities SET parent_id=? WHERE id=? AND parent_id IS NOT ?`, into, a.id, into); err != nil {
+				return err
+			}
+			if err = compactcatalog.SetFactsTx(ctx, tx, a.id, map[string]any{"artist_id": into}); err != nil {
+				return err
+			}
+			if err = compactcatalog.TouchEntityTx(ctx, tx, a.id); err != nil {
+				return err
+			}
+		}
+		for _, q := range []string{
+			`UPDATE OR IGNORE catalog_song_artists SET artist_id=?2 WHERE artist_id=?1`,
+			`DELETE FROM catalog_song_artists WHERE artist_id=?1`,
+		} {
+			if _, err = tx.ExecContext(ctx, q, from, into); err != nil {
+				return err
+			}
+		}
+		return nil
+	case compactcatalog.Album, compactcatalog.Book:
+	default:
+		return ErrNotMergeable
+	}
+	table, parentColumn, numberColumn, childKind := "catalog_songs", "album_id", "track_number", compactcatalog.Track
+	if kind == compactcatalog.Book {
+		table, parentColumn, numberColumn, childKind = "catalog_book_files", "book_id", "part_number", compactcatalog.Part
+	}
+	children, err := read(`SELECT entity_id,disc_number,` + numberColumn + ` FROM ` + table + ` WHERE ` + parentColumn + `=? ORDER BY entity_id`)
+	if err != nil {
+		return err
+	}
+	for _, c := range children {
+		var existing int64
+		if c.number.Valid {
+			err = tx.QueryRowContext(ctx, `SELECT entity_id FROM `+table+` WHERE `+parentColumn+`=? AND COALESCE(disc_number,1)=COALESCE(?,1) AND `+numberColumn+`=? ORDER BY entity_id LIMIT 1`, into, c.disc, c.number).Scan(&existing)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				return err
+			}
+		}
+		if existing != 0 {
+			if err = absorbTx(ctx, tx, c.id, existing, childKind); err != nil {
+				return err
+			}
+			continue
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE catalog_entities SET parent_id=? WHERE id=?`, into, c.id); err != nil {
+			return err
+		}
+		if err = compactcatalog.SetFactsTx(ctx, tx, c.id, map[string]any{parentColumn: into}); err != nil {
+			return err
+		}
+		if kind == compactcatalog.Book {
+			if err = compactcatalog.ReprojectBookFileTx(ctx, tx, c.id); err != nil {
+				return err
+			}
+		}
+		if err = compactcatalog.TouchEntityTx(ctx, tx, c.id); err != nil {
+			return err
+		}
+	}
+	if kind == compactcatalog.Book {
+		// What still hangs off the emptied book: the place a profile stopped
+		// moves with the parts, the rest is the book's own derived context.
+		for _, q := range []string{
+			`UPDATE OR IGNORE book_resume SET book_id=?2 WHERE book_id=?1`,
+			`DELETE FROM book_resume WHERE book_id=?1`,
+			`DELETE FROM catalog_book_group_members WHERE book_id=?1`,
+			`DELETE FROM catalog_book_series_spellings WHERE book_id=?1`,
+			`DELETE FROM catalog_book_series_terms WHERE book_id=?1`,
+			`DELETE FROM catalog_book_position_terms WHERE book_id=?1`,
+		} {
+			if _, err = tx.ExecContext(ctx, q, from, into); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// KeepApartTx records that an owner separated this title: provider identity
+// never joins it with another title automatically again (the owner still can).
+func KeepApartTx(ctx context.Context, tx *sql.Tx, entity int64) error {
+	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO catalog_kept_apart(entity_id) VALUES(?)`, entity)
+	return err
+}
+
 // AdoptProviderIdentityTx is called when a title has just been given a
 // provider identity. Any other title of the same kind in the same library that
 // carries the same identity is the same title: it is merged into this one,
@@ -429,8 +552,10 @@ func AdoptProviderIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, p co
 	if p.Provider == "" || p.ID == "" {
 		return 0, nil
 	}
+	// A title the owner separated is never joined again by identity alone.
 	others, err := scanInt64s(tx.QueryContext(ctx, `SELECT other.id FROM catalog_entities me CROSS JOIN catalog_external_ids x INDEXED BY catalog_external_ids_lookup ON x.provider=?2 AND x.provider_kind=?3 AND x.provider_id=?4
- JOIN catalog_entities other ON other.id=x.entity_id AND other.library_id=me.library_id AND other.kind=me.kind AND other.id<>me.id WHERE me.id=?1 ORDER BY other.id LIMIT 16`, entity, p.Provider, p.Kind, p.ID))
+ JOIN catalog_entities other ON other.id=x.entity_id AND other.library_id=me.library_id AND other.kind=me.kind AND other.id<>me.id
+ WHERE me.id=?1 AND NOT EXISTS(SELECT 1 FROM catalog_kept_apart k WHERE k.entity_id IN(me.id,other.id)) ORDER BY other.id LIMIT 16`, entity, p.Provider, p.Kind, p.ID))
 	if err != nil {
 		return 0, err
 	}
@@ -524,4 +649,180 @@ func (s *Service) SurvivingTitleID(ctx context.Context, public string) string {
 		return public
 	}
 	return survivor
+}
+
+// SeparateFolder is the owner's "these are not the same album (or book)": the
+// tracks or parts of an album or book whose files lie in one folder (the
+// folder of the given file) become an album or book of their own, which
+// provider identity never joins with another again. A track or part that also
+// has files elsewhere keeps those and leaves a new one for this folder's
+// file. Nothing on disk changes and everyone's state stays where it is. It
+// returns the new album's or book's public id.
+func (s *Service) SeparateFolder(ctx context.Context, library, object, revision string, authorize func(*sql.Tx) error) (string, error) {
+	if authorize == nil {
+		return "", ErrAdminQuery
+	}
+	var public string
+	err := dbwork.WithWriteTx(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive), func(tx *sql.Tx) error {
+		if err := authorize(tx); err != nil {
+			return err
+		}
+		var asset, source, directory string
+		if err := tx.QueryRowContext(ctx, `SELECT o.asset_id,o.source_id,o.directory_path FROM inventory_objects o JOIN library_sources s ON s.id=o.source_id WHERE o.id=? AND o.revision=? AND o.retired=0 AND s.library_id=?`, object, revision, library).Scan(&asset, &source, &directory); err != nil {
+			return err
+		}
+		handle, err := compactcatalog.LibraryTx(ctx, tx, library)
+		if err != nil {
+			return err
+		}
+		var item int64
+		var kind compactcatalog.Kind
+		if err = tx.QueryRowContext(ctx, `SELECT e.id,e.kind FROM catalog_assets a JOIN catalog_asset_links l INDEXED BY catalog_asset_links_asset ON l.asset_id=a.id JOIN catalog_entities e ON e.id=l.entity_id
+ WHERE a.token=? AND e.library_id=? AND e.kind IN(?,?) ORDER BY e.id LIMIT 1`, asset, handle, int(compactcatalog.Track), int(compactcatalog.Part)).Scan(&item, &kind); err != nil {
+			return err
+		}
+		table, parentColumn, numberColumn, containerKind := "catalog_songs", "album_id", "track_number", compactcatalog.Album
+		if kind == compactcatalog.Part {
+			table, parentColumn, numberColumn, containerKind = "catalog_book_files", "book_id", "part_number", compactcatalog.Book
+		}
+		var container, grandparent int64
+		var title string
+		var year int
+		if err = tx.QueryRowContext(ctx, `SELECT c.id,COALESCE(c.parent_id,0),c.title,c.year FROM `+table+` x JOIN catalog_entities c ON c.id=x.`+parentColumn+` WHERE x.entity_id=?`, item).Scan(&container, &grandparent, &title, &year); err != nil {
+			return err
+		}
+		// The container's files in this folder, and whether any lie elsewhere.
+		type file struct {
+			child, asset int64
+			token, path  string
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT l.entity_id,a.id,a.token,a.path,EXISTS(SELECT 1 FROM inventory_objects o WHERE o.asset_id=a.token AND o.source_id=?2 AND o.directory_path=?3 AND o.retired=0)
+ FROM `+table+` x JOIN catalog_asset_links l ON l.entity_id=x.entity_id JOIN catalog_assets a ON a.id=l.asset_id WHERE x.`+parentColumn+`=?1 ORDER BY l.entity_id,a.id LIMIT 4001`, container, source, directory)
+		if err != nil {
+			return err
+		}
+		var here []file
+		elsewhere := map[int64]bool{}
+		total := 0
+		for rows.Next() {
+			var f file
+			var inFolder bool
+			if err = rows.Scan(&f.child, &f.asset, &f.token, &f.path, &inFolder); err != nil {
+				rows.Close()
+				return err
+			}
+			total++
+			if inFolder {
+				here = append(here, f)
+			} else {
+				elsewhere[f.child] = true
+			}
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		if total > 4000 || len(here) == 0 || len(here) == total {
+			// Too large to move in one step, or nothing would be left behind.
+			return ErrAdminQuery
+		}
+		root, err := compactcatalog.LibraryRootTx(ctx, tx, handle)
+		if err != nil {
+			return err
+		}
+		key := compactcatalog.ItemKey(root, source+"/"+directory, 0) + "#separate"
+		separate, _, err := compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: containerKind, Parent: grandparent, Key: key, Title: title, Year: year})
+		if err != nil {
+			return err
+		}
+		facts := map[string]any{}
+		if containerKind == compactcatalog.Album {
+			var artist int64
+			var localKey, edition string
+			if err = tx.QueryRowContext(ctx, `SELECT artist_id,local_key,edition_key FROM catalog_albums WHERE entity_id=?`, container).Scan(&artist, &localKey, &edition); err != nil {
+				return err
+			}
+			facts = map[string]any{"artist_id": artist, "local_key": localKey + "#separate", "edition_key": edition}
+		} else {
+			var bookLibrary int64
+			var localKey, author, narrator string
+			if err = tx.QueryRowContext(ctx, `SELECT library_id,local_key,author,narrator FROM catalog_books WHERE entity_id=?`, container).Scan(&bookLibrary, &localKey, &author, &narrator); err != nil {
+				return err
+			}
+			facts = map[string]any{"library_id": bookLibrary, "local_key": localKey + "#separate", "author": author, "narrator": narrator}
+		}
+		if err = compactcatalog.SetFactsTx(ctx, tx, separate, facts); err != nil {
+			return err
+		}
+		if err = KeepApartTx(ctx, tx, separate); err != nil {
+			return err
+		}
+		moved := map[int64]bool{}
+		for _, f := range here {
+			child := f.child
+			if elsewhere[child] {
+				// The track keeps its other files; this folder's file becomes a
+				// track of its own under the separated album.
+				link := compactcatalog.Link{}
+				var end sql.NullFloat64
+				if err = tx.QueryRowContext(ctx, `SELECT part_index,start_seconds,end_seconds,edition FROM catalog_asset_links WHERE entity_id=? AND asset_id=?`, child, f.asset).Scan(&link.Part, &link.Start, &end, &link.Edition); err != nil {
+					return err
+				}
+				if end.Valid {
+					link.End = &end.Float64
+				}
+				if err = compactcatalog.UnlinkAssetTx(ctx, tx, child, f.asset); err != nil {
+					return err
+				}
+				var childTitle string
+				if err = tx.QueryRowContext(ctx, `SELECT title FROM catalog_entities WHERE id=?`, child).Scan(&childTitle); err != nil {
+					return err
+				}
+				own, _, err := compactcatalog.EnsureEntityTx(ctx, tx, compactcatalog.Entity{Library: handle, Kind: kind, Parent: separate, Key: compactcatalog.ItemKey(root, f.path, 0) + "#separate", Title: childTitle, Added: catalogedNow()})
+				if err != nil {
+					return err
+				}
+				if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO `+table+`(entity_id,`+parentColumn+`,disc_number,`+numberColumn+`) SELECT ?,?,disc_number,`+numberColumn+` FROM `+table+` WHERE entity_id=?`, own, separate, child); err != nil {
+					return err
+				}
+				if err = moveDownloadClaimsTx(ctx, tx, child, own, f.token); err != nil {
+					return err
+				}
+				if err = compactcatalog.LinkAssetTx(ctx, tx, own, f.asset, link); err != nil {
+					return err
+				}
+				if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_version_links(library_id,asset_id,item_id) VALUES(?,?,?) ON CONFLICT(library_id,asset_id) DO UPDATE SET item_id=excluded.item_id`, library, f.token, own); err != nil {
+					return err
+				}
+				child = own
+			} else if !moved[child] {
+				if _, err = tx.ExecContext(ctx, `UPDATE catalog_entities SET parent_id=? WHERE id=?`, separate, child); err != nil {
+					return err
+				}
+				if err = compactcatalog.SetFactsTx(ctx, tx, child, map[string]any{parentColumn: separate}); err != nil {
+					return err
+				}
+			}
+			moved[child] = true
+			if kind == compactcatalog.Part {
+				if err = compactcatalog.ReprojectBookFileTx(ctx, tx, child); err != nil {
+					return err
+				}
+			}
+			if err = compactcatalog.TouchEntityTx(ctx, tx, child); err != nil {
+				return err
+			}
+		}
+		for _, id := range []int64{separate, container} {
+			if err = compactcatalog.TouchEntityTx(ctx, tx, id); err != nil {
+				return err
+			}
+		}
+		if _, err = tx.ExecContext(ctx, `UPDATE library_revisions SET revision=revision+1 WHERE library_id=?`, library); err != nil {
+			return err
+		}
+		return tx.QueryRowContext(ctx, `SELECT pid(public_id) FROM catalog_entities WHERE id=?`, separate).Scan(&public)
+	})
+	return public, err
 }

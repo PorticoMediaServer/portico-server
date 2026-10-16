@@ -142,6 +142,12 @@ func (s *Service) mbPublishSong(ctx context.Context, j mbJob, result metadatapro
 	if e = compactcatalog.SetFieldsTx(ctx, tx, entity, compactcatalog.Automatic, fields); e != nil {
 		return e
 	}
+	// The track is known by its recording from now on, so its state is kept
+	// and given back under that identity too. Tracks are not joined by it: one
+	// recording appears on many albums.
+	if e = replaceMusicBrainzIdentityTx(ctx, tx, entity, "recording", r.ID); e != nil {
+		return e
+	}
 	if e = catalog.RestoreTitleStateTx(ctx, tx, entity); e != nil {
 		return e
 	}
@@ -252,7 +258,18 @@ func (s *Service) mbPublishAlbum(ctx context.Context, j mbJob, result metadatapr
 	if e = checkMBEvidenceBudget(ctx, tx); e != nil {
 		return e
 	}
-	return s.commitMBCurrent(ctx, gated4, j)
+	if e = s.commitMBCurrent(ctx, gated4, j); e != nil {
+		return e
+	}
+	// Joining moves tracks between albums, which the publication's own fence
+	// would read as a change under it, so it follows in its own transaction.
+	// Titles that cannot be one (their identities disagree) stay apart.
+	if e = dbwork.WithWriteTx(ctx, s.db, dbwork.ClassBackgroundMedia, func(tx *sql.Tx) error {
+		return joinMusicBrainzAlbumTx(ctx, tx, entity, r.ID, revision)
+	}); errors.Is(e, catalog.ErrNotMergeable) || errors.Is(e, compactcatalog.ErrIdentityConflict) || errors.Is(e, sql.ErrNoRows) {
+		return nil
+	}
+	return e
 }
 func (s *Service) finishMBPublication(ctx context.Context, tx *sql.Tx, j mbJob, requested, revision string) error {
 	entity, e := resolveMBEntity(ctx, tx, j.id)
@@ -286,4 +303,56 @@ func mbReleaseLabel(r metadataprovider.Release) string {
 		}
 	}
 	return ""
+}
+
+// replaceMusicBrainzIdentityTx records an entity's accepted MusicBrainz
+// identity of one kind, replacing an earlier one (an owner's new choice).
+func replaceMusicBrainzIdentityTx(ctx context.Context, tx *sql.Tx, entity int64, kind, id string) error {
+	if _, err := tx.ExecContext(ctx, `DELETE FROM catalog_external_ids WHERE entity_id=? AND provider='musicbrainz' AND provider_kind=? AND provider_id<>?`, entity, kind, id); err != nil {
+		return err
+	}
+	return compactcatalog.RecordProviderIdentityTx(ctx, tx, entity, compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: kind, ID: id})
+}
+
+// joinMusicBrainzAlbumTx gives a just-published album its release identity
+// and its artist the release's single credited artist, and joins any other
+// album or artist of the library already known by the same identity into
+// them, as films and shows are joined. A compilation's several credited
+// artists name no one artist, so they join nothing.
+func joinMusicBrainzAlbumTx(ctx context.Context, tx *sql.Tx, album int64, release, revision string) error {
+	var live bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE id=? AND retired=0)`, album).Scan(&live); err != nil || !live {
+		return err
+	}
+	if err := replaceMusicBrainzIdentityTx(ctx, tx, album, "release", release); err != nil {
+		return err
+	}
+	if _, err := catalog.AdoptProviderIdentityTx(ctx, tx, album, compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: "release", ID: release}); err != nil {
+		return err
+	}
+	var credits int
+	var artistID string
+	if err := tx.QueryRowContext(ctx, `SELECT count(*),COALESCE(max(artist_id),'') FROM mb_release_credits WHERE revision_id=?`, revision).Scan(&credits, &artistID); err != nil {
+		return err
+	}
+	var artist int64
+	if err := tx.QueryRowContext(ctx, `SELECT artist_id FROM catalog_albums WHERE entity_id=?`, album).Scan(&artist); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil
+		}
+		return err
+	}
+	if credits != 1 || artistID == "" || artist == 0 {
+		return nil
+	}
+	if err := compactcatalog.RecordProviderIdentityTx(ctx, tx, artist, compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: "artist", ID: artistID}); err != nil {
+		if errors.Is(err, compactcatalog.ErrIdentityConflict) {
+			// The local artist already stands for another MusicBrainz artist
+			// (two artists who share a name): nothing is joined.
+			return nil
+		}
+		return err
+	}
+	_, err := catalog.AdoptProviderIdentityTx(ctx, tx, artist, compactcatalog.ProviderIdentity{Provider: "musicbrainz", Kind: "artist", ID: artistID})
+	return err
 }
