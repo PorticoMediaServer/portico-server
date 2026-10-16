@@ -56,6 +56,22 @@ export function DirectJoin({code: linkCode, server}: {code?: string; server?: st
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const address = knownServerAddress(origin.trim().replace(/\/+$/, ''));
+  const trimmed = code.trim();
+  // Whether the invitation was made for one Portico Account (the preview says so, never which).
+  // Such an invitation cannot be accepted with a username and password, so only that sign-in is offered.
+  const [forAccount, setForAccount] = useState(false);
+  useEffect(() => {
+    setForAccount(false);
+    if (!address || !validInvitationCode(trimmed)) return;
+    const controller = new AbortController();
+    const timer = setTimeout(() => void (async () => {
+      const env = browserConnectionEnvironment();
+      const pin = await inspectDirectServer(address, env, controller.signal);
+      const {api, connection} = await connectPairedServer(address, pin, env, controller.signal);
+      try { return await api.request<{forPorticoAccount?: boolean}>('/v1/access/invitations/preview', 'POST', {code: trimmed}); } finally { connection.dispose(); }
+    })().then(preview => { if (!controller.signal.aborted) setForAccount(preview?.forPorticoAccount === true); }, () => {}), 400);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [address, trimmed]);
 
   // The preview: which server this is, from the server itself (its identity is pinned first).
   useEffect(() => {
@@ -108,7 +124,20 @@ export function DirectJoin({code: linkCode, server}: {code?: string; server?: st
       setError(id ? i18n.t(id) : signInFailure(e, {step: 'invitation', server: serverName, online: navigator.onLine}, i18n).text);
     } finally { setBusy(false); }
   };
-  const portico = !withPassword && (!!session.hosted || porticoServer) && !bundled;
+  const portico = (forAccount || !withPassword && (!!session.hosted || porticoServer)) && !bundled;
+  // Opened at the server's own address: the account service signs people in only from its own
+  // site, so the invitation continues there and that site connects back to this server.
+  if (forAccount && bundled && address) {
+    const handOff = () => location.assign(`https://web.getportico.tv/join#code=${encodeURIComponent(trimmed)}&server=${encodeURIComponent(address)}`);
+    return (
+      <AuthFrame title={i18n.t('web.directJoin.title')} lede={i18n.t('web.directJoin.forAccountHere', {server: serverName ?? address})}>
+        <div className={s.stack}>
+          <Button variant="primary" size="lg" block label={i18n.t('web.directJoin.openInPortico')} iconAfter="external" onClick={handOff} />
+          <Button variant="link" label={i18n.t('web.link.backToPortico')} to="/" />
+        </div>
+      </AuthFrame>
+    );
+  }
   if (portico) {
     return (
       <AuthFrame title={i18n.t('web.directJoin.title')} lede={serverName ? i18n.t('web.directJoin.bodyPortico', {server: serverName}) : i18n.t('web.directJoin.bodyPorticoUnnamed')}>
@@ -118,8 +147,9 @@ export function DirectJoin({code: linkCode, server}: {code?: string; server?: st
           {session.hosted ? (
             <Button variant="primary" size="lg" block label={i18n.t('web.directJoin.withAccount', {account: session.hosted.account.displayName || session.hosted.account.username})} loading={busy} disabled={busy || !address || !validInvitationCode(code)} onClick={() => void joinPortico()} />
           ) : <AccountForm onSignedIn={() => session.accountSignedIn()} />}
+          {forAccount ? <Notice tone="info">{i18n.t('web.directJoin.forAccount')}</Notice> : null}
           {error || session.error ? <Notice tone="error">{error || session.error}</Notice> : null}
-          <Button variant="link" label={i18n.t('web.directJoin.withPassword')} onClick={() => setWithPassword(true)} />
+          {forAccount ? null : <Button variant="link" label={i18n.t('web.directJoin.withPassword')} onClick={() => setWithPassword(true)} />}
           <Button variant="link" label={i18n.t('web.link.backToPortico')} to="/" />
         </div>
       </AuthFrame>
