@@ -248,7 +248,7 @@ func sortForOrdering(ordering int) browseSort {
 		return d
 	}
 	for _, definition := range browseSorts {
-		if definition.Ordering == ordering && !definition.Profile {
+		if (definition.Ordering == ordering || definition.Blocks == ordering && ordering > compactcatalog.OrderRandom) && !definition.Profile {
 			return definition
 		}
 	}

@@ -661,6 +661,7 @@ catalog_browse_item_metrics.item_id
 catalog_browse_item_metrics.rating
 catalog_browse_member_links.available
 catalog_browse_member_links.entity_id
+catalog_browse_member_links.members
 catalog_browse_member_links.unavailable
 catalog_browse_member_metrics.added
 catalog_browse_member_metrics.air_key

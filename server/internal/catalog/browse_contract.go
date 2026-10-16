@@ -228,6 +228,9 @@ type browseSort struct {
 	Ordering         int
 	ClassKey         string
 	Profile          bool
+	// Blocks is a fact order's counted block ordering (compactcatalog.Order*,
+	// 0 for none): an unrestricted viewer's direct position starts there.
+	Blocks int
 }
 
 var browseSorts = []browseSort{
@@ -242,18 +245,18 @@ var browseSorts = []browseSort{
 	// then the rest in title order. It orders on its own (no second sort).
 	{ID: "forYou", LabelKey: "sort.forYou", Directions: []string{"desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,show,album,book"), Profile: true, Ordering: -1,
 		Expression: "(SELECT 0 WHERE ? IS NOT NULL)"},
-	{ID: "aired", LabelKey: "sort.aired", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("episode"), Ordering: -2, Expression: "e.release_key"},
-	{ID: "latestAired", LabelKey: "sort.aired", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("show"), Ordering: -2, Expression: "e.latest_aired_key"},
+	{ID: "aired", LabelKey: "sort.aired", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("episode"), Ordering: -2, Blocks: compactcatalog.OrderRelease, Expression: "e.release_key"},
+	{ID: "latestAired", LabelKey: "sort.aired", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("show"), Ordering: -2, Blocks: compactcatalog.OrderLatestAired, Expression: "e.latest_aired_key"},
 	{ID: "lastPlayed", LabelKey: "sort.lastPlayed", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds(playedKinds), Profile: true, Ordering: -1,
 		Expression: "(SELECT COALESCE(max(pi.last_played_at),'') FROM catalog_browse_memberships bei JOIN personal_items pi ON pi.item_id=bei.item_id AND pi.profile_id=? WHERE bei.entity_id=e.entity_id)"},
-	{ID: "releaseDate", LabelKey: "sort.releaseDate", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,album,book"), Ordering: -2, Expression: "e.release_key"},
-	{ID: "criticRating", LabelKey: "sort.criticRating", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection"), Ordering: -2, Expression: "e.critic_key"},
-	{ID: "episodeCount", LabelKey: "sort.episodeCount", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("show,season"), Ordering: -2, Expression: "e.episode_count"},
-	{ID: "album", LabelKey: "sort.album", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song"), Ordering: -2, Expression: "e.album_key"},
-	{ID: "artist", LabelKey: "sort.artist", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song,album"), Ordering: -2, Expression: "e.artist_key"},
-	{ID: "trackNumber", LabelKey: "sort.trackNumber", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song"), Ordering: -2, Expression: "e.track_key"},
-	{ID: "fileSize", LabelKey: "sort.fileSize", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book"), Ordering: -2, Expression: "e.file_size"},
-	{ID: "resolution", LabelKey: "sort.resolution", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection"), Ordering: -2, Expression: "e.resolution_key"},
+	{ID: "releaseDate", LabelKey: "sort.releaseDate", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,album,book"), Ordering: -2, Blocks: compactcatalog.OrderRelease, Expression: "e.release_key"},
+	{ID: "criticRating", LabelKey: "sort.criticRating", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection"), Ordering: -2, Blocks: compactcatalog.OrderCritic, Expression: "e.critic_key"},
+	{ID: "episodeCount", LabelKey: "sort.episodeCount", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("show,season"), Ordering: -2, Blocks: compactcatalog.OrderEpisodeCount, Expression: "e.episode_count"},
+	{ID: "album", LabelKey: "sort.album", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song"), Ordering: -2, Blocks: compactcatalog.OrderAlbum, Expression: "e.album_key"},
+	{ID: "artist", LabelKey: "sort.artist", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song,album"), Ordering: -2, Blocks: compactcatalog.OrderArtist, Expression: "e.artist_key"},
+	{ID: "trackNumber", LabelKey: "sort.trackNumber", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("song"), Ordering: -2, Blocks: compactcatalog.OrderTrack, Expression: "e.track_key"},
+	{ID: "fileSize", LabelKey: "sort.fileSize", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book"), Ordering: -2, Blocks: compactcatalog.OrderFileSize, Expression: "e.file_size"},
+	{ID: "resolution", LabelKey: "sort.resolution", Directions: []string{"asc", "desc"}, DefaultDirection: "desc", ApplicableKinds: kinds("movie,episode,show,season,collection"), Ordering: -2, Blocks: compactcatalog.OrderResolution, Expression: "e.resolution_key"},
 	{ID: "random", LabelKey: "sort.random", Directions: []string{"asc", "desc"}, DefaultDirection: "asc", ApplicableKinds: kinds("movie,episode,show,season,collection,song,album,artist,audiobook_file,book,author"), Ordering: -2, Expression: "e.random_key", ClassKey: "v.random_key"},
 	// A group's own order: a playlist's positions, a collection's order, a show's
 	// episode order, an album's track order, an artist's releases by type, a
