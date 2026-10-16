@@ -91,3 +91,37 @@ func TestRefsReachTypedBodiesHTTPBodiesAndQueries(t *testing.T) {
 		t.Fatalf("duplicate member document was rewritten: %s", raw)
 	}
 }
+
+type refUnreadBody struct{ t *testing.T }
+
+func (b refUnreadBody) Read([]byte) (int, error) {
+	b.t.Error("body read before the handler asked for it")
+	return 0, io.EOF
+}
+
+// An HTTP handler that refuses or waits before reading (permission, a busy
+// mutation slot) never has its body read on its behalf.
+func TestRefsLeaveAnUnreadHTTPBodyUnread(t *testing.T) {
+	r := New(nil, nil)
+	r.RewriteRefs(Refs{Names: []string{"itemId"}, Resolve: func(_ *http.Request, values []string) map[string]string {
+		return map[string]string{"old": "new"}
+	}})
+	h := testMetadata()
+	h.ID, h.Method, h.Path, h.Access, h.Requires, h.BodyLimit = "refuse", "POST", "/v1/refuse", Public, ScopeOpen, 4096
+	if err := RegisterHTTP[refBody, testResponse](r, h); err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	if err := r.MountHTTP(mux, "POST /v1/refuse", http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusForbidden)
+	})); err != nil {
+		t.Fatal(err)
+	}
+	q := httptest.NewRequest("POST", "/v1/refuse", refUnreadBody{t})
+	q.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, q)
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("handler not reached: %d", w.Code)
+	}
+}
