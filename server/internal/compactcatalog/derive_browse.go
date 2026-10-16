@@ -331,8 +331,10 @@ type browseEdge struct {
 }
 
 // deriveBrowseMembers brings the given items' memberships to their current
-// parents. A new edge needs its container's row first; changed containers
-// re-derive their rows once per batch; changed items requeue their metrics.
+// parents. A new edge needs its container's row first; changed containers are
+// queued for a refresh of their rows (DomainContainerRefresh, which collapses
+// the refreshes of a container whose members arrive over many batches);
+// changed items requeue their metrics.
 func deriveBrowseMembers(ctx context.Context, tx *sql.Tx, items []int64) error {
 	containers := map[int64]bool{}
 	for _, item := range items {
@@ -391,17 +393,17 @@ func deriveBrowseMembers(ctx context.Context, tx *sql.Tx, items []int64) error {
 			}
 		}
 	}
+	return touchContainers(ctx, tx, containers)
+}
+
+// touchContainers queues the containers' browse rows for a refresh.
+func touchContainers(ctx context.Context, tx *sql.Tx, containers map[int64]bool) error {
 	ordered := make([]int64, 0, len(containers))
 	for id := range containers {
 		ordered = append(ordered, id)
 	}
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
-	for _, id := range ordered {
-		if err := deriveBrowseRow(ctx, tx, id); err != nil {
-			return fmt.Errorf("browse container %d: %w", id, err)
-		}
-	}
-	return nil
+	return TouchTx(ctx, tx, DomainContainerRefresh, ordered...)
 }
 
 func readEdges(ctx context.Context, tx *sql.Tx, query string, item int64) (map[browseEdge]bool, error) {
@@ -516,6 +518,10 @@ func metricEdges(ctx context.Context, tx *sql.Tx, item, afterEntity int64, after
 	}
 	return unique, nil
 }
+
+// metricEdgesPerUnit is the fewest containers one item's metrics reach per
+// unit, whatever the batch size.
+const metricEdgesPerUnit = 16
 
 // deriveItemMetrics recomputes one item's metrics and fans them out to its
 // containers, at most limit containers per step.
@@ -702,8 +708,11 @@ func init() {
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			touched := map[int64]bool{}
 			var done []int64
+			// An item's fanout is bounded per unit; a song's few containers
+			// (album, its artist, credited artists, collections) fit in one.
+			edges := max(limit, metricEdgesPerUnit)
 			for _, k := range keys {
-				finished, err := deriveItemMetrics(ctx, tx, k, limit, touched)
+				finished, err := deriveItemMetrics(ctx, tx, k, edges, touched)
 				if err != nil {
 					return nil, err
 				}
@@ -711,10 +720,15 @@ func init() {
 					done = append(done, k.ID)
 				}
 			}
-			// Each container refreshes once per batch, not once per member.
-			ordered := make([]int64, 0, len(touched))
-			for id := range touched {
-				ordered = append(ordered, id)
+			// An item's own row takes its metrics now; its containers are
+			// queued, so each refreshes once however many batches its members
+			// arrive in.
+			ordered := make([]int64, 0, len(keys))
+			for _, k := range keys {
+				if touched[k.ID] {
+					ordered = append(ordered, k.ID)
+					delete(touched, k.ID)
+				}
 			}
 			sort.Slice(ordered, func(i, j int) bool { return ordered[i] < ordered[j] })
 			for _, id := range ordered {
@@ -722,10 +736,25 @@ func init() {
 					return nil, err
 				}
 			}
-			return done, nil
+			return done, touchContainers(ctx, tx, touched)
 		},
 		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
 			return scanIDs(ctx, tx, `SELECT e.id FROM catalog_entities e JOIN catalog_kinds k ON k.id=e.kind AND k.playable=1 WHERE e.id>? ORDER BY e.id LIMIT ?`, after, limit)
+		},
+	})
+	Register(DomainContainerRefresh, Derivation{
+		Version: 1,
+		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
+			ids := keyIDs(keys)
+			for _, id := range ids {
+				if err := deriveBrowseRow(ctx, tx, id); err != nil {
+					return nil, fmt.Errorf("browse container %d: %w", id, err)
+				}
+			}
+			return ids, nil
+		},
+		Backfill: func(ctx context.Context, tx *sql.Tx, after int64, limit int) ([]int64, error) {
+			return nil, nil // containers rebuild with every row (DomainBrowseRows)
 		},
 	})
 }

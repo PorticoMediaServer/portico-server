@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/storage"
 	workerloop "portico.local/server/internal/worker"
 	"runtime"
 	"strings"
@@ -144,7 +145,10 @@ func TestQuantumReportsWhetherTheRunAdvanced(t *testing.T) {
 // held back at all.
 func TestScanLoopGivesWayToForegroundWorkBetweenSteps(t *testing.T) {
 	withoutTimers(t)
-	const directories = 24
+	// Empty folders are listed a batch to a step, so the tree is sized for
+	// at least `steps` listing steps.
+	const steps = 24
+	const directories = steps * storage.MaxInventoryBatch
 	scan := func(t *testing.T) (elapsed time.Duration) {
 		t.Helper()
 		root := t.TempDir()
@@ -238,10 +242,10 @@ func TestScanLoopGivesWayToForegroundWorkBetweenSteps(t *testing.T) {
 	busy := scan(t)
 	mu.Lock()
 	defer mu.Unlock()
-	if paced < directories {
+	if paced < steps {
 		t.Fatalf("the scan continued without giving way to foreground work: %d pauses for %d folders", paced, directories)
 	}
-	if followed < directories || hurried != 0 {
+	if followed < steps || hurried != 0 {
 		t.Fatalf("of %d steps that followed a pause, %d began before it had passed", followed, hurried)
 	}
 	if busy < idle {

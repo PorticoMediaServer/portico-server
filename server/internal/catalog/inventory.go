@@ -79,114 +79,168 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 	if err != nil {
 		return err
 	}
+	keep, err := s.commitInventoryPageTx(ctx, tx, job, source, InventoryPageWrite{Relative: relative, Cursor: cursor, Page: page})
+	if err != nil || !keep {
+		return err
+	}
+	return gated.Commit()
+}
+
+// InventoryPageWrite is one folder's listed page and the cursor it continues.
+type InventoryPageWrite struct {
+	Relative, Cursor string
+	Page             storage.InventoryPage
+}
+
+// CommitInventoryPages publishes the pages of several folders in one
+// transaction, each exactly as CommitInventoryPage would: a page that is a
+// replay of one already published leaves nothing behind. Any page's error
+// publishes none of them, and the caller publishes them one at a time. A
+// library of one folder per title commits once per batch of folders instead
+// of once per title.
+func (s *Service) CommitInventoryPages(ctx context.Context, job string, pages []InventoryPageWrite) error {
+	gated, err := dbwork.Begin(ctx, s.db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
+	if err != nil {
+		return err
+	}
+	tx := gated.Tx()
+	defer gated.Rollback()
+	source, err := InventoryFenceTx(ctx, tx, job)
+	if err != nil {
+		return err
+	}
+	for _, p := range pages {
+		if _, err = tx.ExecContext(ctx, `SAVEPOINT inventory_page`); err != nil {
+			return err
+		}
+		keep, err := s.commitInventoryPageTx(ctx, tx, job, source, p)
+		if err != nil {
+			return err
+		}
+		if !keep {
+			if _, err = tx.ExecContext(ctx, `ROLLBACK TO inventory_page`); err != nil {
+				return err
+			}
+		}
+		if _, err = tx.ExecContext(ctx, `RELEASE inventory_page`); err != nil {
+			return err
+		}
+	}
+	return gated.Commit()
+}
+
+// commitInventoryPageTx writes one folder's page. keep is false when the page
+// was already published (a replay) and its writes are to be discarded.
+func (s *Service) commitInventoryPageTx(ctx context.Context, tx *sql.Tx, job string, source LibrarySource, write InventoryPageWrite) (keep bool, err error) {
+	relative, cursor, page := write.Relative, write.Cursor, write.Page
 	if page.RootIdentity != source.RootIdentity || page.DirectoryIdentity == "" || page.DirectoryRevision == "" || len(page.Entries) > 128 || len(page.Issues) > 512 || page.Complete && page.NextCursor != "" || !page.Complete && (page.NextCursor == "" || page.NextCursor == cursor && !page.Pending) {
-		return storage.ErrInventoryChanged
+		return false, storage.ErrInventoryChanged
 	}
 	if page.Pending && (page.Remote == nil || len(page.Entries) != 0 || page.Complete) {
-		return storage.ErrInventoryChanged
+		return false, storage.ErrInventoryChanged
 	}
 	if page.Remote != nil {
 		if s.storage == nil || !s.storage.IsRemote(source.ResolvedPath) || page.Remote.Directory != filepath.Join(source.ResolvedPath, relative) {
-			return storage.ErrRemoteConfig
+			return false, storage.ErrRemoteConfig
 		}
 		if err = s.storage.Remote.ValidateScan(ctx, tx, job, source.ResolvedPath); err != nil {
-			return err
+			return false, err
 		}
 		if err = s.storage.Remote.CommitPage(ctx, tx, *page.Remote); err != nil {
-			return err
+			return false, err
 		}
 	}
 	{
 		if err = subtitles.CommitManagedPage(ctx, tx, source.ID, source.Incarnation, job, filepath.Join(source.ResolvedPath, relative), page.Entries); err != nil {
-			return err
+			return false, err
 		}
 	}
 	for _, issue := range page.Issues {
 		if err = InventoryIssueTx(ctx, tx, job, issue); err != nil {
-			return err
+			return false, err
 		}
 	}
 	if page.Unstable {
 		if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: relative, Reason: "directory_changed", Protect: true, Warning: true}); err != nil {
-			return err
+			return false, err
 		}
 	}
 	var oldCursor, state, oldRevision string
 	if err = tx.QueryRowContext(ctx, `SELECT cursor,state,revision FROM inventory_directories WHERE job_id=? AND relative_path=?`, job, relative).Scan(&oldCursor, &state, &oldRevision); err != nil {
-		return err
+		return false, err
 	}
 	if state == "done" || oldCursor != cursor {
 		if oldCursor == page.NextCursor && oldRevision == page.DirectoryRevision {
-			return nil
+			return false, nil
 		}
-		return ErrStaleContinuation
+		return false, ErrStaleContinuation
 	}
 	if oldRevision != "" && oldRevision != page.DirectoryRevision {
-		return storage.ErrInventoryChanged
+		return false, storage.ErrInventoryChanged
 	}
 	var libraryKind string
 	if err = tx.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, source.LibraryID).Scan(&libraryKind); err != nil {
-		return err
+		return false, err
 	}
 	var policy ScanPolicy
 	if policy, err = ScanPolicyTx(ctx, tx, source.LibraryID); err != nil {
-		return err
+		return false, err
 	}
 	var alias bool
 	// identity<>'' lets the visited-identity index answer; without it the
 	// check read every directory the run had recorded, once per directory.
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_directories INDEXED BY inventory_directories_visited WHERE job_id=? AND identity=? AND identity<>'' AND relative_path<>?)`, job, page.DirectoryIdentity, relative).Scan(&alias); err != nil {
-		return err
+		return false, err
 	}
 	if alias {
 		if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: relative, Reason: "directory_alias", Protect: true}); err != nil {
-			return err
+			return false, err
 		}
 		_, err = tx.ExecContext(ctx, `UPDATE inventory_directories SET state='blocked',cursor='' WHERE job_id=? AND relative_path=?`, job, relative)
 		if err != nil {
-			return err
+			return false, err
 		}
-		return gated.Commit()
+		return true, nil
 	}
 	// Register the current directory before its children so a link back to the
 	// root is recognized as an already visited identity rather than a conflict.
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_directories SET identity=?,revision=? WHERE job_id=? AND relative_path=?`, page.DirectoryIdentity, page.DirectoryRevision, job, relative); err != nil {
-		return err
+		return false, err
 	}
 	discovered := 0
 	for _, v := range page.Entries {
 		child := filepath.Join(relative, v.Name)
 		expected := filepath.Join(source.ResolvedPath, child)
 		if v.Path != expected || !filepath.IsLocal(child) || filepath.Base(v.Name) != v.Name || v.Size < 0 {
-			return ErrAdminQuery
+			return false, ErrAdminQuery
 		}
 		if naming.IgnorePath(filepath.ToSlash(child), v.Directory) {
 			if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: "ignored_name"}); err != nil {
-				return err
+				return false, err
 			}
 			continue
 		}
 		if v.Directory {
 			if discs := naming.DiscLayout(filepath.ToSlash(child)); len(discs) > 0 {
 				if _, e := s.observeInventoryTx(ctx, tx, job, source, child, v, "unsupported_disc_layout", policy); e != nil {
-					return e
+					return false, e
 				}
 				discovered++
 				if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: "unsupported_disc_layout", Warning: true}); err != nil {
-					return err
+					return false, err
 				}
 				continue
 			}
 			if v.ObjectIdentity == "" {
-				return storage.ErrInventoryChanged
+				return false, storage.ErrInventoryChanged
 			}
 			var duplicate bool
 			if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM inventory_directories INDEXED BY inventory_directories_visited WHERE job_id=? AND identity=? AND identity<>'' AND relative_path<>?)`, job, v.ObjectIdentity, child).Scan(&duplicate); err != nil {
-				return err
+				return false, err
 			}
 			if duplicate {
 				if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: "directory_alias", Protect: true}); err != nil {
-					return err
+					return false, err
 				}
 				continue
 			}
@@ -195,15 +249,15 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 				childRevision = ""
 			}
 			if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_directory_cache(source_id,incarnation,relative_path,parent_path,parent_revision,seen_job) VALUES(?,?,?,?,?,?) ON CONFLICT(source_id,incarnation,relative_path) DO UPDATE SET parent_path=excluded.parent_path,parent_revision=excluded.parent_revision,seen_job=excluded.seen_job`, source.ID, source.Incarnation, child, relative, page.DirectoryRevision, job); err != nil {
-				return err
+				return false, err
 			}
 			if _, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO inventory_directories(job_id,relative_path,identity,revision) VALUES(?,?,?,?)`, job, child, v.ObjectIdentity, childRevision); err != nil {
-				return err
+				return false, err
 			}
 			continue
 		}
 		if err = observeSidecarTx(ctx, tx, job, source, child, v); err != nil {
-			return err
+			return false, err
 		}
 		supported, reason := InventoryMedia(v.Path, libraryKind)
 		if !supported {
@@ -211,12 +265,12 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 		}
 		if reason != "" {
 			if err = InventoryIssueTx(ctx, tx, job, storage.InventoryIssue{Path: child, Reason: reason}); err != nil {
-				return err
+				return false, err
 			}
 		}
 		added, e := s.observeInventoryTx(ctx, tx, job, source, child, v, reason, policy)
 		if e != nil {
-			return e
+			return false, e
 		}
 		if added {
 			discovered++
@@ -226,22 +280,22 @@ func (s *Service) CommitInventoryPage(ctx context.Context, job, relative, cursor
 	if page.Complete {
 		state = "done"
 		if _, err = tx.ExecContext(ctx, `INSERT INTO inventory_directory_cache(source_id,incarnation,relative_path,parent_path,identity,revision,seen_job) VALUES(?,?,?,?,?,?,?) ON CONFLICT(source_id,incarnation,relative_path) DO UPDATE SET identity=excluded.identity,revision=excluded.revision,seen_job=excluded.seen_job`, source.ID, source.Incarnation, relative, filepath.Dir(relative), page.DirectoryIdentity, page.DirectoryRevision, job); err != nil {
-			return err
+			return false, err
 		}
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_directories SET identity=?,revision=?,cursor=?,state=?,pages=pages+1 WHERE job_id=? AND relative_path=? AND cursor=?`, page.DirectoryIdentity, page.DirectoryRevision, page.NextCursor, state, job, relative, cursor); err != nil {
-		return err
+		return false, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE inventory_runs SET discovered=discovered+? WHERE job_id=?`, discovered, job); err != nil {
-		return err
+		return false, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE jobs SET processed=processed+? WHERE id=?`, discovered, job); err != nil {
-		return err
+		return false, err
 	}
 	if _, err = tx.ExecContext(ctx, `UPDATE library_sources SET last_progress_at=? WHERE id=?`, time.Now().UTC().Format(time.RFC3339Nano), source.ID); err != nil {
-		return err
+		return false, err
 	}
-	return gated.Commit()
+	return true, nil
 }
 func (s *Service) observeInventoryTx(ctx context.Context, tx *sql.Tx, job string, source LibrarySource, relative string, v storage.Snapshot, reason string, policy ScanPolicy) (bool, error) {
 	var removed bool

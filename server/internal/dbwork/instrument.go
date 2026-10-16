@@ -705,10 +705,18 @@ func noticeAuthorityWrite(query string) {
 	default:
 		return
 	}
+	if headOf(query).authority {
+		BumpAuthority()
+	}
+}
+
+// authorityWrite is whether a statement that begins with a mutation keyword's
+// first letter writes an authority table.
+func authorityWrite(query string) bool {
 	lowered := strings.ToLower(query)
 	if !strings.HasPrefix(lowered, "insert") && !strings.HasPrefix(lowered, "update") &&
 		!strings.HasPrefix(lowered, "delete") && !strings.HasPrefix(lowered, "replace") {
-		return
+		return false
 	}
 	// The table a write names is the table it writes. Reading it off the
 	// statement's head is both cheaper and far more precise than looking for the
@@ -721,21 +729,60 @@ func noticeAuthorityWrite(query string) {
 	if target, ok := writtenTable(lowered); ok {
 		for _, table := range authorityTables {
 			if target == table {
-				BumpAuthority()
-				return
+				return true
 			}
 		}
-		return
+		return false
 	}
 	// A shape this cannot read — a CTE in front of the write, a form a future
 	// driver introduces — falls back to the older, over-inclusive rule. A false
 	// bump costs a cache miss; a missed bump costs a revoked session.
 	for _, table := range authorityTables {
 		if namesTable(lowered, table) {
-			BumpAuthority()
-			return
+			return true
 		}
 	}
+	return false
+}
+
+// statementHead is what a statement's text says about what it writes. It is
+// read once per distinct text: statements are a bounded set of constants, and
+// lower-casing and splitting a long one on every execution was a measurable
+// share of the cost of building a library.
+type statementHead struct {
+	table     string // the table its head names (writtenTable of its trimmed text)
+	named     bool
+	unknown   bool // a CTE or several statements: the scope can't be proven
+	authority bool // a write to an authority table (noticeAuthorityWrite)
+}
+
+var statementHeads struct {
+	sync.Map
+	count atomic.Int64
+}
+
+// statementHeadLimit bounds the memo; a text past it is read each time.
+const statementHeadLimit = 8192
+
+func headOf(query string) statementHead {
+	if cached, ok := statementHeads.Load(query); ok {
+		return cached.(statementHead)
+	}
+	text := strings.ToLower(strings.TrimSpace(query))
+	h := statementHead{unknown: strings.HasPrefix(text, "with ") || strings.Contains(strings.TrimSuffix(text, ";"), ";")}
+	h.table, h.named = writtenTable(text)
+	if len(query) >= 6 {
+		switch query[0] {
+		case 'i', 'I', 'u', 'U', 'd', 'D', 'r', 'R':
+			h.authority = authorityWrite(query)
+		}
+	}
+	if statementHeads.count.Load() < statementHeadLimit {
+		if _, loaded := statementHeads.LoadOrStore(strings.Clone(query), h); !loaded {
+			statementHeads.count.Add(1)
+		}
+	}
+	return h
 }
 
 // writtenTable reads the target of a single-table write off its head:

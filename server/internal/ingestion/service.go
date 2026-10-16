@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"portico.local/server/internal/assets"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/localmetadata"
@@ -321,6 +322,10 @@ func (s *Service) PolicyChanged(ctx context.Context, library string) error {
 // that has not said it advanced: a long read, a refusal, a wait on playback.
 var quantumPoll = 300 * time.Millisecond
 
+// titleCatchUp is the longest one scan step waits for derived work to catch up
+// with the titles it found (compactcatalog.AwaitTitles).
+var titleCatchUp = time.Second
+
 func (s *Service) Run(ctx context.Context) {
 	// Everything this loop writes is bulk catalogue work, so it queues behind
 	// playback, authentication and interactive edits at the write gate.
@@ -426,6 +431,12 @@ func (s *Service) Run(ctx context.Context) {
 						// stays claimed, so nothing else runs it meanwhile.
 						if more {
 							more = dbwork.PaceBackground(work, started)
+						}
+						// Titles found must become browsable as the scan goes,
+						// not after it: the scan lets derived work catch up
+						// when too many titles wait for it.
+						if more {
+							more = compactcatalog.AwaitTitles(work, s.db, titleCatchUp)
 						}
 					})
 				}
