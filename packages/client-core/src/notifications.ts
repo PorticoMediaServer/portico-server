@@ -347,3 +347,19 @@ export function parseFeedbackList(value:unknown):FeedbackList{
  for(const key of Object.keys(value.statusCounts))if(!whole(value.statusCounts[key]))invalid();
  return {...value,items:keepReadable('feedback-list','items',value.items,parseFeedbackReport)} as FeedbackList;
 }
+
+/** The catalogue wording of a notice whose category this build knows (the
+ * owner's recording notices), so it reads in the viewer's language; any other
+ * notice keeps the server's own words. */
+const recordingConflictWords:Record<string,string>={
+ 'storage-floor':'storage','storage-cap':'storage',
+ 'tuner-in-use-live-waiting':'liveWaiting','tuner-in-use-live-late':'liveLate','tuner-in-use-live':'liveFailed',
+};
+export function noticeWords(n:Notification,i18n:{has:(id:string)=>boolean;t:(id:never,values?:Record<string,string>)=>string}):{title:string;body:string}{
+ if(n.category!=='dvr.conflict')return {title:n.title,body:n.body};
+ const variant=recordingConflictWords[n.arguments.reason??'']??'noTuner';
+ const titleKey=`notice.recordingConflict.${variant}.title`,bodyKey=`notice.recordingConflict.${variant}.body`;
+ if(!i18n.has(titleKey)||!i18n.has(bodyKey))return {title:n.title,body:n.body};
+ const values={title:n.arguments.title??''};
+ return {title:i18n.t(titleKey as never,values),body:i18n.t(bodyKey as never,values)};
+}

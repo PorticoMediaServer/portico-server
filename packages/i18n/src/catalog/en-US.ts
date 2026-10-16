@@ -1193,6 +1193,16 @@ export const enUS = {
   'notifications.new': 'New',
   'notifications.loading': 'Loading notifications',
   'notifications.archived': 'Archived',
+  'notice.recordingConflict.noTuner.title': 'Recording did not start',
+  'notice.recordingConflict.noTuner.body': 'Portico could not record {title} because no tuner was free.',
+  'notice.recordingConflict.storage.title': 'Recording did not start',
+  'notice.recordingConflict.storage.body': 'Portico could not record {title} because recording storage is full.',
+  'notice.recordingConflict.liveWaiting.title': 'Recording is waiting for a tuner',
+  'notice.recordingConflict.liveWaiting.body': 'Every tuner is being used to watch live TV, so {title} has not started. It starts as soon as one is free.',
+  'notice.recordingConflict.liveLate.title': 'Recording started late',
+  'notice.recordingConflict.liveLate.body': '{title} started late because every tuner was being used to watch live TV. The start of the program is missing.',
+  'notice.recordingConflict.liveFailed.title': 'Recording did not start',
+  'notice.recordingConflict.liveFailed.body': 'Portico could not record {title} because every tuner was being used to watch live TV.',
 
   // ── Server console ───────────────────────────────────────────────
   'server.messageEveryone': 'Message everyone',

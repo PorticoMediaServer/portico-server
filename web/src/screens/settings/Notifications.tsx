@@ -1,6 +1,6 @@
 import {useEffect} from 'react';
 import {useNavigate} from '@tanstack/react-router';
-import type {InboxView, Notification, NotificationAction, NotificationAudience} from '../../../../packages/client-core/src/index';
+import {noticeWords, type InboxView, type Notification, type NotificationAction, type NotificationAudience} from '../../../../packages/client-core/src/index';
 import {useInbox} from '../../app/inbox';
 import {useI18n, type I18n} from '../../app/i18n';
 import {ErrorNotice, ErrorState} from '../../app/errors';
@@ -51,16 +51,16 @@ export function NotificationsSection() {
       {state.phase === 'ready' && !state.items.length ? <StateView icon="bell" title={empty} body={t(downloadsOff ? 'notifications.emptyBodyNoDownloads' : 'notifications.emptyBody')} /> : null}
       {state.items.length ? (
         <Surface padless>
-          {state.items.map((n, index) => (
+          {state.items.map((n, index) => { const words = noticeWords(n, i18n); return (
             <article key={n.id} style={{display: 'flex', gap: 12, padding: '16px 16px', borderTop: index ? '1px solid var(--line-soft)' : undefined, opacity: n.read && state.view !== 'archived' ? 0.72 : 1}}>
               <div style={{paddingTop: 2, color: n.severity === 'info' ? 'var(--text-tertiary)' : n.severity === 'critical' ? 'var(--status-danger)' : 'var(--status-warning)'}}><Icon name={severityIcon[n.severity]} size={18} /></div>
               <div style={{flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 4}}>
                 <div style={{display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap'}}>
-                  <Text variant="bodyStrong">{n.title}</Text>
+                  <Text variant="bodyStrong">{words.title}</Text>
                   {!n.read ? <Badge tone="accent" dot>{t('notifications.new')}</Badge> : null}
                   <Text variant="caption" tone="tertiary">{i18n.relativeTime(n.createdAt)}</Text>
                 </div>
-                {n.body ? <Text as="p" variant="body" tone="secondary" style={{whiteSpace: 'pre-wrap'}}>{n.body}</Text> : null}
+                {words.body ? <Text as="p" variant="body" tone="secondary" style={{whiteSpace: 'pre-wrap'}}>{words.body}</Text> : null}
                 {n.actions.some(a => destination(a)) ? (
                   <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 4}}>
                     {n.actions.map((a, i) => { const to = destination(a); return to ? <Button key={i} size="sm" variant="secondary" label={a.label} onClick={() => { void service.apply('read', [n.id]); void navigate(to as never); }} /> : null; })}
@@ -72,7 +72,7 @@ export function NotificationsSection() {
                 <IconButton name={n.archived ? 'back' : 'close'} label={n.archived ? t('notifications.unarchive') : t('notifications.archive')} variant="ghost" size="sm" onClick={() => void service.apply(n.archived ? 'unarchive' : 'archive', [n.id])} />
               </div>
             </article>
-          ))}
+          ); })}
         </Surface>
       ) : null}
       {state.more ? <div><Button variant="outline" size="sm" label={t('notifications.loadMore')} loading={state.busy} onClick={() => void service.more()} /></div> : null}
