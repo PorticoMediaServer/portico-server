@@ -42,6 +42,10 @@ and owner/admin visibility. Known hints include:
 - `notification.changed`: reread inbox and unread count.
 - `library.scan.updated`, `library.changed`: reread relevant library content.
 - `personal.changed`, `progress.changed`: reread viewer state and affected rows.
+  `resource.id` is the library. When every change the hint stands for was
+  about one title, `data.titles` names it, then its parent and grandparent
+  (an episode, its season, its show): a title page not in that list can skip
+  the read. Without `data.titles`, any title in the library may have moved.
 - `session.updated`, `queue.updated`, `admin.sessions`: reread playback resources.
 - `settings.changed`: reread the affected settings document.
 - `receiver.inbox_changed`: reread a receiver's inbox.
@@ -51,8 +55,11 @@ and owner/admin visibility. Known hints include:
   delivery log), `members`, `invitations`, `devices`, `clientReports`,
   `feedback`, `downloads`, `remoteSources`, `liveSources` (with refresh state),
   `tuners`, `recordingGroups`, `recordingStorage`, `libraryChannels` and
-  `playbackProblems`. A profile hears `accessTokens` for its own tokens and
-  `togetherGroups` for the Watch Together rooms it is in.
+  `playbackProblems`. A profile hears `accessTokens` for its own tokens,
+  `togetherGroups` for the Watch Together rooms it is in, `myRecordings` for its
+  recordings and recording rules, and `myDownloads` for its downloads. Everyone
+  hears `guide` (a TV guide was brought in again, or a source turned on or off)
+  and `recommendations` (Home's Trending and Popular rows may have moved).
 
 Treat hints as coalescible invalidations, not a complete change log or a payload
 for mutating local records. Ignore unknown event types safely. Source:
