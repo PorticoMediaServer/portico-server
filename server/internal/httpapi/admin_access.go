@@ -37,6 +37,19 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		write(w, 200, out)
 	})
+	d.httpHandle(mux, "GET /v1/admin/access/members/{id}", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		out, e := store.Member(r.Context(), d.accessAuthority(p, identity.TierAdmin), r.PathValue("id"))
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
 	d.httpHandle(mux, "PUT /v1/admin/access/members/{id}/role", func(w http.ResponseWriter, r *http.Request) {
 		p, e := d.administrator(r)
 		if e != nil {
@@ -94,6 +107,19 @@ func (d Dependencies) accessRoutes(mux *http.ServeMux) {
 		}
 		query := r.URL.Query()
 		out, e := store.Invitations(r.Context(), d.accessAuthority(p, identity.TierAdmin), access.InvitationQuery{Cursor: query.Get("cursor"), Limit: query.Get("limit"), State: query.Get("state")})
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		write(w, 200, out)
+	})
+	d.httpHandle(mux, "GET /v1/admin/access/invitations/{id}", func(w http.ResponseWriter, r *http.Request) {
+		p, e := d.administrator(r)
+		if e != nil {
+			accessFailure(w, e)
+			return
+		}
+		out, e := store.Invitation(r.Context(), d.accessAuthority(p, identity.TierAdmin), r.PathValue("id"))
 		if e != nil {
 			accessFailure(w, e)
 			return

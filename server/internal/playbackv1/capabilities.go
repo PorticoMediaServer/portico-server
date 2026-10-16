@@ -29,6 +29,15 @@ func (s *Service) Capabilities(ctx context.Context, device string) (Capabilities
 	return out, err
 }
 
+// CapabilitiesRevision is the revision of the device's current document.
+func (s *Service) CapabilitiesRevision(ctx context.Context, device string) (int64, error) {
+	revision, err := s.Playback.CapabilitiesRevision(ctx, device)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, ErrNotFound
+	}
+	return revision, err
+}
+
 // PutCapabilities replaces the device's whole document (spec §17.17). The
 // precondition is checked and the document written in one gated transaction,
 // so a refused write changes nothing. The document belongs to the device, so

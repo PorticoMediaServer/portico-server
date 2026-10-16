@@ -1,8 +1,11 @@
 package apievents
 
 import (
+	"bytes"
 	"context"
+	"encoding/hex"
 	"path/filepath"
+	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/persistence"
 	"testing"
 )
@@ -32,5 +35,20 @@ func TestProfileHintsCoalesceAndKeepAudience(t *testing.T) {
 	var audience, revision string
 	if err = tx.QueryRow(`SELECT audience,revision FROM api_events WHERE type='progress.changed'`).Scan(&audience, &revision); err != nil || audience != ProfileAudience("local", "account", "profile") || revision != "3" {
 		t.Fatalf("%q %q %v", audience, revision, err)
+	}
+}
+
+func TestPublicTitlesTurnsThePathIntoPublicIDs(t *testing.T) {
+	a, b := bytes.Repeat([]byte{1}, entityid.Size), bytes.Repeat([]byte{2}, entityid.Size)
+	out := publicTitles(`{"personal":"3","titles":"` + hex.EncodeToString(a) + "/" + hex.EncodeToString(b) + `"}`)
+	want := `{"personal":"3","titles":["` + entityid.Encode(a) + `","` + entityid.Encode(b) + `"]}`
+	if out != want {
+		t.Fatalf("got %s, want %s", out, want)
+	}
+	if out = publicTitles(`{"personal":"3","titles":"zz"}`); out != `{"personal":"3"}` {
+		t.Fatalf("an unreadable path: %s", out)
+	}
+	if out = publicTitles(`{"personal":"3"}`); out != `{"personal":"3"}` {
+		t.Fatalf("no path: %s", out)
 	}
 }

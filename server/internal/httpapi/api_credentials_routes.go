@@ -32,6 +32,10 @@ type CredentialOptions struct {
 	TokensAllowed bool `json:"tokensAllowed"`
 	// RequestsPerMinute is the rate one key or token is held to.
 	RequestsPerMinute int `json:"requestsPerMinute"`
+	// QueryParameter is the query parameter a key or token may travel in on a
+	// GET, for an address that works on its own (artwork, a stream, a
+	// download). Anywhere else it goes in the Authorization header.
+	QueryParameter string `json:"queryParameter"`
 }
 
 func credentialRouteError(err error) error {
@@ -76,7 +80,7 @@ func (d Dependencies) sessionAuthority(p identity.Principal) access.Authorize {
 }
 
 func (d Dependencies) credentialOptions(ctx context.Context, p identity.Principal) (CredentialOptions, error) {
-	out := CredentialOptions{Scopes: []ScopeDocument{}, MaximumKeys: access.MaxAPIKeys, MaximumTokens: access.MaxAccessTokens, TokensAllowed: true, RequestsPerMinute: d.apiRequestsPerMinute(ctx)}
+	out := CredentialOptions{Scopes: []ScopeDocument{}, MaximumKeys: access.MaxAPIKeys, MaximumTokens: access.MaxAccessTokens, TokensAllowed: true, RequestsPerMinute: d.apiRequestsPerMinute(ctx), QueryParameter: QueryCredentialParameter}
 	for _, scope := range access.CredentialScopes {
 		out.Scopes = append(out.Scopes, ScopeDocument{ID: scope})
 	}

@@ -61,6 +61,15 @@ func TestFoundationContractAndReplay(t *testing.T) {
 		t.Fatalf("viewer rating systems: %d %s", ratings.Code, ratings.Body.String())
 	}
 	assertSpecResponse(t, "GET", "/v1/rating-systems", ratings)
+	// The list is the build's: the validator it names is answered 304 again.
+	again := httptest.NewRequest("GET", "/v1/rating-systems", nil)
+	again.Header.Set("Authorization", "Bearer "+viewer.AccessToken)
+	again.Header.Set("If-None-Match", ratings.Header().Get("ETag"))
+	held := httptest.NewRecorder()
+	h.ServeHTTP(held, again)
+	if ratings.Header().Get("ETag") == "" || held.Code != 304 || held.Body.Len() != 0 {
+		t.Fatalf("a held rating list: %d %q %s", held.Code, ratings.Header().Get("ETag"), held.Body.String())
+	}
 	restrictionsRequest := httptest.NewRequest("GET", "/v1/direct/profiles/profile/restrictions", nil)
 	restrictionsRequest.Header.Set("Authorization", "Bearer "+viewer.AccessToken)
 	restrictions := httptest.NewRecorder()

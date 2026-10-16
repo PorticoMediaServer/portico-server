@@ -43,8 +43,12 @@ func socialContract[Req, Resp any](r *apikit.Registry, pattern string, h http.Ha
 		m.Requires = apikit.ScopeRead
 	}
 	switch parts[1] {
-	case "/v1/cast/bootstrap", "/v1/cast/bootstrap/{id}", "/v1/cast/devices/{id}", "/v1/cast/reconnect", "/v1/cast/redeem":
+	case "/v1/cast/bootstrap", "/v1/cast/bootstrap/{id}", "/v1/cast/reconnect", "/v1/cast/redeem":
+		// Pairing a screen issues it a session: a credential never mints another.
 		m.Requires = apikit.ScopeSession
+	case "/v1/cast/devices/{id}":
+		// Forgetting a paired screen is ordinary account work.
+		m.Requires = apikit.ScopeAdmin
 	case "/v1/cast/configuration":
 		if parts[0] == "PUT" {
 			m.Requires = apikit.ScopeAdmin

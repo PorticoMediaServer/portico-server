@@ -84,6 +84,12 @@ var (
 // ValidationError names the fields a request got wrong.
 type ValidationError struct{ Fields []string }
 
+// RevisionError is a change made against an older revision of the webhook.
+// Current is the webhook as it is now, so the editor can carry its change over.
+type RevisionError struct{ Current Webhook }
+
+func (e *RevisionError) Error() string { return "webhook changed since it was read" }
+
 func (e *ValidationError) Error() string { return ErrInvalid.Error() }
 func (e *ValidationError) Unwrap() error { return ErrInvalid }
 
@@ -104,6 +110,9 @@ type Webhook struct {
 	Waiting int `json:"waiting"`
 	Failing int `json:"failing"`
 	Dropped int `json:"dropped"`
+	// Revision moves with every change the owner makes (not with deliveries);
+	// a change names the revision it was made against.
+	Revision int64 `json:"revision"`
 }
 
 // Issued is the answer to creating a webhook or rotating its secret: the one
@@ -131,12 +140,15 @@ type Create struct {
 	Enabled *bool    `json:"enabled,omitempty"`
 }
 
-// Change is a partial edit: a field left out is left alone.
+// Change is a partial edit: a field left out is left alone. It is made
+// against the revision the editor read; when the webhook has changed since,
+// nothing is written and the answer is the webhook as it is now.
 type Change struct {
-	Name    *string   `json:"name,omitempty"`
-	URL     *string   `json:"url,omitempty"`
-	Events  *[]string `json:"events,omitempty"`
-	Enabled *bool     `json:"enabled,omitempty"`
+	ExpectedRevision int64     `json:"expectedRevision"`
+	Name             *string   `json:"name,omitempty"`
+	URL              *string   `json:"url,omitempty"`
+	Events           *[]string `json:"events,omitempty"`
+	Enabled          *bool     `json:"enabled,omitempty"`
 	// RotateSecret replaces the signing secret with a new one, which the answer
 	// shows once. Secret sets a chosen one instead.
 	RotateSecret bool   `json:"rotateSecret,omitempty"`
@@ -298,13 +310,13 @@ func (s *Store) write(ctx context.Context, auth Authorize, fn func(*sql.Tx) erro
 	})
 }
 
-const webhookColumns = `w.id,w.name,w.url,w.events,w.enabled,w.secret,w.created_ms,w.updated_ms,w.failures,w.dropped,(SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending')`
+const webhookColumns = `w.id,w.name,w.url,w.events,w.enabled,w.secret,w.created_ms,w.updated_ms,w.failures,w.dropped,(SELECT count(*) FROM webhook_deliveries d WHERE d.webhook_id=w.id AND d.state='pending'),w.revision`
 
 func scanWebhook(row interface{ Scan(...any) error }) (Webhook, error) {
 	var w Webhook
 	var events, secret string
 	var created, updated int64
-	if err := row.Scan(&w.ID, &w.Name, &w.URL, &events, &w.Enabled, &secret, &created, &updated, &w.Failing, &w.Dropped, &w.Waiting); err != nil {
+	if err := row.Scan(&w.ID, &w.Name, &w.URL, &events, &w.Enabled, &secret, &created, &updated, &w.Failing, &w.Dropped, &w.Waiting, &w.Revision); err != nil {
 		return w, err
 	}
 	w.Events, w.SecretHint, w.CreatedAt, w.UpdatedAt = unpackEvents(events), hint(secret), stamp(created), stamp(updated)
@@ -425,28 +437,35 @@ func (s *Store) Update(ctx context.Context, auth Authorize, id string, q Change)
 		return out, &ValidationError{fields}
 	}
 	err := s.write(ctx, auth, func(tx *sql.Tx) error {
-		var exists int
-		if err := tx.QueryRowContext(ctx, `SELECT 1 FROM webhooks WHERE id=?`, id).Scan(&exists); err != nil {
+		current, err := scanWebhook(tx.QueryRowContext(ctx, `SELECT `+webhookColumns+` FROM webhooks w WHERE w.id=?`, id))
+		if err != nil {
 			return err
 		}
+		if current.Revision != q.ExpectedRevision {
+			return &RevisionError{Current: current}
+		}
 		now := s.now()
+		// One change is one revision, whatever it touches.
+		if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET updated_ms=?,revision=revision+1 WHERE id=?`, now, id); err != nil {
+			return err
+		}
 		if q.Name != nil {
-			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET name=?,updated_ms=?,revision=revision+1 WHERE id=?`, *q.Name, now, id); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET name=? WHERE id=?`, *q.Name, id); err != nil {
 				return err
 			}
 		}
 		if q.URL != nil {
-			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET url=?,failures=0,updated_ms=?,revision=revision+1 WHERE id=?`, *q.URL, now, id); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET url=?,failures=0 WHERE id=?`, *q.URL, id); err != nil {
 				return err
 			}
 		}
 		if q.Events != nil {
-			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET events=?,updated_ms=?,revision=revision+1 WHERE id=?`, packEvents(events), now, id); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET events=? WHERE id=?`, packEvents(events), id); err != nil {
 				return err
 			}
 		}
 		if q.Enabled != nil {
-			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET enabled=?,failures=0,updated_ms=?,revision=revision+1 WHERE id=?`, *q.Enabled, now, id); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET enabled=?,failures=0 WHERE id=?`, *q.Enabled, id); err != nil {
 				return err
 			}
 			if !*q.Enabled {
@@ -457,11 +476,10 @@ func (s *Store) Update(ctx context.Context, auth Authorize, id string, q Change)
 			}
 		}
 		if secret != "" {
-			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET secret=?,updated_ms=?,revision=revision+1 WHERE id=?`, secret, now, id); err != nil {
+			if _, err := tx.ExecContext(ctx, `UPDATE webhooks SET secret=? WHERE id=?`, secret, id); err != nil {
 				return err
 			}
 		}
-		var err error
 		out.Webhook, err = scanWebhook(tx.QueryRowContext(ctx, `SELECT `+webhookColumns+` FROM webhooks w WHERE w.id=?`, id))
 		return err
 	})
@@ -474,6 +492,25 @@ func (s *Store) Update(ctx context.Context, auth Authorize, id string, q Change)
 	}
 	s.wake()
 	return out, nil
+}
+
+// Get reads one webhook, as the list shows it.
+func (s *Store) Get(ctx context.Context, auth Authorize, id string) (Webhook, error) {
+	if s == nil || s.DB == nil {
+		return Webhook{}, ErrInvalid
+	}
+	gated, err := dbwork.BeginSnapshot(ctx, s.DB)
+	if err != nil {
+		return Webhook{}, err
+	}
+	defer gated.Rollback()
+	tx := gated.Tx()
+	if auth != nil {
+		if err = auth(ctx, tx); err != nil {
+			return Webhook{}, err
+		}
+	}
+	return scanWebhook(tx.QueryRowContext(ctx, `SELECT `+webhookColumns+` FROM webhooks w WHERE w.id=?`, id))
 }
 
 // Delete removes a webhook with its queue and its log. Deleting one that is

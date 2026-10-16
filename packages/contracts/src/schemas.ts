@@ -8986,6 +8986,11 @@ export const schemas = {
           "name": {
             "type": "string"
           },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "secretHint": {
             "type": "string"
           },
@@ -9012,7 +9017,8 @@ export const schemas = {
           "updatedAt",
           "waiting",
           "failing",
-          "dropped"
+          "dropped",
+          "revision"
         ],
         "type": "object"
       }
@@ -11892,6 +11898,67 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminAccessDeviceRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminAccessDeviceResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "app": {
+        "type": "string"
+      },
+      "appVersion": {
+        "type": "string"
+      },
+      "firstSeenAt": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "lastSeenAt": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "platform": {
+        "type": "string"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "trust": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "accountId",
+      "username",
+      "name",
+      "platform",
+      "app",
+      "appVersion",
+      "trust",
+      "firstSeenAt",
+      "lastSeenAt",
+      "revision"
+    ],
+    "type": "object"
+  },
   "GetAdminAccessDevicesRequest": {
     "properties": {},
     "required": [],
@@ -11977,6 +12044,67 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminAccessInvitationRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminAccessInvitationResponse": {
+    "properties": {
+      "acceptedAt": {
+        "type": "string"
+      },
+      "accountId": {
+        "type": "string"
+      },
+      "allowedLibraries": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "code": {
+        "type": "string"
+      },
+      "createdAt": {
+        "type": "string"
+      },
+      "email": {
+        "type": "string"
+      },
+      "expiresAt": {
+        "type": "string"
+      },
+      "id": {
+        "type": "string"
+      },
+      "porticoUsername": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "role": {
+        "type": "string"
+      },
+      "state": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "id",
+      "email",
+      "role",
+      "allowedLibraries",
+      "state",
+      "createdAt",
+      "expiresAt",
+      "revision"
+    ],
+    "type": "object"
+  },
   "GetAdminAccessInvitationsRequest": {
     "properties": {},
     "required": [],
@@ -12055,6 +12183,182 @@ export const schemas = {
     "required": [
       "limit",
       "items"
+    ],
+    "type": "object"
+  },
+  "GetAdminAccessMemberRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminAccessMemberResponse": {
+    "properties": {
+      "accountId": {
+        "type": "string"
+      },
+      "allowedLibraries": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "disabled": {
+        "type": "boolean"
+      },
+      "disabledAt": {
+        "type": "string"
+      },
+      "disabledReason": {
+        "type": "string"
+      },
+      "hostedAccountId": {
+        "type": "string"
+      },
+      "limits": {
+        "properties": {
+          "allowUnrated": {
+            "type": "boolean"
+          },
+          "channelPolicy": {
+            "properties": {
+              "channels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "mode": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "mode",
+              "channels"
+            ],
+            "type": "object"
+          },
+          "maxContentRating": {
+            "type": "string"
+          },
+          "maxStreams": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "maximumAge": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "ratingSystem": {
+            "type": "string"
+          },
+          "remoteBitrateKbps": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "schedule": {
+            "properties": {
+              "timezone": {
+                "type": "string"
+              },
+              "windows": {
+                "items": {
+                  "properties": {
+                    "days": {
+                      "items": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "type": "array"
+                    },
+                    "endMinute": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "startMinute": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "days",
+                    "startMinute",
+                    "endMinute"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "timezone",
+              "windows"
+            ],
+            "type": "object"
+          },
+          "tagPolicy": {
+            "properties": {
+              "deniedLabels": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "deniedLabels"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "maxStreams",
+          "remoteBitrateKbps",
+          "ratingSystem",
+          "maxContentRating",
+          "maximumAge",
+          "allowUnrated",
+          "schedule",
+          "channelPolicy",
+          "tagPolicy"
+        ],
+        "type": "object"
+      },
+      "limitsRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "profileId": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "role": {
+        "type": "string"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "accountId",
+      "username",
+      "profileId",
+      "role",
+      "disabled",
+      "revision",
+      "allowedLibraries",
+      "limitsRevision",
+      "limits"
     ],
     "type": "object"
   },
@@ -21837,6 +22141,9 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "queryParameter": {
+        "type": "string"
+      },
       "requestsPerMinute": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -21865,7 +22172,8 @@ export const schemas = {
       "maximumKeys",
       "maximumTokens",
       "tokensAllowed",
-      "requestsPerMinute"
+      "requestsPerMinute",
+      "queryParameter"
     ],
     "type": "object"
   },
@@ -69059,6 +69367,77 @@ export const schemas = {
     "format": "binary",
     "type": "string"
   },
+  "GetWebhookRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetWebhookResponse": {
+    "properties": {
+      "createdAt": {
+        "type": "string"
+      },
+      "dropped": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "enabled": {
+        "type": "boolean"
+      },
+      "events": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "failing": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "id": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string"
+      },
+      "revision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "secretHint": {
+        "type": "string"
+      },
+      "updatedAt": {
+        "type": "string"
+      },
+      "url": {
+        "type": "string"
+      },
+      "waiting": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "id",
+      "name",
+      "url",
+      "events",
+      "enabled",
+      "secretHint",
+      "createdAt",
+      "updatedAt",
+      "waiting",
+      "failing",
+      "dropped",
+      "revision"
+    ],
+    "type": "object"
+  },
   "HeadDownloadArtifactRequest": {
     "properties": {},
     "required": [],
@@ -70928,6 +71307,11 @@ export const schemas = {
             "name": {
               "type": "string"
             },
+            "revision": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
             "secretHint": {
               "type": "string"
             },
@@ -70954,7 +71338,8 @@ export const schemas = {
             "updatedAt",
             "waiting",
             "failing",
-            "dropped"
+            "dropped",
+            "revision"
           ],
           "type": "object"
         },
@@ -113526,6 +113911,11 @@ export const schemas = {
         },
         "type": "array"
       },
+      "expectedRevision": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
       "name": {
         "type": "string"
       },
@@ -113539,7 +113929,9 @@ export const schemas = {
         "type": "string"
       }
     },
-    "required": [],
+    "required": [
+      "expectedRevision"
+    ],
     "type": "object"
   },
   "UpdateWebhookResponse": {
@@ -113577,6 +113969,11 @@ export const schemas = {
           "name": {
             "type": "string"
           },
+          "revision": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "secretHint": {
             "type": "string"
           },
@@ -113603,7 +114000,8 @@ export const schemas = {
           "updatedAt",
           "waiting",
           "failing",
-          "dropped"
+          "dropped",
+          "revision"
         ],
         "type": "object"
       }

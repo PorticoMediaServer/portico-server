@@ -14,6 +14,20 @@ Both are used the same way, on routes their scopes and role allow:
 Authorization: Bearer pk.3q2-7w...
 ```
 
+On a `GET` or `HEAD` the secret may instead travel in the address, as the
+`apiKey` query parameter, so an address works on its own (artwork in another
+app, a stream for a player, a download link):
+
+```
+GET /v1/...?apiKey=pk.3q2-7w...
+```
+
+The server takes the parameter out of the address before anything else reads
+the request: it is never logged, recorded or sent back. On any other method it
+is ignored and the request has no credential. Sending it in both the header and
+the address is refused (`401`). An address that carries a key is as powerful as
+the key: share it only where you would share the key.
+
 A key or token **is the member who made it**. It sees the libraries that member
 sees, under the same content restrictions, and can never do more than that
 member could do signed in. On top of that it is held to the **scopes** chosen
@@ -26,7 +40,7 @@ when it was made.
 | `read` | Look at libraries, titles, the guide, and the member's own watch state, lists and notifications. |
 | `playback` | Play, control playback, and change the member's own watch state, lists, preferences and recordings. |
 | `library` | Scan, report changed paths, match, edit and delete what is in the libraries. |
-| `admin` | Everything else the member may administer: settings, members, backups, logs, webhooks. Includes the three above. |
+| `admin` | Everything else the member may administer: settings, profiles (create, edit, order, pictures, PIN reset, delete), members (add, change, delete), devices and sessions (list, rename, approve, block, sign out), backups, logs, webhooks. Includes the three above. |
 
 Scopes do not include one another (apart from `admin`): a credential that reads
 and controls playback is given both `read` and `playback`. A download manager
@@ -36,10 +50,13 @@ Every operation declares the one scope it needs. In `portico.openapi.json` it is
 the `x-scope` value of the operation. Two further values appear there:
 
 - `open` — no credential is needed at all (server identity, health).
-- `session` — only a signed-in session may call it. Signing in and out, changing
-  a password or a second factor, switching profile, approving or linking a
-  device, and creating or revoking keys and tokens are all `session`. **A key or
-  token can never create, widen or revoke a credential**, its own included.
+- `session` — only a signed-in session may call it: signing in and out,
+  renewing and registering; changing a password, a second factor or a
+  recovered PIN; creating, listing or revoking keys and tokens; ownership
+  transfer; pairing a screen or approving a TV code; accepting an invitation;
+  remembered accounts and choosing a profile; the networking claim. **A key or
+  token can never create, widen or revoke a credential**, its own included, and
+  can never change what proves who a person is.
 
 Refusals:
 

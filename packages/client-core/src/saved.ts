@@ -480,7 +480,7 @@ export class SavedService {
    } catch (error) {
     if (this.disposed || generation !== this.generation) return;
     const e = errorInfo(error);
-    const kind = ['playlist_conflict','revision_conflict','resource_conflict'].includes(e.code) ? 'conflict' : 'retry-required';
+    const kind = ['playlist_conflict','revision_mismatch','revision_conflict','resource_conflict'].includes(e.code) ? 'conflict' : 'retry-required';
     // The playlist moved under this change (another device, or the person's own previous
     // change). Adding, removing, renaming or sharing still means the same thing against the
     // playlist as it is now, so it is read again and the change sent once more, quietly. A new

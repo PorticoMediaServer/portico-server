@@ -29,17 +29,17 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	if err := apikit.RegisterHTTP[struct {
 		Name string "json:\"name\""
 		Art  string "json:\"art\""
-	}, identity.DirectSnapshot](registry, apikit.Metadata{ID: "post_direct_profiles", Method: "POST", Path: "/v1/direct/profiles", Summary: "Run account profile", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, identity.DirectSnapshot](registry, apikit.Metadata{ID: "post_direct_profiles", Method: "POST", Path: "/v1/direct/profiles", Summary: "Run account profile", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:122
-	if err := apikit.RegisterHTTP[identity.DirectProfileEdit, identity.DirectSnapshot](registry, apikit.Metadata{ID: "patch_direct_profiles_id", Method: "PATCH", Path: "/v1/direct/profiles/{id}", Summary: "Change account profile", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[identity.DirectProfileEdit, identity.DirectSnapshot](registry, apikit.Metadata{ID: "patch_direct_profiles_id", Method: "PATCH", Path: "/v1/direct/profiles/{id}", Summary: "Change account profile", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:135
 	if err := apikit.RegisterHTTP[struct {
 		Profiles []identity.ProfileOrderEntry "json:\"profiles\""
-	}, identity.DirectSnapshot](registry, apikit.Metadata{ID: "put_direct_profiles_order", Method: "PUT", Path: "/v1/direct/profiles/order", Summary: "Save account profile order", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, identity.DirectSnapshot](registry, apikit.Metadata{ID: "put_direct_profiles_order", Method: "PUT", Path: "/v1/direct/profiles/order", Summary: "Save account profile order", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:150
@@ -47,14 +47,14 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:163
-	if err := apikit.RegisterHTTP[struct{}, identity.ProfileDeletionPreview](registry, apikit.Metadata{ID: "get_direct_profiles_id_deletion_preview", Method: "GET", Path: "/v1/direct/profiles/{id}/deletion-preview", Summary: "Read account profile deletion preview", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, identity.ProfileDeletionPreview](registry, apikit.Metadata{ID: "get_direct_profiles_id_deletion_preview", Method: "GET", Path: "/v1/direct/profiles/{id}/deletion-preview", Summary: "Read account profile deletion preview", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:171
 	if err := apikit.RegisterHTTP[struct {
 		ExpectedRevision     int64 "json:\"expectedRevision\""
 		DeleteSavedResources bool  "json:\"deleteSavedResources\""
-	}, struct{}](registry, apikit.Metadata{ID: "delete_direct_profiles_id", Method: "DELETE", Path: "/v1/direct/profiles/{id}", Summary: "Remove account profile", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, struct{}](registry, apikit.Metadata{ID: "delete_direct_profiles_id", Method: "DELETE", Path: "/v1/direct/profiles/{id}", Summary: "Remove account profile", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:186
@@ -75,15 +75,15 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/direct_identity.go:217
 	if err := apikit.RegisterHTTP[struct{}, struct {
 		Items []identity.DirectAccount `json:"items"`
-	}](registry, apikit.Metadata{ID: "get_direct_members", Method: "GET", Path: "/v1/direct/members", Summary: "Read account members", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "get_direct_members", Method: "GET", Path: "/v1/direct/members", Summary: "Read account members", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:225
-	if err := apikit.RegisterHTTP[identity.DirectMemberInput, identity.DirectAccount](registry, apikit.Metadata{ID: "post_direct_members", Method: "POST", Path: "/v1/direct/members", Summary: "Run account members", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[identity.DirectMemberInput, identity.DirectAccount](registry, apikit.Metadata{ID: "post_direct_members", Method: "POST", Path: "/v1/direct/members", Summary: "Run account members", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:238
-	if err := apikit.RegisterHTTP[identity.DirectMemberInput, struct{}](registry, apikit.Metadata{ID: "patch_direct_members_id", Method: "PATCH", Path: "/v1/direct/members/{id}", Summary: "Change account members", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[identity.DirectMemberInput, struct{}](registry, apikit.Metadata{ID: "patch_direct_members_id", Method: "PATCH", Path: "/v1/direct/members/{id}", Summary: "Change account members", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 65536, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/direct_identity.go:253
@@ -104,11 +104,11 @@ func registerIdentityHTTPContracts(registry *apikit.Registry) error {
 	// internal/httpapi/identity_routes.go:35
 	if err := apikit.RegisterHTTP[struct {
 		Image SubtitleBytesContract `json:"image"`
-	}, identity.ProfileAvatar](registry, apikit.Metadata{ID: "post_direct_profiles_id_avatar", Method: "POST", Path: "/v1/direct/profiles/{id}/avatar", RequestContentTypes: []string{"multipart/form-data", "application/octet-stream", "image/png", "image/jpeg", "image/webp"}, Summary: "Run account profile avatar", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: identity.AvatarUploadBytes + (1 << 20), Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}, identity.ProfileAvatar](registry, apikit.Metadata{ID: "post_direct_profiles_id_avatar", Method: "POST", Path: "/v1/direct/profiles/{id}/avatar", RequestContentTypes: []string{"multipart/form-data", "application/octet-stream", "image/png", "image/jpeg", "image/webp"}, Summary: "Run account profile avatar", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: identity.AvatarUploadBytes + (1 << 20), Status: 201, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/identity_routes.go:72
-	if err := apikit.RegisterHTTP[struct{}, struct{}](registry, apikit.Metadata{ID: "delete_direct_profiles_id_avatar", Method: "DELETE", Path: "/v1/direct/profiles/{id}/avatar", Summary: "Remove account profile avatar", Access: apikit.Device, Requires: apikit.ScopeSession, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 0, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, struct{}](registry, apikit.Metadata{ID: "delete_direct_profiles_id_avatar", Method: "DELETE", Path: "/v1/direct/profiles/{id}/avatar", Summary: "Remove account profile avatar", Access: apikit.Device, Requires: apikit.ScopeAdmin, Lane: apikit.Security, Admission: laneAuth, Cost: apikit.Constant, BodyLimit: 0, Status: 204, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/identity_routes.go:79

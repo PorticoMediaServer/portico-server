@@ -251,6 +251,12 @@ func failure(w http.ResponseWriter, e error) {
 	if revisionFailure(w, e) {
 		return
 	}
+	// A saved list, playlist or collection that moved since it was read
+	// answers as every other revision-fenced change does.
+	if errors.Is(e, catalog.ErrPlaylistConflict) {
+		policyError(w, "revision_mismatch")
+		return
+	}
 	if errors.Is(e, catalog.ErrVisibilityBuilding) {
 		w.Header().Set("Retry-After", "1")
 		write(w, http.StatusServiceUnavailable, map[string]any{"error": map[string]any{"code": "visibility_building", "message": "Library visibility is being prepared. Retry shortly.", "retryable": true}})
@@ -486,9 +492,6 @@ func failure(w http.ResponseWriter, e error) {
 	if errors.Is(e, identity.ErrBusy) {
 		status, code, retryable = 503, "authentication_busy", true
 		w.Header().Set("Retry-After", "2")
-	}
-	if errors.Is(e, catalog.ErrPlaylistConflict) {
-		status, code = 409, "playlist_conflict"
 	}
 	if errors.Is(e, metadata.ErrLocalMetadataOnly) {
 		status, code, message = 409, "local_metadata_only", metadata.ErrLocalMetadataOnly.Error()
@@ -1172,6 +1175,9 @@ func New(d Dependencies) http.Handler {
 	routeMuxMu.Unlock()
 	d.self.h = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		r = detachCanceledConnection(w, r)
+		// A key in the address is taken out of it before anything else reads
+		// the request: no handler, log or error ever sees it there.
+		r = liftQueryCredential(r)
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		// 'wasm-unsafe-eval' lets the page compile WebAssembly (the subtitle renderer the web player

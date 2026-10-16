@@ -624,9 +624,28 @@ func mcpTools() []mcpTool {
 	add(mcpTool{Name: "create_webhook", Title: "Add a webhook", Description: "Add a webhook: the server will POST the chosen events to the URL, signed with a secret. The secret is in the answer and is shown only this once.", Role: identity.TierOwner, Required: []string{"name", "url", "events"},
 		Properties: map[string]any{"name": text("A name to recognise it by."), "url": text("Where to send events: an http or https address."), "events": map[string]any{"type": "array", "description": "The events to send, from list_webhooks.", "minItems": 1, "items": map[string]any{"type": "string"}}, "secret": text("Optional signing secret of your own, at least 16 characters. Leave out to have one made.")}}, r, run)
 
-	r, run = simple("PATCH", "/v1/admin/webhooks/{id}", []string{"webhookId"}, nil, func(args map[string]any) any { return pick(args, "name", "url", "events", "enabled", "rotateSecret") })
+	// A change is made against the webhook as it is when the tool runs: it is
+	// read first and its revision sent with the change.
 	add(mcpTool{Name: "update_webhook", Title: "Change a webhook", Description: "Change a webhook's name, address or events, turn it on or off, or replace its signing secret. Anything left out stays as it is.", Role: identity.TierOwner, Required: []string{"webhookId"},
-		Properties: map[string]any{"webhookId": text("The webhook's id, from list_webhooks."), "name": text("A new name."), "url": text("A new address."), "events": map[string]any{"type": "array", "description": "The complete new list of events.", "minItems": 1, "items": map[string]any{"type": "string"}}, "enabled": flag("true to turn it on, false to turn it off."), "rotateSecret": flag("true to replace the signing secret; the new one is in the answer, once.")}}, r, run)
+		Properties: map[string]any{"webhookId": text("The webhook's id, from list_webhooks."), "name": text("A new name."), "url": text("A new address."), "events": map[string]any{"type": "array", "description": "The complete new list of events.", "minItems": 1, "items": map[string]any{"type": "string"}}, "enabled": flag("true to turn it on, false to turn it off."), "rotateSecret": flag("true to replace the signing secret; the new one is in the answer, once.")}},
+		[]mcpRoute{{"GET", "/v1/admin/webhooks/{id}"}, {"PATCH", "/v1/admin/webhooks/{id}"}}, func(args map[string]any, call mcpInvoker) (int, []byte, error) {
+			path, err := pathWith("/v1/admin/webhooks/{id}", args, "webhookId")
+			if err != nil {
+				return 0, nil, err
+			}
+			status, _, current, err := call(mcpCall{Method: "GET", Path: path})
+			if err != nil || status != 200 {
+				return status, current, err
+			}
+			revision, ok := field(current, "revision")
+			if !ok {
+				return 0, nil, errors.New("the server did not say which version of the webhook this is")
+			}
+			body := pick(args, "name", "url", "events", "enabled", "rotateSecret")
+			body["expectedRevision"] = revision
+			status, _, raw, err := call(mcpCall{Method: "PATCH", Path: path, Body: body})
+			return status, raw, err
+		})
 
 	r, run = simple("DELETE", "/v1/admin/webhooks/{id}", []string{"webhookId"}, nil, nil)
 	add(mcpTool{Name: "delete_webhook", Title: "Remove a webhook", Description: "Remove a webhook, with anything still waiting to be sent to it and its delivery log.", Role: identity.TierOwner, Destructive: true, Required: []string{"webhookId"}, Properties: map[string]any{"webhookId": text("The webhook's id, from list_webhooks.")}}, r, run)
