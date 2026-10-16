@@ -25,7 +25,6 @@ import (
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/enrichment"
-	"slices"
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/downloads"
@@ -650,16 +649,10 @@ func run() (runErr error) {
 	player.ConfigureSubtitleDelivery(subtitleService)
 	remote.SubtitleInputs = subtitleRenderer
 	remote.SubtitleInspector = subtitleRenderer
-	// The browser origins that may call this server: the Portico web app and the shared Cast
-	// receiver page. They are built in because a server installed from a package has no
-	// environment to set; PORTICO_ALLOWED_ORIGINS adds to them (development hosts, a self-hosted
-	// web app) and never has to repeat them.
+	// The Portico web app and the shared Cast receiver page may call this server like its own
+	// web app. Any other browser origin may call it with a token (an API key, a personal access
+	// token or a session); nothing needs configuring for either.
 	origins := []string{"https://web.getportico.tv", "https://cast.getportico.tv"}
-	for _, extra := range strings.Split(env("PORTICO_ALLOWED_ORIGINS", ""), ",") {
-		if extra = strings.TrimSpace(extra); extra != "" && !slices.Contains(origins, extra) {
-			origins = append(origins, extra)
-		}
-	}
 	claimHandler, e := initializeCurrentClaimControl(db, state, ident, claimRunner, claimKeys, control, origins)
 	if e != nil {
 		return e

@@ -17,6 +17,7 @@ import {channelBuilderMessages} from './en-US/channel-builder.ts';
 import {drawnSubtitleMessages} from './en-US/subtitles.ts';
 import {ownerConsoleMessages} from './en-US/owner-console.ts';
 import {ownerParityMessages} from './en-US/owner-parity.ts';
+import {connectionTrustMessages} from './en-US/connection-trust.ts';
 
 export const enUS = {
   'browse.field.search': 'Search',
@@ -2066,6 +2067,8 @@ export const enUS = {
   ...ownerConsoleMessages,
   // ── Owner tools on every client (catalog/en-US/owner-parity.ts) ──
   ...ownerParityMessages,
+  // ── Owner certificates and Apple's local plain HTTP (catalog/en-US/connection-trust.ts) ──
+  ...connectionTrustMessages,
 } as const satisfies Record<string, string>;
 
 export type MessageId = keyof typeof enUS;

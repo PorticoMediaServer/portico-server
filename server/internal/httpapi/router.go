@@ -1184,12 +1184,7 @@ func New(d Dependencies) http.Handler {
 		w.Header().Set("Cache-Control", "no-store")
 		origin := r.Header.Get("Origin")
 		if origin != "" {
-			allowed := d.sameRequestOrigin(r, origin)
-			for _, v := range d.Origins {
-				if origin == v {
-					allowed = true
-				}
-			}
+			allowed := d.browserOriginAllowed(r, origin)
 			if r.URL.Path == "/v1/setup" || r.URL.Path == "/v1/setup/browser" {
 				allowed = d.sameRequestOrigin(r, origin)
 			}
@@ -1199,6 +1194,12 @@ func New(d Dependencies) http.Handler {
 			}
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Vary", "Origin")
+			if r.Method == "OPTIONS" && r.Header.Get("Access-Control-Request-Private-Network") == "true" {
+				// A page on a public origin asking for this server on a home network. The
+				// answer only lets the browser send the request; the request itself is
+				// still held to the origin rule above and to its own authentication.
+				w.Header().Set("Access-Control-Allow-Private-Network", "true")
+			}
 			w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type, Range, If-Match, If-None-Match, Idempotency-Key, Last-Event-ID, Portico-Client, X-Portico-Transport-Class, X-Portico-Device-Class, X-Portico-Device-Name, X-Portico-Device-Platform, X-Portico-Installation-Id, X-Portico-App, X-Portico-App-Version")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Expose-Headers", "Content-Range, Accept-Ranges, Content-Length, Location, Retry-After, ETag, Idempotent-Replayed, RateLimit, RateLimit-Policy, Report-Every-Ms")
