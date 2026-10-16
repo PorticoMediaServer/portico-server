@@ -112,7 +112,7 @@ Semantic identity excludes replace-style state. For example, `library:{libraryId
 4. Changing a pivot/tab MUST preserve common page chrome and SHOULD preserve compatible content geometry.
 5. An unavailable pivot is omitted when capability is known absent. A temporarily unavailable but normally applicable pivot MAY remain visible and disabled with a reason.
 6. Filters, sort, grid/list mode, expanded rail, hover actions, open popovers, unsaved text, and player utility panels are presentation state unless a Product Contract explicitly makes them linkable.
-7. Applying filters updates the current destination in place. Cancel or Back restores the last committed selection; it does not silently commit the focused draft.
+7. Filters and sort apply live: each change updates the current destination in place, as Plex does. Back or Close leaves the filter surface with those changes applied; it does not restore an earlier selection. A Reset or Clear action returns to the defaults.
 8. Search typing never creates route history. A submitted query stays in the current scoped in-memory Search service and may survive an in-session detail visit. It is excluded from route URLs, browser-history payloads and persisted restoration. Private search text is not restored across launches without separate approval.
 
 ## NAV-7. Surface classes and dismissal

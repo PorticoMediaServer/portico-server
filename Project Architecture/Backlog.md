@@ -34,9 +34,9 @@ October implementation reconciliation. Report inventory read at 2026-10-13 12:56
 
 - **native-playback:** Apple/Android SDK/device builds; native start-throughput and reason parsing; same-session Player-setting capability replan; fallback-font mixed-script coverage, Settings caption rows and chapter thumbnails. Recheck stale mirror failures after native-sync; no React-hook coverage or runtime proof is claimed. Source: [native-playback](../../_program/reports/native-playback.md).
 
-- **apple-mpv:** Real MPVKit/SDK/linkage, display/HDR/receiver, subtitle, seek and lifecycle qualification; software limits and early EOF. PiP/live/music mpv remain unavailable. Read later apple-mpv-review fixes before reopening corrected source defects. Source: [apple-mpv](../../_program/reports/apple-mpv.md).
+- **apple-mpv:** Real own-engine build (`third_party/media-engine`)/SDK/linkage, display/HDR/receiver, subtitle, seek and lifecycle qualification; software limits and early EOF. PiP/live/music mpv remain unavailable. Read later apple-mpv-review fixes before reopening corrected source defects. Source: [apple-mpv](../../_program/reports/apple-mpv.md).
 
-- **apple-mpv-review:** Apple framework compilation, pinned MPVKit ABI/symbols, physical teardown/seek/relay/track/display acceptance. Source review fixes do not prove HDR output, audio routing or all glyphs. Source: [apple-mpv-review](../../_program/reports/apple-mpv-review.md).
+- **apple-mpv-review:** Apple framework compilation, the own engine's framework ABI/symbols, physical teardown/seek/relay/track/display acceptance. Source review fixes do not prove HDR output, audio routing or all glyphs. Source: [apple-mpv-review](../../_program/reports/apple-mpv-review.md).
 
 - **android-mpv:** Build Gradle/JNI/libmpv and test physical Android/Fire devices. No mpv passthrough, interlace or DV5; no mpv PiP/live/music. HDR with drawn subtitles uses SDR; HDR output, software ceilings/fonts and Fire receiver reporting remain unqualified. Android 11 frame-rate API excludes older Fire OS. Add release notices/source custody. Source: [android-mpv](../../_program/reports/android-mpv.md).
 
