@@ -185,12 +185,12 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 		option := QualityOption{
 			Quality: preset.ID, Label: preset.Label, Kind: "optimized",
 			TargetHeight: preset.Height, MaxVideoBitrateBPS: preset.VideoBitrateBPS, MaxAudioBitrateBPS: preset.MaxAudioBitrateBPS,
-			PreparedProfileID: preparedProfile(found.Kind, preset),
+			PreparedProfileID: chooseRecipe(ctx, tx, device, preset.ID, found),
 		}
 		if audioKind(found.Kind) {
 			option.Label, option.TargetHeight, option.MaxVideoBitrateBPS, option.MaxAudioBitrateBPS = "AAC 192 kbps", 0, 0, audioRecipeBitrateBPS
 		}
-		option.Bytes, option.Estimated = estimateBytes(preset.ID, found)
+		option.Bytes, option.Estimated = estimateBytes(preset.ID, option.PreparedProfileID, found)
 		version := selectableVersion(versions, option.PreparedProfileID)
 		recipe, recipeErr := preparedmedia.ProfileByID(option.PreparedProfileID)
 		// Finished versions remain usable without an available encoder. New
@@ -199,10 +199,13 @@ func (s *Service) Options(ctx context.Context, p identity.Principal, item string
 			continue
 		}
 		targetSource := playback.DeliverySource{Container: "mp4", Audio: []playback.SourceAudio{{Codec: "aac", Channels: 2, StreamDetail: assets.StreamDetail{SampleRate: 48000}}}}
-		if !audioKind(found.Kind) {
+		if !audioKind(found.Kind) && preparedmedia.Rich(option.PreparedProfileID) {
+			// The device's planner already took the HEVC recipe's result.
+			targetSource = playback.DeliverySource{}
+		} else if !audioKind(found.Kind) {
 			targetSource.Video = &playback.SourceVideo{Codec: "h264", StreamDetail: assets.StreamDetail{Profile: "High", Level: decoder.H264OutputLevel(recipe.Width, recipe.Height, 60), Width: recipe.Width, Height: recipe.Height, FrameRate: 60, BitDepth: 8, DynamicRange: "sdr"}}
 		}
-		if !playback.DownloadPlayable(targetSource, device) {
+		if !preparedmedia.Rich(option.PreparedProfileID) && !playback.DownloadPlayable(targetSource, device) {
 			continue
 		}
 		switch {

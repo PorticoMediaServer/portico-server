@@ -1253,7 +1253,7 @@ func TestAudioItemsPublishOneOptimizedOption(t *testing.T) {
 	}
 	// Every rung resolves to the same recipe, so every rung estimates the same.
 	for _, rung := range []string{"360p", "720p", "2160p"} {
-		other, _ := estimateBytes(rung, source{Kind: "song", Duration: 240})
+		other, _ := estimateBytes(rung, "", source{Kind: "song", Duration: 240})
 		if other != optimized.Bytes {
 			t.Fatalf("rung %s estimated %d, not %d", rung, other, optimized.Bytes)
 		}

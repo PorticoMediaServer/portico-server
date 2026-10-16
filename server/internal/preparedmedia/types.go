@@ -57,6 +57,13 @@ var profiles = []Profile{
 	{"portable-720-v3", "Portable · 720p", "video", 1280, 720, 2500, 192, "H.264 SDR video and AAC stereo audio in MP4. Keeps the original."},
 	{"portable-1080-v3", "Balanced · 1080p", "video", 1920, 1080, 5000, 192, "H.264 SDR video and AAC stereo audio in MP4. Keeps all audio tracks."},
 	{"audio-aac-v3", "Audio · AAC", "audio", 0, 0, 0, 192, "AAC stereo in M4A for music and audiobook files. Keeps the original."},
+	// HEVC recipes keep what a conversion keeps: the source's HDR10 or HLG
+	// picture at ten bits, with its mastering description, and surround sound
+	// up to 5.1. Downloads choose them for a device that plays them.
+	{"hevc-720-v1", "HEVC · 720p", "video", 1280, 720, 1750, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."},
+	{"hevc-1080-v1", "HEVC · 1080p", "video", 1920, 1080, 3500, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."},
+	{"hevc-1440-v1", "HEVC · 1440p", "video", 2560, 1440, 8400, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."},
+	{"hevc-2160-v1", "HEVC · 2160p", "video", 3840, 2160, 14000, 384, "HEVC video that keeps HDR, with surround AAC, in MP4."},
 }
 
 // Legacy recipes remain resolvable for retained jobs/versions. New views offer
@@ -94,7 +101,24 @@ func Producible(id string) bool {
 // recipeFor is the one translation from a recipe's identity to what the
 // encoder is asked for, shared by the encode and by the question above.
 func recipeFor(p Profile) decoder.PreparedRecipe {
+	if Rich(p.ID) {
+		return decoder.PreparedRecipe{DropChapters: true, BoundedFragments: true, VideoCodec: "hevc", Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps}
+	}
 	return decoder.PreparedRecipe{DropChapters: !strings.HasSuffix(p.ID, "-v1"), BoundedFragments: strings.HasSuffix(p.ID, "-v3"), AudioOnly: p.Kind == "audio", Width: p.Width, Height: p.Height, VideoKbps: p.VideoKbps, AudioKbps: p.AudioKbps}
+}
+
+// Rich reports whether a recipe keeps HEVC, HDR and surround sound.
+func Rich(id string) bool { return strings.HasPrefix(id, "hevc-") }
+
+// RichProfileFor is the HEVC recipe at a picture height, or "" when there is
+// none at that height.
+func RichProfileFor(height int) string {
+	for _, p := range profiles {
+		if Rich(p.ID) && p.Height == height {
+			return p.ID
+		}
+	}
+	return ""
 }
 
 // ProfileByID exposes the immutable recipe to size estimators.

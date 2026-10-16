@@ -52,16 +52,36 @@ type Producer struct {
 	Scheduled      bool
 	TimelineBaseMS int64
 	EndMS          int64
+	// Fragmented producers publish fragmented MP4 (an init segment and .m4s
+	// fragments) instead of MPEG-TS, for codecs MPEG-TS cannot carry (FLAC,
+	// Opus) and pictures players take only in MP4 (HEVC on Apple, AV1).
+	Fragmented bool
 }
 type segment struct {
 	sequence, producer    int64
+	fragmented            bool
 	path                  string
 	startUS, endUS        int64
 	bytes                 int64
 	discontinuity         bool
 	discontinuitiesBefore int64
-	readers               int
-	expired               bool
+	// offsetUS is the segment's wall clock minus its media clock: media time
+	// plus offsetUS is the moment it shows (microseconds since the epoch).
+	offsetUS int64
+	readers  int
+	expired  bool
+}
+
+// initFile is one fragmented producer's init segment: every fragment of that
+// producer is decoded with it.
+type initFile struct {
+	path           string
+	bytes          int64
+	readers        int
+	expired        bool
+	hash           string
+	clock          fmp4Init
+	producer, uses int64
 }
 type Buffer struct {
 	owner                                  *os.File
@@ -70,6 +90,7 @@ type Buffer struct {
 	directory                              string
 	segments                               []*segment
 	byID                                   map[int64]*segment
+	inits                                  map[int64]*initFile
 	next, revision, bytes, discontinuities int64
 	// producedUS is the duration of every segment ever appended. Unlike the
 	// window, it never shrinks when retention or the byte cap removes media.
@@ -94,7 +115,7 @@ func New(o Options) (*Buffer, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &Buffer{options: o, directory: dir, owner: owner, byID: map[int64]*segment{}, next: 1}, nil
+	return &Buffer{options: o, directory: dir, owner: owner, byID: map[int64]*segment{}, inits: map[int64]*initFile{}, next: 1}, nil
 }
 func (b *Buffer) Directory() string { return b.directory }
 func (b *Buffer) SetLiveDelay(seconds int) error {
@@ -114,6 +135,11 @@ func (b *Buffer) Publisher(p Producer, check func() error) (*Publisher, error) {
 	defer b.mu.Unlock()
 	if b.closed {
 		return nil, ErrClosed
+	}
+	// One playlist cannot switch between MPEG-TS and fragmented MP4: an init
+	// segment applies to everything after it.
+	if len(b.segments) > 0 && b.segments[len(b.segments)-1].fragmented != p.Fragmented {
+		return nil, ErrMedia
 	}
 	return &Publisher{buffer: b, producer: p, check: check, pending: map[int64]pending{}, hashes: map[int64]string{}, last: -1, failed: make(chan struct{}), changed: make(chan struct{})}, nil
 }
@@ -193,34 +219,65 @@ func (b *Buffer) Producers() []int64 {
 	}
 	return ids
 }
-func (b *Buffer) Playlist() ([]byte, error) {
+func (b *Buffer) Playlist() ([]byte, error) { return b.PlaylistFrom(nil) }
+
+// PlaylistFrom is the playlist starting at the segment holding a channel
+// position (microseconds from the origin): a player that cannot seek in a live
+// playlist (mpv) reopens it there instead. nil is the whole window.
+func (b *Buffer) PlaylistFrom(position *int64) ([]byte, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	if b.closed || len(b.segments) == 0 {
 		return nil, ErrExpired
 	}
+	segments := b.segments
+	if position != nil {
+		at := b.options.OriginMS*1000 + *position
+		first := len(segments) - 1
+		for i, s := range segments {
+			if s.endUS > at {
+				first = i
+				break
+			}
+		}
+		segments = segments[first:]
+	}
 	var out strings.Builder
 	target := 1
-	for _, s := range b.segments {
+	for _, s := range segments {
 		n := int(math.Ceil(float64(s.endUS-s.startUS) / 1e6))
 		if n > target {
 			target = n
 		}
 	}
-	first := b.segments[0]
-	fmt.Fprintf(&out, "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:%d\n#EXT-X-DISCONTINUITY-SEQUENCE:%d\n", target, first.sequence, first.discontinuitiesBefore)
-	if b.options.LiveDelay > 0 {
+	first := segments[0]
+	version := 3
+	if first.fragmented {
+		version = 7
+	}
+	fmt.Fprintf(&out, "#EXTM3U\n#EXT-X-VERSION:%d\n#EXT-X-TARGETDURATION:%d\n#EXT-X-MEDIA-SEQUENCE:%d\n#EXT-X-DISCONTINUITY-SEQUENCE:%d\n", version, target, first.sequence, first.discontinuitiesBefore)
+	if b.options.LiveDelay > 0 && position == nil {
 		window := b.windowLocked(time.Now().UnixMicro())
 		offset := max(window.StartUS, window.LiveUS-2_000_000) - window.EndUS
 		fmt.Fprintf(&out, "#EXT-X-START:TIME-OFFSET=%.6f,PRECISE=YES\n", float64(offset)/1e6)
 	}
 	// A channel change/restart changes buffer generation, but a programme change
 	// stays on this resource with an explicit decoder-clock discontinuity.
-	for _, s := range b.segments {
+	mapped := int64(0)
+	for _, s := range segments {
 		if s.discontinuity {
 			out.WriteString("#EXT-X-DISCONTINUITY\n")
 		}
-		fmt.Fprintf(&out, "#EXT-X-PROGRAM-DATE-TIME:%s\n#EXTINF:%.6f,\ns%d.ts\n", time.UnixMicro(s.startUS).UTC().Format(time.RFC3339Nano), float64(s.endUS-s.startUS)/1e6, s.sequence)
+		extension := "ts"
+		if s.fragmented {
+			extension = "m4s"
+			// Each producer's fragments are decoded with that producer's init.
+			if s.producer != mapped {
+				fmt.Fprintf(&out, "#EXT-X-MAP:URI=\"i%d.mp4\"\n", s.producer)
+				mapped = s.producer
+			}
+		}
+		fmt.Fprintf(&out, "#EXT-X-PROGRAM-DATE-TIME:%s\n#EXTINF:%.6f,\ns%d.%s\n", time.UnixMicro(s.startUS).UTC().Format(time.RFC3339Nano), float64(s.endUS-s.startUS)/1e6, s.sequence, extension)
 	}
 	return []byte(out.String()), nil
 }
@@ -229,8 +286,11 @@ type Reader struct {
 	File     *os.File
 	Producer int64
 	Size     int64
-	once     sync.Once
-	release  func()
+	// ContentType is the object's media type: MPEG-TS, an MP4 fragment or an
+	// MP4 init segment.
+	ContentType string
+	once        sync.Once
+	release     func()
 }
 
 func (r *Reader) Close() error {
@@ -239,9 +299,13 @@ func (r *Reader) Close() error {
 	return e
 }
 
-var publicName = regexp.MustCompile(`^s([1-9][0-9]{0,18})\.ts$`)
+var publicName = regexp.MustCompile(`^s([1-9][0-9]{0,18})\.(ts|m4s)$`)
+var publicInit = regexp.MustCompile(`^i([1-9][0-9]{0,18})\.mp4$`)
 
 func (b *Buffer) Open(name string) (*Reader, error) {
+	if match := publicInit.FindStringSubmatch(name); match != nil {
+		return b.openInit(match[1])
+	}
 	match := publicName.FindStringSubmatch(name)
 	if match == nil {
 		return nil, ErrExpired
@@ -256,7 +320,7 @@ func (b *Buffer) Open(name string) (*Reader, error) {
 		return nil, ErrClosed
 	}
 	s := b.byID[id]
-	if s == nil || s.expired {
+	if s == nil || s.expired || s.fragmented != (match[2] == "m4s") {
 		b.mu.Unlock()
 		return nil, ErrExpired
 	}
@@ -268,7 +332,11 @@ func (b *Buffer) Open(name string) (*Reader, error) {
 	s.readers++
 	b.readers++
 	b.mu.Unlock()
-	return &Reader{File: file, Producer: s.producer, Size: s.bytes, release: func() {
+	kind := "video/mp2t"
+	if s.fragmented {
+		kind = "video/iso.segment"
+	}
+	return &Reader{File: file, Producer: s.producer, Size: s.bytes, ContentType: kind, release: func() {
 		b.mu.Lock()
 		s.readers--
 		b.readers--
@@ -298,6 +366,13 @@ func (b *Buffer) append(s *segment) error {
 			s.discontinuity = true
 		}
 	}
+	if s.fragmented {
+		init := b.inits[s.producer]
+		if init == nil || init.expired {
+			return ErrMedia
+		}
+		init.uses++
+	}
 	s.sequence = b.next
 	b.next++
 	s.discontinuitiesBefore = b.discontinuities
@@ -319,6 +394,12 @@ func (b *Buffer) append(s *segment) error {
 		if old.readers == 0 {
 			_ = os.Remove(old.path)
 		}
+		if init := b.inits[old.producer]; init != nil && old.fragmented {
+			init.uses--
+			if init.uses <= 0 {
+				b.retireInitLocked(old.producer)
+			}
+		}
 	}
 	return nil
 }
@@ -337,6 +418,9 @@ func (b *Buffer) Close() error {
 	}
 	b.byID = map[int64]*segment{}
 	b.segments = nil
+	for producer := range b.inits {
+		b.retireInitLocked(producer)
+	}
 	all := b.readers == 0
 	b.mu.Unlock()
 	if all {
@@ -366,9 +450,12 @@ type Publisher struct {
 	anchored                                        bool
 	anchorPTS, anchorUS, previousPTS, previousEndUS int64
 	closed                                          bool
+	// init is the producer's accepted init segment (fragmented producers).
+	init *initFile
 }
 
 var privateName = regexp.MustCompile(`^segment-([0-9]{9,19})\.ts$`)
+var privateFragment = regexp.MustCompile(`^segment-([0-9]{9,19})\.m4s$`)
 
 func (p *Publisher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
@@ -393,6 +480,11 @@ func (p *Publisher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if e == nil {
 			e = p.acceptManifest(raw)
 		}
+	} else if r.URL.Path == "init.mp4" && p.producer.Fragmented {
+		e = p.storeInit(r.Body)
+		if e == nil {
+			e = p.flushManifest()
+		}
 	} else {
 		e = p.store(r.URL.Path, r.Body)
 		if e == nil {
@@ -408,7 +500,11 @@ func (p *Publisher) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 }
 func (p *Publisher) store(name string, body io.Reader) error {
-	match := privateName.FindStringSubmatch(name)
+	pattern := privateName
+	if p.producer.Fragmented {
+		pattern = privateFragment
+	}
+	match := pattern.FindStringSubmatch(name)
 	if match == nil {
 		return ErrMedia
 	}
@@ -433,7 +529,7 @@ func (p *Publisher) store(name string, body io.Reader) error {
 	}()
 	h := sha256.New()
 	n, e := io.Copy(io.MultiWriter(file, h), io.LimitReader(body, maxSegmentBytes+1))
-	if e != nil || n < 188 || n > maxSegmentBytes {
+	if e != nil || n < 188 && !p.producer.Fragmented || n < 16 || n > maxSegmentBytes {
 		return ErrMedia
 	}
 	hash := hex.EncodeToString(h.Sum(nil))
@@ -462,7 +558,11 @@ func (p *Publisher) store(name string, body io.Reader) error {
 
 type manifestEntry struct{ number, durationUS int64 }
 
-func parseManifest(raw []byte) ([]manifestEntry, error) {
+func parseManifest(raw []byte, fragmented bool) ([]manifestEntry, error) {
+	name := privateName
+	if fragmented {
+		name = privateFragment
+	}
 	scanner := bufio.NewScanner(strings.NewReader(string(raw)))
 	if !scanner.Scan() || scanner.Text() != "#EXTM3U" {
 		return nil, ErrMedia
@@ -487,12 +587,16 @@ func parseManifest(raw []byte) ([]manifestEntry, error) {
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
+			// The only addressed tag a producer writes is its own init segment.
+			if fragmented && line == `#EXT-X-MAP:URI="init.mp4"` {
+				continue
+			}
 			if strings.HasPrefix(line, "#EXT-X-KEY") || strings.HasPrefix(line, "#EXT-X-MAP") || strings.Contains(line, "URI=") {
 				return nil, ErrMedia
 			}
 			continue
 		}
-		match := privateName.FindStringSubmatch(line)
+		match := name.FindStringSubmatch(line)
 		if duration == 0 || match == nil || len(values) >= 32 {
 			return nil, ErrMedia
 		}
@@ -513,7 +617,7 @@ func parseManifest(raw []byte) ([]manifestEntry, error) {
 // its previous handler. Retain the newest bounded manifest until all referenced
 // immutable uploads arrive; a pending manifest is not published media.
 func (p *Publisher) acceptManifest(raw []byte) error {
-	entries, e := parseManifest(raw)
+	entries, e := parseManifest(raw, p.producer.Fragmented)
 	if e != nil {
 		return e
 	}
@@ -577,9 +681,13 @@ func (p *Publisher) Result() error {
 	return nil
 }
 func (p *Publisher) publish(raw []byte) error {
-	entries, e := parseManifest(raw)
+	entries, e := parseManifest(raw, p.producer.Fragmented)
 	if e != nil {
 		return e
+	}
+	if p.producer.Fragmented && p.init == nil {
+		// Fragments cannot be dated, or played, before their init arrives.
+		return errOutputPending
 	}
 	for _, entry := range entries {
 		if entry.number <= p.last {
@@ -593,7 +701,12 @@ func (p *Publisher) publish(raw []byte) error {
 		if e != nil {
 			return e
 		}
-		clock, e := ReadPTS(file)
+		var clock Clock
+		if p.producer.Fragmented {
+			clock, e = ReadFragmentClock(file, p.init.clock)
+		} else {
+			clock, e = ReadPTS(file)
+		}
 		_ = file.Close()
 		if e != nil {
 			return e
@@ -646,7 +759,7 @@ func (p *Publisher) publish(raw []byte) error {
 		if e = p.check(); e != nil {
 			return e
 		}
-		e = p.buffer.append(&segment{producer: p.producer.ID, path: value.path, startUS: start, endUS: end, bytes: value.bytes, discontinuity: discontinuity})
+		e = p.buffer.append(&segment{producer: p.producer.ID, fragmented: p.producer.Fragmented, path: value.path, startUS: start, endUS: end, bytes: value.bytes, discontinuity: discontinuity, offsetUS: start - minimum*1000000/90000})
 		if e != nil {
 			return e
 		}
@@ -698,4 +811,153 @@ func (b *Buffer) ProducerAt(position int64) (int64, error) {
 
 func (b *Buffer) removeDirectory() error {
 	return errors.Join(os.RemoveAll(b.directory), b.owner.Close())
+}
+
+// storeInit accepts the producer's init segment. FFmpeg writes it once, before
+// the first fragment; an identical repeat is accepted, a different one is a
+// failed producer (its fragments could no longer all be decoded with one init).
+func (p *Publisher) storeInit(body io.Reader) error {
+	raw, e := io.ReadAll(io.LimitReader(body, maxInitBytes+1))
+	if e != nil || len(raw) > maxInitBytes || len(raw) < 16 {
+		return ErrMedia
+	}
+	sum := sha256.Sum256(raw)
+	hash := hex.EncodeToString(sum[:])
+	if p.init != nil {
+		if p.init.hash != hash {
+			return ErrMedia
+		}
+		return nil
+	}
+	clock, ok := parseInit(raw)
+	if !ok {
+		return ErrMedia
+	}
+	file, e := os.CreateTemp(p.buffer.directory, fmt.Sprintf("i%d-", p.producer.ID))
+	if e != nil {
+		return e
+	}
+	path := file.Name()
+	if _, e = file.Write(raw); e == nil {
+		e = file.Close()
+	} else {
+		_ = file.Close()
+	}
+	if e != nil {
+		_ = os.Remove(path)
+		return e
+	}
+	init := &initFile{path: path, bytes: int64(len(raw)), hash: hash, clock: clock, producer: p.producer.ID}
+	b := p.buffer
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed || b.inits[p.producer.ID] != nil {
+		_ = os.Remove(path)
+		return ErrMedia
+	}
+	b.inits[p.producer.ID] = init
+	p.init = init
+	return nil
+}
+
+func (b *Buffer) openInit(producerText string) (*Reader, error) {
+	producer, e := strconv.ParseInt(producerText, 10, 64)
+	if e != nil {
+		return nil, ErrExpired
+	}
+	b.mu.Lock()
+	if b.closed {
+		b.mu.Unlock()
+		return nil, ErrClosed
+	}
+	init := b.inits[producer]
+	if init == nil || init.expired {
+		b.mu.Unlock()
+		return nil, ErrExpired
+	}
+	file, e := os.Open(init.path)
+	if e != nil {
+		b.mu.Unlock()
+		return nil, e
+	}
+	init.readers++
+	b.readers++
+	b.mu.Unlock()
+	return &Reader{File: file, Producer: producer, Size: init.bytes, ContentType: "video/mp4", release: func() {
+		b.mu.Lock()
+		init.readers--
+		b.readers--
+		remove := init.expired && init.readers == 0
+		all := b.closed && b.readers == 0
+		b.mu.Unlock()
+		if remove {
+			_ = os.Remove(init.path)
+		}
+		if all {
+			_ = b.removeDirectory()
+		}
+	}}, nil
+}
+
+// retireInitLocked forgets a producer's init once nothing retained uses it;
+// a reader still holding it keeps the file until it is done.
+func (b *Buffer) retireInitLocked(producer int64) {
+	init := b.inits[producer]
+	if init == nil {
+		return
+	}
+	delete(b.inits, producer)
+	init.expired = true
+	if init.readers == 0 {
+		_ = os.Remove(init.path)
+	}
+}
+
+// Packaging reports what the retained media is: held is false for an empty
+// buffer, and fragmented says whether it holds fragmented MP4.
+func (b *Buffer) Packaging() (held, fragmented bool) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if len(b.segments) == 0 {
+		return false, false
+	}
+	return true, b.segments[len(b.segments)-1].fragmented
+}
+
+// ClockEpoch is a stretch of the window over which one media clock maps to the
+// channel's: channel position = media time + OffsetUS (all microseconds,
+// positions from the origin). A new producer or a restarted source clock
+// starts a new epoch.
+type ClockEpoch struct{ StartUS, EndUS, OffsetUS int64 }
+
+// maxClockEpochs bounds what a snapshot carries; older epochs drop first.
+const maxClockEpochs = 32
+
+// Clocks lists the window's clock epochs, oldest first. A player that reports
+// media time rather than program dates (mpv) places itself on the channel with
+// them.
+func (b *Buffer) Clocks() []ClockEpoch {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	origin := b.options.OriginMS * 1000
+	out := []ClockEpoch{}
+	for _, s := range b.segments {
+		offset := s.offsetUS - origin
+		if n := len(out); n > 0 && !s.discontinuity && abs64(out[n-1].OffsetUS-offset) <= 1000 && s.startUS-origin <= out[n-1].EndUS+50_000 {
+			out[n-1].EndUS = s.endUS - origin
+			continue
+		}
+		out = append(out, ClockEpoch{StartUS: s.startUS - origin, EndUS: s.endUS - origin, OffsetUS: offset})
+	}
+	if len(out) > maxClockEpochs {
+		out = out[len(out)-maxClockEpochs:]
+	}
+	return out
+}
+
+func abs64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
 }
