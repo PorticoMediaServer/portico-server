@@ -19,6 +19,9 @@ type Delivery struct {
 	URL          string `json:"url,omitempty"`
 	CompanionURL string `json:"companionUrl,omitempty"`
 	FontsURL     string `json:"fontsUrl,omitempty"`
+	// LinesURL (image subtitles) answers how many lines are forced (Lines),
+	// for a device that offers "Forced only" only when it means something.
+	LinesURL string `json:"linesUrl,omitempty"`
 }
 type FontFile struct {
 	Name string `json:"name"`
@@ -140,6 +143,9 @@ func deliveries(base, format string) []Delivery {
 		}
 		if out[i].Format == "vobsub" {
 			out[i].CompanionURL = base + "/original.sub"
+		}
+		if out[i].Format == "pgs" || out[i].Format == "vobsub" {
+			out[i].LinesURL = base + "/lines"
 		}
 	}
 	return out

@@ -141,6 +141,7 @@ func (s *Store) EventsSince(ctx context.Context, p identity.Principal, group str
 	}
 	rows.Close()
 	visibility := map[string]bool{}
+	var room map[string]activityPrivacy
 	for i := range out {
 		if out[i].Kind == EventTransport {
 			var payload map[string]any
@@ -166,7 +167,12 @@ func (s *Store) EventsSince(ctx context.Context, p identity.Principal, group str
 			}
 		}
 		if out[i].Kind == EventReadiness {
-			out[i].Payload, e = s.projectActivity(ctx, tx, group, out[i].Payload)
+			if room == nil {
+				if room, e = roomPrivacy(ctx, tx, group); e != nil {
+					return nil, 0, e
+				}
+			}
+			out[i].Payload, e = projectActivityWith(room, out[i].Payload)
 			if e != nil {
 				return nil, 0, e
 			}

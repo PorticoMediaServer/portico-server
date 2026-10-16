@@ -1784,6 +1784,7 @@ CREATE TABLE subtitle_render_revisions(
  FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_original_revisions(
  resource_id TEXT NOT NULL,revision INTEGER NOT NULL,digest TEXT NOT NULL,size INTEGER NOT NULL CHECK(size>0),skipped_fonts INTEGER NOT NULL DEFAULT 0,
+ forced_lines INTEGER NOT NULL DEFAULT 0 CHECK(forced_lines>=0),total_lines INTEGER NOT NULL DEFAULT 0 CHECK(total_lines>=forced_lines),
  PRIMARY KEY(resource_id,revision),FOREIGN KEY(resource_id,revision) REFERENCES subtitle_revisions(resource_id,revision) ON DELETE CASCADE) STRICT;
 CREATE TABLE subtitle_original_files(
  resource_id TEXT NOT NULL,revision INTEGER NOT NULL,part TEXT NOT NULL,name TEXT NOT NULL,
@@ -2593,6 +2594,8 @@ CREATE TABLE social_groups(
   governance_revision INTEGER NOT NULL DEFAULT 1,
   wait_until_ms INTEGER NOT NULL DEFAULT 0,
   activity_seen_ms INTEGER NOT NULL DEFAULT 0,
+  -- The readiness summary the room last told its members, so a report that changes nothing is not re-broadcast.
+  readiness_summary TEXT NOT NULL DEFAULT '',
   wait_resume_state TEXT NOT NULL DEFAULT 'paused' CHECK(wait_resume_state IN ('playing','paused','ready')),
   queue_revision INTEGER NOT NULL DEFAULT 1,
   reconnect_generation INTEGER NOT NULL DEFAULT 1,

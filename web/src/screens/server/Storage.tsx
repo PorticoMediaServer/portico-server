@@ -1,7 +1,7 @@
 import React, {useEffect, useState} from 'react';
 import {StorageManagementService, type StorageManagementSnapshot, type StorageMount} from '@core/storage-management.ts';
 import {RemoteSourceService, type DAVConfiguration, type RemoteSource} from '@core/remote-sources.ts';
-import {davCommandSucceeded, davConfiguration, mountCommandSucceeded, stableStorageOperationId, type WebDavDraft} from '@core/server-admin/panel-logic.ts';
+import {davCommandSucceeded, davConfiguration, mountCommandSucceeded, sendMountCommand, stableStorageOperationId, type WebDavDraft} from '@core/server-admin/panel-logic.ts';
 import {ALREADY_DONE} from '@core/freshness-actions.ts';
 export {davCommandSucceeded, davConfiguration, mountCommandSucceeded, stableStorageOperationId, storageOperationId, type WebDavDraft} from '@core/server-admin/panel-logic.ts';
 import {problem, useAction, useQuietly} from '../../admin/console';
@@ -57,22 +57,8 @@ export function RemoteSourcesPanel() {
     // the raw message never reaches the screen.
     if (!mountCommandSucceeded(mutation)) throw Object.assign(new Error('request_failed'), {code: mutation.error?.code ?? 'request_failed'});
   }, done);
-  // A mount's revision also moves as it starts and stops by itself, so a command can meet a
-  // revision that moved for no reason the owner would see. The mount is read again and the same
-  // command sent once more, silently; if it is no longer offered, it has already happened.
-  const mountCommand = (mountId: string, command: 'start' | 'stop' | 'restart' | 'delete') => async () => {
-    const send = (revision: number) => (command === 'delete' ? mounts.service.remove(mountId, revision) : mounts.service.act(mountId, command, revision));
-    const current = mounts.service.getSnapshot().data?.mounts.find(x => x.id === mountId);
-    if (!current) throw Object.assign(new Error('request_failed'), {code: 'storage_command_conflict'});
-    await send(current.controlRevision);
-    if (mounts.service.getSnapshot().mutation.phase !== 'conflict') return;
-    mountIds.release();
-    await mounts.service.revalidate();
-    const fresh = mounts.service.getSnapshot().data?.mounts.find(x => x.id === mountId);
-    if (!fresh || fresh.removalPending) return command === 'delete' ? ALREADY_DONE : undefined;
-    if (!fresh.actions.includes(command)) return ALREADY_DONE;
-    await send(fresh.controlRevision);
-  };
+  // A mount whose revision moved by itself is read again and the command sent once more, silently.
+  const mountCommand = (mountId: string, command: 'start' | 'stop' | 'restart' | 'delete') => () => sendMountCommand(mounts.service, mountIds, mountId, command);
   const runDav = (work: () => Promise<unknown>, done?: string) => action.run(async () => {
     try {
       await work();
@@ -114,7 +100,7 @@ export function RemoteSourcesPanel() {
         {m.data && !list.length && !davs.length && !d.loading ? <SettingsEmpty title={t('web.storage.empty')} body={t('web.storage.emptyHelp')} /> : null}
         <SettingsFooter><Text as="p" variant="caption" tone="tertiary">{list.length && m.data ? `${t('web.storage.rcloneRemotes')}: ${t('web.storage.rcloneLimits', {active: m.data.limits.active, definitions: m.data.limits.definitions})}. ` : ''}{t('web.storage.libraryFolders')}</Text></SettingsFooter>
       </SettingsGroup>
-      <WebDavDialog open={add === 'webdav' || !!editDav} source={editDav} onClose={() => { setAdd(null); setEditDav(null); }} onSave={(id, input) => void runDav(() => dav.service.configure(id, input), t(id ? 'server.storage.saved' : 'server.storage.added')).then(ok => { if (ok) { setAdd(null); setEditDav(null); } })} busy={d.busy || action.busy} error={action.error} />
+      <WebDavDialog open={add === 'webdav' || !!editDav} source={editDav} onClose={() => { setAdd(null); setEditDav(null); }} onSave={(id, input) => void runDav(() => dav.service.configure(id, input, editDav ?? undefined), t(id ? 'server.storage.saved' : 'server.storage.added')).then(ok => { if (ok) { setAdd(null); setEditDav(null); } })} busy={d.busy || action.busy} error={action.error} />
       <RcloneDialog open={add === 'rclone'} onClose={() => setAdd(null)} onSave={input => void runMount(() => mounts.service.create(input), t('server.storage.added')).then(ok => ok && setAdd(null))} busy={action.busy} error={action.error} />
       <ConfirmDialog open={!!remove} onOpenChange={o => !o && setRemove(null)} title={t('web.storage.removeMountTitle', {name: remove?.kind === 'mount' ? remove.mount.name : remove?.source.name ?? ''})} body={remove?.kind === 'mount' ? t('web.storage.removeMountBody') : t('web.storage.removeSourceBody')} confirmLabel={t('action.removeShort')} busy={action.busy} error={action.error || undefined} onConfirm={() => { if (!remove) return; void (remove.kind === 'mount' ? runMount(mountCommand(remove.mount.id, 'delete')) : runDav(() => dav.service.remove(remove.source))).then(ok => ok && setRemove(null)); }} />
     </>

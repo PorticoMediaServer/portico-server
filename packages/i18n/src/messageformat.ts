@@ -1,6 +1,6 @@
 /**
  * A small ICU MessageFormat implementation (the FormatJS / `intl-messageformat`
- * syntax subset Portico uses): `{arg}`, `{arg, number[, integer|percent]}`,
+ * syntax subset Portico uses): `{arg}`, `{arg, number[, integer|percent|::group-off]}`,
  * `{arg, date|time[, short|medium|long|full]}`, `{arg, plural, [offset:n] =0 {…} one {…} other {…}}`
  * with `#`, `{arg, selectordinal, …}`, `{arg, select, key {…} other {…}}`, and
  * apostrophe quoting (`''` is a quote, `'{…}'` is literal).
@@ -125,7 +125,8 @@ function pluralCategory(locale: string, n: number, ordinal: boolean): string {
 
 function numberText(value: number, o: FormatOptions, style?: string): string {
   try {
-    const opts: Intl.NumberFormatOptions = style === 'integer' ? {maximumFractionDigits: 0} : style === 'percent' ? {style: 'percent', maximumFractionDigits: 0} : {};
+    // `::group-off` (an ICU skeleton): a number that is a name more than an amount, "1080p" and not "1,080p".
+    const opts: Intl.NumberFormatOptions = style === 'integer' ? {maximumFractionDigits: 0} : style === 'percent' ? {style: 'percent', maximumFractionDigits: 0} : style === '::group-off' ? {useGrouping: false} : {};
     return new Intl.NumberFormat(o.locale, opts).format(value);
   } catch { return String(value); }
 }

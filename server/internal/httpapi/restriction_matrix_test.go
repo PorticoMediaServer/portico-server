@@ -223,6 +223,7 @@ var nonSessionCredential = map[string]string{
 	"GET /v1/media/subtitles/{grant}/{resource}/{revision}/original.sub": "media grant",
 	"GET /v1/media/subtitles/{grant}/{resource}/{revision}/original.mks": "media grant",
 	"GET /v1/media/subtitles/{grant}/{resource}/{revision}/fonts":        "media grant",
+	"GET /v1/media/subtitles/{grant}/{resource}/{revision}/lines":        "media grant",
 	"GET /v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}": "media grant",
 }
 
@@ -408,6 +409,7 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/original.sub": exempt(reasonGrant),
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/original.mks": exempt(reasonGrant),
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/fonts":        exempt(reasonGrant),
+		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/lines":        exempt(reasonGrant),
 		"GET /v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}": exempt(reasonGrant),
 		"GET /v1/admin/ingestion/jobs/{id}":                                  static("/v1/admin/ingestion/jobs/unknown"),
 		"GET /v1/downloads/requests/{id}":                                    static("/v1/downloads/requests/unknown"),
