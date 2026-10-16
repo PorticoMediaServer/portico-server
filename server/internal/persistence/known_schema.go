@@ -2331,6 +2331,10 @@ trigger w2i01_music_artwork_identity
 trigger w2i01_screen_artwork
 trigger w2i01_screen_artwork_consent
 trigger w2i01_screen_artwork_policy
+trigger webhook_album_details_updated
+trigger webhook_book_details_updated
+trigger webhook_container_art_added
+trigger webhook_container_art_updated
 trigger webhook_deliveries_webhooks_list_delete
 trigger webhook_deliveries_webhooks_list_insert
 trigger webhook_deliveries_webhooks_list_update
@@ -2342,6 +2346,7 @@ trigger webhook_playback_stopped
 trigger webhook_recording_done
 trigger webhook_scan_finished
 trigger webhook_scan_started
+trigger webhook_show_details_updated
 trigger webhook_storage_low
 trigger webhook_storage_lower
 trigger webhook_title_added

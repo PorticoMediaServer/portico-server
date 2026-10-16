@@ -6189,6 +6189,33 @@ CREATE TRIGGER webhook_title_metadata_updated AFTER UPDATE OF metadata_revision 
  INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
   FROM catalog_entities e WHERE e.id=NEW.item_id AND e.kind IN(1,2,4,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
 END;
+-- A show's, album's or book's own details (overview, artwork and the like)
+-- change without touching its title or year; those changes are updates too.
+CREATE TRIGGER webhook_show_details_updated AFTER UPDATE OF original_title,tagline,overview,content_rating,studio,network,country,tags,labels ON catalog_shows
+ WHEN (OLD.original_title IS NOT NEW.original_title OR OLD.tagline IS NOT NEW.tagline OR OLD.overview IS NOT NEW.overview OR OLD.content_rating IS NOT NEW.content_rating OR OLD.studio IS NOT NEW.studio OR OLD.network IS NOT NEW.network OR OLD.country IS NOT NEW.country OR OLD.tags IS NOT NEW.tags OR OLD.labels IS NOT NEW.labels) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_album_details_updated AFTER UPDATE OF overview,label,tags,release_date,release_country ON catalog_albums
+ WHEN (OLD.overview IS NOT NEW.overview OR OLD.label IS NOT NEW.label OR OLD.tags IS NOT NEW.tags OR OLD.release_date IS NOT NEW.release_date OR OLD.release_country IS NOT NEW.release_country) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_book_details_updated AFTER UPDATE OF author,narrator,overview,series,series_position,tags,labels ON catalog_books
+ WHEN (OLD.author IS NOT NEW.author OR OLD.narrator IS NOT NEW.narrator OR OLD.overview IS NOT NEW.overview OR OLD.series IS NOT NEW.series OR OLD.series_position IS NOT NEW.series_position OR OLD.tags IS NOT NEW.tags OR OLD.labels IS NOT NEW.labels) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_container_art_updated AFTER UPDATE OF overview,poster_url,backdrop_url,original_title,tagline ON catalog_item_details
+ WHEN (OLD.overview IS NOT NEW.overview OR OLD.poster_url IS NOT NEW.poster_url OR OLD.backdrop_url IS NOT NEW.backdrop_url OR OLD.original_title IS NOT NEW.original_title OR OLD.tagline IS NOT NEW.tagline) AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
+CREATE TRIGGER webhook_container_art_added AFTER INSERT ON catalog_item_details
+ WHEN (NEW.overview<>'' OR NEW.poster_url<>'' OR NEW.backdrop_url<>'') AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.updated,')>0) BEGIN
+ INSERT INTO webhook_events(type,subject,data) SELECT 'title.updated',lower(hex(e.public_id)),json_object('entity',lower(hex(e.public_id)),'kind',e.kind,'title',e.title,'year',e.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=e.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=e.parent_id))
+  FROM catalog_entities e WHERE e.id=NEW.entity_id AND e.kind IN(2,6,8) AND e.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=e.library_id);
+END;
 CREATE TRIGGER webhook_title_removed BEFORE DELETE ON catalog_entities
  WHEN OLD.kind IN(1,2,4,6,8) AND OLD.retired=0 AND EXISTS(SELECT 1 FROM webhooks WHERE enabled=1 AND instr(events,',title.removed,')>0) AND NOT EXISTS(SELECT 1 FROM dvr_private_libraries p JOIN catalog_libraries l ON l.library_id=p.library_id WHERE l.id=OLD.library_id) BEGIN
  INSERT INTO webhook_events(type,subject,data) VALUES('title.removed',lower(hex(OLD.public_id)),json_object('entity',lower(hex(OLD.public_id)),'kind',OLD.kind,'title',OLD.title,'year',OLD.year,'libraryId',(SELECT library_id FROM catalog_libraries WHERE id=OLD.library_id),'parent',(SELECT lower(hex(public_id)) FROM catalog_entities WHERE id=OLD.parent_id)));
