@@ -19,9 +19,8 @@ export function IdentityRows() {
   );
 }
 
-/** Remote access › Portico Account: whether this server is connected to its owner's account. */
-export function AccountConnectionPanel() {
-  const {t} = useI18n();
+/** The server's Portico Account connection, read (and resumed) while a panel shows it; read again when the window regains focus. */
+export function useClaimStatus() {
   const session = useSession();
   const pin = session.api.getRouteConnection()?.pin;
   const claim = useMemo(() => (pin ? new ClaimOnboarding(session.api, pin) : undefined), [session.api, pin]);
@@ -32,8 +31,17 @@ export function AccountConnectionPanel() {
     return () => claim?.dispose();
   }, [claim]);
   // Claim rewire (22 Sep): Connect prepares the claim, opens the Portico Account approval page with the claim code and waits for the decision; this panel just refreshes.
-  const refreshClaim = useCallback(() => void claim?.refresh(true), [claim]);
-  useEffect(() => { const onFocus = () => refreshClaim(); window.addEventListener('focus', onFocus); return () => window.removeEventListener('focus', onFocus); }, [refreshClaim]);
+  const refresh = useCallback(() => void claim?.refresh(true), [claim]);
+  useEffect(() => { const onFocus = () => refresh(); window.addEventListener('focus', onFocus); return () => window.removeEventListener('focus', onFocus); }, [refresh]);
+  return {claim, state, refresh};
+}
+
+/** Remote access › Portico Account: whether this server is connected to its owner's account. */
+export function AccountConnectionPanel() {
+  const {t} = useI18n();
+  const session = useSession();
+  const pin = session.api.getRouteConnection()?.pin;
+  const {claim, state, refresh: refreshClaim} = useClaimStatus();
   const status = state?.status;
   const connected = !!status && (status.state === 'installed' || status.state === 'claimed' || status.state === 'connected');
   const pending = !!status && !connected && (status.approvalRequired || !!status.operation);

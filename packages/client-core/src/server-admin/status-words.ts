@@ -48,14 +48,6 @@ export function connectivityWarning(t: Translate, code: string): string {
   }
 }
 
-/** The certificate's state as a badge. */
-export function certificateBadge(t: Translate, st: CertificateStatus): {tone: StatusTone; label: string} {
-  return {
-    tone: st.tlsReady && st.publiclyTrusted ? 'healthy' : st.errorCode ? 'danger' : st.config.enabled ? 'warning' : 'neutral',
-    label: st.tlsReady ? (st.publiclyTrusted ? t('web.network.certTrusted') : t('web.network.certReady')) : st.config.enabled ? sentence(st.orderState || st.state) : t('web.network.certOff'),
-  };
-}
-
 /**
  * The addresses worth listing: each once, without IPv6 link-local ones (fe80::/10), which only
  * work on the same wire and say nothing an owner can use. The server's own order is kept.
