@@ -225,23 +225,42 @@ func refVisit(node any, path refPath, apply func(string) (string, bool)) {
 }
 
 // rewriteHTTPBody replaces ids in the body an HTTP handler is about to read.
-// A body larger than the route allows is passed on untouched for the handler
-// to refuse.
+// Nothing is read until the handler reads: it checks who is asking and takes
+// its own admission first, so a refused or waiting request never has its body
+// read. A body larger than the route allows is passed on untouched for the
+// handler to refuse. The declared Content-Length stays the client's.
 func (r *Registry) rewriteHTTPBody(q *http.Request, limit int64, paths []refPath) {
 	if len(paths) == 0 || q.Body == nil || q.Body == http.NoBody || limit <= 0 {
 		return
 	}
-	raw, err := io.ReadAll(io.LimitReader(q.Body, limit+1))
-	if err != nil || int64(len(raw)) > limit {
-		q.Body = readCloser{io.MultiReader(bytes.NewReader(raw), q.Body), q.Body}
-		return
-	}
-	next := r.rewriteBody(q, raw, paths)
-	q.Body = readCloser{bytes.NewReader(next), q.Body}
-	q.ContentLength = int64(len(next))
+	q.Body = &refRewriteBody{source: q.Body, limit: limit, rewrite: func(raw []byte) []byte { return r.rewriteBody(q, raw, paths) }}
 }
 
-type readCloser struct {
-	io.Reader
-	io.Closer
+// refRewriteBody reads and rewrites the whole body on the handler's first read.
+type refRewriteBody struct {
+	source  io.ReadCloser
+	limit   int64
+	rewrite func([]byte) []byte
+	reader  io.Reader
 }
+
+func (b *refRewriteBody) Read(p []byte) (int, error) {
+	if b.reader == nil {
+		raw, err := io.ReadAll(io.LimitReader(b.source, b.limit+1))
+		switch {
+		case err != nil:
+			b.reader = io.MultiReader(bytes.NewReader(raw), errorReader{err})
+		case int64(len(raw)) > b.limit:
+			b.reader = io.MultiReader(bytes.NewReader(raw), b.source)
+		default:
+			b.reader = bytes.NewReader(b.rewrite(raw))
+		}
+	}
+	return b.reader.Read(p)
+}
+
+func (b *refRewriteBody) Close() error { return b.source.Close() }
+
+type errorReader struct{ err error }
+
+func (e errorReader) Read([]byte) (int, error) { return 0, e.err }

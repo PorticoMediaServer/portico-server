@@ -332,8 +332,28 @@ func conform(schema map[string]any, value any, path string) []string {
 	if len(schema) == 0 {
 		return nil
 	}
+	if alternatives, ok := schema["anyOf"].([]any); ok {
+		matched := false
+		for _, alternative := range alternatives {
+			branch, valid := alternative.(map[string]any)
+			if valid && len(conform(branch, value, path)) == 0 {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return []string{path + " matches no anyOf alternative"}
+		}
+		remainder := make(map[string]any, len(schema)-1)
+		for key, constraint := range schema {
+			if key != "anyOf" {
+				remainder[key] = constraint
+			}
+		}
+		return conform(remainder, value, path)
+	}
 	if value == nil {
-		if schema["nullable"] == true {
+		if schema["nullable"] == true || schema["type"] == "null" {
 			return nil
 		}
 		return []string{path + " is null"}
@@ -342,6 +362,8 @@ func conform(schema map[string]any, value any, path string) []string {
 		return []string{fmt.Sprintf("%s is %T, the contract says %s", path, value, want)}
 	}
 	switch schema["type"] {
+	case "null":
+		return fail("null")
 	case "string":
 		s, ok := value.(string)
 		if !ok {
@@ -415,6 +437,27 @@ func conform(schema map[string]any, value any, path string) []string {
 		return []string{fmt.Sprintf("%s: unsupported schema %v", path, schema)}
 	}
 	return nil
+}
+
+func TestConformNullableDateTimeUnion(t *testing.T) {
+	schema := map[string]any{"anyOf": []any{
+		map[string]any{"type": "string", "format": "date-time"},
+		map[string]any{"type": "null"},
+	}}
+	for _, value := range []any{nil, "2026-10-17T03:00:00Z"} {
+		if problems := conform(schema, value, "$.at"); len(problems) != 0 {
+			t.Fatalf("valid value %v: %v", value, problems)
+		}
+	}
+	for _, value := range []any{true, json.Number("1"), "yesterday", map[string]any{}} {
+		if len(conform(schema, value, "$.at")) == 0 {
+			t.Fatalf("invalid value accepted: %v", value)
+		}
+	}
+	schema["type"] = "string"
+	if len(conform(schema, nil, "$.at")) == 0 {
+		t.Fatal("anyOf bypassed its sibling type constraint")
+	}
 }
 
 var timestamp = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$`)

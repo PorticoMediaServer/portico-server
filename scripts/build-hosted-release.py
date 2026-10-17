@@ -19,7 +19,9 @@ EXCLUDED = {"node_modules", "dist", "build", ".git", ".cache", "__pycache__"}
 # (repository, path): both land at the same relative path in the snapshot.
 INPUTS = [(ROOT, "hosted-services/hosted"), (ROOT, "hosted-services/dns"), (ROOT, "hosted-services/apikit"),
           (ROOT, "scripts/build-hosted-release.py"), (SERVER, "web"), (SERVER, "packages/client-core"),
+          (SERVER, "packages/contracts"),
           (SERVER, "packages/design"), (SERVER, "packages/i18n"), (SERVER, "third_party/hls.js"),
+          (SERVER, "third_party/libass-wasm"), (SERVER, "third_party/subtitle-fonts"),
           (SERVER, "package.json"), (SERVER, "package-lock.json"), (SERVER, "scripts/build-server-release.py")]
 
 

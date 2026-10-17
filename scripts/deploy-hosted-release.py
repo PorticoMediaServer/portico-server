@@ -19,11 +19,11 @@ def main():
     parser.add_argument("--hosted-only", action="store_true", help="Update Hosted without replacing the hosted web release")
     # An ssh destination: the alias in ~/.ssh/config (root, the shared Portico VPS key).
     parser.add_argument("--host", default="portico-core-us-1")
-    parser.add_argument("--operator-account-id", required=True, help="Portico Account that gets the in-app signing-key expiry warning")
+    parser.add_argument("--operator-account-id", default="", help="Existing Portico Account that gets signing-key expiry warnings; omit for an empty Hosted installation")
     # Justin's Apple Team ID (public: it is in the association file itself). Pass "" to serve 404 instead.
     parser.add_argument("--apple-team-id", default="WB7BUK5Z7C", help="Apple Team ID for apple-app-site-association (empty: the file answers 404)")
     args = parser.parse_args()
-    if not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", args.operator_account_id) or (args.apple_team_id and not re.fullmatch(r"[A-Z0-9]{10}", args.apple_team_id)):
+    if (args.operator_account_id and not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", args.operator_account_id)) or (args.apple_team_id and not re.fullmatch(r"[A-Z0-9]{10}", args.apple_team_id)):
         raise SystemExit("Invalid operator account or Apple Team ID")
     release = args.release.resolve()
     manifest = json.loads((release / "release.json").read_text())
@@ -64,7 +64,7 @@ for _name in ('portico-astra-hosted','portico-astra-web'):
 # Root trust: signing.json with its certificate and sealing file (KEYS.md).
 for name in ['signing.json','signing.json.certificate.json','signing.json.seal.json']:
     if not (Path(config)/name).is_file(): raise RuntimeError('Missing '+config+name+'; install the root-trust key files first')
-args=['-listen','127.0.0.1:19410','-key-file',config+'signing.json','-operator-account-id',OPERATOR,
+args=['-listen','127.0.0.1:19410','-key-file',config+'signing.json',
       '-database-url-file',config+'database-url',
       '-origins','https://web.getportico.tv,https://demo.getportico.tv,http://127.0.0.1:32500,http://localhost:32500,http://127.0.0.1:32503',
       '-device-verification-uri','https://web.getportico.tv/device',
@@ -72,6 +72,7 @@ args=['-listen','127.0.0.1:19410','-key-file',config+'signing.json','-operator-a
       '-oidc-config-file',config+'oidc.json','-direct-dns-key-file',config+'dns-mac',
       '-smtp-config-file',config+'smtp.json','-acme-config-file',config+'acme.json',
       '-trusted-proxy-cidrs','127.0.0.1/32']
+if OPERATOR: args.extend(['-operator-account-id',OPERATOR])
 def unit(description,command,memory,environment=''):
     return '[Unit]\nDescription='+description+'\nAfter=network-online.target postgresql.service\nWants=network-online.target postgresql.service\n[Service]\n'+environment+'User=portico-astra-hosted\nGroup=portico-astra-hosted\nExecStart='+command+'\nRestart=on-failure\nRestartSec=3\nNoNewPrivileges=true\nPrivateTmp=true\nProtectSystem=strict\nProtectHome=true\nReadWritePaths=/etc/portico-astra-hosted\nMemoryMax='+memory+'\nTasksMax=128\n[Install]\nWantedBy=multi-user.target\n'
 # The running units, kept so a release that fails to come up is switched back.
