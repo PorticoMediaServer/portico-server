@@ -38,9 +38,9 @@ set -euo pipefail
 umask 077
 release=$1; stamp=$2; sha=$3
 directory=/opt/portico/demo-releases
-state=/var/lib/portico-demo-20260923
+state=/var/lib/portico-demo-20261017
 unit=/etc/systemd/system/portico-demo-current.service
-environment=/etc/portico-demo-20260919.env
+environment=/etc/portico-demo-20261017.env
 backup=/var/backups/portico/demo-$stamp
 previous=$(dirname "$(sed -n 's/^ExecStart=\([^ ]*\).*/\1/p' "$unit")")
 test "$previous" != "$directory/$release"

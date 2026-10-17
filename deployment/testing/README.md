@@ -1,26 +1,44 @@
 # Interactive testing on the personal Ubuntu PC
 
-Active setup: 9 October 2026. Compute runs on `ehler-personal` (`100.120.50.24`), with visible emulators in Justin's existing Ubuntu desktop session. The server and web UI run at **https://demo.getportico.tv** on the existing resource-limited VPS. Apple builds still require the Mac. Emulator smoke checks establish a starting point; they do not establish visual parity with Apple or physical-device acceptance.
+**Current testing environment: [17 October reset and client builds](2026-10-17-reset.md).**
+Hosted and both DNS nodes now run the October 17 build on fresh application state.
+The demo runs server `fbcd4ba9` with rebuilt local accounts/catalogue and preserved
+fixtures. Current phone/Android TV release APKs are in the `native-reset` worktree
+at `c5eb8ad`; both visible emulators are signed directly into the demo. The
+October 9 artifact paths and measurements below are historical.
+
+For the commands below, select the current worktrees explicitly:
+
+```sh
+export PORTICO_NATIVE_REPO=/home/justin/projects/Portico/.worktrees/audit-implementation/native-reset
+export PORTICO_SERVER_REPO=/home/justin/projects/Portico/.worktrees/audit-implementation/main-server
+```
+
+The current direct sign-in credentials are in the same private file described
+below. Hosted's reusable Google CA account credential is separately retained in
+`.private/hosted-infrastructure/`; it is infrastructure, not disposable test data.
+
+Historical setup below: 9 October 2026. Compute runs on `ehler-personal` (`100.120.50.24`), with visible emulators in Justin's existing Ubuntu desktop session. The server and web UI run at **https://demo.getportico.tv** on the existing resource-limited VPS. Apple builds still require the Mac. Emulator smoke checks establish a starting point; they do not establish visual parity with Apple or physical-device acceptance.
 
 ## Start testing
 
-From `/home/justin/projects/Portico/portico-internal`:
+From `/home/justin/projects/Portico/.worktrees/audit-implementation/internal-reset`:
 
 ```sh
 scripts/test-clients.sh status
 scripts/test-clients.sh start phone
 scripts/test-clients.sh install phone google
 scripts/test-clients.sh start tv
-scripts/test-clients.sh install tv firetv
+scripts/test-clients.sh install tv google
 scripts/test-clients.sh start vega
 scripts/test-clients.sh install vega
 ```
 
 Start the devices you need. Three emulators plus the existing Windows VM can cause memory pressure during compilation; compile with the emulators stopped when practical. The launcher uses four CPU cores and 3 GB for newly started Android devices after a 2 GB phone cold boot produced a System UI ANR under resource pressure. `stop phone`, `stop tv`, and `stop vega` stop only those testing devices. Android commands verify the AVD identity before installing or stopping anything. Vega runs in a detached process group and startup requires both a running virtual device and a connected SDK device adaptor; metadata alone is insufficient.
 
-Open https://demo.getportico.tv in regular Ubuntu Chrome. Chrome's `chrome://inspect/#remote-debugging` setting, **Allow remote debugging for this browser instance**, was enabled on 9 October. After the desktop restart the CDP connector did not attach, but the browser extension connection successfully controlled the same visible regular Chrome tab. Use a verified current connection rather than treating the toggle alone as proof of automation access. Use direct server sign-in on every client. For a TV, select **Sign in directly to a server**, enter `https://demo.getportico.tv`, and approve its code at https://demo.getportico.tv/device while signed in as the demo owner. If the owner session has ended, sign in directly at the server Home page first; the unauthenticated `/device` fallback form is for Hosted accounts. Wait for the local owner session to load before reviewing the code. Vega also supports **Use a password instead**.
+Open https://demo.getportico.tv in the T3 collaborative browser (the current tab is already signed in), or your regular browser. Chrome's `chrome://inspect/#remote-debugging` setting, **Allow remote debugging for this browser instance**, was enabled on 9 October. After the desktop restart the CDP connector did not attach, but the browser extension connection successfully controlled the same visible regular Chrome tab. Use a verified current connection rather than treating the toggle alone as proof of automation access. Use direct server sign-in on every client. For a TV, select **Sign in directly to a server**, enter `https://demo.getportico.tv`, and approve its code at https://demo.getportico.tv/device while signed in as the demo owner. If the owner session has ended, sign in directly at the server Home page first; the unauthenticated `/device` fallback form is for Hosted accounts. Wait for the local owner session to load before reviewing the code. Vega also supports **Use a password instead**.
 
-The username is `demo`. The refreshed password and operator details are in `/home/justin/projects/Portico/.private/demo-testing/active-credentials.json` (directory 0700, file 0600), with a root-only copy at `/etc/portico/demo-testing-credentials.json` on `portico-demo`. Keep these files, session envelopes and emulator authentication state outside Git. The password was changed using `recover-owner` followed by the supported direct-password endpoint; old sessions were revoked. No account or library records were replaced.
+The username is `demo`. The refreshed password and operator details are in `/home/justin/projects/Portico/.private/demo-testing/active-credentials.json` (directory 0700, file 0600), with a root-only copy at `/etc/portico-demo-testing-credentials.json` on `portico-demo`. Keep these files, session envelopes and emulator authentication state outside Git. The October 17 reset recreated demo account and catalogue state; prior sessions no longer apply.
 
 ## Installed build components
 
@@ -46,7 +64,7 @@ Vega packages include `aarch64`, `armv7`, and `x86_64`. The build wrapper restor
 
 Vega interaction helpers run from `apps/portico-react-native/apps/vega`: `node scripts/vega.mjs key left select`, `shot /absolute/path.png`, and `logs 200`. Logs query the manifest's package ID, which differs from the `.main` launch component. Android logs use `adb -s emulator-5554 logcat`; select `emulator-5556` for TV. Screen recording and screenshots can contain account or library information; keep raw evidence under ignored `.scratch/`.
 
-## Current artifacts and source
+## Historical October 9 artifacts and source
 
 Active server/web source: `portico-server` **82aaa54f89efdc2e029b635746627cd8c8b71960**, including the [Home artwork fix](2026-10-09-home-performance.md) and [server/client/API performance changes](2026-10-09-performance-audit.md). Google/Fire TV packages were rebuilt from **a3d8e7cd14c16229715a07c67f43cb8364bae743**, including the Android keyboard-collapse correction. Vega packages remain **f0ed9115e6f20470c5aa06dab16f5f27a328251c**; the keyboard change does not affect Vega. All six repository baseline heads were verified against GitHub main before setup. Draft reviews: [server PR 14](https://github.com/PorticoMediaServer/portico-server/pull/14), [native PR 18](https://github.com/PorticoMediaServer/portico-react-native/pull/18), and [Roku PR 3](https://github.com/PorticoMediaServer/portico-roku/pull/3). The tested catalogue-source reuse, browsing-queue, measured statement-cache, checkpoint controller, startup memory default and bounded artwork-scaler changes are deployed.
 
@@ -70,7 +88,7 @@ Or omit the mode to stage and activate together. The script builds a committed s
 
 Activation stops the service, copies the full state and service/environment configuration into a root-only backup, verifies SQLite, and preserves all media files and previous releases. Failed activation restores the old configuration and state, retaining failed state for investigation. No empty-state option or automatic backup pruning is provided. A retained release cannot be restaged over itself.
 
-Current release: `/opt/portico/demo-releases/portico-82aaa54f`; unit `portico-demo-current`; state `/var/lib/portico-demo-20260923`; fixtures `/srv/portico-demo-20260919`. The latest deployment backup is `/var/backups/portico/demo-20261009T191717Z`, with the populated state. Credentials were rotated again after this backup during interactive testing; restoring this or any earlier state requires supported owner recovery/password refresh and reconciling the protected active credential record. The original pre-upgrade backup is `/var/backups/portico/demo-20261009T145648Z`. Its owner credential predates the password refresh; restoring it requires another supported credential refresh. Check https://demo.getportico.tv/portico-build.json and `/v1/readiness` after any deployment.
+**Historical October 9 deployment (its backups and state were deleted in the October 17 reset):** release `/opt/portico/demo-releases/portico-82aaa54f`; unit `portico-demo-current`; state `/var/lib/portico-demo-20260923`; fixtures `/srv/portico-demo-20260919`. The latest deployment backup is `/var/backups/portico/demo-20261009T191717Z`, with the populated state. Credentials were rotated again after this backup during interactive testing; restoring this or any earlier state requires supported owner recovery/password refresh and reconciling the protected active credential record. The original pre-upgrade backup is `/var/backups/portico/demo-20261009T145648Z`. Its owner credential predates the password refresh; restoring it requires another supported credential refresh. Check https://demo.getportico.tv/portico-build.json and `/v1/readiness` after any deployment.
 
 The existing database was compatible: the original ten migrations matched the setup source; the later recommendation-signal index migration was applied normally. No manual schema edits were needed. There are 356 catalogue entities and 256 available playable files, all verified to exist. Movies, TV, Anime, Music and Audiobooks retain their metadata. Fixtures contain synthetic media matched to real titles, not the titled films or episodes themselves.
 
@@ -80,7 +98,7 @@ The existing database was compatible: the original ten migrations matched the se
 
 Use [the setup results](2026-10-09-setup.md) as the starting evidence. The Home timeout was traced to artwork query planning; see [the investigation and live validation](2026-10-09-home-performance.md). Review phone/TV navigation and layout against the Apple builds, then test real Android and Fire OS/Vega hardware, codecs, audio, seeking, resume, subtitles and library categories. The Android TV AVD runs Google's Android TV image; installing the Fire OS flavor there does not make it a Fire OS device.
 
-## Current verification and access state
+## Historical October 9 verification and access state
 
 On active 82aaa54f, a 30-request VPS loopback check returned all 200 responses. Home averaged 105.84 ms across five samples (115.29 ms first sample, 103.48 ms mean of subsequent four). Discover averaged 35.90 ms across five requests per library category. The historical 8f92fd3d warm Home mean was 159 ms and Discover mean 70 ms. These measurements include server HTTP/authentication/serialization and exclude Germany-to-client network latency. They are sequential checks, not concurrent capacity acceptance.
 
