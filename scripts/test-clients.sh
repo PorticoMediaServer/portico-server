@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Personal Ubuntu host: release builds and visible testing devices, using the demo VPS.
 set -euo pipefail
-here=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+here=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
 native=${PORTICO_NATIVE_REPO:-"$here/../apps/portico-react-native"}
 export ANDROID_HOME=${ANDROID_HOME:-/home/justin/Android/Sdk}
 export JAVA_HOME=${PORTICO_JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}
