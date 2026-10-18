@@ -1,5 +1,7 @@
 # Portico Classic
 
+For the Ubuntu Android phone and TV comparison, see [Android review](../ANDROID-REVIEW.md).
+
 Portico Classic is Portico built the familiar way, done carefully. It is a media app for iPhone,
 iPad and Apple TV in one React Native codebase.
 
@@ -30,6 +32,33 @@ screen, dialog and state, and opens it directly.
 **Please check the D-pad feel by hand.** Focus movement, the rail, the Menu button and modal
 focus were exercised in the simulator with an injected game-controller remote. How it feels on a
 real Siri Remote (speed, parallax, long presses) still needs a person.
+
+## Android review on Ubuntu
+
+Classic also has a private Android phone / Android TV review build. Its launcher name is
+**Portico Classic**, application ID is `tv.getportico.experiment.classic`, and launch activity is
+`com.porticoclassic.MainActivity`, so it can coexist with Cinema and the main Portico app.
+It retains the fixture household and simulated playback; it is not a release candidate.
+
+Restore the existing lockfile with `npm ci --legacy-peer-deps` (the React Native TV package alias
+needs npm's legacy peer resolver), then build a standalone emulator APK:
+
+```bash
+cd android
+JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 \
+ANDROID_HOME=/home/justin/Android/Sdk \
+./gradlew assembleRelease --no-daemon --max-workers=1 \
+  -PreactNativeArchitectures=x86_64 \
+  '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=512m'
+```
+
+The development-signed APK is `android/app/build/outputs/apk/release/app-release.apk`.
+It bundles JavaScript and artwork, so Metro is not needed. Local Metro remains on port 8091.
+Review deep links are registered on Android, for example `portico-classic://screen/movie`;
+the full list remains in **Settings › Screen index**. Android bundles the same four Manrope
+weights and reuses the official Apple icon artwork for its launch icon and TV banner.
+Android TV uses an app-scoped 1920-point canvas, matching the existing television design;
+this leaves phone density and the emulator's system settings unchanged.
 
 ## Design
 

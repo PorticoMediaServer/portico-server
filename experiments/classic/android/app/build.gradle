@@ -79,7 +79,7 @@ android {
 
     namespace "com.porticoclassic"
     defaultConfig {
-        applicationId "com.porticoclassic"
+        applicationId "tv.getportico.experiment.classic"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

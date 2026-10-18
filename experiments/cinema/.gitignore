@@ -9,6 +9,7 @@ xcuserdata/
 android/.gradle/
 android/build/
 android/app/build/
+android/app/.cxx/
 *.jsbundle
 /scripts/art/cache/
 __pycache__/
