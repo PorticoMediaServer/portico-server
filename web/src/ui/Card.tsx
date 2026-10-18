@@ -9,6 +9,10 @@ import s from './Card.module.css';
 export type CardProps = {
   title: string;
   caption?: string;
+  /** A third line (TV, Plex's shape): "S1 · E3" under an episode's own title. */
+  detail?: string;
+  /** What the card is called when it is more than its title (an episode: "Show, Episode, S1 · E3"); the title otherwise. */
+  name?: string;
   path?: string;
   shape?: ArtworkShape;
   icon?: IconName;
@@ -49,11 +53,11 @@ export function cardName(title: string, state: {watched?: boolean; progress?: nu
 
 /**
  * Media card: reserved artwork geometry, title and up to two lines of
- * decision-useful copy. Hover or keyboard focus reveals Play and More; both
+ * decision-useful copy (an episode's own title, then its number). Hover or keyboard focus reveals Play and More; both
  * remain reachable through the context menu on touch.
  */
 /** Memoised; the section passes stable handlers now that player intents are a stable context. */
-export const Card = React.memo(function Card({title, caption, path, shape = 'poster', icon, progress, watched, unavailable, onOpen, onPlay, onMore, href, className, hideCopy, selectable, selected, onSelect, fit, missing}: CardProps) {
+export const Card = React.memo(function Card({title, caption, detail, name, path, shape = 'poster', icon, progress, watched, unavailable, onOpen, onPlay, onMore, href, className, hideCopy, selectable, selected, onSelect, fit, missing}: CardProps) {
   const stop = (fn?: () => void) => (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -104,7 +108,7 @@ export const Card = React.memo(function Card({title, caption, path, shape = 'pos
             onPointerCancel: pressEnd,
             // A link is dragged by the browser; the card is not a drag source.
             draggable: link ? false : undefined,
-            'aria-label': cardName(title, {watched, progress, unavailable, missing}),
+            'aria-label': cardName(name ?? title, {watched, progress, unavailable, missing}),
             'aria-pressed': selectable ? !!selected : undefined,
             onKeyDown: onKey,
             'aria-describedby': onMore || onPlay ? 'card-keyboard-hint' : undefined,
@@ -118,15 +122,16 @@ export const Card = React.memo(function Card({title, caption, path, shape = 'pos
         {unavailable || missing ? <span className={s.unavailableMark} aria-hidden>{uiI18n().t(missing ? 'title.missing' : 'card.unavailable')}</span> : null}
         {(onPlay || onMore) && !selectable ? (
           <div className={s.overlay}>
-            {onPlay ? <button type="button" className={s.playButton} tabIndex={-1} onClick={stop(onPlay)} aria-label={uiI18n().t('card.play', {title})}><Icon name="play" size={18} /></button> : <span />}
-            {onMore ? <button type="button" className={s.moreButton} tabIndex={-1} onClick={e => { e.stopPropagation(); e.preventDefault(); onMore(anchorOf(e.currentTarget)); }} aria-label={uiI18n().t('card.more', {title})} aria-haspopup="menu"><Icon name="more" size={16} /></button> : null}
+            {onPlay ? <button type="button" className={s.playButton} tabIndex={-1} onClick={stop(onPlay)} aria-label={uiI18n().t('card.play', {title: name ?? title})}><Icon name="play" size={18} /></button> : <span />}
+            {onMore ? <button type="button" className={s.moreButton} tabIndex={-1} onClick={e => { e.stopPropagation(); e.preventDefault(); onMore(anchorOf(e.currentTarget)); }} aria-label={uiI18n().t('card.more', {title: name ?? title})} aria-haspopup="menu"><Icon name="more" size={16} /></button> : null}
           </div>
         ) : null}
       </div>
       {!hideCopy ? (
         <div className={s.copy}>
           <span className={s.title} title={title}>{title}</span>
-          {caption ? <span className={s.caption}>{caption}</span> : null}
+          {caption ? <span className={cx(s.caption, detail && s.oneLine)} title={detail ? caption : undefined}>{caption}</span> : null}
+          {detail ? <span className={s.caption}>{detail}</span> : null}
         </div>
       ) : null}
     </div>

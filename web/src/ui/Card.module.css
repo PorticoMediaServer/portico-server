@@ -23,6 +23,8 @@
 /* Two lines at most (a long audiobook title would run to four); the full title is the element's tooltip. */
 .title { font-size: 0.875rem; font-weight: 600; line-height: 1.3; color: var(--text-primary); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 .caption { font-size: 0.78125rem; line-height: 1.35; color: var(--text-tertiary); }
+/* An episode's own title above its number: one line, like Plex; the full title is the tooltip. */
+.oneLine { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .unavailable .artButton { opacity: 0.55; }
 .unavailableMark { position: absolute; left: 8px; bottom: 8px; max-width: calc(100% - 16px); padding: 2px 8px; border-radius: 999px; background: color-mix(in srgb, var(--color-ink) 78%, transparent); color: var(--text-primary); font-size: 0.71875rem; font-weight: 600; line-height: 1.5; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
 .person { align-items: center; text-align: center; }

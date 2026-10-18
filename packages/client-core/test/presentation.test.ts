@@ -151,6 +151,27 @@ test('homeHero: the server\'s entry, worded once for every client', async () => 
   assert.equal(homeHero(doc({rowId: 'continue', entryId: 'e1'}, []), t, {duration}), undefined);
 });
 
+test('cardLines: TV in Plex\'s shape — an episode reads show, episode, "S1 · E3"; a season show, "Season 1"; a show added whole its seasons', async () => {
+  const {cardLines, continueLines} = await import('../src/presentation/card-caption.ts');
+  const {createI18n} = await import('../../i18n/src/index.ts');
+  const {t} = createI18n();
+  assert.deepEqual(cardLines({kind: 'episode', title: 'Grilled', subtitle: 'Breaking Bad', seasonNumber: 2, episodeNumber: 2}, t), {title: 'Breaking Bad', caption: 'Grilled', detail: 'S2 · E2'});
+  // Numbered across seasons, or without seasons, the third line says so as the show does.
+  assert.equal(cardLines({kind: 'episode', title: 'Romance Dawn', subtitle: 'One Piece', absoluteNumber: 104, episodeNumber: 1}, t).detail, 'Episode 104');
+  assert.equal(cardLines({kind: 'episode', title: 'Pilot', subtitle: 'Miniseries', episodeNumber: 3}, t).detail, 'E3');
+  // Without its show, an episode keeps its own title over its number (never an empty first line).
+  assert.deepEqual(cardLines({kind: 'episode', title: 'Pilot', seasonNumber: 1, episodeNumber: 1}, t), {title: 'Pilot', caption: 'S1 · E1'});
+  assert.deepEqual(cardLines({kind: 'season', title: 'Season 3', subtitle: 'Stranger Things', seasonNumber: 3}, t), {title: 'Stranger Things', caption: 'Season 3'});
+  assert.deepEqual(cardLines({kind: 'season', title: 'Specials', subtitle: 'Doctor Who', seasonNumber: 0}, t), {title: 'Doctor Who', caption: 'Specials'});
+  assert.deepEqual(cardLines({kind: 'show', title: 'Rizzoli & Isles', seasonCount: 6, year: 2010}, t), {title: 'Rizzoli & Isles', caption: '6 seasons'});
+  // A show anywhere else, and every other kind, keeps its usual caption.
+  assert.deepEqual(cardLines({kind: 'show', title: 'Silo', year: 2023}, t), {title: 'Silo', caption: '2023'});
+  assert.deepEqual(cardLines({kind: 'movie', title: 'Inside Out', year: 2015}, t), {title: 'Inside Out', caption: '2015'});
+  // Continue Watching: an episode as everywhere else; a film says what is left.
+  assert.deepEqual(continueLines({kind: 'episode', title: 'Grilled', subtitle: 'Breaking Bad', seasonNumber: 2, episodeNumber: 2, duration: 2700, progressSeconds: 1260}, t), {title: 'Breaking Bad', caption: 'Grilled', detail: 'S2 · E2'});
+  assert.deepEqual(continueLines({kind: 'movie', title: 'Inside Out', duration: 5700, progressSeconds: 4260}, t), {title: 'Inside Out', caption: '24 min left'});
+});
+
 test('cardCaption: a group counted only up to a threshold reads "10,000+ titles"; an exact count is unchanged', async () => {
   const {cardCaption} = await import('../src/presentation/card-caption.ts');
   const {createI18n} = await import('../../i18n/src/index.ts');

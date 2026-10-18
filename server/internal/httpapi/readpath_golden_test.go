@@ -58,6 +58,10 @@ import (
 // and its two newly supported year-sort requests (books and songs, 400 to 200).
 // Apart from those responses and deterministic catalogue revision advances,
 // all existing result membership, ordering and restricted totals are unchanged.
+// Recorded again on 18 October 2026 for Recently Added in Plex's shape: only
+// the four Recently Added TV cases changed, each show now standing for what
+// arrived (its season, or for the restricted viewer the one episode it may
+// see). Every other case is unchanged.
 
 // volatileKeys are the JSON keys whose values cannot be stable across two runs
 // of the same catalogue: they carry a session hash, an HMAC signature, a wall

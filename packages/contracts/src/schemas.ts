@@ -2550,6 +2550,11 @@ export const schemas = {
                 "role": {
                   "type": "string"
                 },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "seasonNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -2680,6 +2685,11 @@ export const schemas = {
             },
             "role": {
               "type": "string"
+            },
+            "seasonCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "seasonNumber": {
               "maximum": 9007199254740991,
@@ -3349,6 +3359,11 @@ export const schemas = {
                 "role": {
                   "type": "string"
                 },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "seasonNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -3479,6 +3494,11 @@ export const schemas = {
             },
             "role": {
               "type": "string"
+            },
+            "seasonCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "seasonNumber": {
               "maximum": 9007199254740991,
@@ -31907,6 +31927,11 @@ export const schemas = {
                             "role": {
                               "type": "string"
                             },
+                            "seasonCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "seasonNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -32037,6 +32062,11 @@ export const schemas = {
                         },
                         "role": {
                           "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "seasonNumber": {
                           "maximum": 9007199254740991,
@@ -32812,6 +32842,11 @@ export const schemas = {
                       "role": {
                         "type": "string"
                       },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -32942,6 +32977,11 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "seasonNumber": {
                     "maximum": 9007199254740991,
@@ -33769,6 +33809,11 @@ export const schemas = {
                       "role": {
                         "type": "string"
                       },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -33899,6 +33944,11 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "seasonNumber": {
                     "maximum": 9007199254740991,
@@ -34674,6 +34724,11 @@ export const schemas = {
                 "role": {
                   "type": "string"
                 },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
                 "seasonNumber": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
@@ -34804,6 +34859,11 @@ export const schemas = {
             },
             "role": {
               "type": "string"
+            },
+            "seasonCount": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
             },
             "seasonNumber": {
               "maximum": 9007199254740991,
@@ -36191,6 +36251,11 @@ export const schemas = {
                       "role": {
                         "type": "string"
                       },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -36321,6 +36386,11 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "seasonNumber": {
                     "maximum": 9007199254740991,
@@ -37647,6 +37717,11 @@ export const schemas = {
                           "role": {
                             "type": "string"
                           },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "seasonNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -37777,6 +37852,11 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
@@ -41511,6 +41591,11 @@ export const schemas = {
                             "role": {
                               "type": "string"
                             },
+                            "seasonCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "seasonNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -41641,6 +41726,11 @@ export const schemas = {
                         },
                         "role": {
                           "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "seasonNumber": {
                           "maximum": 9007199254740991,
@@ -42416,6 +42506,11 @@ export const schemas = {
                       "role": {
                         "type": "string"
                       },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -42546,6 +42641,11 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "seasonNumber": {
                     "maximum": 9007199254740991,
@@ -46143,6 +46243,11 @@ export const schemas = {
               "role": {
                 "type": "string"
               },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "seasonNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -46273,6 +46378,11 @@ export const schemas = {
           },
           "role": {
             "type": "string"
+          },
+          "seasonCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "seasonNumber": {
             "maximum": 9007199254740991,
@@ -46934,6 +47044,11 @@ export const schemas = {
                       "role": {
                         "type": "string"
                       },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -47064,6 +47179,11 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "seasonNumber": {
                     "maximum": 9007199254740991,
@@ -47668,6 +47788,11 @@ export const schemas = {
                       "role": {
                         "type": "string"
                       },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -47798,6 +47923,11 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "seasonNumber": {
                     "maximum": 9007199254740991,
@@ -48857,6 +48987,11 @@ export const schemas = {
                   "role": {
                     "type": "string"
                   },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "seasonNumber": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -48987,6 +49122,11 @@ export const schemas = {
               },
               "role": {
                 "type": "string"
+              },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
               },
               "seasonNumber": {
                 "maximum": 9007199254740991,
@@ -49648,6 +49788,11 @@ export const schemas = {
                           "role": {
                             "type": "string"
                           },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
                           "seasonNumber": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
@@ -49778,6 +49923,11 @@ export const schemas = {
                       },
                       "role": {
                         "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
                       },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
@@ -50368,6 +50518,11 @@ export const schemas = {
               "role": {
                 "type": "string"
               },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "seasonNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -50498,6 +50653,11 @@ export const schemas = {
           },
           "role": {
             "type": "string"
+          },
+          "seasonCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "seasonNumber": {
             "maximum": 9007199254740991,
@@ -54665,6 +54825,11 @@ export const schemas = {
                     "role": {
                       "type": "string"
                     },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "seasonNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -54795,6 +54960,11 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "seasonNumber": {
                   "maximum": 9007199254740991,
@@ -55270,6 +55440,11 @@ export const schemas = {
                     "role": {
                       "type": "string"
                     },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "seasonNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -55400,6 +55575,11 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "seasonNumber": {
                   "maximum": 9007199254740991,
@@ -56007,6 +56187,11 @@ export const schemas = {
                     "role": {
                       "type": "string"
                     },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "seasonNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -56137,6 +56322,11 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "seasonNumber": {
                   "maximum": 9007199254740991,
@@ -58121,6 +58311,11 @@ export const schemas = {
               "role": {
                 "type": "string"
               },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "seasonNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -58251,6 +58446,11 @@ export const schemas = {
           },
           "role": {
             "type": "string"
+          },
+          "seasonCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "seasonNumber": {
             "maximum": 9007199254740991,
@@ -58912,6 +59112,11 @@ export const schemas = {
                       "role": {
                         "type": "string"
                       },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -59042,6 +59247,11 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "seasonNumber": {
                     "maximum": 9007199254740991,
@@ -60467,6 +60677,11 @@ export const schemas = {
               "role": {
                 "type": "string"
               },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "seasonNumber": {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
@@ -60597,6 +60812,11 @@ export const schemas = {
           },
           "role": {
             "type": "string"
+          },
+          "seasonCount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "seasonNumber": {
             "maximum": 9007199254740991,
@@ -61258,6 +61478,11 @@ export const schemas = {
                       "role": {
                         "type": "string"
                       },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -61388,6 +61613,11 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "seasonNumber": {
                     "maximum": 9007199254740991,
@@ -62103,6 +62333,11 @@ export const schemas = {
                     "role": {
                       "type": "string"
                     },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "seasonNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -62233,6 +62468,11 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "seasonNumber": {
                   "maximum": 9007199254740991,
@@ -62740,6 +62980,11 @@ export const schemas = {
                     "role": {
                       "type": "string"
                     },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "seasonNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -62870,6 +63115,11 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "seasonNumber": {
                   "maximum": 9007199254740991,
@@ -65307,6 +65557,11 @@ export const schemas = {
                             "role": {
                               "type": "string"
                             },
+                            "seasonCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "seasonNumber": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -65437,6 +65692,11 @@ export const schemas = {
                         },
                         "role": {
                           "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         },
                         "seasonNumber": {
                           "maximum": 9007199254740991,
@@ -66212,6 +66472,11 @@ export const schemas = {
                       "role": {
                         "type": "string"
                       },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -66342,6 +66607,11 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "seasonNumber": {
                     "maximum": 9007199254740991,
@@ -68448,6 +68718,11 @@ export const schemas = {
                     "role": {
                       "type": "string"
                     },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
                     "seasonNumber": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
@@ -68578,6 +68853,11 @@ export const schemas = {
                 },
                 "role": {
                   "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
                 },
                 "seasonNumber": {
                   "maximum": 9007199254740991,
@@ -104176,6 +104456,11 @@ export const schemas = {
                       "role": {
                         "type": "string"
                       },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
                       "seasonNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -104306,6 +104591,11 @@ export const schemas = {
                   },
                   "role": {
                     "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
                   },
                   "seasonNumber": {
                     "maximum": 9007199254740991,

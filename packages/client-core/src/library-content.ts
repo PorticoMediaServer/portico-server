@@ -43,6 +43,8 @@ export type ContentEntry = Readonly<{
   latestEpisode?: Readonly<{airDate: string; seasonNumber?: number; episodeNumber: number; title?: string; count: number}>;
   /** An episode's number across the show's seasons, when the show is set to absolute numbering: it reads "Episode 1043". */
   absoluteNumber?: number;
+  /** How many seasons a show has, on a Recently Added shelf when the whole show (several seasons) was the addition: "6 seasons". */
+  seasonCount?: number;
   /** Community rating (0–10) and the best file's picture class; browse pages only (the list view's columns). */
   rating?: number;
  userRating?: number;
@@ -216,6 +218,7 @@ function entry(v: unknown): ContentEntry {
     }
   }
   if (typeof v.absoluteNumber === 'number' && Number.isSafeInteger(v.absoluteNumber) && v.absoluteNumber > 0) row.absoluteNumber = v.absoluteNumber;
+  if (typeof v.seasonCount === 'number' && Number.isSafeInteger(v.seasonCount) && v.seasonCount > 0) row.seasonCount = v.seasonCount;
   if (typeof v.rating === 'number' && Number.isFinite(v.rating) && v.rating > 0 && v.rating <= 10) row.rating = v.rating;
   if (v.resolution === '4k' || v.resolution === '1080p' || v.resolution === '720p' || v.resolution === 'sd') row.resolution = v.resolution;
   if (string(v.overviewSource, 128) && (v.overviewSource as string).length > 0) row.overviewSource = v.overviewSource as string;
