@@ -136,7 +136,7 @@ func (s *AccountSecurity) ResetPassword(ctx context.Context, token, password, fa
 	if !validContact {
 		return identity.ErrChallenge
 	}
-	valid, e := s.factorTx(ctx, tx, account, factor)
+	valid, e := s.factorScopedTx(ctx, tx, account, factorBackoffReset, factor)
 	if e != nil {
 		return e
 	}
@@ -154,6 +154,13 @@ func (s *AccountSecurity) ResetPassword(ctx context.Context, token, password, fa
 		return e
 	}
 	if _, e = tx.ExecContext(ctx, `UPDATE accounts SET password_hash=$2 WHERE id=$1`, account, hash); e != nil {
+		return e
+	}
+	// The emailed link and a factor proved the owner, and the old password no
+	// longer works, so second-factor failures earned with it stop slowing the
+	// owner's sign-in. With MFA, factorScopedTx already holds the account_mfa
+	// lock that serializes that count.
+	if _, e = tx.ExecContext(ctx, `DELETE FROM account_security_limits WHERE subject_hash=$1 AND kind=$2`, s.digest("rate", factorBackoffSignIn, account), factorBackoffSignIn); e != nil {
 		return e
 	}
 	if e = revokeAccountTx(ctx, tx, account, "password_reset"); e != nil {

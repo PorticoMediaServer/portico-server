@@ -355,7 +355,42 @@ func (s *AccountSecurity) PasswordProof(ctx context.Context, token string, i ide
 	}
 	return out, tx.Commit()
 }
+
+// Second-factor backoff (HOST02). The replenishing per-window limits alone let
+// someone holding the password keep fetching fresh challenges and guess about
+// 1,900 codes a day. Failures are therefore also remembered per account until
+// a day passes without one: after factorFreeFailures, each further code waits
+// a cool-off doubling from factorCoolOffBase to factorCoolOffCap, so sustained
+// guessing falls to a few dozen codes a day.
+//
+// It can never become a permanent lockout. Only someone past the first factor
+// (password, provider or signed-in session) reaches it; the wait is capped; a
+// correct code clears it; and a recovery code (128 random bits, not guessable)
+// is still checked during a cool-off, so the owner can always get past an
+// attacker who holds the password. Password reset, which also needs the
+// emailed link, keeps its own count, so the owner can always reset the
+// password and end the attacker's first factor.
+const (
+	factorFreeFailures  = 10
+	factorCoolOffBase   = 30 * time.Second
+	factorCoolOffCap    = 30 * time.Minute
+	factorFailureMemory = 24 * time.Hour
+
+	factorBackoffSignIn = "factor-backoff"
+	factorBackoffReset  = "factor-backoff-reset"
+)
+
+func factorCoolOff(failures int) time.Duration {
+	if failures < factorFreeFailures {
+		return 0
+	}
+	return min(factorCoolOffCap, factorCoolOffBase<<min(failures-factorFreeFailures, 16))
+}
+
 func (s *AccountSecurity) factorTx(ctx context.Context, tx *sql.Tx, account, factor string) (bool, error) {
+	return s.factorScopedTx(ctx, tx, account, factorBackoffSignIn, factor)
+}
+func (s *AccountSecurity) factorScopedTx(ctx context.Context, tx *sql.Tx, account, backoff, factor string) (bool, error) {
 	var cipher []byte
 	var last int64
 	e := tx.QueryRowContext(ctx, `SELECT secret,last_step FROM account_mfa WHERE account_id=$1 FOR UPDATE`, account).Scan(&cipher, &last)
@@ -365,9 +400,43 @@ func (s *AccountSecurity) factorTx(ctx context.Context, tx *sql.Tx, account, fac
 	if e != nil {
 		return false, e
 	}
+	// The account_mfa row lock above serializes this read-check-record for the
+	// account, so parallel guesses earn no more tries than a sequence.
+	backoffKey := s.digest("rate", backoff, account)
+	var failures int
+	var lastFailure, now time.Time
+	e = tx.QueryRowContext(ctx, `SELECT attempts,window_start,clock_timestamp() FROM account_security_limits WHERE subject_hash=$1 AND kind=$2`, backoffKey, backoff).Scan(&failures, &lastFailure, &now)
+	if errors.Is(e, sql.ErrNoRows) {
+		failures = 0
+	} else if e != nil {
+		return false, e
+	} else if lastFailure.Before(now.Add(-factorFailureMemory)) {
+		failures = 0
+	}
+	if until := lastFailure.Add(factorCoolOff(failures)); failures >= factorFreeFailures && until.After(now) && len(identity.NormalizeRecoveryCode(factor)) != 32 {
+		// Refused without checking or counting the code, and without spending
+		// one of the challenge's attempts. The challenge still expires on its
+		// own (five minutes), usually before a long cool-off ends; the caller
+		// then signs in with the password again for a fresh one.
+		return false, identity.CoolOff{Until: until}
+	}
 	if e = s.limitWith(ctx, tx, "factor-account", account, 20, 15*time.Minute); e != nil {
 		return false, e
 	}
+	valid, e := s.checkFactorTx(ctx, tx, account, factor, cipher, last)
+	if e != nil {
+		return false, e
+	}
+	if valid {
+		_, e = tx.ExecContext(ctx, `DELETE FROM account_security_limits WHERE subject_hash=$1 AND kind=$2`, backoffKey, backoff)
+		return e == nil, e
+	}
+	// window_start records the latest failure; retention keeps rows for two
+	// days, longer than factorFailureMemory.
+	_, e = tx.ExecContext(ctx, `INSERT INTO account_security_limits(subject_hash,kind,window_start,attempts) VALUES($1,$2,clock_timestamp(),1) ON CONFLICT(subject_hash,kind) DO UPDATE SET attempts=CASE WHEN account_security_limits.window_start<clock_timestamp()-($3 * interval '1 second') THEN 1 ELSE LEAST(account_security_limits.attempts+1,1000000) END,window_start=clock_timestamp()`, backoffKey, backoff, int(factorFailureMemory.Seconds()))
+	return false, e
+}
+func (s *AccountSecurity) checkFactorTx(ctx context.Context, tx *sql.Tx, account, factor string, cipher []byte, last int64) (bool, error) {
 	factor = strings.TrimSpace(factor)
 	if len(factor) == 6 {
 		secret, e := s.Keys.Open(cipher, "totp:"+account)
@@ -390,7 +459,7 @@ func (s *AccountSecurity) factorTx(ctx context.Context, tx *sql.Tx, account, fac
 		return false, nil
 	}
 	var ignored []byte
-	e = tx.QueryRowContext(ctx, `UPDATE account_recovery_codes SET consumed_at=clock_timestamp() WHERE account_id=$1 AND code_hash=$2 AND consumed_at IS NULL RETURNING code_hash`, account, s.digest("mfa-recovery", account, normalized)).Scan(&ignored)
+	e := tx.QueryRowContext(ctx, `UPDATE account_recovery_codes SET consumed_at=clock_timestamp() WHERE account_id=$1 AND code_hash=$2 AND consumed_at IS NULL RETURNING code_hash`, account, s.digest("mfa-recovery", account, normalized)).Scan(&ignored)
 	if errors.Is(e, sql.ErrNoRows) {
 		return false, nil
 	}

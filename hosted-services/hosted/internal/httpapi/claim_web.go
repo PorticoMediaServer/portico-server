@@ -8,7 +8,6 @@ import (
 	"portico.local/hosted/internal/claims"
 	"portico.local/hosted/internal/postgres"
 	"portico.local/hosted/internal/security"
-	"reflect"
 	"sync"
 	"time"
 )
@@ -21,39 +20,68 @@ type ClaimWeb struct {
 }
 
 // claimStreams keeps one live decision stream per claim operation (a newer one
-// replaces the older) and a few per client network (A47), so one client can't
-// hold every stream slot.
+// replaces the older), a few per client address (A47) and a bounded share per
+// wider network (HOST01), so neither one client nor one delegation can hold
+// every stream slot. Pending claims are already free to register, so without
+// the network share 32 /64s inside one IPv6 /48 could occupy the whole pool.
 type claimStreams struct {
-	mu     sync.Mutex
-	byOp   map[string]context.CancelFunc
-	byPeer map[string]int
+	mu        sync.Mutex
+	byOp      map[string]*claimStream
+	byPeer    map[string]int
+	byNetwork map[string]int
 }
 
-const claimStreamsPerPeer = 4
+// claimStream is one open stream. Its address is its identity: a replaced
+// stream's close must not clear its successor's entry, and function values
+// can't be compared.
+type claimStream struct {
+	cancel context.CancelFunc
+	closed bool
+}
 
-func (c *claimStreams) open(op, peer string, cancel context.CancelFunc) (func(), bool) {
+const (
+	claimStreamsPerPeer = 4
+	// One /48 (IPv6) or /24 (IPv4) gets at most 16 of the 128 claim-stream
+	// slots: plenty for a household, office or campus onboarding several
+	// servers at once, while at least eight separate networks are needed to
+	// fill the pool.
+	claimStreamsPerNetwork = 16
+)
+
+// open reserves a stream for op. The returned close is idempotent.
+func (c *claimStreams) open(op, peer, network string, cancel context.CancelFunc) (func(), bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.byOp == nil {
-		c.byOp, c.byPeer = map[string]context.CancelFunc{}, map[string]int{}
+		c.byOp, c.byPeer, c.byNetwork = map[string]*claimStream{}, map[string]int{}, map[string]int{}
 	}
-	if c.byPeer[peer] >= claimStreamsPerPeer {
+	if c.byPeer[peer] >= claimStreamsPerPeer || c.byNetwork[network] >= claimStreamsPerNetwork {
 		return nil, false
 	}
 	if old := c.byOp[op]; old != nil {
-		old()
+		old.cancel()
 	}
-	c.byOp[op] = cancel
+	stream := &claimStream{cancel: cancel}
+	c.byOp[op] = stream
 	c.byPeer[peer]++
+	c.byNetwork[network]++
 	return func() {
 		c.mu.Lock()
 		defer c.mu.Unlock()
+		if stream.closed {
+			return
+		}
+		stream.closed = true
 		c.byPeer[peer]--
 		if c.byPeer[peer] <= 0 {
 			delete(c.byPeer, peer)
 		}
+		c.byNetwork[network]--
+		if c.byNetwork[network] <= 0 {
+			delete(c.byNetwork, network)
+		}
 		// Only the stream that still owns the operation clears it.
-		if reflect.ValueOf(c.byOp[op]).Pointer() == reflect.ValueOf(cancel).Pointer() {
+		if c.byOp[op] == stream {
 			delete(c.byOp, op)
 		}
 	}, true
@@ -85,7 +113,7 @@ func (h *ClaimHandler) web(w http.ResponseWriter, r *http.Request) bool {
 		}
 		ctx, cancel := context.WithDeadline(r.Context(), q.ExpiresAt)
 		defer cancel()
-		closeStream, ok := h.Web.streams.open(q.OperationID, budgetIP(peer(r)), cancel)
+		closeStream, ok := h.Web.streams.open(q.OperationID, budgetIP(peer(r)), budgetNetwork(peer(r)), cancel)
 		if !ok {
 			w.Header().Set("Retry-After", "30")
 			claimFailure(w, claims.ErrCapacity)

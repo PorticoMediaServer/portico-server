@@ -152,6 +152,32 @@ allows recovery of a lost response. Users must save those codes before dismissin
 the result. There is no unauthenticated MFA bypass: losing every provider/password
 recovery factor and every recovery code does not authorize account takeover.
 
+Second-factor failures are also remembered per account until a day passes
+without one, across fresh challenges. After ten, each further code waits a
+cool-off doubling from 30 seconds to a 30-minute cap (HTTP 429 with
+Retry-After). A refused code is neither checked nor counted and does not spend a
+challenge attempt, but the challenge still expires after five minutes, so after a
+long cool-off the caller signs in with the password again. A correct code clears
+the count. Recovery codes are still checked during a cool-off, and password reset
+keeps its own count. A successful reset (emailed link plus a factor) also clears
+the sign-in count, so someone holding only the old password can slow the owner
+down but never lock them out. Sustained guessing is cut from about 1,900 codes a
+day to a few dozen; it is slowed, not made impossible.
+
+Password cool-off answers alike for existing and unknown usernames. A
+well-formed unknown name runs the same per-network (four free failures in 15
+minutes, then 30 seconds doubling to 15 minutes) and account-wide (over 100
+failures an hour) schedule as an account, in durable rows shared by every
+replica and kept across restarts. The rows are fixed buckets chosen by the seal
+key's HMAC of the name (and network): at most 3 × 65,536 rows, never the name
+itself, cleaned up by the usual security-limit retention. A malformed name
+cannot be an account and gets no state. Limits: names that share a bucket share
+its count, so an unknown name can cool off early (never an account), which a
+large distributed flood could occasionally turn into a probabilistic hint; the
+dummy bcrypt equalizes work, not every timing detail; and registration still
+says when a username is taken, after the emailed code is verified, which is a
+costlier, intentional answer outside this cool-off.
+
 ## Durable outbox and invitation boundary
 
 `postgres.EnqueueAccountMailTx(ctx, tx, keys, mailoutbox.Intent{...})` is the typed

@@ -24,22 +24,32 @@ func (s *AccountSecurity) PasswordLoginBound(ctx context.Context, username, pass
 		return result, identity.ErrInvalid
 	}
 	// Backoff is attached to an existing account, never to the login service as
-	// a whole. Unknown usernames still perform PasswordCheck's dummy bcrypt.
+	// a whole. Unknown usernames still perform PasswordCheck's dummy bcrypt, and
+	// a well-formed one runs the same cool-off in fixed shared buckets so the
+	// answers match (HOST03). A malformed name can't be an account, so it
+	// reveals nothing and is given no state.
 	var backoffAccount string
-	e := s.Store.DB.QueryRowContext(ctx, `SELECT id FROM accounts WHERE username=$1`, strings.ToLower(strings.TrimSpace(username))).Scan(&backoffAccount)
+	normalized := strings.ToLower(strings.TrimSpace(username))
+	e := s.Store.DB.QueryRowContext(ctx, `SELECT id FROM accounts WHERE username=$1`, normalized).Scan(&backoffAccount)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return result, e
 	}
 	clientNetwork := passwordNetwork(network)
+	admitted, until := true, time.Time{}
 	if backoffAccount != "" {
-		admitted, until, e := s.admitPasswordAttempt(ctx, backoffAccount, clientNetwork)
+		admitted, until, e = s.admitPasswordAttempt(ctx, backoffAccount, clientNetwork)
 		if e != nil {
 			return result, e
 		}
-		if !admitted {
-			// A cool-off after failures, not a verdict on this password.
-			return result, identity.CoolOff{Until: until}
+	} else if identity.ValidUsername(normalized) {
+		admitted, until, e = s.admitUnknownPasswordAttempt(ctx, normalized, clientNetwork)
+		if e != nil {
+			return result, e
 		}
+	}
+	if !admitted {
+		// A cool-off after failures, not a verdict on this password.
+		return result, identity.CoolOff{Until: until}
 	}
 	a, hash, e := s.Identity.PasswordCheck(ctx, username, password)
 	if e != nil {
@@ -69,7 +79,7 @@ func (s *AccountSecurity) PasswordLoginBound(ctx context.Context, username, pass
 			return result, e
 		}
 	}
-	request := s.requestHash(struct{ Username, Password, Mode string }{strings.ToLower(strings.TrimSpace(username)), password, mode})
+	request := s.requestHash(struct{ Username, Password, Mode string }{normalized, password, mode})
 	aad := "password-login:" + hex.EncodeToString(security.Hash(binding)) + ":" + requestID
 	var prior, cipher []byte
 	var priorAccount, priorMode string
