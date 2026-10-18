@@ -268767,6 +268767,30 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "libraryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pivot",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -269040,12 +269064,14 @@
             "description": "Request refused or unavailable"
           }
         },
-        "summary": "Read saved resources",
+        "summary": "Read saved resources; saved view presets can be narrowed to an authorized library and browse pivot",
         "x-access": "device",
         "x-admission": "browsing",
         "x-cost": "page_sized",
         "x-error-codes": [
           "invalid_request",
+          "invalid_cursor",
+          "stale_continuation",
           "unauthorized",
           "not_permitted",
           "not_found",

@@ -6391,7 +6391,7 @@ export const routes = [
     "id": "get_saved_resources",
     "method": "GET",
     "path": "/v1/saved-resources",
-    "summary": "Read saved resources",
+    "summary": "Read saved resources; saved view presets can be narrowed to an authorized library and browse pivot",
     "access": "device",
     "requires": "read",
     "lane": "browsing",
@@ -6400,10 +6400,15 @@ export const routes = [
     "query": [
       "cursor",
       "kind",
-      "pinned"
+      "pinned",
+      "limit",
+      "libraryId",
+      "pivot"
     ],
     "errors": [
       "invalid_request",
+      "invalid_cursor",
+      "stale_continuation",
       "unauthorized",
       "not_permitted",
       "not_found",
