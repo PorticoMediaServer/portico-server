@@ -107,7 +107,10 @@ type Dependencies struct {
 	Hosted            *hosted.Service
 	Metadata          *metadata.Service
 	Origins           []string
-	TrustedProxies    []netip.Prefix
+	// SetupHosts explicitly authorizes browser bootstrap authorities for custom
+	// DNS names/reverse proxies. Host/Origin agreement alone cannot prove one.
+	SetupHosts     []string
+	TrustedProxies []netip.Prefix
 	// Access carries the people, diagnostics and connectivity seams (workstream G2).
 	Access AccessArea
 	// Webhooks is the owner's outbound webhooks; nil answers them as unavailable.
@@ -899,7 +902,7 @@ func New(d Dependencies) http.Handler {
 		write(w, 200, map[string]any{"items": visible})
 	})
 	d.httpHandle(mux, "POST /v1/libraries", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.administrator(r)
 		if e != nil {
 			failure(w, e)
 			return
@@ -957,7 +960,7 @@ func New(d Dependencies) http.Handler {
 			_, err := d.Ingestion.QueueTx(r.Context(), tx, l.ID)
 			return err
 		}
-		l, e := d.Catalog.CreateAuthorizedThen(r.Context(), body.Name, body.Kind, body.Path, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }, queue)
+		l, e := d.Catalog.CreateAuthorizedThen(r.Context(), body.Name, body.Kind, body.Path, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, "") }, queue)
 		if e != nil {
 			failure(w, e)
 			return
@@ -986,12 +989,12 @@ func New(d Dependencies) http.Handler {
 		write(w, 200, map[string]any{"approvals": approvals})
 	})
 	d.httpHandle(mux, "POST /v1/libraries/{id}/scans", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.administrator(r)
 		if e != nil {
 			failure(w, e)
 			return
 		}
-		j, e := d.Ingestion.QueueMode(r.Context(), r.PathValue("id"), "", r.URL.Query().Get("mode"), func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		j, e := d.Ingestion.QueueMode(r.Context(), r.PathValue("id"), "", r.URL.Query().Get("mode"), func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) })
 		if e != nil {
 			failure(w, e)
 			return
@@ -999,7 +1002,7 @@ func New(d Dependencies) http.Handler {
 		write(w, 202, j)
 	})
 	d.httpHandle(mux, "GET /v1/admin/ingestion/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
-		if _, e := d.owner(r); e != nil {
+		if _, e := d.libraryAdministrationJobRead(r, r.PathValue("id")); e != nil {
 			failure(w, e)
 			return
 		}
@@ -1008,15 +1011,21 @@ func New(d Dependencies) http.Handler {
 			failure(w, e)
 			return
 		}
+		if _, e = d.libraryAdministrationJobRead(r, r.PathValue("id")); e != nil {
+			failure(w, e)
+			return
+		}
 		write(w, 200, j)
 	})
 	d.httpHandle(mux, "DELETE /v1/admin/ingestion/jobs/{id}", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.administrator(r)
 		if e != nil {
 			failure(w, e)
 			return
 		}
-		if e := d.Ingestion.Control(r.Context(), r.PathValue("id"), "cancel", func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }); e != nil {
+		if e := d.Ingestion.Control(r.Context(), r.PathValue("id"), "cancel", func(tx *sql.Tx) error {
+			return d.libraryAdministrationJobAuthorize(r.Context(), tx, p, r.PathValue("id"))
+		}); e != nil {
 			failure(w, e)
 			return
 		}

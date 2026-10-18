@@ -238,3 +238,36 @@ func TestInspectAgreesWithNewWithoutCreatingAnything(t *testing.T) {
 		})
 	}
 }
+
+func TestArtifactStoreFreshStartupRestartAndPublication(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	root = filepath.Join(root, "subtitle-store")
+	store, err := New(root)
+	if err != nil {
+		t.Fatalf("fresh startup: %v", err)
+	}
+	object := seal(t, store, "subtitle bytes")
+	if err = store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	store, err = New(root)
+	if err != nil {
+		t.Fatalf("restart: %v", err)
+	}
+	defer store.Close()
+	reader, err := store.Open(context.Background(), object)
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, err := io.ReadAll(reader)
+	reader.Close()
+	if err != nil || string(data) != "subtitle bytes" {
+		t.Fatalf("restarted object: %q %v", data, err)
+	}
+	if next := seal(t, store, "new subtitle bytes"); next == object {
+		t.Fatal("restart publication reused different bytes")
+	}
+}

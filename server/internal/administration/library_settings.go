@@ -3,6 +3,7 @@ package administration
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"portico.local/server/internal/catalog"
 	"sort"
 )
@@ -468,7 +469,7 @@ type LibraryIndexEntry struct {
 }
 
 // LibraryIndex pages the libraries by name.
-func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string, limit int) (LibrarySettingsIndex, error) {
+func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string, limit int, scopes ...func(context.Context, *sql.Tx) ([]string, error)) (LibrarySettingsIndex, error) {
 	out := LibrarySettingsIndex{Items: []LibraryIndexEntry{}}
 	size, err := pageSize(limit)
 	if err != nil {
@@ -479,7 +480,21 @@ func (s *Service) LibraryIndex(ctx context.Context, auth Authorize, token string
 		return out, err
 	}
 	err = s.snapshot(ctx, auth, func(tx *sql.Tx) error {
-		rows, err := tx.QueryContext(ctx, `SELECT l.id,l.name,l.kind,(SELECT COUNT(*) FROM library_sources s WHERE s.library_id=l.id) FROM libraries l WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=l.id AND gone.retired=1) AND (?='' OR l.id>?) ORDER BY l.id LIMIT ?`, c.ID, c.ID, size+1)
+		var allowed any
+		if len(scopes) > 0 && scopes[0] != nil {
+			ids, err := scopes[0](ctx, tx)
+			if err != nil {
+				return err
+			}
+			if ids != nil {
+				raw, err := json.Marshal(ids)
+				if err != nil {
+					return err
+				}
+				allowed = string(raw)
+			}
+		}
+		rows, err := tx.QueryContext(ctx, `SELECT l.id,l.name,l.kind,(SELECT COUNT(*) FROM library_sources s WHERE s.library_id=l.id) FROM libraries l WHERE NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=l.id AND gone.retired=1) AND (? IS NULL OR l.id IN (SELECT value FROM json_each(?))) AND (?='' OR l.id>?) ORDER BY l.id LIMIT ?`, allowed, allowed, c.ID, c.ID, size+1)
 		if err != nil {
 			return err
 		}

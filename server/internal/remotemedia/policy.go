@@ -27,10 +27,14 @@ type Approval struct {
 	Addresses []string `json:"addresses"`
 }
 type Policy struct {
-	UserAgent   string
-	ReadTimeout time.Duration
-	Approvals   []Approval
-	Resolver    Resolver
+	// ManualRedirects returns redirect responses untouched for callers that
+	// validate each hop and create a fresh, independently admitted client.
+	// The default remains automatic redirects within the admitted scope.
+	ManualRedirects bool
+	UserAgent       string
+	ReadTimeout     time.Duration
+	Approvals       []Approval
+	Resolver        Resolver
 }
 
 func ParseDescriptor(raw []byte) (string, error) {

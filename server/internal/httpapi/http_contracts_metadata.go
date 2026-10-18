@@ -64,14 +64,14 @@ func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/screen_metadata.go:147
-	if err := apikit.RegisterHTTP[struct{}, metadata.ScreenPolicy](registry, apikit.Metadata{ID: "get_libraries_id_metadata_screen", Method: "GET", Path: "/v1/libraries/{id}/metadata/screen", Summary: "Read library metadata screen", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, metadata.ScreenPolicy](registry, apikit.Metadata{ID: "get_libraries_id_metadata_screen", Method: "GET", Path: "/v1/libraries/{id}/metadata/screen", Summary: "Read library metadata screen", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/screen_metadata.go:162
 	if err := apikit.RegisterHTTP[metadata.ScreenPolicyUpdate, struct {
 		LibraryId string `json:"libraryId"`
 		Status    string `json:"status"`
-	}](registry, apikit.Metadata{ID: "put_libraries_id_metadata_screen", Method: "PUT", Path: "/v1/libraries/{id}/metadata/screen", Summary: "Save library metadata screen", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}](registry, apikit.Metadata{ID: "put_libraries_id_metadata_screen", Method: "PUT", Path: "/v1/libraries/{id}/metadata/screen", Summary: "Save library metadata screen", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 65536, Status: 202, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/tvdb.go:11
@@ -221,11 +221,11 @@ func registerMetadataHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53
-	if err := apikit.RegisterHTTP[struct{}, catalog.ManualMetadata](registry, apikit.Metadata{ID: "get_items_id_metadata_manual", Method: "GET", Path: "/v1/items/{id}/metadata/manual", Summary: "Read title metadata manual", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.ManualMetadata](registry, apikit.Metadata{ID: "get_items_id_metadata_manual", Method: "GET", Path: "/v1/items/{id}/metadata/manual", Summary: "Read title metadata manual", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/manual_metadata.go:53
-	if err := apikit.RegisterHTTP[catalog.ManualMetadataMutation, catalog.ManualMetadata](registry, apikit.Metadata{ID: "patch_items_id_metadata_manual", Method: "PATCH", Path: "/v1/items/{id}/metadata/manual", Summary: "Change title metadata manual", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 262144, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[catalog.ManualMetadataMutation, catalog.ManualMetadata](registry, apikit.Metadata{ID: "patch_items_id_metadata_manual", Method: "PATCH", Path: "/v1/items/{id}/metadata/manual", Summary: "Change title metadata manual", Access: apikit.Admin, AdminScope: "metadata", Requires: apikit.ScopeLibrary, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.Constant, BodyLimit: 262144, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	return nil

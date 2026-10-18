@@ -14,6 +14,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/dirsync"
 )
 
 // ProtectedKeys is the current immutable key registry. It never imports a key
@@ -24,14 +25,8 @@ type ProtectedKeys struct {
 }
 
 func (k *ProtectedKeys) Close() error { return k.root.Close() }
-func syncDirectory(path string) error {
-	d, e := os.Open(path)
-	if e != nil {
-		return e
-	}
-	defer d.Close()
-	return d.Sync()
-}
+func syncDirectory(path string) error { return dirsync.Sync(path) }
+
 func privateDirectory(path string) error {
 	if e := os.MkdirAll(path, 0700); e != nil {
 		return e
@@ -156,6 +151,17 @@ func VerifyStateKeys(ctx context.Context, db *sql.DB, state string) error {
 // OpenCurrentKeys initializes one canonical application/server identity before
 // identity.New or Setup. Existing unmarked state is refused, never adopted.
 func OpenCurrentKeys(ctx context.Context, db *sql.DB, state string, runner *AuthorityRunner) (*ProtectedKeys, error) {
+	return openCurrentKeys(ctx, db, state, runner, freshKeySteps{syncDirectory, (*sql.Tx).Commit})
+}
+
+// freshKeySteps are the durability operations of fresh key creation; tests
+// substitute them to exercise each failure point.
+type freshKeySteps struct {
+	syncDir func(string) error
+	commit  func(*sql.Tx) error
+}
+
+func openCurrentKeys(ctx context.Context, db *sql.DB, state string, runner *AuthorityRunner, steps freshKeySteps) (*ProtectedKeys, error) {
 	if db == nil || runner == nil {
 		return nil, ErrInvalid
 	}
@@ -168,7 +174,7 @@ func OpenCurrentKeys(ctx context.Context, db *sql.DB, state string, runner *Auth
 		return nil, e
 	}
 	keys := &ProtectedKeys{db, root}
-	e = runner.Do(ctx, func(ctx context.Context) error {
+	e = runner.Do(ctx, func(ctx context.Context) (result error) {
 		gated, e := dbwork.Begin(ctx, db, dbwork.ClassFrom(ctx, dbwork.ClassInteractive))
 		if e != nil {
 			return e
@@ -204,6 +210,25 @@ func OpenCurrentKeys(ctx context.Context, db *sql.DB, state string, runner *Auth
 		if e != nil {
 			return e
 		}
+		commitStarted := false
+		defer func() {
+			if result == nil {
+				return
+			}
+			// Roll back before removing the file created by this attempt. Once the
+			// commit has been attempted its outcome is ambiguous: SQLite may
+			// recover a committed identity after a failed sync, so its key is
+			// kept and the next start reports the unmarked directory instead.
+			_ = gated.Rollback()
+			if commitStarted {
+				return
+			}
+			if err := root.Remove(incarnation + ".ed25519"); err != nil {
+				result = errors.Join(result, err)
+				return
+			}
+			result = errors.Join(result, steps.syncDir(directory))
+		}()
 		_, e = f.Write(key)
 		if e == nil {
 			e = f.Sync()
@@ -215,10 +240,10 @@ func OpenCurrentKeys(ctx context.Context, db *sql.DB, state string, runner *Auth
 		if closed != nil {
 			return closed
 		}
-		if e = syncDirectory(directory); e != nil {
+		if e = steps.syncDir(directory); e != nil {
 			return e
 		}
-		if e = syncDirectory(state); e != nil {
+		if e = steps.syncDir(state); e != nil {
 			return e
 		}
 		reopened, e := keys.read(incarnation)
@@ -239,7 +264,10 @@ func OpenCurrentKeys(ctx context.Context, db *sql.DB, state string, runner *Auth
 		if _, e = tx.ExecContext(ctx, `INSERT INTO configuration(key,value) VALUES('id',?)`, server); e != nil {
 			return e
 		}
-		return commitClaimTx(ctx, tx.Commit)
+		return commitClaimTx(ctx, func() error {
+			commitStarted = true
+			return steps.commit(tx)
+		})
 	})
 	if e != nil {
 		root.Close()

@@ -123849,7 +123849,7 @@
           }
         },
         "summary": "Read server analysis operations",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin-heavy",
         "x-cost": "constant",
         "x-error-codes": [
@@ -137341,7 +137341,7 @@
           }
         },
         "summary": "Read server filesystem",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "page_sized",
         "x-error-codes": [
@@ -137404,7 +137404,7 @@
           }
         },
         "summary": "Remove server ingestion jobs",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "default",
         "x-cost": "constant",
         "x-error-codes": [
@@ -137520,7 +137520,7 @@
           }
         },
         "summary": "Read server ingestion jobs",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "default",
         "x-cost": "constant",
         "x-error-codes": [
@@ -137649,7 +137649,7 @@
           }
         },
         "summary": "Run server ingestion jobs",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "default",
         "x-cost": "constant",
         "x-error-codes": [
@@ -138271,7 +138271,7 @@
           }
         },
         "summary": "Read server jobs",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -138543,7 +138543,7 @@
           }
         },
         "summary": "Read server library",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -138635,7 +138635,7 @@
           }
         },
         "summary": "Save server library order",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -138742,7 +138742,7 @@
           }
         },
         "summary": "Remove a library: it disappears at once and is taken apart in the background; files on disk are not touched and each profile's state is kept in case its titles return",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -139014,7 +139014,7 @@
           }
         },
         "summary": "Read server library",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -139305,7 +139305,7 @@
           }
         },
         "summary": "Change server library",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -139525,7 +139525,7 @@
           }
         },
         "summary": "Read one page of library files, optionally locating one file by its asset id",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin-heavy",
         "x-cost": "page_sized",
         "x-error-codes": [
@@ -139756,7 +139756,7 @@
           }
         },
         "summary": "Read server library inventory config",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin-heavy",
         "x-cost": "constant",
         "x-error-codes": [
@@ -139875,7 +139875,7 @@
           }
         },
         "summary": "Run server library inventory",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin-heavy",
         "x-cost": "constant",
         "x-error-codes": [
@@ -140024,7 +140024,7 @@
           }
         },
         "summary": "Save server library scan policy",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin-heavy",
         "x-cost": "constant",
         "x-error-codes": [
@@ -140176,7 +140176,7 @@
           }
         },
         "summary": "List files and folders skipped during a scan",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "browsing",
         "x-cost": "page_sized",
         "x-error-codes": [
@@ -140582,7 +140582,7 @@
           }
         },
         "summary": "Read a library's scanning and metadata settings",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "page_sized",
         "x-error-codes": [
@@ -141149,7 +141149,7 @@
           }
         },
         "summary": "Save a library's scanning and metadata settings",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -141293,7 +141293,7 @@
           }
         },
         "summary": "Save server library show settings",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -141482,7 +141482,7 @@
           }
         },
         "summary": "Run server library sources",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin-heavy",
         "x-cost": "constant",
         "x-error-codes": [
@@ -141574,7 +141574,7 @@
           }
         },
         "summary": "Remove server library sources",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -141769,7 +141769,7 @@
           }
         },
         "summary": "Change server library sources",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin-heavy",
         "x-cost": "constant",
         "x-error-codes": [
@@ -141929,7 +141929,7 @@
           }
         },
         "summary": "Read retained inventory changes and cursor expiry",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "page_sized",
         "x-error-codes": [
@@ -142081,7 +142081,7 @@
           }
         },
         "summary": "Run server library sources check",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -142215,7 +142215,7 @@
           }
         },
         "summary": "Run server library sources scans",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin-heavy",
         "x-cost": "constant",
         "x-error-codes": [
@@ -147595,7 +147595,7 @@
           }
         },
         "summary": "Read server library settings",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "page_sized",
         "x-error-codes": [
@@ -153665,7 +153665,7 @@
           }
         },
         "summary": "Read server metadata providers",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "admin",
         "x-cost": "constant",
         "x-error-codes": [
@@ -210913,7 +210913,7 @@
           }
         },
         "summary": "Read title metadata manual",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -211124,7 +211124,7 @@
           }
         },
         "summary": "Change title metadata manual",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -222968,7 +222968,7 @@
           }
         },
         "summary": "Create a library",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -230147,7 +230147,7 @@
           }
         },
         "summary": "Read library metadata screen",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -230283,7 +230283,7 @@
           }
         },
         "summary": "Save library metadata screen",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -230383,7 +230383,7 @@
           }
         },
         "summary": "Read library network roots",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "browsing",
         "x-cost": "page_sized",
         "x-error-codes": [
@@ -230630,7 +230630,7 @@
           }
         },
         "summary": "Run library scans",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -233648,7 +233648,7 @@
           }
         },
         "summary": "Read library strm analysis policy",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [
@@ -233790,7 +233790,7 @@
           }
         },
         "summary": "Save library strm analysis policy",
-        "x-access": "owner",
+        "x-access": "admin_scope",
         "x-admission": "browsing",
         "x-cost": "constant",
         "x-error-codes": [

@@ -13,7 +13,7 @@ import (
 )
 
 func TestSetupOriginAndContentType(t *testing.T) {
-	d := Dependencies{TrustedProxies: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}}
+	d := Dependencies{SetupHosts: []string{"media.example"}, TrustedProxies: []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")}}
 	for _, tc := range []struct {
 		origin, content, site string
 		want                  bool
@@ -75,8 +75,8 @@ func TestConnectivityUsesOwnerNetworksAndProxyChain(t *testing.T) {
 	}
 }
 
-func TestPreservedProxyHostNeedsNoOriginAllowList(t *testing.T) {
-	d := Dependencies{}
+func TestConfiguredSetupProxyHostNeedsNoAPIOriginAllowList(t *testing.T) {
+	d := Dependencies{SetupHosts: []string{"media.example"}}
 	r := httptest.NewRequest("POST", "http://media.example/v1/setup/browser", nil)
 	r.RemoteAddr = "203.0.113.9:42"
 	r.Header.Set("Content-Type", "application/json")

@@ -35,6 +35,8 @@ func TestAuthorityWritesAreRecognisedByTheTableTheyName(t *testing.T) {
 		`DELETE FROM library_sources WHERE id=?`,
 		`UPDATE library_sources SET enabled=0 WHERE id=?`,
 		`update policy set revision=revision+1 where server_id=?`,
+		`UPDATE download_grants SET revoked=1 WHERE preparation_id=?`,
+		`DELETE FROM download_grants WHERE preparation_id=?`,
 	} {
 		before := AuthorityGeneration()
 		noticeAuthorityWrite(statement)
@@ -58,6 +60,7 @@ func TestOrdinaryWritesLeaveTheAuthorityGenerationAlone(t *testing.T) {
 		`UPDATE configuration SET value=? WHERE key=?`,
 		`INSERT INTO jobs(id,library_id,status,created_at) VALUES(?,?,?,?)`,
 		`UPDATE jobs SET status=? WHERE id=?`,
+		`UPDATE download_preparations SET bytes_done=?,hash_state=?,updated_ms=? WHERE id=?`,
 		`INSERT INTO api_events(audience,type,at_ms) VALUES(?,?,?)`,
 		`SELECT count(*) FROM authorization_access WHERE hash=?`,
 	} {

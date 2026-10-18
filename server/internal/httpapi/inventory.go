@@ -63,7 +63,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		if _, e = d.owner(r); e != nil {
+		if _, e = d.libraryAdministrationRead(r, r.PathValue("id")); e != nil {
 			failure(w, e)
 			return
 		}
@@ -72,7 +72,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 
 	for _, pattern := range []string{"POST /v1/admin/libraries/{id}/sources", "PATCH /v1/admin/libraries/{id}/sources/{source}"} {
 		d.httpHandle(mux, pattern, func(w http.ResponseWriter, r *http.Request) {
-			p, e := d.owner(r)
+			p, e := d.libraryAdministrationRead(r, r.PathValue("id"))
 			if e != nil {
 				failure(w, e)
 				return
@@ -82,7 +82,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 				failure(w, e)
 				return
 			}
-			out, e := d.Catalog.SaveSource(r.Context(), r.PathValue("id"), r.PathValue("source"), body, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+			out, e := d.Catalog.SaveSource(r.Context(), r.PathValue("id"), r.PathValue("source"), body, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) })
 			if e != nil {
 				failure(w, e)
 				return
@@ -91,12 +91,12 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		})
 	}
 	d.httpHandle(mux, "POST /v1/admin/libraries/{id}/sources/{source}/check", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.libraryAdministrationRead(r, r.PathValue("id"))
 		if e != nil {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.CheckSource(r.Context(), r.PathValue("id"), r.PathValue("source"), func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		out, e := d.Catalog.CheckSource(r.Context(), r.PathValue("id"), r.PathValue("source"), func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) })
 		if e != nil {
 			failure(w, e)
 			return
@@ -104,7 +104,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	d.httpHandle(mux, "DELETE /v1/admin/libraries/{id}/sources/{source}", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.libraryAdministrationRead(r, r.PathValue("id"))
 		if e != nil {
 			failure(w, e)
 			return
@@ -116,7 +116,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		if e = d.Catalog.RemoveSource(r.Context(), r.PathValue("id"), r.PathValue("source"), body.ExpectedRevision, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }, d.removalEnqueue(p)); e != nil {
+		if e = d.Catalog.RemoveSource(r.Context(), r.PathValue("id"), r.PathValue("source"), body.ExpectedRevision, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) }, d.removalEnqueue(p)); e != nil {
 			failure(w, e)
 			return
 		}
@@ -124,12 +124,12 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		w.WriteHeader(204)
 	})
 	d.httpHandle(mux, "POST /v1/admin/libraries/{id}/sources/{source}/scans", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.libraryAdministrationRead(r, r.PathValue("id"))
 		if e != nil {
 			failure(w, e)
 			return
 		}
-		out, e := d.Ingestion.QueueMode(r.Context(), r.PathValue("id"), r.PathValue("source"), r.URL.Query().Get("mode"), func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		out, e := d.Ingestion.QueueMode(r.Context(), r.PathValue("id"), r.PathValue("source"), r.URL.Query().Get("mode"), func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) })
 		if e != nil {
 			failure(w, e)
 			return
@@ -137,7 +137,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		write(w, 202, out)
 	})
 	d.httpHandle(mux, "PUT /v1/admin/libraries/{id}/scan-policy", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.libraryAdministrationRead(r, r.PathValue("id"))
 		if e != nil {
 			failure(w, e)
 			return
@@ -151,7 +151,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.UpdateScanPolicy(r.Context(), r.PathValue("id"), catalog.ScanPolicy{Tier: body.Tier, Operations: body.Operations}, body.ExpectedRevision, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		out, e := d.Catalog.UpdateScanPolicy(r.Context(), r.PathValue("id"), catalog.ScanPolicy{Tier: body.Tier, Operations: body.Operations}, body.ExpectedRevision, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) })
 		if e != nil {
 			failure(w, e)
 			return
@@ -163,12 +163,14 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	d.httpHandle(mux, "POST /v1/admin/ingestion/jobs/{id}/{action}", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.administrator(r)
 		if e != nil {
 			failure(w, e)
 			return
 		}
-		authorize := func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }
+		authorize := func(tx *sql.Tx) error {
+			return d.libraryAdministrationJobAuthorize(r.Context(), tx, p, r.PathValue("id"))
+		}
 		action := r.PathValue("action")
 		if action == "retry" {
 			out, e := d.Ingestion.Retry(r.Context(), r.PathValue("id"), authorize)
@@ -190,7 +192,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 		w.WriteHeader(204)
 	})
 	d.httpHandle(mux, "POST /v1/admin/libraries/{id}/inventory/{object}/{action}", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.libraryAdministrationRead(r, r.PathValue("id"))
 		if e != nil {
 			failure(w, e)
 			return
@@ -203,7 +205,7 @@ func (d Dependencies) inventoryRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		authorize := func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }
+		authorize := func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) }
 		// associate: this file is another version of that title.
 		// separate:  this file is not a version of the title it was grouped with.
 		switch r.PathValue("action") {

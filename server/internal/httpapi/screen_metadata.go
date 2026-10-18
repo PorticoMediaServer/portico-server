@@ -10,8 +10,8 @@ import (
 
 func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 	rate := &personalLimiter{}
-	owner := func(w http.ResponseWriter, r *http.Request, mutate bool) (identity.Principal, bool) {
-		p, err := d.owner(r)
+	admit := func(w http.ResponseWriter, r *http.Request, mutate bool, authenticate func(*http.Request) (identity.Principal, error)) (identity.Principal, bool) {
+		p, err := authenticate(r)
 		if err != nil {
 			failure(w, err)
 			return p, false
@@ -22,6 +22,14 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 			return p, false
 		}
 		return p, true
+	}
+	owner := func(w http.ResponseWriter, r *http.Request, mutate bool) (identity.Principal, bool) {
+		return admit(w, r, mutate, d.owner)
+	}
+	administrator := func(w http.ResponseWriter, r *http.Request, mutate bool) (identity.Principal, bool) {
+		return admit(w, r, mutate, func(r *http.Request) (identity.Principal, error) {
+			return d.libraryAdministrationRead(r, r.PathValue("id"))
+		})
 	}
 	for _, target := range []struct{ route, kind string }{{"items", "item"}, {"shows", "show"}} {
 		kind := target.kind
@@ -101,7 +109,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 	// A library's metadata source ("agent"): online providers for its media
 	// kind, or local metadata only. See metadata/library_agent.go.
 	d.httpHandle(mux, "GET /v1/libraries/{id}/metadata/agent", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := owner(w, r, false); !ok {
+		if _, ok := administrator(w, r, false); !ok {
 			return
 		}
 		out, err := d.Metadata.LibraryAgent(r.Context(), r.PathValue("id"))
@@ -112,7 +120,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 		write(w, 200, out)
 	})
 	d.httpHandle(mux, "PUT /v1/libraries/{id}/metadata/agent", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := owner(w, r, true)
+		p, ok := administrator(w, r, true)
 		if !ok {
 			return
 		}
@@ -124,7 +132,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		out, err := d.Metadata.SetLibraryAgent(r.Context(), r.PathValue("id"), body.ExpectedRevision, body.Agent, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		out, err := d.Metadata.SetLibraryAgent(r.Context(), r.PathValue("id"), body.ExpectedRevision, body.Agent, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) })
 		if err != nil {
 			failure(w, err)
 			return
@@ -134,7 +142,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 	// The choices before a library exists: the agents (with their languages)
 	// POST /v1/libraries accepts for this kind. No database read is needed.
 	d.httpHandle(mux, "GET /v1/library-kinds/{kind}/metadata-agents", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := owner(w, r, false); !ok {
+		if _, ok := administrator(w, r, false); !ok {
 			return
 		}
 		kind := r.PathValue("kind")
@@ -145,7 +153,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 		write(w, 200, map[string]any{"libraryKind": kind, "agents": metadata.LibraryAgentOptions(kind)})
 	})
 	d.httpHandle(mux, "GET /v1/libraries/{id}/metadata/screen", func(w http.ResponseWriter, r *http.Request) {
-		if _, ok := owner(w, r, false); !ok {
+		if _, ok := administrator(w, r, false); !ok {
 			return
 		}
 		out, err := d.Metadata.ScreenPolicy(r.Context(), r.PathValue("id"))
@@ -153,14 +161,14 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		if _, err = d.owner(r); err != nil {
+		if _, err = d.libraryAdministrationRead(r, r.PathValue("id")); err != nil {
 			failure(w, err)
 			return
 		}
 		write(w, 200, out)
 	})
 	d.httpHandle(mux, "PUT /v1/libraries/{id}/metadata/screen", func(w http.ResponseWriter, r *http.Request) {
-		p, ok := owner(w, r, true)
+		p, ok := administrator(w, r, true)
 		if !ok {
 			return
 		}
@@ -169,7 +177,7 @@ func (d Dependencies) screenMetadataRoutes(mux *http.ServeMux) {
 			failure(w, err)
 			return
 		}
-		err := d.Metadata.UpdateScreenPolicy(r.Context(), r.PathValue("id"), body, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
+		err := d.Metadata.UpdateScreenPolicy(r.Context(), r.PathValue("id"), body, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) })
 		if err != nil {
 			failure(w, err)
 			return

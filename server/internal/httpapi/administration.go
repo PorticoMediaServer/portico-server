@@ -125,6 +125,19 @@ func administrationLimit(value string) (int, error) {
 // administrationHandler is the shared shape: owner in, work, owner again, write.
 // The second check closes the window between authorising and answering.
 func (d Dependencies) administrationHandler(timeout time.Duration, work func(context.Context, http.ResponseWriter, *http.Request, identity.Principal) (any, error)) http.HandlerFunc {
+	return d.administrationTierHandler(false, timeout, work)
+}
+
+func (d Dependencies) libraryAdministrationHandler(timeout time.Duration, work func(context.Context, http.ResponseWriter, *http.Request, identity.Principal) (any, error)) http.HandlerFunc {
+	return d.administrationTierHandler(true, timeout, work)
+}
+
+func (d Dependencies) administrationTierHandler(library bool, timeout time.Duration, work func(context.Context, http.ResponseWriter, *http.Request, identity.Principal) (any, error)) http.HandlerFunc {
+	authorize := d.owner
+	if library {
+		authorize = d.administrator
+	}
+
 	return func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
 		ctx, cancel := context.WithTimeout(r.Context(), timeout)
@@ -134,7 +147,7 @@ func (d Dependencies) administrationHandler(timeout time.Duration, work func(con
 			administrationFailure(w, administration.ErrUnavailable)
 			return
 		}
-		p, err := d.ownerContext(ctx, r)
+		p, err := authorize(r.WithContext(ctx))
 		if err != nil {
 			administrationFailure(w, err)
 			return
@@ -149,7 +162,7 @@ func (d Dependencies) administrationHandler(timeout time.Duration, work func(con
 			// image); nothing further to send.
 			return
 		}
-		if _, err = d.ownerContext(ctx, r); err != nil {
+		if _, err = authorize(r.WithContext(ctx)); err != nil {
 			administrationFailure(w, err)
 			return
 		}
@@ -215,7 +228,7 @@ func (d Dependencies) deletionRoutes(mux *http.ServeMux) {
 // ---------------------------------------------------------------- libraries
 
 func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
-	d.httpHandle(mux, "GET /v1/admin/filesystem", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/filesystem", d.libraryAdministrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "path", "cursor", "limit", "includeFiles")
 		if err != nil {
 			return nil, err
@@ -229,7 +242,7 @@ func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 		}
 		return d.Administration.Browse(ctx, query["path"], query["cursor"], limit, query["includeFiles"] == "true")
 	}))
-	d.httpHandle(mux, "GET /v1/admin/library-settings", d.administrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/library-settings", d.libraryAdministrationHandler(30*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		query, err := administrationQuery(r, "cursor", "limit")
 		if err != nil {
 			return nil, err
@@ -238,15 +251,15 @@ func (d Dependencies) libraryAdministrationRoutes(mux *http.ServeMux) {
 		if err != nil {
 			return nil, err
 		}
-		return d.Administration.LibraryIndex(ctx, d.administrationAuthority(p), query["cursor"], limit)
+		return d.Administration.LibraryIndex(ctx, d.libraryAdministrationAuthority(p), query["cursor"], limit, d.libraryAdministrationScope(p))
 	}))
-	d.httpHandle(mux, "GET /v1/admin/analysis-operations", d.administrationHandler(15*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/analysis-operations", d.libraryAdministrationHandler(15*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, administration.ErrInput
 		}
 		return administration.Matrix(), nil
 	}))
-	d.httpHandle(mux, "GET /v1/admin/metadata-providers", d.administrationHandler(15*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
+	d.httpHandle(mux, "GET /v1/admin/metadata-providers", d.libraryAdministrationHandler(15*time.Second, func(ctx context.Context, w http.ResponseWriter, r *http.Request, p identity.Principal) (any, error) {
 		if r.URL.RawQuery != "" {
 			return nil, administration.ErrInput
 		}

@@ -259,3 +259,47 @@ func walBytes(path string) (int64, error) {
 	}
 	return info.Size(), nil
 }
+
+// finalizeDatabase makes the scrubbed backup independent of any WAL before its
+// checksum is recorded. A busy/incomplete checkpoint is a failed backup, never
+// permission to publish a hash covering only part of the logical database.
+func finalizeDatabase(ctx context.Context, path string) (FileEntry, error) {
+	empty := FileEntry{}
+	if err := quickCheck(path); err != nil {
+		return empty, err
+	}
+	db, err := dbwork.OpenHandle(path, dbwork.DefaultPolicy())
+	if err != nil {
+		return empty, err
+	}
+	var busy, frames, checkpointed int
+	err = db.QueryRowContext(ctx, `PRAGMA wal_checkpoint(TRUNCATE)`).Scan(&busy, &frames, &checkpointed)
+	closeErr := db.Close()
+	if err != nil {
+		return empty, err
+	}
+	if closeErr != nil {
+		return empty, closeErr
+	}
+	if busy != 0 || frames != checkpointed {
+		return empty, errors.New("backup: database checkpoint incomplete")
+	}
+	if size, err := walBytes(path + "-wal"); err != nil {
+		return empty, err
+	} else if size != 0 {
+		return empty, errors.New("backup: finalized database still has WAL frames")
+	}
+	file, err := os.OpenFile(path, os.O_RDWR, 0)
+	if err != nil {
+		return empty, err
+	}
+	err = file.Sync()
+	closeErr = file.Close()
+	if err != nil {
+		return empty, err
+	}
+	if closeErr != nil {
+		return empty, closeErr
+	}
+	return hashFile(ctx, filepath.Dir(path), DatabaseName)
+}

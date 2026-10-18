@@ -28,7 +28,7 @@ func TestBrowserSetupLocalOriginAndSingleUse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h := New(Dependencies{DB: db, Identity: id, Catalog: catalog.New(db), Hosted: host, Origins: []string{"http://127.0.0.1:19412", "https://web.getportico.tv"}})
+	h := New(Dependencies{DB: db, Identity: id, Catalog: catalog.New(db), Hosted: host, SetupHosts: []string{"demo.example"}, Origins: []string{"http://127.0.0.1:19412", "https://web.getportico.tv"}})
 	call := func(address, origin, peer, path string, body any) *httptest.ResponseRecorder {
 		raw, _ := json.Marshal(body)
 		r := httptest.NewRequest("POST", address+path, bytes.NewReader(raw))
@@ -39,8 +39,8 @@ func TestBrowserSetupLocalOriginAndSingleUse(t *testing.T) {
 		h.ServeHTTP(w, r)
 		return w
 	}
-	// Any peer and host may start setup (no setup code); only the browser origin
-	// must be this server, including when another API origin is configured.
+	// Any peer may start setup at a literal/local address or an independently
+	// configured authority; cross-origin API permission never authorizes setup.
 	for _, tc := range []struct{ name, address, origin, peer string }{
 		{"LAN peer", "http://127.0.0.1:32500", "http://127.0.0.1:32500", "192.168.1.2:5000"},
 		{"public peer", "https://demo.example", "https://demo.example", "198.51.100.8:5000"},

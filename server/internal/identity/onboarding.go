@@ -227,6 +227,29 @@ func (s *Service) recoveryAllowedTx(ctx context.Context, tx *sql.Tx, account, fa
 	}
 	return nil
 }
+
+type recoveryLocalityKey struct{}
+
+// WithRecoveryLocality carries the edge's verified peer locality into identity
+// transactions. Missing locality is treated as remote, never as LAN authority.
+func WithRecoveryLocality(ctx context.Context, private bool) context.Context {
+	return context.WithValue(ctx, recoveryLocalityKey{}, private)
+}
+
+func (s *Service) checkRecoveryContextTx(ctx context.Context, tx *sql.Tx, p Principal, family string) error {
+	if p.Authority != "local" {
+		return nil
+	}
+	private, _ := ctx.Value(recoveryLocalityKey{}).(bool)
+	return s.recoveryAllowedTx(ctx, tx, p.AccountID, family, private)
+}
+
+// CheckRecoveryRouteTx applies live recovery policy within the caller's snapshot
+// or write fence, using the verified request locality attached by the HTTP edge.
+func (s *Service) CheckRecoveryRouteTx(ctx context.Context, tx *sql.Tx, p Principal) error {
+	return s.checkRecoveryContextTx(ctx, tx, p, familyForTokenTx(ctx, tx, p.Hash))
+}
+
 func (s *Service) CheckRecoveryRoute(ctx context.Context, p Principal, private bool) error {
 	if p.Authority != "local" || private {
 		return nil

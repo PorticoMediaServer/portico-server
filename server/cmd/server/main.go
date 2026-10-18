@@ -222,6 +222,10 @@ func logSetupBlock(port int, loopback bool) {
 	}
 }
 func run() (runErr error) {
+	setupHosts, setupHostsErr := httpapi.ParseSetupHosts(os.Getenv("PORTICO_SETUP_HOSTS"))
+	if setupHostsErr != nil {
+		return setupHostsErr
+	}
 	persistence.SetMigrationCopyScrubber(identity.ScrubBackupCopy)
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -1093,7 +1097,7 @@ func run() (runErr error) {
 		deliverySettings.Refresh(ctx)
 		claimHandler.Remote().Wake()
 		invalidateCustomSource()
-	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner, claimHandler.Certificates(), customCertificate), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins})
+	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner, claimHandler.Certificates(), customCertificate), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins, SetupHosts: setupHosts})
 	// The timeout and 5xx log lines name the registered route pattern, which
 	// only the router can resolve for a request seen outside the mux.
 	measurements.Pattern = httpapi.RoutePattern

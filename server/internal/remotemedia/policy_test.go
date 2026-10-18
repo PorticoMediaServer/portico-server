@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/netip"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -136,5 +137,35 @@ func TestDescriptorRulesAndBodyReadTimeout(t *testing.T) {
 	}
 	if strings.Contains(e.Error(), "token=secret") {
 		t.Fatal("credential leaked")
+	}
+}
+
+func TestManualRedirectsReturnEachHopWithoutContactingDestination(t *testing.T) {
+	var reached atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached.Add(1) }))
+	defer target.Close()
+	for _, status := range []int{301, 302, 303, 307, 308} {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL, status) }))
+		approval, err := (Policy{}).Approve(context.Background(), server.URL+"/")
+		if err != nil {
+			t.Fatal(err)
+		}
+		client, err := New(context.Background(), server.URL, Policy{Approvals: []Approval{approval}, ManualRedirects: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Open(context.Background(), http.MethodGet, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if response.StatusCode != status || response.Header.Get("Location") != target.URL {
+			t.Fatalf("response=%v", response)
+		}
+		response.Body.Close()
+		client.Close()
+		server.Close()
+	}
+	if reached.Load() != 0 {
+		t.Fatal("manual redirect followed an unadmitted destination")
 	}
 }

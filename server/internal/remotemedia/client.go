@@ -14,10 +14,11 @@ import (
 )
 
 type Client struct {
-	userAgent     string
-	authorization string
-	url           string
-	client        *http.Client
+	userAgent       string
+	authorization   string
+	manualRedirects bool
+	url             string
+	client          *http.Client
 }
 
 func New(ctx context.Context, locator string, policy Policy) (*Client, error) {
@@ -64,6 +65,9 @@ func New(ctx context.Context, locator string, policy Policy) (*Client, error) {
 		return nil, ErrPolicy
 	}
 	client := &http.Client{Transport: transport, CheckRedirect: func(r *http.Request, via []*http.Request) error {
+		if policy.ManualRedirects {
+			return http.ErrUseLastResponse
+		}
 		if len(via) >= 5 {
 			return ErrPolicy
 		}
@@ -86,7 +90,7 @@ func New(ctx context.Context, locator string, policy Policy) (*Client, error) {
 		transport.CloseIdleConnections()
 		return nil, ErrPolicy
 	}
-	return &Client{url: u.String(), client: client, userAgent: agent}, nil
+	return &Client{url: u.String(), client: client, userAgent: agent, manualRedirects: policy.ManualRedirects}, nil
 }
 func (c *Client) Close() { c.client.CloseIdleConnections() }
 func (c *Client) Open(ctx context.Context, method, rangeHeader string) (*http.Response, error) {
@@ -121,6 +125,9 @@ func (c *Client) Open(ctx context.Context, method, rangeHeader string) (*http.Re
 			return nil, ErrStalled
 		}
 		return nil, ErrUnavailable
+	}
+	if c.manualRedirects && isRedirect(resp.StatusCode) {
+		return resp, nil
 	}
 	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 		resp.Body.Close()
@@ -227,4 +234,8 @@ func validContentRange(request string, response *http.Response) bool {
 		}
 	}
 	return true
+}
+
+func isRedirect(status int) bool {
+	return status == 301 || status == 302 || status == 303 || status == 307 || status == 308
 }

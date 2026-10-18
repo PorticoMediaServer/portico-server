@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/artifactlease"
+	"portico.local/server/internal/dirsync"
 	"strings"
 	"sync"
 )
@@ -267,13 +268,8 @@ func (w *Writer) Seal(ctx context.Context) (Object, error) {
 	}
 	return object, nil
 }
-func syncDirectory(path string) error {
-	file, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	return errors.Join(file.Sync(), file.Close())
-}
+func syncDirectory(path string) error { return dirsync.Sync(path) }
+
 func openVerified(ctx context.Context, path string, object Object) (*os.File, error) {
 	if !validObject(object) {
 		return nil, ErrIdentity
