@@ -90,7 +90,7 @@ test('preference copy is platform-aware and never says browser or hover off the 
 
 test('shared content helpers', () => {
   assert.equal(iconFor('album'), 'music');
-  assert.equal(iconFor('anime'), 'tv');
+  assert.equal(iconFor('anime'), 'category');
   assert.equal(captionFor({kind: 'episode', seasonNumber: 2, episodeNumber: 5}), 'S2 · E5');
   assert.equal(formatDuration(6120), '1h 42m');
   assert.equal(formatClock(3723), '1:02:03');

@@ -297,6 +297,9 @@ export const hero = {
     bottom: [{at: 0, alpha: 0.35}, {at: 0.28, alpha: 0}, {at: 0.62, alpha: 0.55}, {at: 1, alpha: 1}] as readonly ScrimStop[],
     left: [{at: 0, alpha: 0.82}, {at: 0.45, alpha: 0.3}, {at: 0.75, alpha: 0}] as readonly ScrimStop[],
     phoneBottom: [{at: 0, alpha: 0}, {at: 0.55, alpha: 0.15}, {at: 1, alpha: 1}] as readonly ScrimStop[],
+    /** Phones, Home: the identity sits over the art, so one top-to-bottom shade and no side shade
+     *  (the web's Backdrop.module.css at ≤720px). */
+    phoneOverlay: [{at: 0, alpha: 0.45}, {at: 0.22, alpha: 0.15}, {at: 0.5, alpha: 0.62}, {at: 0.78, alpha: 0.92}, {at: 1, alpha: 1}] as readonly ScrimStop[],
   },
   /** Without a backdrop: a tinted gradient (accent glow over raised → ink), never an empty box. */
   fallback: {glow: 'accent' as ColorToken, glowAlpha: 0.18, from: 'raised' as ColorToken, to: 'ink' as ColorToken},
