@@ -3,11 +3,16 @@ name: Validate server packages
 # Real release packaging with disposable manifest signing. No tags, releases,
 # registries, production signing material or changes to the Hosted trust root.
 on:
-  push:
-    branches: [ci/server-build-validation-20261018]
   workflow_dispatch:
+    inputs:
+      toolchain_run:
+        description: Prior validation run to reuse matching toolchain artifacts (missing targets rebuild)
+        type: string
+        required: false
+        default: ''
 permissions:
   contents: read
+  actions: read
 concurrency:
   group: server-build-validation-${{ github.ref }}
   cancel-in-progress: false
@@ -23,6 +28,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: {node-version-file: .node-version, cache: npm}
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - name: Audio fixture tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
       - run: npm ci --no-audit --no-fund
       - run: npm run check:web
       - run: npm run build --workspace portico-web
@@ -44,7 +55,30 @@ jobs:
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-      - run: ./scripts/build-ffmpeg.sh '${{ matrix.target }}'
+      - name: Reuse a matching validation toolchain when available
+        if: inputs.toolchain_run != ''
+        env: {GH_TOKEN: '${{ github.token }}', PREVIOUS_RUN: '${{ inputs.toolchain_run }}'}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PREVIOUS_RUN" =~ ^[0-9]+$ ]]
+          work="runtime/ffmpeg-build/${{ matrix.target }}"
+          mkdir -p "$work"
+          if gh run download "$PREVIOUS_RUN" --name 'validation-ffmpeg-${{ matrix.target }}' --dir "$work"; then
+            mkdir -p "$work/reused"
+            tar -xJf "$work/portico-ffmpeg-${{ matrix.target }}.tar.xz" -C "$work/reused"
+            python3 scripts/verify-ffmpeg-manifest.py "$work/reused"
+            cmp third_party/ffmpeg/sources.lock.json "$work/reused/sources.lock.json"
+            cmp third_party/ffmpeg/requirements.v1.json "$work/reused/requirements.v1.json"
+          else
+            echo 'No prior artifact for this target; build its pinned recipe.'
+          fi
+      - name: Build the pinned FFmpeg recipe
+        shell: bash
+        run: |
+          if [[ ! -s 'runtime/ffmpeg-build/${{ matrix.target }}/portico-ffmpeg-${{ matrix.target }}.tar.xz' ]]; then
+            ./scripts/build-ffmpeg.sh '${{ matrix.target }}'
+          fi
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: validation-ffmpeg-${{ matrix.target }}
@@ -74,7 +108,9 @@ jobs:
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with: {name: validation-web, path: .release/web}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with: {name: 'validation-ffmpeg-${{ matrix.target }}', path: .toolchain}
+        with:
+          name: validation-ffmpeg-${{ matrix.target }}
+          path: .toolchain
       - name: Packaging tools and disposable manifest signer
         run: |
           set -euo pipefail
@@ -86,6 +122,8 @@ jobs:
           sudo apt-get install -y -qq nsis zip
           mkdir -p .cache/tmp .toolchain/ffmpeg runtime/release-signing
           tar -xJf .toolchain/*.tar.xz -C .toolchain/ffmpeg
+          cmp third_party/ffmpeg/sources.lock.json .toolchain/ffmpeg/sources.lock.json
+          cmp third_party/ffmpeg/requirements.v1.json .toolchain/ffmpeg/requirements.v1.json
           .release/venv/bin/python - <<'SIGNER'
           import pathlib, os
           from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -176,10 +214,14 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
-        with: {name: 'validation-ffmpeg-${{ matrix.target }}', path: .toolchain}
+        with:
+          name: validation-ffmpeg-${{ matrix.target }}
+          path: .toolchain
       - run: |
           mkdir -p third_party/ffmpeg/bundle
           tar -xJf .toolchain/*.tar.xz -C third_party/ffmpeg/bundle
+          cmp third_party/ffmpeg/sources.lock.json third_party/ffmpeg/bundle/sources.lock.json
+          cmp third_party/ffmpeg/requirements.v1.json third_party/ffmpeg/bundle/requirements.v1.json
       - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
       - uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8
         with:
