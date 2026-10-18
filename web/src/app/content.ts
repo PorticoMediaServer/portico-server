@@ -1,4 +1,4 @@
-import {cardCaption, continueCaption} from '@core/presentation/index.ts';
+import {cardCaption, cardLines, continueLines, type CardLines, type CardLinesEntry} from '@core/presentation/index.ts';
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {LibraryContentService, type ContentRoute, type LibraryContentSnapshot} from '@core/library-content.ts';
 import {compatContentApi} from '@core/presentation/index.ts';
@@ -109,12 +109,13 @@ export function kindCaptionFor(entry: CaptionEntry): string | undefined {
 }
 
 /** The line under a card's title: the shared rule (client-core `card-caption.ts`) in the viewer's language. */
-/** A Continue Watching card's caption ("S1 E3 · 24 min left"). */
-export function continueCaptionOf(entry: Parameters<typeof continueCaption>[0]): string | undefined {
-  return continueCaption(entry, currentI18n().t);
-}
-
 export function cardCaptionOf(entry: Parameters<typeof cardCaption>[0]): string | undefined {
   const i18n = currentI18n();
   return cardCaption(entry, i18n.t, {locale: i18n.locale});
+}
+
+/** A card's lines (TV in Plex's shape: show, episode, "S1 · E3"), in the viewer's language; Continue Watching's when `resume`. */
+export function cardLinesOf(entry: CardLinesEntry, resume = false): CardLines {
+  const i18n = currentI18n();
+  return (resume ? continueLines : cardLines)(entry, i18n.t, {locale: i18n.locale});
 }

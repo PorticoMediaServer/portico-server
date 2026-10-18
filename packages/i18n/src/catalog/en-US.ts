@@ -1364,6 +1364,8 @@ export const enUS = {
   'card.unavailable': 'Unavailable',
   'card.progress': '{progress} played',
   'card.episodesAired': '{count, plural, one {# episode} other {# episodes}}',
+  // A TV card's last line (Plex's shape): the episode's place in its show.
+  'card.episodeCode': 'S{season} · E{episode}',
   'card.minutesLeft': '{count} min left',
   'card.hoursLeft': '{hours} h {minutes} min left',
   'card.addedOn': 'Added {date}',

@@ -706,7 +706,14 @@ func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRe
 // homeRowEntries hydrates one row's page: engine rows may list container works
 // (shows, albums, books), every other row lists items only.
 func (s *Service) homeRowEntries(profile string, spec homeRowSpec, ids []string) ([]ContentEntry, error) {
-	if spec.ID == "recommended" || spec.ID == "trending_now" || spec.ID == "community_watching" || strings.HasPrefix(spec.ID, "recent_") || strings.HasPrefix(spec.ID, recFamily+":") || strings.HasPrefix(spec.ID, homeViewPrefix) {
+	if strings.HasPrefix(spec.ID, "recent_") {
+		entries, err := s.homeEngineEntries(profile, ids)
+		if err != nil {
+			return nil, err
+		}
+		return entries, s.homeRecentSeasonCounts(entries)
+	}
+	if spec.ID == "recommended" || spec.ID == "trending_now" || spec.ID == "community_watching" || strings.HasPrefix(spec.ID, recFamily+":") || strings.HasPrefix(spec.ID, homeViewPrefix) {
 		return s.homeEngineEntries(profile, ids)
 	}
 	return s.homeEntries(profile, ids)
