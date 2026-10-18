@@ -29,8 +29,11 @@ export function iconFor(kind: ContentEntryKind | string): IconId {
       return 'music';
     case 'book': case 'audiobook_file': case 'chapter': case 'author': case 'book_series': case 'audiobook':
       return 'book';
-    case 'episode': case 'season': case 'show': case 'tv': case 'anime':
+    case 'episode': case 'season': case 'show': case 'tv':
       return 'tv';
+    // An Anime library is not a second "TV Shows" in the sidebar and rail (TV-RAIL review).
+    case 'anime':
+      return 'category';
     case 'collection':
       return 'collection';
     case 'category':
