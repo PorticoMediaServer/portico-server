@@ -104,6 +104,12 @@ export type WindowedCollection<T> = {
   resident(): {pages: number; items: number};
   /** The items of the generation on screen that are held in memory (at most maxResidentPages × pageSize). */
   residentItems(): readonly T[];
+  /**
+   * Where the item with this key is in the generation on screen, when its page is held in memory;
+   * undefined otherwise (not loaded, evicted, or not in the list). Bounded by the resident pages:
+   * it never reads or fetches anything.
+   */
+  indexOfKey(key: string): number | undefined;
   dispose(): void;
 };
 
@@ -390,6 +396,14 @@ export function createWindowedCollection<T>(options: WindowedCollectionOptions<T
       for (const g of pending ? [pending, current] : [current]) for (const [page, p] of g.pages) if (p.status === 'error') g.pages.delete(page);
       pump();
       publish();
+    },
+    indexOfKey(key) {
+      for (const [page, p] of current.pages) {
+        if (p.status !== 'ready') continue;
+        const at = p.items.findIndex(item => keyOf(item) === key);
+        if (at >= 0) return page * pageSize + at;
+      }
+      return undefined;
     },
     residentItems() {
       const out: T[] = [];

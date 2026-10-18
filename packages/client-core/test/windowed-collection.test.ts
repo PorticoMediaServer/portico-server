@@ -329,3 +329,28 @@ test('an open-ended total grows as pages arrive and settles on the end', async (
   assert.equal(c.getSnapshot().total, 260);
   assert.equal(c.getSnapshot().totalIsLowerBound, false, 'the last page knows the end');
 });
+
+test('indexOfKey finds an item only on a page held in memory, in the generation on screen', async () => {
+  const s = server(10_000);
+  const c = createWindowedCollection({fetchPage: s.fetchPage, pageSize: 50, maxResidentPages: 4, keyOf: i => i.id});
+  assert.equal(c.indexOfKey('i10'), undefined, 'nothing is loaded yet');
+  c.ensureRange(0, 20);
+  await settle();
+  assert.equal(c.indexOfKey('i10'), 10);
+  assert.equal(c.indexOfKey('i5000'), undefined, 'not loaded: never fetched to answer');
+  const calls = s.calls.length;
+  c.indexOfKey('i9999');
+  assert.equal(s.calls.length, calls, 'asking reads nothing');
+  // Far away: the first pages are evicted, and their items are no longer found.
+  c.ensureRange(5000, 5020);
+  await settle();
+  assert.equal(c.indexOfKey('i5010'), 5010);
+  assert.equal(c.indexOfKey('i10'), undefined, 'evicted');
+  // A new generation (the server's order changed) answers with its own positions once it is on screen.
+  const moved = server(10_000, {prefix: 'j'});
+  c.invalidate(moved.fetchPage);
+  await settle();
+  assert.equal(c.indexOfKey('i5010'), undefined, 'the old generation is gone');
+  assert.equal(c.indexOfKey('j5010'), 5010);
+  c.dispose();
+});
