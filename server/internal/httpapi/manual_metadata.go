@@ -39,12 +39,22 @@ func (d Dependencies) manualMetadataOwner(ctx context.Context, r *http.Request) 
 	return d.ownerContext(ctx, r)
 }
 
-// Recheck the live owner membership and token family in the metadata transaction.
+func (d Dependencies) manualMetadataAdministrator(ctx context.Context, r *http.Request) (identity.Principal, error) {
+	return d.administrator(r.WithContext(ctx))
+}
+
+// Recheck the live administrative membership and token family in the metadata transaction.
 func (d Dependencies) manualMetadataAuthorize(ctx context.Context, tx *sql.Tx, p identity.Principal) error {
 	if p.Authority == "local" {
+		if _, err := d.Identity.ReauthorizeTx(ctx, tx, p); err != nil {
+			return err
+		}
+		if err := d.Identity.CheckRecoveryRouteTx(ctx, tx, p); err != nil {
+			return err
+		}
 		return manualMetadataAuthorize(ctx, tx, p)
 	}
-	return d.ownerAuthorityTx(ctx, tx, p)
+	return identity.ErrForbidden
 }
 
 func (d Dependencies) manualMetadataRoutes(mux *http.ServeMux) {
@@ -53,14 +63,14 @@ func (d Dependencies) manualMetadataRoutes(mux *http.ServeMux) {
 	}
 }
 
-// This endpoint admits only local owners. The joined predicates preserve the
-// resourceAuthorize session/account rules plus the owner role, with cancellable SQL.
+// This endpoint admits local owners and administrators. The joined predicates preserve the
+// resourceAuthorize session/account rules plus the administrative tier, with cancellable SQL.
 func manualMetadataAuthorize(ctx context.Context, tx *sql.Tx, p identity.Principal) error {
-	if p.Authority != "local" || p.Role != "owner" {
+	if p.Authority != "local" || !identity.Administrative(p.Role) {
 		return identity.ErrForbidden
 	}
 	var count int
-	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM authorization_access s JOIN accounts a ON a.id=s.account_id AND a.profile_id=s.profile_id AND a.epoch=s.epoch JOIN direct_memberships m ON m.account_id=a.id AND m.role='owner' AND m.disabled=0 JOIN direct_profiles p ON p.account_id=a.id AND p.id=s.profile_id AND p.deleted=0 AND p.is_primary=1 WHERE s.hash=? AND s.authority='local' AND s.role='owner' AND s.account_id=? AND s.profile_id=? AND s.epoch=? AND s.revoked=0 AND s.expires_at>?`, p.Hash, p.AccountID, p.ProfileID, p.Epoch, time.Now().UTC().Format(time.RFC3339)).Scan(&count)
+	err := tx.QueryRowContext(ctx, `SELECT count(*) FROM authorization_access s JOIN accounts a ON a.id=s.account_id AND a.profile_id=s.profile_id AND a.epoch=s.epoch JOIN direct_memberships m ON m.account_id=a.id AND m.role=s.role AND m.role IN ('owner','admin') AND m.disabled=0 JOIN direct_profiles p ON p.account_id=a.id AND p.id=s.profile_id AND p.deleted=0 AND p.is_primary=1 WHERE s.hash=? AND s.authority='local' AND s.role IN ('owner','admin') AND s.account_id=? AND s.profile_id=? AND s.epoch=? AND s.revoked=0 AND s.expires_at>?`, p.Hash, p.AccountID, p.ProfileID, p.Epoch, time.Now().UTC().Format(time.RFC3339)).Scan(&count)
 	if err != nil {
 		return err
 	}
@@ -76,7 +86,7 @@ func (d Dependencies) manualMetadataHandler(method string, read func(context.Con
 		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 		defer cancel()
 		r = r.WithContext(ctx)
-		p, err := d.manualMetadataOwner(ctx, r)
+		p, err := d.manualMetadataAdministrator(ctx, r)
 		if err != nil {
 			failure(w, err)
 			return
@@ -86,7 +96,16 @@ func (d Dependencies) manualMetadataHandler(method string, read func(context.Con
 			return
 		}
 		fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))
-		authorize := func(tx *sql.Tx) error { return d.manualMetadataAuthorize(ctx, tx, p) }
+		authorize := func(tx *sql.Tx) error {
+			if err := d.manualMetadataAuthorize(ctx, tx, p); err != nil {
+				return err
+			}
+			var library string
+			if err := tx.QueryRowContext(ctx, `SELECT cl.library_id FROM catalog_entities e JOIN catalog_libraries cl ON cl.id=e.library_id WHERE e.public_id=pid_blob(?) AND cl.retired=0`, r.PathValue("id")).Scan(&library); err != nil {
+				return err
+			}
+			return d.allowedLibraryTx(ctx, p, library, tx)
+		}
 		var out catalog.ManualMetadata
 		if method == "GET" {
 			out, err = read(ctx, d.Identity.ID(), fence, r.PathValue("id"), authorize)
@@ -110,7 +129,7 @@ func (d Dependencies) manualMetadataHandler(method string, read func(context.Con
 			}
 			return
 		}
-		if _, err = d.manualMetadataOwner(ctx, r); err != nil {
+		if _, err = d.manualMetadataAdministrator(ctx, r); err != nil {
 			failure(w, err)
 			return
 		}

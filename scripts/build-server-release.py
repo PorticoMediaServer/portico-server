@@ -14,22 +14,65 @@ def official_root():
     if encoded in (ROOT/'server/internal/hostedtrust/development_root.go').read_text():raise SystemExit('Development root is forbidden in release builds')
     return encoded,raw
 
-def snapshot_digest(source):
+# Siblings read by mandatory Go tests, plus their checked-in asset inventory.
+# Keep their repository paths: the tests intentionally check the actual writer,
+# catalogue and runtime consumers rather than substitute fixtures.
+TEST_INPUTS = (
+    'scripts/write-public-update-manifest.mjs',
+    'scripts/vet-go.sh',
+    'packages/i18n/src/catalog/en-US/settings.ts',
+    'packages/client-core/src/music-preferences.ts',
+    'web/src/app/i18n.ts',
+    'web/src/player/Player.tsx',
+    'web/src/shell/Shell.tsx',
+    'web/public',
+)
+
+def input_inventory(source, siblings):
     _,files=digest_source(source)
-    # Every local module the build compiles (go.mod replaces apikit with ../apikit).
-    for name in ('apikit',):
-        dependency=source.parent/name
-        if dependency.is_dir():
-            _,rows=digest_source(dependency)
-            files.extend({'path':'../'+name+'/'+r['path'],'sha256':r['sha256']} for r in rows)
+    dependency=siblings/'apikit'
+    if not (dependency/'go.mod').is_file():raise ValueError('Missing release input: apikit/go.mod')
+    _,rows=digest_source(dependency)
+    files.extend({'path':'../apikit/'+r['path'],'sha256':r['sha256']} for r in rows)
+    for name in TEST_INPUTS:
+        base=siblings/name
+        if not base.exists():raise ValueError('Missing release test input: '+name)
+        if base.is_symlink():raise ValueError('Release test input must not be a symlink: '+name)
+        for path in sorted(base.rglob('*') if base.is_dir() else [base]):
+            if path.is_symlink():raise ValueError('Release test input must not be a symlink: '+str(path))
+            if path.is_file():
+                files.append({'path':'../'+str(path.relative_to(siblings)),
+                              'sha256':hashlib.sha256(path.read_bytes()).hexdigest()})
+    return files
+
+def snapshot_digest(source):
+    files=input_inventory(source,source.parent)
     public=source.parent/'root-public-key.pem'
     if public.is_file():files.append({'path':'../root-public-key.pem','sha256':hashlib.sha256(public.read_bytes()).hexdigest()})
     return hashlib.sha256(json.dumps(files,separators=(',',':'),sort_keys=True).encode()).hexdigest(),files
 
+def capture_source(live,stage,root_pem):
+    source=stage/'source'
+    source.mkdir(parents=True)
+    before=input_inventory(live,ROOT)
+    for entry in before:
+        relative=entry['path']
+        original=ROOT/relative[3:] if relative.startswith('../') else live/relative
+        destination=source/relative
+        destination.parent.mkdir(parents=True,exist_ok=True)
+        shutil.copyfile(original,destination)
+    # Compare the complete input set on both sides of the copy. Concurrent
+    # sibling edits must fail capture just like concurrent module edits.
+    if input_inventory(source,stage)!=before or input_inventory(live,ROOT)!=before:
+        raise ValueError('Source or test dependency changed during capture; retry after edits settle.')
+    (stage/'server').symlink_to(source.name,target_is_directory=True)
+    (stage/'root-public-key.pem').write_bytes(root_pem)
+    return snapshot_digest(source)
+
 def controlled_env():
     env=os.environ.copy()
     for key in ('GOOS','GOARCH','GOEXPERIMENT','GOROOT','GOTOOLDIR','GOTMPDIR','CC','CXX','CGO_CFLAGS','CGO_CPPFLAGS','CGO_CXXFLAGS','CGO_LDFLAGS'):env.pop(key,None)
-    env.update({'GOFLAGS':'-p=2','GOWORK':'off','GOENV':'off','GOTOOLCHAIN':'local','GOPROXY':'https://proxy.golang.org','GOSUMDB':'sum.golang.org','GOPRIVATE':'','GONOSUMDB':'','GONOPROXY':''})
+    env.update({'GOMAXPROCS':'2','GOFLAGS':'-p=2','GOWORK':'off','GOENV':'off','GOTOOLCHAIN':'local','GOPROXY':'https://proxy.golang.org','GOSUMDB':'sum.golang.org','GOPRIVATE':'','GONOSUMDB':'','GONOPROXY':''})
     return env
 
 def signing_key():
@@ -115,26 +158,11 @@ def main():
         if toolchain['target']!=target:raise SystemExit('FFmpeg bundle target does not match server')
     builder_digest=hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()
     build_id=datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ')+'-'+uuid.uuid4().hex[:8]
-    stage=ROOT/'runtime'/'releases'/build_id;source=stage/'source';source.mkdir(parents=True)
+    stage=ROOT/'runtime'/'releases'/build_id;source=stage/'source'
     live=(args.source_dir or ROOT/args.component).resolve()
     if not live.is_relative_to(ROOT) or not (live/'go.mod').is_file():raise SystemExit('Source must be an application module inside this repository.')
     if not re.search(r'^module portico\.local/'+args.component+r'\s*$',(live/'go.mod').read_text(),re.M):raise SystemExit('Source module does not match release component.')
-    # The source read is checked again after copying. Mixed concurrent edits fail before compiling.
-    before,files=digest_source(live)
-    for entry in files:
-        dst=source/entry['path'];dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(live/entry['path'],dst)
-    snapshot,copied=digest_source(source)
-    if before!=snapshot or digest_source(live)[0]!=before:raise SystemExit('Source changed during capture; retry after edits settle.')
-    for name in ('apikit',):
-        if name==args.component:continue
-        dependency=ROOT/name;initial,rows=digest_source(dependency)
-        for row in rows:
-            dst=stage/name/row['path'];dst.parent.mkdir(parents=True,exist_ok=True);shutil.copyfile(dependency/row['path'],dst)
-        if digest_source(stage/name)[0]!=initial or digest_source(dependency)[0]!=initial:raise SystemExit('Dependency changed during capture')
-    # Local module replacements and the cross-service policy test refer to siblings.
-    (stage/args.component).symlink_to(source.name,target_is_directory=True)
-    (stage/'root-public-key.pem').write_bytes(root_pem)
-    snapshot,copied=snapshot_digest(source)
+    snapshot,copied=capture_source(live,stage,root_pem)
     checked_env=controlled_env()
     if args.component=='hosted':
         database_file=pathlib.Path(os.environ.get('PORTICO_TEST_DATABASE_URL_FILE',str(ROOT/'runtime/postgres/test-database-url')))
@@ -148,7 +176,7 @@ def main():
     # The 20,000-row metadata boundary test is deliberately exhaustive. Race
     # instrumentation of pure-Go SQLite exceeds Go's default ten-minute limit.
     subprocess.run([str(ROOT/'scripts/env.sh'),'go','test','-race','-timeout=60m','./...'],cwd=source,env=checked_env,check=True)
-    subprocess.run([str(ROOT/'scripts/env.sh'),'sh',str(ROOT/'scripts/vet-go.sh')],cwd=source,env=checked_env,check=True)
+    subprocess.run([str(ROOT/'scripts/env.sh'),'sh',str(stage/'scripts/vet-go.sh')],cwd=source,env=checked_env,check=True)
     built_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
     prefix='portico.local/'+args.component+'/internal/buildinfo.'
     flags=' '.join(f'-X {prefix}{key}={value}' for key,value in {'SourceDigest':snapshot,'BuildID':build_id,'Version':args.version,'BuiltAt':built_at,'Proof':f'PORTICO_SOURCE_V1:{snapshot}:{build_id}:END'}.items())

@@ -70,7 +70,7 @@ func controlItemID(raw []byte) string {
 //     wait on the transaction holding it.
 //   - The member's access schedule, read inside the issuing transaction.
 func (d Dependencies) withSessionAdmission(r *http.Request) context.Context {
-	ctx := r.Context()
+	ctx := identity.WithRecoveryLocality(r.Context(), d.privateSetupPeer(r))
 	admission := identity.SignInAdmission{Policy: identity.RemoteSignInAllow}
 	if d.Console != nil {
 		setting, err := d.connectionSetting(ctx)

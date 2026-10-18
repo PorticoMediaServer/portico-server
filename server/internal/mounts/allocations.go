@@ -9,19 +9,13 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/dirsync"
 	"time"
 )
 
 var ErrAllocationCapacity = errors.New("Private storage allocations need recovery before another configuration can be created.")
 
-func syncDirectory(path string) error {
-	f, e := os.Open(path)
-	if e != nil {
-		return e
-	}
-	defer f.Close()
-	return f.Sync()
-}
+func syncDirectory(path string) error { return dirsync.Sync(path) }
 
 // Caller holds the ownership mutex through allocation and acceptance. The durable
 // reservation is committed before either filesystem path is created.

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/dirsync"
 	"portico.local/server/internal/livechannels/dvr"
 	"portico.local/server/internal/mediaartifact"
 )
@@ -47,12 +48,7 @@ func (d *Driver) shareObject(ctx context.Context, target, source dvr.CaptureRequ
 	if e = os.Link(origin, path); e != nil && !errors.Is(e, os.ErrExist) {
 		return nil, "", "", e
 	}
-	dir, e := os.Open(filepath.Dir(path))
-	if e != nil {
-		return nil, "", "", e
-	}
-	e = errors.Join(dir.Sync(), dir.Close())
-	if e != nil {
+	if e = dirsync.Sync(filepath.Dir(path)); e != nil {
 		return nil, "", "", e
 	}
 	linked, e := destination.Open(ctx, object)

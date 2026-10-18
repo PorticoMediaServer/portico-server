@@ -6,6 +6,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
+	"strings"
 	"time"
 
 	"portico.local/server/internal/remotemedia"
@@ -19,49 +21,104 @@ type cachedUpdateFeed struct {
 	inFlight bool
 }
 
-// FetchReleaseFeed is installed by the composition root. Only an owner-set
-// HTTP(S) URL is read, with a bounded request and response. A redirect must
-// remain within that origin and cannot downgrade TLS or carry URL credentials.
+// FetchReleaseFeed reads a bounded owner-configured feed. Custom feeds stay
+// within their configured origin. Only the official Portico GitHub manifest
+// may cross to GitHub's HTTPS release asset host; every hop is independently
+// admitted by the remote-media policy (including public-only asset DNS).
 func FetchReleaseFeed(ctx context.Context, rawURL string) ([]byte, error) {
+	return fetchReleaseFeed(ctx, rawURL, remotemedia.Policy{ReadTimeout: 8 * time.Second})
+}
+
+func fetchReleaseFeed(ctx context.Context, rawURL string, policy remotemedia.Policy) ([]byte, error) {
 	if !safeFeedURL(rawURL) {
 		return nil, ErrInput
 	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
-	locator, err := url.Parse(rawURL)
+	initial, err := url.Parse(rawURL)
 	if err != nil {
 		return nil, ErrInput
 	}
-	// Configuring this origin is the owner's explicit permission to fetch it,
-	// including a private feed. The shared policy still blocks metadata services,
-	// pins DNS answers and prevents redirects escaping to another origin.
-	policy := remotemedia.Policy{ReadTimeout: 8 * time.Second}
-	approval, err := policy.Approve(ctx, locator.Scheme+"://"+locator.Host+"/")
-	if err != nil {
-		return nil, err
+	policy.ManualRedirects = true
+	// An owner may configure a private feed. Pin only that initial origin;
+	// never grant private-network approval to a redirected GitHub asset host.
+	if !officialGitHubFeed(initial) {
+		approval, err := policy.Approve(ctx, initial.Scheme+"://"+initial.Host+"/")
+		if err != nil {
+			return nil, err
+		}
+		policy.Approvals = []remotemedia.Approval{approval}
 	}
-	policy.Approvals = []remotemedia.Approval{approval}
-	client, err := remotemedia.New(ctx, rawURL, policy)
-	if err != nil {
-		return nil, err
+	current := initial
+	for hop := 0; hop < 5; hop++ {
+		client, err := remotemedia.New(ctx, current.String(), policy)
+		if err != nil {
+			return nil, err
+		}
+		response, err := client.Open(ctx, http.MethodGet, "")
+		if err != nil {
+			client.Close()
+			return nil, err
+		}
+		if response.StatusCode == http.StatusOK {
+			data, err := io.ReadAll(io.LimitReader(response.Body, (1<<20)+1))
+			response.Body.Close()
+			client.Close()
+			if err != nil {
+				return nil, err
+			}
+			if len(data) > 1<<20 {
+				return nil, errors.New("release feed exceeds byte limit")
+			}
+			return data, nil
+		}
+		next, err := response.Location()
+		response.Body.Close()
+		client.Close()
+		if err != nil || !feedRedirectAllowed(initial, current, next) {
+			return nil, remotemedia.ErrPolicy
+		}
+		current = next
 	}
-	defer client.Close()
-	response, err := client.Open(ctx, http.MethodGet, "")
-	if err != nil {
-		return nil, err
+	return nil, remotemedia.ErrPolicy
+}
+
+var githubFeedPath = regexp.MustCompile(`^/PorticoMediaServer/portico-server/releases/(latest/download|download/v[0-9][0-9A-Za-z.+-]*)/portico-update-manifest\.json$`)
+var githubAssetPath = regexp.MustCompile(`^/github-production-release-asset/[0-9]+/[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
+
+func httpsFeedHost(u *url.URL, host string) bool {
+	return u != nil && u.Scheme == "https" && strings.EqualFold(u.Hostname(), host) &&
+		(u.Port() == "" || u.Port() == "443") && u.User == nil && u.Fragment == "" && u.RawPath == ""
+}
+
+func officialGitHubFeed(u *url.URL) bool {
+	return httpsFeedHost(u, "github.com") && u.RawQuery == "" && githubFeedPath.MatchString(u.Path)
+}
+
+func feedOrigin(u *url.URL) string {
+	port := u.Port()
+	if port == "" {
+		if u.Scheme == "https" {
+			port = "443"
+		} else {
+			port = "80"
+		}
 	}
-	defer response.Body.Close()
-	if response.StatusCode != http.StatusOK {
-		return nil, errors.New("release feed response unavailable")
+	return u.Scheme + "://" + strings.ToLower(u.Hostname()) + ":" + port
+}
+
+func feedRedirectAllowed(initial, current, next *url.URL) bool {
+	if next == nil || !safeFeedURL(next.String()) || next.Fragment != "" ||
+		(current.Scheme == "https" && next.Scheme != "https") {
+		return false
 	}
-	data, err := io.ReadAll(io.LimitReader(response.Body, (1<<20)+1))
-	if err != nil {
-		return nil, err
+	if officialGitHubFeed(initial) {
+		// GitHub's latest URL first resolves to a tagged asset in this repo,
+		// then to its signed CDN URL. The CDN cannot redirect onward.
+		return officialGitHubFeed(current) && (officialGitHubFeed(next) ||
+			(httpsFeedHost(next, "release-assets.githubusercontent.com") && githubAssetPath.MatchString(next.Path)))
 	}
-	if len(data) > 1<<20 {
-		return nil, errors.New("release feed exceeds byte limit")
-	}
-	return data, nil
+	return feedOrigin(initial) == feedOrigin(next)
 }
 
 func safeFeedURL(raw string) bool {

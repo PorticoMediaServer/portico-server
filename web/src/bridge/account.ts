@@ -1,4 +1,5 @@
 import {parseBrowserCredentialRecord} from '@core/credential-format.ts';
+import {browserAccountOrigin} from './account-origin.ts';
 import {
   ApiError,
   retryAfterSecondsFrom,
@@ -125,7 +126,7 @@ export class BrowserAccountApi implements CredentialApi<BrowserAuthority> {
 let instance:{api:BrowserAccountApi;service:CredentialSessionService<BrowserAuthority>}|undefined;
 export function browserAccount() {
   if(instance)return instance;
-  const api=new BrowserAccountApi(import.meta.env.VITE_HOSTED_URL??(import.meta.env.VITE_ACCOUNT_WORKSPACE==='true'||location.hostname==='web.getportico.tv'?location.origin:'http://127.0.0.1:19410'));
+  const api=new BrowserAccountApi(browserAccountOrigin(import.meta.env, location));
   const key='portico.account.v1:'+api.origin;
   const storage=new BrowserCredentialStorage({getItem:name=>localStorage.getItem(name),setItem:(name,value)=>localStorage.setItem(name,value)},key);
   const service=new CredentialSessionService(api,storage,async()=>crypto.randomUUID(),15000,{

@@ -5,9 +5,14 @@ import (
 	"errors"
 	"mime"
 	"net/http"
+	"net/netip"
+	"net/url"
+	"os"
 	"portico.local/apikit"
 	"portico.local/apikit/apierror"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/networkpolicy"
+	"strings"
 )
 
 // Native clients may omit Origin. Browser writes require the request's exact
@@ -18,7 +23,50 @@ func (d Dependencies) setupRequestAllowed(r *http.Request) bool {
 		return false
 	}
 	origin := r.Header.Get("Origin")
-	return origin == "" || d.sameRequestOrigin(r, origin)
+	return origin == "" || (d.sameRequestOrigin(r, origin) && d.browserSetupAuthorityAllowed(r))
+}
+
+// The bootstrap secret must not be readable through an attacker-controlled DNS
+// name that rebinds to this listener. Use independent local/configured names;
+// never resolve the submitted name and then trust the answer.
+func (d Dependencies) browserSetupAuthorityAllowed(r *http.Request) bool {
+	origin, err := url.Parse(networkpolicy.Origin(r, d.trustedProxyPrefixes(r.Context())))
+	if err != nil || origin.Host == "" {
+		return false
+	}
+	if addr, err := netip.ParseAddr(origin.Hostname()); err == nil {
+		return !addr.IsUnspecified() && !addr.IsMulticast()
+	}
+	host := strings.TrimSuffix(strings.ToLower(origin.Hostname()), ".")
+	if host == "localhost" {
+		return true
+	}
+	if machine, err := os.Hostname(); err == nil && machine != "" {
+		if setupMachineHostMatches(host, machine) {
+			return true
+		}
+	}
+	for _, allowed := range d.SetupHosts {
+		if setupHostsMatch(origin.Host, strings.TrimSpace(allowed)) {
+			return true
+		}
+	}
+	setting, err := d.connectionSetting(r.Context())
+	if err != nil {
+		return false
+	}
+	if setting != nil {
+		browser, err := url.Parse(r.Header.Get("Origin"))
+		if err != nil {
+			return false
+		}
+		for _, raw := range setting.accessURLs {
+			if configured, err := url.Parse(raw); err == nil && configured.Scheme == browser.Scheme && setupHostsMatch(configured.Host, origin.Host) {
+				return true
+			}
+		}
+	}
+	return false
 }
 func (d Dependencies) serveSetup(w http.ResponseWriter, r *http.Request) {
 	if !d.setupRequestAllowed(r) {

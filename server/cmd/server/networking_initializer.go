@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/authoritygate"
+	"portico.local/server/internal/dirsync"
 	"portico.local/server/internal/hosted"
 	"portico.local/server/internal/httpapi"
 	"portico.local/server/internal/identity"
@@ -21,14 +22,7 @@ import (
 	"strings"
 )
 
-func syncCurrentDirectory(path string) error {
-	f, e := os.Open(path)
-	if e != nil {
-		return e
-	}
-	defer f.Close()
-	return f.Sync()
-}
+func syncCurrentDirectory(path string) error { return dirsync.Sync(path) }
 
 // readCurrentAuthority opens the authority incarnation a state folder already
 // holds. It creates nothing and repairs nothing: a missing, irregular,

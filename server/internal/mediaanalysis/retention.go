@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/dirsync"
 	"strings"
 	"time"
 
@@ -165,7 +166,7 @@ func (s *Service) cleanStaging() error {
 			return e
 		}
 	}
-	return f.Sync()
+	return dirsync.Sync(directory)
 }
 
 // Publication and reader admission take the same gate before touching bytes.

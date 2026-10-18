@@ -10,6 +10,9 @@ func TestDirectRecordingLibraryPolicy(t *testing.T) {
 		name, role, membership, profile, library string
 		restricted, want                         bool
 	}{
+		{name: "admin unrestricted", role: "admin", membership: "[]", library: "library", want: true},
+		{name: "admin profile restriction", role: "admin", membership: "[]", profile: `["other"]`, library: "library", restricted: true},
+		{name: "admin empty profile denies", role: "admin", membership: "[]", profile: "[]", library: "library", restricted: true},
 		{name: "owner unrestricted", role: "owner", membership: "[]", library: "library", want: true},
 		{name: "owner child restriction", role: "owner", membership: "[]", profile: `["other"]`, library: "library", restricted: true},
 		{name: "member granted", role: "member", membership: `["library"]`, library: "library", want: true},
