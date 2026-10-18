@@ -1926,6 +1926,10 @@ export const enUS = {
   'lib.rename': 'Rename',
   'lib.delete': 'Delete',
   'lib.deleteSavedView': 'Delete {name}?',
+  'lib.savedViewsMore': 'More saved views',
+  'lib.savedViewsPrevious': 'Previous saved views',
+  // A change sent without an answer: it may have been made, so it is offered again as it was.
+  'lib.savedViewUnconfirmed': 'That change wasn’t confirmed. Try it again as it was, or close to set it aside.',
   'lib.save': 'Save',
   'lib.cancel': 'Cancel',
   'lib.done': 'Done',

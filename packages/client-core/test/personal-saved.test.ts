@@ -176,3 +176,15 @@ test('presets: rename and delete from the list, at the row\'s revision, without 
 test('presets: a late list from before a profile change never shows',async()=>{
  const late=deferred();const s=setup(async()=>late.promise);const work=s.select({view:'views',libraryId:'shows',pivot:'series'});s.dispose();await work;late.resolve(directory([preset()]));await tick();assert.equal(s.getSnapshot().resources.length,0);
 });
+
+test('presets: a save with no answer is unconfirmed and sent again as the same operation; a refused one is not, and a new save is a new operation',async()=>{
+ const bodies:any[]=[];let mode='timeout';const s=setup(async(p,m,b)=>{if(m==='GET')return directory([]);bodies.push(b);if(mode==='timeout')throw Object.assign(new Error('The server took too long.'),{code:'timeout'});if(mode==='refused')throw Object.assign(new Error('That name is taken.'),{code:'name_conflict'});return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'new',revision:1,deleted:false}};});
+ await s.select({view:'views',libraryId:'shows',pivot:'series'});
+ const intent={action:'create',kind:'view',name:'Mine',definition:presetDef()} as any;
+ assert.equal(await s.mutate(intent),false);
+ assert.deepEqual(s.unconfirmed()?.intent,intent,'not known whether it was made');
+ mode='ok';assert(await s.retry());assert.equal(bodies[1].operationId,bodies[0].operationId,'the same operation: made at most once');assert.equal(s.unconfirmed(),undefined);
+ mode='refused';assert.equal(await s.mutate({...intent,name:'Taken'}),false);assert.equal(s.unconfirmed(),undefined,'refused: not made, nothing to send again');
+ s.dismiss();mode='ok';assert(await s.mutate({...intent,name:'Other'}));assert.notEqual(bodies.at(-1).operationId,bodies[2].operationId,'a new save is a new operation');
+ s.dispose();
+});

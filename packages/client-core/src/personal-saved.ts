@@ -154,6 +154,8 @@ export function savedViewBrowse(r:Pick<PersonalResource,'kind'|'status'|'definit
  const d=r.kind==='view'&&r.status==='ready'?r.definition:undefined;
  return d?{libraryId:d.libraryId,pivot:d.pivot,...(d.query?{query:d.query}:{}),sort:d.sort}:undefined;
 }
+/** Answers that say a change was refused, and so not made. */
+const REFUSED=new Set(['invalid_request','invalid_query','invalid_saved','not_permitted','not_found','unauthorized','forbidden','scope_changed','name_conflict','resource_conflict','revision_mismatch','personal_state_conflict','stale_continuation','operation_expired']);
 export class PersonalSavedService{
  private state:PersonalSavedSnapshot;private listeners=new Set<()=>void>();private generation=0;private readTicket=0;private candidateTicket=0;private disposed=false;private controllers=new Set<AbortController>();private seen=0;
  private command?:{intent:PersonalSavedIntent;path:string;method:string;body:Record<string,unknown>;fence:string;rebased?:boolean;resourceId?:string;listed?:boolean};
@@ -305,6 +307,17 @@ export class PersonalSavedService{
    // the entries it names still say what the viewer meant. The viewer sees a conflict only if that fails too.
    if(error.conflict&&c.intent.action==='reorder'&&!c.rebased&&this.alive(g)&&this.command===c){this.command=undefined;const again=await this.mutate(c.intent,true);return again;}
    return false;}
+ }
+ /**
+  * A change sent whose outcome is not known: no answer came (a timeout, the network), or one that
+  * does not say it was refused. It may have been made. Until it is sent again (`retry`, the same
+  * operation, so it is made at most once) or set aside (`dismiss`), a client offers it as it was
+  * sent, not a new one in its place. A change the server refused is not this: it was not made.
+  */
+ unconfirmed():Readonly<{intent:PersonalSavedIntent;resourceId?:string}>|undefined{
+  const c=this.command,e=this.state.mutationError;
+  if(!c||this.state.pending||!this.state.retryPending||!e||e.conflict||REFUSED.has(e.code))return undefined;
+  return freeze({intent:c.intent,...(c.resourceId?{resourceId:c.resourceId}:{})});
  }
  /** Network retry is byte-identical. Rebase is a separate, explicit reviewed intent. */
  retry=()=>this.state.pending?Promise.resolve(false):this.send();
