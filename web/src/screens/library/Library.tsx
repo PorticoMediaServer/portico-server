@@ -11,7 +11,7 @@ import {EngineResults} from './EngineResults';
 import {GenreCard, LibraryPlaylists} from './LibraryViews';
 import {categoryDestination, libraryTab, libraryTabForPivot, libraryTabSort, libraryTabs, type LibraryTab} from '@core/presentation/index.ts';
 import {SaveViewDialog} from './SaveView';
-import {ManagePresetsDialog, PresetsMenu, useLibraryPresets} from './Presets';
+import {ManagePresetsDialog, PresetsMenu, changeError, useLibraryPresets} from './Presets';
 import {filterValuesField, presetApplication} from '@core/presentation/index.ts';
 import {savedViewBrowse, type PersonalResource} from '@core/personal-saved.ts';
 import b from './BrowseFilters.module.css';
@@ -286,7 +286,7 @@ export function LibraryScreen() {
         <Inset>
           <BrowseBar presets={presetsOn ? <PresetsMenu presets={presets} onApply={applyPreset} onManage={() => setManaging(true)} /> : undefined} libraryId={libraryId} libraryKind={library?.kind ?? ''} pivot={pivot} capabilities={capabilities} predicates={chosenPredicates} onChange={next => { filtersFromMemory.current = false; memory.rememberTab(libraryId, tab); memory.rememberFilters(libraryId, tab, next); setSearch({filters: encodePredicates(next)}); }} sort={sort} onSort={chooseSort} defaultSort={tabSort} total={browseTotal} totalIsLowerBound={browseTotalIsLowerBound} onSave={active.fixedFilter || groups ? undefined : () => setSavingView(true)} />
           {/* The current filters and sort, the order as shown (a shuffle keeps its seed), under the pivot the server browses. A refusal keeps the form open and says why. */}
-          <SaveViewDialog open={savingView} onClose={() => setSavingView(false)} onSave={name => presets.save(name, {libraryId, pivot: dataPivot!, query: predicates.length ? {all: predicates} : null, sort: [sort], presentation: view})} />
+          <SaveViewDialog open={savingView} onClose={() => setSavingView(false)} onSave={name => presets.save(name, {libraryId, pivot: dataPivot!, query: predicates.length ? {all: predicates} : null, sort: [sort], presentation: view})} held={presets.unconfirmed?.intent.action === 'create' ? presets.unconfirmed.intent.name : undefined} onDiscard={presets.discard} describe={e => changeError(t, e)} />
           <ManagePresetsDialog open={managing} onClose={() => setManaging(false)} presets={presets} />
         </Inset>
       ) : null}

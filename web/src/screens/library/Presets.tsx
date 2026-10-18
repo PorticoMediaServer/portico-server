@@ -1,39 +1,54 @@
 import {useEffect, useMemo, useState, useSyncExternalStore} from 'react';
-import {PersonalSavedService, savedViewBrowse, type PersonalResource, type SavedDefinition} from '@core/personal-saved.ts';
+import {PersonalSavedService, UNCONFIRMED, savedChange, savedViewBrowse, type PersonalResource, type SavedDefinition} from '@core/personal-saved.ts';
 import {viewerScope} from '@core/presentation/index.ts';
 import {Button, Chip, Dialog, Input, Menu, Notice, Text, type MenuItem} from '../../ui';
 import {errorText} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
 import {useSession} from '../../app/session';
+import {useFreshDocument} from '../../app/freshness';
+import {titlesWithPersonalState} from '@core/freshness-hub.ts';
+
+/** A saved view saved, renamed or deleted on another device moves this profile's personal state, as on Saved. */
+const presetDependencies = Object.freeze([...titlesWithPersonalState()]);
 
 /**
  * A library's presets: the saved views this profile keeps for the library (and its pivot), read
  * from the server's scoped list so they follow the profile to every device. One list per library,
- * pivot and viewer: another profile, server or library reads its own, and a late answer for the
- * one before never shows. Listing reads no view's content.
+ * pivot and viewer: another profile, server or library reads its own (a service of its own), and
+ * a late answer for the one before never shows. Listing reads no view's content, a page at a time.
+ * A change with no answer is unconfirmed (`unconfirmed`): it is offered again as it was sent, never
+ * replaced by another, until it is confirmed or set aside (`discard`).
  */
 export function useLibraryPresets(libraryId: string, pivot: string | undefined, enabled: boolean) {
   const {api, session} = useSession();
   const scope = useMemo(() => viewerScope(session, api), [session, api]);
-  const service = useMemo(() => (enabled && pivot ? new PersonalSavedService(api, scope, () => Promise.resolve(crypto.randomUUID())) : null), [api, scope, enabled, pivot]);
+  // One service per viewer, library and pivot: the effect below selects it and disposes of it.
+  const service = useMemo(() => (enabled && pivot && libraryId ? new PersonalSavedService(api, scope, () => Promise.resolve(crypto.randomUUID())) : null), [api, scope, enabled, pivot, libraryId]);
   useEffect(() => {
     if (!service || !pivot) return;
     void service.select({view: 'views', libraryId, pivot});
     return () => service.dispose();
   }, [service, libraryId, pivot]);
   const snapshot = useSyncExternalStore(service?.subscribe ?? noSubscribe, () => service?.getSnapshot() ?? null);
-  /** Saves the current filters and sort as a new view: a refusal (a taken name, a conflict) is thrown, never taken for success. */
-  const save = async (name: string, definition: SavedDefinition) => {
-    if (!service) throw new Error('unavailable');
-    if (service.getSnapshot().mutationError) service.dismiss();
-    if (!(await service.mutate({action: 'create', kind: 'view', name, definition}))) throw failure(service);
+  // Kept current while the library is in front (another device's save shows here), read quietly
+  // in place, the pages already shown included; never over a change still on its way.
+  useFreshDocument(presetDependencies, context => service?.revalidate(context) ?? Promise.resolve(), () => !!service?.getSnapshot().viewerFence);
+  const unconfirmed = snapshot && service ? service.unconfirmed() : undefined;
+  return {
+    service, snapshot, unconfirmed,
+    /** Saves the current filters and sort as a new view: a refusal (a taken name, a conflict) is thrown, never taken for success. */
+    save: (name: string, definition: SavedDefinition) => (service ? savedChange(service, {action: 'create', kind: 'view', name, definition}) : Promise.reject(new Error(''))),
+    rename: (row: PersonalResource, name: string) => (service ? savedChange(service, {action: 'update', name}, row) : Promise.resolve()),
+    remove: (row: PersonalResource) => (service ? savedChange(service, {action: 'delete'}, row) : Promise.resolve()),
+    /** Reads the list again quietly (the picker opened): what another device saved since shows. */
+    refresh: () => { void service?.revalidate().catch(() => undefined); },
+    /** Sets an unconfirmed change aside (it may still have been made; the list is read again). */
+    discard: () => { if (!service) return; service.dismiss(); void service.refresh(); },
   };
-  const rename = async (row: PersonalResource, name: string) => { if (!service) return; service.dismiss(); if (!(await service.mutate({action: 'update', name}, false, row))) throw failure(service); };
-  const remove = async (row: PersonalResource) => { if (!service) return; service.dismiss(); if (!(await service.mutate({action: 'delete'}, false, row))) throw failure(service); };
-  return {service, snapshot, save, rename, remove};
 }
 const noSubscribe = () => () => {};
-const failure = (service: PersonalSavedService) => { const e = service.getSnapshot().mutationError; return Object.assign(new Error(e?.message ?? 'failed'), {code: e?.code}); };
+/** The words for a change that failed: an earlier unconfirmed one in the way, or the server's answer. */
+export const changeError = (t: ReturnType<typeof useI18n>['t'], e: unknown) => ((e as {code?: string})?.code === UNCONFIRMED ? t('lib.savedViewUnconfirmed') : errorText(e, 'library', 'save'));
 
 export type LibraryPresets = ReturnType<typeof useLibraryPresets>;
 
@@ -46,13 +61,21 @@ export function PresetsMenu({presets, onApply, onManage, compact}: {presets: Lib
     : snap?.error && !rows.length ? [{id: ':retry', label: t('lib.savedViewsFailed'), meta: t('action.tryAgain')}]
     : !rows.length ? [{id: ':empty', label: t('lib.savedViewsEmpty'), disabled: true}]
     : rows.map(r => (savedViewBrowse(r) ? {id: r.id, label: r.name, icon: 'bookmark'} : {id: r.id, label: r.name, meta: t('lib.savedViewReview'), disabled: true}));
+  // A page at a time: the ones before and after, and a page that could not be read says so.
+  if (rows.length && snap?.error) items.push({id: ':retry-page', label: t('lib.savedViewsFailed'), meta: t('action.tryAgain'), separatorBefore: true});
+  if (snap?.history.length) items.push({id: ':previous', label: t('lib.savedViewsPrevious'), icon: 'chevronUp', separatorBefore: true});
+  if (snap?.nextCursor) items.push({id: ':next', label: t('lib.savedViewsMore'), icon: 'chevronDown', separatorBefore: !snap?.history.length});
   if (rows.length) items.push({id: ':manage', label: t('lib.savedViewsManage'), icon: 'settings', separatorBefore: true});
   const choose = (id: string) => {
     if (id === ':manage') onManage();
     else if (id === ':retry') void presets.service?.refresh();
+    else if (id === ':retry-page') void presets.service?.retryRead();
+    else if (id === ':next') void presets.service?.next();
+    else if (id === ':previous') void presets.service?.previous();
     else { const row = rows.find(r => r.id === id); if (row && savedViewBrowse(row)) onApply(row); }
   };
-  return <Menu label={t('lib.savedViews')} align="start" trigger={<Chip label={compact ? '' : t('lib.savedViews')} icon="bookmark" aria-label={t('lib.savedViews')} />} items={items} onSelect={choose} />;
+  // Opening it reads the list again quietly, so a view saved on another device is there.
+  return <Menu label={t('lib.savedViews')} align="start" trigger={<Chip label={compact ? '' : t('lib.savedViews')} icon="bookmark" aria-label={t('lib.savedViews')} onPointerDown={presets.refresh} onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') presets.refresh(); }} />} items={items} onSelect={choose} />;
 }
 
 /** Rename and delete a library's saved views from their rows; one that needs review says why. */
@@ -67,21 +90,27 @@ export function ManagePresetsDialog({open, onClose, presets}: {open: boolean; on
   const run = async (work: () => Promise<void>) => {
     if (busy) return;
     setBusy(true); setError(undefined);
-    try { await work(); setEditing(null); setConfirm(null); } catch (e) { setError(errorText(e, 'library', 'save')); } finally { setBusy(false); }
+    try { await work(); setEditing(null); setConfirm(null); } catch (e) { setError(changeError(t, e)); } finally { setBusy(false); }
   };
+  // A rename with no answer is offered again as it was sent (its name, not an edited one).
+  const held = presets.unconfirmed?.intent.action === 'update' ? {id: presets.unconfirmed.resourceId, name: presets.unconfirmed.intent.name ?? ''} : undefined;
+  const snap = presets.snapshot;
   return (
     <Dialog open={open} onOpenChange={o => !o && onClose()} title={t('lib.savedViewsManage')} description={t('lib.savedViewsManageLede')} width={480} actions={<Button variant="primary" label={t('lib.done')} onClick={onClose} />}>
       <div style={{display: 'flex', flexDirection: 'column', gap: 12}}>
         {error ? <Notice tone="error">{error}</Notice> : null}
         {rows.map(row => {
           const ready = !!savedViewBrowse(row);
-          if (editing?.id === row.id) return (
-            <div key={row.id} style={{display: 'flex', gap: 8, alignItems: 'flex-end'}}>
-              <div style={{flex: 1}}><Input label={t('lib.saveViewName')} value={editing.name} maxLength={200} autoFocus onChange={e => setEditing({id: row.id, name: e.target.value})} onKeyDown={e => { if (e.key === 'Enter' && editing.name.trim()) void run(() => presets.rename(row, editing.name.trim())); }} /></div>
-              <Button variant="ghost" size="sm" label={t('action.cancel')} disabled={busy} onClick={() => setEditing(null)} />
-              <Button variant="primary" size="sm" label={t('action.save')} loading={busy} disabled={!editing.name.trim()} onClick={() => void run(() => presets.rename(row, editing.name.trim()))} />
-            </div>
-          );
+          if (editing?.id === row.id || held?.id === row.id) {
+            const name = held?.id === row.id ? held.name : editing!.name.trim();
+            return (
+              <div key={row.id} style={{display: 'flex', gap: 8, alignItems: 'flex-end'}}>
+                <div style={{flex: 1}}><Input label={t('lib.saveViewName')} value={held?.id === row.id ? held.name : editing!.name} readOnly={held?.id === row.id} maxLength={200} autoFocus onChange={e => setEditing({id: row.id, name: e.target.value})} onKeyDown={e => { if (e.key === 'Enter' && name) void run(() => presets.rename(row, name)); }} /></div>
+                <Button variant="ghost" size="sm" label={t('action.cancel')} disabled={busy} onClick={() => { if (held?.id === row.id) presets.discard(); setEditing(null); }} />
+                <Button variant="primary" size="sm" label={t('action.save')} loading={busy} disabled={!name} onClick={() => void run(() => presets.rename(row, name))} />
+              </div>
+            );
+          }
           if (confirm?.id === row.id) return (
             <div key={row.id} style={{display: 'flex', gap: 8, alignItems: 'center'}}>
               <Text style={{flex: 1}}>{t('lib.deleteSavedView', {name: row.name})}</Text>
@@ -100,6 +129,13 @@ export function ManagePresetsDialog({open, onClose, presets}: {open: boolean; on
             </div>
           );
         })}
+        {snap?.history.length || snap?.nextCursor ? (
+          <div style={{display: 'flex', gap: 8, justifyContent: 'flex-end'}}>
+            {snap.history.length ? <Button variant="ghost" size="sm" icon="chevronUp" label={t('lib.savedViewsPrevious')} disabled={busy || snap.loading} onClick={() => void presets.service?.previous()} /> : null}
+            {snap.nextCursor ? <Button variant="ghost" size="sm" icon="chevronDown" label={t('lib.savedViewsMore')} disabled={busy || snap.loading} onClick={() => void presets.service?.next()} /> : null}
+          </div>
+        ) : null}
+        {snap?.error ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: () => void presets.service?.retryRead()}}>{t('lib.savedViewsFailed')}</Notice> : null}
       </div>
     </Dialog>
   );
