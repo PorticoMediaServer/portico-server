@@ -9,7 +9,7 @@ import {useI18n} from '../../app/i18n';
  * file, what it is ("4K · HEVC · Dolby Vision · MKV"), its size and bitrate, every audio and
  * subtitle track, and where it lives (owners only). The lines come from the shared model.
  */
-export function TitleFiles({files, onSplit, onSplitFolder, folderKind, onDelete}: {files: readonly TitleFile[]; /** Owners, for a track or audiobook part: this file's folder is an album or book of its own. */ onSplitFolder?: (file: TitleFile, summary: string) => void; folderKind?: 'album' | 'book'; /** Owners: delete this one file from disk, leaving the title and its other versions. */ onDelete?: (file: TitleFile, summary: string) => void; /** Owners, where the server can split: a version that is on disk can be made a title of its own. */ onSplit?: (file: TitleFile, summary: string) => void}) {
+export function TitleFiles({files, onSplit, onSplitFolder, folderKind, onDelete, heading = true}: {files: readonly TitleFile[]; /** Its own "Files" label; off where the caller already names the section (an episode's disclosure). */ heading?: boolean; /** Owners, for a track or audiobook part: this file's folder is an album or book of its own. */ onSplitFolder?: (file: TitleFile, summary: string) => void; folderKind?: 'album' | 'book'; /** Owners: delete this one file from disk, leaving the title and its other versions. */ onDelete?: (file: TitleFile, summary: string) => void; /** Owners, where the server can split: a version that is on disk can be made a title of its own. */ onSplit?: (file: TitleFile, summary: string) => void}) {
   const i18n = useI18n();
   const {t} = i18n;
   if (!files.length) return null;
@@ -19,7 +19,7 @@ export function TitleFiles({files, onSplit, onSplitFolder, folderKind, onDelete}
   const versionsOf = (file: TitleFile) => files.filter(other => (other.partIndex ?? 0) === (file.partIndex ?? 0)).length;
   return (
     <div className={s.files}>
-      <Text variant="label" tone="tertiary">{t('title.files')}</Text>
+      {heading ? <Text variant="label" tone="tertiary">{t('title.files')}</Text> : null}
       {files.map((file, i) => {
         const lines = titleFileLines(file, t, i18n.languageName);
         const rows: [string, React.ReactNode][] = [];

@@ -149,10 +149,12 @@ export function DetailScreen() {
     }
   }
   const back = useBack(() => void navigate({to: '/'}));
-  // Spec — Title Pages §3: an episode isn't a destination of its own; it opens as the panel over its show.
+  // Spec — Title Pages §3: an episode isn't a destination of its own. Opened from a row elsewhere
+  // (Continue Watching, Recently Added, Search), it lands on its show at its season, marked and in
+  // view; it opens in place only when chosen on the show's own list (Justin, 18 Oct 2026).
   useEffect(() => {
     const episode = data?.item.episode;
-    if (episode?.showId && data) void navigate({to: '/show/$showId/episode/$episodeId', params: {showId: episode.showId, episodeId: data.item.id}, search: {library: data.item.libraryId}, replace: true});
+    if (episode?.showId && data) void navigate({to: '/show/$showId', params: {showId: episode.showId}, search: {library: data.item.libraryId, episode: data.item.id, ...(episode.seasonNumber != null ? {season: String(episode.seasonNumber)} : {})}, replace: true});
   }, [data, navigate]);
   const [ratingOpen, setRatingOpen] = useState(false);
   const credits = data?.metadata.credits ?? [];

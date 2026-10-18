@@ -6,13 +6,30 @@
 .seasonTab:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
 .seasonInfo { padding: 0 var(--page-gutter); margin-bottom: 16px; max-width: 80ch; }
 
-.panelStill { width: 100%; }
-/* M26: the episode placeholder in the panel (episode code, large, neutral). */
-.panelStillPlaceholder { display: grid; place-items: center; aspect-ratio: 16 / 9; width: 100%; border-radius: var(--radius-artwork);
-  background: var(--placeholder-bg, linear-gradient(160deg, var(--surface-raised), var(--surface-recess))); color: var(--text-primary);
-  font-size: 1.375rem; font-weight: 700; letter-spacing: 0.02em; font-variant-numeric: tabular-nums; }
-.panelFacts { font-size: 0.8125rem; color: var(--text-secondary); }
-.panelNav { display: flex; justify-content: space-between; gap: 8px; }
+/* An episode opened in place: a small title page on the page's own background, set off by hairlines.
+   Wide screens put the credits and files beside the main column. */
+.details { display: grid; grid-template-columns: minmax(0, 1fr); gap: 20px 40px; padding: 20px 0 24px; margin: 4px 0 12px; border-top: 1px solid var(--line-soft); border-bottom: 1px solid var(--line-soft); }
+@media (min-width: 1000px) { .detailsWide { grid-template-columns: minmax(0, 1.6fr) minmax(240px, 1fr); } }
+.detailsMain { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.detailsSide { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.detailsContext { font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+.detailsTitle { display: flex; align-items: baseline; gap: 12px; margin: 0; font-size: 1.375rem; font-weight: 700; letter-spacing: -0.01em; line-height: 1.2; color: var(--text-primary); }
+.detailsCode { font-size: 0.9375rem; font-weight: 600; color: var(--text-tertiary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.detailsFacts { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; font-size: 0.875rem; color: var(--text-secondary); }
+.detailsFacts > span + span::before { content: '·'; margin-right: 12px; color: var(--text-tertiary); }
+.detailsRating { display: inline-flex; align-items: center; height: 22px; padding: 0 7px; border-radius: 4px; border: 1px solid var(--line-control); font-size: 0.75rem; font-weight: 700; color: var(--text-primary); }
+.detailsFacts > .detailsRating::before { content: none; }
+.detailsSynopsis { max-width: 72ch; }
+.detailsActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.detailsFiles > summary { cursor: pointer; width: fit-content; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-tertiary); border-radius: 4px; }
+.detailsFiles > summary:hover { color: var(--text-primary); }
+.detailsFiles > summary:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
+.detailsFiles[open] > summary { margin-bottom: 10px; }
+/* The opened row is marked (the accent bar); its synopsis is read in full below it. */
+.episodeRow[data-expanded] .episodeRowSynopsis { display: none; }
+/* In the list the block lines up with the row's text, under its title. */
+.episodeList [data-windowed-detail] > .details { margin: 0 0 12px; padding-left: calc(clamp(140px, 16vw, 200px) + 16px); border-top: 0; }
+@media (max-width: 720px) { .episodeList [data-windowed-detail] > .details { padding-left: 0; } }
 .people { display: flex; flex-direction: column; gap: 4px; }
 .loadingGrid { display: grid; gap: 20px 16px; grid-template-columns: repeat(auto-fill, minmax(clamp(240px, 24vw, 320px), 1fr)); padding: 0 var(--page-gutter); }
 
@@ -47,8 +64,11 @@
 }
 .episodeRowArt { position: relative; display: block; width: 100%; padding: 0; border: 0; background: none; border-radius: var(--radius-artwork); overflow: hidden; color: inherit; }
 .episodeRowArt:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
-.episodeRowPlay { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--color-ink) 35%, transparent); color: var(--color-text); opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); }
-.episodeRowArt:hover .episodeRowPlay, .episodeRowArt:focus-visible .episodeRowPlay { opacity: 1; }
+/* Hover or focus: the still dims and Play sits in its middle (the still is the play target). */
+.episodeRowPlay { position: absolute; inset: 0; display: grid; place-items: center; background: color-mix(in srgb, var(--color-ink) 35%, transparent); opacity: 0; transition: opacity var(--motion-quick) var(--ease-out); }
+.episodeRowPlay > span { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; background: var(--accent); color: var(--text-on-action); box-shadow: 0 6px 20px -6px var(--color-ink); }
+.episodeRowArt:hover .episodeRowPlay, .episodeRowArt:focus-visible .episodeRowPlay,
+.episodeRowPlaceholder:hover .episodeRowPlay, .episodeRowPlaceholder:focus-visible .episodeRowPlay { opacity: 1; }
 .showFacts { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; padding: 0 var(--page-gutter); }
 @media (max-width: 720px) { .showFacts { grid-template-columns: 1fr; } }
 .heroActions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }

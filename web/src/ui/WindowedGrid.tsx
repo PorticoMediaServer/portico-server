@@ -51,6 +51,12 @@ type Props<T> = {
    * caller's rows carry their own semantics (a table's rows, which number themselves).
    */
   semantics?: 'list' | 'none';
+  /**
+   * One item opened in place: `node` is drawn full width under the row holding `index` (an
+   * episode's details under its row, or under its row of cards). It is measured apart from the
+   * rows, which keep their one pitch; the rows below it move down by its height.
+   */
+  detail?: Readonly<{index: number; node: React.ReactNode}>;
 };
 
 /** Which item a focused element inside the grid belongs to, or -1. */
@@ -60,7 +66,7 @@ function focusedItem(target: EventTarget | null): number {
   return Number.isInteger(index) ? index : -1;
 }
 
-function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estimateRowHeight, columnMin, overscanRows = 2, stickyOffset = 0, className, onFirstVisible, label, semantics = 'list'}: Props<T>, ref: React.Ref<WindowedGridHandle>) {
+function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estimateRowHeight, columnMin, overscanRows = 2, stickyOffset = 0, className, onFirstVisible, label, semantics = 'list', detail}: Props<T>, ref: React.Ref<WindowedGridHandle>) {
   const snapshot = useSyncExternalStore(collection.subscribe, collection.getSnapshot);
   const container = useRef<HTMLDivElement>(null);
   const grid = useRef<HTMLDivElement>(null);
@@ -69,8 +75,16 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
   // Before the first page arrives the total is unknown: show one page of placeholders.
   const total = snapshot.total ?? (snapshot.status === 'error' ? 0 : collection.pageSize);
   const totalRows = Math.ceil(total / layout.cols);
-  const realHeight = totalRows > 0 ? totalRows * layout.pitch - layout.gap : 0;
-  const compressed = realHeight > MAX_HEIGHT;
+  // The opened item's block: its measured height (and the gap after it), kept while its row is out of the window.
+  const [extra, setExtra] = useState(0);
+  const plainHeight = totalRows > 0 ? totalRows * layout.pitch - layout.gap : 0;
+  const compressed = plainHeight > MAX_HEIGHT;
+  // A compressed window (millions of rows) maps positions proportionally; it draws the block but doesn't shift for it.
+  const detailRow = detail && !compressed && detail.index >= 0 && detail.index < total ? Math.floor(detail.index / layout.cols) : -1;
+  const shift = detailRow >= 0 ? extra : 0;
+  const realHeight = plainHeight + (plainHeight > 0 ? shift : 0);
+  /** Where a row starts: rows below the opened block move down by its height. */
+  const rowTop = useCallback((row: number) => row * layout.pitch + (detailRow >= 0 && row > detailRow ? extra : 0), [layout.pitch, detailRow, extra]);
   const height = compressed ? MAX_HEIGHT : realHeight;
   // Browsers cap an element's height (Chrome ≈ 33.5 M px, Firefox ≈ 17.9 M px), and a
   // 10 M-item grid is far taller. Past MAX_HEIGHT the window maps scroll position to a
@@ -97,13 +111,18 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
       ({position: v, top} = compressedPosition({from, scrolled, previousScrolled: virtual.current.scrolled, maxScrolled: height - viewport, maxVirtual: Math.max(1, realHeight - viewport), jump: viewport * 3}));
     }
     virtual.current = {top, scrolled, pitch, cols: layout.cols};
-    const firstRow = Math.max(0, Math.floor(v / pitch) - overscanRows);
-    const lastRow = Math.max(firstRow, Math.min(Math.max(0, totalRows - 1), Math.ceil((v + viewport - stickyOffset) / pitch) + overscanRows));
+    // The row at a position, the opened block counting as part of its own row.
+    const rowAt = (y: number) => {
+      if (detailRow < 0 || y < (detailRow + 1) * pitch) return Math.floor(y / pitch);
+      return y < (detailRow + 1) * pitch + extra ? detailRow : Math.floor((y - extra) / pitch);
+    };
+    const firstRow = Math.max(0, rowAt(v) - overscanRows);
+    const lastRow = Math.max(firstRow, Math.min(Math.max(0, totalRows - 1), rowAt(v + viewport - stickyOffset) + 1 + overscanRows));
     const offset = firstRow * pitch - v + scrolled;
     setView(prev => (prev.first === firstRow && prev.last === lastRow && Math.abs(prev.offset - offset) < 0.5 ? prev : {first: firstRow, last: lastRow, offset}));
-    const visibleFirst = Math.max(0, Math.floor(v / pitch)) * layout.cols;
+    const visibleFirst = Math.max(0, rowAt(v)) * layout.cols;
     onFirstVisible?.(Math.min(visibleFirst, Math.max(0, total - 1)));
-  }, [layout, estimateRowHeight, stickyOffset, overscanRows, totalRows, total, onFirstVisible, compressed, height, realHeight]);
+  }, [layout, estimateRowHeight, stickyOffset, overscanRows, totalRows, total, onFirstVisible, compressed, height, realHeight, detailRow, extra]);
 
   // Scroll and resize drive the window; one read per frame.
   // (A hidden document gets no animation frames, so it falls back to a timer.)
@@ -148,8 +167,11 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
       const style = getComputedStyle(el);
       const cols = columnMin ? Math.max(1, style.gridTemplateColumns.split(' ').filter(Boolean).length) : 1;
       const gap = parseFloat(style.rowGap) || 0;
-      const rendered = Math.ceil(el.childElementCount / cols);
-      const height = el.getBoundingClientRect().height;
+      // The opened block is no row: it is measured on its own and left out of the pitch.
+      const block = el.querySelector<HTMLElement>(':scope > [data-windowed-detail]');
+      const rendered = Math.ceil((el.childElementCount - (block ? 1 : 0)) / cols);
+      const height = el.getBoundingClientRect().height - (block ? block.getBoundingClientRect().height + gap : 0);
+      if (block) setExtra(prev => { const next = block.getBoundingClientRect().height + gap; return Math.abs(prev - next) < 0.5 ? prev : next; });
       let pitch = estimateRowHeight;
       if (rendered > 0 && height > 0) {
         pitch = settledPitch(measured.current?.pitch, (height + gap) / rendered);
@@ -166,14 +188,14 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
   }, [columnMin, estimateRowHeight, cardSize]);
   // The rows in view changed: measure again with the observer already in place, rather than
   // tearing it down and building a new one for every row scrolled.
-  useLayoutEffect(() => { measureNow.current(); }, [first, last]);
+  useLayoutEffect(() => { measureNow.current(); }, [first, last, detail?.index]);
 
   useImperativeHandle(ref, () => ({
     scrollToIndex(index: number) {
       const el = container.current;
       if (!el) return;
       const row = Math.floor(Math.max(0, index) / layout.cols);
-      const target = row * layout.pitch;
+      const target = compressed ? row * layout.pitch : rowTop(row);
       let scrolled = target;
       if (compressed) {
         const viewport = window.innerHeight;
@@ -183,7 +205,7 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
       }
       window.scrollTo({top: Math.max(0, el.getBoundingClientRect().top + window.scrollY + scrolled - stickyOffset)});
     },
-  }), [layout, stickyOffset, compressed, realHeight, height]);
+  }), [layout, stickyOffset, compressed, realHeight, height, rowTop]);
 
   // A focused card that scrolls out of the window is removed with its row, and the browser would
   // drop focus on the page body, far from the list. The list itself takes it instead, so the next
@@ -196,6 +218,8 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
     if (el && (document.activeElement === document.body || document.activeElement === null)) el.focus({preventScroll: true});
   }, [first, last]);
 
+  // The block follows the last card of its row (or the last card there is).
+  const blockAfter = detail && rows.first <= Math.floor(detail.index / layout.cols) && Math.floor(detail.index / layout.cols) <= rows.last ? Math.min((Math.floor(detail.index / layout.cols) + 1) * layout.cols - 1, total - 1, last) : -1;
   const pages: {page: number; from: number; to: number}[] = [];
   if (total > 0) {
     for (let page = collection.pageOf(first); page <= collection.pageOf(last); page++) {
@@ -206,14 +230,14 @@ function WindowedGridInner<T>({collection, renderItem, renderPlaceholder, estima
   }
   return (
     <div ref={container} className={cx(s.window, className)} style={{height}} role={label ? 'region' : undefined} aria-label={label} tabIndex={-1} onFocusCapture={e => { focused.current = focusedItem(e.target); }} onBlurCapture={e => { if (e.relatedTarget) focused.current = focusedItem(e.relatedTarget); }}>
-      <div ref={grid} role={semantics === 'list' ? 'list' : undefined} className={columnMin ? s.grid : s.list} style={{transform: `translateY(${compressed ? rows.offset : rows.first * layout.pitch}px)`, ...(columnMin ? ({'--card-min': columnMin} as React.CSSProperties) : {})}}>
-        {pages.map(p => <PageCells key={`${snapshot.generation}:${p.page}`} collection={collection} page={p.page} from={p.from} to={p.to} renderItem={renderItem} renderPlaceholder={renderPlaceholder} setSize={semantics === 'list' ? (snapshot.total ?? -1) : undefined} />)}
+      <div ref={grid} role={semantics === 'list' ? 'list' : undefined} className={columnMin ? s.grid : s.list} style={{transform: `translateY(${compressed ? rows.offset : rowTop(rows.first)}px)`, ...(columnMin ? ({'--card-min': columnMin} as React.CSSProperties) : {})}}>
+        {pages.map(p => <PageCells key={`${snapshot.generation}:${p.page}`} collection={collection} page={p.page} from={p.from} to={p.to} renderItem={renderItem} renderPlaceholder={renderPlaceholder} setSize={semantics === 'list' ? (snapshot.total ?? -1) : undefined} detail={blockAfter >= p.from && blockAfter <= p.to ? {after: blockAfter, node: detail!.node} : undefined} />)}
       </div>
     </div>
   );
 }
 
-function PageCellsInner<T>({collection, page, from, to, renderItem, renderPlaceholder, setSize}: {collection: WindowedCollection<T>; page: number; from: number; to: number; renderItem: (item: T, index: number) => React.ReactNode; renderPlaceholder: (index: number) => React.ReactNode; /** The whole collection's size when cells are list items (-1 while unknown); undefined when the caller's rows speak for themselves. */ setSize?: number}) {
+function PageCellsInner<T>({collection, page, from, to, renderItem, renderPlaceholder, setSize, detail}: {collection: WindowedCollection<T>; page: number; from: number; to: number; renderItem: (item: T, index: number) => React.ReactNode; renderPlaceholder: (index: number) => React.ReactNode; /** The whole collection's size when cells are list items (-1 while unknown); undefined when the caller's rows speak for themselves. */ setSize?: number; /** The opened item's block, drawn after cell `after`. */ detail?: {after: number; node: React.ReactNode}}) {
   // Subscribes to this page only.
   useSyncExternalStore(useCallback((cb: () => void) => collection.subscribePage(page, cb), [collection, page]), () => collection.getPageVersion(page));
   const cells: React.ReactNode[] = [];
@@ -222,6 +246,7 @@ function PageCellsInner<T>({collection, page, from, to, renderItem, renderPlaceh
     const cell = slot.kind === 'item' ? renderItem(slot.item, index) : renderPlaceholder(index);
     // The wrapper has no box of its own (`display: contents`): it only says which item of how many this is, and marks the cell for focus keeping.
     cells.push(setSize === undefined ? <React.Fragment key={slot.key}>{cell}</React.Fragment> : <div key={slot.key} className={s.item} role="listitem" aria-setsize={setSize} aria-posinset={index + 1} aria-busy={slot.kind === 'item' ? undefined : true} data-windowed-index={index}>{cell}</div>);
+    if (detail && index === detail.after) cells.push(<div key="windowed-detail" className={s.detail} role={setSize === undefined ? undefined : 'listitem'} data-windowed-detail>{detail.node}</div>);
   }
   return <>{cells}</>;
 }
