@@ -41,6 +41,21 @@ test('browsePreview: art falls back from backdrop to cover to none; a collection
   assert.equal(collection.meta, t('title.itemCount', {count: 12}), 'no year or genres: the card\'s own caption');
 });
 
+test('browsePreview: with no facts of its own, the caption says nothing the title or line already say', () => {
+  // An episode with no year, rating, length or genres: "S1 E2 · Rick and Morty" would repeat the line and the title.
+  const bare: ContentEntry = {id: 'e2', kind: 'episode', title: 'Lawnmower Dog', subtitle: 'Rick and Morty', seasonNumber: 1, episodeNumber: 2};
+  const preview = browsePreview(bare, t, {duration});
+  assert.deepEqual([preview.title, preview.line, preview.meta], ['Rick and Morty', 'S1 E2 · Lawnmower Dog', undefined]);
+  // What is not said above (its air date) stays.
+  assert.ok(browsePreview({...bare, airDate: '2013-12-09'}, t, {duration}).meta, 'the air date is kept');
+  assert.ok(!browsePreview({...bare, airDate: '2013-12-09'}, t, {duration}).meta!.includes('Rick and Morty'));
+  // A season whose title names its show already ("Solo Leveling · Season 1"): not said again.
+  const season = {id: 's1', kind: 'season', title: 'Solo Leveling · Season 1', subtitle: 'Solo Leveling', seasonNumber: 1} as ContentEntry;
+  assert.equal(browsePreview(season, t, {duration}).meta, undefined);
+  // One titled just "Season 1" still says whose it is.
+  assert.equal(browsePreview({...season, title: 'Season 1'}, t, {duration}).meta, 'Solo Leveling');
+});
+
 test('previewOverview: one line, bounded by code points, never splitting a surrogate pair', () => {
   assert.equal(previewOverview(undefined), undefined);
   assert.equal(previewOverview('  \n\t '), undefined);

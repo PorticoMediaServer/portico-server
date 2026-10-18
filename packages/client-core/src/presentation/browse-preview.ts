@@ -57,6 +57,17 @@ export function previewMeta(entry: ContentEntry, duration: (seconds: number) => 
   return meta || undefined;
 }
 
+/**
+ * The card's caption, for a preview with none of its own facts, without what the title or the line
+ * above it already say: an episode's caption repeats its number and its show ("S1 E2 · Rick and
+ * Morty"), a season's its show. What is left (an air date, a collection's count) stays.
+ */
+function freshCaption(entry: ContentEntry, t: Translate): string | undefined {
+  const said = new Set([continueTitle(entry), ...parts(continueTitle(entry)), ...parts(previewLine(entry, t))].map(p => p.toLowerCase()));
+  const left = parts(cardCaption(entry, t)).filter(p => !said.has(p.toLowerCase()));
+  return left.length ? left.join(' · ') : undefined;
+}
+
 /** How far in, 0–1, and the stretch left in seconds. */
 export function previewProgress(entry: ContentEntry): {progress: number; left: number} {
   const progress = entry.duration && entry.progressSeconds ? Math.min(1, Math.max(0, entry.progressSeconds / entry.duration)) : 0;
@@ -100,7 +111,7 @@ export function browsePreview(entry: ContentEntry, t: Translate, options: Readon
     entry,
     title: continueTitle(entry),
     line: previewLine(entry, t),
-    meta: previewMeta(entry, options.duration) ?? cardCaption(entry, t),
+    meta: previewMeta(entry, options.duration) ?? freshCaption(entry, t),
     overview: previewOverview(entry.overview),
     progress,
     resume: options.resume && entry.playback ? resumeWords(entry, t, options.duration) : undefined,
