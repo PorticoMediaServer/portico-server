@@ -29,6 +29,9 @@ import type {LibraryView} from '../../app/router';
  * Recently added, Watchlist, Recommended…). The client never ranks; it only
  * pages rows and lets the viewer arrange them.
  */
+/** How long Home waits for its first shelf before it says there is nothing here. */
+const PENDING_SHELVES_MS = 10_000;
+
 export function HomeScreen() {
   const {t} = useI18n();
   const {state, refresh, more, saveLayout, resetLayout, loadLayout} = useHome();
@@ -80,6 +83,17 @@ export function HomeScreen() {
   // WEB-HOME-02: the eyebrow is the row's name, never the server name.
   const heroEyebrow = hero ? homeRowTitle(hero.row.id, hero.row.title, libraryName, hero.row.titleText) : undefined;
   const rows = useMemo(() => (document?.rows ?? []).map(r => (hidden.size && r.id === 'continue' ? {...r, entries: r.entries.filter(e => !hidden.has(e.id))} : isRecommendationRow(r) ? withoutHidden(r, notInterested.hidden) : r)).filter(r => r.entries.length), [document, hidden, notInterested.hidden]);
+  // The server sends its slower shelves as placeholders, filled in a moment later: until one has,
+  // Home is still loading, not empty (it never flashes the empty state). At most a few seconds, in
+  // case a shelf never arrives.
+  const pendingShelves = !rows.length && !hero && !!document?.rows.some(r => r.deferred && !r.entries.length);
+  const [gaveUp, setGaveUp] = useState(false);
+  useEffect(() => {
+    if (!pendingShelves) { setGaveUp(false); return; }
+    const timer = setTimeout(() => setGaveUp(true), PENDING_SHELVES_MS);
+    return () => clearTimeout(timer);
+  }, [pendingShelves]);
+  const loading = (state.phase === 'loading' && !document) || (pendingShelves && !gaveUp);
   return (
     // Home's heading is the featured title, so the page names itself for the document title.
     <div style={{position: 'relative'}} data-page-title={t('web.shell.home')}>
@@ -100,11 +114,11 @@ export function HomeScreen() {
               )}
             </Inset>
           ) : null}
-          {state.phase === 'loading' && !document ? <LoadingShelves /> : null}
+          {loading ? <LoadingShelves /> : null}
           {state.phase === 'error' && !document ? <ErrorState error={state.error} context="home" retry={refresh} refresh={refresh} /> : null}
           {state.phase === 'error' && document ? <Inset><ErrorNotice error={state.error} context="home" retry={refresh} refresh={refresh} /></Inset> : null}
           {rows.map(row => <SectionView key={row.id} section={sectionOf(row, libraryName)} libraryId={row.libraryId} onMore={row.nextCursor && !state.paging.has(row.id) ? () => void more(row.id) : undefined} onSeeAll={row.seeAll || row.libraryId || isRecommendationRow(row) ? () => seeAll(row) : undefined} alwaysSeeAll={row.seeAll?.type === 'saved_view'} noSelect homeRow origin={isRecommendationRow(row) ? 'recommendation' : undefined} />)}
-          {document && !rows.length && !hero ? (!libraries.items.length && !libraries.loading ? <NoLibraries where="home" /> : <StateView icon="home" title={t('web.empty.homeTitle')} body={t(owner ? 'web.empty.homeOwnerBody' : 'web.empty.homeMemberBody')} />) : null}
+          {document && !rows.length && !hero && !loading ? (!libraries.items.length && !libraries.loading ? <NoLibraries where="home" /> : <StateView icon="home" title={t('web.empty.homeTitle')} body={t(owner ? 'web.empty.homeOwnerBody' : 'web.empty.homeMemberBody')} />) : null}
         </div>
       </Page>
       {document ? <CustomiseHome open={customise} onClose={() => setCustomise(false)} onSave={saveLayout} onReset={resetLayout} loadLayout={loadLayout} /> : null}
