@@ -1,7 +1,7 @@
 import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PersonalSavedService,makeSavedDefinition,savedTitlePrefix,savedCategoryId,savedViewBrowse} from '../src/personal-saved.ts';
+import {PersonalSavedService,makeSavedDefinition,savedTitlePrefix,savedCategoryId,savedViewBrowse,savedChange,UNCONFIRMED} from '../src/personal-saved.ts';
 const scope={serverId:'server',viewerId:'["local","account","profile"]'};
 const media=(id='item')=>({id,libraryId:'library',kind:'movie',title:'Movie',available:true,playback:{itemId:id,startSeconds:0}});
 const resource=(patch:any={})=>({serverId:'server',viewerFence:'fence',id:'collection',kind:'collection',name:'Collection',summary:'',visibility:'private',revision:1,role:'owner',entryCount:0,actions:['pin','update','delete','entries','share'],status:'ready',invalidComponents:[],pinned:false,pinRevision:0,shares:[],...patch});
@@ -186,5 +186,18 @@ test('presets: a save with no answer is unconfirmed and sent again as the same o
  mode='ok';assert(await s.retry());assert.equal(bodies[1].operationId,bodies[0].operationId,'the same operation: made at most once');assert.equal(s.unconfirmed(),undefined);
  mode='refused';assert.equal(await s.mutate({...intent,name:'Taken'}),false);assert.equal(s.unconfirmed(),undefined,'refused: not made, nothing to send again');
  s.dismiss();mode='ok';assert(await s.mutate({...intent,name:'Other'}));assert.notEqual(bodies.at(-1).operationId,bodies[2].operationId,'a new save is a new operation');
+ s.dispose();
+});
+
+test('presets: savedChange sends a change once, sends an unconfirmed one again as itself, and will not replace it with another',async()=>{
+ const bodies:any[]=[];let mode='timeout';const s=setup(async(p,m,b)=>{if(m==='GET')return directory([preset({revision:2})]);bodies.push(b);if(mode==='timeout')throw Object.assign(new Error('The server took too long.'),{code:'timeout'});if(mode==='refused')throw Object.assign(new Error('That name is taken.'),{code:'name_conflict'});return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:b.kind?'new':'p1',revision:3,deleted:false}};});
+ await s.select({view:'views',libraryId:'shows',pivot:'series'});
+ const create={action:'create',kind:'view',name:'Mine',definition:presetDef()} as any;
+ await assert.rejects(()=>savedChange(s,create),/took too long/);
+ await assert.rejects(()=>savedChange(s,{...create,name:'Changed'}),(e:any)=>e.code===UNCONFIRMED,'a different change while the first is unconfirmed');
+ assert.equal(bodies.length,1,'nothing new was sent');
+ mode='ok';await savedChange(s,create);assert.equal(bodies[1].operationId,bodies[0].operationId,'the same operation again');
+ mode='refused';const row=s.getSnapshot().resources[0]!;await assert.rejects(()=>savedChange(s,{action:'update',name:'Taken'},row),/taken/);
+ mode='ok';await savedChange(s,{action:'update',name:'Free'},s.getSnapshot().resources[0]);assert.notEqual(bodies.at(-1).operationId,bodies.at(-2).operationId,'a refused change is set aside; the next is new');
  s.dispose();
 });

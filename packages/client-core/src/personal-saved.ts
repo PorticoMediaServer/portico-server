@@ -328,3 +328,24 @@ export class PersonalSavedService{
  dismiss():void{if(this.state.pending)return;this.command=undefined;this.publish({retryPending:false,mutationError:null});}
  dispose():void{this.disposed=true;this.generation++;for(const c of this.controllers)c.abort();this.controllers.clear();this.command=undefined;this.listeners.clear();}
 }
+
+/** The change could not be made now: one sent before is still unconfirmed and differs from it. */
+export const UNCONFIRMED='unconfirmed';
+/**
+ * One change to a library's saved views, as every client makes it: sent once, or, while an earlier
+ * one is unconfirmed (`unconfirmed`), that same one sent again (the same operation) when this is
+ * the same change, and refused with UNCONFIRMED when it differs (the client offers the earlier one
+ * as it was, or sets it aside with `dismiss`). A change the server refused before is set aside
+ * first: it was not made. Resolves once made; throws the server's answer otherwise.
+ */
+export async function savedChange(service:PersonalSavedService,intent:PersonalSavedIntent,listed?:PersonalResource):Promise<void>{
+ const open=service.unconfirmed();
+ const fail=()=>{const e=service.getSnapshot().mutationError;return Object.assign(new Error(e?.message??'The change was not made.'),{code:e?.code??'request_failed'});};
+ if(open){
+  if(JSON.stringify(open.intent)!==JSON.stringify(intent)||(listed&&open.resourceId!==listed.id))throw Object.assign(new Error('An earlier change is unconfirmed.'),{code:UNCONFIRMED});
+  if(!(await service.retry()))throw fail();
+  return;
+ }
+ service.dismiss();
+ if(!(await service.mutate(intent,false,listed)))throw fail();
+}
