@@ -281,10 +281,10 @@ export type ScrimStop = Readonly<{at: number; alpha: number}>;
  * changes between media types on the same device.
  */
 export const hero = {
-  /** TV: 60 % of the screen. Web and iPad: min(70 % of the viewport height, 720). Phone: a 16:9 backdrop, then the identity block below it. */
+  /** TV: 60 % of the screen. Web and iPad: 54 % of the viewport height, at least 440 and at most 580, with or without a backdrop, so the first row below shows. Phone: a 16:9 backdrop, then the identity block below it. */
   height: {
-    web: {viewportFraction: 0.7, max: 720},
-    tablet: {viewportFraction: 0.7, max: 720},
+    web: {viewportFraction: 0.54, min: 440, max: 580},
+    tablet: {viewportFraction: 0.54, min: 440, max: 580},
     tv: {viewportFraction: 0.6},
     phone: {backdropAspect: 16 / 9, identityBelow: true},
   },

@@ -21,15 +21,22 @@
 .skeletonRow { display: flex; flex-direction: column; gap: 12px; }
 .skeletonCards { display: grid; grid-template-columns: repeat(auto-fill, minmax(clamp(120px, 11vw, 168px), 1fr)); gap: 16px; overflow: hidden; max-height: 280px; }
 .bellPanel { width: min(420px, calc(100vw - 24px)); max-height: 70vh; overflow-y: auto; }
-.brand { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px; margin-bottom: 10px; color: var(--text-primary); overflow: hidden; }
+/* The rail's brand: the wordmark alone while expanded, the P symbol alone while collapsed, both a
+   clear step larger than the rail's labels. The symbol is centred on the rail's icon column. */
+.brand { display: flex; align-items: center; height: 44px; padding: 0 10px; margin-bottom: 10px; color: var(--text-primary); overflow: hidden; }
 .brand img { flex-shrink: 0; }
+.brandMark { display: none; }
+.brandWord { display: flex; }
+.collapsed .brand { padding: 0 0 0 3px; }
+.collapsed .brandMark { display: block; }
+.collapsed .brandWord { display: none; }
 .railItem { display: flex; align-items: center; gap: 12px; height: 42px; padding: 0 11px; border-radius: var(--radius-control); color: var(--text-secondary); font-size: 0.875rem; font-weight: 600; white-space: nowrap; overflow: hidden; transition: background-color var(--motion-quick) var(--ease-out), color var(--motion-quick) var(--ease-out); position: relative; text-decoration: none; }
 .railItem:hover { background: var(--surface-translucent); color: var(--text-primary); }
 .railItem[data-status='active'], .railItem[aria-current='page'] { background: var(--accent-tint); color: var(--text-primary); }
 .railItem[data-status='active']::before, .railItem[aria-current='page']::before { content: ''; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: var(--accent); }
 .railItem svg { flex-shrink: 0; }
 .railLabel { opacity: 1; transition: opacity var(--motion-quick) var(--ease-out); }
-.collapsed .railLabel, .collapsed .brand span { opacity: 0; width: 0; }
+.collapsed .railLabel { opacity: 0; width: 0; }
 .collapsed .railItem { padding: 0 10px; justify-content: flex-start; }
 .railGroup { display: flex; flex-direction: column; gap: 2px; }
 .railHeadingRow { display: flex; align-items: center; justify-content: space-between; gap: 4px; flex-shrink: 0; }
