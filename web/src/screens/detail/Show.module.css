@@ -22,10 +22,6 @@
 .detailsFacts > .detailsRating::before { content: none; }
 .detailsSynopsis { max-width: 72ch; }
 .detailsActions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
-.detailsFiles > summary { cursor: pointer; width: fit-content; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--text-tertiary); border-radius: 4px; }
-.detailsFiles > summary:hover { color: var(--text-primary); }
-.detailsFiles > summary:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
-.detailsFiles[open] > summary { margin-bottom: 10px; }
 /* The opened row is marked (the accent bar); its synopsis is read in full below it. */
 .episodeRow[data-expanded] .episodeRowSynopsis { display: none; }
 .people { display: flex; flex-direction: column; gap: 4px; }
@@ -39,7 +35,7 @@
 .episodeRowStill { position: relative; }
 .episodeRowCopy { display: flex; flex-direction: column; gap: 3px; min-width: 0; text-align: left; color: inherit; border-radius: 4px; }
 .episodeRowCopy:focus-visible { outline: 2px solid var(--line-focus); outline-offset: 2px; }
-.episodeRowTitle { font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); display: flex; gap: 8px; align-items: baseline; min-width: 0; }
+.episodeRowTitle { font-size: 1.0625rem; font-weight: 600; color: var(--text-primary); display: flex; gap: 8px; align-items: baseline; min-width: 0; }
 .episodeRowName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 /* Next up (or Continue): a small chip on the episode's own row. */
 .episodeTag { flex-shrink: 0; align-self: center; padding: 1px 8px; border-radius: 999px; background: var(--accent-tint); color: var(--accent-strong); font-size: 0.6875rem; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }

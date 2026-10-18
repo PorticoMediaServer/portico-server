@@ -9,10 +9,6 @@ import {usePlayerActions} from '../../player/PlayerContext';
 import {Button, KeyValue, Loading, Notice, Text, anchorOf, cx} from '../../ui';
 import {episodeCode, formatAirDate} from './EpisodeCard';
 import {entryOf} from './Detail';
-import {useSession} from '../../app/session';
-import {DeleteVersionDialog} from './DeleteVersion';
-import type {TitleFile} from '@core/detail.ts';
-import {TitleFiles} from './TitleFiles';
 import {PlaybackChoices, type PlaybackChoice} from './PlaybackChoices';
 import {setPendingTrackChoice} from '../../player/pending-choice';
 import s from './Show.module.css';
@@ -23,9 +19,10 @@ import {useI18n} from '../../app/i18n';
  * An episode opened in place (Spec — Title Pages §3, Justin 18 Oct 2026): a small title page under
  * its row in the list, or under its row of cards in the grid, on the page's own background —
  * never a layer or a box of its own. The show and season, the episode's code and title, aired ·
- * runtime · rating, the whole synopsis, pick before play, Play/Resume, Play from start, Mark
- * watched and ⋯ (download, playlist); beside them on wide screens the guest stars, director and
- * writers, and the files behind a disclosure.
+ * runtime · rating, the whole synopsis, pick before play, then the hero's actions for the episode:
+ * Play/Resume, Play from start, My List, Favorite, Watched and ⋯ (download, playlist). Beside them
+ * on wide screens the guest stars, director and writers. No files: they're the movie page's and
+ * the owner's tools, not something to read here.
  */
 export function EpisodeDetails({libraryId, episodeId, preview, playList, showTitle, heading = true}: {
   libraryId: string;
@@ -46,13 +43,14 @@ export function EpisodeDetails({libraryId, episodeId, preview, playList, showTit
   const {snapshot, mutate, retry} = useDetail(target);
   const data = snapshot.data;
   const item = data?.item;
-  const {owner} = useSession();
-  const [deletingVersion, setDeletingVersion] = React.useState<{file: TitleFile; summary: string}>();
   const title = item?.title ?? preview?.title ?? t('title.episodeFallback');
   const actions = data?.actions.filter(a => a.enabled) ?? [];
   const play = actions.find(a => a.playback && a.id !== 'start_over');
   const restart = actions.find(a => a.id === 'start_over');
   const canWatched = actions.some(a => a.id === 'watched');
+  const canList = actions.some(a => a.id === 'watchlist');
+  const canFavorite = actions.some(a => a.id === 'favorite');
+  const personal = data?.personal;
   const resume = !!item && item.progressSeconds > 0 && (play?.playback?.startSeconds ?? 0) > 0;
   const credits = data?.metadata.credits ?? [];
   const byRole = (test: (department: string, role: string) => boolean) => credits.filter(c => test(c.department.toLowerCase(), c.role.toLowerCase()));
@@ -109,7 +107,7 @@ export function EpisodeDetails({libraryId, episodeId, preview, playList, showTit
   // Under its list row the row itself says when it aired and how long it runs; only the rating is added.
   const facts = heading ? [airDate ? t('title.airedOn', {date: formatAirDate(i18n, airDate)}) : undefined, duration ? formatDuration(duration) : undefined].filter(Boolean) : [];
   const rating = data?.facts?.contentRating;
-  const side = rows.length || castTotal > 12 || !!data?.files?.length;
+  const side = rows.length > 0 || castTotal > 12;
   return (
     <div className={cx(s.details, side && s.detailsWide)} aria-label={[code, title].filter(Boolean).join(', ')} role="region">
       <div className={s.detailsMain}>
@@ -129,7 +127,9 @@ export function EpisodeDetails({libraryId, episodeId, preview, playList, showTit
           <div className={s.detailsActions}>
           {play?.playback ? <Button variant="primary" icon="play" label={resume ? t('title.resumeRemaining', {remaining: formatDuration(item.duration - item.progressSeconds)}) : t('action.play')} onClick={() => start(play.playback!.startSeconds ?? 0)} /> : null}
           {restart?.playback && resume ? <Button variant="secondary" icon="restart" label={t('title.playFromStart')} onClick={() => start(0)} /> : null}
-          {canWatched ? <Button variant="secondary" icon={data?.personal.watched ? 'watched' : 'check'} label={t(data?.personal.watched ? 'title.markUnwatched' : 'title.markWatched')} selected={data?.personal.watched} onClick={() => mutate({action: 'watched', value: !data?.personal.watched})} /> : null}
+          {canList ? <Button variant="secondary" icon={personal?.watchlisted ? 'bookmarkFilled' : 'bookmark'} label={t(personal?.watchlisted ? 'title.inWatchlist' : 'title.watchlist')} selected={personal?.watchlisted} onClick={() => mutate({action: 'watchlist', value: !personal?.watchlisted})} /> : null}
+          {canFavorite ? <Button variant="secondary" icon={personal?.favorite ? 'heartFilled' : 'heart'} aria-label={t(personal?.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} title={t(personal?.favorite ? 'entry.removeFromFavorites' : 'entry.addToFavorites')} selected={personal?.favorite} onClick={() => mutate({action: 'favorite', value: !personal?.favorite})} /> : null}
+          {canWatched ? <Button variant="secondary" icon={personal?.watched ? 'watched' : 'check'} aria-label={t(personal?.watched ? 'title.markUnwatched' : 'title.markWatched')} title={t(personal?.watched ? 'title.markUnwatched' : 'title.markWatched')} selected={personal?.watched} onClick={() => mutate({action: 'watched', value: !personal?.watched})} /> : null}
           <Button variant="secondary" icon="more" aria-label={t('title.moreActions')} title={t('title.moreActions')} onClick={(e: React.MouseEvent<HTMLElement>) => player.more(preview ?? entryOf(item), anchorOf(e.currentTarget))} />
           </div>
         ) : null}
@@ -140,15 +140,8 @@ export function EpisodeDetails({libraryId, episodeId, preview, playList, showTit
         <div className={s.detailsSide}>
           {rows.length ? <KeyValue rows={rows} /> : null}
           {castTotal > 12 && !(allCast && castPages.done) ? <div><Button variant="link" label={t(allCast ? 'title.moreCast' : 'title.allCast')} onClick={() => { setAllCast(true); castPages.more(); }} /></div> : null}
-          {data?.files?.length ? (
-            <details className={s.detailsFiles}>
-              <summary>{t('title.files')}</summary>
-              <TitleFiles heading={false} files={data.files} onDelete={owner && item ? (file, summary) => setDeletingVersion({file, summary}) : undefined} />
-            </details>
-          ) : null}
         </div>
       ) : null}
-      {deletingVersion && item ? <DeleteVersionDialog itemId={item.id} title={item.title} file={deletingVersion.file} summary={deletingVersion.summary} onClose={() => setDeletingVersion(undefined)} onDeleted={() => { setDeletingVersion(undefined); void retry(); }} /> : null}
     </div>
   );
 }
