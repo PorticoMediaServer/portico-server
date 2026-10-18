@@ -1,6 +1,7 @@
 #!/bin/sh
 # Rejects built executables and large files in Git (A77). Media fixtures and
-# vendored third-party archives are the only large files allowed.
+# vendored third-party archives, generated API contracts and the licensed CJK
+# subtitle font are the only large files allowed.
 #   scripts/check-repo-binaries.sh            # every tracked file
 #   scripts/check-repo-binaries.sh --staged   # files staged for commit (pre-commit hook)
 set -eu
@@ -16,7 +17,10 @@ status=0
 $list | xargs -0 -I{} sh -c '
 	f=$1; limit=$2
 	[ -f "$f" ] || exit 0
-	case "$f" in fixtures/*|third_party/*) allowed=1 ;; *) allowed=0 ;; esac
+	case "$f" in
+	fixtures/*|third_party/*|packages/contracts/src/schemas.ts|server/api/portico.openapi.json|server/internal/mediaexec/fonts/NotoSansCJKjp-Regular.otf) allowed=1 ;;
+	*) allowed=0 ;;
+	esac
 	size=$(wc -c <"$f" | tr -d " ")
 	magic=$(head -c 4 "$f" | od -An -tx1 | tr -d " \n")
 	case "$magic" in
