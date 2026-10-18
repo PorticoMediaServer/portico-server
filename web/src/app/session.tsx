@@ -492,7 +492,9 @@ export function SessionProvider({children}: {children: React.ReactNode}) {
         await commit.commit(candidate, {
           current: () => {
             const current = viewer.getSnapshot();
-            return current.session ? selectedViewerRecord(current.serverUrl!, current.session) : null;
+            // Read as stored: a resumed viewer holds the saved record, whose access token may have expired
+            // (it is being renewed). Read strictly, it threw here and the commit retired the renewed session.
+            return current.session ? selectedViewerRecord(current.serverUrl!, current.session, true) : null;
           },
           fence: () => {
             transferred = true;
