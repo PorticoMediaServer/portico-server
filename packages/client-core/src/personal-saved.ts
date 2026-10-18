@@ -28,7 +28,7 @@ export type PersonalSavedIntent=Readonly<
  {action:'share';actor:SavedActor;role:'viewer'|'editor'}|{action:'unshare';actor:SavedActor}|
  {action:'clear-history'|'reset-viewing-activity'}>;
 export type PersonalSavedError=Readonly<{code:string;message:string;conflict:boolean}>;
-export type PersonalSavedSnapshot=Readonly<{route:SavedRoute|null;loading:boolean;error:PersonalSavedError|null;mutationError:PersonalSavedError|null;pending:boolean;retryPending:boolean;resources:readonly PersonalResource[];resource:PersonalResource|null;entries:readonly PersonalResourceEntry[];browse:BrowseResult|null;revision:number;viewerFence:string;cursor:string|null;history:readonly (string|null)[];nextCursor:string;result:Readonly<{resourceId?:string;deleted:boolean;entries?:EntryOutcomes;/** A removal can be undone until `until` with this token. */undo?:Readonly<{token:string;until:string}>}>|null;candidates:readonly Readonly<SavedActor&{id:string;displayName:string}>[];candidateCursor:string;libraries:readonly Readonly<{id:string;name:string;kind:string}>[]}>;
+export type PersonalSavedSnapshot=Readonly<{route:SavedRoute|null;loading:boolean;error:PersonalSavedError|null;mutationError:PersonalSavedError|null;pending:boolean;retryPending:boolean;resources:readonly PersonalResource[];resource:PersonalResource|null;entries:readonly PersonalResourceEntry[];browse:BrowseResult|null;revision:number;viewerFence:string;cursor:string|null;history:readonly (string|null)[];nextCursor:string;result:Readonly<{resourceId?:string;deleted:boolean;entries?:EntryOutcomes;/** A removal can be undone until `until` with this token. */undo?:Readonly<{token:string;until:string}>}>|null;candidates:readonly Readonly<SavedActor&{id:string;displayName:string}>[];candidateCursor:string;libraries:readonly Readonly<{id:string;name:string;kind:string}>[];/** The page asked for could not be read from where it was (the list changed since its cursor), so the list was read again from its first page. */restarted:boolean}>;
 const obj=(v:unknown):v is Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v);
 const str=(v:unknown,max=4096):v is string=>typeof v==='string'&&v.length<=max&&!/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(v);
 const id=(v:unknown):v is string=>str(v,256)&&v.length>0&&!/[\r\n]/.test(v);
@@ -154,14 +154,16 @@ export function savedViewBrowse(r:Pick<PersonalResource,'kind'|'status'|'definit
  const d=r.kind==='view'&&r.status==='ready'?r.definition:undefined;
  return d?{libraryId:d.libraryId,pivot:d.pivot,...(d.query?{query:d.query}:{}),sort:d.sort}:undefined;
 }
+/** A page's cursor the server no longer reads: the list changed since it was given, or it was never one. */
+const CONTINUATION=new Set(['invalid_cursor','stale_continuation']);
 /** Answers that say a change was refused, and so not made. */
 const REFUSED=new Set(['invalid_request','invalid_query','invalid_saved','not_permitted','not_found','unauthorized','forbidden','scope_changed','name_conflict','resource_conflict','revision_mismatch','personal_state_conflict','stale_continuation','operation_expired']);
 export class PersonalSavedService{
- private state:PersonalSavedSnapshot;private listeners=new Set<()=>void>();private generation=0;private readTicket=0;private candidateTicket=0;private disposed=false;private controllers=new Set<AbortController>();private seen=0;
- private command?:{intent:PersonalSavedIntent;path:string;method:string;body:Record<string,unknown>;fence:string;rebased?:boolean;resourceId?:string;listed?:boolean};
+ private state:PersonalSavedSnapshot;/** The last page asked for in view (what Try again asks for again). */private attempt?:{cursor:string|null;history:readonly (string|null)[]};private listeners=new Set<()=>void>();private generation=0;private readTicket=0;private candidateTicket=0;private disposed=false;private controllers=new Set<AbortController>();private seen=0;
+ private command?:{intent:PersonalSavedIntent;path:string;method:string;body:Record<string,unknown>;fence:string;rebased?:boolean;resourceId?:string;resourceName?:string;listed?:boolean};
  private api:SavedApi;readonly scope:SavedScope;private requestId:()=>Promise<string>;
  constructor(api:SavedApi,scope:SavedScope,requestId:()=>Promise<string>){this.api=api;this.scope=Object.freeze({...scope});this.requestId=requestId;if(!id(scope.serverId)||!str(scope.viewerId,1024)||!scope.viewerId)throw new Error('A complete viewer scope is required.');this.state=this.empty();}
- private empty():PersonalSavedSnapshot{return freeze({route:null,loading:false,error:null,mutationError:null,pending:false,retryPending:false,resources:[],resource:null,entries:[],browse:null,revision:0,viewerFence:'',cursor:null,history:[],nextCursor:'',result:null,candidates:[],candidateCursor:'',libraries:[]});}
+ private empty():PersonalSavedSnapshot{return freeze({route:null,loading:false,error:null,mutationError:null,pending:false,retryPending:false,resources:[],resource:null,entries:[],browse:null,revision:0,viewerFence:'',cursor:null,history:[],nextCursor:'',result:null,candidates:[],candidateCursor:'',libraries:[],restarted:false});}
  getSnapshot=()=>this.state;
  subscribe=(fn:()=>void)=>{this.listeners.add(fn);return()=>{this.listeners.delete(fn);};};
  private publish(patch:Partial<PersonalSavedSnapshot>){if(this.disposed)return;this.state=freeze({...this.state,...patch});for(const fn of this.listeners)fn();}
@@ -187,25 +189,44 @@ export class PersonalSavedService{
  revalidate=async(context?:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<void>=>{
   if(this.disposed||!this.state.route||this.state.loading||this.state.pending||this.command||this.state.error||!this.state.viewerFence)return;
   // Paged past the first page (or shown as one long first page since): every page on screen is read again, not only the last one.
-  if(this.state.history.length||this.seen>PAGE){const g=this.generation;try{if(await this.readThrough(context??{}))return;}catch(e){if(!this.alive(g)||context?.signal?.aborted)return;if(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(info(e).code))return this.load(null,[]);throw e;}}
+  // A library's presets are read a page at a time instead (`paged`): the page in view is read again, as one page.
+  if(!this.paged()&&(this.state.history.length||this.seen>PAGE)){const g=this.generation;try{if(await this.readThrough(context??{}))return;}catch(e){if(!this.alive(g)||context?.signal?.aborted)return;if(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(info(e).code))return this.load(null,[]);throw e;}}
   await this.load(this.state.cursor,this.state.history,context??{});
  };
- /** Try a failed read of the page again. */
- retryRead=()=>this.load(this.state.cursor,this.state.history);
- next=()=>this.state.nextCursor&&this.state.history.length<64?this.load(this.state.nextCursor,[...this.state.history,this.state.cursor]):Promise.resolve();
+ /** Try a failed read again: the page that failed (the next one, after a failed More) after a failure on the way, the first page when its cursor no longer reads. */
+ retryRead=()=>{const a=this.attempt??{cursor:this.state.cursor,history:this.state.history};return this.state.error&&CONTINUATION.has(this.state.error.code)?this.load(null,[]):this.load(a.cursor,a.history);};
+ /**
+  * The next page. A list kept as its own pages (`paged`) always goes on while there is one: it keeps
+  * the way back through the last 64 pages, and past that the first page (`first`) stays the way
+  * back. Any other list stops after 64 pages, as it always has.
+  */
+ next=()=>{
+  if(!this.state.nextCursor)return Promise.resolve();
+  if(!this.paged())return this.state.history.length<64?this.load(this.state.nextCursor,[...this.state.history,this.state.cursor]):Promise.resolve();
+  if(this.state.loading)return Promise.resolve();
+  const history=[...this.state.history,this.state.cursor];
+  return this.load(this.state.nextCursor,history.slice(Math.max(0,history.length-64)));
+ };
+ /** Back to the first page (a list paged further than the way back it keeps). */
+ first=()=>this.load(null,[]);
+ /** A library's presets: read and shown a page at a time, however far the viewer pages, never accumulated into one long list. */
+ private paged(){const r=this.state.route;return !!r&&r.view==='views'&&'libraryId' in r&&!!r.libraryId;}
  previous=()=>this.state.history.length?this.load(this.state.history.at(-1)!,this.state.history.slice(0,-1)):Promise.resolve();
- private async load(cursor:string|null,history:readonly (string|null)[],quiet?:{signal?:AbortSignal;settle?:()=>Promise<void>}):Promise<void>{
-  const route=this.state.route,g=this.generation,ticket=++this.readTicket;if(!route||this.disposed)return;if(!quiet)this.publish({loading:true,error:null});
+ private async load(cursor:string|null,history:readonly (string|null)[],quiet?:{signal?:AbortSignal;settle?:()=>Promise<void>},restarted=false):Promise<void>{
+  const route=this.state.route,g=this.generation,ticket=++this.readTicket;if(!route||this.disposed)return;if(!quiet){this.attempt={cursor,history};this.publish({loading:true,error:null});}
   try{
    const patch=await this.page(route,cursor,history);if(!this.alive(g)||ticket!==this.readTicket)return;
    if(this.state.viewerFence&&this.state.viewerFence!==patch.viewerFence)throw Object.assign(new Error('Your access changed. Reopen Saved to continue.'),{code:'scope_changed'});
    if(quiet){await quiet.settle?.();if(!this.alive(g)||ticket!==this.readTicket||quiet.signal?.aborted||this.state.pending||this.command)return;}
    // What the viewer has on screen: the first page, and every page appended after it.
    const count=shownOf(route,patch).length;this.seen=cursor===null?count:cursor===this.state.nextCursor&&history.length>this.state.history.length?this.seen+count:this.seen;
-   this.publish({...patch,loading:false});
+   this.publish({...patch,loading:false,restarted});
   }catch(e){if(!this.alive(g)||ticket!==this.readTicket)return;const error=info(e);
+   // A cursor the server no longer reads (the list changed since it was given, or it expired) is never asked for again:
+   // the list is read once more from its first page, which has no cursor to go stale.
+   if(cursor!==null&&CONTINUATION.has(error.code)&&!quiet?.signal?.aborted)return this.load(null,[],undefined,true);
    // A quiet read that failed leaves the page as it was; one the server answered with "gone" or "not yours" becomes the page's own state through an ordinary load.
-   if(quiet){if(quiet.signal?.aborted)return;if(['unauthorized','forbidden','not_found','scope_changed','invalid_saved','invalid_cursor','stale_continuation'].includes(error.code))return this.load(null,[]);throw e;}this.publish({loading:false,error,...(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(error.code)?{resources:[],resource:null,entries:[],browse:null,viewerFence:''}:{})});}
+   if(quiet){if(quiet.signal?.aborted)return;if(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(error.code))return this.load(null,[]);throw e;}this.publish({loading:false,error,...(['unauthorized','forbidden','not_found','scope_changed','invalid_saved'].includes(error.code)?{resources:[],resource:null,entries:[],browse:null,viewerFence:''}:{})});}
  }
  /**
   * A list paged past its first page, read again quietly from the first page through everything on
@@ -289,7 +310,7 @@ export class PersonalSavedService{
    }
   }
   this.publish({pending:true,mutationError:null,result:null});
-  try{const operationId=await this.bounded(()=>this.requestId());if(!this.alive(g))return false;if(!uuid.test(operationId))throw new Error('A UUIDv4 operation ID is required.');body.operationId=operationId;this.command={intent:freeze({...intent}),path,method,body:freeze(body),fence:this.state.viewerFence,...(rebased?{rebased}:{}),...(r?{resourceId:r.id}:{}),...(listed?{listed:true}:{})};return await this.send();}
+  try{const operationId=await this.bounded(()=>this.requestId());if(!this.alive(g))return false;if(!uuid.test(operationId))throw new Error('A UUIDv4 operation ID is required.');body.operationId=operationId;this.command={intent:freeze({...intent}),path,method,body:freeze(body),fence:this.state.viewerFence,...(rebased?{rebased}:{}),...(r?{resourceId:r.id,resourceName:r.name}:{}),...(listed?{listed:true}:{})};return await this.send();}
   catch(e){if(this.alive(g))this.publish({pending:false,mutationError:info(e),retryPending:!!this.command});return false;}
  }
  private async send():Promise<boolean>{const c=this.command,g=this.generation;if(!c||this.disposed)return false;this.publish({pending:true,mutationError:null});
@@ -301,7 +322,9 @@ export class PersonalSavedService{
    this.command=undefined;this.publish({pending:false,retryPending:false,mutationError:null,result:{...(entries?{entries}:{}),...undo,...(typeof receipt.resourceId==='string'?{resourceId:receipt.resourceId}:{}),deleted},candidates:[],candidateCursor:''});
    // A list paged further than its first page stays where the viewer is (a move, a removal deep in a collection).
    // A listed resource deleted from its row leaves the list read again without it.
-   if((!deleted||c.listed)&&!((this.state.history.length||this.seen>PAGE)&&await this.readThrough({}).catch(()=>false)))await this.refresh();return this.alive(g);
+   // A library's presets read the page in view again (from the first page when the change moved the list on from its cursor).
+   if(this.paged()&&(!deleted||c.listed))await this.load(this.state.cursor,this.state.history);
+   else if((!deleted||c.listed)&&!((this.state.history.length||this.seen>PAGE)&&await this.readThrough({}).catch(()=>false)))await this.refresh();return this.alive(g);
   }catch(e){if(!this.alive(g))return false;const error=info(e);this.publish({pending:false,retryPending:true,mutationError:error});if(error.conflict)await this.refresh();
    // A move made while the collection changed elsewhere is made again on what is there now, once:
    // the entries it names still say what the viewer meant. The viewer sees a conflict only if that fails too.
@@ -314,10 +337,10 @@ export class PersonalSavedService{
   * operation, so it is made at most once) or set aside (`dismiss`), a client offers it as it was
   * sent, not a new one in its place. A change the server refused is not this: it was not made.
   */
- unconfirmed():Readonly<{intent:PersonalSavedIntent;resourceId?:string}>|undefined{
+ unconfirmed():Readonly<{intent:PersonalSavedIntent;resourceId?:string;/** The resource's name as it was when the change was sent (a delete names what it removes). */resourceName?:string}>|undefined{
   const c=this.command,e=this.state.mutationError;
   if(!c||this.state.pending||!this.state.retryPending||!e||e.conflict||REFUSED.has(e.code))return undefined;
-  return freeze({intent:c.intent,...(c.resourceId?{resourceId:c.resourceId}:{})});
+  return freeze({intent:c.intent,...(c.resourceId?{resourceId:c.resourceId}:{}),...(c.resourceName!==undefined?{resourceName:c.resourceName}:{})});
  }
  /** Network retry is byte-identical. Rebase is a separate, explicit reviewed intent. */
  retry=()=>this.state.pending?Promise.resolve(false):this.send();
@@ -340,12 +363,22 @@ export const UNCONFIRMED='unconfirmed';
  */
 export async function savedChange(service:PersonalSavedService,intent:PersonalSavedIntent,listed?:PersonalResource):Promise<void>{
  const open=service.unconfirmed();
- const fail=()=>{const e=service.getSnapshot().mutationError;return Object.assign(new Error(e?.message??'The change was not made.'),{code:e?.code??'request_failed'});};
  if(open){
   if(JSON.stringify(open.intent)!==JSON.stringify(intent)||(listed&&open.resourceId!==listed.id))throw Object.assign(new Error('An earlier change is unconfirmed.'),{code:UNCONFIRMED});
-  if(!(await service.retry()))throw fail();
+  if(!(await service.retry()))throw failure(service);
   return;
  }
  service.dismiss();
- if(!(await service.mutate(intent,false,listed)))throw fail();
+ if(!(await service.mutate(intent,false,listed)))throw failure(service);
 }
+/**
+ * The unconfirmed change (`unconfirmed`) sent again exactly as it was sent: the same operation, the
+ * same request, whatever the screen shows now (another filter, another page, its row gone or
+ * renamed elsewhere). Never rebuilt from the screen. Resolves once made; throws the server's answer
+ * otherwise, or when there is nothing unconfirmed to send.
+ */
+export async function retryUnconfirmed(service:PersonalSavedService):Promise<void>{
+ if(!service.unconfirmed())throw Object.assign(new Error('There is no unconfirmed change to send again.'),{code:'request_failed'});
+ if(!(await service.retry()))throw failure(service);
+}
+function failure(service:PersonalSavedService):Error{const e=service.getSnapshot().mutationError;return Object.assign(new Error(e?.message??'The change was not made.'),{code:e?.code??'request_failed'});}

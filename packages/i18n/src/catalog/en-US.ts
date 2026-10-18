@@ -1930,6 +1930,15 @@ export const enUS = {
   'lib.savedViewsPrevious': 'Previous saved views',
   // A change sent without an answer: it may have been made, so it is offered again as it was.
   'lib.savedViewUnconfirmed': 'That change wasn’t confirmed. Try it again as it was, or close to set it aside.',
+  // The unconfirmed change itself, wherever the list is now: offered again exactly as it was sent, or set aside.
+  'lib.savedViewHeldCreate': 'Saving {name} wasn’t confirmed. It may already have happened.',
+  'lib.savedViewHeldRename': 'Renaming {name} to {to} wasn’t confirmed. It may already have happened.',
+  'lib.savedViewHeldDelete': 'Deleting {name} wasn’t confirmed. It may already have happened.',
+  'lib.savedViewHeld': 'A change wasn’t confirmed',
+  'lib.savedViewSetAside': 'Set aside',
+  // A page of saved views read again from the top: the list changed since the page before was read.
+  'lib.savedViewsRestarted': 'Saved views changed, so the list starts again from the top.',
+  'lib.savedViewsFirst': 'First saved views',
   'lib.save': 'Save',
   'lib.cancel': 'Cancel',
   'lib.done': 'Done',

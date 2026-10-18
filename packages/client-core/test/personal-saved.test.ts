@@ -1,7 +1,7 @@
 import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PersonalSavedService,makeSavedDefinition,savedTitlePrefix,savedCategoryId,savedViewBrowse,savedChange,UNCONFIRMED} from '../src/personal-saved.ts';
+import {PersonalSavedService,makeSavedDefinition,savedTitlePrefix,savedCategoryId,savedViewBrowse,savedChange,retryUnconfirmed,UNCONFIRMED} from '../src/personal-saved.ts';
 const scope={serverId:'server',viewerId:'["local","account","profile"]'};
 const media=(id='item')=>({id,libraryId:'library',kind:'movie',title:'Movie',available:true,playback:{itemId:id,startSeconds:0}});
 const resource=(patch:any={})=>({serverId:'server',viewerFence:'fence',id:'collection',kind:'collection',name:'Collection',summary:'',visibility:'private',revision:1,role:'owner',entryCount:0,actions:['pin','update','delete','entries','share'],status:'ready',invalidComponents:[],pinned:false,pinRevision:0,shares:[],...patch});
@@ -199,5 +199,134 @@ test('presets: savedChange sends a change once, sends an unconfirmed one again a
  mode='ok';await savedChange(s,create);assert.equal(bodies[1].operationId,bodies[0].operationId,'the same operation again');
  mode='refused';const row=s.getSnapshot().resources[0]!;await assert.rejects(()=>savedChange(s,{action:'update',name:'Taken'},row),/taken/);
  mode='ok';await savedChange(s,{action:'update',name:'Free'},s.getSnapshot().resources[0]);assert.notEqual(bodies.at(-1).operationId,bodies.at(-2).operationId,'a refused change is set aside; the next is new');
+ s.dispose();
+});
+
+/**
+ * A library's presets as the scoped endpoint serves them: `count` presets by name, 40 a page, each
+ * page's cursor bound to the list's revision (`rev:offset`); a cursor from an earlier revision is
+ * `stale_continuation`, as the server answers. `fail` makes the next read of that cursor fail once.
+ */
+function presetServer(count:number){
+ const s={rev:1,count,reads:[] as (string|null)[],fail:new Map<string,string>(),writes:[] as any[],deleted:new Set<string>(),answer:'ok' as 'ok'|'timeout'};
+ const rows=()=>Array.from({length:s.count},(_,i)=>preset({id:`p${i}`,name:`View ${String(i).padStart(4,'0')}`})).filter(r=>!s.deleted.has(r.id));
+ const request=async(path:string,method='GET',body?:any)=>{
+  if(method!=='GET'){
+   s.writes.push({method,path,body});
+   if(method==='DELETE')s.deleted.add(decodeURIComponent(path.split('/').at(-1)!));
+   s.rev++;
+   if(s.answer==='timeout')throw Object.assign(new Error('The server took too long.'),{code:'timeout'});
+   return {serverId:'server',viewerFence:'fence',receipt:{operationId:body.operationId,resourceId:method==='POST'?'new':decodeURIComponent(path.split('/').at(-1)!),revision:s.rev,deleted:method==='DELETE'}};
+  }
+  const cursor=new URL('http://x'+path).searchParams.get('cursor');s.reads.push(cursor);
+  const failing=cursor!==null?s.fail.get(cursor):undefined;if(failing){s.fail.delete(cursor!);throw Object.assign(new Error('failed'),{code:failing});}
+  let offset=0;if(cursor){const [rev,at]=cursor.split(':').map(Number);if(rev!==s.rev)throw Object.assign(new Error('The list changed.'),{code:'stale_continuation'});offset=at!;}
+  const all=rows(),page=all.slice(offset,offset+40);
+  return {serverId:'server',viewerFence:'fence',revision:s.rev,resources:page,nextCursor:offset+40<all.length?`${s.rev}:${offset+40}`:''};
+ };
+ return Object.assign(s,{request});
+}
+const names=(svc:PersonalSavedService)=>svc.getSnapshot().resources.map(r=>r.id);
+
+test('presets: More after another device changed the list reads it again from the first page, never the expired cursor again; a network failure of a page still retries that page',async()=>{
+ const server=presetServer(130);const s=setup(server.request);
+ await s.select({view:'views',libraryId:'shows',pivot:'series'});
+ await s.next();assert.equal(names(s)[0],'p40');
+ // Another device saves a view: every cursor given before is stale.
+ server.rev++;
+ await s.next();
+ assert.deepEqual(server.reads.slice(-2),['1:80',null],'the stale cursor once, then the first page');
+ assert.equal(s.getSnapshot().error,null,'no stuck error');
+ assert.deepEqual([names(s)[0],s.getSnapshot().cursor,s.getSnapshot().history.length,s.getSnapshot().restarted],['p0',null,0,true],'back at the first page, and the list says why');
+ await s.next();assert.equal(s.getSnapshot().restarted,false,'until the next page');
+ // A page that fails on the way (not a stale cursor): Try again asks for that same page.
+ server.fail.set('2:80','network');
+ await s.next();
+ assert.equal(s.getSnapshot().error?.code,'network');
+ await s.retryRead();
+ assert.deepEqual(server.reads.slice(-2),['2:80','2:80'],'the same page again');
+ assert.equal(names(s)[0],'p80');
+ // An expired cursor that is somehow the error: Try again reads the first page, not the same cursor.
+ server.fail.set('2:40','invalid_cursor');
+ await s.previous();
+ assert.equal(server.reads.at(-1),null,'recovered at once: invalid cursors are never retried');
+ s.dispose();
+});
+
+test('presets: the picker\'s quiet re-read of a later page whose cursor went stale restarts from the first page; reopening after a failure is no dead end',async()=>{
+ const server=presetServer(130);const s=setup(server.request);
+ await s.select({view:'views',libraryId:'shows',pivot:'series'});
+ await s.next();
+ server.rev++;
+ await s.revalidate();
+ assert.deepEqual([server.reads.at(-1),names(s)[0],s.getSnapshot().restarted],[null,'p0',true]);
+ s.dispose();
+});
+
+test('presets page a page at a time however far: More always reads the next page, the way back is bounded, the first page stays reachable, and a quiet re-read never grows the page',async()=>{
+ const server=presetServer(70*40);const s=setup(server.request);
+ await s.select({view:'views',libraryId:'shows',pivot:'series'});
+ for(let page=2;page<=70;page++){
+  const before=server.reads.length;await s.next();
+  assert.equal(server.reads.length,before+1,`page ${page} was read (More is never a no-op while there is more)`);
+  assert.equal(names(s).length,40,'one page shown');
+  assert.equal(names(s)[0],`p${(page-1)*40}`);
+ }
+ assert.equal(s.getSnapshot().nextCursor,'','the last page');
+ assert.equal(s.getSnapshot().history.length,64,'the way back is bounded');
+ await s.previous();assert.equal(names(s)[0],`p${68*40}`,'Previous still steps back');
+ const before=server.reads.length;await s.revalidate();
+ assert.equal(server.reads.length,before+1,'a quiet re-read reads the page in view, once');
+ assert.equal(names(s).length,40,'and shows it as one page, never an accumulated list');
+ await s.first();assert.deepEqual([names(s)[0],s.getSnapshot().history.length],['p0',0],'the first page, from anywhere');
+ s.dispose();
+});
+
+test('the Saved directory keeps its own paging: it still stops after 64 pages and re-reads every page on screen',async()=>{
+ const server=presetServer(70*40);const s=setup(server.request);
+ await s.select({view:'views'});
+ for(let page=2;page<=66;page++)await s.next();
+ assert.equal(s.getSnapshot().history.length,64);
+ const before=server.reads.length;await s.next();
+ assert.equal(server.reads.length,before,'unchanged generic bound');
+ s.dispose();
+});
+
+test('presets: a delete with no answer is held as itself, named, and sent again exactly once the list no longer shows it; until then no other change is sent',async()=>{
+ const server=presetServer(90);const s=setup(server.request);
+ await s.select({view:'views',libraryId:'shows',pivot:'series'});
+ await s.next();await s.next();
+ const row=s.getSnapshot().resources.find(r=>r.id==='p85')!;
+ server.answer='timeout';
+ await assert.rejects(()=>savedChange(s,{action:'delete'},row),/took too long/);
+ assert.deepEqual([s.unconfirmed()?.intent.action,s.unconfirmed()?.resourceId,s.unconfirmed()?.resourceName],['delete','p85','View 0085'],'held as itself, with the name it removes');
+ // The delete was made: the list read again no longer has the row (its page is gone).
+ await s.first();
+ assert.equal(names(s).includes('p85'),false);
+ await assert.rejects(()=>savedChange(s,{action:'create',kind:'view',name:'New',definition:presetDef() as any}),(e:any)=>e.code===UNCONFIRMED);
+ assert.equal(server.writes.length,1,'nothing else sent while it is unconfirmed');
+ server.answer='ok';
+ await retryUnconfirmed(s);
+ assert.equal(server.writes.length,2);
+ assert.deepEqual([server.writes[1].method,server.writes[1].path,server.writes[1].body],[server.writes[0].method,server.writes[0].path,server.writes[0].body],'the very same request: one operation, at its revision');
+ assert.equal(s.unconfirmed(),undefined);
+ await assert.rejects(()=>retryUnconfirmed(s),/no unconfirmed change/);
+ s.dispose();
+});
+
+test('presets: a held save is sent again as the definition it was sent with, whatever the toolbar shows now; a different save waits until it is resolved or set aside',async()=>{
+ const server=presetServer(0);const s=setup(server.request);
+ await s.select({view:'views',libraryId:'shows',pivot:'series'});
+ server.answer='timeout';
+ const sent={action:'create',kind:'view',name:'Nineties',definition:presetDef()} as any;
+ await assert.rejects(()=>savedChange(s,sent),/took too long/);
+ // The viewer changed the filters and the sort meanwhile: the same name over the new definition is another change.
+ const now={...sent,definition:presetDef({query:null,sort:[{field:'year',direction:'desc'}]})};
+ await assert.rejects(()=>savedChange(s,now),(e:any)=>e.code===UNCONFIRMED);
+ server.answer='ok';
+ await retryUnconfirmed(s);
+ assert.equal(server.writes.length,2);
+ assert.deepEqual(server.writes[1].body,server.writes[0].body,'the held intent itself: its definition, presentation and operation');
+ assert.deepEqual(server.writes[1].body.definition.query,nested);
  s.dispose();
 });

@@ -11,9 +11,9 @@ import {EngineResults} from './EngineResults';
 import {GenreCard, LibraryPlaylists} from './LibraryViews';
 import {categoryDestination, libraryTab, libraryTabForPivot, libraryTabSort, libraryTabs, type LibraryTab} from '@core/presentation/index.ts';
 import {SaveViewDialog} from './SaveView';
+import {presetDestination} from './preset-destination';
 import {ManagePresetsDialog, PresetsMenu, changeError, useLibraryPresets} from './Presets';
-import {filterValuesField, presetApplication} from '@core/presentation/index.ts';
-import {savedViewBrowse, type PersonalResource} from '@core/personal-saved.ts';
+import type {PersonalResource} from '@core/personal-saved.ts';
 import b from './BrowseFilters.module.css';
 import {useNavigate, useParams, useSearch} from '@tanstack/react-router';
 import {viewSequence} from '../../app/container-play';
@@ -163,16 +163,14 @@ export function LibraryScreen() {
   const presets = useLibraryPresets(libraryId, dataPivot, presetsOn);
   const [managing, setManaging] = useState(false);
   const applyPreset = (row: PersonalResource) => {
-    const stored = savedViewBrowse(row);
-    if (!stored) return;
-    const offered = new Set((capabilities?.fields ?? []).flatMap(f => [f.id, filterValuesField(f).field]));
-    const how = presetApplication(kind, stored, offered);
-    if (how.kind === 'controls') {
+    const to = presetDestination(kind, row, capabilities);
+    if (!to) return;
+    if (to.to === 'library') {
       filtersFromMemory.current = false;
-      void navigate({to: '/library/$libraryId', params: {libraryId}, search: {view: how.tab as Tab, sort: how.sort.field, direction: how.sort.direction, ...(how.predicates.length ? {filters: encodePredicates(how.predicates as readonly Predicate[])} : {})}});
+      void navigate({to: '/library/$libraryId', params: {libraryId}, search: {...to.search, view: to.search.view as Tab}});
       return;
     }
-    void navigate({to: '/saved/$kind/$resourceId', params: {kind: 'view', resourceId: row.id}, search: {title: row.name}});
+    void navigate({to: '/saved/$kind/$resourceId', params: {kind: 'view', resourceId: to.resourceId}, search: {title: to.title}});
   };
   const browseTotal = useSyncExternalStore(browse.collection?.subscribe ?? noSubscribe, () => browse.collection?.getSnapshot().total);
   const browseTotalIsLowerBound = useSyncExternalStore(browse.collection?.subscribe ?? noSubscribe, () => browse.collection?.getSnapshot().totalIsLowerBound ?? false);
@@ -286,7 +284,7 @@ export function LibraryScreen() {
         <Inset>
           <BrowseBar presets={presetsOn ? <PresetsMenu presets={presets} onApply={applyPreset} onManage={() => setManaging(true)} /> : undefined} libraryId={libraryId} libraryKind={library?.kind ?? ''} pivot={pivot} capabilities={capabilities} predicates={chosenPredicates} onChange={next => { filtersFromMemory.current = false; memory.rememberTab(libraryId, tab); memory.rememberFilters(libraryId, tab, next); setSearch({filters: encodePredicates(next)}); }} sort={sort} onSort={chooseSort} defaultSort={tabSort} total={browseTotal} totalIsLowerBound={browseTotalIsLowerBound} onSave={active.fixedFilter || groups ? undefined : () => setSavingView(true)} />
           {/* The current filters and sort, the order as shown (a shuffle keeps its seed), under the pivot the server browses. A refusal keeps the form open and says why. */}
-          <SaveViewDialog open={savingView} onClose={() => setSavingView(false)} onSave={name => presets.save(name, {libraryId, pivot: dataPivot!, query: predicates.length ? {all: predicates} : null, sort: [sort], presentation: view})} held={presets.unconfirmed?.intent.action === 'create' ? presets.unconfirmed.intent.name : undefined} onDiscard={presets.discard} describe={e => changeError(t, e)} />
+          <SaveViewDialog open={savingView} onClose={() => setSavingView(false)} onSave={name => presets.save(name, {libraryId, pivot: dataPivot!, query: predicates.length ? {all: predicates} : null, sort: [sort], presentation: view})} held={presets.unconfirmed?.intent.action === 'create' ? presets.unconfirmed.intent.name : undefined} onRetry={presets.retryHeld} onDiscard={presets.discard} describe={e => changeError(t, e)} />
           <ManagePresetsDialog open={managing} onClose={() => setManaging(false)} presets={presets} />
         </Inset>
       ) : null}

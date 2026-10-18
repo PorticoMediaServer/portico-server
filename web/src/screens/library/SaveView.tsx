@@ -4,7 +4,7 @@ import {errorText} from '../../app/errors';
 import {useI18n} from '../../app/i18n';
 
 /** Names the current filters and sort as a saved view the server reruns on open. */
-export function SaveViewDialog({open, onClose, onSave, held, onDiscard, describe}: {open: boolean; onClose: () => void; onSave: (name: string) => Promise<void>; /** A save sent with no answer: offered again under the name it was sent with, until it is confirmed or set aside. */ held?: string; /** Closing sets the unconfirmed save aside. */ onDiscard?: () => void; /** The words for a failure (the library's: an unconfirmed save in the way, or the server's answer). */ describe?: (e: unknown) => string}) {
+export function SaveViewDialog({open, onClose, onSave, held, onRetry, onDiscard, describe}: {open: boolean; onClose: () => void; onSave: (name: string) => Promise<void>; /** A save sent with no answer: offered again under the name it was sent with, until it is confirmed or set aside. */ held?: string; /** Sends the held save again exactly as it was sent (its own filters, sort and presentation, never the toolbar's now). */ onRetry?: () => Promise<void>; /** Closing sets the unconfirmed save aside. */ onDiscard?: () => void; /** The words for a failure (the library's: an unconfirmed save in the way, or the server's answer). */ describe?: (e: unknown) => string}) {
   const {t} = useI18n();
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
@@ -15,7 +15,7 @@ export function SaveViewDialog({open, onClose, onSave, held, onDiscard, describe
     const sending = held ?? name.trim();
     if (busy || !sending) return;
     setBusy(true); setError(undefined);
-    try { await onSave(sending); setName(''); onClose(); }
+    try { await (held !== undefined && onRetry ? onRetry() : onSave(sending)); setName(''); onClose(); }
     catch (e) { setError(describe ? describe(e) : errorText(e, 'library', 'save')); }
     finally { setBusy(false); }
   };
