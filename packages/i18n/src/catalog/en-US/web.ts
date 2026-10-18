@@ -1957,7 +1957,7 @@ export const webMessages = {
   'web.setup.localAccounts': 'Keep accounts on this server',
   'web.setup.localBody': 'Works without the internet. You’ll manage every sign-in yourself.',
   'web.setup.savedPassword': 'I saved this password somewhere safe',
-  'web.setup.notOnNetwork': 'Setup has to be started from a browser on the same network as the server. Open this page from a computer at home and try again.',
+  'web.setup.notOnNetwork': 'Setup could not be authorized at this address. Open the server using its IP address, or allow this hostname in the server configuration.',
   'web.setup.recoveryTitleHosted': 'Create a recovery owner',
   'web.setup.recoveryTitleLocal': 'Create the owner account',
   'web.setup.recoveryBodyHosted': 'This account lives on the server and gets you back in if your Portico Account is ever unavailable. Keep its password somewhere safe.',
