@@ -36,15 +36,16 @@ export function episodeArt(entry: Pick<ContentEntry, 'stillUrl'>): EpisodeArt {
 }
 
 /**
- * Spec — Page Content §0.2: a missing still takes the show's colour. Returns the custom property
- * the placeholder classes read (`--placeholder-bg`), from the shared tint for this show; set it
- * on the container that holds the episodes.
+ * Spec — Page Content §0.2: a missing still takes the show's colour. Returns the custom properties
+ * the episode list reads, from the shared tint for this show: `--placeholder-bg` for a missing
+ * still, and `--title-tint` for the plate an opened episode sits on. Set them on the container that
+ * holds the episodes.
  */
 export function placeholderTint(seed: string | undefined): React.CSSProperties | undefined {
   if (!seed) return undefined;
   const hue = titleTintHue(seed);
   // lint-design-allow: the title's own tint, computed from its name
-  return {'--placeholder-bg': `linear-gradient(160deg, hsl(${hue} 30% 27%), hsl(${hue} 36% 13%))`} as React.CSSProperties; // lint-design-allow
+  return {'--placeholder-bg': `linear-gradient(160deg, hsl(${hue} 30% 27%), hsl(${hue} 36% 13%))`, '--title-tint': `hsl(${hue} 40% 30%)`} as React.CSSProperties; // lint-design-allow
 }
 
 export type MosaicItem = Pick<ContentEntry, 'posterUrl' | 'backdropUrl'>;

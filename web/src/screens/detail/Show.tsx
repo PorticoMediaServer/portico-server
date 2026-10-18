@@ -15,7 +15,7 @@ import {ErrorNotice, ErrorState, changedError, errorText} from '../../app/errors
 import {useSession} from '../../app/session';
 import {usePlayerActions} from '../../player/PlayerContext';
 import {Button, Card, Dialog, Inset, KeyValue, ListRow, Menu, Notice, Page, Section, Segmented, Select, SettingsGroup, SettingsRow, Shelf, StateView, Switch, TitleHero, WindowedGrid, anchorOf, type MenuItem, type WindowedGridHandle} from '../../ui';
-import {SHOW_SETTING_ROWS, dedupeNames, networkName, nextUpPin, originalTitleLine, relatedRowsForPage, seasonProgress, showCreditLines, showPeople} from '@core/presentation/index.ts';
+import {SHOW_SETTING_ROWS, dedupeNames, networkName, originalTitleLine, relatedRowsForPage, seasonProgress, showCreditLines, showPeople} from '@core/presentation/index.ts';
 import {placeholderTint} from '../../app/title-layout';
 import {EpisodeCard, EpisodePlaceholder, EpisodeRow, episodeCode, episodeListKeys} from './EpisodeCard';
 import {GenreLinks} from './GenreLinks';
@@ -48,9 +48,9 @@ function writeLayout(v: EpisodeLayout) { try { localStorage.setItem(LAYOUT_KEY, 
  * in the URL (`?season=2`), so Back and links work, and changing it never
  * reloads the hero. The hero's actions are a movie's: Play/Resume · Watchlist
  * · Favorite · Watched · ⋯. Episodes are a windowed list (or a grid, for
- * those who choose it): the still plays, the copy opens the episode panel at
- * `/show/<id>/episode/<episodeId>` (a direct visit opens the show with the
- * panel open). Next up is pinned above the list when it is not the first row,
+ * those who choose it): the still plays, the copy opens the episode in place,
+ * under its row, at `/show/<id>/episode/<episodeId>` (a direct visit opens the
+ * show with it open). Next up wears a chip on its own row (the hero plays it),
  * and the season's progress sits beside the switcher.
  *
  * Below the episodes: cast and key crew, then the show's recommendation rows (More like the
@@ -196,27 +196,31 @@ export function ShowScreen() {
   // every render would redraw every episode on screen with each render of this page.
   const moreEpisode = useCallback((e: ContentEntry, el: Element) => player.more(e, anchorOf(el)), [player]);
   const allSeasons = !selected?.seasonId;
+  // M32: the server's nextUp wins when it carries playback; the pinned client rule is the fallback
+  // for older servers. Its own row in the list wears a chip ("Next up", or "Continue" when started);
+  // the hero plays it.
+  const nextUp = data?.nextUp?.playback ? data.nextUp : (pinnedNextUp.current?.showId === show?.id ? pinnedNextUp.current?.entry : undefined);
+  const resuming = !!nextUp && (nextUp.progressSeconds ?? 0) > 0;
+  const nextUpId = nextUp?.id;
+  const nextUpTag = nextUp ? t(resuming ? 'title.continueEpisode' : 'title.nextUp') : undefined;
   const renderGroupEpisode = useCallback((episode: ContentEntry) => layout === 'grid'
-    ? <EpisodeCard episode={episode} onPlay={playListed} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId || episode.id === landingId} />
-    : <EpisodeRow episode={episode} showSeason={allSeasons} onPlay={playListed} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === landingId} expanded={episode.id === episodeId} />, [layout, playListed, openEpisode, moreEpisode, episodeId, landingId, allSeasons]);
+    ? <EpisodeCard episode={episode} onPlay={playListed} onOpen={openEpisode} onMore={moreEpisode} expanded={episode.id === episodeId} landed={episode.id === landingId} tag={episode.id === nextUpId ? nextUpTag : undefined} />
+    : <EpisodeRow episode={episode} showSeason={allSeasons} onPlay={playListed} onOpen={openEpisode} onMore={moreEpisode} landed={episode.id === landingId} expanded={episode.id === episodeId} tag={episode.id === nextUpId ? nextUpTag : undefined} />, [layout, playListed, openEpisode, moreEpisode, episodeId, landingId, allSeasons, nextUpId, nextUpTag]);
   const renderEpisode = useCallback((episode: ContentEntry) => layout === 'grid'
-    ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId || episode.id === landingId} />
-    : <EpisodeRow episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === landingId} expanded={episode.id === episodeId} />, [layout, playEpisode, openEpisode, moreEpisode, episodeId, landingId]);
+    ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={moreEpisode} expanded={episode.id === episodeId} landed={episode.id === landingId} tag={episode.id === nextUpId ? nextUpTag : undefined} />
+    : <EpisodeRow episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={moreEpisode} landed={episode.id === landingId} expanded={episode.id === episodeId} tag={episode.id === nextUpId ? nextUpTag : undefined} />, [layout, playEpisode, openEpisode, moreEpisode, episodeId, landingId, nextUpId, nextUpTag]);
   // The list on screen, for finding the opened episode's place in it.
   const listed: WindowedCollection<ContentEntry> | undefined = episodeGroup.active ? episodeGroup.collection : episodes;
   const listGrid = useRef<WindowedGridHandle>(null);
-  const pinnedRow = useRef<HTMLDivElement>(null);
   // Opened from a row elsewhere: the episode is marked and brought into view once its season is on screen.
   const landed = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (!landingId || landed.current === landingId || !firstPageReady(listed)) return;
     // Until its season is on screen (the address's season loads after the show), keep waiting.
-    const pinnedHere = pinnedRow.current?.dataset.episodeId === landingId;
-    const at = pinnedHere ? -1 : residentIndex(listed, landingId);
-    if (!pinnedHere && at < 0) return;
+    const at = residentIndex(listed, landingId);
+    if (at < 0) return;
     landed.current = landingId;
     requestAnimationFrame(() => {
-      if (pinnedHere) { pinnedRow.current?.scrollIntoView({block: 'nearest', behavior: 'smooth'}); return; }
       const shown = document.querySelector<HTMLElement>(`[data-windowed-index="${at}"] > *`);
       if (shown) { shown.scrollIntoView({block: 'nearest', behavior: 'smooth'}); return; }
       listGrid.current?.scrollToIndex(at);
@@ -233,10 +237,6 @@ export function ShowScreen() {
     );
   }
 
-  // M32: the server's nextUp wins when it carries playback; the pinned
-  // client rule is the fallback for older servers.
-  const nextUp = data?.nextUp?.playback ? data.nextUp : (pinnedNextUp.current?.showId === show?.id ? pinnedNextUp.current?.entry : undefined);
-  const resuming = !!nextUp && (nextUp.progressSeconds ?? 0) > 0;
   // The hero plays the show from next up (one v1 request, anchored at the
   // episode), so it never depends on which season is on screen and Up Next
   // continues across seasons.
@@ -249,8 +249,6 @@ export function ShowScreen() {
   const firstEpisode = episodes?.itemAt(0);
   // "6 of 10 watched" beside the switcher, from the season's own counts (the viewer's visible episodes).
   const progress = seasonProgress(seasonWatched.state?.watchedCount, seasonWatched.state?.unwatchedCount);
-  // Next up sits above the season's list unless it already is its first row (or belongs to another season).
-  const pinned = selected?.group ? undefined : nextUpPin(nextUp, firstEpisode, selectedSeason?.number);
   const watchlisted = !!showWatched.state?.watchlisted;
   const favorite = !!showWatched.state?.favorite;
   const creditLines = showCreditLines(people.crew, (role, names) => t(role === 'creator' ? 'title.createdBy' : role === 'director' ? 'title.directedBy' : 'title.writtenBy', {names}));
@@ -272,14 +270,13 @@ export function ShowScreen() {
     if (id === 'play-season' && firstEpisode) playEpisode(firstEpisode, 0);
     if (id === 'season-watched' && selected?.seasonId) void seasonWatched.setWatched(!(seasonWatched.state?.watched ?? false));
   };
-  // The opened episode's details: under the pinned Next up row when it is that one, else under its row (or its row of cards).
+  // The opened episode's details: under its row (or its row of cards). A link to an episode that
+  // isn't among the loaded rows still opens it, above the list, with its own heading.
   const openedAt = episodeId ? residentIndex(listed, episodeId) : -1;
-  const openedEntry = episodeId ? (pinned?.id === episodeId ? pinned : openedAt >= 0 ? listed?.itemAt(openedAt) : undefined) : undefined;
-  const details = episodeId && show ? <EpisodeDetails key={episodeId} libraryId={show.libraryId} episodeId={episodeId} preview={openedEntry} showTitle={show.title} heading={layout === 'grid' || pinned?.id !== episodeId && residentIndex(listed, episodeId) < 0} playList={(entry, start) => playEpisode(entry, start)} /> : null;
-  const detailUnderPinned = !!details && pinned?.id === episodeId && !episodeGroup.active;
-  const detailInList = details && !detailUnderPinned && openedAt >= 0 ? {index: openedAt, node: details} : undefined;
-  // A link to an episode that isn't among the loaded rows still opens it, above the list.
-  const detailAbove = details && !detailUnderPinned && openedAt < 0 ? details : null;
+  const openedEntry = episodeId && openedAt >= 0 ? listed?.itemAt(openedAt) : undefined;
+  const details = episodeId && show ? <EpisodeDetails key={episodeId} libraryId={show.libraryId} episodeId={episodeId} preview={openedEntry} showTitle={show.title} heading={layout === 'grid' || openedAt < 0} playList={(entry, start) => playEpisode(entry, start)} /> : null;
+  const detailInList = details && openedAt >= 0 ? {index: openedAt, node: details} : undefined;
+  const detailAbove = details && openedAt < 0 ? details : null;
 
   return (
     <div style={{position: 'relative'}}>
@@ -333,14 +330,7 @@ export function ShowScreen() {
               </div>
             </div>
             <Inset><GroupBar group={episodeGroup} total={firstPage?.totalCount} /></Inset>
-            {pinned && !episodeGroup.active ? (
-              <div ref={pinnedRow} data-episode-id={pinned.id} className={s.nextUp} style={placeholderTint(show?.id)} onKeyDown={episodeListKeys}>
-                <span className={s.nextUpLabel}>{t(resuming ? 'title.continueEpisode' : 'title.nextUp')}</span>
-                <EpisodeRow episode={pinned} showSeason onPlay={playNextUp} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={pinned.id === landingId} expanded={pinned.id === episodeId} />
-                {detailUnderPinned ? details : null}
-              </div>
-            ) : null}
-            {detailAbove ? <Inset>{detailAbove}</Inset> : null}
+            {detailAbove ? <Inset><div className={s.episodes} style={placeholderTint(show?.id)}>{detailAbove}</div></Inset> : null}
             {episodeGroup.active ? (
               <GroupRows
                 key={layout}
@@ -350,13 +340,13 @@ export function ShowScreen() {
                 columnMin={layout === 'grid' ? 'clamp(240px, 24vw, 320px)' : undefined}
                 estimateRowHeight={layout === 'grid' ? 240 : 112}
                 className={layout === 'list' ? s.episodeList : undefined}
-                wrap={list => <div style={placeholderTint(show?.id)} onKeyDown={layout === 'list' ? episodeListKeys : undefined}>{list}</div>}
+                wrap={list => <div className={s.episodes} style={placeholderTint(show?.id)} onKeyDown={layout === 'list' ? episodeListKeys : undefined}>{list}</div>}
                 renderItem={renderGroupEpisode}
                 renderPlaceholder={renderEpisodePlaceholder}
                 detail={detailInList}
               />
             ) : episodes ? (
-              <div style={placeholderTint(show?.id)} onKeyDown={layout === 'list' ? episodeListKeys : undefined}>
+              <div className={s.episodes} style={placeholderTint(show?.id)} onKeyDown={layout === 'list' ? episodeListKeys : undefined}>
               <WindowedGrid
                 ref={listGrid}
                 key={layout}
