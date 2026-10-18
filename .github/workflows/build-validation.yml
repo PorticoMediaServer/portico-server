@@ -10,15 +10,24 @@ on:
         type: string
         required: false
         default: ''
+      scope:
+        description: All platforms, or macOS using an already completed toolchain artifact
+        type: choice
+        options: [all, macos]
+        required: true
+        default: all
 permissions:
   contents: read
   actions: read
 concurrency:
-  group: server-build-validation-${{ github.ref }}
+  group: server-build-validation-${{ github.ref }}${{ inputs.scope == 'macos' && '-macos' || '' }}
   cancel-in-progress: false
 
 env:
   VALIDATION_VERSION: 0.0.${{ github.run_number }}
+  # Keep disposable signing files in the project parent, outside the checkout.
+  PORTICO_RELEASE_SIGNING_KEY_FILE: ${{ github.workspace }}/../.private/server-validation-signing/private-key
+  PORTICO_RELEASE_PUBLIC_KEY_FILE: ${{ github.workspace }}/../.private/server-validation-signing/validation-public-key
 
 jobs:
   web:
@@ -48,19 +57,14 @@ jobs:
       fail-fast: false
       max-parallel: 5
       matrix:
-        include:
-          - {runner: ubuntu-24.04, target: linux-x64}
-          - {runner: ubuntu-24.04, target: linux-arm64}
-          - {runner: ubuntu-24.04, target: windows-x64}
-          - {runner: ubuntu-24.04, target: windows-arm64}
-          - {runner: macos-15, target: macos-arm64}
+        include: ${{ fromJSON(inputs.scope == 'macos' && '[{"runner":"macos-15","target":"macos-arm64"}]' || '[{"runner":"ubuntu-24.04","target":"linux-x64"},{"runner":"ubuntu-24.04","target":"linux-arm64"},{"runner":"ubuntu-24.04","target":"windows-x64"},{"runner":"ubuntu-24.04","target":"windows-arm64"},{"runner":"macos-15","target":"macos-arm64"}]') }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 360
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - name: Reuse a matching validation toolchain when available
         if: inputs.toolchain_run != ''
-        env: {GH_TOKEN: '${{ github.token }}', PREVIOUS_RUN: '${{ inputs.toolchain_run }}'}
+        env: {GH_TOKEN: '${{ github.token }}', PREVIOUS_RUN: '${{ inputs.toolchain_run }}', VALIDATION_SCOPE: '${{ inputs.scope }}'}
         shell: bash
         run: |
           set -euo pipefail
@@ -80,11 +84,20 @@ jobs:
             done
             diff -r third_party/ffmpeg/patches "$work/recipe-check/provenance/contract/patches"
           else
+            if [[ "$VALIDATION_SCOPE" == macos ]]; then
+              echo 'Focused macOS validation requires a completed matching artifact; never restart source builds.' >&2
+              exit 1
+            fi
             echo 'No prior artifact for this target; build its pinned recipe.'
           fi
       - name: Build the pinned FFmpeg recipe
+        env: {VALIDATION_SCOPE: '${{ inputs.scope }}'}
         shell: bash
         run: |
+          if [[ "$VALIDATION_SCOPE" == macos ]]; then
+            test -s 'runtime/ffmpeg-build/${{ matrix.target }}/portico-ffmpeg-${{ matrix.target }}.tar.xz'
+            exit 0
+          fi
           if [[ ! -s 'runtime/ffmpeg-build/${{ matrix.target }}/portico-ffmpeg-${{ matrix.target }}.tar.xz' ]]; then
             ./scripts/build-ffmpeg.sh '${{ matrix.target }}'
           fi
@@ -104,12 +117,7 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        include:
-          - {os: linux, arch: amd64, target: linux-x64}
-          - {os: linux, arch: arm64, target: linux-arm64}
-          - {os: windows, arch: amd64, target: windows-x64}
-          - {os: windows, arch: arm64, target: windows-arm64}
-          - {os: darwin, arch: arm64, target: macos-arm64}
+        include: ${{ fromJSON(inputs.scope == 'macos' && '[{"os":"darwin","arch":"arm64","target":"macos-arm64"}]' || '[{"os":"linux","arch":"amd64","target":"linux-x64"},{"os":"linux","arch":"arm64","target":"linux-arm64"},{"os":"windows","arch":"amd64","target":"windows-x64"},{"os":"windows","arch":"arm64","target":"windows-arm64"},{"os":"darwin","arch":"arm64","target":"macos-arm64"}]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
@@ -129,7 +137,8 @@ jobs:
           go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
           sudo apt-get update -qq
           sudo apt-get install -y -qq nsis zip
-          mkdir -p .cache/tmp .toolchain/ffmpeg runtime/release-signing
+          mkdir -p .cache/tmp .toolchain/ffmpeg
+          install -d -m 700 "$(dirname "$PORTICO_RELEASE_SIGNING_KEY_FILE")"
           tar -xJf .toolchain/*.tar.xz -C .toolchain/ffmpeg
           cmp third_party/ffmpeg/sources.lock.json .toolchain/ffmpeg/sources.lock.json
           cmp third_party/ffmpeg/requirements.v1.json .toolchain/ffmpeg/requirements.v1.json
@@ -137,13 +146,11 @@ jobs:
           import pathlib, os
           from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
           key = Ed25519PrivateKey.generate()
-          private = pathlib.Path('runtime/release-signing/private-key')
+          private = pathlib.Path(os.environ['PORTICO_RELEASE_SIGNING_KEY_FILE'])
           private.touch(mode=0o600)
           private.write_bytes(key.private_bytes_raw())
-          public = pathlib.Path('runtime/release-signing/validation-public-key')
+          public = pathlib.Path(os.environ['PORTICO_RELEASE_PUBLIC_KEY_FILE'])
           public.write_bytes(key.public_key().public_bytes_raw())
-          with open(os.environ['GITHUB_ENV'], 'a') as output:
-              output.write('PORTICO_RELEASE_PUBLIC_KEY_FILE=' + str(public.resolve()) + '\n')
           SIGNER
       - name: Build, test and seal the actual source snapshot
         id: build
@@ -157,12 +164,12 @@ jobs:
         run: |
           ./scripts/package-release.sh '${{ matrix.os }}' '${{ matrix.arch }}' "$VALIDATION_VERSION" '${{ steps.build.outputs.stage }}' .release/web dist '${{ github.run_number }}'
           mkdir -p dist/evidence
-          cp runtime/release-signing/validation-public-key dist/evidence/
+          cp "$PORTICO_RELEASE_PUBLIC_KEY_FILE" dist/evidence/
           cp '${{ steps.build.outputs.stage }}/manifest.json' '${{ steps.build.outputs.stage }}/manifest.sig' dist/evidence/
           printf '%s\n' 'CI VALIDATION ONLY: disposable manifest signer; OS installers unsigned; official Hosted root unchanged; not a production release.' > dist/evidence/VALIDATION.txt
       - name: Forget the disposable private key
         if: always()
-        run: rm -rf runtime/release-signing
+        run: rm -f "$PORTICO_RELEASE_SIGNING_KEY_FILE" "$PORTICO_RELEASE_PUBLIC_KEY_FILE"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: matrix.os != 'darwin'
         with:
@@ -194,11 +201,31 @@ jobs:
         with: {name: validation-macos-payload, path: .release/macos-payload}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with: {name: validation-macos-evidence, path: dist/evidence}
+      - name: Execute the native server and qualify the actual media bundle
+        run: |
+          chmod +x .release/macos-payload/portico-server .release/macos-payload/third_party/ffmpeg/bin/*
+          .release/macos-payload/portico-server --version
+          ./scripts/verify-ffmpeg-bundle.sh .release/macos-payload/third_party/ffmpeg full
       - run: ./scripts/package-macos.sh "$VALIDATION_VERSION" .release/macos-payload dist '${{ github.run_number }}'
       - name: Inspect installer and disk image
         run: |
           pkgutil --check-signature dist/Portico-Media-Server-macOS-arm64.pkg || test "$?" = 1
           hdiutil verify dist/Portico-Media-Server-macOS-arm64.dmg
+          pkgutil --expand-full dist/Portico-Media-Server-macOS-arm64.pkg .release/expanded-package
+          python3 - <<'VERIFY'
+          import hashlib, json, pathlib, subprocess, os
+          binaries = list(pathlib.Path('.release/expanded-package').rglob('portico-server'))
+          assert len(binaries) == 1, binaries
+          binary = binaries[0]
+          manifest = json.loads((binary.parent / 'manifest.json').read_text())
+          assert manifest['target'] == 'darwin-arm64'
+          assert manifest['version'] == os.environ['VALIDATION_VERSION']
+          assert hashlib.sha256(binary.read_bytes()).hexdigest() == manifest['artifact']['sha256']
+          assert (binary.parent / 'web/index.html').is_file()
+          subprocess.run([str(binary.resolve()), '--version'], check=True)
+          print('Expanded PKG contains the exact sealed ARM64 binary and web application.')
+          VERIFY
+          shasum -a 256 dist/Portico-Media-Server-macOS-arm64.pkg dist/Portico-Media-Server-macOS-arm64.dmg > dist/evidence/checksums.sha256
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: validation-assets-macos-arm64
@@ -210,6 +237,7 @@ jobs:
           compression-level: 0
 
   docker:
+    if: inputs.scope != 'macos'
     needs: toolchain
     strategy:
       fail-fast: false
