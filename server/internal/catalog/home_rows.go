@@ -1193,8 +1193,9 @@ func (s *Service) homeEnrichRows(profile string, rows []HomeRow) error {
 	return nil
 }
 
-// homeEnrich adds what a Home card or the hero shows beyond the shared entry (M5): the year, the
-// content rating, the first two genres and the viewer's watchlist state. Four bounded reads for
+// homeEnrich adds what a Home/Discover card or its focused preview shows beyond
+// the shared entry: synopsis, year, content rating, the first two genres and
+// the viewer's watchlist state. Four bounded reads for
 // the whole preview batch, never one per entry. A container work (a show, an
 // album) takes its year from the browse projection; attributes and watchlist state are items'.
 func (s *Service) homeEnrich(profile string, entries []ContentEntry) error {
@@ -1210,19 +1211,45 @@ func (s *Service) homeEnrich(profile string, entries []ContentEntry) error {
 		}
 	}
 	list := idsJSON(ids)
-	years := map[string]int{}
-	rows, e := s.read().Query(`SELECT pid(entity.public_id),entity.year FROM json_each(?) requested CROSS JOIN catalog_entities entity ON entity.public_id=pid_blob(requested.value) WHERE entity.year>0`, list)
+	type preview struct {
+		year                        int
+		overview, source, sourceURL string
+	}
+	previews := map[string]preview{}
+	// Each join seeks only an already-authorized, published page entry. The
+	// description is clipped in SQLite (Unicode codepoints) before transfer;
+	// the number of reads remains independent of row and library size.
+	// Container descriptions belong to the work itself, not an arbitrary child.
+	rows, e := s.read().Query(`SELECT pid(entity.public_id),entity.year,
+	 substr(COALESCE(CASE entity.kind
+	 WHEN 2 THEN sh.overview WHEN 3 THEN season.overview
+	 WHEN 5 THEN COALESCE(NULLIF(artist.overview,''),bio.bio)
+	 WHEN 6 THEN album.overview WHEN 8 THEN book.overview
+	 ELSE detail.overview END,''),1,1000),
+	 CASE WHEN entity.kind=5 AND artist.overview='' THEN COALESCE(bio.bio_source,'') ELSE '' END,
+	 CASE WHEN entity.kind=5 AND artist.overview='' THEN COALESCE(bio.bio_source_url,'') ELSE '' END
+	 FROM json_each(?) requested
+	 CROSS JOIN catalog_entities entity ON entity.public_id=pid_blob(requested.value)
+	 LEFT JOIN catalog_item_details detail ON detail.entity_id=entity.id
+	 LEFT JOIN catalog_shows sh ON sh.entity_id=entity.id
+	 LEFT JOIN catalog_seasons season ON season.entity_id=entity.id
+	 LEFT JOIN catalog_artists artist ON artist.entity_id=entity.id
+	 LEFT JOIN catalog_albums album ON album.entity_id=entity.id
+	 LEFT JOIN catalog_books book ON book.entity_id=entity.id
+	 LEFT JOIN music_artist_evidence bio ON bio.artist_id=artist.entity_id AND bio.mbid=(
+	 SELECT latest.mbid FROM music_artist_evidence latest WHERE latest.artist_id=artist.entity_id ORDER BY latest.observed_at DESC LIMIT 1)
+	 WHERE entity.retired=0`, list)
 	if e != nil {
 		return e
 	}
 	for rows.Next() {
 		var id string
-		var year int
-		if e = rows.Scan(&id, &year); e != nil {
+		var value preview
+		if e = rows.Scan(&id, &value.year, &value.overview, &value.source, &value.sourceURL); e != nil {
 			rows.Close()
 			return e
 		}
-		years[id] = year
+		previews[id] = value
 	}
 	e = rows.Err()
 	rows.Close()
@@ -1306,8 +1333,12 @@ func (s *Service) homeEnrich(profile string, entries []ContentEntry) error {
 	}
 	for index := range entries {
 		entry := &entries[index]
-		if year, ok := years[entry.ID]; ok {
-			entry.Year = &year
+		if value, ok := previews[entry.ID]; ok {
+			if value.year > 0 {
+				year := value.year
+				entry.Year = &year
+			}
+			entry.Overview, entry.OverviewSource, entry.OverviewSourceURL = value.overview, value.source, value.sourceURL
 		}
 		entry.ContentRating = ratings[entry.ID]
 		entry.Genres = genres[entry.ID]

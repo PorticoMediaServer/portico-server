@@ -43,6 +43,7 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 	}
 	itemA := makeMovie(a, "/a", "A", "/a/movie.mkv", "2026-01-01T00:00:00.000Z")
 	itemB := makeMovie(b, "/b", "B", "/b/movie.mkv", "2026-01-02T00:00:00.000Z")
+	c.Fields(itemB.ID, map[string]any{"overview": "Forbidden library preview synopsis"})
 	c.Drain()
 	control, err := hosted.New(db, ident, "http://127.0.0.1:19410", tl6HostedRootPin(), tl6HostedRootID())
 	if err != nil {
@@ -82,6 +83,15 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 		}
 		if w := request("GET", path, "", ""); w.Code != 401 {
 			t.Fatal("anonymous catalog read admitted", path, w.Code)
+		}
+	}
+	for _, path := range []string{"/v1/libraries/a/discover", "/v1/libraries/a/content?view=discover"} {
+		w := request("GET", path, reader.AccessToken, "")
+		if w.Code != 200 || !strings.Contains(w.Body.String(), `"overview":"Fixture overview"`) {
+			t.Fatal("Discover response is not preview-ready", path, w.Code, w.Body.String())
+		}
+		if strings.Contains(w.Body.String(), "Forbidden library preview synopsis") || strings.Contains(w.Body.String(), itemB.Public) {
+			t.Fatal("another library's preview leaked", path, w.Body.String())
 		}
 	}
 	for _, path := range []string{"/v1/libraries/b/content", "/v1/libraries/b/browse", "/v1/libraries/b/discover", "/v1/libraries/b/categories", "/v1/libraries/b/collections"} {
@@ -185,6 +195,9 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 		filled++
 		if !strings.HasPrefix(row.ID, "recent") || len(row.Entries) != 1 || row.Entries[0].ID != itemA.Public {
 			t.Fatal("Home without personalized activity", row.ID, emptyResponse.Body.String())
+		}
+		if row.Entries[0].Overview != "Fixture overview" {
+			t.Fatal("deferred Home row response lacks initial preview text", row.ID, row.Entries[0])
 		}
 	}
 	if filled == 0 {

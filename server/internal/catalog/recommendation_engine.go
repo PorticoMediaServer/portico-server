@@ -523,6 +523,7 @@ func (s *Service) homeEngineEntries(profile string, ids []string) ([]ContentEntr
 	}
 
 	artwork := map[string]string{}
+	backdrops := map[string]string{}
 	targets := make([]artworkTarget, 0, len(entities))
 	for _, entity := range entities {
 		if !isItemEntity(entity.kind) {
@@ -535,6 +536,7 @@ func (s *Service) homeEngineEntries(profile string, ids []string) ([]ContentEntr
 	}
 	for target, art := range arts {
 		artwork[target.ID] = art.PosterURL
+		backdrops[target.ID] = art.BackdropURL
 	}
 
 	// Only a container without its own artwork borrows a child's poster; the
@@ -600,6 +602,7 @@ func (s *Service) homeEngineEntries(profile string, ids []string) ([]ContentEntr
 			entry.Subtitle, entry.SeasonNumber = season.show, &number
 		}
 		entry.PosterURL = artwork[entity.id]
+		entry.BackdropURL = backdrops[entity.id]
 		out = append(out, entry)
 	}
 	loaded := map[string]ContentEntry{}

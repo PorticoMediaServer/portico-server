@@ -371,9 +371,8 @@ func (s *Service) contentEntities(r ContentRequest, cursor string, limit int) ([
 		last := entries[len(entries)-1]
 		next, e = s.encodeCursor(cursorValue{Scope: scope, Value: keys[len(entries)-1], ID: last.ID, Expires: time.Now().Add(30 * time.Minute).Unix()})
 	}
-	// PERF-12: entity grids omit overviews. No client reads an overview in a
-	// grid or row (only heroes/detail and episode rows do), so the per-page
-	// show-overview query is gone, not just its assignment.
+	// Full entity grids omit descriptions. Home and Discover instead decorate
+	// their final row pages together with the synopsis used by the TV preview.
 
 	targets := make([]artworkTarget, 0, len(entries))
 	for _, entry := range entries {

@@ -471,6 +471,21 @@ func (s *Service) DiscoverWithRestrictions(library, profile string, restrictions
 			out.Sections = append(out.Sections[:rec], out.Sections[rec+1:]...)
 		}
 	}
+	// Publish render-ready text for the final visible rows in a single batch.
+	// Reuse Home's bounded decoration so Discover and Home preview the same
+	// title consistently without fetching details as remote focus moves.
+	entries := []ContentEntry{}
+	for _, section := range out.Sections {
+		entries = append(entries, section.Items...)
+	}
+	if err := s.homeEnrich(profile, entries); err != nil {
+		return out, err
+	}
+	start := 0
+	for _, section := range out.Sections {
+		copy(section.Items, entries[start:start+len(section.Items)])
+		start += len(section.Items)
+	}
 	return out, nil
 }
 

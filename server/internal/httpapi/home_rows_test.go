@@ -39,7 +39,7 @@ func homeAPIFixture(t *testing.T) (http.Handler, identity.Envelope, catalogtest.
 	}
 	for i, name := range []string{"m1", "m2", "m3"} {
 		added := []string{"2026-01-01T00:00:00.000Z", "2026-01-02T00:00:00.000Z", "2026-01-03T00:00:00.000Z"}[i]
-		c.Fields(names[name].ID, map[string]any{"backdrop_url": "/b", "added_text": added})
+		c.Fields(names[name].ID, map[string]any{"backdrop_url": "/b", "added_text": added, "overview": "The description of " + name})
 		c.Exec(`INSERT INTO personal_items(profile_id,item_id,watchlisted,favorite,revision) VALUES(?,?,1,0,1)`, identity.PersonalKey(identity.Viewer{Authority: "local", AccountID: "owner", ProfileID: "profile"}), names[name].ID)
 	}
 	c.Attributes(names["m1"].ID, "contentRating", "PG-13")
@@ -99,6 +99,11 @@ func TestHomeRoutesComposePageAndCustomise(t *testing.T) {
 	if err := json.Unmarshal(w.Body.Bytes(), recent); err != nil || recent.Deferred || len(recent.Entries) != 2 || recent.Total != 3 {
 		t.Fatalf("preview %+v %v", recent, err)
 	}
+	for _, entry := range recent.Entries {
+		if !strings.HasPrefix(entry.Overview, "The description of ") {
+			t.Fatal("first row package lacks preview text", entry)
+		}
+	}
 	w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/recent_movies?limit=2&cursor="+recent.NextCursor, "")
 	if w.Code != 200 {
 		t.Fatal(w.Code, w.Body.String())
@@ -106,6 +111,9 @@ func TestHomeRoutesComposePageAndCustomise(t *testing.T) {
 	var page catalog.HomeRow
 	if e := json.Unmarshal(w.Body.Bytes(), &page); e != nil || len(page.Entries) != 1 || page.Start != 2 {
 		t.Fatal(e, w.Body.String())
+	}
+	if page.Entries[0].Overview != "The description of m1" {
+		t.Fatal("continuation package lacks preview text", page.Entries[0])
 	}
 	if w = homeAPIRequest(t, handler, owner.AccessToken, "GET", "/v1/home/rows/nonexistent", ""); w.Code != 404 {
 		t.Fatal("unknown row", w.Code, w.Body.String())
@@ -232,6 +240,9 @@ func TestHomeEntriesCarryHeroFields(t *testing.T) {
 		sawRated = sawRated || entry.ID == names["m1"].Public
 		if entry.Year == nil || *entry.Year < 2001 || entry.Watchlisted == nil || !*entry.Watchlisted {
 			t.Fatalf("entry without its hero fields: %+v", entry)
+		}
+		if !strings.HasPrefix(entry.Overview, "The description of ") {
+			t.Fatalf("entry lacks its immediate preview synopsis: %+v", entry)
 		}
 		if entry.ID == names["m1"].Public && (entry.ContentRating != "PG-13" || len(entry.Genres) != 2 || entry.Genres[0] != "Drama" || entry.Genres[1] != "Comedy") {
 			t.Fatalf("m1 rating and genres: %+v", entry)

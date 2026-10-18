@@ -24,11 +24,10 @@ func searchPrefix(value string) string {
 	return value + "%"
 }
 func contentItem(item Item) ContentEntry {
-	// PERF-12: grid/row/list entries omit the synopsis by default. Clients
-	// read overview only in heroes/detail and in episode rows, so episodes
-	// keep it (Apple episode rows render a 2-line synopsis) while every other
-	// grid entry drops it. BackdropURL stays: both clients fall back to it
-	// when a poster is missing and landscape rows prefer it.
+	// Ordinary grids/lists stay lean; episode rows render their synopsis.
+	// Home and Discover attach every selected card's bounded preview synopsis
+	// in one batch before publication, so TV focus never needs a detail read.
+	// BackdropURL also supports missing-poster fallbacks and landscape rows.
 	overview := ""
 	if item.Kind == "episode" {
 		runes := []rune(item.Overview)
