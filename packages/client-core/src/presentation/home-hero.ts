@@ -1,7 +1,8 @@
 import type {ContentEntry} from '../library-content.ts';
 import type {HomeDocument, HomeRow} from '../home.ts';
 import type {MessageId, MessageValues} from '../../../i18n/src/index.ts';
-import {continueTitle, episodeCode} from './card-caption.ts';
+import {continueTitle} from './card-caption.ts';
+import {previewLine, previewMeta, previewProgress, resumeWords} from './browse-preview.ts';
 
 /**
  * Home's hero (Justin, 2 Oct 2026): what the viewer was last in the middle of. The server names
@@ -31,14 +32,6 @@ export type HomeHero = Readonly<{
 }>;
 
 const SQUARE = new Set<string>(['song', 'album', 'artist', 'book', 'audiobook_file', 'chapter', 'disc']);
-const parts = (subtitle?: string) => (subtitle ? subtitle.split(' · ').map(p => p.trim()).filter(Boolean) : []);
-
-function line(entry: ContentEntry, t: Translate): string | undefined {
-  if (entry.kind === 'episode') return [episodeCode(entry, t), entry.title].filter(Boolean).join(' · ') || undefined;
-  if (entry.artist?.name) return entry.album?.name ? `${entry.artist.name} · ${entry.album.name}` : entry.artist.name;
-  if (entry.author) return entry.author;
-  return undefined;
-}
 
 /** The hero of a Home document. `hidden` holds entries the viewer has just removed from a row. */
 export function homeHero(document: HomeDocument | undefined, t: Translate, options: Readonly<{duration: (seconds: number) => string; hidden?: ReadonlySet<string>}>): HomeHero | undefined {
@@ -47,25 +40,14 @@ export function homeHero(document: HomeDocument | undefined, t: Translate, optio
   const row = document.rows.find(r => r.id === ref.rowId);
   const entry = row?.entries.find(e => e.id === ref.entryId);
   if (!row || !entry) return undefined;
-  const video = entry.kind === 'movie' || entry.kind === 'episode';
-  const year = entry.year ? String(entry.year) : undefined;
-  const show = entry.kind === 'episode' ? parts(entry.subtitle)[0] : undefined;
-  const meta = [
-    // A movie's subtitle is its year, an episode's leads with its show: neither is said twice.
-    ...parts(entry.subtitle).filter(p => p !== year && p !== show && video && entry.kind !== 'episode'),
-    year, entry.contentRating, entry.duration ? options.duration(entry.duration) : undefined, ...(entry.genres ?? []).slice(0, 2),
-  ].filter(Boolean).join(' · ');
-  const progress = entry.duration && entry.progressSeconds ? Math.min(1, Math.max(0, entry.progressSeconds / entry.duration)) : 0;
-  const left = entry.duration && entry.progressSeconds ? Math.max(0, entry.duration - entry.progressSeconds) : 0;
-  // A client's formatter may have nothing to say about a short stretch; the button then says plain "Resume".
-  const remaining = left >= 60 ? options.duration(left) : '';
+  const {progress} = previewProgress(entry);
   return Object.freeze({
     row, entry,
     title: continueTitle(entry),
-    line: line(entry, t),
-    meta: meta || undefined,
+    line: previewLine(entry, t),
+    meta: previewMeta(entry, options.duration),
     progress,
-    playLabel: remaining ? t('entry.resumeRemaining', {remaining}) : t(progress > 0 ? 'entry.resume' : 'action.play'),
+    playLabel: resumeWords(entry, t, options.duration),
     art: entry.backdropUrl ? 'backdrop' : 'cover',
     coverShape: SQUARE.has(entry.kind) ? 'square' : 'poster',
   });
