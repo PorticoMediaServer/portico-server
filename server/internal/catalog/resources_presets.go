@@ -40,7 +40,8 @@ func (s *Service) SavedViewPresets(viewer Viewer, server, fence string, a Resour
 	if limit < 1 || limit > 100 {
 		return out, ErrCursor
 	}
-	if err := s.read().QueryRow(`SELECT revision FROM saved_resource_generation WHERE id=1`).Scan(&out.Revision); err != nil {
+	var arrangementRevision int64
+	if err := s.read().QueryRow(`SELECT revision, COALESCE((SELECT revision FROM saved_pin_order_revisions WHERE owner_key=?),0) FROM saved_resource_generation WHERE id=1`, actorKey(a)).Scan(&out.Revision, &arrangementRevision); err != nil {
 		return out, err
 	}
 	scope := cursorScope{Profile: actorKey(a), View: "saved_view", Viewer: fence, Limit: limit, Library: library, Entity: pivot}
@@ -48,6 +49,9 @@ func (s *Service) SavedViewPresets(viewer Viewer, server, fence string, a Resour
 		scope.Category = "pinned"
 	}
 	revision := ContentRevision{Catalog: out.Revision}
+	if pinned {
+		revision.Viewer = arrangementRevision
+	}
 	var after *cursorValue
 	if cursor != "" {
 		v, err := s.decodeRevisionCursor(cursor, scope, revision)
@@ -98,46 +102,48 @@ func (s *Service) SavedViewPresets(viewer Viewer, server, fence string, a Resour
 	return out, err
 }
 
-// Owner rows seek through the library/pivot expression indexes. Explicitly
-// shared legacy views start from the actor's existing share index. Keeping the
-// branches separate avoids an owner/share OR scanning unrelated definitions.
-// All selected metadata, roles and pins are hydrated in this one query.
+// Selection is an indexed seek over derived access/sort keys, limited before
+// reading definitions. Hydration rechecks canonical ownership/grants and scope;
+// neither the index nor its stored pin flag is an authorization authority.
 func savedViewPresetSQL(a ResourceActor, library, pivot string, pinned bool, limit int, after *cursorValue) (string, []any) {
-	scope := `r.kind='view' AND r.deleted=0 AND CASE WHEN json_valid(r.definition) THEN json_extract(r.definition,'$.libraryId') END=?`
-	bound := []any{library}
+	index, key := "saved_view_picker_library", "name_key"
 	if pivot != "" {
-		scope += ` AND CASE WHEN json_valid(r.definition) THEN json_extract(r.definition,'$.pivot') END=?`
-		bound = append(bound, pivot)
+		index = "saved_view_picker_pivot"
 	}
-	index := "saved_view_library_page"
+	if pinned {
+		index, key = "saved_view_picker_pinned_library", "pin_key"
+		if pivot != "" {
+			index = "saved_view_picker_pinned_pivot"
+		}
+	}
+	query := `WITH selected AS MATERIALIZED (SELECT resource_id,` + key + ` AS sort_key FROM saved_view_picker INDEXED BY ` + index + ` WHERE owner_key=? AND library_id=?`
+	args := []any{actorKey(a), library}
 	if pivot != "" {
-		index = "saved_view_pivot_page"
+		query += ` AND pivot=?`
+		args = append(args, pivot)
 	}
-	query := `WITH candidates AS (
- SELECT r.id,r.name,r.summary,r.visibility,r.revision,r.definition,'owner' AS role FROM saved_resources r INDEXED BY ` + index + ` WHERE r.owner_key=? AND ` + scope + `
- UNION ALL
- SELECT r.id,r.name,r.summary,r.visibility,r.revision,r.definition,sh.role FROM saved_resource_shares sh JOIN saved_resources r ON r.id=sh.resource_id WHERE sh.authority=? AND sh.account_id=? AND sh.profile_id=? AND r.owner_key<>? AND ` + scope + `
- ), hydrated AS (SELECT r.*,COALESCE(p.pinned,0) AS pinned,COALESCE(p.revision,0) AS pin_revision,`
-	args := append([]any{actorKey(a)}, bound...)
-	args = append(args, a.Authority, a.AccountID, a.ProfileID, actorKey(a))
-	args = append(args, bound...)
 	if pinned {
-		query += `printf('%08d',COALESCE(o.position,99999999))||char(31)||lower(r.name)`
-	} else {
-		query += `lower(r.name)`
+		query += ` AND pinned=1`
 	}
-	query += ` AS sort_key FROM candidates r LEFT JOIN saved_pins p ON p.owner_key=? AND p.kind='view' AND p.resource_id=r.id`
-	args = append(args, actorKey(a))
-	if pinned {
-		query += ` LEFT JOIN saved_pin_order o ON o.owner_key=? AND o.kind='view' AND o.resource_id=r.id WHERE p.pinned=1`
-		args = append(args, actorKey(a))
-	}
-	query += `) SELECT id,name,summary,visibility,revision,role,definition,pinned,pin_revision,sort_key FROM hydrated`
 	if after != nil {
-		query += ` WHERE (sort_key>? OR (sort_key=? AND id>?))`
-		args = append(args, after.Value, after.Value, after.ID)
+		query += ` AND (` + key + `,resource_id)>(?,?)`
+		args = append(args, after.Value, after.ID)
 	}
-	query += ` ORDER BY sort_key,id LIMIT ?`
-	args = append(args, limit+1)
+	query += ` ORDER BY ` + key + `,resource_id LIMIT ?) SELECT r.id,r.name,r.summary,r.visibility,r.revision,
+ CASE WHEN r.owner_key=? THEN 'owner' ELSE sh.role END,r.definition,COALESCE(p.pinned,0),COALESCE(p.revision,0),selected.sort_key
+ FROM selected CROSS JOIN saved_resources r ON r.id=selected.resource_id
+ LEFT JOIN saved_resource_shares sh ON sh.resource_id=r.id AND sh.authority=? AND sh.account_id=? AND sh.profile_id=?
+ LEFT JOIN saved_pins p ON p.owner_key=? AND p.kind='view' AND p.resource_id=r.id
+ WHERE r.kind='view' AND r.deleted=0 AND (r.owner_key=? OR sh.role IS NOT NULL)
+ AND CASE WHEN json_valid(r.definition) THEN json_extract(r.definition,'$.libraryId') END=?`
+	args = append(args, limit+1, actorKey(a), a.Authority, a.AccountID, a.ProfileID, actorKey(a), actorKey(a), library)
+	if pivot != "" {
+		query += ` AND CASE WHEN json_valid(r.definition) THEN json_extract(r.definition,'$.pivot') END=?`
+		args = append(args, pivot)
+	}
+	if pinned {
+		query += ` AND p.pinned=1`
+	}
+	query += ` ORDER BY selected.sort_key,r.id`
 	return query, args
 }

@@ -4226,6 +4226,13 @@ saved_resources.owner_profile
 saved_resources.revision
 saved_resources.summary
 saved_resources.visibility
+saved_view_picker.library_id
+saved_view_picker.name_key
+saved_view_picker.owner_key
+saved_view_picker.pin_key
+saved_view_picker.pinned
+saved_view_picker.pivot
+saved_view_picker.resource_id
 scan_queue.job_id
 scan_queue.kind
 scan_queue.path

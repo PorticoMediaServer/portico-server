@@ -517,6 +517,11 @@ index saved_resource_receipts_expiry
 index saved_resource_shared
 index saved_resource_visibility
 index saved_view_library_page
+index saved_view_picker_library
+index saved_view_picker_pinned_library
+index saved_view_picker_pinned_pivot
+index saved_view_picker_pivot
+index saved_view_picker_resource
 index saved_view_pivot_page
 index screen_metadata_attention_active
 index screen_metadata_attention_library
@@ -1189,6 +1194,7 @@ table saved_resource_generation
 table saved_resource_receipts
 table saved_resource_shares
 table saved_resources
+table saved_view_picker
 table scan_queue
 table schema_migrations
 table screen_anime_seasons
@@ -2309,6 +2315,18 @@ trigger saved_resources_bound_insert
 trigger saved_resources_revision_DELETE
 trigger saved_resources_revision_INSERT
 trigger saved_resources_revision_UPDATE
+trigger saved_view_picker_order_delete
+trigger saved_view_picker_order_insert
+trigger saved_view_picker_order_update
+trigger saved_view_picker_pin_delete
+trigger saved_view_picker_pin_insert
+trigger saved_view_picker_pin_update
+trigger saved_view_picker_resource_delete
+trigger saved_view_picker_resource_insert
+trigger saved_view_picker_resource_update
+trigger saved_view_picker_share_delete
+trigger saved_view_picker_share_insert
+trigger saved_view_picker_share_update
 trigger screen_asset_change
 trigger screen_attention_insert
 trigger screen_attention_update
@@ -2490,7 +2508,8 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context`
+view listening_book_context
+view saved_view_picker_source`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

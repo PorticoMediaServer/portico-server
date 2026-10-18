@@ -111,10 +111,17 @@ var (
 // updated in place.
 var ownerReplacedSeeds = map[string]bool{"maintenance_windows": true, "maintenance_window_days": true, "maintenance_window_tasks": true}
 
+// derivedDataBackfills contain only rows derived from existing user data. A
+// fresh install legitimately leaves them empty; unlike fixed configuration
+// seeds, their contents are rebuildable from canonical tables. Their schema
+// objects/columns are still required by VerifySchemaObjects.
+var derivedDataBackfills = map[string]bool{"saved_view_picker": true}
+
 // SeededTables lists the tables this build's migrations populate with fixed
 // rows: the settings, policies, revisions, cursors and vocabularies that exist
 // from the first start. Start-up and the services it constructs read them and
-// nothing recreates them. Tables the owner's settings replace are left out.
+// nothing recreates them. Owner-replaced settings and derived-data backfills
+// are left out.
 func SeededTables() ([]string, error) {
 	seededOnce.Do(func() {
 		steps, err := schemaMigrations()
@@ -129,7 +136,7 @@ func SeededTables() ([]string, error) {
 			}
 		}
 		for name := range seeded {
-			if !ownerReplacedSeeds[name] {
+			if !ownerReplacedSeeds[name] && !derivedDataBackfills[name] {
 				seededTables = append(seededTables, name)
 			}
 		}
