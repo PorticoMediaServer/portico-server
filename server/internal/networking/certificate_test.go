@@ -71,7 +71,9 @@ func syntheticCertificate(t *testing.T, m *CertificateManager, csrDER []byte) []
 	if e != nil {
 		t.Fatal(e)
 	}
-	m.roots = x509.NewCertPool()
+	if m.roots == nil {
+		m.roots = x509.NewCertPool()
+	}
 	m.roots.AddCert(ca)
 	cert := &x509.Certificate{SerialNumber: big.NewInt(2), DNSNames: csr.DNSNames, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(8 * time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
 	der, e := x509.CreateCertificate(rand.Reader, cert, ca, csr.PublicKey, key)

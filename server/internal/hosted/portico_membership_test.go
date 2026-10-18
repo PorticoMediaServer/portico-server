@@ -601,7 +601,7 @@ func TestMembershipDeltasArePagedAndFallBackToTheFullList(t *testing.T) {
 func TestChallengeProofIsSignedByTheServerIdentity(t *testing.T) {
 	f := newClaimFixture(t)
 	ctx := context.Background()
-	signer := networking.NewRouteIdentityHandler(f.keys, f.runner)
+	signer := networking.NewRouteIdentityHandler(f.keys, f.runner, nil, nil)
 	challenge, expires, e := f.service.IssueChallenge(ctx, testInstallation)
 	if e != nil {
 		t.Fatal(e)

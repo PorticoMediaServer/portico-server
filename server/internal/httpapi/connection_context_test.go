@@ -54,7 +54,7 @@ func identityProofFixture(t *testing.T) (http.Handler, Dependencies) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	proof := networking.NewRouteIdentityHandler(keys, runner)
+	proof := networking.NewRouteIdentityHandler(keys, runner, nil, nil)
 	return proof, Dependencies{DB: db, Identity: ident, Catalog: catalog.New(db), RouteIdentity: proof}
 }
 
