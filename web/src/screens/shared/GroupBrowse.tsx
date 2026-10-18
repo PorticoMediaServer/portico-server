@@ -69,7 +69,7 @@ export function GroupGrid({group, square}: {group: GroupBrowse; square: boolean}
  * A group's sorted or filtered members as the page's own rows (track rows, episode rows): the
  * same row the page draws in its own order, over the browse engine's windowed list.
  */
-export function GroupRows({group, label, estimateRowHeight, columnMin, className, context, renderItem, renderPlaceholder, wrap}: {
+export function GroupRows({group, label, estimateRowHeight, columnMin, className, context, renderItem, renderPlaceholder, wrap, detail}: {
   group: GroupBrowse;
   label: string;
   estimateRowHeight: number;
@@ -81,6 +81,8 @@ export function GroupRows({group, label, estimateRowHeight, columnMin, className
   renderPlaceholder: () => React.ReactNode;
   /** Wraps the list (not its empty or error state), for a page that frames its rows. */
   wrap?: (list: React.ReactNode) => React.ReactNode;
+  /** One item opened in place under its row (`WindowedGrid`'s `detail`). */
+  detail?: Readonly<{index: number; node: React.ReactNode}>;
 }) {
   const {t} = useI18n();
   const collection = group.collection;
@@ -92,7 +94,7 @@ export function GroupRows({group, label, estimateRowHeight, columnMin, className
       ? <StateView inline icon="filter" title={t('library.noMatch')} body={t('library.noMatchBody')} action={{label: t('library.clearFilters'), onClick: group.clearFilters}} />
       : <StateView inline icon="filter" title={t('web.entity.emptyTitle')} body={t('web.entity.emptyBody')} />;
   }
-  const list = <WindowedGrid collection={collection} estimateRowHeight={estimateRowHeight} columnMin={columnMin} className={className} label={label} renderItem={renderItem} renderPlaceholder={renderPlaceholder} />;
+  const list = <WindowedGrid collection={collection} estimateRowHeight={estimateRowHeight} columnMin={columnMin} className={className} label={label} renderItem={renderItem} renderPlaceholder={renderPlaceholder} detail={detail} />;
   return (
     <>
       {snapshot.status === 'error' ? <Inset><ErrorNotice error={snapshot.error} context={context} retry={() => collection.retry()} refresh={group.refresh} /></Inset> : null}

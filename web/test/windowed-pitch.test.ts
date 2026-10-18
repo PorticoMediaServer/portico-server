@@ -20,6 +20,8 @@ test('every windowed row is held to the settled pitch', () => {
   assert.match(grid, /setProperty\('--row-min'/);
   assert.match(grid, /removeProperty\('--row-min'\)/, 'a new width measures rows afresh');
   assert.match(css, /\.list > \* \{ min-height: var\(--row-min, auto\); \}/);
-  assert.match(css, /grid-auto-rows: minmax\(var\(--row-min, auto\), auto\)/);
+  // Held on the cards rather than the grid's tracks, so an item opened in place keeps its own height.
+  assert.match(css, /\.grid > :not\(\.detail\):not\(\.item\), \.grid > \.item > \* \{ min-height: var\(--row-min, auto\); \}/);
+  assert.match(css, /\.list > \.detail \{ min-height: 0; \}/);
   assert.match(row, /min-height: max\(64px, var\(--row-min, 0px\)\)/);
 });

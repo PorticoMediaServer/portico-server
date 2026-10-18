@@ -14,12 +14,12 @@ import {useEpisodes, type EpisodeScope} from '../../app/episodes';
 import {ErrorNotice, ErrorState, changedError, errorText} from '../../app/errors';
 import {useSession} from '../../app/session';
 import {usePlayerActions} from '../../player/PlayerContext';
-import {Button, Card, Dialog, Inset, KeyValue, ListRow, Menu, Notice, Page, Section, Segmented, Select, SettingsGroup, SettingsRow, Shelf, StateView, Switch, TitleHero, WindowedGrid, anchorOf, type MenuItem} from '../../ui';
+import {Button, Card, Dialog, Inset, KeyValue, ListRow, Menu, Notice, Page, Section, Segmented, Select, SettingsGroup, SettingsRow, Shelf, StateView, Switch, TitleHero, WindowedGrid, anchorOf, type MenuItem, type WindowedGridHandle} from '../../ui';
 import {SHOW_SETTING_ROWS, dedupeNames, networkName, nextUpPin, originalTitleLine, relatedRowsForPage, seasonProgress, showCreditLines, showPeople} from '@core/presentation/index.ts';
 import {placeholderTint} from '../../app/title-layout';
 import {EpisodeCard, EpisodePlaceholder, EpisodeRow, episodeCode, episodeListKeys} from './EpisodeCard';
 import {GenreLinks} from './GenreLinks';
-import {EpisodePanel} from './EpisodePanel';
+import {EpisodeDetails} from './EpisodeDetails';
 import s from './Show.module.css';
 import {useViewerScope} from '../../app/viewer-scope';
 import {useContainerWatched} from '../shared/container-watched';
@@ -28,6 +28,7 @@ import {useI18n, type I18n} from '../../app/i18n';
 import {GroupBar, GroupRows} from '../shared/GroupBrowse';
 import {useGroupBrowse, type GroupChoice, type GroupSpec} from '../../app/group-browse';
 import type {BrowseNode} from '@core/browse.ts';
+import type {WindowedCollection} from '@core/collections/index.ts';
 import {episodeGroupCondition} from '@core/presentation/browse-groups.ts';
 import {episodeGroupSequence, groupSequence} from '../../app/container-play';
 import {useRefreshRequiredRetry} from '../../app/quiet-refresh';
@@ -75,7 +76,10 @@ export function ShowScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, showId, search.library]);
   const seasonParam = search.season;
-  const episodeId = params.episodeId ?? search.episode;
+  // The episode opened in place (`/show/<id>/episode/<episodeId>`), and the one the page was opened
+  // for from a row elsewhere (`?episode=`): that one is marked and brought into view, never opened.
+  const episodeId = params.episodeId;
+  const landingId = search.episode;
   // Opaque season ids (older links, season cards) load that season directly; numbers are resolved below.
   const seasonIdParam = seasonParam && !/^\d+$/.test(seasonParam) ? seasonParam : undefined;
   const route = useMemo<ShowWorkspaceRoute>(() => ({libraryId, ...(showId !== 'season' ? {showId} : {}), ...(seasonIdParam ? {seasonId: seasonIdParam} : {})}), [libraryId, showId, seasonIdParam]);
@@ -159,17 +163,12 @@ export function ShowScreen() {
     if (!episode.playback) return;
     player.playSequence([episode], 0, startSeconds ?? episode.playback.startSeconds ?? episode.progressSeconds ?? 0, groupSequence(episodeGroup));
   }, [episodeGroup, player]);
-  const openedHere = useRef(false);
+  // An episode's text opens it in place under its row, and closes it again. The address follows
+  // (so a reload or a shared link opens it too) without scrolling the page or stacking history.
   const openEpisode = useCallback((episode: ContentEntry) => {
-    openedHere.current = true;
-    // The panel opens over the show where the reader is; the route change must not scroll the page to the top.
-    void navigate({to: '/show/$showId/episode/$episodeId', params: {showId, episodeId: episode.id}, search: showSearch(), replace: !!params.episodeId, resetScroll: false});
+    if (episode.id === params.episodeId) void navigate({to: '/show/$showId', params: {showId}, search: showSearch(), replace: true, resetScroll: false});
+    else void navigate({to: '/show/$showId/episode/$episodeId', params: {showId, episodeId: episode.id}, search: showSearch(), replace: true, resetScroll: false});
   }, [navigate, showId, showSearch, params.episodeId]);
-  const closeEpisode = useCallback(() => {
-    // Opened from this page, so the entry before it is this show: going back closes the panel and never leaves Portico.
-    if (openedHere.current) { openedHere.current = false; window.history.back(); return; }
-    void navigate({to: '/show/$showId', params: {showId}, search: showSearch({episode: undefined}), replace: true});
-  }, [navigate, showId, showSearch]);
   const chooseSeason = (season: WorkspaceSeason) => {
     void navigate({to: '/show/$showId', params: {showId}, search: showSearch({season: String(season.number)})});
     selectSeason(season.id);
@@ -198,11 +197,32 @@ export function ShowScreen() {
   const moreEpisode = useCallback((e: ContentEntry, el: Element) => player.more(e, anchorOf(el)), [player]);
   const allSeasons = !selected?.seasonId;
   const renderGroupEpisode = useCallback((episode: ContentEntry) => layout === 'grid'
-    ? <EpisodeCard episode={episode} onPlay={playListed} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId} />
-    : <EpisodeRow episode={episode} showSeason={allSeasons} onPlay={playListed} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId} />, [layout, playListed, openEpisode, moreEpisode, episodeId, allSeasons]);
+    ? <EpisodeCard episode={episode} onPlay={playListed} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId || episode.id === landingId} />
+    : <EpisodeRow episode={episode} showSeason={allSeasons} onPlay={playListed} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === landingId} expanded={episode.id === episodeId} />, [layout, playListed, openEpisode, moreEpisode, episodeId, landingId, allSeasons]);
   const renderEpisode = useCallback((episode: ContentEntry) => layout === 'grid'
-    ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId} />
-    : <EpisodeRow episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId} />, [layout, playEpisode, openEpisode, moreEpisode, episodeId]);
+    ? <EpisodeCard episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === episodeId || episode.id === landingId} />
+    : <EpisodeRow episode={episode} onPlay={playEpisode} onOpen={openEpisode} onMore={moreEpisode} selected={episode.id === landingId} expanded={episode.id === episodeId} />, [layout, playEpisode, openEpisode, moreEpisode, episodeId, landingId]);
+  // The list on screen, for finding the opened episode's place in it.
+  const listed: WindowedCollection<ContentEntry> | undefined = episodeGroup.active ? episodeGroup.collection : episodes;
+  const listGrid = useRef<WindowedGridHandle>(null);
+  const pinnedRow = useRef<HTMLDivElement>(null);
+  // Opened from a row elsewhere: the episode is marked and brought into view once its season is on screen.
+  const landed = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!landingId || landed.current === landingId || !firstPageReady(listed)) return;
+    // Until its season is on screen (the address's season loads after the show), keep waiting.
+    const pinnedHere = pinnedRow.current?.dataset.episodeId === landingId;
+    const at = pinnedHere ? -1 : residentIndex(listed, landingId);
+    if (!pinnedHere && at < 0) return;
+    landed.current = landingId;
+    requestAnimationFrame(() => {
+      if (pinnedHere) { pinnedRow.current?.scrollIntoView({block: 'nearest', behavior: 'smooth'}); return; }
+      const shown = document.querySelector<HTMLElement>(`[data-windowed-index="${at}"] > *`);
+      if (shown) { shown.scrollIntoView({block: 'nearest', behavior: 'smooth'}); return; }
+      listGrid.current?.scrollToIndex(at);
+      window.scrollBy({top: -160});
+    });
+  });
   const renderEpisodePlaceholder = useCallback(() => layout === 'grid' ? <EpisodePlaceholder /> : <div className={s.episodeRowPlaceholderRow} aria-hidden />, [layout]);
   if ((snapshot.phase === 'error' && !data) || missing) {
     return (
@@ -252,7 +272,14 @@ export function ShowScreen() {
     if (id === 'play-season' && firstEpisode) playEpisode(firstEpisode, 0);
     if (id === 'season-watched' && selected?.seasonId) void seasonWatched.setWatched(!(seasonWatched.state?.watched ?? false));
   };
-  const found = episodeId ? findResident(episodes, episodeId) : undefined;
+  // The opened episode's details: under the pinned Next up row when it is that one, else under its row (or its row of cards).
+  const openedAt = episodeId ? residentIndex(listed, episodeId) : -1;
+  const openedEntry = episodeId ? (pinned?.id === episodeId ? pinned : openedAt >= 0 ? listed?.itemAt(openedAt) : undefined) : undefined;
+  const details = episodeId && show ? <EpisodeDetails key={episodeId} libraryId={show.libraryId} episodeId={episodeId} preview={openedEntry} showTitle={show.title} heading={layout === 'grid' || pinned?.id !== episodeId && residentIndex(listed, episodeId) < 0} playList={(entry, start) => playEpisode(entry, start)} /> : null;
+  const detailUnderPinned = !!details && pinned?.id === episodeId && !episodeGroup.active;
+  const detailInList = details && !detailUnderPinned && openedAt >= 0 ? {index: openedAt, node: details} : undefined;
+  // A link to an episode that isn't among the loaded rows still opens it, above the list.
+  const detailAbove = details && !detailUnderPinned && openedAt < 0 ? details : null;
 
   return (
     <div style={{position: 'relative'}}>
@@ -307,11 +334,13 @@ export function ShowScreen() {
             </div>
             <Inset><GroupBar group={episodeGroup} total={firstPage?.totalCount} /></Inset>
             {pinned && !episodeGroup.active ? (
-              <div className={s.nextUp} style={placeholderTint(show?.id)} onKeyDown={episodeListKeys}>
+              <div ref={pinnedRow} data-episode-id={pinned.id} className={s.nextUp} style={placeholderTint(show?.id)} onKeyDown={episodeListKeys}>
                 <span className={s.nextUpLabel}>{t(resuming ? 'title.continueEpisode' : 'title.nextUp')}</span>
-                <EpisodeRow episode={pinned} showSeason onPlay={playNextUp} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={pinned.id === episodeId} />
+                <EpisodeRow episode={pinned} showSeason onPlay={playNextUp} onOpen={openEpisode} onMore={(e, el) => player.more(e, anchorOf(el))} selected={pinned.id === landingId} expanded={pinned.id === episodeId} />
+                {detailUnderPinned ? details : null}
               </div>
             ) : null}
+            {detailAbove ? <Inset>{detailAbove}</Inset> : null}
             {episodeGroup.active ? (
               <GroupRows
                 key={layout}
@@ -324,11 +353,14 @@ export function ShowScreen() {
                 wrap={list => <div style={placeholderTint(show?.id)} onKeyDown={layout === 'list' ? episodeListKeys : undefined}>{list}</div>}
                 renderItem={renderGroupEpisode}
                 renderPlaceholder={renderEpisodePlaceholder}
+                detail={detailInList}
               />
             ) : episodes ? (
               <div style={placeholderTint(show?.id)} onKeyDown={layout === 'list' ? episodeListKeys : undefined}>
               <WindowedGrid
+                ref={listGrid}
                 key={layout}
+                detail={detailInList}
                 collection={episodes}
                 columnMin={layout === 'grid' ? 'clamp(240px, 24vw, 320px)' : undefined}
                 estimateRowHeight={layout === 'grid' ? 240 : 112}
@@ -358,20 +390,6 @@ export function ShowScreen() {
             {people.cast.map(c => <ListRow key={c.id ?? c.name} title={c.name} subtitle={c.role} art={{path: c.portraitUrl, icon: 'person'}} artShape="circle" onClick={c.id ? () => { setAllCast(false); void navigate({to: '/person/$personId', params: {personId: c.id!}}); } : undefined} />)}
           </div>
         </Dialog>
-      ) : null}
-      {episodeId && show ? (
-        <EpisodePanel
-          key={episodeId}
-          libraryId={show.libraryId}
-          showId={show.id}
-          episodeId={episodeId}
-          preview={found?.entry}
-          previous={found?.previous}
-          next={found?.next}
-          onOpenEpisode={openEpisode}
-          onClose={closeEpisode}
-          playList={(entry, start) => playEpisode(entry, start)}
-        />
       ) : null}
     </div>
   );
@@ -422,15 +440,16 @@ function orderSeasons(list: readonly WorkspaceSeason[]): WorkspaceSeason[] {
   return [...list].sort((a, b) => (a.number === 0 ? 1 : 0) - (b.number === 0 ? 1 : 0) || a.number - b.number);
 }
 /** The episode and its neighbors, when they're among the loaded pages. */
-function findResident(collection: ReturnType<typeof useEpisodes>, id: string): {entry: ContentEntry; previous?: ContentEntry; next?: ContentEntry} | undefined {
-  if (!collection) return undefined;
+/** An episode's place among the list's loaded rows (bounded: the first pages), or -1. */
+function residentIndex(collection: WindowedCollection<ContentEntry> | undefined, id: string): number {
+  if (!collection) return -1;
   const total = collection.getSnapshot().total ?? 0;
-  for (let i = 0; i < total && i < collection.pageSize * 8; i++) {
-    const item = collection.itemAt(i);
-    if (item?.id === id) return {entry: item, previous: i > 0 ? collection.itemAt(i - 1) : undefined, next: collection.itemAt(i + 1)};
-  }
-  return undefined;
+  for (let i = 0; i < total && i < collection.pageSize * 8; i++) if (collection.itemAt(i)?.id === id) return i;
+  return -1;
 }
+
+/** The list has its first page, so an episode's place in it can be known. */
+const firstPageReady = (collection: WindowedCollection<ContentEntry> | undefined) => !!collection && (collection.getSnapshot().total ?? 0) > 0 && !!collection.itemAt(0);
 
 /** The owner's four settings for one show. They change the list for everyone, so they are saved explicitly. */
 function ShowSettingsDialog({libraryId, showId, settings, onClose, onSaved}: {libraryId: string; showId: string; settings: ShowSettings; onClose: () => void; onSaved: () => void}) {
