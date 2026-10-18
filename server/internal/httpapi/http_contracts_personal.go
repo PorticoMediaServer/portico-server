@@ -88,7 +88,7 @@ func registerPersonalHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:55
-	if err := apikit.RegisterHTTP[struct{}, catalog.SavedResourcePage](registry, apikit.Metadata{ID: "get_saved_resources", Method: "GET", Path: "/v1/saved-resources", Summary: "Read saved resources; saved view presets can be narrowed to an authorized library and browse pivot", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "kind", "pinned", "limit", "libraryId", "pivot"}, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, catalog.SavedResourcePage](registry, apikit.Metadata{ID: "get_saved_resources", Method: "GET", Path: "/v1/saved-resources", Summary: "Read saved resources; saved view presets can be narrowed to an authorized library and browse pivot", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Admission: laneBrowsing, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Query: []string{"cursor", "kind", "pinned", "limit", "libraryId", "pivot"}, Errors: []string{"invalid_request", "invalid_cursor", "stale_continuation", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/saved_resources.go:81
