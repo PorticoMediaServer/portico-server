@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"mime"
 	"net"
 	"net/http"
 	"net/netip"
@@ -18,28 +19,32 @@ import (
 	"time"
 )
 
-// RouteIdentity is public information. Signing it grants no session or claim.
-// A fresh client nonce proves possession of the already pinned private key.
+// RouteIdentity is public information. Its v2 binding authorizes server-owned
+// TLS leaf certificates, never a session or claim. A fresh client nonce proves
+// possession of the already pinned identity key.
 type RouteIdentity struct {
-	Kind        string    `json:"kind"`
-	Version     string    `json:"version"`
-	ServerID    string    `json:"serverId"`
-	PublicKey   string    `json:"publicKey"`
-	Fingerprint string    `json:"fingerprint"`
-	BaseURL     string    `json:"baseUrl"`
-	Nonce       string    `json:"nonce"`
-	IssuedAt    time.Time `json:"issuedAt"`
-	ExpiresAt   time.Time `json:"expiresAt"`
+	Kind                       string    `json:"kind"`
+	Version                    string    `json:"version"`
+	ServerID                   string    `json:"serverId"`
+	PublicKey                  string    `json:"publicKey"`
+	Fingerprint                string    `json:"fingerprint"`
+	BaseURL                    string    `json:"baseUrl"`
+	Nonce                      string    `json:"nonce"`
+	IssuedAt                   time.Time `json:"issuedAt"`
+	ExpiresAt                  time.Time `json:"expiresAt"`
+	TLSCertificateFingerprints []string  `json:"tlsCertificateFingerprints,omitempty"`
 }
 type RouteIdentityHandler struct {
-	keys     *ProtectedKeys
-	runner   *AuthorityRunner
-	slots    chan struct{}
-	failures *failureLog
+	keys         *ProtectedKeys
+	runner       *AuthorityRunner
+	slots        chan struct{}
+	failures     *failureLog
+	certificates *CertificateManager
+	custom       *CustomCertificate
 }
 
-func NewRouteIdentityHandler(keys *ProtectedKeys, runner *AuthorityRunner) *RouteIdentityHandler {
-	return &RouteIdentityHandler{keys, runner, make(chan struct{}, 32), sharedFailureLog}
+func NewRouteIdentityHandler(keys *ProtectedKeys, runner *AuthorityRunner, certificates *CertificateManager, custom *CustomCertificate) *RouteIdentityHandler {
+	return &RouteIdentityHandler{keys: keys, runner: runner, slots: make(chan struct{}, 32), failures: sharedFailureLog, certificates: certificates, custom: custom}
 }
 
 // RouteOrigin is shared by owner configuration and the public identity proof.
@@ -89,6 +94,23 @@ func (h *RouteIdentityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
 	defer cancel()
+	// Accept negotiation keeps existing apps working and leaves the request body
+	// compatible with older servers. A stripped preference only removes auto-trust.
+	version := "1"
+	var fingerprints []string
+	if media, params, err := mime.ParseMediaType(r.Header.Get("Accept")); err == nil && media == "application/json" && params["portico-route-proof"] == "2" {
+		version = "2"
+		fingerprints = h.certificates.routeCertificateFingerprints(ctx)
+		if fingerprint := h.custom.routeCertificateFingerprint(ctx); fingerprint != "" {
+			found := false
+			for _, existing := range fingerprints {
+				found = found || existing == fingerprint
+			}
+			if !found {
+				fingerprints = append(fingerprints, fingerprint)
+			}
+		}
+	}
 	var out struct {
 		Payload   string `json:"payload"`
 		Signature string `json:"signature"`
@@ -114,7 +136,12 @@ func (h *RouteIdentityHandler) ServeHTTP(w http.ResponseWriter, r *http.Request)
 		}
 		fp := sha256.Sum256(id.PublicKey)
 		now := time.Now().UTC()
-		raw, e := json.Marshal(RouteIdentity{"portico.route-proof", "1", id.ServerID, base64.RawURLEncoding.EncodeToString(id.PublicKey), base64.RawURLEncoding.EncodeToString(fp[:]), q.BaseURL, q.Nonce, now, now.Add(30 * time.Second)})
+		raw, e := json.Marshal(RouteIdentity{
+			Kind: "portico.route-proof", Version: version, ServerID: id.ServerID,
+			PublicKey: base64.RawURLEncoding.EncodeToString(id.PublicKey), Fingerprint: base64.RawURLEncoding.EncodeToString(fp[:]),
+			BaseURL: q.BaseURL, Nonce: q.Nonce, IssuedAt: now, ExpiresAt: now.Add(30 * time.Second),
+			TLSCertificateFingerprints: fingerprints,
+		})
 		if e != nil {
 			return e
 		}
