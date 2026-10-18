@@ -11,6 +11,7 @@ import (
 	"io"
 	"net/http"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/identity"
 	"time"
 	"unicode/utf8"
@@ -93,6 +94,10 @@ func (d Dependencies) manualMetadataHandler(method string, read func(context.Con
 		}
 		if r.URL.RawQuery != "" {
 			failure(w, catalog.ErrManualMetadataInput)
+			return
+		}
+		if _, valid := entityid.Decode(r.PathValue("id")); !valid {
+			failure(w, sql.ErrNoRows)
 			return
 		}
 		fence := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch))))
