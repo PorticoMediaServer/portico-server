@@ -43,7 +43,7 @@ jobs:
   toolchain:
     strategy:
       fail-fast: false
-      max-parallel: 3
+      max-parallel: 5
       matrix:
         include:
           - {runner: ubuntu-24.04, target: linux-x64}
@@ -70,6 +70,12 @@ jobs:
             python3 scripts/verify-ffmpeg-manifest.py "$work/reused"
             cmp third_party/ffmpeg/sources.lock.json "$work/reused/sources.lock.json"
             cmp third_party/ffmpeg/requirements.v1.json "$work/reused/requirements.v1.json"
+            mkdir -p "$work/recipe-check"
+            tar -xJf "$work/reused/corresponding-source.tar.xz" -C "$work/recipe-check" provenance
+            for script in build-ffmpeg.sh normalize-ffmpeg-bundle.py patch-btbn-winarm64-system-error.sh; do
+              cmp "scripts/$script" "$work/recipe-check/provenance/scripts/$script"
+            done
+            diff -r third_party/ffmpeg/patches "$work/recipe-check/provenance/contract/patches"
           else
             echo 'No prior artifact for this target; build its pinned recipe.'
           fi
