@@ -330,8 +330,8 @@ function Rail({collapsed, onToggle}: {collapsed: boolean; onToggle?: () => void}
   return (
     <nav className={s.rail} aria-label={t('web.shell.primary')}>
       <Link to="/" className={s.brand} aria-label={t('web.shell.homeLabel')}>
-        <BrandMark size={26} />
-        <span><Wordmark height={16} /></span>
+        <BrandMark size={36} className={s.brandMark} />
+        <span className={s.brandWord}><Wordmark height={22} /></span>
       </Link>
       <div className={s.railGroup}>
         <RailLink to="/" icon="home" label={t('web.shell.home')} exact collapsed={collapsed} />

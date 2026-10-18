@@ -78,7 +78,7 @@ test('overlays are opaque everywhere except desktop web, and pickers alone carry
 test('title hero: one height rule per device, well-formed scrims (Spec — Title Pages §1)', () => {
   const {hero} = componentSpec;
   assert.equal(hero.height.tv.viewportFraction, 0.6);
-  assert.deepEqual(hero.height.web, {viewportFraction: 0.7, max: 720});
+  assert.deepEqual(hero.height.web, {viewportFraction: 0.54, min: 440, max: 580});
   assert.deepEqual(hero.height.tablet, hero.height.web);
   assert.equal(hero.height.phone.backdropAspect, 16 / 9);
   for (const stops of [hero.scrim.bottom, hero.scrim.left, hero.scrim.phoneBottom]) {
