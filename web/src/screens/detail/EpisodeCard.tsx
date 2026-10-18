@@ -8,7 +8,7 @@ import s from './Show.module.css';
 import {useI18n, type I18n} from '../../app/i18n';
 
 /** An episode as a landscape card: the still plays (Play in its middle on hover), the title opens the episode in place under its row of cards. The synopsis runs two lines. No still → a styled placeholder with the episode code, never the show backdrop. */
-export const EpisodeCard = React.memo(function EpisodeCard({episode, onPlay, onOpen, onMore, selected}: {episode: ContentEntry; onPlay?: (episode: ContentEntry) => void; /** Opens (or closes) the episode in place. */ onOpen: (episode: ContentEntry) => void; /** The same actions the list row's ⋯ opens. */ onMore?: (episode: ContentEntry, anchor: Element) => void; /** Open in place, or the episode the page was opened for. */ selected?: boolean}) {
+export const EpisodeCard = React.memo(function EpisodeCard({episode, onPlay, onOpen, onMore, expanded, landed, tag}: {episode: ContentEntry; onPlay?: (episode: ContentEntry) => void; /** Opens (or closes) the episode in place. */ onOpen: (episode: ContentEntry) => void; /** The same actions the list row's ⋯ opens. */ onMore?: (episode: ContentEntry, anchor: Element) => void; /** Open in place. */ expanded?: boolean; /** The episode the page was opened for: marked a moment, then not. */ landed?: boolean; /** A chip after the title ("Next up"). */ tag?: string}) {
   const {t} = useI18n();
   const label = [episodeCode(t, episode), episode.title].filter(Boolean).join(', ');
   const playable = !!episode.playback && !!onPlay;
@@ -23,7 +23,9 @@ export const EpisodeCard = React.memo(function EpisodeCard({episode, onPlay, onO
       synopsis={episode.overview}
       progress={progressFor(episode)}
       watched={episode.watched}
-      selected={selected}
+      opened={expanded}
+      landed={landed}
+      tag={tag}
       playLabel={t('card.play', {title: label})}
       openLabel={label}
       onPlay={playable ? () => onPlay!(episode) : undefined}
@@ -44,7 +46,7 @@ export const EpisodePlaceholder = StillCardPlaceholder;
  * The row itself takes focus: Enter plays it, Up and Down move through the list (the list owns the
  * arrows).
  */
-export const EpisodeRow = React.memo(function EpisodeRow({episode, onPlay, onOpen, onMore, selected, expanded, showSeason}: {episode: ContentEntry; onPlay?: (episode: ContentEntry) => void; /** Opens (or closes) the episode in place. */ onOpen: (episode: ContentEntry) => void; onMore?: (episode: ContentEntry, anchor: HTMLElement) => void; /** The episode the page was opened for. */ selected?: boolean; /** Open in place: its details are drawn under the row. */ expanded?: boolean; /** Print "S2 E4" in place of the bare number (the pinned Next up row, which may sit above another season's list). */ showSeason?: boolean}) {
+export const EpisodeRow = React.memo(function EpisodeRow({episode, onPlay, onOpen, onMore, landed, expanded, tag, showSeason}: {episode: ContentEntry; onPlay?: (episode: ContentEntry) => void; /** Opens (or closes) the episode in place. */ onOpen: (episode: ContentEntry) => void; onMore?: (episode: ContentEntry, anchor: HTMLElement) => void; /** The episode the page was opened for: it wears the opened plate a moment, then not. */ landed?: boolean; /** Open in place: the row and its details below form one plate. */ expanded?: boolean; /** A chip after the title ("Next up"). */ tag?: string; /** Print "S2 E4" in place of the bare number (the pinned Next up row, which may sit above another season's list). */ showSeason?: boolean}) {
   const i18n = useI18n();
   const {t} = i18n;
   const label = [episodeCode(t, episode), episode.title].filter(Boolean).join(', ');
@@ -53,7 +55,7 @@ export const EpisodeRow = React.memo(function EpisodeRow({episode, onPlay, onOpe
   const meta = [episode.airDate ? t('title.airedOn', {date: formatAirDate(i18n, episode.airDate)}) : undefined, episode.duration ? formatDuration(episode.duration) : undefined].filter(Boolean).join(' · ');
   const progress = progressFor(episode);
   return (
-    <div className={s.episodeRow} data-selected={selected || expanded || undefined} data-expanded={expanded || undefined} data-episode-row tabIndex={0} role="group" aria-label={label}
+    <div className={s.episodeRow} data-landed={landed && !expanded || undefined} data-expanded={expanded || undefined} data-episode-row tabIndex={0} role="group" aria-label={tag ? `${label}, ${tag}` : label}
       onKeyDown={e => { if (e.target === e.currentTarget && e.key === 'Enter') { e.preventDefault(); if (playable) onPlay!(episode); else onOpen(episode); } }}>
       <div className={s.episodeRowStill}>
         {art.kind === 'still'
@@ -62,7 +64,7 @@ export const EpisodeRow = React.memo(function EpisodeRow({episode, onPlay, onOpe
         {episode.watched ? <span className={s.episodeRowWatched} title={t('status.watched')}><Icon name="check" size={14} strokeWidth={2.2} /></span> : null}
       </div>
       <button type="button" className={s.episodeRowCopy} onClick={() => onOpen(episode)} aria-label={label} aria-expanded={!!expanded}>
-        <span className={s.episodeRowTitle}>{episode.episodeNumber != null ? <span className={s.episodeRowNumber}>{episode.absoluteNumber ?? (showSeason ? episodeCode(t, episode) : episode.episodeNumber)}</span> : null}<span>{episode.title}</span></span>
+        <span className={s.episodeRowTitle}>{episode.episodeNumber != null ? <span className={s.episodeRowNumber}>{episode.absoluteNumber ?? (showSeason ? episodeCode(t, episode) : episode.episodeNumber)}</span> : null}<span className={s.episodeRowName}>{episode.title}</span>{tag ? <span className={s.episodeTag}>{tag}</span> : null}</span>
         {meta ? <span className={s.episodeRowMeta}>{meta}</span> : null}
         {episode.overview ? <span className={s.episodeRowSynopsis}>{episode.overview}</span> : null}
       </button>
