@@ -1,0 +1,23 @@
+# Lane: naming — reading titles from folders and files
+
+Worktree: `/home/justin/projects/Portico/.worktrees/audit-implementation/server-naming` (branch `audit-implementation/naming`). This is your working directory and, with `/home/justin/projects/Portico/.worktrees/audit-implementation/_program`, the only place you can write.
+**You cannot commit** (the sandbox keeps git metadata read-only). At each milestone, when the tree compiles, run from the worktree root:
+`bash /home/justin/projects/Portico/.worktrees/audit-implementation/_program/snap.sh naming "<one-line commit subject in plain language>"`
+Snapshots are cumulative; each becomes one commit. Take one at least every hour of work and always one at the very end, after which you must not change the tree. Go environment: `GOCACHE=/home/justin/projects/Portico/.worktrees/audit-implementation/_program/gocache` and `GOFLAGS=-p=2` are already set.
+Audit documents: 05 (naming entries: A-05.14 to A-05.16, B-05.10, B-05.11, and the rest of the naming bugs), 06 (B-06.1); verification V04. Decision register D-02, D-03, D-51.
+
+## What to deliver
+Plex is the gold standard; go past it where there is an obvious win. Today titles come from the file name only, the folder must agree, and a show's flat files are understood only inside `Season N`.
+
+1. **A name reader that uses both the folder path and the file name and returns evidence, not a verdict**: candidate title(s), year, season, episode(s), absolute number, air date, part number, edition, version label, provider ids, extras type, each with where it came from (file name, parent folder, grandparent folder) and a confidence. **Where folder and file conflict, the file wins** (`S02E01` inside `Season 1` is season 2).
+2. **Films**: `Title (Year)/Title (Year).mkv`; a file alone in a library; a folder named well with a file named badly, and the reverse; scene names with dots and release junk (resolution, source, codec, audio, group, hashes); editions (`{edition-Director's Cut}`, common plain forms); several versions of one film in one folder (`Title (Year) - 1080p.mkv`, `- 4K`); multi-part (`pt1`, `cd2`, `part 3`, `disc 1`); disc folders (`VIDEO_TS`, `BDMV`); extras folders (`Trailers`, `Behind The Scenes`, `Deleted Scenes`, `Featurettes`, `Interviews`, `Scenes`, `Shorts`, `Other`, `Extras`) and suffixes (`-trailer`, `-behindthescenes`, …); samples.
+3. **Shows**: `S01E02`, `s01e02e03`, `S01E02-E04`, `1x02`, `Season 2/E01`, `Season 2/01 - Title`, `Season 2/Episode 1`, `Show/Show - 102`, no season folder at all, season folder spellings (`Season 02`, `S02`, `Series 2`, `Saison 2`, `Staffel 2`, `Temporada 2`), `Specials` and season 0, air-date episodes (`2011-11-15`), anime absolute numbering (`[Group] Show - 012 [1080p][ABCD1234].mkv`, `Show - 012v2`), show folders with a year or an id. `1920x1080`, `x264`, `H.265`, years and resolutions must never be read as episode markers. A bare `01` is an episode only when the surroundings support it.
+4. **Provider id hints** in folder or file names, in the forms Plex and Jellyfin document: `{imdb-tt1234567}`, `{tmdb-12345}`, `{tvdb-12345}`, `[imdbid-tt…]`, `[tmdbid=…]`, `[tvdbid-…]`, and a bare `tt1234567`.
+5. **Ignore rules** (D-51): dot-files and dot-folders, `@eaDir`, `#recycle`, `$RECYCLE.BIN`, `lost+found`, `.grab`, `.plexignore` and `.ignore` files (Plex's pattern syntax), samples. Provide the rules as functions and wire them into the directory walk if the change there is small and local.
+6. **A large table-driven corpus** of real-world names with expected readings, grouped by convention: Plex's documented layouts, the default naming formats of Sonarr and Radarr, scene releases, anime fansub names, badly organised libraries. Many hundreds of cases. `_reference/jellyfin` has a naming test suite you may read for the kinds of cases that matter. Run this package's tests freely; they are fast.
+7. Titles that look like years, or contain a year (`2001: A Space Odyssey (1968)`, `1917 (2019)`, `Blade Runner 2049`), read correctly (B-06.1).
+
+## Boundaries
+- You own the name-reading package(s) and their tests. Keep them pure: no database, no network.
+- The **identity** lane owns the catalogue, the schema and how a file attaches to a title. The **providers-matching** lane owns matching and consumes your evidence (title candidates, year, id hints). A later lane reworks the scan loop and wires the three together. Keep today's callers compiling with the smallest adapter you can; do not change the scan loop's behaviour, the catalogue or matching.
+- Music and audiobooks are read from tags by the **music-audiobooks** lane; give them only what a path can add (disc folders, track numbers in names, `Artist/Album (Year)/01 - Track`).

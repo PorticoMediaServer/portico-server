@@ -1,0 +1,77 @@
+[
+  {
+    "name": "jellyfin-vue",
+    "origin": "https://github.com/jellyfin/jellyfin-vue.git",
+    "commit": "64e44f306f2143bdd22db4ade61acd0d062c5aaf"
+  },
+  {
+    "name": "jellyfin-desktop",
+    "origin": "https://github.com/jellyfin/jellyfin-desktop.git",
+    "commit": "2cb4a4456fd29b5b62d825ef0e5df93ed6913328"
+  },
+  {
+    "name": "streamyfin",
+    "origin": "https://github.com/streamyfin/streamyfin.git",
+    "commit": "805f1a55bf015623cc2e087edb7c44ac1e2c257c"
+  },
+  {
+    "name": "plezy",
+    "origin": "https://github.com/edde746/plezy.git",
+    "commit": "ce361d90804689b462a08fe995419a00af7ccb13"
+  },
+  {
+    "name": "jellyfin-androidtv",
+    "origin": "https://github.com/jellyfin/jellyfin-androidtv.git",
+    "commit": "2246041104e6099dcf6dc2405ca0921255a6ac5f"
+  },
+  {
+    "name": "jellyfin-docs",
+    "origin": "https://github.com/jellyfin/jellyfin.org.git",
+    "commit": "1e5f982651d2164f56a252ecd5c8fe57509aeaf9"
+  },
+  {
+    "name": "wholphin",
+    "origin": "https://github.com/damontecres/Wholphin.git",
+    "commit": "f01c5d367cb61ab0aa0cba048a07b46df975ecf0"
+  },
+  {
+    "name": "jellyfin-android",
+    "origin": "https://github.com/jellyfin/jellyfin-android.git",
+    "commit": "66d3e2e1ec8823eaf60447a84b40f6455622eeb5"
+  },
+  {
+    "name": "finamp",
+    "origin": "https://github.com/jmshrv/finamp.git",
+    "commit": "673b568afc3addff56ca4e2bba65dba5a7426c5b"
+  },
+  {
+    "name": "audiobookshelf",
+    "origin": "https://github.com/advplyr/audiobookshelf.git",
+    "commit": "743d9152208507a1dbf7c95c94290071338f44bd"
+  },
+  {
+    "name": "jellyfin-web",
+    "origin": "https://github.com/jellyfin/jellyfin-web.git",
+    "commit": "319dbfc7e83e5f883f5d2708b727329743049c03"
+  },
+  {
+    "name": "swiftfin",
+    "origin": "https://github.com/jellyfin/Swiftfin.git",
+    "commit": "2229d6f616993dc65d8137855676a9bb3521e64a"
+  },
+  {
+    "name": "jellyfin",
+    "origin": "https://github.com/jellyfin/jellyfin.git",
+    "commit": "a45d1415d4da7c9b69d6e7a6895fc63d2d68e8f1"
+  },
+  {
+    "name": "navidrome",
+    "origin": "https://github.com/navidrome/navidrome.git",
+    "commit": "8e306b1f6172b0031133c42044830d9c87802d3b"
+  },
+  {
+    "name": "intro-skipper",
+    "origin": "https://github.com/intro-skipper/intro-skipper.git",
+    "commit": "a83b385fcfe8d868efe297a19759a57708388435"
+  }
+]

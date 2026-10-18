@@ -1,17 +1,19 @@
 # Interactive testing on the personal Ubuntu PC
 
-**Current testing environment: [17 October reset and client builds](2026-10-17-reset.md).**
+**Current source layout: [18 October consolidation and cleanup](2026-10-18-cleanup.md).**
+
+The [17 October reset and client build record](2026-10-17-reset.md) describes the deployed testing environment.
 Hosted and both DNS nodes now run the October 17 build on fresh application state.
 The demo runs server `fbcd4ba9` with rebuilt local accounts/catalogue and preserved
-fixtures. Current phone/Android TV release APKs are in the `native-reset` worktree
-at `c5eb8ad`; both visible emulators are signed directly into the demo. The
+fixtures. The current phone/Android TV release APKs are in the normal native checkout;
+both emulators retain their direct demo sign-in state. Their last build was `c5eb8ad`. The
 October 9 artifact paths and measurements below are historical.
 
 For the commands below, select the current worktrees explicitly:
 
 ```sh
-export PORTICO_NATIVE_REPO=/home/justin/projects/Portico/.worktrees/audit-implementation/native-reset
-export PORTICO_SERVER_REPO=/home/justin/projects/Portico/.worktrees/audit-implementation/main-server
+export PORTICO_NATIVE_REPO=/home/justin/projects/Portico/apps/portico-react-native
+export PORTICO_SERVER_REPO=/home/justin/projects/Portico/apps/portico-server
 ```
 
 The current direct sign-in credentials are in the same private file described
@@ -22,7 +24,7 @@ Historical setup below: 9 October 2026. Compute runs on `ehler-personal` (`100.1
 
 ## Start testing
 
-From `/home/justin/projects/Portico/.worktrees/audit-implementation/internal-reset`:
+From `/home/justin/projects/Portico/portico-internal`:
 
 ```sh
 scripts/test-clients.sh status

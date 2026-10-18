@@ -1,0 +1,25 @@
+# Lane: freshness-clients — open screens that stay current, quietly
+
+Two worktrees, both yours, both committable:
+- `/home/justin/projects/Portico/.worktrees/audit-implementation/server-freshness-clients` (branch `audit-implementation/freshness-clients`, repository portico-server: the web app in `web/` and the canonical shared packages in `packages/`). `node_modules` is a symlink; do not install.
+- `/home/justin/projects/Portico/.worktrees/audit-implementation/native-freshness-clients` (same branch name, repository portico-react-native: `apps/native`, `apps/vega`). `packages/*` there are copies: change the canonical package in the server worktree, then run `PORTICO_SERVER_REPO=/home/justin/projects/Portico/.worktrees/audit-implementation/server-freshness-clients node scripts/shared-packages.mjs --write` in the native worktree and commit both.
+Your report is `/home/justin/projects/Portico/.worktrees/audit-implementation/_program/reports/freshness-clients.md`.
+
+Justin's decision (programme brief, section 1): the server pushes changes to open screens within about 30 seconds; screens refresh quietly; the current screen is never blanked; a failure is not shown immediately; a person never sees a revision conflict unless the thing they acted on really changed. "Plex does this well — new posters kind of fade in and push a row." Audit: `00-FINAL-REPORT.md` Bets 2 and 3 and decision D-08; documents 16 (A-16.7, A-16.14), 19, 21, 22; verification V09, V10.
+
+The server side is done and merged. Read `/home/justin/projects/Portico/.worktrees/audit-implementation/_program/reports/freshness-server.md` first: one event stream replacing the long-poll listeners, events for watch state and progress, library changes (added, updated, removed, missing, restored), scan progress and settings, separate revision counters (content order, personal state, commands, observations) carried on events and documents, browse and search that always answer, and the `client-core` pieces it already added (`freshness.ts`: `parseFreshnessChange`, `subscribeFreshness`, counters). Also `personal-state.md` (undo, Home destinations via `seeAll`), `search-sort.md` if present (paged Genres and Series lists, re-anchoring), `scan-loop.md` (scan issues), `limits-settings.md`.
+
+## What to deliver
+1. **One shared freshness behaviour in `client-core`** used by web, native and Vega: a single subscription per signed-in server; each open document (Home, a library tab, a show, a title, a list, search results, Continue Watching, the owner's lists) declares which counters it depends on and is revalidated in the background only when one of them moves; the last known document is shown at once when a screen is reopened and then revalidated (keyed by its counters, not by time); nothing is refetched merely because the person pressed Back.
+2. **Quiet updates on screen**: new and changed items appear in place without a spinner, without losing scroll position or focus (critical on TV), and without the list jumping under a person who is reading or mid-press; rows may gain a card with a gentle fade. Watched ticks, progress bars and Continue Watching update on other devices within the time the server allows. A removed or missing title updates its card.
+3. **Failures stay quiet**: a failed background refresh keeps the current content and retries with backoff; only after a sustained failure does a small, plain "can't reach the server" state appear, and it clears by itself.
+4. **No conflicts shown to people**: a stale cursor or a moved counter on an action re-reads and retries silently when the action still makes sense; only a real conflict (the thing changed under them) is shown, in plain words. Remove the "being prepared" states the server no longer sends.
+5. **The event stream on every platform**: server-sent events in browsers; on React Native and Vega use what works there (a streaming fetch or the platform's own EventSource equivalent) with the long-poll fallback the server kept, reconnect with backoff, pause in the background, resume with the last event id; an idle app makes no requests.
+6. **Web and native screens wired**: Home, library tabs, title and show pages, search, lists, the owner's activity and scan progress on web; the same on native phone, tablet and TV, and Vega.
+7. Tests for the shared behaviour (counter dependency, quiet revalidation, silent retry, backoff, last-known-then-revalidate) and for the stream adapters.
+
+## Boundaries
+- Frontend quality matters: match existing components and motion; no new visual language. Every string through the catalogue.
+- Do not change server behaviour. If the event stream or a document lacks a counter you need, use what exists and write the exact need under "Needed from others".
+- A third console-screens pass and a base-health lane (fixing failing tests) run alongside in other worktrees; keep to the freshness behaviour and its wiring.
+- Checks: `npx tsc --noEmit` in web, `apps/native` (both configs) and `apps/vega`; the string lints; your test files. No full suites, no Gradle, no Xcode. Leave a short two-device test script (change on one, watch the other).

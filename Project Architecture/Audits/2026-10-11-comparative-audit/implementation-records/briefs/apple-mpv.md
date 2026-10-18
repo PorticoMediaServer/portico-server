@@ -1,0 +1,19 @@
+# Lane: apple-mpv — mpv as a second player engine on iPhone, iPad and Apple TV, and the engine setting
+
+Worktree: `/home/justin/projects/Portico/.worktrees/audit-implementation/native-apple-mpv` (branch `audit-implementation/apple-mpv`, repository `portico-react-native`). You can commit. Nothing can be built here: no Xcode. Write the code to the best of your ability and leave exact build and device test notes.
+Audit documents: 20 (all), 19 (native module architecture, A-20.3 on the command channel between JavaScript and the engine); verification V02. Reference: `_reference/plezy` (mpv embedded on every platform), `_reference/swiftfin` (two engines), for how others integrate; do not copy code.
+
+## What to deliver
+1. **An mpv engine for iOS and tvOS** as a native module that implements the same contract between JavaScript and the engine that the existing AVPlayer module implements (commands, events, leases, track lists, errors), so the player screen can drive either. Use libmpv through its render API with a Metal-backed or OpenGL ES-backed view, hardware decoding through VideoToolbox, and libass for styled subtitles (it comes with mpv). Dependency: an LGPL build of mpv and FFmpeg as prebuilt frameworks (for example MPVKit via Swift Package Manager or CocoaPods); wire it into the project files and say in your notes exactly what must be fetched and how to build.
+2. It must cover: direct play of MKV and other containers the native player refuses, HEVC and AV1 where the device decodes them, HDR output where the display supports it, multichannel and lossless audio decoding, passthrough where the system allows, embedded and external subtitles (text, ASS, PGS, VobSub) with track switching, audio track switching, playback speed, seeking, chapters, resume, progress reporting through the same path the native engine uses, background and interruption handling, Now Playing and remote-command integration, and refresh-rate matching on tvOS through the hook that exists.
+3. **What mpv cannot do is declared, not hidden**: no AirPlay video, no Picture in Picture if it cannot be done soundly. The engine reports these so the player screen hides those controls while mpv is active.
+4. **The mpv capability profile**: what this engine can play on this device (containers, codecs with limits by device class, dynamic range, audio, `subtitleRendering` = `text`, `ass`, `pgs`, `vobsub`, `dvb`), in the shape the app's existing capability probe uses, as a second profile beside the native one.
+5. **The engine setting and selection in JavaScript**: a Player setting with Automatic (default), Native, mpv, in the shared settings structure style with catalogue strings. The player screen chooses the engine from the plan when the server names one (field `engine`: `native` or `mpv`), and otherwise by the local rule: native when the file plays directly or with a plain remux; mpv when the alternative is a video conversion, lossy audio or burned-in subtitles. Switching engine mid-title keeps position and the queue.
+6. **The engine contract, written down once** in a short file beside the module (`ENGINE-CONTRACT.md`): every command, event and field both engines implement. A later lane writes the Android mpv engine against it, so it must be exact.
+7. Fix the confirmed Apple player-engine bugs in document 20 that you meet in this code.
+
+## Boundaries
+- `packages/*` here are copies and must not be edited; record needed changes (new settings entries, strings, capability fields) under "Needed from others", and keep local stand-ins small and clearly marked so they are easy to replace.
+- The **native-app** lane owns every non-player screen.
+- The server's **playback-core** lane is making the capability document carry one profile per engine and the plan name the engine. Match the names above.
+- Android, Android TV and Fire TV get mpv in a later lane. Do not write Kotlin, but keep the JavaScript side platform-neutral.

@@ -1,0 +1,9 @@
+# Lane brief: fix-final — the bugs the final verification left open (16 Oct)
+
+Rules: `cp-common.md`. Worktrees `$G/server-fix-final`, `$G/native-fix-final` (branch `audit-implementation/fix-final`, from main server 0a416ed8 / native 7e72d0b). Read `reports/verify-2.md` first (exact repros, logs, emulator setup; the all-ABI engine build is in `$PR/scratch/verify-2/engine-out/android`). Fix the cause of each; add a test that fails on the old code where possible; verify on the Android emulator where the bug is native. Stop any emulator, Metro or server you start. Report `$PR/reports/fix-final.md`.
+
+1. **mpv + preselected subtitle stops playback (Android):** with Player = mpv in Settings and a subtitle picked on the details page before Play, playback stops at 0:00 with "Playback could not continue"; the same title/track plays under Automatic (also mpv). Find and fix; check the Apple engine path for the same logic (write carefully; Swift not compilable here).
+2. **Brief 404 after "Not this artist"** when the new artist page first loads (web; check native too).
+3. **Album id during a first scan:** a new album briefly has a different id under "Unknown artist" and that id later returns 404 — make the id stable or redirect it (the merged-away-id resolver from cp4-leftovers may be the right tool).
+4. **Load-sensitive playback-queue tests:** the 2-second scan limit can leave a shuffled queue's first batch empty, and a failing test then holds a capture slot and breaks the next — make the tests robust (no sleeps; release slots in cleanup) without changing product limits unless the product behaviour is actually wrong (an empty first batch reaching a client would be a product bug — check).
+Then run the affected packages/tests and the narrow client checks, merge `audit-implementation/main` if it moved, re-mirror.

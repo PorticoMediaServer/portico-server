@@ -1,0 +1,19 @@
+# Lane: native-owner — owner administration on phones and tablets, and a read-only owner Dashboard on TV
+
+Worktree: `/home/justin/projects/Portico/.worktrees/audit-implementation/native-native-owner` (branch `audit-implementation/native-owner`, repository portico-react-native). You can commit. `node_modules` are symlinks; do not install. No Gradle, no Xcode; nothing can be run on a device. Report: `/home/justin/projects/Portico/.worktrees/audit-implementation/_program/reports/native-owner.md`.
+
+Read first: `/home/justin/projects/Portico/.worktrees/audit-implementation/_program/PROGRAM-BRIEF.md` (the owner's decisions and rules of work; rule 12: no subagents, the cheap helper script is allowed with oversight), then `/home/justin/projects/Portico/.worktrees/audit-implementation/_program/reports/decision-audit.md`, section "Needed from others", items **N1 to N5** (an exact, code-verified list with file names and routes) and T2, and `/home/justin/projects/Portico/.worktrees/audit-implementation/_program/reports/native-screens.md` (the lane before you, which left these out on purpose and says what it found).
+
+The owner has now decided (14 October): **phones and tablets get the owner administration panels; televisions do not, but a TV may show a read-only owner Dashboard** with server status, active sessions and the like.
+
+## What to deliver
+1. **N1 — Integrations** on phone and tablet: personal access tokens for any member; for the owner, members' tokens, API keys with scope and expiry, webhooks (list, add, edit, enable, test, delivery log) and the assistant connection details, with the copy-once secret display.
+2. **N2 — People**: delete a member with the server's preview as the confirmation; the viewing-hours editor; the rating-system selection where the contract allows. Do not rebuild what the People panels already do.
+3. **N3 — Library and metadata tools**: the library-wide needs-attention page with its actions and exact count; metadata settings (artwork limit with usage, provider keys, adult titles); remove a whole library with a typed confirmation; merge and split; delete one version.
+4. **N4 — Runtime and diagnostics**: resource and storage use, downloads per person with revoke, "pause background work for an hour", Restart, titles set aside by a rebuild, client reports (list, read, delete).
+5. **N5 — Live TV sources**: guide attachment and mapping for HDHomeRun, the group and channel pick lists, guide horizon and limits, what an import skipped.
+6. **A TV Dashboard for the owner** (Apple TV, Android TV, Fire TV, Vega): one read-only screen reachable from the owner's Settings on TV: server name, version and health, what is playing now (who, what, on which device, direct or converting), background work in progress (scans, rebuilds, conversions), storage at a glance, recent problems. No actions that change anything, no owner panels on TV. It updates quietly through the shared freshness behaviour, with stable focus.
+7. Everything on phone and tablet layouts, reusing the existing server-settings forms, list rows, sheets and confirmations exactly; every string through the catalogue (`packages/*` are copies: if a string or a shared settings-structure entry is missing, list it exactly and use the smallest marked local stand-in); owner-only surfaces hidden from members; destructive actions confirmed the same way the web console confirms them; out-of-date saves retried silently through the shared retry path; lists tolerant of a bad row.
+
+## Boundaries
+Keep to owner surfaces. Do not change the player, downloads or viewer screens. Keep both native type-checks, the Vega type-check, the string lints and the native (605) and Vega (87) test suites passing; add tests for the rules behind your screens. Work autonomously; never ask; record decisions. Final message under 250 words: what is done, what is not, the report path.
