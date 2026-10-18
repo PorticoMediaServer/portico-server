@@ -17,7 +17,7 @@ export const playlistListFilters: readonly PlaylistListFilter[] = ['all', 'mine'
 const filterAllowed = (view: string, filter: string) => (view === 'playlists' ? (playlistListFilters as readonly string[]).includes(filter) : (view === 'watchlist' || view === 'favorites') && (savedListFilters as readonly string[]).includes(filter));
 export const savedListSorts: readonly SavedListSort[] = ['title', 'added', 'updated', 'year', 'duration', 'progress'];
 export const historyPeriods: readonly HistoryPeriod[] = ['24h', '7d', '30d', '90d', 'all'];
-export type SavedRoute = Readonly<{ view: 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history' | 'resource'; resourceId?:string; sort?: string; direction?: 'asc' | 'desc'; filter?: SavedListFilter | PlaylistListFilter; period?: HistoryPeriod } | { view: 'playlist'; playlistId: string }>;
+export type SavedRoute = Readonly<{ view: 'watchlist' | 'favorites' | 'playlists' | 'collections' | 'views' | 'history' | 'resource'; resourceId?:string; sort?: string; direction?: 'asc' | 'desc'; filter?: SavedListFilter | PlaylistListFilter; period?: HistoryPeriod; /** `views` only: a library's presets (its saved views), and of one browse pivot when named. */ libraryId?: string; pivot?: string } | { view: 'playlist'; playlistId: string }>;
 /** Filters and sorts are named server policies. The client picks a published name; it never
  * evaluates the predicate or re-sorts the page it was given. */
 export function savedListPath(view: 'watchlist' | 'favorites', options: Readonly<{ filter?: SavedListFilter; sort?: SavedListSort; direction?: 'asc' | 'desc'; limit?: number; cursor?: string | null }> = {}): string {

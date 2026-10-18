@@ -41,7 +41,8 @@ function distinct<T extends {id:string}>(a:T[],part='rows'):T[]{return firstOfEa
 function actor(v:unknown):SavedActor{if(!obj(v)||!['local','hosted'].includes(v.authority as string)||!id(v.accountId)||!id(v.profileId))bad();return {authority:v.authority as SavedActor['authority'],accountId:v.accountId,profileId:v.profileId};}
 function definition(v:unknown):SavedDefinition{
  if(!obj(v)||!id(v.libraryId)||!id(v.pivot)||!['grid','list'].includes(v.presentation as string))bad();
- const sort=rows(v.sort,3).map(s=>{if(!obj(s)||!id(s.field)||!['asc','desc'].includes(s.direction as string))bad();return {field:s.field,direction:s.direction as 'asc'|'desc'};});
+ // The whole stored sort: a random order keeps its seed, so a saved view opens in the same order everywhere.
+ const sort=rows(v.sort,3).map(s=>{if(!obj(s)||!id(s.field)||!['asc','desc'].includes(s.direction as string))bad();if(s.seed!==undefined&&(!num(s.seed)||s.seed>4294967295||s.field!=='random'))bad();return {field:s.field,direction:s.direction as 'asc'|'desc',...(s.seed===undefined?{}:{seed:s.seed as number})};});
  if(sort.length<1)bad();
  let query:BrowseNode|null=null;
  if(v.query!==undefined&&v.query!==null){try{query=parseBrowseNode(v.query);}catch{bad();}}
@@ -144,9 +145,18 @@ export function savedCategoryId(d?:SavedDefinition):string{
  }
  return '';
 }
+/**
+ * A saved view as the library's browse request it stands for: its pivot, its whole query and its
+ * whole sort, exactly as stored (never flattened into filter chips). None for one that needs
+ * review: it is not applied, and nothing stands in for it.
+ */
+export function savedViewBrowse(r:Pick<PersonalResource,'kind'|'status'|'definition'>):Readonly<{libraryId:string;pivot:string;query?:BrowseNode;sort:readonly BrowseSortSelection[]}>|undefined{
+ const d=r.kind==='view'&&r.status==='ready'?r.definition:undefined;
+ return d?{libraryId:d.libraryId,pivot:d.pivot,...(d.query?{query:d.query}:{}),sort:d.sort}:undefined;
+}
 export class PersonalSavedService{
  private state:PersonalSavedSnapshot;private listeners=new Set<()=>void>();private generation=0;private readTicket=0;private candidateTicket=0;private disposed=false;private controllers=new Set<AbortController>();private seen=0;
- private command?:{intent:PersonalSavedIntent;path:string;method:string;body:Record<string,unknown>;fence:string;rebased?:boolean};
+ private command?:{intent:PersonalSavedIntent;path:string;method:string;body:Record<string,unknown>;fence:string;rebased?:boolean;resourceId?:string;listed?:boolean};
  private api:SavedApi;readonly scope:SavedScope;private requestId:()=>Promise<string>;
  constructor(api:SavedApi,scope:SavedScope,requestId:()=>Promise<string>){this.api=api;this.scope=Object.freeze({...scope});this.requestId=requestId;if(!id(scope.serverId)||!str(scope.viewerId,1024)||!scope.viewerId)throw new Error('A complete viewer scope is required.');this.state=this.empty();}
  private empty():PersonalSavedSnapshot{return freeze({route:null,loading:false,error:null,mutationError:null,pending:false,retryPending:false,resources:[],resource:null,entries:[],browse:null,revision:0,viewerFence:'',cursor:null,history:[],nextCursor:'',result:null,candidates:[],candidateCursor:'',libraries:[]});}
@@ -162,6 +172,8 @@ export class PersonalSavedService{
  private request<T>(path:string,method='GET',body?:unknown):Promise<T>{return this.bounded(signal=>this.api.request<T>(path,method,body,signal));}
  select(route:SavedRoute,position:{cursor?:string|null;history?:readonly (string|null)[]}={}):Promise<void>{
   if(this.disposed)throw new Error('Saved service is disposed.');if(!isPersonalSavedRoute(route)||route.view==='resource'&&!id(route.resourceId))throw new Error('Invalid personal resource destination.');
+  // A library's presets: its saved views for one library, and one browse pivot of it when named.
+  if('libraryId' in route&&route.libraryId!==undefined||'pivot' in route&&route.pivot!==undefined){if(route.view!=='views'||!id(route.libraryId)||route.pivot!==undefined&&!id(route.pivot))throw new Error('Invalid saved view scope.');}
   if((position.history?.length??0)>64||position.cursor!=null&&!str(position.cursor,4096)||position.history?.some(c=>c!==null&&!str(c,4096)))throw new Error('Invalid Saved position.');
   this.generation++;for(const c of this.controllers)c.abort();this.command=undefined;this.publish({...this.empty(),route:freeze({...route}),cursor:position.cursor??null,history:[...(position.history??[])]});return this.load(position.cursor??null,position.history??[]);
  }
@@ -224,6 +236,7 @@ export class PersonalSavedService{
    const query=new URLSearchParams({limit:String(PAGE),...(cursor?{cursor}:{})});
    const path=route.view==='resource'?encodedRoutePath("get_saved_resources_id_content", {"id": encodeURIComponent(route.resourceId!)}):route.view==='history'?routePath("get_personal_history"):routePath("get_saved_resources");
    if(route.view==='collections'||route.view==='views')query.set('kind',route.view==='collections'?'collection':'view');
+   if(route.view==='views'&&route.libraryId){query.set('libraryId',route.libraryId);if(route.pivot)query.set('pivot',route.pivot);}
    if(route.view==='history'&&'period'in route&&route.period)query.set('period',route.period);
    const raw=await this.request<unknown>(path+'?'+query);
    if(!obj(raw)||!str(raw.nextCursor,4096))bad();let patch:{-readonly [K in keyof PersonalSavedSnapshot]?:PersonalSavedSnapshot[K]}&{viewerFence:string;revision:number;nextCursor:string}={resource:null,resources:[],entries:[],browse:null,nextCursor:raw.nextCursor,cursor,history:[...history],viewerFence:'',revision:0};
@@ -240,7 +253,9 @@ export class PersonalSavedService{
     if(raw.serverId!==this.scope.serverId||!id(raw.viewerFence)||!num(raw.revision))bad();patch.viewerFence=raw.viewerFence;patch.revision=raw.revision;
     if(route.view==='history')patch.entries=distinct(keepReadable('personal-saved','history',rows(raw.entries),e=>{e=wireDurations(e,{positionSeconds:'positionMs'});if(!obj(e)||!id(e.id)||!str(e.updatedAt,128)||typeof e.positionSeconds!=='number'||!Number.isFinite(e.positionSeconds)||e.positionSeconds<0||typeof e.completed!=='boolean')bad();return {id:e.id,hidden:false,media:validateContentEntry(e.media),updatedAt:e.updatedAt,positionSeconds:e.positionSeconds,completed:e.completed};}),'history');
     // A row from another server or another viewer fence refuses the whole directory; any other row this app cannot read is left out alone.
-    else{const listed=rows(raw.resources);for(const v of listed)if(obj(v)&&(v.serverId!==this.scope.serverId||v.viewerFence!==raw.viewerFence))bad();patch.resources=distinct(keepReadable('personal-saved','resources',listed,v=>{const r=resource(v,this.scope);if(r.kind!==(route.view==='collections'?'collection':'view'))bad();return r;}),'resources');}
+    else{const listed=rows(raw.resources);for(const v of listed)if(obj(v)&&(v.serverId!==this.scope.serverId||v.viewerFence!==raw.viewerFence))bad();patch.resources=distinct(keepReadable('personal-saved','resources',listed,v=>{const r=resource(v,this.scope);if(r.kind!==(route.view==='collections'?'collection':'view'))bad();
+     // A library's presets are that library's (and that pivot's): a readable one for anywhere else is not offered here.
+     if(route.view==='views'&&route.libraryId&&r.definition&&(r.definition.libraryId!==route.libraryId||route.pivot&&r.definition.pivot!==route.pivot))bad();return r;}),'resources');}
    }
    return patch;
  }
@@ -249,9 +264,14 @@ export class PersonalSavedService{
   try{const raw=await this.request<RouteResponse<"get_saved_resources_id_share_candidates">>(encodedRoutePath("get_saved_resources_id_share_candidates", {"id": encodeURIComponent(r.id)}) + "?" + (new URLSearchParams({limit:'40',...(cursor?{cursor}:{})})));if(!this.alive(g)||ticket!==this.candidateTicket)return;
    if(!obj(raw)||raw.serverId!==this.scope.serverId||raw.viewerFence!==r.viewerFence||raw.resourceId!==r.id||raw.revision!==r.revision||!str(raw.nextCursor,4096))bad();const candidates=distinct(keepReadable('personal-saved','candidates',rows(raw.candidates),c=>{if(!obj(c)||!id(c.id)||!str(c.displayName,512))bad();return {...actor(c),id:c.id,displayName:c.displayName};}),'candidates');this.publish({candidates,candidateCursor:raw.nextCursor});
   }catch(e){if(this.alive(g)&&ticket===this.candidateTicket)this.publish({error:info(e)});}}
- async mutate(intent:PersonalSavedIntent,rebased=false):Promise<boolean>{
+ /**
+  * `listed`: a change to one of the listed resources (rename, delete, pin a library's preset), made
+  * from its row, at its listed revision, without opening it (its content is never read for this).
+  */
+ async mutate(intent:PersonalSavedIntent,rebased=false,listed?:PersonalResource):Promise<boolean>{
   if(this.disposed||this.state.loading||this.state.pending||this.command)throw new Error('Finish or dismiss the outstanding change before starting another.');
-  const r=this.state.resource,g=this.generation,route=this.state.route;if(!route||!this.state.viewerFence)throw new Error('Reload Saved before changing it.');
+  if(listed&&(!['update','delete','pin'].includes(intent.action)||!this.state.resources.includes(listed)))throw new Error('Change a listed resource from its own row.');
+  const r=listed??this.state.resource,g=this.generation,route=this.state.route;if(!route||!this.state.viewerFence)throw new Error('Reload Saved before changing it.');
   let path: string=routePath("post_saved_resources"),method='POST',body:Record<string,unknown>={expectedRevision:r?.revision??0};
   if(intent.action==='create'){if(route.view!=='collections'&&route.view!=='views')throw new Error('Open the matching resource directory.');Object.assign(body,{kind:intent.kind,name:intent.name,summary:intent.summary??'',...(intent.visibility?{visibility:visibility(intent.visibility)}:{}),...(intent.definition?{definition:definition(intent.definition)}:{})});}
   else if(intent.action==='clear-history'||intent.action==='reset-viewing-activity'){if(route.view!=='history')throw new Error('Open viewing history.');path=routePath("post_personal_history_actions");body={expectedRevision:this.state.revision,action:intent.action};}
@@ -267,18 +287,19 @@ export class PersonalSavedService{
    }
   }
   this.publish({pending:true,mutationError:null,result:null});
-  try{const operationId=await this.bounded(()=>this.requestId());if(!this.alive(g))return false;if(!uuid.test(operationId))throw new Error('A UUIDv4 operation ID is required.');body.operationId=operationId;this.command={intent:freeze({...intent}),path,method,body:freeze(body),fence:this.state.viewerFence,...(rebased?{rebased}:{})};return await this.send();}
+  try{const operationId=await this.bounded(()=>this.requestId());if(!this.alive(g))return false;if(!uuid.test(operationId))throw new Error('A UUIDv4 operation ID is required.');body.operationId=operationId;this.command={intent:freeze({...intent}),path,method,body:freeze(body),fence:this.state.viewerFence,...(rebased?{rebased}:{}),...(r?{resourceId:r.id}:{}),...(listed?{listed:true}:{})};return await this.send();}
   catch(e){if(this.alive(g))this.publish({pending:false,mutationError:info(e),retryPending:!!this.command});return false;}
  }
  private async send():Promise<boolean>{const c=this.command,g=this.generation;if(!c||this.disposed)return false;this.publish({pending:true,mutationError:null});
   try{const raw=await this.request<unknown>(c.path,c.method,c.body);if(!this.alive(g))return false;if(!obj(raw)||raw.serverId!==this.scope.serverId||raw.viewerFence!==c.fence)bad();const receipt=c.intent.action==='pin'?raw:raw.receipt;if(!obj(receipt)||receipt.operationId!==c.body.operationId||!num(receipt.revision))bad();const activity=c.intent.action==='clear-history'||c.intent.action==='reset-viewing-activity';if(!activity&&(!id(receipt.resourceId)||typeof receipt.deleted!=='boolean'))bad();
-   if(c.intent.action!=='create'&&!activity&&receipt.resourceId!==this.state.resource?.id)bad();
+   if(c.intent.action!=='create'&&!activity&&receipt.resourceId!==c.resourceId)bad();
    const deleted=obj(raw.current)&&raw.current.resourceId===receipt.resourceId&&typeof raw.current.deleted==='boolean'?raw.current.deleted:receipt.deleted===true;
    const entries=c.intent.action==='entries'&&receipt.entries!==undefined?parseEntryOutcomes(receipt.entries):undefined;
    const undo=c.intent.action==='entries'&&id(receipt.undoToken)&&str(receipt.undoUntil,64)?{undo:{token:receipt.undoToken,until:receipt.undoUntil}}:{};
    this.command=undefined;this.publish({pending:false,retryPending:false,mutationError:null,result:{...(entries?{entries}:{}),...undo,...(typeof receipt.resourceId==='string'?{resourceId:receipt.resourceId}:{}),deleted},candidates:[],candidateCursor:''});
    // A list paged further than its first page stays where the viewer is (a move, a removal deep in a collection).
-   if(!deleted&&!((this.state.history.length||this.seen>PAGE)&&await this.readThrough({}).catch(()=>false)))await this.refresh();return this.alive(g);
+   // A listed resource deleted from its row leaves the list read again without it.
+   if((!deleted||c.listed)&&!((this.state.history.length||this.seen>PAGE)&&await this.readThrough({}).catch(()=>false)))await this.refresh();return this.alive(g);
   }catch(e){if(!this.alive(g))return false;const error=info(e);this.publish({pending:false,retryPending:true,mutationError:error});if(error.conflict)await this.refresh();
    // A move made while the collection changed elsewhere is made again on what is there now, once:
    // the entries it names still say what the viewer meant. The viewer sees a conflict only if that fails too.
@@ -287,7 +308,10 @@ export class PersonalSavedService{
  }
  /** Network retry is byte-identical. Rebase is a separate, explicit reviewed intent. */
  retry=()=>this.state.pending?Promise.resolve(false):this.send();
- async rebase():Promise<boolean>{const c=this.command;if(!c||this.state.pending||!this.state.mutationError?.conflict)return false;this.command=undefined;return this.mutate(c.intent);}
+ async rebase():Promise<boolean>{const c=this.command;if(!c||this.state.pending||!this.state.mutationError?.conflict)return false;this.command=undefined;
+  // A listed resource is changed again at the revision its row now shows (the list was read again on the conflict).
+  if(c.listed){const now=this.state.resources.find(x=>x.id===c.resourceId);return now?this.mutate(c.intent,false,now):false;}
+  return this.mutate(c.intent);}
  dismiss():void{if(this.state.pending)return;this.command=undefined;this.publish({retryPending:false,mutationError:null});}
  dispose():void{this.disposed=true;this.generation++;for(const c of this.controllers)c.abort();this.controllers.clear();this.command=undefined;this.listeners.clear();}
 }

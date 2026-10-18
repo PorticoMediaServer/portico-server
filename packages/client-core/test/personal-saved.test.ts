@@ -1,7 +1,7 @@
 import {wireFixture} from './wire-fixture.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PersonalSavedService,makeSavedDefinition,savedTitlePrefix,savedCategoryId} from '../src/personal-saved.ts';
+import {PersonalSavedService,makeSavedDefinition,savedTitlePrefix,savedCategoryId,savedViewBrowse} from '../src/personal-saved.ts';
 const scope={serverId:'server',viewerId:'["local","account","profile"]'};
 const media=(id='item')=>({id,libraryId:'library',kind:'movie',title:'Movie',available:true,playback:{itemId:id,startSeconds:0}});
 const resource=(patch:any={})=>({serverId:'server',viewerFence:'fence',id:'collection',kind:'collection',name:'Collection',summary:'',visibility:'private',revision:1,role:'owner',entryCount:0,actions:['pin','update','delete','entries','share'],status:'ready',invalidComponents:[],pinned:false,pinRevision:0,shares:[],...patch});
@@ -129,4 +129,50 @@ test('a collection paged past its first page is read again through every page on
  assert(await s.mutate({action:'reorder',entryIds:['m90'],afterEntryId:''}));off();
  assert(!loading.includes(true));assert.equal(s.getSnapshot().entries.length,101);assert.equal(s.getSnapshot().entries[0].id,'m90');assert.equal(s.getSnapshot().resource?.revision,2);
  s.dispose();
+});
+
+// ── A library's presets: its saved views, listed by library and pivot ──────────────────────────
+const nested={all:[{any:[{field:'genre',operator:'in',value:['Drama','Crime']},{not:{field:'watched',operator:'equals',value:true}}]},{field:'year',operator:'between',value:[1990,1999]}]};
+const presetDef=(patch:any={})=>({libraryId:'shows',pivot:'series',query:nested,sort:[{field:'random',direction:'asc',seed:42},{field:'title',direction:'asc'}],presentation:'grid',...patch});
+const preset=(patch:any={})=>resource({id:'p1',kind:'view',name:'Nineties drama',actions:['pin','update','delete'],definition:presetDef(),...patch});
+
+test('presets: a library and pivot narrow the server\'s list; the whole query and sort (a random seed too) come back as stored',async()=>{
+ const paths:string[]=[];const s=setup(async p=>{paths.push(p);return directory([preset(),preset({id:'elsewhere',definition:presetDef({libraryId:'films'})}),preset({id:'review',status:'needs-review',definition:undefined,invalidComponents:['query.all[0]']})]);});
+ await s.select({view:'views',libraryId:'shows',pivot:'series'});
+ const query=new URL('http://x'+paths[0]).searchParams;
+ assert.deepEqual([query.get('kind'),query.get('libraryId'),query.get('pivot')],['view','shows','series']);
+ const [ready,review]=s.getSnapshot().resources;
+ assert.deepEqual(s.getSnapshot().resources.map(r=>r.id),['p1','review'],'one saved for another library is not offered here');
+ assert.deepEqual(savedViewBrowse(ready!),{libraryId:'shows',pivot:'series',query:nested,sort:[{field:'random',direction:'asc',seed:42},{field:'title',direction:'asc'}]},'nothing flattened, the seed kept');
+ assert.equal(review!.status,'needs-review');assert.equal(savedViewBrowse(review!),undefined,'needs review: not applied, and no empty query stands in for it');
+ assert.throws(()=>s.select({view:'views',pivot:'series'} as any),/scope/,'a pivot without its library');
+ assert.throws(()=>s.select({view:'collections',libraryId:'shows'} as any),/scope/);
+ s.dispose();
+});
+
+test('presets: saving keeps the seed and the nested query; a refused save says so and is not success',async()=>{
+ const bodies:any[]=[];let refuse=true;const s=setup(async(p,m,b)=>{if(m==='GET')return directory([]);bodies.push(b);if(refuse)throw Object.assign(new Error('That name is taken.'),{code:'invalid_request'});return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'new',revision:1,deleted:false}};});
+ await s.select({view:'views',libraryId:'shows',pivot:'series'});
+ assert.equal(await s.mutate({action:'create',kind:'view',name:'Mine',definition:presetDef() as any}),false);
+ assert.equal(s.getSnapshot().mutationError?.message,'That name is taken.');
+ assert.deepEqual(bodies[0].definition.sort[0],{field:'random',direction:'asc',seed:42});assert.deepEqual(bodies[0].definition.query,nested);
+ s.dismiss();refuse=false;assert.equal(await s.mutate({action:'create',kind:'view',name:'Mine',definition:presetDef() as any}),true);s.dispose();
+});
+
+test('presets: rename and delete from the list, at the row\'s revision, without reading any preset\'s content',async()=>{
+ const paths:string[]=[];const writes:any[]=[];let rows=[preset({revision:3})];
+ const s=setup(async(p,m,b)=>{paths.push(m+' '+p);if(m==='GET')return directory(rows);writes.push(b);const deleted=m==='DELETE';if(deleted)rows=[];else rows=[preset({revision:4,name:b.name})];return {serverId:'server',viewerFence:'fence',receipt:{operationId:b.operationId,resourceId:'p1',revision:4,deleted}};});
+ await s.select({view:'views',libraryId:'shows'});
+ assert(await s.mutate({action:'update',name:'Renamed'},false,s.getSnapshot().resources[0]));
+ assert.equal(writes[0].expectedRevision,3);assert.equal(writes[0].definition,undefined,'a rename leaves the definition as it is');
+ assert.equal(s.getSnapshot().resources[0]!.name,'Renamed');
+ assert(await s.mutate({action:'delete'},false,s.getSnapshot().resources[0]));
+ assert.equal(s.getSnapshot().resources.length,0,'read again without it');
+ assert(!paths.some(p=>p.includes('/content')),'no preset was opened');
+ await assert.rejects(()=>s.mutate({action:'update',name:'x'},false,preset() as any),/listed/,'only a row of this list');
+ s.dispose();
+});
+
+test('presets: a late list from before a profile change never shows',async()=>{
+ const late=deferred();const s=setup(async()=>late.promise);const work=s.select({view:'views',libraryId:'shows',pivot:'series'});s.dispose();await work;late.resolve(directory([preset()]));await tick();assert.equal(s.getSnapshot().resources.length,0);
 });
