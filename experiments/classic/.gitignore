@@ -78,3 +78,6 @@ yarn-error.log
 ios/Pods/
 tvos/Pods/
 .art-cache/
+
+# Local Android review artifacts
+.scratch/

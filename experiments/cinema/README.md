@@ -4,6 +4,9 @@ A from-scratch Portico client for iPhone, iPad and Apple TV (one React Native co
 `react-native-tvos` 0.83.10-1), built as a complete frontend on fixture data. This is the
 *creative* interpretation: a personal media library presented like a premium streaming service.
 
+For Ubuntu Android phone and TV review, see the shared [Android review guide](../ANDROID-REVIEW.md)
+and repeatable experiment helper commands.
+
 ## The design idea
 
 **Your library, in the spotlight.** Portico's navy canvas and blue projection glow become a
@@ -138,6 +141,45 @@ xcodebuild -workspace tvos/PorticoCinema.xcworkspace -scheme PorticoCinema -conf
   -sdk appletvsimulator -derivedDataPath ~/Library/Caches/portico-experiment-cinema-dd/tvos CODE_SIGNING_ALLOWED=NO build
 ```
 
+### Android review on Ubuntu
+
+The same app targets Android phones and Android TV with the existing fixture household and
+simulated playback. Its launcher name is **Portico Cinema**; package
+`tv.getportico.experiment.cinema` and activity `com.porticocinema.MainActivity` let it coexist
+with the main app and Classic.
+
+On televisions only, `TelevisionDisplay` gives the app the existing 1920-point TV design
+canvas. This corrects Android TV's usual 960-dp sizing without changing the emulator's global
+density, the phone layout or the design tokens.
+
+For a standalone x86_64 emulator APK with JavaScript and artwork embedded:
+
+```sh
+npm ci
+export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+export ANDROID_HOME=/home/justin/Android/Sdk
+cd android
+./gradlew assembleRelease --no-daemon --max-workers=1 \
+  -PreactNativeArchitectures=x86_64 \
+  '-Dorg.gradle.jvmargs=-Xmx1536m -XX:MaxMetaspaceSize=512m'
+```
+
+The result is `android/app/build/outputs/apk/release/app-release.apk`. This private testing
+build uses the existing development keystore. It runs without Metro. From the experiment root,
+select a device explicitly for installation and review; keep the other installed Portico
+applications intact:
+
+```sh
+adb -s <serial> install -r android/app/build/outputs/apk/release/app-release.apk
+adb -s <serial> shell am start -n tv.getportico.experiment.cinema/com.porticocinema.MainActivity
+adb -s <serial> shell am start -a android.intent.action.VIEW \
+  -d 'portico-cinema://screen/movie' -p tv.getportico.experiment.cinema
+```
+
+For screen-index IDs, see `src/nav/screenIndex.ts`. Android launcher artwork is generated from
+the bundled Portico brand assets and existing TV icon layers with
+`python3 scripts/art/android_icons.py` (Pillow required).
+
 Regenerating data: `python3 scripts/catalog/pack.py && python3 scripts/art/build_art.py`
 (downloads are cached under `scripts/art/cache/`, which is not committed).
 
@@ -179,5 +221,6 @@ None against the checklist. Polish:
   transition would add polish.
 - The guide grid is a simple virtualized list; a two-axis virtualized grid would scale better
   to thousands of channels.
-- The Android and Android TV builds are configured (package id, fonts, deep links, leanback)
-  but were not built or run.
+- The x86_64 Android testing APK builds on Ubuntu with bundled fonts, JavaScript, artwork,
+  deep links and a Leanback launcher. Phone/TV emulator review is tracked in the shared
+  [Android review guide](../ANDROID-REVIEW.md); real hardware is still unverified.
