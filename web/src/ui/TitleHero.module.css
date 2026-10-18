@@ -43,13 +43,16 @@
 .mosaic { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .mosaicTile { width: 100%; }
 @media (max-width: 720px) {
-  /* Phones: a 16:9 backdrop, then the identity block. The compact hero keeps
-     its small art beside the title instead. */
+  /* Phones: a 16:9 band, then the identity block, for every title. Without a backdrop the band
+     is the title's own art, blurred, with the art itself in its middle (a cover, a poster, an
+     artist's circle), so an album opens the way a film does. */
   .root { --title-hero-height: calc(100vw * 9 / 16 + 120px); }
   .hero, .withArtwork { grid-template-columns: 1fr; min-height: 0; padding-top: calc(100vw * 9 / 16 - 64px); }
   .artwork { display: none; }
-  .compact .hero, .compact .withArtwork { grid-template-columns: 96px 1fr; padding-top: 76px; align-items: start; }
-  .compact .artwork { display: block; }
+  .compactBg { inset: 0 0 auto 0; height: var(--title-hero-height); }
+  /* The band's middle, in the hero's own box (it starts below the Back row, 52px down). */
+  .compact .artwork { display: block; position: absolute; left: 50%; top: calc(100vw * 9 / 32 - 52px); translate: -50% -50%; width: auto; height: calc(100vw * 9 / 16 * 0.7); }
+  .compact .artwork.mosaic { aspect-ratio: 2 / 3; }
   .primary, .primary > :first-child { width: 100%; }
 }
 

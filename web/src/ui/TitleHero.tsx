@@ -21,8 +21,9 @@ export type TitleHeroAction = {label: string; icon?: IconName; onClick: () => vo
  * identity needs more; on phones a 16:9 backdrop with the identity beneath.
  *
  * - Backdrop: full bleed with a bottom and left scrim; without one, the
- *   compact hero: art beside the title over a blurred, darkened version of
- *   that art. Both melt into the page the same way, never on a hard edge.
+ *   compact hero: the art over a blurred, darkened version of itself, beside
+ *   the title on wide layouts and in the middle of the band on phones. Both
+ *   melt into the page the same way, never on a hard edge.
  * - Identity: logo art when there is one, else the title in display type.
  * - Facts: one `·`-separated line; the content rating is a chip.
  * - Tagline on a line of its own; synopsis: two lines; More expands in place.
@@ -62,9 +63,9 @@ export function TitleHero({backdrop, artwork, logo, title, originalTitle, contex
 }) {
   const [expanded, setExpanded] = useState(false);
   const shownFacts = facts.filter(f => f !== undefined && f !== null && f !== false && f !== '');
-  // M26: no backdrop means the compact hero (art beside the title over a
-  // blurred, darkened version of that art). On wide layouts it keeps the same
-  // geometry as a backdrop hero; only phones lay it out differently.
+  // M26: no backdrop means the compact hero: the title's own art over a
+  // blurred, darkened version of it, in the same geometry as a backdrop hero
+  // (beside the title on wide layouts, in the middle of the 16:9 band on phones).
   const compact = heroLayout({backdropUrl: backdrop, loading}) === 'compact';
   // No empty frames: artwork shows while loading, when there's a path, for a
   // mosaic, or for an initial (an artist without an image keeps its circle).
