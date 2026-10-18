@@ -18,7 +18,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  VALIDATION_VERSION: 0.0.0-ci.${{ github.run_number }}
+  VALIDATION_VERSION: 0.0.${{ github.run_number }}
 
 jobs:
   web:
@@ -30,6 +30,9 @@ jobs:
         with: {node-version-file: .node-version, cache: npm}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
         with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+      - name: Download Go dependencies for the offline licence inventory
+        working-directory: server
+        run: go mod download
       - name: Audio fixture tools
         run: |
           sudo apt-get update -qq
