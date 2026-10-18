@@ -63,6 +63,18 @@ test('current snapshot failure retires candidate and never leaves the handoff pe
  await assert.rejects(f.commit.commit(f.candidate,f.h),/invalid saved/);await tick();assert.deepEqual(f.revoked,['candidate']);
  f.h.current=current;await f.commit.commit(record('next'),f.h);assert.equal(f.current()?.session.viewer.profileId,'next');
 });
+test('resuming an expired saved viewer renews it: the renewed family is committed, never retired',async()=>{
+ // The saved record's access token has expired; the restore renewed it in the same family. The
+ // viewer is read as stored (as the clients do), so the commit knows the sign-in it is renewing.
+ const session=(token:string,expiresAt:string)=>({accessToken:token,expiresAt,authorizationHorizon:new Date(Date.now()+7200000).toISOString(),
+  sessionFamilyId:'family-resumed',tokenGeneration:token==='old'?'1':'2',viewer:{accountId:'account',profileId:'resumed',serverId:'server',authority:'local',role:'member'}});
+ const expired=session('old',new Date(Date.now()-60000).toISOString()),renewed=selectedViewerRecord('https://server.example',session('new',new Date(Date.now()+900000).toISOString()));
+ assert.throws(()=>selectedViewerRecord('https://server.example',expired),/./);
+ const f=fixture();const saved=selectedViewerRecord('https://server.example',expired,true);let current:SelectedViewerRecord|null=saved;
+ f.h.current=()=>current;f.h.fence=()=>{current=null;};f.h.verify=async v=>({viewer:v.session.viewer});f.h.publish=v=>{current=v;};
+ await f.commit.commit(renewed,f.h);await tick();
+ assert.equal(current,renewed);assert.deepEqual(f.revoked,[]);
+});
 test('account/family scope change during verification cannot restore or publish private context',async()=>{
  const f=fixture();let valid=true;f.h.assertCurrent=()=>{if(!valid)throw new Error('account changed');};
  f.h.verify=async v=>{valid=false;return{viewer:v.session.viewer};};await assert.rejects(f.commit.commit(f.candidate,f.h));await tick();
