@@ -103,6 +103,37 @@ export function AnchoredMenu({anchor, open, onOpenChange, children, label, width
   // leaving this menu, so it does not close it.
   const openedAt = React.useRef(0);
   React.useLayoutEffect(() => { if (open) openedAt.current = performance.now(); if (open && document.activeElement instanceof HTMLElement && document.activeElement !== document.body) opener.current = document.activeElement; }, [open]);
+  // A press anywhere outside closes the menu, seen before the page can intercept it; a press on the
+  // control that opened it (the anchor) closes it too, and that same click doesn't open it again.
+  const content = React.useRef<HTMLDivElement>(null);
+  const shown = open && !!anchor;
+  React.useEffect(() => {
+    if (!shown || !anchor) return;
+    let swallowUntil = 0;
+    const onTrigger = (x: number, y: number) => !point && x >= anchor.x && x <= anchor.x + anchor.width && y >= anchor.y && y <= anchor.y + anchor.height;
+    const down = (e: PointerEvent) => {
+      const target = e.target as Element | null;
+      if (!target || content.current?.contains(target)) return;
+      // Another layer above this one (a picker's own popover, a dialog) handles its own presses.
+      if (target.closest('[data-radix-popper-content-wrapper],[role=dialog]')) return;
+      if (onTrigger(e.clientX, e.clientY)) swallowUntil = performance.now() + 800;
+      onOpenChange(false);
+    };
+    const click = (e: MouseEvent) => {
+      if (performance.now() > swallowUntil || !onTrigger(e.clientX, e.clientY)) return;
+      swallowUntil = 0;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    window.addEventListener('pointerdown', down, true);
+    window.addEventListener('click', click, true);
+    return () => {
+      window.removeEventListener('pointerdown', down, true);
+      // The trigger's click arrives after this menu has closed: keep swallowing it a moment longer.
+      if (swallowUntil) setTimeout(() => window.removeEventListener('click', click, true), 800);
+      else window.removeEventListener('click', click, true);
+    };
+  }, [shown, anchor, point, onOpenChange]);
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
     const items = menuItems(e.currentTarget);
     if (!items.length) return;
@@ -117,7 +148,7 @@ export function AnchoredMenu({anchor, open, onOpenChange, children, label, width
     <RPopover.Root open={open && !!anchor} onOpenChange={onOpenChange}>
       {anchor ? <RPopover.Anchor asChild><span aria-hidden style={{position: 'fixed', left: anchor.x, top: anchor.y, width: anchor.width, height: anchor.height, pointerEvents: 'none'}} /></RPopover.Anchor> : null}
       <RPopover.Portal>
-        <RPopover.Content className={s.menu} role="menu" aria-label={label} align={point ? 'start' : 'end'} side="bottom" sideOffset={point ? 2 : 6} collisionPadding={12} style={{width, maxWidth: 'min(320px, calc(100vw - 24px))', maxHeight: 'var(--radix-popover-content-available-height)', overflowY: 'auto'}}
+        <RPopover.Content ref={content} className={s.menu} role="menu" aria-label={label} align={point ? 'start' : 'end'} side="bottom" sideOffset={point ? 2 : 6} collisionPadding={12} style={{width, maxWidth: 'min(320px, calc(100vw - 24px))', maxHeight: 'var(--radix-popover-content-available-height)', overflowY: 'auto'}}
           onKeyDown={onKeyDown}
           onFocusOutside={e => { if (performance.now() - openedAt.current < 600) e.preventDefault(); }}
           onOpenAutoFocus={e => { e.preventDefault(); if (keyboardInput) { const root = e.currentTarget as HTMLElement; requestAnimationFrame(() => menuItems(root)[0]?.focus()); } }}
