@@ -254,6 +254,13 @@ Hosted is optional. Changes reload within 30 seconds of the next handshake or
 status request; a broken replacement retains the last valid certificate until
 it expires. Status appears in `GET /v1/admin/connectivity/status`.
 
+Updated native apps can automatically trust an owner's self-signed or private-CA
+certificate when the server's signed identity proof lists that exact certificate.
+Portico takes this list from the TLS material it serves, including the managed
+renewal fallback. If TLS terminates at a reverse proxy, Portico cannot infer the
+proxy's certificate: an untrusted proxy certificate requires the app's explicit
+trust question. Older servers also use that question path with updated apps.
+
 **Connection limit** (`connectionLimit`) accepts 0 for the memory-based default,
 or a number up to 65536. Restart after changing it. The console and sign-in have
 32 reserved connections beyond the ordinary limit. Request lanes, header

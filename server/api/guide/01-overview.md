@@ -15,6 +15,30 @@ matching consumer updates. The registry contract is
 API operation, including retained HTTP handlers and raw streams. It is the sole
 specification; old YAML documents are removed.
 
+## Route identity proof
+
+`POST /v1/networking/identity-proof` accepts the existing JSON body containing
+`baseUrl` (origin only) and `nonce` (32 random bytes, unpadded base64url). Send
+`Accept: application/json; portico-route-proof=2` for a version `"2"` signed
+payload; otherwise the server returns version `"1"` for existing clients. Older
+servers ignore this preference and return version `"1"`. The envelope still
+contains base64url `payload` and Ed25519 `signature` strings.
+
+Version 2 adds optional `tlsCertificateFingerprints`: a unique list of SHA-256
+digests of leaf certificate DER, encoded as 43-character unpadded base64url
+strings (not SPKI or PEM hashes). These come only from the server's managed
+active/previous certificates and owner-provided TLS files. With no serving
+material the field is omitted, including for proxy-only TLS installations.
+Clients accept at most eight fingerprints and reject unknown payload fields or
+versions. All existing origin, nonce, key-derived server ID, signature and
+30-second proof lifetime checks still apply.
+
+A verified route identity alone cannot authorize an untrusted TLS certificate:
+automatic native pinning also requires its exact fingerprint in this signed list
+and, for an existing pin, the same server ID. Missing or unmatched bindings ask
+the person to trust the certificate. A relay can forward a genuine proof but
+cannot add its own certificate without invalidating the signature.
+
 ## Time and numeric values
 
 Calendar timestamps normally use RFC 3339 UTC, for example
