@@ -516,6 +516,8 @@ index saved_resource_owner
 index saved_resource_receipts_expiry
 index saved_resource_shared
 index saved_resource_visibility
+index saved_view_library_page
+index saved_view_pivot_page
 index screen_metadata_attention_active
 index screen_metadata_attention_library
 index screen_metadata_candidate_target

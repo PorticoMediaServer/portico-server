@@ -52,12 +52,16 @@ func (d Dependencies) shareTargetTx(tx *sql.Tx, authority, account, profile stri
 func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 	rate := &personalLimiter{}
 	d.httpHandle(mux, "GET /v1/saved-resources", func(w http.ResponseWriter, r *http.Request) {
-		limit, e := savedPageQuery(r, "kind", "pinned")
+		limit, e := savedPageQuery(r, "kind", "pinned", "libraryId", "pivot")
 		if e != nil {
 			failure(w, e)
 			return
 		}
 		q := r.URL.Query()
+		if q.Has("libraryId") && (q.Get("libraryId") == "" || q.Get("kind") != "view") || q.Has("pivot") && (!q.Has("libraryId") || q.Get("pivot") == "") {
+			failure(w, requestinput.New("preset filters require kind=view and a libraryId; pivot must be nonempty when provided"))
+			return
+		}
 		// Pinned listings are returned in the viewer's arrangement; both spellings
 		// of the flag are accepted so a hand-written client works either way.
 		pinned := q.Get("pinned")
@@ -65,12 +69,19 @@ func (d Dependencies) savedResourceRoutes(mux *http.ServeMux) {
 			failure(w, catalog.ErrCursor)
 			return
 		}
-		p, _, fence, e := d.homeScope(r)
+		p, libraries, fence, e := d.homeScope(r)
 		if e != nil {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.WithContext(r.Context()).SavedResources(d.Identity.ID(), fence, resourceActor(p), q.Get("kind"), q.Get("cursor"), pinned == "true" || pinned == "1", limit)
+		service := d.Catalog.WithContext(r.Context())
+		var out catalog.SavedResourcePage
+		if q.Has("libraryId") {
+			viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: libraries}
+			out, e = service.SavedViewPresets(viewer, d.Identity.ID(), fence, resourceActor(p), q.Get("libraryId"), q.Get("pivot"), q.Get("cursor"), pinned == "true" || pinned == "1", limit)
+		} else {
+			out, e = service.SavedResources(d.Identity.ID(), fence, resourceActor(p), q.Get("kind"), q.Get("cursor"), pinned == "true" || pinned == "1", limit)
+		}
 		if e != nil {
 			failure(w, e)
 			return

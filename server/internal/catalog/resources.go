@@ -139,6 +139,13 @@ func validateSavedView(q personalReader, v SavedViewDefinition) []string {
 	if e := q.QueryRow(`SELECT kind FROM libraries WHERE id=?`, v.LibraryID).Scan(&kind); e != nil {
 		return append(bad, "libraryId")
 	}
+	return validateSavedViewKind(kind, v)
+}
+
+// The scoped preset page already knows the library kind; validation must not
+// add a library query for every returned definition.
+func validateSavedViewKind(kind string, v SavedViewDefinition) []string {
+	bad := []string{}
 	pivot, known := pivotForKind(kind, v.Pivot)
 	if !known || !pivot.Browsable {
 		bad = append(bad, "pivot")
@@ -156,8 +163,23 @@ func validateSavedView(q personalReader, v SavedViewDefinition) []string {
 	raw, e := json.Marshal(v.Query)
 	if e != nil {
 		bad = append(bad, "query")
-	} else if _, e = ParseBrowseQuery(raw, "query"); e != nil {
-		bad = append(bad, validationPath(e, "query"))
+	} else if parsed, err := ParseBrowseQuery(raw, "query"); err != nil {
+		bad = append(bad, validationPath(err, "query"))
+	} else {
+		// Compile without the optional data-dependent optimizations: checking
+		// executability must not run the media query. Home rows are resolved at
+		// apply time, so stand-ins validate their syntax without fetching rows.
+		rows := map[string][]int64{}
+		for _, id := range BrowseHomeRows(parsed) {
+			rows[id] = nil
+		}
+		compiler := &browseCompiler{itemPivot: playablePivot(pivot), rows: rows}
+		if _, err := compiler.compile(parsed); err != nil {
+			bad = append(bad, validationPath(err, "query"))
+		}
+		if len(v.Sort) > 0 && v.Sort[0].Field == "groupOrder" && groupOrderTarget(parsed) == nil {
+			bad = append(bad, "sort[0].field")
+		}
 	}
 	return bad
 }
