@@ -51,13 +51,13 @@ WORKDIR /src/web
 RUN node --input-type=module -e "import {build} from 'vite'; await build({build:{outDir:'/out/web',sourcemap:false}})"
 RUN cp /out/portico-build.json /out/web/portico-build.json
 
-FROM golang:1.26-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c AS build
+FROM golang:1.26.9-bookworm@sha256:d9c68c2c51161e12fd77e4c6320687c9cd86e1af1e3ad6e6cd63ff970641453c AS build
 WORKDIR /src/server
 COPY trust/hosted-root-public-key.pem /identity/root-public-key.pem
 COPY scripts/inspect-hosted-root.go /identity/inspect-hosted-root.go
 COPY apikit /src/apikit
 COPY server/go.mod server/go.sum ./
-RUN go mod download
+RUN test "$(go env GOVERSION)" = "go$(sed -n 's/^go //p' go.mod)" && go mod download
 COPY server ./
 COPY --from=web /out/build.env /identity/build.env
 ENV CGO_ENABLED=0

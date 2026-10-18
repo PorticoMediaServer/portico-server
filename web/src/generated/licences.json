@@ -1623,7 +1623,7 @@
   {
    "id": "go:std",
    "name": "Go standard library",
-   "version": "1.26.2",
+   "version": "1.26.9",
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://go.dev",
@@ -1825,7 +1825,7 @@
   "LICENSE": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
   "package-lock.json": "f8aa6774c494ce8d7334edee357c67a38b92866114d07e4039e29d2d3edcc921",
   "packages/design/LICENSE-LUCIDE": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57",
-  "server/go.mod": "000177569c5901354a6bd54c4a6f541b7ba05cb6a142da0bdaef041e3d0cfc09",
+  "server/go.mod": "bab08aed1b08ed2f613b85dcafb22b2c8a406a84c69860550aaeb6ca2726da19",
   "server/go.sum": "f92a0cfb1c086af46d56dbc8b3a5198687e84efa34433f9029bfeb6f55417fdf",
   "server/internal/imagework/SCALE_LICENSE": "911f8f5782931320f5b8d1160a76365b83aea6447ee6c04fa6d5591467db9dad",
   "server/internal/mediaexec/fonts/LICENSE": "d75938dec098f06f0ac3c00853065d94f020be1c3c62ef1dc2975ba15b4d9b0e",

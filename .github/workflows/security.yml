@@ -47,15 +47,19 @@ jobs:
 
   go-vulnerabilities:
     runs-on: ubuntu-24.04
-    strategy: {matrix: {module: [apikit, server]}}
+    strategy:
+      fail-fast: false
+      matrix: {module: [apikit, server]}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         with: {go-version-file: '${{ matrix.module }}/go.mod', cache-dependency-path: '${{ matrix.module }}/go.sum'}
       - name: Check reachable Go vulnerabilities
         working-directory: ${{ matrix.module }}
-        env: {GOFLAGS: '-p=2'}
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+        env: {GOFLAGS: '-p=2', GOTOOLCHAIN: local}
+        run: |
+          go version
+          go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
 
   javascript-vulnerabilities:
     runs-on: ubuntu-24.04
