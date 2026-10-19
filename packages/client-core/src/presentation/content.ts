@@ -1,5 +1,6 @@
 import type {ContentEntry, ContentEntryKind} from '../library-content.ts';
 import type {IconId} from '../../../design/src/icons.ts';
+import {serviceI18n} from './service-text.ts';
 
 /**
  * Pure presentation helpers that both clients used to copy (X-05). No React,
@@ -58,15 +59,10 @@ export function progressFor(entry: {duration?: number; progressSeconds?: number}
   return Math.max(0, Math.min(1, entry.progressSeconds / entry.duration));
 }
 
-/** "1h 42m", "58m", "45s" (en-US fallback; prefer i18n `formatDuration`). */
+/** "1h 42m", "58m", "45s", in the viewer's language (the catalogue the app published with `setServiceI18n`). */
 export function formatDuration(seconds?: number): string {
   if (!seconds || seconds <= 0 || !Number.isFinite(seconds)) return '';
-  const total = Math.round(seconds);
-  const h = Math.floor(total / 3600);
-  const m = Math.round((total % 3600) / 60);
-  if (h > 0) return m ? `${h}h ${m}m` : `${h}h`;
-  if (m > 0) return `${m}m`;
-  return `${total}s`;
+  return serviceI18n().duration(seconds);
 }
 
 /** Media time counter: "1:02:03" or "4:05". */
@@ -81,6 +77,9 @@ export function formatClock(seconds: number): string {
 /** "1.4 GB" (binary units, en-US fallback; prefer i18n `formatBytes`). */
 export function formatBytes(bytes?: number): string {
   if (bytes == null || !Number.isFinite(bytes)) return '—';
+  // Other languages write sizes their own way ("3,0 МБ", "1,4 Go"); English keeps the apps' "KB".
+  const i18n = serviceI18n();
+  if (!i18n.locale.startsWith('en')) return i18n.bytes(bytes);
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
   let v = bytes, i = 0;
   while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }

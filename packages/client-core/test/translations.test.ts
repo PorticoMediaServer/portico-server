@@ -199,3 +199,20 @@ test('metadata sources read in the viewer’s language by id and kind; an unknow
   assert.equal(metadataAgentWords(de, online, 'podcast').description, 'Matches films with TMDB…');
   assert.deepEqual(metadataAgentWords(de, {id: 'future', name: 'Future source', description: 'New.'}, 'movie'), {name: 'Future source', description: 'New.'});
 });
+
+test('the shared duration, size and bit-rate helpers follow the published catalogue; English keeps its forms', async () => {
+  const {formatBytes, formatDuration, formatBitRate, setServiceI18n} = await import('../src/presentation/index.ts');
+  await loadCatalogue('ru');
+  try {
+    assert.equal(formatDuration(6120), '1h 42m');
+    assert.equal(formatBytes(3_145_728), '3.0 MB');
+    assert.equal(formatBitRate(283_000), '283 kbps');
+    setServiceI18n(createI18n(region('ru')));
+    assert.equal(formatDuration(120), createI18n(region('ru')).t('duration.minutes', {minutes: 2}));
+    assert.notEqual(formatDuration(120), '2m');
+    assert.match(formatBytes(3_670_016).replace(/\s/g, ' '), /^3,5 МБ$/);
+    assert.match(formatBitRate(283_000).replace(/\s/g, ' '), /^283 кбит\/[сc]$/);
+  } finally {
+    setServiceI18n(createI18n());
+  }
+});

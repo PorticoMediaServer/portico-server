@@ -2,6 +2,7 @@ import {trackName} from './language.ts';
 import type {TitleFile, TitleFileTrack} from '../detail.ts';
 import type {MessageId, MessageValues} from '../../../i18n/src/index.ts';
 import {formatBytes, formatDuration} from './content.ts';
+import {serviceI18n} from './service-text.ts';
 
 /**
  * A title's Files list (Spec — Page Content §0.3; "Files and versions" in Spec — Title Pages §2):
@@ -53,9 +54,15 @@ export function channelsLabel(track: Pick<TitleFileTrack, 'channels' | 'channelL
   return track.channels ? t('mediaInfo.channels', {count: track.channels}) : undefined;
 }
 
-/** "12.4 Mbps", "640 kbps". */
+/** "12.4 Mbps", "640 kbps"; in other languages their own number and unit ("283 кбит/с"). */
 export function formatBitRate(bitsPerSecond?: number): string {
   if (!bitsPerSecond || !Number.isFinite(bitsPerSecond) || bitsPerSecond <= 0) return '';
+  const i18n = serviceI18n();
+  if (!i18n.locale.startsWith('en')) {
+    const mega = bitsPerSecond >= 1_000_000;
+    const v = mega ? bitsPerSecond / 1_000_000 : bitsPerSecond / 1000;
+    return i18n.number(mega ? v : Math.round(v), {style: 'unit', unit: mega ? 'megabit-per-second' : 'kilobit-per-second', unitDisplay: 'short', maximumFractionDigits: mega && v < 10 ? 1 : 0});
+  }
   if (bitsPerSecond >= 1_000_000) { const v = bitsPerSecond / 1_000_000; return `${v >= 10 ? Math.round(v) : v.toFixed(1)} Mbps`; }
   return `${Math.round(bitsPerSecond / 1000)} kbps`;
 }
