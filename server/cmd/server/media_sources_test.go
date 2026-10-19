@@ -87,13 +87,22 @@ func TestDefaultMediaCompositionAddsScansAndBrowsesWithoutRootsEnv(t *testing.T)
 	done := make(chan struct{})
 	go func() { scanner.Run(ctx); close(done) }()
 	defer func() { cancel(); <-done }()
-	deadline := time.After(10 * time.Second)
+	pollLimit := 10 * time.Second
+	if raceDetector {
+		// Every scan phase uses the instrumented storage helper and SQLite VM.
+		// The ordinary build retains its real ten-second completion bound.
+		pollLimit = 30 * time.Second
+	}
+	started := time.Now()
+	t.Logf("scan polling bound=%s race=%t", pollLimit, raceDetector)
+	deadline := time.After(pollLimit)
 	for {
 		current, err := scanner.Get(job.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if current.Status == "complete" {
+			t.Logf("scan completed in %s", time.Since(started))
 			break
 		}
 		if current.Status == "failed" {

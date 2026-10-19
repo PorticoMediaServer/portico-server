@@ -126,6 +126,18 @@ class CoverageBoundaries(unittest.TestCase):
                 with patch.object(q, 'pages', return_value=rows), self.assertRaises(ValueError): q.fetched_report()
             fetch.assert_not_called()
 
+    def test_nonrace_job_must_finish_successfully_before_authentication(self):
+        run = {'head_sha': ORIGIN['GITHUB_SHA'], 'run_attempt': 2, 'event': 'workflow_dispatch',
+               'head_repository': {'full_name': q.REPOSITORY}, 'repository': {'full_name': q.REPOSITORY}}
+        names = ['server-race-prepare', *[f'server-race-shard-{i}' for i in range(16)], 'server-race-merge']
+        jobs = [{'id': i, 'name': name, 'status': 'completed', 'conclusion': 'success'} for i, name in enumerate(names)]
+        with patch.object(q, 'api', return_value=run), patch.object(q, 'fetch_artifact') as fetch:
+            for outcome in ['missing', 'skipped', 'cancelled', 'failure']:
+                rows = jobs if outcome == 'missing' else jobs + [{'id': 30, 'name': 'qualification', 'status': 'completed', 'conclusion': outcome}]
+                with patch.object(q, 'pages', return_value=rows), self.assertRaises(ValueError):
+                    q.fetched_report(require_merge=True)
+            fetch.assert_not_called()
+
     def test_source_declared_skip_retains_reason_and_is_not_reported_passed(self):
         shards = copy.deepcopy(self.shards)
         row = next(r for s in shards for r in s['invocations'] if 'TestRoundTrip' in r['names'])
@@ -142,6 +154,8 @@ class CoverageBoundaries(unittest.TestCase):
         public = key.public_key().public_bytes_raw()
         report = q.validate_results(self.plan, self.shards)
         report['authentication'] = {'id': 22, 'digest': 'sha256:' + 'd' * 64}
+        required = ['server-race-prepare', *[f'server-race-shard-{i}' for i in range(16)], 'server-race-merge', 'qualification']
+        report['evidence'] = {'jobs': [{'id': i, 'name': name, 'conclusion': 'success'} for i, name in enumerate(required)]}
         with tempfile.TemporaryDirectory() as directory:
             path = pathlib.Path(directory) / 'report.json'
             q.write(path, report)

@@ -394,7 +394,7 @@ def fetched_report(require_merge=False):
     jobs = pages(f"repos/{REPOSITORY}/actions/runs/{run_id}/attempts/{attempt}/jobs", "jobs")
     suffixes = ["server-race-prepare", *(f"server-race-shard-{index}" for index in range(SHARDS))]
     if require_merge:
-        suffixes.append("server-race-merge")
+        suffixes.extend(("server-race-merge", "qualification"))
     evidence_jobs = []
     for suffix in suffixes:
         matches = [job for job in jobs if job["name"] == suffix or job["name"].endswith(" / " + suffix)]
@@ -427,7 +427,9 @@ def authenticate(output):
     # contents must match a fresh, authenticated download of every input artifact.
     expected = json.loads(encoded(report))
     expected["evidence"]["jobs"] = [row for row in expected["evidence"]["jobs"]
-                                     if not row["name"].endswith("server-race-merge")]
+                                     if not row["name"].endswith("server-race-merge")
+                                     and row["name"] != "qualification"
+                                     and not row["name"].endswith(" / qualification")]
     if published != expected:
         raise ValueError("Merged qualification differs from authenticated shard evidence")
     report["authentication"] = custody
@@ -455,6 +457,15 @@ def verify_report(path, public, expected_source, expected_builder):
             or plan["codeFiles"]["scripts/build-server-release.py"] != expected_builder
             or not document.get("authentication")):
         raise ValueError("Authenticated race qualification does not match this source/builder")
+    required_jobs = ["server-race-prepare", *(f"server-race-shard-{i}" for i in range(SHARDS)),
+                     "server-race-merge", "qualification"]
+    jobs = document.get("evidence", {}).get("jobs", [])
+    if len(jobs) != len(required_jobs) or len({job["id"] for job in jobs}) != len(jobs):
+        raise ValueError("Mandatory race/nonrace job evidence is incomplete")
+    for suffix in required_jobs:
+        matching = [job for job in jobs if job["name"] == suffix or job["name"].endswith(" / " + suffix)]
+        if len(matching) != 1 or matching[0]["conclusion"] != "success":
+            raise ValueError("Mandatory source-bound race/nonrace qualification did not pass")
     # Reconstruct every shard from authenticated results and recheck exact
     # coverage rather than trusting a caller's passed/count boolean.
     shards = [{"schema": 1, "origin": plan["origin"], "sourceDigest": plan["sourceDigest"],
