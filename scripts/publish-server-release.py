@@ -106,6 +106,8 @@ def main():
 
 Source commit: `{sha}`; immutable source tag: `{tag}`.
 
+Provided AS IS, without warranty. Support may be offered voluntarily; no response, fix or ongoing support is guaranteed. See the source tag's LICENSE and SUPPORT.md.
+
 Downloads: Windows x64 and ARM64 installers and portable ZIPs; macOS Apple Silicon ARM64 PKG and DMG; Linux x64 and ARM64 portable tarballs, DEB and RPM packages. Stable filenames support the website's permanent GitHub latest download links.
 
 The operating-system installers are unsigned; the macOS application is not notarized. Install manually after verifying checksums. Automatic installation is disabled. Build, native media-tool and package-content checks do not establish physical-device playback or OS installation acceptance.

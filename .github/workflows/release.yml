@@ -334,7 +334,7 @@ jobs:
       - name: Execute the actual macOS server and media bundle
         run: |
           chmod +x .release/macos-payload/portico-server .release/macos-payload/third_party/ffmpeg/bin/*
-          .release/macos-payload/portico-server --version | grep -F '${{ needs.identity.outputs.version }}'
+          .release/macos-payload/portico-server --version | python3 -c 'import json,sys; assert json.load(sys.stdin)["version"] == sys.argv[1]' '${{ needs.identity.outputs.version }}'
           scripts/verify-ffmpeg-bundle.sh .release/macos-payload/third_party/ffmpeg full
       - run: ./scripts/package-macos.sh '${{ needs.identity.outputs.version }}' .release/macos-payload dist '${{ github.run_number }}'
       - name: Verify the expanded installer payload and disk image
@@ -415,7 +415,7 @@ jobs:
     steps:
       - uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130
       - name: Pull and execute both published architectures without registry credentials
-        env: {VERSION: '${{ needs.identity.outputs.version }}', DIGEST: '${{ needs.docker.outputs.digest }}'}
+        env: {VERSION: '${{ needs.identity.outputs.version }}', DIGEST: '${{ needs.docker.outputs.digest }}', SOURCE_SHA: '${{ needs.identity.outputs.sha }}'}
         run: |
           set -euo pipefail
           image="ghcr.io/porticomediaserver/portico-server"
@@ -425,7 +425,8 @@ jobs:
               echo "Public container access is required. Set package visibility to public: https://github.com/orgs/PorticoMediaServer/packages/container/portico-server/settings" >&2
               exit 1
             }
-            docker --config "$RUNNER_TEMP/anonymous-ghcr" run --rm --platform "linux/$arch" --entrypoint /usr/local/bin/portico-server "$image@$DIGEST" --version | grep -F "$VERSION"
+            test "$(docker image inspect "$image@$DIGEST" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$SOURCE_SHA"
+            docker --config "$RUNNER_TEMP/anonymous-ghcr" run --rm --platform "linux/$arch" --entrypoint /usr/local/bin/portico-server "$image@$DIGEST" --version | python3 -c 'import json,sys; assert json.load(sys.stdin)["version"] == sys.argv[1]' "$VERSION"
             docker --config "$RUNNER_TEMP/anonymous-ghcr" run --rm --platform "linux/$arch" --entrypoint /opt/portico/third_party/ffmpeg/bin/ffmpeg "$image@$DIGEST" -version
           done
 
