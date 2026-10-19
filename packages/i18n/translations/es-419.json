@@ -1,5 +1,701 @@
 {
  "locale": "es-419",
  "name": "Spanish (Latin America)",
- "messages": {}
+ "messages": {
+  "account.tvHandoffTitle": {
+   "text": "Gestiona perfiles, PIN y verificación en dos pasos en tu celular o computadora",
+   "source": "Manage profiles, PINs and two-step verification on your phone or computer",
+   "state": "machine"
+  },
+  "api.scope.admin.help": {
+   "text": "Todo lo que puedes hacer tú, incluida la configuración del servidor, perfiles, miembros y dispositivos.",
+   "source": "Everything you can do yourself, including server settings, profiles, members and devices.",
+   "state": "machine"
+  },
+  "auth.direct.leadTV": {
+   "text": "Introduce la dirección de tu servidor. Luego aprueba esta TV desde un celular o computadora que ya tenga la sesión iniciada. No hay que escribir ninguna contraseña.",
+   "source": "Enter your server’s address. Then approve this TV from a phone or computer that’s already signed in. There’s no password to type.",
+   "state": "machine"
+  },
+  "auth.tvGoogleHint": {
+   "text": "Para iniciar sesión con Google, vuelve atrás y escanea el código con el celular.",
+   "source": "To sign in with Google, go back and scan the code with your phone.",
+   "state": "machine"
+  },
+  "card.keyboardHint": {
+   "text": "Presiona M para ver más acciones y P para reproducir.",
+   "source": "Press M for more actions, P to play.",
+   "state": "machine"
+  },
+  "channels.serverWide.ownerHint": {
+   "text": "Abre la configuración de TV en vivo en Portico en la web",
+   "source": "Open Live TV settings in Portico on the web",
+   "state": "machine"
+  },
+  "deleteMedia.disabled": {
+   "text": "La eliminación está desactivada en esta biblioteca. Actívala en Servidor › Bibliotecas › Configuración.",
+   "source": "Deleting is turned off for this library. Turn it on under Server › Libraries › Settings.",
+   "state": "machine"
+  },
+  "device.noun.phone": {
+   "text": "celular",
+   "source": "phone",
+   "state": "machine"
+  },
+  "downloads.emptyBody": {
+   "text": "Mantén presionado un título y elige Descargar. Se guardará aquí para verlo sin conexión.",
+   "source": "Press and hold a title and choose Download. It’s kept here to watch without a connection.",
+   "state": "machine"
+  },
+  "downloads.notOffered": {
+   "text": "Este servidor no ofrece descargas. Su propietario puede activarlas en la configuración del servidor.",
+   "source": "This server doesn’t offer downloads. Its owner can turn them on in the server’s settings.",
+   "state": "machine"
+  },
+  "dvr.error.access": {
+   "text": "Tu acceso a las grabaciones ha cambiado. Vuelve a abrir TV en vivo tras comprobar el perfil seleccionado.",
+   "source": "Your recording access changed. Reopen Live TV after checking the selected profile.",
+   "state": "machine"
+  },
+  "dvr.reason.liveInUse": {
+   "text": "La TV en vivo está usando todos los sintonizadores.",
+   "source": "Live TV viewing is using every tuner.",
+   "state": "machine"
+  },
+  "error.title.load": {
+   "text": "{subject, select, home {No se ha podido cargar Inicio} library {No se ha podido cargar esta biblioteca} detail {No se ha podido cargar este título} show {No se ha podido cargar esta serie} person {No se ha podido cargar esta persona} search {No se ha podido completar la búsqueda} saved {No se ha podido cargar Guardado} playlist {No se ha podido cargar esta lista de reproducción} collection {No se ha podido cargar esta colección} downloads {No se han podido cargar las descargas} live {No se ha podido cargar la guía de programación} together {No se ha podido cargar Ver juntos} notifications {No se han podido cargar las notificaciones} account {No se ha podido cargar tu cuenta} profiles {No se han podido cargar los perfiles} devices {No se han podido cargar los dispositivos} settings {No se ha podido cargar la configuración} preferences {No se han podido cargar las preferencias} server-console {No se ha podido cargar esta página} sign-in {No se ha podido iniciar sesión} feedback {No se pueden enviar informes} playback {La reproducción se ha detenido} portico-account {No se ha podido cargar tu Portico Account} claim {No se ha podido reclamar este servidor} link {No se ha podido abrir este enlace} other {No se ha podido cargar}}",
+   "source": "{subject, select, home {Home couldn’t load} library {This library couldn’t load} detail {This title couldn’t load} show {This show couldn’t load} person {This person couldn’t load} search {Search couldn’t finish} saved {Saved couldn’t load} playlist {This playlist couldn’t load} collection {This collection couldn’t load} downloads {Downloads couldn’t load} live {The guide couldn’t load} together {Watch Together couldn’t load} notifications {Notifications couldn’t load} account {Your account couldn’t load} profiles {Profiles couldn’t load} devices {Devices couldn’t load} settings {Settings couldn’t load} preferences {Preferences couldn’t load} server-console {This page couldn’t load} sign-in {Sign-in couldn’t start} feedback {Reporting isn’t available} playback {Playback stopped} portico-account {Your Portico Account couldn’t load} claim {This server couldn’t be claimed} link {This link couldn’t open} other {This couldn’t load}}",
+   "state": "machine"
+  },
+  "guide.live": {
+   "text": "En vivo",
+   "source": "Live",
+   "state": "machine"
+  },
+  "guide.onNow": {
+   "text": "Al aire",
+   "source": "On now",
+   "state": "machine"
+  },
+  "guide.onNowLeft": {
+   "text": "Al aire, {count, plural, one {queda # minuto} other {quedan # minutos}}",
+   "source": "On now, {count, plural, one {# minute left} other {# minutes left}}",
+   "state": "machine"
+  },
+  "guide.openSource": {
+   "text": "Abrir configuración de la fuente",
+   "source": "Open source settings",
+   "state": "machine"
+  },
+  "guide.watchLive": {
+   "text": "Ver en vivo",
+   "source": "Watch live",
+   "state": "machine"
+  },
+  "home.empty.ownerComputer": {
+   "text": "Las bibliotecas se añaden en la consola del servidor. Ábrela en un navegador de una computadora o un celular.",
+   "source": "Libraries are added in the server console. Open it in a browser on a computer or phone.",
+   "state": "machine"
+  },
+  "lib.accountAndSettings": {
+   "text": "Cuenta y configuración",
+   "source": "Account and settings",
+   "state": "machine"
+  },
+  "limits.allowUnratedHelp": {
+   "text": "Videos caseros y todo lo que no tenga clasificación.",
+   "source": "Home videos and anything without a rating.",
+   "state": "machine"
+  },
+  "limits.feature.liveTv": {
+   "text": "TV en vivo",
+   "source": "Live TV",
+   "state": "machine"
+  },
+  "live.handover.countdown": {
+   "text": "{seconds, plural, one {Una grabación necesita este sintonizador. La TV en vivo se detiene en # segundo.} other {Una grabación necesita este sintonizador. La TV en vivo se detiene en # segundos.}}",
+   "source": "{seconds, plural, one {A recording needs this tuner. Live TV stops in # second.} other {A recording needs this tuner. Live TV stops in # seconds.}}",
+   "state": "machine"
+  },
+  "live.handover.later": {
+   "text": "Una grabación necesita este sintonizador a las {time}. La TV en vivo se detendrá entonces.",
+   "source": "A recording needs this tuner at {time}. Live TV stops then.",
+   "state": "machine"
+  },
+  "live.handover.stoppedTitle": {
+   "text": "TV en vivo detenida",
+   "source": "Live TV stopped",
+   "state": "machine"
+  },
+  "live.noSources": {
+   "text": "Aún no hay fuentes de TV en vivo",
+   "source": "No live TV sources yet",
+   "state": "machine"
+  },
+  "live.offForProfile": {
+   "text": "La TV en vivo está desactivada para este perfil.",
+   "source": "Live TV is turned off for this profile.",
+   "state": "machine"
+  },
+  "notice.recordingConflict.liveFailed.body": {
+   "text": "Portico no ha podido grabar {title} porque todos los sintonizadores se estaban usando para ver TV en vivo.",
+   "source": "Portico could not record {title} because every tuner was being used to watch live TV.",
+   "state": "machine"
+  },
+  "notice.recordingConflict.liveLate.body": {
+   "text": "{title} empezó tarde porque todos los sintonizadores se estaban usando para ver TV en vivo. Falta el principio del programa.",
+   "source": "{title} started late because every tuner was being used to watch live TV. The start of the program is missing.",
+   "state": "machine"
+  },
+  "notice.recordingConflict.liveWaiting.body": {
+   "text": "Todos los sintonizadores se están usando para ver TV en vivo, así que {title} no ha empezado. Empezará en cuanto haya uno libre.",
+   "source": "Every tuner is being used to watch live TV, so {title} has not started. It starts as soon as one is free.",
+   "state": "machine"
+  },
+  "playOn.receiver.askBody": {
+   "text": "{device} podrá iniciar y controlar la reproducción en este televisor. Puedes quitarlo más tarde en Configuración.",
+   "source": "{device} will be able to start and control playback on this TV. You can remove it later in Settings.",
+   "state": "machine"
+  },
+  "playback.message.timeline_unmapped": {
+   "text": "Esa posición está fuera del programa disponible. Elige Ir a la transmisión en vivo.",
+   "source": "That position is outside the available program. Choose Go to live.",
+   "state": "machine"
+  },
+  "player.info.reason.videoCodec": {
+   "text": "Este dispositivo no puede reproducir el formato de video.",
+   "source": "This device can’t play the video format.",
+   "state": "machine"
+  },
+  "player.info.video": {
+   "text": "Video",
+   "source": "Video",
+   "state": "machine"
+  },
+  "player.live.behindLive": {
+   "text": "{duration} por detrás de la transmisión en vivo",
+   "source": "{duration} behind live",
+   "state": "machine"
+  },
+  "player.live.goLive": {
+   "text": "Ir a la transmisión en vivo",
+   "source": "Go to live",
+   "state": "machine"
+  },
+  "player.liveBadge": {
+   "text": "EN VIVO",
+   "source": "LIVE",
+   "state": "machine"
+  },
+  "player.pipUnavailable": {
+   "text": "Imagen en imagen no está disponible para este video.",
+   "source": "Picture in Picture isn’t available for this video.",
+   "state": "machine"
+  },
+  "player.subtitles.bitmapNote": {
+   "text": "Convierte el video · menor calidad",
+   "source": "Converts the video · lower quality",
+   "state": "machine"
+  },
+  "portico.landing.pickBody": {
+   "text": "Tu Portico Account tiene más de un servidor. Elige cuál abrir. Puedes cambiarlo más tarde en Configuración.",
+   "source": "Your Portico Account has more than one server. Choose one to open. You can switch later in Settings.",
+   "state": "machine"
+  },
+  "pref.group.playback.description": {
+   "text": "Cómo se comportan el video y el audio mientras ves y escuchas.",
+   "source": "How video and audio behave while you watch and listen.",
+   "state": "machine"
+  },
+  "pref.help.appearance.reduceMotion.web": {
+   "text": "Transiciones más cortas y sin zoom al pasar el cursor.",
+   "source": "Shorter transitions and no zoom on hover.",
+   "state": "machine"
+  },
+  "pref.help.delivery.transcode.phone": {
+   "text": "Deja que tu servidor convierta el video que este dispositivo no puede reproducir.",
+   "source": "Let your server convert video that this device can’t play.",
+   "state": "machine"
+  },
+  "pref.help.delivery.transcode.tv": {
+   "text": "Deja que tu servidor convierta el video que este televisor no puede reproducir.",
+   "source": "Let your server convert video that this TV can’t play.",
+   "state": "machine"
+  },
+  "pref.help.delivery.transcode.web": {
+   "text": "Deja que tu servidor convierta el video que este navegador no puede reproducir.",
+   "source": "Let your server convert video that this browser can’t play.",
+   "state": "machine"
+  },
+  "pref.help.playback.passoutProtection": {
+   "text": "Pausa la reproducción automática tras varios episodios sin que nadie use el control remoto.",
+   "source": "Pause autoplay after several episodes with no one using the remote.",
+   "state": "machine"
+  },
+  "pref.help.playback.playedThresholdPercent": {
+   "text": "La música usa este porcentaje. Los videos usan el porcentaje de la biblioteca hasta que cambies este valor. Los audiolibros se dan por terminados cerca del final.",
+   "source": "Music uses this percentage. Videos use the library’s percentage until you change this value. Audiobooks finish near the end.",
+   "state": "machine"
+  },
+  "preferences.receiveFromDevicesHelp": {
+   "text": "Los celulares con este perfil pueden enviar lo que están viendo a esta TV",
+   "source": "Phones on this profile can send what they’re watching to this TV",
+   "state": "machine"
+  },
+  "preferences.reduceMotionHelpPhone": {
+   "text": "Transiciones más cortas. También se activa cuando Reducir movimiento está activado en Configuración de iOS.",
+   "source": "Shorter transitions. Also on whenever Reduce Motion is on in iOS Settings.",
+   "state": "machine"
+  },
+  "preferences.reduceMotionHelpTV": {
+   "text": "Transiciones más cortas y sin zoom al enfocar. También se activa cuando Reducir movimiento está activado en Configuración del Apple TV.",
+   "source": "Shorter transitions and no zoom on focus. Also on whenever Reduce Motion is on in Apple TV Settings.",
+   "state": "machine"
+  },
+  "profile.pinRecoveryUnavailable": {
+   "text": "Un PIN olvidado se restablece con tu contraseña y un código de la verificación en dos pasos, que esta cuenta no tiene activada. El perfil principal puede cambiar el PIN en Configuración → Cuenta del servidor.",
+   "source": "A forgotten PIN is reset with your password plus a code from two-step verification, which this account hasn’t turned on. The main profile can change the PIN in Settings → Server account.",
+   "state": "machine"
+  },
+  "quickConnect.lede": {
+   "text": "En un celular con sesión iniciada en {host}, abre Portico › Configuración › Vincular una TV, o en una computadora abre {host}/device.",
+   "source": "On a phone signed in to {host}, open Portico › Settings › Link a TV, or on a computer open {host}/device.",
+   "state": "machine"
+  },
+  "recordings.noneScheduledBody": {
+   "text": "Elige un programa en la guía y presiona Grabar.",
+   "source": "Choose a program in the guide and press Record.",
+   "state": "machine"
+  },
+  "search.chip.liveTV": {
+   "text": "TV en vivo",
+   "source": "Live TV",
+   "state": "machine"
+  },
+  "server.channels.state.ready": {
+   "text": "Al aire",
+   "source": "On air",
+   "state": "machine"
+  },
+  "server.live.tunerConflictHelp": {
+   "text": "Continuar viendo: la grabación espera a que haya un sintonizador libre, empieza tarde si se libera uno y se te avisa. Dejar de ver: el espectador ve una cuenta atrás y después se detiene la TV en vivo.",
+   "source": "Keep watching: the recording waits for a free tuner, starts late if one frees up, and you are told. Stop watching: the viewer sees a countdown, then live TV stops.",
+   "state": "machine"
+  },
+  "server.routes.route.video_conversion": {
+   "text": "Convertir el video",
+   "source": "Converting the video",
+   "state": "machine"
+  },
+  "server.thing.liveSources": {
+   "text": "fuentes de TV en vivo",
+   "source": "Live TV sources",
+   "state": "machine"
+  },
+  "settings.help.layout": {
+   "text": "Televisión: navegación con el control remoto y letra grande. Táctil: pantallas de celulares y tabletas. Portico se reinicia para cambiarlo.",
+   "source": "Television: remote-control focus and large type. Touch: phone and tablet screens. Portico restarts to change it.",
+   "state": "machine"
+  },
+  "settings.help.receiveFromDevices": {
+   "text": "Permite que tu celular o computadora inicie la reproducción en este televisor.",
+   "source": "Lets your phone or computer start playback on this TV.",
+   "state": "machine"
+  },
+  "settings.openOnWeb": {
+   "text": "Escanea el código con el celular o ve a {url} en una computadora.",
+   "source": "Scan the code with your phone, or go to {url} on a computer.",
+   "state": "machine"
+  },
+  "settings.pages": {
+   "text": "Páginas de configuración",
+   "source": "Settings pages",
+   "state": "machine"
+  },
+  "settings.row.videoSpeed": {
+   "text": "Video",
+   "source": "Video",
+   "state": "machine"
+  },
+  "settings.scope.allPhones": {
+   "text": "Todos los celulares y tabletas",
+   "source": "All phones and tablets",
+   "state": "machine"
+  },
+  "settings.search": {
+   "text": "Buscar configuración",
+   "source": "Search settings",
+   "state": "machine"
+  },
+  "settings.search.none": {
+   "text": "Ninguna configuración coincide con «{query}».",
+   "source": "No settings match “{query}”.",
+   "state": "machine"
+  },
+  "settings.server.allowConverting": {
+   "text": "Convertir el video que un dispositivo no pueda reproducir",
+   "source": "Convert video a device can’t play",
+   "state": "machine"
+  },
+  "settings.server.live": {
+   "text": "TV en vivo y canales",
+   "source": "Live TV & Channels",
+   "state": "machine"
+  },
+  "settings.server.secure.connectInBrowserHelp": {
+   "text": "Abre la configuración de este servidor en tu navegador, donde lo apruebas en tu Portico Account. O inicia sesión en tu Portico Account en esta app para hacerlo aquí.",
+   "source": "Opens this server’s settings in your browser, where you approve it in your Portico Account. Or sign in to your Portico Account in this app to do it here.",
+   "state": "machine"
+  },
+  "settings.server.tempFolder": {
+   "text": "Carpeta para el video convertido",
+   "source": "Folder for converted video",
+   "state": "machine"
+  },
+  "settings.server.tempFolderHelp": {
+   "text": "Donde el servidor escribe el video mientras lo convierte. Déjalo vacío para usar su propia carpeta de caché.",
+   "source": "Where the server writes video while converting it. Leave empty for its own cache folder.",
+   "state": "machine"
+  },
+  "settings.server.toneMappingHelp": {
+   "text": "Mantiene los colores correctos cuando el video HDR se convierte para una pantalla sin HDR.",
+   "source": "Keeps colors right when HDR video is converted for a screen without HDR.",
+   "state": "machine"
+  },
+  "settings.server.transcoding": {
+   "text": "Conversión de video",
+   "source": "Converting video",
+   "state": "machine"
+  },
+  "settings.title": {
+   "text": "Configuración",
+   "source": "Settings",
+   "state": "machine"
+  },
+  "setup.app.notSetUp": {
+   "text": "Este servidor aún no está configurado. Configúralo desde la app Portico en un celular o tableta, o abre su dirección en un navegador.",
+   "source": "This server isn’t set up yet. Set it up from the Portico app on a phone or tablet, or open its address in a browser.",
+   "state": "machine"
+  },
+  "signIn.plainHttp.owner": {
+   "text": "El propietario del servidor puede activar una conexión segura en Configuración › Acceso remoto.",
+   "source": "The server’s owner can turn on a secure connection in Settings › Remote access.",
+   "state": "machine"
+  },
+  "signIn.reset.consequence": {
+   "text": "Se cerrará la sesión de todos en Portico en este dispositivo y se olvidarán los servidores y la configuración que recuerda. Las descargas se mantienen. No cambia nada en tu servidor.",
+   "source": "Everyone is signed out of Portico on this device, and the servers and settings it remembers are forgotten. Downloads stay. Nothing on your server changes.",
+   "state": "machine"
+  },
+  "signIn.reset.failed": {
+   "text": "No se ha podido restablecer este dispositivo. Inténtalo de nuevo o borra el almacenamiento de Portico en la configuración del dispositivo.",
+   "source": "This device couldn’t be reset. Try again, or clear Portico’s storage in this device’s settings.",
+   "state": "machine"
+  },
+  "title.playlistEmptyBody": {
+   "text": "Mantén presionado un título y elige Añadir a lista de reproducción.",
+   "source": "Press and hold a title and choose Add to playlist.",
+   "state": "machine"
+  },
+  "title.playlistEmptyBodyTV": {
+   "text": "Mantén presionado el botón central sobre un título y elige Añadir a lista de reproducción.",
+   "source": "Press and hold Select on a title and choose Add to playlist.",
+   "state": "machine"
+  },
+  "title.showSettings": {
+   "text": "Configuración de la serie",
+   "source": "Show settings",
+   "state": "machine"
+  },
+  "web.capabilities.live_tv": {
+   "text": "TV en vivo",
+   "source": "Live TV",
+   "state": "machine"
+  },
+  "web.capabilities.reason.decoderSandboxOff": {
+   "text": "El propietario del servidor desactivó el aislamiento de las herramientas de video.",
+   "source": "The server owner turned off isolation for the video tools.",
+   "state": "machine"
+  },
+  "web.capabilities.reason.decoderSandboxUnavailable": {
+   "text": "Este equipo no puede aislar las herramientas de video, así que las conversiones se ejecutan con las protecciones básicas.",
+   "source": "This host can’t isolate the video tools, so conversions run with baseline protections.",
+   "state": "machine"
+  },
+  "web.capabilities.reason.dependencies": {
+   "text": "Las herramientas de video están instaladas, pero no se encuentran algunas de las bibliotecas que necesitan.",
+   "source": "The video tools are installed, but some of the libraries they need can’t be found.",
+   "state": "machine"
+  },
+  "web.capabilities.reason.platform": {
+   "text": "El sistema operativo de este servidor aún no puede aislar las herramientas de video que Portico necesita para esto.",
+   "source": "This server’s operating system can’t isolate the video tools Portico needs for this yet.",
+   "state": "machine"
+  },
+  "web.channelProblem.storage": {
+   "text": "El servidor no tiene espacio para almacenar TV en vivo ahora mismo. El propietario puede liberar espacio en Servidor › Almacenamiento.",
+   "source": "The server has no room to buffer live TV right now. The owner can free up space in Server › Storage.",
+   "state": "machine"
+  },
+  "web.claim.openFromServer": {
+   "text": "Abre esta página desde tu servidor: en su configuración inicial o en Configuración › Acceso remoto › Conexión segura.",
+   "source": "Open this page from your server: its first-run setup, or Settings › Remote access › Secure connection.",
+   "state": "machine"
+  },
+  "web.connection.mismatchBody": {
+   "text": "Hay otra cosa respondiendo en la dirección de {server}, así que esta página está en pausa. Portico sigue intentando contactar con tu servidor y recuperará la página cuando responda. La configuración, tu cuenta y el cambio de servidor siguen funcionando.",
+   "source": "Something else is answering at the address of {server}, so this page is paused. Portico keeps trying to reach your server and brings the page back when it answers. Settings, your account and switching servers still work.",
+   "state": "machine"
+  },
+  "web.connection.reconnectingBody": {
+   "text": "{server} no responde ahora mismo. Portico sigue intentándolo y lo abrirá en cuanto se reconecte. La configuración, tu cuenta y el cambio de servidor siguen funcionando.",
+   "source": "{server} isn’t answering right now. Portico keeps trying and opens it as soon as it reconnects. Settings, your account and switching servers still work.",
+   "state": "machine"
+  },
+  "web.connectivity.pausedLimit": {
+   "text": "Finalizar videos en pausa tras",
+   "source": "End paused videos after",
+   "state": "machine"
+  },
+  "web.connectivity.pausedLimitHelp": {
+   "text": "Libera la transmisión para otra persona. El espectador puede seguir donde lo dejó. La música, los audiolibros y la TV en vivo nunca se finalizan.",
+   "source": "Frees the stream for someone else. The viewer can pick up where they left off. Music, audiobooks and Live TV are never ended.",
+   "state": "machine"
+  },
+  "web.direct.recoveryHelp": {
+   "text": "¿Has olvidado esta contraseña? En la computadora del servidor, ejecuta portico-server recover-owner.",
+   "source": "Forgot this password? On the server’s computer, run portico-server recover-owner.",
+   "state": "machine"
+  },
+  "web.dvr.writeUnhealthyOwner": {
+   "text": "Revisa la carpeta de grabaciones en Servidor › TV en vivo y grabador.",
+   "source": "Check the recording folder in Server › Live TV & DVR.",
+   "state": "machine"
+  },
+  "web.dvrSettings.bufferHelp": {
+   "text": "Segundos acumulados antes de reproducir. Más aguanta mejor una fuente inestable; menos se acerca más a la transmisión en vivo.",
+   "source": "Seconds held before playing. More rides out a shaky source; less is closer to live.",
+   "state": "machine"
+  },
+  "web.dvrSettings.finishLateHelp": {
+   "text": "Minutos después del final previsto. Los deportes en vivo suelen alargarse.",
+   "source": "Minutes after the listed end. Live sport often overruns.",
+   "state": "machine"
+  },
+  "web.dvrSettings.liveDefaults": {
+   "text": "Valores predeterminados de TV en vivo",
+   "source": "Live TV defaults",
+   "state": "machine"
+  },
+  "web.dvrSettings.noTuners": {
+   "text": "Aún no hay sintonizadores. Añade primero una fuente de TV en vivo.",
+   "source": "No tuners yet. Add a Live TV source first.",
+   "state": "machine"
+  },
+  "web.empty.libraryOwnerBody": {
+   "text": "Los títulos aparecen aquí a medida que el servidor analiza las carpetas de esta biblioteca. Puedes iniciar un análisis desde la configuración de la biblioteca.",
+   "source": "Titles appear here as the server scans this library’s folders. You can start a scan from the library’s settings.",
+   "state": "machine"
+  },
+  "web.empty.openLibraries": {
+   "text": "Abrir configuración de bibliotecas",
+   "source": "Open library settings",
+   "state": "machine"
+  },
+  "web.hostedSecurity.thing": {
+   "text": "configuración de seguridad",
+   "source": "security settings",
+   "state": "machine"
+  },
+  "web.libraryChannels.deleteBody": {
+   "text": "El canal desaparece de TV en vivo para todos. Tu contenido no se ve afectado.",
+   "source": "The channel disappears from Live TV for everyone. Your media is not affected.",
+   "state": "machine"
+  },
+  "web.libraryChannels.onAir": {
+   "text": "Este canal está al aire.",
+   "source": "This channel is on the air.",
+   "state": "machine"
+  },
+  "web.librarySettings.loading": {
+   "text": "Cargando configuración…",
+   "source": "Loading settings…",
+   "state": "machine"
+  },
+  "web.limits.liveTvHelp": {
+   "text": "Ver canales en vivo.",
+   "source": "Watch live channels.",
+   "state": "machine"
+  },
+  "web.live.empty.noSourcesOwnerTitle": {
+   "text": "Configurar TV en vivo",
+   "source": "Set up Live TV",
+   "state": "machine"
+  },
+  "web.live.empty.noSourcesTitle": {
+   "text": "Tu servidor aún no tiene TV en vivo",
+   "source": "Your server doesn’t have Live TV yet",
+   "state": "machine"
+  },
+  "web.live.onNow": {
+   "text": "Al aire",
+   "source": "On now",
+   "state": "machine"
+  },
+  "web.live.openChannelSettings": {
+   "text": "Abrir configuración del canal",
+   "source": "Open channel settings",
+   "state": "machine"
+  },
+  "web.live.openLiveSettings": {
+   "text": "Abrir configuración de TV en vivo",
+   "source": "Open Live TV settings",
+   "state": "machine"
+  },
+  "web.live.reason.permission": {
+   "text": "Este perfil no puede ver TV en vivo.",
+   "source": "This profile can’t watch live TV.",
+   "state": "machine"
+  },
+  "web.live.serverWide.platformBody": {
+   "text": "Portico aún no puede reproducir canales en vivo en el sistema operativo de este servidor. Puedes seguir explorando la guía.",
+   "source": "Portico can’t play live channels on this server’s operating system yet. You can still browse the guide.",
+   "state": "machine"
+  },
+  "web.live.serverWide.title": {
+   "text": "La TV en vivo aún no está disponible en este servidor",
+   "source": "Live TV isn’t available on this server yet",
+   "state": "machine"
+  },
+  "web.live.serverWide.toolsBody": {
+   "text": "Para reproducir canales, Portico necesita que sus herramientas de video estén configuradas en este servidor.",
+   "source": "Portico needs its video tools set up on this server to play channels.",
+   "state": "machine"
+  },
+  "web.live.setUp": {
+   "text": "Configurar TV en vivo",
+   "source": "Set up Live TV",
+   "state": "machine"
+  },
+  "web.liveSource.searchOff": {
+   "text": "La búsqueda está desactivada. Activa «Buscar sintonizadores en la red» en Valores predeterminados de TV en vivo.",
+   "source": "Searching is turned off. Turn on “Look for tuners on the network” under Live TV defaults.",
+   "state": "machine"
+  },
+  "web.liveSource.settingsLede": {
+   "text": "Configuración de esta fuente",
+   "source": "Settings for this source",
+   "state": "machine"
+  },
+  "web.liveTv.addDialog": {
+   "text": "Añadir una fuente de TV en vivo",
+   "source": "Add a live TV source",
+   "state": "machine"
+  },
+  "web.liveTv.noSourcesHelp": {
+   "text": "Añade un sintonizador o una lista de reproducción y sus canales aparecerán en TV en vivo para todos los que tengan acceso.",
+   "source": "Add a tuner or playlist and its channels appear in Live TV for everyone with access.",
+   "state": "machine"
+  },
+  "web.liveTv.sourceSettings": {
+   "text": "Configuración de la fuente",
+   "source": "Source settings",
+   "state": "machine"
+  },
+  "web.maintenance.backupsLedePlain": {
+   "text": "La base de datos y la configuración del servidor, guardados como archivos normales que puedes copiar. Nunca incluyen archivos multimedia.",
+   "source": "The server’s database and settings, kept as plain files you can copy. Media files are never included.",
+   "state": "machine"
+  },
+  "web.maintenance.permissionsBody": {
+   "text": "Otras cuentas de esta computadora pueden leer tus datos de Portico, incluidos los secretos de inicio de sesión. Al corregir los permisos, solo tu cuenta podrá leer los archivos de Portico.",
+   "source": "Other accounts on this computer can read your Portico data, including sign-in secrets. Fixing permissions keeps Portico’s files readable only by your account.",
+   "state": "machine"
+  },
+  "web.maintenance.permissionsTitle": {
+   "text": "Otras cuentas de esta computadora pueden leer los datos de Portico",
+   "source": "Other accounts on this computer can read Portico data",
+   "state": "machine"
+  },
+  "web.metadata.addGenreHelp": {
+   "text": "Escribe un género y presiona Enter",
+   "source": "Type a genre and press Enter",
+   "state": "machine"
+  },
+  "web.metadata.fillHint": {
+   "text": "Completa solo los campos que quieras cambiar; los vacíos no se tocan.",
+   "source": "Fill only the fields to change; blanks are left alone.",
+   "state": "machine"
+  },
+  "web.metadataLookup.turnOnHint": {
+   "text": "Elige Permitir búsquedas en línea en la configuración de la biblioteca para empezar.",
+   "source": "Choose Allow online lookups in the library’s settings to start.",
+   "state": "machine"
+  },
+  "web.metadataSource.addHelper": {
+   "text": "Puedes cambiarlo más tarde en la configuración de la biblioteca.",
+   "source": "You can change this later in the library’s settings.",
+   "state": "machine"
+  },
+  "web.metadataSource.changed": {
+   "text": "La configuración de metadatos de esta biblioteca ha cambiado. Se muestra la opción actual; inténtalo de nuevo si aún quieres cambiarla.",
+   "source": "This library’s metadata settings changed. The current choice is shown; try again if you still want to change it.",
+   "state": "machine"
+  },
+  "web.network.warning.other": {
+   "text": "Algo en esta sección requiere atención. Revisa la configuración de abajo.",
+   "source": "Something in this section needs attention. Check the settings below.",
+   "state": "machine"
+  },
+  "web.nowPlaying.delivery.convertVideo": {
+   "text": "Convirtiendo video",
+   "source": "Converting video",
+   "state": "machine"
+  },
+  "web.player.pressPlay": {
+   "text": "Presiona reproducir para empezar.",
+   "source": "Press play to start playback.",
+   "state": "machine"
+  },
+  "web.profile.pinRecoveryUnavailableWeb": {
+   "text": "Un PIN olvidado se restablece con tu contraseña y un código de verificación en dos pasos, que esta cuenta no ha activado. El perfil principal puede cambiar el PIN aquí, en Configuración › Cuenta.",
+   "source": "A forgotten PIN is reset with your password plus a code from two-step verification, which this account hasn’t turned on. The main profile can change the PIN here in Settings › Account.",
+   "state": "machine"
+  },
+  "web.saved.empty.playlistsBody": {
+   "text": "Crea una lista de reproducción aquí o añade cualquier canción, álbum o video a una desde su menú Más.",
+   "source": "Make a playlist here, or add any song, album or video to one from its More menu.",
+   "state": "machine"
+  },
+  "web.setup.connectLaterHelp": {
+   "text": "Puedes conectarlo cuando quieras en Configuración › Acceso remoto. Hasta entonces, los dispositivos se conectan por HTTP sin cifrar.",
+   "source": "You can connect any time in Settings › Remote access. Until then, devices connect with plain HTTP.",
+   "state": "machine"
+  },
+  "web.shell.settings": {
+   "text": "Configuración",
+   "source": "Settings",
+   "state": "machine"
+  },
+  "web.signIn.error.accountCreateDetails": {
+   "text": "Revisa el nombre de usuario, el correo y la contraseña: hay que completarlos todos, y la contraseña debe tener al menos 8 caracteres.",
+   "source": "Check the username, email and password: each one needs to be filled in, and the password needs to be at least 8 characters.",
+   "state": "machine"
+  },
+  "web.telemetry.metricEncoder": {
+   "text": "Codificador de video",
+   "source": "Video encoder",
+   "state": "machine"
+  },
+  "web.together.emptyQueueHold": {
+   "text": "Mantén presionado un título y elige Añadir a la cola del grupo.",
+   "source": "Hold a title and choose Add to group queue.",
+   "state": "machine"
+  },
+  "web.together.pickHelpHold": {
+   "text": "Mantén presionado cualquier título y elige Ver con el grupo.",
+   "source": "Hold any title and choose Watch with group.",
+   "state": "machine"
+  }
+ }
 }

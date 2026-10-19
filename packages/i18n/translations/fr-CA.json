@@ -1,5 +1,836 @@
 {
  "locale": "fr-CA",
  "name": "French (Canada)",
- "messages": {}
+ "messages": {
+  "account.delete.mismatch": {
+   "text": "Cela ne correspond pas à l’adresse courriel de votre compte. Saisissez-la exactement telle qu’elle figure sur votre compte.",
+   "source": "That doesn’t match your account email. Type it exactly as it appears on your account.",
+   "state": "machine"
+  },
+  "account.delete.typeEmail": {
+   "text": "Saisissez l’adresse courriel de votre compte pour confirmer",
+   "source": "Type your account email to confirm",
+   "state": "machine"
+  },
+  "account.delete.typeEmailHelp": {
+   "text": "Si votre compte n’a pas d’adresse courriel, saisissez votre nom d’utilisateur.",
+   "source": "If your account has no email, type your username.",
+   "state": "machine"
+  },
+  "account.onlyMainProfileManages": {
+   "text": "Les profils, NIP et limites se gèrent depuis le profil principal.",
+   "source": "Profiles, PINs and limits are managed from the main profile.",
+   "state": "machine"
+  },
+  "account.tvHandoffTitle": {
+   "text": "Gérez les profils, les NIP et la validation en deux étapes sur votre téléphone ou ordinateur",
+   "source": "Manage profiles, PINs and two-step verification on your phone or computer",
+   "state": "machine"
+  },
+  "auth.checkEmail": {
+   "text": "Consultez vos courriels",
+   "source": "Check your email",
+   "state": "machine"
+  },
+  "auth.email": {
+   "text": "Courriel",
+   "source": "Email",
+   "state": "machine"
+  },
+  "auth.enterProfilePin": {
+   "text": "Saisissez le NIP du profil",
+   "source": "Enter profile PIN",
+   "state": "machine"
+  },
+  "auth.orWithEmail": {
+   "text": "ou connectez-vous avec un courriel",
+   "source": "or sign in with email",
+   "state": "machine"
+  },
+  "auth.resetLinkLede": {
+   "text": "Saisissez votre nom d’utilisateur et l’adresse courriel de votre compte. Nous vous enverrons un lien pour réinitialiser votre mot de passe.",
+   "source": "Enter your username and the email on your account. We’ll email you a link to reset your password.",
+   "state": "machine"
+  },
+  "auth.resetLinkLedeEmail": {
+   "text": "Saisissez l’adresse courriel de votre compte. Nous vous enverrons un lien pour réinitialiser votre mot de passe.",
+   "source": "Enter the email on your account. We’ll email you a link to reset your password.",
+   "state": "machine"
+  },
+  "auth.usernameOrEmail": {
+   "text": "Nom d’utilisateur ou courriel",
+   "source": "Username or email",
+   "state": "machine"
+  },
+  "downloads.wifiOnlyHelp": {
+   "text": "Ne jamais utiliser les données cellulaires pour télécharger",
+   "source": "Never use mobile data to download",
+   "state": "machine"
+  },
+  "dvr.reason.conflict": {
+   "text": "D’autres enregistrements utilisent tous les syntonisateurs à ce moment-là. Modifiez leur priorité ou leurs marges, ou annulez-en un.",
+   "source": "Other recordings are using every tuner at this time. Change their priority or padding, or cancel one.",
+   "state": "machine"
+  },
+  "dvr.reason.liveInUse": {
+   "text": "Le visionnage de la TV en direct utilise tous les syntonisateurs.",
+   "source": "Live TV viewing is using every tuner.",
+   "state": "machine"
+  },
+  "dvr.state.conflicted": {
+   "text": "Conflit de syntonisateur",
+   "source": "Tuner conflict",
+   "state": "machine"
+  },
+  "entry.addToPlaylist": {
+   "text": "Ajouter à une liste de lecture…",
+   "source": "Add to playlist…",
+   "state": "machine"
+  },
+  "entry.createPlaylist": {
+   "text": "Créer une liste de lecture",
+   "source": "Create playlist",
+   "state": "machine"
+  },
+  "entry.loadingPlaylists": {
+   "text": "Chargement des listes de lecture",
+   "source": "Loading playlists",
+   "state": "machine"
+  },
+  "entry.noPlaylists": {
+   "text": "Aucune liste de lecture pour l’instant.",
+   "source": "No playlists yet.",
+   "state": "machine"
+  },
+  "entry.sheet.addToPlaylist": {
+   "text": "Ajouter à une liste de lecture",
+   "source": "Add to playlist",
+   "state": "machine"
+  },
+  "error.live.invalidInput": {
+   "text": "Impossible d’utiliser la liste de lecture ou le guide des programmes. Vérifiez les adresses et réessayez.",
+   "source": "The playlist or guide couldn’t be used. Check the addresses and try again.",
+   "state": "machine"
+  },
+  "error.live.tunersBusy": {
+   "text": "Tous les syntonisateurs de cette source sont en cours de visionnage ou réservés à des enregistrements.",
+   "source": "All of this source’s tuners are being watched or kept for recordings.",
+   "state": "machine"
+  },
+  "error.title.action": {
+   "text": "{subject, select, search {Impossible de terminer la recherche} playlist {Impossible de modifier la liste de lecture} collection {Impossible de modifier la collection} downloads {Impossible de lancer le téléchargement} sign-in {La connexion n’a pas abouti} playback {Lecture interrompue} feedback {Votre signalement n’a pas été envoyé} portico-account {Cela n’a pas fonctionné} claim {Impossible de revendiquer ce serveur} link {Impossible d’ouvrir ce lien} other {Cela n’a pas fonctionné}}",
+   "source": "{subject, select, search {Search couldn’t finish} playlist {The playlist couldn’t be changed} collection {The collection couldn’t be changed} downloads {The download couldn’t start} sign-in {Sign-in didn’t finish} playback {Playback stopped} feedback {Your report wasn’t sent} portico-account {That didn’t work} claim {This server couldn’t be claimed} link {This link couldn’t open} other {That didn’t work}}",
+   "state": "machine"
+  },
+  "error.title.load": {
+   "text": "{subject, select, home {Impossible de charger l’accueil} library {Impossible de charger cette bibliothèque} detail {Impossible de charger ce titre} show {Impossible de charger cette série} person {Impossible de charger cette personne} search {Impossible de terminer la recherche} saved {Impossible de charger Enregistrés} playlist {Impossible de charger cette liste de lecture} collection {Impossible de charger cette collection} downloads {Impossible de charger les téléchargements} live {Impossible de charger le guide des programmes} together {Impossible de charger Regarder ensemble} notifications {Impossible de charger les notifications} account {Impossible de charger votre compte} profiles {Impossible de charger les profils} devices {Impossible de charger les appareils} settings {Impossible de charger les paramètres} preferences {Impossible de charger les préférences} server-console {Impossible de charger cette page} sign-in {Impossible de lancer la connexion} feedback {Le signalement n’est pas disponible} playback {Lecture interrompue} portico-account {Impossible de charger votre Portico Account} claim {Impossible de revendiquer ce serveur} link {Impossible d’ouvrir ce lien} other {Impossible de charger ce contenu}}",
+   "source": "{subject, select, home {Home couldn’t load} library {This library couldn’t load} detail {This title couldn’t load} show {This show couldn’t load} person {This person couldn’t load} search {Search couldn’t finish} saved {Saved couldn’t load} playlist {This playlist couldn’t load} collection {This collection couldn’t load} downloads {Downloads couldn’t load} live {The guide couldn’t load} together {Watch Together couldn’t load} notifications {Notifications couldn’t load} account {Your account couldn’t load} profiles {Profiles couldn’t load} devices {Devices couldn’t load} settings {Settings couldn’t load} preferences {Preferences couldn’t load} server-console {This page couldn’t load} sign-in {Sign-in couldn’t start} feedback {Reporting isn’t available} playback {Playback stopped} portico-account {Your Portico Account couldn’t load} claim {This server couldn’t be claimed} link {This link couldn’t open} other {This couldn’t load}}",
+   "state": "machine"
+  },
+  "error.title.save": {
+   "text": "{subject, select, home {Impossible d’enregistrer l’accueil} library {Impossible de modifier la bibliothèque} playlist {Impossible de modifier la liste de lecture} collection {Impossible de modifier la collection} downloads {Impossible de modifier le téléchargement} account {Impossible de modifier votre compte} profiles {Impossible de modifier le profil} devices {Impossible de modifier l’appareil} settings {Impossible d’enregistrer le paramètre} preferences {Impossible d’enregistrer la préférence} server-console {Impossible d’enregistrer la modification} search {Impossible de terminer la recherche} sign-in {La connexion n’a pas abouti} playback {Lecture interrompue} feedback {Votre signalement n’a pas été envoyé} portico-account {Impossible de modifier votre Portico Account} claim {Impossible de revendiquer ce serveur} other {Impossible d’enregistrer cette modification}}",
+   "source": "{subject, select, home {Home couldn’t be saved} library {The library couldn’t be changed} playlist {The playlist couldn’t be changed} collection {The collection couldn’t be changed} downloads {The download couldn’t be changed} account {Your account couldn’t be changed} profiles {The profile couldn’t be changed} devices {The device couldn’t be changed} settings {The setting couldn’t be saved} preferences {The preference couldn’t be saved} server-console {The change couldn’t be saved} search {Search couldn’t finish} sign-in {Sign-in didn’t finish} playback {Playback stopped} feedback {Your report wasn’t sent} portico-account {Your Portico Account couldn’t be changed} claim {This server couldn’t be claimed} other {That change couldn’t be saved}}",
+   "state": "machine"
+  },
+  "invite.body": {
+   "text": "Portico crée un lien et un code pour ce serveur. Partagez-les vous-même ; Portico n’envoie aucun courriel.",
+   "source": "Portico makes a link and a code for this server. Share them yourself; Portico sends no email.",
+   "state": "machine"
+  },
+  "invite.emailInvalid": {
+   "text": "Cette adresse courriel ne semble pas valide.",
+   "source": "That doesn’t look like an email address.",
+   "state": "machine"
+  },
+  "library.playlists.loadFailed": {
+   "text": "Impossible de charger vos listes de lecture.",
+   "source": "Your playlists couldn’t be loaded.",
+   "state": "machine"
+  },
+  "library.tab.playlists": {
+   "text": "Listes de lecture",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "live.handover.countdown": {
+   "text": "{seconds, plural, one {Un enregistrement a besoin de ce syntonisateur. La TV en direct s’arrête dans # seconde.} other {Un enregistrement a besoin de ce syntonisateur. La TV en direct s’arrête dans # secondes.}}",
+   "source": "{seconds, plural, one {A recording needs this tuner. Live TV stops in # second.} other {A recording needs this tuner. Live TV stops in # seconds.}}",
+   "state": "machine"
+  },
+  "live.handover.later": {
+   "text": "Un enregistrement a besoin de ce syntonisateur à {time}. La TV en direct s’arrêtera alors.",
+   "source": "A recording needs this tuner at {time}. Live TV stops then.",
+   "state": "machine"
+  },
+  "live.handover.next": {
+   "text": "L’enregistrement continue. Regardez de nouveau cette chaîne quand un syntonisateur sera libre.",
+   "source": "The recording carries on. Watch this channel again when a tuner is free.",
+   "state": "machine"
+  },
+  "live.handover.stopped": {
+   "text": "Un enregistrement avait besoin de ce syntonisateur. Regardez de nouveau cette chaîne quand un syntonisateur sera libre.",
+   "source": "A recording needed this tuner. Watch this channel again when a tuner is free.",
+   "state": "machine"
+  },
+  "notice.recordingConflict.liveFailed.body": {
+   "text": "Portico n’a pas pu enregistrer {title}, car tous les syntonisateurs servaient à regarder la TV en direct.",
+   "source": "Portico could not record {title} because every tuner was being used to watch live TV.",
+   "state": "machine"
+  },
+  "notice.recordingConflict.liveLate.body": {
+   "text": "{title} a démarré en retard, car tous les syntonisateurs servaient à regarder la TV en direct. Le début du programme manque.",
+   "source": "{title} started late because every tuner was being used to watch live TV. The start of the program is missing.",
+   "state": "machine"
+  },
+  "notice.recordingConflict.liveWaiting.body": {
+   "text": "Tous les syntonisateurs servent à regarder la TV en direct, donc {title} n’a pas démarré. L’enregistrement démarrera dès qu’un syntonisateur sera libre.",
+   "source": "Every tuner is being used to watch live TV, so {title} has not started. It starts as soon as one is free.",
+   "state": "machine"
+  },
+  "notice.recordingConflict.liveWaiting.title": {
+   "text": "L’enregistrement attend un syntonisateur",
+   "source": "Recording is waiting for a tuner",
+   "state": "machine"
+  },
+  "notice.recordingConflict.noTuner.body": {
+   "text": "Portico n’a pas pu enregistrer {title}, car aucun syntonisateur n’était libre.",
+   "source": "Portico could not record {title} because no tuner was free.",
+   "state": "machine"
+  },
+  "pin.entry": {
+   "text": "NIP",
+   "source": "PIN",
+   "state": "machine"
+  },
+  "pin.forgot": {
+   "text": "NIP oublié ?",
+   "source": "Forgot PIN?",
+   "state": "machine"
+  },
+  "pin.fourDigit": {
+   "text": "NIP à quatre chiffres",
+   "source": "Four-digit PIN",
+   "state": "machine"
+  },
+  "pins.noneSaved": {
+   "text": "Épinglez une collection, une vue enregistrée ou une liste de lecture depuis sa page pour la retrouver ici.",
+   "source": "Pin a collection, saved view or playlist from its page to keep it here.",
+   "state": "machine"
+  },
+  "pins.saved": {
+   "text": "Collections, vues enregistrées et listes de lecture",
+   "source": "Collections, saved views and playlists",
+   "state": "machine"
+  },
+  "player.queueSave": {
+   "text": "Enregistrer comme liste de lecture",
+   "source": "Save as playlist",
+   "state": "machine"
+  },
+  "player.queueSaveFailed": {
+   "text": "Impossible d’enregistrer la file d’attente comme liste de lecture. Réessayez.",
+   "source": "The queue couldn’t be saved as a playlist. Try again.",
+   "state": "machine"
+  },
+  "player.queueSaveName": {
+   "text": "Nom de la liste de lecture",
+   "source": "Playlist name",
+   "state": "machine"
+  },
+  "player.queueSaved": {
+   "text": "Enregistrée comme liste de lecture.",
+   "source": "Saved as a playlist.",
+   "state": "machine"
+  },
+  "playlists.filter.none": {
+   "text": "Aucune liste de lecture ici",
+   "source": "No playlists here",
+   "state": "machine"
+  },
+  "playlists.filter.option": {
+   "text": "{group, select, mine {Les miennes} shared {Partagées avec moi} pinned {Épinglées} other {Toutes les listes de lecture}}",
+   "source": "{group, select, mine {Mine} shared {Shared with me} pinned {Pinned} other {All playlists}}",
+   "state": "machine"
+  },
+  "pref.group.delivery.title": {
+   "text": "Diffusion en continu",
+   "source": "Streaming",
+   "state": "machine"
+  },
+  "profile.changePin": {
+   "text": "Changer le NIP…",
+   "source": "Change PIN…",
+   "state": "machine"
+  },
+  "profile.deleteConfirm.playlists": {
+   "text": "{count, plural, one {# liste de lecture sera également supprimée.} other {# listes de lecture seront également supprimées.}}",
+   "source": "{count, plural, one {# playlist} other {# playlists}} will also be deleted.",
+   "state": "machine"
+  },
+  "profile.devicesForgotten": {
+   "text": "Les appareils qui mémorisaient {name} redemanderont son NIP.",
+   "source": "Devices that remembered {name} will ask for its PIN again.",
+   "state": "machine"
+  },
+  "profile.forgotPin": {
+   "text": "NIP oublié…",
+   "source": "Forgot PIN…",
+   "state": "machine"
+  },
+  "profile.pinChanged": {
+   "text": "NIP modifié",
+   "source": "PIN changed",
+   "state": "machine"
+  },
+  "profile.pinChoose": {
+   "text": "Choisissez un NIP à quatre chiffres",
+   "source": "Choose a four-digit PIN",
+   "state": "machine"
+  },
+  "profile.pinMismatch": {
+   "text": "Les NIP ne correspondent pas. Réessayez.",
+   "source": "Those PINs don’t match. Try again.",
+   "state": "machine"
+  },
+  "profile.pinRecoveryAction": {
+   "text": "Définir le nouveau NIP",
+   "source": "Set new PIN",
+   "state": "machine"
+  },
+  "profile.pinRecoveryTitle": {
+   "text": "Nouveau NIP pour {name}",
+   "source": "New PIN for {name}",
+   "state": "machine"
+  },
+  "profile.pinRecoveryUnavailable": {
+   "text": "Un NIP oublié se réinitialise avec votre mot de passe et un code de validation en deux étapes, que ce compte n’a pas activée. Le profil principal peut changer le NIP dans Paramètres → Compte du serveur.",
+   "source": "A forgotten PIN is reset with your password plus a code from two-step verification, which this account hasn’t turned on. The main profile can change the PIN in Settings → Server account.",
+   "state": "machine"
+  },
+  "profile.pinRemoved": {
+   "text": "NIP retiré de {name}",
+   "source": "PIN removed from {name}",
+   "state": "machine"
+  },
+  "profile.pinSaved": {
+   "text": "{name} s’ouvre désormais avec le nouveau NIP",
+   "source": "{name} now opens with the new PIN",
+   "state": "machine"
+  },
+  "profile.pinSavedBody": {
+   "text": "{name} s’ouvre désormais avec le nouveau NIP. Les appareils qui avaient mémorisé l’ancien le redemanderont.",
+   "source": "{name} now opens with the new PIN. Devices that remembered the old one will ask for it again.",
+   "state": "machine"
+  },
+  "profile.pinTitle": {
+   "text": "NIP de {name}",
+   "source": "PIN for {name}",
+   "state": "machine"
+  },
+  "profile.protected": {
+   "text": "Protégé par un NIP",
+   "source": "Protected by a PIN",
+   "state": "machine"
+  },
+  "profile.removePin": {
+   "text": "Retirer le NIP",
+   "source": "Remove PIN",
+   "state": "machine"
+  },
+  "profile.removePinConfirm.title": {
+   "text": "Retirer le NIP de {name} ?",
+   "source": "Remove the PIN from {name}?",
+   "state": "machine"
+  },
+  "profile.setPin": {
+   "text": "Définir un NIP…",
+   "source": "Set a PIN…",
+   "state": "machine"
+  },
+  "recordings.conflictBody": {
+   "text": "Ces enregistrements utilisent les syntonisateurs en même temps.",
+   "source": "These recordings are using the tuners at the same time.",
+   "state": "machine"
+  },
+  "recordings.conflictBodyTuners": {
+   "text": "{count, plural, one {Vous avez # syntonisateur, et ces enregistrements en ont besoin en même temps.} other {Vous avez # syntonisateurs, et ces enregistrements en ont besoin en même temps.}}",
+   "source": "{count, plural, one {You have # tuner, and these recordings need it at the same time.} other {You have # tuners, and these recordings need them at the same time.}}",
+   "state": "machine"
+  },
+  "saved.removal.fromPlaylist": {
+   "text": "« {title} » a été retiré de la liste de lecture.",
+   "source": "Removed “{title}” from the playlist.",
+   "state": "machine"
+  },
+  "saved.tab.playlists": {
+   "text": "Listes de lecture",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "server.live.guideUrlTunerHelp": {
+   "text": "Un syntonisateur fournit des chaînes, mais peu ou pas de guide des programmes. Ajoutez une adresse XMLTV pour les programmes ; les chaînes y sont associées dans Chaînes et numéros.",
+   "source": "A tuner sends channels but little or no guide. Add an XMLTV address for program listings; channels are matched to it under Channels and numbers.",
+   "state": "machine"
+  },
+  "server.live.kind.m3u": {
+   "text": "Liste de lecture M3U",
+   "source": "M3U playlist",
+   "state": "machine"
+  },
+  "server.live.kind.playlist": {
+   "text": "Chaînes (liste de lecture ou syntonisateur)",
+   "source": "Channels (playlist or tuner)",
+   "state": "machine"
+  },
+  "server.live.kind.tuner": {
+   "text": "Syntonisateur HDHomeRun",
+   "source": "HDHomeRun tuner",
+   "state": "machine"
+  },
+  "server.live.limitSize": {
+   "text": "Taille maximale d’une liste de lecture ou d’un guide",
+   "source": "Largest playlist or guide file",
+   "state": "machine"
+  },
+  "server.live.limitsLede": {
+   "text": "Le maximum qu’une liste de lecture ou un guide peut ajouter. Ce qui dépasse une limite est laissé de côté, et le reste est utilisé.",
+   "source": "The most one playlist or guide may bring in. Anything beyond a limit is left out and the rest is used.",
+   "state": "machine"
+  },
+  "server.live.sourceKind.playlist": {
+   "text": "Chaînes (liste de lecture ou syntonisateur)",
+   "source": "Channels (playlist or tuner)",
+   "state": "machine"
+  },
+  "server.live.sourceKind.tuner": {
+   "text": "Syntonisateur HDHomeRun",
+   "source": "HDHomeRun tuner",
+   "state": "machine"
+  },
+  "server.live.tunerConflict": {
+   "text": "Quand un enregistrement a besoin d’un syntonisateur en cours d’utilisation",
+   "source": "When a recording needs a tuner someone is watching",
+   "state": "machine"
+  },
+  "server.live.tunerConflict.stop": {
+   "text": "Arrêter le visionnage (l’enregistrement prend le syntonisateur)",
+   "source": "Stop watching (the recording takes the tuner)",
+   "state": "machine"
+  },
+  "server.live.tunerConflictHelp": {
+   "text": "Laisser regarder : l’enregistrement attend un syntonisateur libre, démarre en retard si l’un se libère, et vous êtes prévenu. Arrêter le visionnage : le spectateur voit un compte à rebours, puis la TV en direct s’arrête.",
+   "source": "Keep watching: the recording waits for a free tuner, starts late if one frees up, and you are told. Stop watching: the viewer sees a countdown, then live TV stops.",
+   "state": "machine"
+  },
+  "server.live.tunerCount": {
+   "text": "{count, plural, one {# syntonisateur} other {# syntonisateurs}}",
+   "source": "{count, plural, one {# tuner} other {# tuners}}",
+   "state": "machine"
+  },
+  "server.people.days.weekends": {
+   "text": "La fin de semaine",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.people.deleteBody": {
+   "text": "Cette action supprime le compte de {name}, {profiles, plural, one {# profil} other {# profils}} et tout ce que ces profils ont enregistré : progression, historique, listes et listes de lecture. {devices, plural, one {# appareil est déconnecté.} other {# appareils sont déconnectés.}} Rien n’est supprimé de vos bibliothèques, et les enregistrements sont conservés.",
+   "source": "This removes {name}’s account, {profiles, plural, one {# profile} other {# profiles}} and everything those profiles saved: watch progress, history, lists and playlists. {devices, plural, one {# device is} other {# devices are}} signed out. Nothing in your libraries is deleted, and recordings are kept.",
+   "state": "machine"
+  },
+  "server.thing.tuners": {
+   "text": "syntonisateurs",
+   "source": "tuners",
+   "state": "machine"
+  },
+  "settings.server.playback": {
+   "text": "Diffusion en continu",
+   "source": "Streaming",
+   "state": "machine"
+  },
+  "settings.server.streamingLimits": {
+   "text": "Limites de diffusion en continu",
+   "source": "Streaming limits",
+   "state": "machine"
+  },
+  "signIn.error.pinInvalid": {
+   "text": "Ce NIP est incorrect. Réessayez.",
+   "source": "That PIN isn’t right. Try again.",
+   "state": "machine"
+  },
+  "title.kind": {
+   "text": "{kind, select, movie {Film} show {Série} anime {Anime} season {Saison} episode {Épisode} song {Morceau} album {Album} artist {Artiste} audiobook_file {Livre audio} book {Livre audio} collection {Collection} category {Catégorie} author {Auteur} book_series {Série de livres} disc {Disque} playlist {Liste de lecture} person {Personne} other {Titre}}",
+   "source": "{kind, select, movie {Movie} show {TV show} anime {Anime} season {Season} episode {Episode} song {Song} album {Album} artist {Artist} audiobook_file {Audiobook} book {Audiobook} collection {Collection} category {Category} author {Author} book_series {Book series} disc {Disc} playlist {Playlist} person {Person} other {Title}}",
+   "state": "machine"
+  },
+  "title.playlistEmpty": {
+   "text": "Cette liste de lecture est vide",
+   "source": "This playlist is empty",
+   "state": "machine"
+  },
+  "title.playlistEmptyBody": {
+   "text": "Appuyez de manière prolongée sur un titre et choisissez Ajouter à une liste de lecture.",
+   "source": "Press and hold a title and choose Add to playlist.",
+   "state": "machine"
+  },
+  "title.playlistEmptyBodyTV": {
+   "text": "Maintenez la touche Sélection sur un titre et choisissez Ajouter à une liste de lecture.",
+   "source": "Press and hold Select on a title and choose Add to playlist.",
+   "state": "machine"
+  },
+  "web.access.invitationsLede": {
+   "text": "Créez un lien et un code à partager. La personne rejoint le serveur avec son Portico Account ou crée un compte sur ce serveur. Portico n’envoie aucun courriel.",
+   "source": "Make a link and a code to share. They join with their Portico Account, or make an account on this server. Portico sends no email.",
+   "state": "machine"
+  },
+  "web.account.notif.event.contact_email_changed": {
+   "text": "Votre adresse courriel de contact a été modifiée",
+   "source": "Your contact email was changed",
+   "state": "machine"
+  },
+  "web.account.notif.event.contact_email_verified": {
+   "text": "Votre adresse courriel de contact a été confirmée",
+   "source": "Your contact email was confirmed",
+   "state": "machine"
+  },
+  "web.account.porticoMemberBody": {
+   "text": "Vous vous connectez à ce serveur avec votre Portico Account : votre mot de passe et la validation en deux étapes y sont donc gérés. Les profils, les NIP et les appareils connectés sont gérés ici.",
+   "source": "You sign in to this server with your Portico Account, so your password and two-step verification are managed there. Profiles, PINs and signed-in devices are managed here.",
+   "state": "machine"
+  },
+  "web.broadcast.lede": {
+   "text": "Apparaît dans les notifications de chaque personne. Ce n’est pas un courriel.",
+   "source": "Appears in each person’s notifications. It is not an email.",
+   "state": "machine"
+  },
+  "web.channelProblem.tunersBusy": {
+   "text": "Tous les syntonisateurs sont occupés ou en cours d’enregistrement. Réessayez quand l’un d’eux se libère.",
+   "source": "All tuners are busy recording or in use. Try again when one frees up.",
+   "state": "machine"
+  },
+  "web.direct.profilePin": {
+   "text": "NIP du profil",
+   "source": "Profile PIN",
+   "state": "machine"
+  },
+  "web.dvr.conflictBody": {
+   "text": "Ces enregistrements utilisent les syntonisateurs en même temps.",
+   "source": "These recordings are using the tuners at the same time.",
+   "state": "machine"
+  },
+  "web.dvr.conflictBodyTuners": {
+   "text": "{count, plural, one {Vous avez # syntonisateur, et ces enregistrements en ont besoin en même temps.} other {Vous avez # syntonisateurs, et ces enregistrements en ont besoin en même temps.}}",
+   "source": "{count, plural, one {You have # tuner, and these recordings need it at the same time.} other {You have # tuners, and these recordings need them at the same time.}}",
+   "state": "machine"
+  },
+  "web.dvr.reason.conflict": {
+   "text": "D’autres enregistrements utilisent tous les syntonisateurs à ce moment-là.",
+   "source": "Other recordings are using every tuner at this time.",
+   "state": "machine"
+  },
+  "web.dvr.state.conflicted": {
+   "text": "Conflit de syntonisateur",
+   "source": "Tuner conflict",
+   "state": "machine"
+  },
+  "web.dvrSettings.discovery": {
+   "text": "Rechercher des syntonisateurs sur le réseau",
+   "source": "Look for tuners on the network",
+   "state": "machine"
+  },
+  "web.dvrSettings.noTuners": {
+   "text": "Aucun syntonisateur pour l’instant. Ajoutez d’abord une source TV en direct.",
+   "source": "No tuners yet. Add a Live TV source first.",
+   "state": "machine"
+  },
+  "web.dvrSettings.tuners": {
+   "text": "Syntonisateurs",
+   "source": "Tuners",
+   "state": "machine"
+  },
+  "web.group.ownOrder": {
+   "text": "{group, select, playlist {Ordre de la liste de lecture} collection {Ordre de la collection} season {Ordre des épisodes} row {Ordre de la rangée} history {Lus récemment} parts {Ordre des parties} other {Ordre par défaut}}",
+   "source": "{group, select, playlist {Playlist order} collection {Collection order} season {Episode order} row {Row order} history {Most recently played} parts {Part order} other {Default order}}",
+   "state": "machine"
+  },
+  "web.hostedSecurity.changeEmailTitle": {
+   "text": "Modifier l’adresse courriel",
+   "source": "Change email address",
+   "state": "machine"
+  },
+  "web.hostedSecurity.checkEmail": {
+   "text": "Consultez vos courriels",
+   "source": "Check your email",
+   "state": "machine"
+  },
+  "web.hostedSecurity.email": {
+   "text": "Adresse courriel",
+   "source": "Email address",
+   "state": "machine"
+  },
+  "web.hostedSecurity.emailChanged": {
+   "text": "Adresse courriel modifiée",
+   "source": "Email address changed",
+   "state": "machine"
+  },
+  "web.hostedSecurity.newEmail": {
+   "text": "Nouvelle adresse courriel",
+   "source": "New email address",
+   "state": "machine"
+  },
+  "web.link.invalid": {
+   "text": "Ce lien est incomplet. Ouvrez-le de nouveau depuis le courriel, ou copiez le lien entier dans votre navigateur.",
+   "source": "This link isn’t complete. Open it again from the email, or copy the whole link into your browser.",
+   "state": "machine"
+  },
+  "web.live.empty.noSourcesOwner": {
+   "text": "Ajoutez un syntonisateur ou une liste de lecture M3U : ses chaînes et son guide des programmes apparaîtront ici.",
+   "source": "Add a tuner or an M3U playlist and its channels and guide appear here.",
+   "state": "machine"
+  },
+  "web.live.reason.tunersBusy": {
+   "text": "Tous les syntonisateurs enregistrent ou sont utilisés. Réessayez quand l’un d’eux se libère.",
+   "source": "All tuners are busy recording or in use. Try again when one frees up.",
+   "state": "machine"
+  },
+  "web.liveSource.discoverLede": {
+   "text": "Recherche les syntonisateurs HDHomeRun et similaires à proximité du serveur. Cela prend environ cinq secondes.",
+   "source": "Looks for HDHomeRun and similar tuners near the server. It takes about five seconds.",
+   "state": "machine"
+  },
+  "web.liveSource.discoverTitle": {
+   "text": "Rechercher des syntonisateurs sur votre réseau",
+   "source": "Find tuners on your network",
+   "state": "machine"
+  },
+  "web.liveSource.noTuners": {
+   "text": "Aucun syntonisateur n’a répondu. Vérifiez que le syntonisateur est sur le même réseau que le serveur, ou ajoutez-le par son adresse.",
+   "source": "No tuners answered. Check the tuner is on the same network as the server, or add it by its address.",
+   "state": "machine"
+  },
+  "web.liveSource.searchOff": {
+   "text": "La recherche est désactivée. Activez « Rechercher des syntonisateurs sur le réseau » dans TV en direct par défaut.",
+   "source": "Searching is turned off. Turn on “Look for tuners on the network” under Live TV defaults.",
+   "state": "machine"
+  },
+  "web.liveSource.tunerFallback": {
+   "text": "Syntonisateur",
+   "source": "Tuner",
+   "state": "machine"
+  },
+  "web.liveTv.capacityTuners": {
+   "text": "{count, plural, one {# syntonisateur détecté} other {# syntonisateurs détectés}}",
+   "source": "{count} tuners detected",
+   "state": "machine"
+  },
+  "web.liveTv.discover": {
+   "text": "Rechercher des syntonisateurs sur le réseau",
+   "source": "Find tuners on the network",
+   "state": "machine"
+  },
+  "web.liveTv.noSourcesHelp": {
+   "text": "Ajoutez un syntonisateur ou une liste de lecture : ses chaînes apparaîtront dans TV en direct pour toutes les personnes qui y ont accès.",
+   "source": "Add a tuner or playlist and its channels appear in Live TV for everyone with access.",
+   "state": "machine"
+  },
+  "web.liveTv.playlistFile": {
+   "text": "Liste de lecture (.m3u)",
+   "source": "Playlist (.m3u)",
+   "state": "machine"
+  },
+  "web.liveTv.playlistUrl": {
+   "text": "URL de la liste de lecture",
+   "source": "Playlist URL",
+   "state": "machine"
+  },
+  "web.liveTv.remoteSource": {
+   "text": "URL de liste de lecture ou syntonisateur",
+   "source": "Playlist URL or tuner",
+   "state": "machine"
+  },
+  "web.liveTv.tunerAddress": {
+   "text": "Adresse du syntonisateur",
+   "source": "Tuner address",
+   "state": "machine"
+  },
+  "web.liveTv.tunersDetected": {
+   "text": "{count, plural, one {# syntonisateur (détecté)} other {# syntonisateurs (détectés)}}",
+   "source": "{count, plural, one {# tuner (detected)} other {# tuners (detected)}}",
+   "state": "machine"
+  },
+  "web.liveTv.upload": {
+   "text": "Importer des fichiers de liste de lecture",
+   "source": "Upload playlist files",
+   "state": "machine"
+  },
+  "web.liveTv.uploadLede": {
+   "text": "Une liste de lecture M3U et, si vous le souhaitez, un guide XMLTV. Les fichiers sont stockés sur le serveur.",
+   "source": "An M3U playlist plus an optional XMLTV guide. Files are stored on the server.",
+   "state": "machine"
+  },
+  "web.profile.newPin": {
+   "text": "Nouveau NIP",
+   "source": "New PIN",
+   "state": "machine"
+  },
+  "web.profile.pinRecoveryUnavailableWeb": {
+   "text": "Un NIP oublié se réinitialise avec votre mot de passe et un code de validation en deux étapes, que ce compte n’a pas activée. Le profil principal peut modifier le NIP ici, dans Paramètres › Compte.",
+   "source": "A forgotten PIN is reset with your password plus a code from two-step verification, which this account hasn’t turned on. The main profile can change the PIN here in Settings › Account.",
+   "state": "machine"
+  },
+  "web.profile.repeatPin": {
+   "text": "Confirmer le NIP",
+   "source": "Repeat the PIN",
+   "state": "machine"
+  },
+  "web.recordingRules.priorityHelp": {
+   "text": "La plus haute l’emporte en cas de conflit de syntonisateur",
+   "source": "Higher wins a tuner clash",
+   "state": "machine"
+  },
+  "web.saved.deletePlaylist": {
+   "text": "Supprimer la liste de lecture…",
+   "source": "Delete playlist…",
+   "state": "machine"
+  },
+  "web.saved.deletePlaylistAction": {
+   "text": "Supprimer la liste de lecture",
+   "source": "Delete playlist",
+   "state": "machine"
+  },
+  "web.saved.deletePlaylistBody": {
+   "text": "La liste de lecture est supprimée pour toutes les personnes avec qui elle est partagée. Ses titres restent dans vos bibliothèques.",
+   "source": "The playlist is deleted for everyone it’s shared with. The titles in it stay in your libraries.",
+   "state": "machine"
+  },
+  "web.saved.empty.playlists": {
+   "text": "Aucune liste de lecture pour l’instant",
+   "source": "No playlists yet",
+   "state": "machine"
+  },
+  "web.saved.empty.playlistsBody": {
+   "text": "Créez une liste de lecture ici, ou ajoutez-y n’importe quel morceau, album ou vidéo depuis son menu Plus.",
+   "source": "Make a playlist here, or add any song, album or video to one from its More menu.",
+   "state": "machine"
+  },
+  "web.saved.newPlaylist": {
+   "text": "Nouvelle liste de lecture",
+   "source": "New playlist",
+   "state": "machine"
+  },
+  "web.saved.playlist": {
+   "text": "Liste de lecture",
+   "source": "Playlist",
+   "state": "machine"
+  },
+  "web.saved.playlistEmpty": {
+   "text": "Cette liste de lecture est vide",
+   "source": "This playlist is empty",
+   "state": "machine"
+  },
+  "web.saved.playlistEmptyBody": {
+   "text": "Ouvrez le menu d’un titre et choisissez Ajouter à une liste de lecture.",
+   "source": "Open a title’s menu and choose Add to playlist.",
+   "state": "machine"
+  },
+  "web.saved.playlistOptions": {
+   "text": "Options de la liste de lecture",
+   "source": "Playlist options",
+   "state": "machine"
+  },
+  "web.saved.removeFromPlaylist": {
+   "text": "Retirer de la liste de lecture",
+   "source": "Remove from playlist",
+   "state": "machine"
+  },
+  "web.saved.renamePlaylist": {
+   "text": "Renommer la liste de lecture",
+   "source": "Rename playlist",
+   "state": "machine"
+  },
+  "web.selection.addToPlaylist": {
+   "text": "Ajouter {count} à une liste de lecture",
+   "source": "Add {count} to a playlist",
+   "state": "machine"
+  },
+  "web.selection.playlist": {
+   "text": "Liste de lecture",
+   "source": "Playlist",
+   "state": "machine"
+  },
+  "web.signIn.error.accountCreateDetails": {
+   "text": "Vérifiez le nom d’utilisateur, l’adresse courriel et le mot de passe : chaque champ doit être rempli, et le mot de passe doit comporter au moins 8 caractères.",
+   "source": "Check the username, email and password: each one needs to be filled in, and the password needs to be at least 8 characters.",
+   "state": "machine"
+  },
+  "web.signIn.error.accountCredentials": {
+   "text": "Ce nom d’utilisateur ou cette adresse courriel et ce mot de passe ne correspondent à aucun Portico Account. Vérifiez-les et réessayez.",
+   "source": "That username or email and password didn’t match a Portico Account. Check them and try again.",
+   "state": "machine"
+  },
+  "web.signIn.error.accountDetails": {
+   "text": "Saisissez votre nom d’utilisateur ou votre adresse courriel, et votre mot de passe.",
+   "source": "Enter your username or email and your password.",
+   "state": "machine"
+  },
+  "web.signIn.error.accountMail": {
+   "text": "Le service Portico Account ne peut pas envoyer de courriels pour le moment. Réessayez plus tard.",
+   "source": "Portico Accounts can’t send email right now. Try again later.",
+   "state": "machine"
+  },
+  "web.signIn.error.accountRecoveryDetails": {
+   "text": "Saisissez le nom d’utilisateur et l’adresse courriel de votre Portico Account.",
+   "source": "Enter the username and the email address on your Portico Account.",
+   "state": "machine"
+  },
+  "web.signIn.error.pinFormat": {
+   "text": "Le NIP d’un profil comporte quatre chiffres.",
+   "source": "A profile PIN is four digits.",
+   "state": "machine"
+  },
+  "web.signIn.error.pinRequired": {
+   "text": "Saisissez le NIP de ce profil.",
+   "source": "Enter this profile’s PIN.",
+   "state": "machine"
+  },
+  "web.signin.emailButton": {
+   "text": "Se connecter avec une adresse courriel",
+   "source": "Sign in with email",
+   "state": "machine"
+  },
+  "web.verify.changed": {
+   "text": "Adresse courriel modifiée. Reconnectez-vous.",
+   "source": "Email changed. Sign in again.",
+   "state": "machine"
+  },
+  "web.verify.changedTitle": {
+   "text": "Adresse courriel modifiée",
+   "source": "Email changed",
+   "state": "machine"
+  },
+  "web.verify.confirmedElsewhere": {
+   "text": "Adresse courriel confirmée. Revenez sur l’appareil où vous avez commencé.",
+   "source": "Email confirmed. Go back to the device where you started.",
+   "state": "machine"
+  },
+  "web.verify.done": {
+   "text": "Votre adresse courriel est confirmée.",
+   "source": "Your email is confirmed.",
+   "state": "machine"
+  },
+  "web.verify.doneTitle": {
+   "text": "Adresse courriel confirmée",
+   "source": "Email confirmed",
+   "state": "machine"
+  },
+  "web.verify.title": {
+   "text": "Confirmez votre adresse courriel",
+   "source": "Confirm your email",
+   "state": "machine"
+  },
+  "web.verify.working": {
+   "text": "Confirmation de votre adresse courriel",
+   "source": "Confirming your email",
+   "state": "machine"
+  }
+ }
 }
