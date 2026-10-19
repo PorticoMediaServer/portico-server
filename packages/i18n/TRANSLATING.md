@@ -1,5 +1,7 @@
 # Translating Portico
 
+> **DO NOT MERGE until Justin decides.** The translations on this branch are unreviewed and untested; see `DO-NOT-MERGE.md` at the repository root.
+
 The source catalogue is US English (`src/catalog/en-US.ts` and `src/catalog/en-US/*.ts`). Canadian and
 British English are derived from it by spelling rules (`src/catalog/regional.ts`). Every other
 language is a translation. French, Spanish, German and Russian are fully translated. Portuguese
