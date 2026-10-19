@@ -367,7 +367,7 @@ func TestProviderDownloadsAndRecordsTheRemainingQuota(t *testing.T) {
 
 func TestProviderCheckTestsTheKeyOrTheAccount(t *testing.T) {
 	p, fake, _ := newFakeProvider(t, func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"data":[]}`)) })
-	if s := p.Check(context.Background()); s.Problem != "" || s.CheckedAt == "" || s.KeySource != "environment" || s.Account != "none" || fake.count("/infos/formats") != 1 {
+	if s := p.Check(context.Background()); s.Problem != "" || s.CheckedAt == "" || s.KeySource != "environment" || s.Account != "none" || fake.count("/subtitles") != 1 {
 		t.Fatalf("%+v", s)
 	}
 	bad, _, _ := newFakeProvider(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(403) })

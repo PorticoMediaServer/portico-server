@@ -719,10 +719,11 @@ func (p *OpenSubtitles) Check(ctx context.Context) OwnerStatus {
 				p.observeQuota(max(*user.Data.Remaining, 0), user.Data.Allowed, time.Time{})
 			}
 		} else {
-			var formats struct {
-				Data any `json:"data"`
+			// /infos/formats answers any key; a search is the cheapest call that checks it.
+			var found struct {
+				Data []any `json:"data"`
 			}
-			e = p.exchange(ctx, "GET", "/infos/formats", nil, &formats)
+			e = p.exchange(ctx, "GET", "/subtitles?imdb_id=133093&languages=en", nil, &found)
 		}
 		p.observe(e)
 	}
