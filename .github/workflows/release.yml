@@ -108,7 +108,12 @@ jobs:
         shell: bash
         run: scripts/verify-ffmpeg-bundle.sh third_party/ffmpeg/bundle full
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
-        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+        with:
+          go-version-file: server/go.mod
+          # A distinct key avoids restoring archives saved under the old paths.
+          cache-dependency-path: |
+            server/go.sum
+            scripts/env.sh
       - name: Qualify subtitle rendering and playback with the native bundle
         shell: bash
         run: |
@@ -162,7 +167,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: {ref: '${{ needs.identity.outputs.sha }}'}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
-        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+        with:
+          go-version-file: server/go.mod
+          # A distinct key avoids restoring archives saved under the old paths.
+          cache-dependency-path: |
+            server/go.sum
+            scripts/env.sh
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with: {name: qualified-ffmpeg-linux-x64, path: .toolchain}
       - name: Test the application revision with its qualified media bundle
@@ -185,7 +195,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with: {node-version-file: .node-version, cache: npm}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
-        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+        with:
+          go-version-file: server/go.mod
+          # A distinct key avoids restoring archives saved under the old paths.
+          cache-dependency-path: |
+            server/go.sum
+            scripts/env.sh
       - name: Warm the offline Go licence inventory
         working-directory: server
         run: go mod download
@@ -223,7 +238,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: {ref: '${{ needs.identity.outputs.sha }}'}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
-        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+        with:
+          go-version-file: server/go.mod
+          # A distinct key avoids restoring archives saved under the old paths.
+          cache-dependency-path: |
+            server/go.sum
+            scripts/env.sh
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with: {name: web-dist, path: .release/web}
       - name: Release tools
@@ -289,7 +309,12 @@ jobs:
         with: {name: macos-payload, path: .release/macos-payload}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
         if: env.PORTICO_MACOS_SIGNING_IDENTITY != ''
-        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+        with:
+          go-version-file: server/go.mod
+          # A distinct key avoids restoring archives saved under the old paths.
+          cache-dependency-path: |
+            server/go.sum
+            scripts/env.sh
       - name: Signed package tools
         if: env.PORTICO_MACOS_SIGNING_IDENTITY != ''
         run: |
@@ -374,6 +399,11 @@ jobs:
           build-args: |
             PORTICO_VERSION=${{ needs.identity.outputs.version }}
             PORTICO_BUILT_AT=${{ needs.identity.outputs.built_at }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/PorticoMediaServer/portico-server
+            org.opencontainers.image.revision=${{ needs.identity.outputs.sha }}
+            org.opencontainers.image.version=${{ needs.identity.outputs.version }}
+            org.opencontainers.image.licenses=GPL-3.0-or-later
           provenance: mode=max
           sbom: true
       - uses: actions/attest-build-provenance@96b4a1ef7235a096b17240c259729fdd70c83d45 # v2

@@ -40,7 +40,12 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with: {node-version-file: .node-version, cache: npm}
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
-        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+        with:
+          go-version-file: server/go.mod
+          # A distinct key avoids restoring archives saved under the old paths.
+          cache-dependency-path: |
+            server/go.sum
+            scripts/env.sh
       - name: Download Go dependencies for the offline licence inventory
         working-directory: server
         run: go mod download
@@ -120,7 +125,12 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
-        with: {go-version-file: server/go.mod, cache-dependency-path: server/go.sum}
+        with:
+          go-version-file: server/go.mod
+          # A distinct key avoids restoring archives saved under the old paths.
+          cache-dependency-path: |
+            server/go.sum
+            scripts/env.sh
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
         with: {name: validation-web, path: .release/web}
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
