@@ -28,7 +28,7 @@ export type RuntimeSettings=TranscodingSettings&{
  analysisStorageGiB:number;analysisStageStorageMiB:number;subtitleTrackLimit:number;subtitleFileLimitMiB:number;name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;
  diagnosticDays:number;notificationDays:number;jobDays:number;playHistoryDays:number;'home.communityActivityEnabled':boolean;
  'updates.releaseChannel':string;'updates.feedUrl':string;'library.missingTitles':MissingTitlesRule;'library.missingTitlesDays':number;
- remoteSignInPolicy:string;remoteBitrateLimitKbps:number;lanNetworks:string[];accessUrls:string[];lanDiscoveryEnabled:boolean;
+ remoteSignInPolicy:string;remoteBitrateLimitKbps:number;lanNetworks:string[];accessUrls:string[];lanDiscoveryEnabled:boolean;dlnaEnabled:boolean;
  trustedProxies:string[];uploadCapacityKbps:number;pausedSessionTimeoutMinutes:number;advertisedInterface:string;
  customCertificatePath:string;customCertificateKeyPath:string;customCertificateDomain:string;deviceApprovalRequired:boolean;
  connectionLimit:number;advertiseUrl:string;apiRequestsPerMinute:number;blockMemberAccessTokens:boolean;
@@ -69,6 +69,8 @@ function checkOwnerDocument(s:Record<string,any>){
  for(const key of ['updates.releaseChannel','updates.feedUrl','remoteSignInPolicy','advertiseUrl','advertisedInterface','customCertificatePath','customCertificateKeyPath','customCertificateDomain','logLevel'])if(!text(s[key],4096))invalid();
  for(const key of ['remoteBitrateLimitKbps','uploadCapacityKbps','pausedSessionTimeoutMinutes','connectionLimit','apiRequestsPerMinute'])if(!integer(s[key]))invalid();
  for(const key of ['lanDiscoveryEnabled','deviceApprovalRequired','blockMemberAccessTokens'])if(typeof s[key]!=='boolean')invalid();
+ // An older server has no DLNA switch, which reads as off.
+ if(s.dlnaEnabled===undefined)s.dlnaEnabled=false;else if(typeof s.dlnaEnabled!=='boolean')invalid();
  for(const key of ['lanNetworks','accessUrls','trustedProxies'])if(!Array.isArray(s[key])||s[key].length>64||!s[key].every((v:unknown)=>text(v,4096)))invalid();
  if(!MISSING_TITLES_RULES.includes(s['library.missingTitles'])||!integer(s['library.missingTitlesDays'])||s['library.missingTitlesDays']<1||s['library.missingTitlesDays']>3650||s.connectionLimit>65536||s.apiRequestsPerMinute>100000)invalid();
  if(!Array.isArray(s.logRetention)||s.logRetention.length>64||!s.logRetention.every((v:unknown)=>obj(v)&&text(v.category,100)&&integer(v.days)))invalid();

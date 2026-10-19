@@ -511,6 +511,7 @@ const serverPages: readonly AuthoredPage[] = [
       custom('server.connection', 'settings.server.yourConnection'),
       setting('connectivity', 'lanNetworks', 'web.connectivity.homeNetworks', {type: 'lines', example: '192.168.2.0/24'}, {help: 'settings.server.homeNetworksHelp'}),
       on('connectivity', 'lanDiscoveryEnabled', 'web.connectivity.discovery', 'settings.server.discoveryHelp'),
+      on('connectivity', 'dlnaEnabled', 'settings.server.dlna', 'settings.server.dlnaHelp'),
       custom('server.addresses'),
     ]},
     {id: 'outside', title: 'web.connectivity.outside', description: 'web.connectivity.outsideLede', rows: [

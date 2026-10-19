@@ -249,6 +249,8 @@ export const settingsMessages = {
   'settings.server.signIn.off': 'Nobody',
   'settings.server.homeNetwork': 'Home network',
   'settings.server.discoveryHelp': 'Lets apps on your network find the server without typing an address.',
+  'settings.server.dlna': 'DLNA',
+  'settings.server.dlnaHelp': 'Lets TVs, consoles and other DLNA devices on your home network browse and play everything on this server, without signing in.',
   'settings.server.mapping.pcp': 'Use PCP',
   'settings.server.mapping.natpmp': 'Use NAT-PMP',
   'settings.server.mapping.upnp': 'Use UPnP',
