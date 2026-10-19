@@ -18,6 +18,7 @@ func TestAutomaticSafeAuthorizesApprovalAndCrossEpisodeMeasurementOnly(t *testin
 		{"single-file picture guess above the floor", false, .97, "visual_credits:v1", false},
 		{"single-file luminance guess above the floor", false, .97, "sustained_end_title_luminance:v1", false},
 		{"unapproved chapter title heuristic at the floor", false, .85, "embedded_chapter_label:v1", false},
+		{"an online database's timestamps", false, .99, "online:theintrodb:v1", false},
 		{"unapproved ambiguous detector", false, .95, "paired_black_boundaries_semantic_ambiguous:v1", false},
 		{"a provenance merely starting with the family name", false, .95, "season_audio_matcher:v1", false},
 		{"unapproved owner provenance", false, 1, "owner:manual", false},
