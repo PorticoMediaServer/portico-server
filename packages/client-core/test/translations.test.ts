@@ -188,3 +188,14 @@ test('language choices: follow the device, then each language named in itself; n
   // Someone who set it by hand still sees what they chose.
   assert.ok(localeChoices(createI18n(), 'en-XA').some(c => c.id === 'en-XA'));
 });
+
+test('metadata sources read in the viewer’s language by id and kind; an unknown source keeps the server’s words', async () => {
+  const {metadataAgentWords} = await import('../src/presentation/metadata-agent.ts');
+  await loadCatalogue('de');
+  const de = createI18n(region('de'));
+  const online = {id: 'online', name: 'Portico online metadata', description: 'Matches films with TMDB…'};
+  assert.equal(metadataAgentWords(de, online, 'movie').name, catalogue('de')['web.metadataSource.onlineName'] ?? enUS['web.metadataSource.onlineName']);
+  assert.equal(metadataAgentWords(de, online, 'music').description, catalogue('de')['web.metadataSource.onlineDescription.music']);
+  assert.equal(metadataAgentWords(de, online, 'podcast').description, 'Matches films with TMDB…');
+  assert.deepEqual(metadataAgentWords(de, {id: 'future', name: 'Future source', description: 'New.'}, 'movie'), {name: 'Future source', description: 'New.'});
+});

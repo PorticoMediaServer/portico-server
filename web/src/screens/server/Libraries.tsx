@@ -12,7 +12,7 @@ import {addSourceSettings, canAddSource, createLibraryAndScan} from '@core/serve
 export {addSourceSettings, canAddSource, libraryMutationError} from '@core/server-admin/panel-logic.ts';
 import {problem, sentence, useAction} from '../../admin/console';
 import {useService} from '../../app/content';
-import {iconFor} from '@core/presentation/index.ts';
+import {iconFor, metadataAgentWords} from '@core/presentation/index.ts';
 import {useSession} from '../../app/session';
 import {useViewerScope} from '../../app/viewer-scope';
 import {libraryKindLabel, useLibrariesContext} from '../../app/libraries';
@@ -237,7 +237,7 @@ export function AddLibraryDialog({open, onOpenChange, service, onCreated}: {open
       {doc ? (
         <div role="radiogroup" aria-label={t('web.metadataSource.addLabel')} style={{display: 'flex', flexDirection: 'column', gap: 8}}>
           <Text as="span" variant="label" tone="secondary">{t('web.metadataSource.addLabel')}</Text>
-          {doc.agents.map(a => <Checkbox key={a.id} radio checked={agent === a.id} onCheckedChange={v => { if (v) pickAgent(a.id); }} label={a.name} help={a.description} />)}
+          {doc.agents.map(a => { const words = metadataAgentWords(i18n, a, kind); return <Checkbox key={a.id} radio checked={agent === a.id} onCheckedChange={v => { if (v) pickAgent(a.id); }} label={words.name} help={words.description} />; })}
           <Text as="span" variant="caption" tone="tertiary">{t('web.metadataSource.addHelper')}</Text>
         </div>
       ) : (
@@ -294,7 +294,7 @@ function LibraryDetail({service, snapshot, libraryId, onBack, onRemoved}: {servi
             </div>
             <div style={{display: 'flex', gap: 8}}>
               <Button variant="primary" icon="refresh" label={scan?.status === 'running' ? t('web.libraries.scanningNow') : t('web.libraries.scanNow')} disabled={!library.actions.includes('scan') || scan?.status === 'running'} loading={action.busy && snapshot.mutation.kind === 'scan'} onClick={() => void action.run(() => service.scan(), t('web.library.scanStarted'))} />
-              <Menu label={t('player.more')} trigger={<Button variant="secondary" icon="more" aria-label={t('player.more')} />} items={menu} onSelect={id => { if (id === 'rename') setRename(library.name); if (id === 'scan-all') void action.run(() => service.scan('full'), t('web.libraries.scanAllStarted')); if (id === 'lyrics') void action.run(() => api.request('/v1/libraries/' + encodeURIComponent(library.id) + '/lyrics/fetch', 'POST', {idempotencyKey: crypto.randomUUID()}), 'Lyric fetch queued. Progress shows under Scheduled tasks.'); }} />
+              <Menu label={t('player.more')} trigger={<Button variant="secondary" icon="more" aria-label={t('player.more')} />} items={menu} onSelect={id => { if (id === 'rename') setRename(library.name); if (id === 'scan-all') void action.run(() => service.scan('full'), t('web.libraries.scanAllStarted')); if (id === 'lyrics') void action.run(() => api.request('/v1/libraries/' + encodeURIComponent(library.id) + '/lyrics/fetch', 'POST', {idempotencyKey: crypto.randomUUID()}), t('web.libraries.lyricsQueued')); }} />
             </div>
           </div>
           {/* A library is a page with tabs, not a dialog (Justin, 2 Oct 2026). */}
@@ -315,7 +315,7 @@ function LibraryDetail({service, snapshot, libraryId, onBack, onRemoved}: {servi
             {/* When each folder is looked at again by itself: its schedule. */}
             {config?.sources.map(src => <SettingsRow key={src.id} icon="folder" label={t('server.library.rescan', {folder: src.name || src.path})} meta={rescanLabel(t, src.intervalSeconds)} control={<Button size="sm" variant="ghost" label={t('web.selection.edit')} onClick={() => setEditSource({id: src.id, settings: {name: src.name, path: src.path, classification: src.classification, followSymlinks: src.followSymlinks, intervalSeconds: src.intervalSeconds, expectedRevision: config.revision, acceptReplacement: false}})} />} />)}
           </SettingsGroup> : null}
-          <LibrarySettingsSections library={{id: library.id, name: library.name}} tab={tab} />
+          <LibrarySettingsSections library={{id: library.id, name: library.name, kind: library.kind}} tab={tab} />
           {tab === 'general' ? <SettingsGroup title={t('web.libraries.folders')} description={t('web.libraries.foldersLede')} action={<Button size="sm" variant="secondary" icon="plus" label={t('web.libraries.addFolder')} disabled={!canAddSource(config?.revision)} onClick={() => config && setEditSource({settings: addSourceSettings(config.revision)})} />}>
             {inventory.snapshot.error ? <div style={{padding: 12}}><Notice tone="error" compact action={{label: t('action.tryAgain'), onClick: () => void inventory.service.refresh()}}>{problem(inventory.snapshot.error)}</Notice></div> : null}
             {!config && !inventory.snapshot.error ? <div style={{padding: 12}}><Loading label={t('web.libraries.loadingFolders')} /></div> : null}

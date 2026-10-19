@@ -90,7 +90,7 @@ export type LibraryTab = 'general' | 'metadata' | 'attention' | 'scanning' | 'ad
  * (Metadata · Scanning · Advanced). One settings document behind all three: it stays mounted
  * while the tabs change, and its draft is saved by the page's one Save.
  */
-export function LibrarySettingsSections({library, tab}: {library: {id: string; name: string}; tab: LibraryTab}) {
+export function LibrarySettingsSections({library, tab}: {library: {id: string; name: string; kind: string}; tab: LibraryTab}) {
   const i18n = useI18n();
   const {t} = i18n;
   const {api} = useSession();
@@ -170,7 +170,7 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
       {doc && draft ? (
         <div style={{display: 'flex', flexDirection: 'column', gap: 20}}>
           {inline.error ? <Notice tone="error" compact>{problem(inline.error, 'action')}</Notice> : null}
-          {tab === 'metadata' ? <MetadataSourceGroup libraryId={library.id} agent={agent} screen={screen.data} onSaved={() => { screen.reload(); read.reload(); }} /> : null}
+          {tab === 'metadata' ? <MetadataSourceGroup libraryId={library.id} kind={library.kind} agent={agent} screen={screen.data} onSaved={() => { screen.reload(); read.reload(); }} /> : null}
           {/* The online providers only matter while the library looks titles up online. */}
           {tab === 'metadata' && !local && draft.providers.length ? <SettingsGroup title={t('web.librarySettings.matching')} description={t('web.librarySettings.matchingLede')}>
             {draft.providers.map((p, i) => {

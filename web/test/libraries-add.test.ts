@@ -164,7 +164,7 @@ test('Add library: movie with the online source sends the listed language', asyn
   assert.ok(sel, 'the language control shows for the online agent');
   assert.equal(sel.props.value, 'en', 'the UI language is selected when listed');
   assert.deepEqual(sel.props.options, [{value: 'en', label: 'English'}, {value: 'ja', label: 'Japanese'}, {value: 'de', label: 'German'}]);
-  assert.deepEqual(checkboxes(tree).slice(5).map((c: any) => c.props.label), ['Portico online metadata', 'Local metadata only'], 'the source names come from the server');
+  assert.deepEqual(checkboxes(tree).slice(5).map((c: any) => c.props.label), ['web.metadataSource.onlineName', 'web.metadataSource.localName'], 'the server’s two sources are worded by the catalogue, by id');
   folderInput(tree).props.onChange({target: {value: '/media/movies'}});
   tree = m.render();
   await createButton(tree).props.onClick();

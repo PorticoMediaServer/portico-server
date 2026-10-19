@@ -20452,6 +20452,11 @@
    "source": "Network folders are checked more patiently before files are marked missing.",
    "state": "machine"
   },
+  "web.libraries.lyricsQueued": {
+   "text": "La búsqueda de letras está en cola. Ajustes › Programación muestra el progreso.",
+   "source": "Lyrics are queued to be fetched. Settings › Schedule shows the progress.",
+   "state": "machine"
+  },
   "web.libraries.metadataLanguage": {
    "text": "Idioma de los metadatos",
    "source": "Metadata language",
@@ -23065,6 +23070,31 @@
   "web.metadataSource.onlineDescription": {
    "text": "Busca en línea títulos, imágenes, reparto y valoraciones. Primero se usan tus propios archivos y los datos NFO.",
    "source": "Looks up titles, artwork, cast and ratings online. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.anime": {
+   "text": "Asocia el anime con un proveedor en línea para títulos, episodios e imágenes: TMDB, salvo que elijas TheTVDB o AniList. Primero se usan tus propios archivos y los datos NFO.",
+   "source": "Matches anime with one online provider for titles, episodes and artwork: TMDB unless you choose TheTVDB or AniList. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.audiobook": {
+   "text": "Usa las etiquetas integradas del libro, los archivos complementarios y las portadas locales. No hay fuentes en línea disponibles para audiolibros.",
+   "source": "Uses embedded book tags, sidecar details and local covers. Online audiobook sources are not available.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.movie": {
+   "text": "Asocia las películas con TMDB para títulos, imágenes, reparto y valoraciones. Primero se usan tus propios archivos y los datos NFO.",
+   "source": "Matches films with TMDB for titles, artwork, cast and ratings. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.music": {
+   "text": "Asocia los álbumes con MusicBrainz y Cover Art Archive para los detalles y las imágenes. Primero se usan las etiquetas integradas.",
+   "source": "Matches albums with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.tv": {
+   "text": "Asocia las series con un proveedor en línea para títulos, episodios, imágenes y valoraciones: TMDB, salvo que elijas TheTVDB. Primero se usan tus propios archivos y los datos NFO.",
+   "source": "Matches shows with one online provider for titles, episodes, artwork and ratings: TMDB unless you choose TheTVDB. Your own files and NFO details are used first.",
    "state": "machine"
   },
   "web.metadataSource.onlineName": {

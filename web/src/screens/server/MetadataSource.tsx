@@ -6,6 +6,7 @@ import {useSession} from '../../app/session';
 import {isStaleAnswer} from '@core/freshness-actions.ts';
 import {useI18n} from '../../app/i18n';
 import {Checkbox, ConfirmDialog, Notice, SettingsGroup, Text} from '../../ui';
+import {metadataAgentWords} from '@core/presentation/index.ts';
 
 /** The library's metadata source; null on servers without the endpoint. */
 export function useMetadataAgent(libraryId: string, deps: readonly unknown[] = []): Read<LibraryMetadataAgent | null> {
@@ -33,13 +34,14 @@ export function MetadataSourceChoice({value, onChange}: {value: 'online' | 'loca
 }
 
 /**
- * Edit library › Metadata source: the server's choices for this library (name and description as
- * the server words them). Picking another one asks first, then saves it on its own revision; the
+ * Edit library › Metadata source: the server's choices for this library, in the viewer's language
+ * (`metadataAgentWords`; a source this client does not know reads as the server words it). Picking another one asks first, then saves it on its own revision; the
  * rest of the dialog keeps its own Save. A conflict reloads and shows what's current.
  */
-export function MetadataSourceGroup({libraryId, agent, screen, onSaved}: {libraryId: string; agent: Read<LibraryMetadataAgent | null>; screen?: ScreenLookupPolicy | null; onSaved: () => void}) {
+export function MetadataSourceGroup({libraryId, kind, agent, screen, onSaved}: {libraryId: string; kind: string; agent: Read<LibraryMetadataAgent | null>; screen?: ScreenLookupPolicy | null; onSaved: () => void}) {
   const {api} = useSession();
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const [pending, setPending] = useState<MetadataAgentId | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -76,7 +78,7 @@ export function MetadataSourceGroup({libraryId, agent, screen, onSaved}: {librar
   return (
     <SettingsGroup title={t('web.metadataSource.title')}>
       <div role="radiogroup" aria-label={t('web.metadataSource.title')} style={{display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 16px'}}>
-        {current.agents.map(a => <Checkbox key={a.id} radio checked={current.agent === a.id} disabled={busy} onCheckedChange={v => { if (v && a.id !== current.agent) { setError(''); setNotice(''); setPending(a.id); } }} label={a.name} help={a.description} />)}
+        {current.agents.map(a => { const words = metadataAgentWords(i18n, a, kind); return <Checkbox key={a.id} radio checked={current.agent === a.id} disabled={busy} onCheckedChange={v => { if (v && a.id !== current.agent) { setError(''); setNotice(''); setPending(a.id); } }} label={words.name} help={words.description} />; })}
       </div>
       {waiting ? <div style={{padding: '0 16px 12px'}}><Notice tone="warning" compact action={{label: t('web.metadataSource.allowLookups'), onClick: () => void grant()}}>{t('web.metadataLookup.status.needsConsent')}</Notice></div> : null}
       {notice ? <div style={{padding: '0 16px 12px'}}><Notice tone={notice === t('web.metadataSource.saved') ? 'success' : 'warning'} compact>{notice}</Notice></div> : null}
