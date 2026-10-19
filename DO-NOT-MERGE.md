@@ -3,18 +3,19 @@
 > **🚨 Do not merge me until you're sure! 🚨** Unreviewed machine translations, untested on every device.
 
 This branch (`feature/i18n-languages-20261018`) is an **unreviewed, untested multi-language branch**.
-It carries 25 machine-translated languages, none of them reviewed by a native speaker:
+It carries 29 machine-translated languages, none of them reviewed by a native speaker:
 
-- **Complete:** French, Spanish, German and Russian.
-- **About 98% complete:** 21 more languages. The missing messages are English text added on `main` after they were translated, so those messages read in English for now.
-- **Registered but untranslated:** Vietnamese, Simplified Chinese and Turkish, which read English for now. The matching branches in portico-server, portico-react-native and
+- French, Spanish, German and Russian.
+- 25 more languages and regional variants: Brazilian and European Portuguese, Italian, Dutch, Polish, Swedish, Danish, Norwegian, Czech, Turkish, Ukrainian, Greek, Hungarian, Romanian, Finnish, Indonesian, Vietnamese, Thai, Hindi, Simplified and Traditional Chinese, Japanese and Korean, plus Canadian French and Latin American Spanish.
+
+Every message is translated in all 29. The matching branches in portico-server, portico-react-native and
 portico-roku belong together.
 
 It is not ready to ship:
 
 - Every translation is marked for native-speaker review (`packages/i18n/translations/<locale>.json`, `state: machine`).
 - The languages have not been tested on devices or in a browser beyond automated checks and spot checks.
-- Thai, Hindi and the CJK languages need script-specific work: fonts, line breaking, search and IME composition. That work is on `feature/i18n-cjk-20261018`, in progress.
+- Thai, Hindi and the CJK languages need script-specific work: fonts, line breaking, search and IME composition. That work is on `feature/i18n-cjk-20261018`, built on this branch: Noto Sans fonts, IME-safe search, CJK and Thai substring search. Roku CJK fonts, kana rows and separator localisation are still to do.
 
 Merging it into `main` needs a deliberate decision by Justin. Until then, keep it current by rebasing
 onto `main` and translating new English strings (see `packages/i18n/TRANSLATING.md` in portico-server).
