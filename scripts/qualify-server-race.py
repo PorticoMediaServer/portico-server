@@ -94,6 +94,8 @@ def test_env():
 
 
 def go(*args, cwd, environment=None):
+    # env.sh selects a private project-local compiler temporary directory.
+    (ROOT / ".cache/tmp").mkdir(parents=True, exist_ok=True)
     return subprocess.run([str(ROOT / "scripts/env.sh"), "go", *args], cwd=cwd,
                           env=environment or test_env(), stdout=subprocess.PIPE,
                           stderr=subprocess.PIPE, text=True)
@@ -252,6 +254,9 @@ def run_shard(shard, plan_path):
     validate_plan(plan)
     if capture() != plan["sourceDigest"]:
         raise ValueError("Shard source snapshot differs from discovery")
+    version = go("env", "GOVERSION", cwd=STAGE / "source")
+    if version.returncode or version.stdout.strip() != plan["goVersion"]:
+        raise ValueError("Shard compiler differs from the qualified Go 1.26.9 compiler")
     harnesses = install_harnesses(plan)
     environment = test_env()
     # The helper is built from the identical captured module, never downloaded
