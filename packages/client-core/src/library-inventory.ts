@@ -8,7 +8,7 @@ import {durationIntent,wireDurations} from './wire-units.ts';
 import type {ServerEvent} from './playback-v1/types.ts';
 
 export type ScanTier='file_list_only'|'basic'|'complete'|'custom';
-export const scanOperations=['probe','local_metadata','subtitles','checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection'] as const;
+export const scanOperations=['probe','local_metadata','subtitles','checksum','chapter_images','trickplay','waveform','loudness','fingerprint'] as const;
 export type ScanOperation=typeof scanOperations[number];
 export type ScanPolicy=Readonly<{tier:ScanTier;revision:number;operations:readonly ScanOperation[]}>;
 export type InventorySource=Readonly<{id:string;libraryId:string;kind:string;name:string;path:string;resolvedPath:string;classification:'local'|'network';generation:number;health:string;enabled:boolean;followSymlinks:boolean;identityConfirmed:boolean;intervalSeconds:number;nextScanAt:string;lastCompleteAt:string;lastProgressAt:string}>;

@@ -28,6 +28,8 @@ export type RuntimeSettings=TranscodingSettings&{
  analysisStorageGiB:number;analysisStageStorageMiB:number;subtitleTrackLimit:number;subtitleFileLimitMiB:number;name:string;transcodingEnabled:boolean;perAccountCap:number|null;serverCap:number|null;
  diagnosticDays:number;notificationDays:number;jobDays:number;playHistoryDays:number;'home.communityActivityEnabled':boolean;
  'updates.releaseChannel':string;'updates.feedUrl':string;'library.missingTitles':MissingTitlesRule;'library.missingTitlesDays':number;
+ /** Intro and credits detection for the whole server; each library may follow it or choose its own. */
+ 'library.segmentDetection':SegmentDetectionMode;
  remoteSignInPolicy:string;remoteBitrateLimitKbps:number;lanNetworks:string[];accessUrls:string[];lanDiscoveryEnabled:boolean;dlnaEnabled:boolean;
  trustedProxies:string[];uploadCapacityKbps:number;pausedSessionTimeoutMinutes:number;advertisedInterface:string;
  customCertificatePath:string;customCertificateKeyPath:string;customCertificateDomain:string;deviceApprovalRequired:boolean;
@@ -35,6 +37,8 @@ export type RuntimeSettings=TranscodingSettings&{
  logLevel:string;logRetention:{category:string;days:number}[];
 };
 export type MissingTitlesRule='immediately'|'after_days'|'never';
+export type SegmentDetectionMode='off'|'standard'|'thorough';
+export const SEGMENT_DETECTION_MODES:readonly SegmentDetectionMode[]=Object.freeze(['off','standard','thorough']);
 export const MISSING_TITLES_RULES:readonly MissingTitlesRule[]=Object.freeze(['immediately','after_days','never']);
 export type SettingsDocument={ffmpegValidation?:FFmpegValidation;revision:number;digest:string;requested:RuntimeSettings;effective:RuntimeSettings;activeRevision:number;restartFields:string[];registryRevision:string};
 export type Diagnostic={platform:'web'|'ios'|'tvos';state:'idle'|'starting'|'playing'|'paused'|'buffering'|'failed'|'unknown';online:boolean};
@@ -73,6 +77,8 @@ function checkOwnerDocument(s:Record<string,any>){
  if(s.dlnaEnabled===undefined)s.dlnaEnabled=false;else if(typeof s.dlnaEnabled!=='boolean')invalid();
  for(const key of ['lanNetworks','accessUrls','trustedProxies'])if(!Array.isArray(s[key])||s[key].length>64||!s[key].every((v:unknown)=>text(v,4096)))invalid();
  if(!MISSING_TITLES_RULES.includes(s['library.missingTitles'])||!integer(s['library.missingTitlesDays'])||s['library.missingTitlesDays']<1||s['library.missingTitlesDays']>3650||s.connectionLimit>65536||s.apiRequestsPerMinute>100000)invalid();
+ // An older server has no detection mode and leaves it out.
+ if(s['library.segmentDetection']!==undefined&&!SEGMENT_DETECTION_MODES.includes(s['library.segmentDetection']))invalid();
  if(!Array.isArray(s.logRetention)||s.logRetention.length>64||!s.logRetention.every((v:unknown)=>obj(v)&&text(v.category,100)&&integer(v.days)))invalid();
 }
 /** Transcoding values are rejected outside the bounds the registry publishes,
