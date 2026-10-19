@@ -65,7 +65,7 @@ Revision: portico.reconciled.1. These are required implementation outcomes, not 
 | CF59 | Restore status token is lost or inherited from old DB | No duplicate restore; external supervisor/Local recovery finds exact operation; old status token cannot authorize it |
 | CF60 | Old offline client remains disconnected during restore | No claim of instantaneous remote wipe; learned revocation applies on reconnect under retained thirty-day model |
 | CF61 | Install/update/uninstall encounters active media or incompatible DB | Honest deferred/manual/recovery state; no implicit DB downgrade or source-media deletion |
-| CF62 | Third-party/DLNA client cannot supply needed auth or safe child grants | Capability limitation; no anonymous library or unscoped LAN media exception |
+| CF62 | Third-party client cannot supply needed auth or safe child grants | Capability limitation. Exception: DLNA, when the owner switches it on, browses and plays every library anonymously from the home network only (owner decision 18 October 2026) |
 | CF63 | Revoked viewer replays previously successful mutation receipt | Reauthorize before receipt disclosure; historical success cannot recreate access or leak protected result |
 | CF64 | A low-priority blocked I/O job competes with revocation and healthy source | Separate bounded control path remains available; resource prediction does not veto new authorized playback |
 

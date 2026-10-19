@@ -146,7 +146,7 @@ These old backlog items are not verified complete by the programme reports. They
 
 ## Outside this programme
 
-Relay remains future work. Roku, CarPlay, Android Auto, light theme, plugins, themes, custom CSS and watch-state import/export are excluded. DLNA/desktop companion and other unapproved historical feature plans are not release completion gates. Existing design documents do not grant new scope.
+Relay remains future work. Roku, CarPlay, Android Auto, light theme, plugins, themes, custom CSS and watch-state import/export are excluded. A desktop companion and other unapproved historical feature plans are not release completion gates. (DLNA is in scope as a simple owner switch; see `scope-completion.md`.) Existing design documents do not grant new scope.
 
 ## Documentation evidence still needed
 
