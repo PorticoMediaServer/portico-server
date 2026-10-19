@@ -137,12 +137,46 @@ allows two minutes without input progress, bounded by two hours overall.
 
 Subtitle search uses the profile's preferred subtitle language when `language`
 is empty, falling back to English. It keeps regional Portuguese/Chinese tags and
-uses title/provider identities or series and episode identity. OpenSubtitles
-configuration uses `PORTICO_OPENSUBTITLES_API_KEY`, optional
-`PORTICO_OPENSUBTITLES_USERNAME` and `PORTICO_OPENSUBTITLES_PASSWORD`, and optional
-`PORTICO_OPENSUBTITLES_USER_AGENT`. Username/password enable login and renewal;
-credentials and tokens never appear in subtitle responses. The former immutable
-`PORTICO_OPENSUBTITLES_TOKEN` input is removed.
+uses title/provider identities or series and episode identity.
+
+Portico ships no OpenSubtitles key: the owner brings their own free
+OpenSubtitles.com account and API key (an "API consumer" in their OpenSubtitles
+profile). They save them in Server › Metadata
+(`PUT /v1/admin/metadata/settings`: `openSubtitlesApiKey`,
+`openSubtitlesUsername`, `openSubtitlesPassword`, all write-only), or set
+`PORTICO_OPENSUBTITLES_API_KEY`, `PORTICO_OPENSUBTITLES_USERNAME` and
+`PORTICO_OPENSUBTITLES_PASSWORD`; saved values win over the environment and
+apply without a restart. `PORTICO_OPENSUBTITLES_USER_AGENT` overrides the
+default `Portico vX.Y.Z` User-Agent. Credentials and tokens never appear in any
+response. The former immutable `PORTICO_OPENSUBTITLES_TOKEN` input is removed.
+
+With an account the server signs in once and keeps the session for its
+lifetime (24 hours, or the token's own expiry), sends later calls to the
+`base_url` the sign-in names (only `*.opensubtitles.com` hosts are followed),
+signs in again once if a call is refused as unauthorised, and never repeats a
+refused sign-in until the credentials change or the owner tests the connection.
+Sign-ins stay within OpenSubtitles' limits (10 a minute, 30 an hour, a 30-second
+pause after a failure); all calls are paced at one a second and honour
+`Retry-After`/`RateLimit-Reset`.
+
+`GET /v1/admin/metadata/settings` includes `openSubtitles`: `keySource` and
+`accountSource` (`owner`, `environment`, `none`), `account` (`none`,
+`incomplete`, `not_checked`, `signed_in`, `rejected`), the last `problem`, and
+the download quota as OpenSubtitles last reported it (`downloadsRemaining`,
+`downloadsAllowed`, -1 when unknown; `downloadsResetAt`).
+`POST /v1/admin/metadata/settings/opensubtitles/check` tests the saved
+credentials now (one or two requests, no download) and answers the same status.
+
+Search and apply answer OpenSubtitles' refusals by code:
+`subtitle_provider_not_configured`, `subtitle_provider_key_rejected` (403: a key
+or User-Agent OpenSubtitles refuses), `subtitle_provider_sign_in_failed`,
+`subtitle_provider_sign_in_required` (a download refused without an account),
+all 503 retry `never`; `subtitle_provider_quota` (406 from OpenSubtitles: the
+day's downloads are used) as 429 retry `never` with `Retry-After` until the
+quota resets; and `subtitle_provider_busy` (429 from OpenSubtitles) as 429
+retry `same_request` with its wait. Clients show "Subtitles provided by
+OpenSubtitles.com", linked where they can, wherever these subtitles are searched
+or picked.
 
 
 After publishing a changed device capability document, request

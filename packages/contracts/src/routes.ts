@@ -191,6 +191,26 @@ export const routes = [
     "admission": "playback"
   },
   {
+    "id": "check_opensubtitles",
+    "method": "POST",
+    "path": "/v1/admin/metadata/settings/opensubtitles/check",
+    "summary": "Test the OpenSubtitles key and account in force",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "constant",
+    "bodyLimit": 4096,
+    "errors": [
+      "unauthorized",
+      "not_permitted",
+      "rate_limited",
+      "internal"
+    ],
+    "status": 200,
+    "optionalBody": true,
+    "admission": "admin"
+  },
+  {
     "id": "clear_playback_failure_memory",
     "method": "DELETE",
     "path": "/v1/admin/playback/route-failures/{sourceId}",
@@ -1182,7 +1202,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "default"
@@ -6985,7 +7011,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "image/jpeg",
@@ -7018,7 +7050,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "image/jpeg",
@@ -7051,7 +7089,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "playback"
@@ -7083,7 +7127,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "browsing"
@@ -7115,7 +7165,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "media-body"
@@ -7147,7 +7203,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "media-body"
@@ -7179,7 +7241,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "font/ttf",
@@ -7212,7 +7280,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "media-body"
@@ -7244,7 +7318,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "text/x-ssa",
@@ -7277,7 +7357,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "text/plain",
@@ -7310,7 +7396,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream",
@@ -7343,7 +7435,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "text/x-ssa",
@@ -7376,7 +7474,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream",
@@ -7409,7 +7513,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream",
@@ -7442,7 +7552,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "text/vtt",
@@ -7544,7 +7660,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "font/ttf",
@@ -7577,7 +7699,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "text/x-ssa",
@@ -7610,7 +7738,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "text/plain",
@@ -7643,7 +7777,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream",
@@ -7676,7 +7816,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "text/x-ssa",
@@ -7709,7 +7855,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream",
@@ -7742,7 +7894,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "responseContentType": "application/octet-stream",
@@ -11565,7 +11723,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "default"
@@ -11597,7 +11761,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "default"
@@ -11629,7 +11799,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "default"
@@ -11661,7 +11837,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "default"
@@ -11693,7 +11875,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "default"
@@ -11725,7 +11913,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "default"
@@ -12941,7 +13135,13 @@ export const routes = [
       "subtitle_operation_conflict",
       "subtitle_capacity",
       "subtitle_unsupported",
-      "subtitle_invalid_input"
+      "subtitle_invalid_input",
+      "subtitle_provider_not_configured",
+      "subtitle_provider_key_rejected",
+      "subtitle_provider_sign_in_failed",
+      "subtitle_provider_sign_in_required",
+      "subtitle_provider_quota",
+      "subtitle_provider_busy"
     ],
     "status": 200,
     "admission": "default"
@@ -15995,6 +16195,7 @@ export const routePaths = {
   "change_connectivity_policy": "/v1/admin/connectivity/policy",
   "change_console_settings": "/v1/admin/console/settings",
   "change_playback_session": "/v1/playback/sessions/{id}",
+  "check_opensubtitles": "/v1/admin/metadata/settings/opensubtitles/check",
   "clear_playback_failure_memory": "/v1/admin/playback/route-failures/{sourceId}",
   "commit_queue_next": "/v1/queues/{id}:commit-next",
   "control_admin_session": "/v1/admin/sessions/{id}/controls",

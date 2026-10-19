@@ -45,7 +45,15 @@ func sessionNotVisible(e error) error {
 
 func subtitleFailure(w http.ResponseWriter, e error) {
 	code := "subtitle_unavailable"
+	seconds := 0
+	var refused *subtitles.ProviderError
 	switch {
+	case errors.As(e, &refused):
+		code = providerFailureCode(refused.Reason)
+		// The quota's reset or the end of a rate limit: the client says when.
+		if !refused.RetryAt.IsZero() {
+			seconds = max(1, int(time.Until(refused.RetryAt).Seconds()+0.5))
+		}
 	case errors.Is(e, identity.ErrNotVisible):
 		code = "not_found"
 	case errors.Is(e, identity.ErrForbidden):
@@ -69,11 +77,27 @@ func subtitleFailure(w http.ResponseWriter, e error) {
 	case errors.Is(e, subtitles.ErrInput):
 		code = "subtitle_invalid_input"
 	}
-	seconds := 0
 	if code == "subtitle_unavailable" {
 		seconds = 2
 	}
 	policyErrors.Write(w, w.Header().Get("X-Request-Id"), &apierror.Error{Code: code, RetryAfterSeconds: seconds})
+}
+func providerFailureCode(reason string) string {
+	switch reason {
+	case subtitles.ReasonNotConfigured:
+		return "subtitle_provider_not_configured"
+	case subtitles.ReasonKeyRejected:
+		return "subtitle_provider_key_rejected"
+	case subtitles.ReasonSignInFailed:
+		return "subtitle_provider_sign_in_failed"
+	case subtitles.ReasonSignInRequired:
+		return "subtitle_provider_sign_in_required"
+	case subtitles.ReasonQuotaExhausted:
+		return "subtitle_provider_quota"
+	case subtitles.ReasonRateLimited:
+		return "subtitle_provider_busy"
+	}
+	return "subtitle_unavailable"
 }
 func subtitleDecode(w http.ResponseWriter, r *http.Request, out any) error {
 	typ, params, e := mime.ParseMediaType(r.Header.Get("Content-Type"))

@@ -811,6 +811,12 @@ func run() (runErr error) {
 	meta := metadata.New(db, os.Getenv("PORTICO_TMDB_READ_ACCESS_TOKEN"))
 	meta.Admission = workAdmission.Admit
 	meta.SubtitleCredentials = subtitleProvider.SetCredentials
+	meta.SubtitleStatus = func() metadata.OpenSubtitlesStatus {
+		return metadata.OpenSubtitlesStatus(subtitleProvider.OwnerStatus())
+	}
+	meta.SubtitleCheck = func(ctx context.Context) metadata.OpenSubtitlesStatus {
+		return metadata.OpenSubtitlesStatus(subtitleProvider.Check(ctx))
+	}
 	if e = meta.ConfigureAcoustID(os.Getenv("PORTICO_ACOUSTID_CLIENT_KEY")); e != nil {
 		return e
 	}

@@ -5759,6 +5759,54 @@
         ],
         "type": "object"
       },
+      "CheckOpensubtitlesRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "CheckOpensubtitlesResponse": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "accountSource": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "type": "string"
+          },
+          "downloadsAllowed": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "downloadsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "downloadsResetAt": {
+            "type": "string"
+          },
+          "keySource": {
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "retryAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "keySource",
+          "accountSource",
+          "account",
+          "downloadsRemaining",
+          "downloadsAllowed"
+        ],
+        "type": "object"
+      },
       "ClearPlaybackFailureMemoryRequest": {
         "properties": {},
         "required": [],
@@ -55624,6 +55672,49 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "openSubtitles": {
+            "properties": {
+              "account": {
+                "type": "string"
+              },
+              "accountSource": {
+                "type": "string"
+              },
+              "checkedAt": {
+                "type": "string"
+              },
+              "downloadsAllowed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "downloadsRemaining": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "downloadsResetAt": {
+                "type": "string"
+              },
+              "keySource": {
+                "type": "string"
+              },
+              "problem": {
+                "type": "string"
+              },
+              "retryAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "keySource",
+              "accountSource",
+              "account",
+              "downloadsRemaining",
+              "downloadsAllowed"
+            ],
+            "type": "object"
+          },
           "openSubtitlesKeyConfigured": {
             "type": "boolean"
           },
@@ -55654,7 +55745,8 @@
           "tvdbCredentialConfigured",
           "openSubtitlesKeyConfigured",
           "openSubtitlesUsername",
-          "openSubtitlesPasswordConfigured"
+          "openSubtitlesPasswordConfigured",
+          "openSubtitles"
         ],
         "type": "object"
       },
@@ -105587,6 +105679,49 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "openSubtitles": {
+            "properties": {
+              "account": {
+                "type": "string"
+              },
+              "accountSource": {
+                "type": "string"
+              },
+              "checkedAt": {
+                "type": "string"
+              },
+              "downloadsAllowed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "downloadsRemaining": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "downloadsResetAt": {
+                "type": "string"
+              },
+              "keySource": {
+                "type": "string"
+              },
+              "problem": {
+                "type": "string"
+              },
+              "retryAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "keySource",
+              "accountSource",
+              "account",
+              "downloadsRemaining",
+              "downloadsAllowed"
+            ],
+            "type": "object"
+          },
           "openSubtitlesKeyConfigured": {
             "type": "boolean"
           },
@@ -105617,7 +105752,8 @@
           "tvdbCredentialConfigured",
           "openSubtitlesKeyConfigured",
           "openSubtitlesUsername",
-          "openSubtitlesPasswordConfigured"
+          "openSubtitlesPasswordConfigured",
+          "openSubtitles"
         ],
         "type": "object"
       },
@@ -154031,6 +154167,49 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "openSubtitles": {
+                      "properties": {
+                        "account": {
+                          "type": "string"
+                        },
+                        "accountSource": {
+                          "type": "string"
+                        },
+                        "checkedAt": {
+                          "type": "string"
+                        },
+                        "downloadsAllowed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "downloadsRemaining": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "downloadsResetAt": {
+                          "type": "string"
+                        },
+                        "keySource": {
+                          "type": "string"
+                        },
+                        "problem": {
+                          "type": "string"
+                        },
+                        "retryAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "keySource",
+                        "accountSource",
+                        "account",
+                        "downloadsRemaining",
+                        "downloadsAllowed"
+                      ],
+                      "type": "object"
+                    },
                     "openSubtitlesKeyConfigured": {
                       "type": "boolean"
                     },
@@ -154061,7 +154240,8 @@
                     "tvdbCredentialConfigured",
                     "openSubtitlesKeyConfigured",
                     "openSubtitlesUsername",
-                    "openSubtitlesPasswordConfigured"
+                    "openSubtitlesPasswordConfigured",
+                    "openSubtitles"
                   ],
                   "type": "object"
                 }
@@ -154180,6 +154360,49 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "openSubtitles": {
+                      "properties": {
+                        "account": {
+                          "type": "string"
+                        },
+                        "accountSource": {
+                          "type": "string"
+                        },
+                        "checkedAt": {
+                          "type": "string"
+                        },
+                        "downloadsAllowed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "downloadsRemaining": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "downloadsResetAt": {
+                          "type": "string"
+                        },
+                        "keySource": {
+                          "type": "string"
+                        },
+                        "problem": {
+                          "type": "string"
+                        },
+                        "retryAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "keySource",
+                        "accountSource",
+                        "account",
+                        "downloadsRemaining",
+                        "downloadsAllowed"
+                      ],
+                      "type": "object"
+                    },
                     "openSubtitlesKeyConfigured": {
                       "type": "boolean"
                     },
@@ -154210,7 +154433,8 @@
                     "tvdbCredentialConfigured",
                     "openSubtitlesKeyConfigured",
                     "openSubtitlesUsername",
-                    "openSubtitlesPasswordConfigured"
+                    "openSubtitlesPasswordConfigured",
+                    "openSubtitles"
                   ],
                   "type": "object"
                 }
@@ -154263,6 +154487,118 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 32768,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/metadata/settings/opensubtitles/check": {
+      "post": {
+        "operationId": "check_opensubtitles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "account": {
+                      "type": "string"
+                    },
+                    "accountSource": {
+                      "type": "string"
+                    },
+                    "checkedAt": {
+                      "type": "string"
+                    },
+                    "downloadsAllowed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "downloadsRemaining": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "downloadsResetAt": {
+                      "type": "string"
+                    },
+                    "keySource": {
+                      "type": "string"
+                    },
+                    "problem": {
+                      "type": "string"
+                    },
+                    "retryAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "keySource",
+                    "accountSource",
+                    "account",
+                    "downloadsRemaining",
+                    "downloadsAllowed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Test the OpenSubtitles key and account in force",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "rate_limited",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
         "x-scope": "admin"
       }
     },
@@ -205573,7 +205909,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -218561,7 +218903,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -219957,7 +220305,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -220305,7 +220659,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -220495,7 +220855,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -220641,7 +221007,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -220796,7 +221168,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -221163,7 +221541,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -221325,7 +221709,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -221492,7 +221882,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -221640,7 +222036,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -221839,7 +222241,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -237489,7 +237897,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -237593,7 +238007,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -237724,7 +238144,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -237836,7 +238262,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -237946,7 +238378,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238065,7 +238503,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238169,7 +238613,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238271,7 +238721,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238375,7 +238831,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238477,7 +238939,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238581,7 +239049,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238683,7 +239157,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238787,7 +239267,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238889,7 +239375,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238993,7 +239485,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -239095,7 +239593,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -239199,7 +239703,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -239301,7 +239811,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"

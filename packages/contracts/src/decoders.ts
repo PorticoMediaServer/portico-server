@@ -9,6 +9,7 @@ export function decodeBrowseLibraryResponse(input: unknown): types.BrowseLibrary
 export function decodeChangeConnectivityPolicyResponse(input: unknown): types.ChangeConnectivityPolicyResponse { return decode("ChangeConnectivityPolicyResponse", input) as types.ChangeConnectivityPolicyResponse; }
 export function decodeChangeConsoleSettingsResponse(input: unknown): types.ChangeConsoleSettingsResponse { return decode("ChangeConsoleSettingsResponse", input) as types.ChangeConsoleSettingsResponse; }
 export function decodeChangePlaybackSessionResponse(input: unknown): types.ChangePlaybackSessionResponse { return decode("ChangePlaybackSessionResponse", input) as types.ChangePlaybackSessionResponse; }
+export function decodeCheckOpensubtitlesResponse(input: unknown): types.CheckOpensubtitlesResponse { return decode("CheckOpensubtitlesResponse", input) as types.CheckOpensubtitlesResponse; }
 export function decodeClearPlaybackFailureMemoryResponse(input: unknown): types.ClearPlaybackFailureMemoryResponse { return decode("ClearPlaybackFailureMemoryResponse", input) as types.ClearPlaybackFailureMemoryResponse; }
 export function decodeCommitQueueNextResponse(input: unknown): types.CommitQueueNextResponse { return decode("CommitQueueNextResponse", input) as types.CommitQueueNextResponse; }
 export function decodeControlAdminSessionResponse(input: unknown): types.ControlAdminSessionResponse { return decode("ControlAdminSessionResponse", input) as types.ControlAdminSessionResponse; }

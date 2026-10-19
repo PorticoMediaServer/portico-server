@@ -5498,6 +5498,54 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "CheckOpensubtitlesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "CheckOpensubtitlesResponse": {
+    "properties": {
+      "account": {
+        "type": "string"
+      },
+      "accountSource": {
+        "type": "string"
+      },
+      "checkedAt": {
+        "type": "string"
+      },
+      "downloadsAllowed": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "downloadsRemaining": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "type": "integer"
+      },
+      "downloadsResetAt": {
+        "type": "string"
+      },
+      "keySource": {
+        "type": "string"
+      },
+      "problem": {
+        "type": "string"
+      },
+      "retryAt": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "keySource",
+      "accountSource",
+      "account",
+      "downloadsRemaining",
+      "downloadsAllowed"
+    ],
+    "type": "object"
+  },
   "ClearPlaybackFailureMemoryRequest": {
     "properties": {},
     "required": [],
@@ -53487,6 +53535,49 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "openSubtitles": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "accountSource": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "type": "string"
+          },
+          "downloadsAllowed": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "downloadsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "downloadsResetAt": {
+            "type": "string"
+          },
+          "keySource": {
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "retryAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "keySource",
+          "accountSource",
+          "account",
+          "downloadsRemaining",
+          "downloadsAllowed"
+        ],
+        "type": "object"
+      },
       "openSubtitlesKeyConfigured": {
         "type": "boolean"
       },
@@ -53517,7 +53608,8 @@ export const schemas = {
       "tvdbCredentialConfigured",
       "openSubtitlesKeyConfigured",
       "openSubtitlesUsername",
-      "openSubtitlesPasswordConfigured"
+      "openSubtitlesPasswordConfigured",
+      "openSubtitles"
     ],
     "type": "object"
   },
@@ -100294,6 +100386,49 @@ export const schemas = {
         "minimum": -9007199254740991,
         "type": "integer"
       },
+      "openSubtitles": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "accountSource": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "type": "string"
+          },
+          "downloadsAllowed": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "downloadsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "downloadsResetAt": {
+            "type": "string"
+          },
+          "keySource": {
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "retryAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "keySource",
+          "accountSource",
+          "account",
+          "downloadsRemaining",
+          "downloadsAllowed"
+        ],
+        "type": "object"
+      },
       "openSubtitlesKeyConfigured": {
         "type": "boolean"
       },
@@ -100324,7 +100459,8 @@ export const schemas = {
       "tvdbCredentialConfigured",
       "openSubtitlesKeyConfigured",
       "openSubtitlesUsername",
-      "openSubtitlesPasswordConfigured"
+      "openSubtitlesPasswordConfigured",
+      "openSubtitles"
     ],
     "type": "object"
   },
