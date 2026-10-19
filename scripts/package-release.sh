@@ -19,6 +19,9 @@ for required in "$STAGE/$EXE" "$STAGE/manifest.json" "$STAGE/manifest.sig" "$STA
   [[ -s "$required" ]] || { echo "missing release input: $required" >&2; exit 1; }
 done
 cp "$STAGE/$EXE" "$STAGE/manifest.json" "$STAGE/manifest.sig" "$PAYLOAD/"
+if [[ -f "$STAGE/race-qualification.json" ]]; then
+  cp "$STAGE/race-qualification.json" "$STAGE/race-qualification.sig" "$PAYLOAD/"
+fi
 cp -R "$STAGE/third_party" "$PAYLOAD/third_party"
 cp -R "$WEB/." "$PAYLOAD/web/"
 cp "$ROOT/LICENSE" "$ROOT/THIRD-PARTY-NOTICES.md" "$PAYLOAD/"

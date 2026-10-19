@@ -22,7 +22,7 @@ func TestBackupReleasesSnapshotUnderWALPressure(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-	}, copyLimits{time.Second, 1, 0})
+	}, copyLimits{30 * time.Second, 1, 0})
 	if !errors.Is(err, ErrBackupPressure) {
 		t.Fatalf("unbounded snapshot under writes: %v", err)
 	}

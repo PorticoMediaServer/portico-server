@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -44,6 +45,7 @@ type v1Fixture struct {
 	names         catalogtest.Names
 	catalogTest   *catalogtest.Catalog
 	root          string
+	clockOffset   atomic.Int64
 	v1            *playbackv1.Service
 	deps          Dependencies // what the router was built from, with its v1 service
 }
@@ -70,6 +72,9 @@ func newV1Fixture(t *testing.T, films int) *v1Fixture {
 		t.Fatal(err)
 	}
 	f := &v1Fixture{t: t, db: db, id: id, cat: cat, root: root, v1: &playbackv1.Service{}, names: catalogtest.Names{}}
+	// The sweeper reads this callback concurrently. Keep it immutable and
+	// change only the atomic offset when expiry tests advance server time.
+	f.v1.Now = func() time.Time { return time.Now().Add(time.Duration(f.clockOffset.Load())) }
 	f.deps = Dependencies{DB: db, Identity: id, Catalog: cat, Ingestion: ingestion.New(db, cat, assets.Probe{}), Playback: playback.New(db), Hosted: host, Storage: storage.New(helperBinary), PlaybackV1: f.v1}
 	f.handler = New(f.deps)
 	f.deps.v1 = f.v1

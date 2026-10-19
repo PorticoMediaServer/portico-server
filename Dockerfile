@@ -31,6 +31,7 @@ FROM node:24.21.0-bookworm@sha256:3d27e5c11e5786e309ec3e03f93ae536eb36e6e5eb3714
 WORKDIR /src
 COPY package.json package-lock.json ./
 COPY web ./web
+COPY packages/contracts ./packages/contracts
 COPY packages/client-core ./packages/client-core
 COPY packages/design ./packages/design
 COPY packages/i18n ./packages/i18n

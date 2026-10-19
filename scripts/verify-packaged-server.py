@@ -22,6 +22,15 @@ def verify_payload(directory, version, target, public):
     manifest = json.loads(raw)
     if manifest["version"] != version or manifest["target"] != target:
         raise ValueError("Packaged version or architecture differs")
+    if "raceQualification" in manifest:
+        qualification = directory / "race-qualification.json"
+        raw_qualification = qualification.read_bytes()
+        Ed25519PublicKey.from_public_bytes(public).verify((directory / "race-qualification.sig").read_bytes(), raw_qualification)
+        report = json.loads(raw_qualification)
+        if (hashlib.sha256(raw_qualification).hexdigest() != manifest["raceQualification"]["sha256"]
+                or report["plan"]["sourceDigest"] != manifest["sourceDigest"]
+                or report["planSha256"] != manifest["raceQualification"]["planSha256"]):
+            raise ValueError("Packaged race qualification differs from the source seal")
     binary = directory / manifest["artifact"]["path"]
     if hashlib.file_digest(binary.open("rb"), "sha256").hexdigest() != manifest["artifact"]["sha256"]:
         raise ValueError("Packaged executable differs from sealed artifact")

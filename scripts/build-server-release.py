@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Build only from an isolated source snapshot; never seal a supplied executable."""
+import importlib.util
 import argparse,datetime,hashlib,json,os,pathlib,shutil,subprocess,uuid,shlex,re,base64,time,signal
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey,Ed25519PublicKey
@@ -166,6 +167,13 @@ def verify_manifest(directory,expected_source,trusted_public_key):
         if hashlib.sha256((bundle/'toolchain-manifest.json').read_bytes()).hexdigest()!=manifest.get('toolchainManifestSha256'):raise ValueError('Toolchain manifest changed')
     return manifest
 
+def verified_qualification(path,source_digest,builder_digest,public):
+    spec=importlib.util.spec_from_file_location('race_qualification',ROOT/'scripts/qualify-server-race.py')
+    module=importlib.util.module_from_spec(spec);spec.loader.exec_module(module)
+    compiler=subprocess.check_output([str(ROOT/'scripts/env.sh'),'go','env','GOVERSION'],text=True,env=controlled_env()).strip()
+    if compiler!=module.GO_VERSION:raise ValueError('Qualified compiler changed')
+    return module.verify_report(path,public,source_digest,builder_digest)
+
 def release_version(value):
     numeric=r"(?:0|[1-9][0-9]*)"
     identifier=r"(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)"
@@ -174,7 +182,7 @@ def release_version(value):
     return value
 
 def main():
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--version',required=True,type=release_version);parser.add_argument('--os',choices=['linux','darwin','windows'],default='linux');parser.add_argument('--arch',choices=['amd64','arm64'],default='amd64');parser.add_argument('--component',choices=['server'],default='server');parser.add_argument('--ffmpeg-bundle',type=pathlib.Path,default=ROOT/'third_party/ffmpeg/bundle');parser.add_argument('--source-dir',type=pathlib.Path);args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument('--version',required=True,type=release_version);parser.add_argument('--os',choices=['linux','darwin','windows'],default='linux');parser.add_argument('--arch',choices=['amd64','arm64'],default='amd64');parser.add_argument('--component',choices=['server'],default='server');parser.add_argument('--ffmpeg-bundle',type=pathlib.Path,default=ROOT/'third_party/ffmpeg/bundle');parser.add_argument('--source-dir',type=pathlib.Path);parser.add_argument('--qualification',type=pathlib.Path,help='Current-run authenticated full race qualification');args=parser.parse_args()
     key=signing_key()
     root_key,root_pem=official_root()
     if args.component=='server':
@@ -196,13 +204,21 @@ def main():
         if not database_file.is_file():raise SystemExit('Hosted release requires the isolated PostgreSQL integration database.')
         checked_env['PORTICO_TEST_DATABASE_URL_FILE']=str(database_file)
     run_phase('module verification',[str(ROOT/'scripts/env.sh'),'go','mod','verify'],cwd=source,env=checked_env,timeout=15*60)
-    if args.component=='server':
-        helper=stage/'test-helper'
-        run_phase('playback helper compilation',[str(ROOT/'scripts/env.sh'),'go','build','-v','-mod=readonly','-o',str(helper),'./cmd/server'],cwd=source,env=checked_env,timeout=30*60)
-        checked_env['PORTICO_PLAYBACK_TEST_HELPER']=str(helper)
-    # The 20,000-row metadata boundary test is deliberately exhaustive. Race
-    # instrumentation of pure-Go SQLite exceeds Go's default ten-minute limit.
-    run_phase('race suite including compilation',[str(ROOT/'scripts/env.sh'),'go','test','-json','-race','-timeout=60m','./...'],cwd=source,env=checked_env,timeout=120*60)
+    qualification=None
+    if args.qualification:
+        qualification=verified_qualification(args.qualification,snapshot,builder_digest,key.public_key().public_bytes_raw())
+        shutil.copyfile(args.qualification,stage/'race-qualification.json')
+        shutil.copyfile(args.qualification.with_suffix('.sig'),stage/'race-qualification.sig')
+        print('Verified complete authenticated race qualification for this exact source/workflow/run/attempt.',flush=True)
+    else:
+        if args.component=='server':
+            helper=stage/'test-helper'
+            run_phase('playback helper compilation',[str(ROOT/'scripts/env.sh'),'go','build','-v','-mod=readonly','-o',str(helper),'./cmd/server'],cwd=source,env=checked_env,timeout=30*60)
+            checked_env['PORTICO_PLAYBACK_TEST_HELPER']=str(helper)
+        # The 20,000-row metadata boundary test is deliberately exhaustive. Race
+        # instrumentation of pure-Go SQLite exceeds Go's default ten-minute limit.
+        run_phase('race suite including compilation',[str(ROOT/'scripts/env.sh'),'go','test','-json','-race','-timeout=60m','./...'],cwd=source,env=checked_env,timeout=120*60)
+
     run_phase('source vetting',[str(ROOT/'scripts/env.sh'),'sh',str(stage/'scripts/vet-go.sh')],cwd=source,env=checked_env,timeout=20*60)
     built_at=datetime.datetime.now(datetime.timezone.utc).isoformat()
     prefix='portico.local/'+args.component+'/internal/buildinfo.'
@@ -214,6 +230,8 @@ def main():
     if snapshot_digest(source)[0]!=snapshot:raise SystemExit('Source snapshot changed during build.')
     if hashlib.sha256(pathlib.Path(__file__).read_bytes()).hexdigest()!=builder_digest:raise SystemExit('Builder changed during execution; discard output and retry.')
     binary=stage/('portico-'+args.component+('.exe' if args.os=='windows' else ''));manifest={'schema':1,'version':args.version,'component':args.component,'buildId':build_id,'sourceDigest':snapshot,'officialRoot':root_key,'builtAt':built_at,'target':args.os+'-'+args.arch,'builderSha256':builder_digest,'sourceFiles':copied,'artifact':{'path':binary.name,'sha256':hashlib.sha256(binary.read_bytes()).hexdigest()}}
+    if qualification:
+        manifest['raceQualification']={'sha256':hashlib.sha256((stage/'race-qualification.json').read_bytes()).hexdigest(),'planSha256':qualification['planSha256'],'origin':qualification['plan']['origin']}
     if args.component=='server':
         bundle=args.ffmpeg_bundle.resolve()
         subprocess.run(['python3',str(ROOT/'scripts/verify-ffmpeg-manifest.py'),str(bundle)],check=True)

@@ -113,8 +113,43 @@ jobs:
           retention-days: 3
           compression-level: 0
 
-  server:
+  race:
+    uses: ./.github/workflows/server-race-qualification.yml
+
+  qualification:
     needs: [web, toolchain]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      PORTICO_TEST_TIER: all
+      PORTICO_PERFORMANCE_TIER: release
+      PORTICO_REQUIRE_QUALIFIED_FFMPEG: '1'
+      GOFLAGS: -p=2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            scripts/env.sh
+      - name: Reuse the original qualified Linux media archive without compiling it
+        env: {GH_TOKEN: '${{ github.token }}', TOOLCHAIN_RUN: '${{ inputs.toolchain_run }}'}
+        run: |
+          set -euo pipefail
+          scripts/fetch-release-ffmpeg.sh linux-x64 third_party/ffmpeg/bundle "$TOOLCHAIN_RUN"
+          scripts/verify-ffmpeg-bundle.sh third_party/ffmpeg/bundle full
+      - name: Preserve the unchanged nonrace media and performance qualification
+        run: |
+          set -euo pipefail
+          mkdir -p .scratch
+          cd server
+          go build -o ../.scratch/portico-server ./cmd/server
+          export PORTICO_PLAYBACK_TEST_HELPER="$GITHUB_WORKSPACE/.scratch/portico-server"
+          go test -timeout=120m ./...
+
+  server:
+    needs: [web, toolchain, race, qualification]
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
@@ -161,12 +196,15 @@ jobs:
           public = pathlib.Path(os.environ['PORTICO_RELEASE_PUBLIC_KEY_FILE'])
           public.write_bytes(key.public_key().public_bytes_raw())
           SIGNER
+      - name: Authenticate mandatory full-race coverage using the disposable validation signer
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: python3 scripts/qualify-server-race.py authenticate --output .release/race-qualification.json
       - name: Build, test and seal the actual source snapshot
         id: build
         shell: bash
         run: |
           set -euo pipefail
-          python3 scripts/build-server-release.py --version "$VALIDATION_VERSION" --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --ffmpeg-bundle .toolchain/ffmpeg | tee .release/build.log
+          python3 scripts/build-server-release.py --version "$VALIDATION_VERSION" --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --ffmpeg-bundle .toolchain/ffmpeg --qualification .release/race-qualification.json | tee .release/build.log
           result="$(tail -1 .release/build.log)"
           echo "stage=$(python3 -c 'import json,sys;print(json.loads(sys.argv[1])["directory"])' "$result")" >> "$GITHUB_OUTPUT"
       - name: Package with the release scripts

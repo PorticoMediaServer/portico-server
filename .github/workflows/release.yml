@@ -209,11 +209,15 @@ jobs:
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with: {name: web-dist, path: web/dist, if-no-files-found: error}
 
+  race:
+    needs: identity
+    uses: ./.github/workflows/server-race-qualification.yml
+
   server:
     environment: server-release
     # Every target is cross-compiled on Linux (CGO off); the sealing script runs
-    # the server suite before each build, so each job needs the test database.
-    needs: [identity, tests, qualification, web, publish-toolchain]
+    # complete source-bound race report before each build.
+    needs: [identity, tests, qualification, web, publish-toolchain, race]
     runs-on: ubuntu-24.04
     timeout-minutes: 240
     strategy:
@@ -273,11 +277,14 @@ jobs:
           test -n "$PUBLIC_KEY"
           printf '%s' "$PUBLIC_KEY" | base64 --decode > "$PORTICO_RELEASE_PUBLIC_KEY_FILE"
           test "$(wc -c < "$PORTICO_RELEASE_PUBLIC_KEY_FILE")" -eq 32
+      - name: Authenticate mandatory full-race coverage for this exact trusted run
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: python3 scripts/qualify-server-race.py authenticate --output .release/race-qualification.json
       - name: Build and seal the server
         id: build
         run: |
           set -euo pipefail
-          python3 scripts/build-server-release.py --version '${{ needs.identity.outputs.version }}' --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --ffmpeg-bundle .toolchain/ffmpeg | tee .release/build.log
+          python3 scripts/build-server-release.py --version '${{ needs.identity.outputs.version }}' --os '${{ matrix.os }}' --arch '${{ matrix.arch }}' --ffmpeg-bundle .toolchain/ffmpeg --qualification .release/race-qualification.json | tee .release/build.log
           result="$(tail -1 .release/build.log)"
           echo "stage=$(python3 -c "import json,sys;print(json.loads(sys.argv[1])['directory'])" "$result")" >> "$GITHUB_OUTPUT"
       - name: Package

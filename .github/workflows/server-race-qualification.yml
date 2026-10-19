@@ -1,0 +1,113 @@
+name: Source-bound server race qualification
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  GOCACHE: ${{ github.workspace }}/.cache/go-build
+  GOMODCACHE: ${{ github.workspace }}/.cache/go-mod
+  GOTOOLCHAIN: local
+  GOMAXPROCS: '2'
+  GOFLAGS: -p=2
+  PORTICO_TEST_TIER: default
+
+jobs:
+  prepare:
+    name: server-race-prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - name: Bind the compiler cache to the exact source/workflow revision
+        run: |
+          mkdir -p .scratch
+          printf '%s\n' "$GITHUB_SHA" > .scratch/race-cache-key
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            scripts/env.sh
+            .scratch/race-cache-key
+      - name: Qualification tools
+        run: |
+          python3 -m venv .release/race-venv
+          .release/race-venv/bin/pip install -r scripts/requirements-release.txt
+          echo "$PWD/.release/race-venv/bin" >> "$GITHUB_PATH"
+      - name: Capture exact source and discover/init every package, Test, Example and Fuzz
+        run: |
+          set -euo pipefail
+          python3 scripts/test-server-race-qualification.py
+          python3 scripts/qualify-server-race.py prepare
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: server-race-plan-${{ github.run_attempt }}
+          path: .scratch/race-artifacts/plan.json
+          if-no-files-found: error
+          retention-days: 3
+
+  shard:
+    name: server-race-shard-${{ matrix.shard }}
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 16
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: |
+          mkdir -p .scratch
+          printf '%s\n' "$GITHUB_SHA" > .scratch/race-cache-key
+      - uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5
+        with:
+          go-version-file: server/go.mod
+          cache-dependency-path: |
+            server/go.sum
+            scripts/env.sh
+            .scratch/race-cache-key
+      - run: |
+          python3 -m venv .release/race-venv
+          .release/race-venv/bin/pip install -r scripts/requirements-release.txt
+          echo "$PWD/.release/race-venv/bin" >> "$GITHUB_PATH"
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: server-race-plan-${{ github.run_attempt }}
+          path: .scratch/race-artifacts
+      - name: Run this exact partition with full Go race instrumentation
+        run: python3 scripts/qualify-server-race.py shard --shard '${{ matrix.shard }}'
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: server-race-shard-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: .scratch/race-artifacts/shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 3
+
+  merge:
+    name: server-race-merge
+    needs: [prepare, shard]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - run: |
+          python3 -m venv .release/race-venv
+          .release/race-venv/bin/pip install -r scripts/requirements-release.txt
+          echo "$PWD/.release/race-venv/bin" >> "$GITHUB_PATH"
+      - name: Reconcile complete coverage and authenticated current-run artifact origins
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: python3 scripts/qualify-server-race.py merge
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: server-race-qualification-${{ github.run_attempt }}
+          path: .scratch/race-artifacts/qualification.json
+          if-no-files-found: error
+          retention-days: 3
