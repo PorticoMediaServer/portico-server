@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"strings"
 	"time"
 
@@ -253,7 +254,14 @@ func (s *Service) segmentConsider(ctx context.Context, tx *sql.Tx, object string
 	if err == nil && current == revision && (mode == l.Mode || mode == SegmentModeThorough) {
 		return nil
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO segment_files(object_id,source_revision,library_id,mode,state,updated_ms) VALUES(?,?,?,?,'pending',?) ON CONFLICT(object_id) DO UPDATE SET source_revision=excluded.source_revision,library_id=excluded.library_id,mode=excluded.mode,state='pending',attempt=0,next_ms=0,error_code='',updated_ms=excluded.updated_ms`, object, revision, library, l.Mode, nowMS())
+	// The show is known from the start, so a file still waiting or one that
+	// could not be read is part of its show's review and re-run.
+	var show int64
+	err = tx.QueryRowContext(ctx, `SELECT COALESCE((SELECT ep.show_id FROM inventory_objects o JOIN catalog_assets a ON a.token=o.asset_id JOIN catalog_asset_links ia ON ia.asset_id=a.id JOIN catalog_episodes ep ON ep.entity_id=ia.entity_id WHERE o.id=? ORDER BY ia.part_index,ia.entity_id LIMIT 1),0)`, object).Scan(&show)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `INSERT INTO segment_files(object_id,source_revision,library_id,show_id,mode,state,updated_ms) VALUES(?,?,?,?,?,'pending',?) ON CONFLICT(object_id) DO UPDATE SET source_revision=excluded.source_revision,library_id=excluded.library_id,show_id=excluded.show_id,mode=excluded.mode,state='pending',attempt=0,next_ms=0,error_code='',updated_ms=excluded.updated_ms`, object, revision, library, show, l.Mode, nowMS())
 	return err
 }
 
@@ -432,6 +440,8 @@ func (s *Service) segmentFailure(ctx context.Context, object, revision string, a
 	if state == "pending" && attempt+1 >= segmentAttempts {
 		state = "failed"
 	}
+	// The owner sees the code; the cause goes to the server log for support.
+	log.Printf("intro and credits detection: file %s: %s (%s): %v", object, code, state, cause)
 	next := nowMS() + min(int64(3600000), int64(60000)<<min(attempt, 6))
 	_, err := dbwork.ExecWrite(cleanup, s.db, dbwork.ClassBackgroundMedia, `UPDATE segment_files SET state=?,attempt=attempt+1,next_ms=?,error_code=?,updated_ms=? WHERE object_id=? AND source_revision=?`, state, next, code, nowMS(), object, revision)
 	return err

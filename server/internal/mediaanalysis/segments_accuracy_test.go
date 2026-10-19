@@ -366,3 +366,76 @@ func (h *harness) evaluateFilm(t *testing.T) {
 		}
 	}
 }
+
+// TestSegmentDemoMedia writes a synthetic show and film for trying detection
+// end to end (a server library, the review page, the players):
+//
+//	PORTICO_SEGMENT_MEDIA_OUT=/some/folder go test ./internal/mediaanalysis -run SegmentDemoMedia -v
+//
+// Season 1 has four eight-minute episodes sharing an intro (cold opens of
+// different lengths, colour bars on screen while it plays) and end credits
+// (a crawl on black), two of them with a scene after the credits; the film
+// ends with a crawl, a mid-credits scene, more crawl and a post-credits scene.
+func TestSegmentDemoMedia(t *testing.T) {
+	out := os.Getenv("PORTICO_SEGMENT_MEDIA_OUT")
+	if out == "" {
+		t.Skip("set PORTICO_SEGMENT_MEDIA_OUT to write the demo media")
+	}
+	h := newHarness(t)
+	crawl := "geq=lum='if(between(X,W/4,3*W/4)*lt(mod(Y+T*40,26),10)*lt(mod(X+floor((Y+T*40)/26)*3,7),3),235,16)':cb=128:cr=128"
+	type piece struct {
+		video  string
+		length float64
+	}
+	write := func(file string, audio segmentsynth.Programme, pieces []piece) {
+		pcm := filepath.Join(h.dir, filepath.Base(file)+".pcm")
+		if err := os.WriteFile(pcm, audio.Render(16000), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		var graph []string
+		labels := ""
+		for i, p := range pieces {
+			source, filter, _ := strings.Cut(p.video, ",")
+			join := "="
+			if strings.Contains(source, "=") {
+				join = ":"
+			}
+			if filter != "" {
+				filter = "," + filter
+			}
+			graph = append(graph, fmt.Sprintf("%s%ssize=640x360:rate=24:duration=%.3f,format=yuv420p%s[v%d]", source, join, p.length, filter, i))
+			labels += fmt.Sprintf("[v%d]", i)
+		}
+		graph = append(graph, fmt.Sprintf("%sconcat=n=%d:v=1:a=0[v]", labels, len(pieces)))
+		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		h.run("-filter_complex", strings.Join(graph, ";"), "-f", "s16le", "-ar", "16000", "-ac", "1", "-i", pcm,
+			"-map", "[v]", "-map", "0:a", "-c:v", "libx264", "-preset", "veryfast", "-crf", "30", "-c:a", "aac", "-b:a", "128k", "-ac", "2", "-ar", "48000", "-shortest", file)
+		_ = os.Remove(pcm)
+	}
+	intro, credits := segmentsynth.Theme(31), segmentsynth.Theme(32)
+	show := filepath.Join(out, "TV", "Synthetic Show (2026)", "Season 01")
+	for i, c := range []struct{ cold, post float64 }{{0, 0}, {65, 25}, {120, 0}, {30, 20}} {
+		seed := uint64(700 + i*10)
+		body := 480 - c.cold - 46 - 40 - c.post - 2
+		audio := segmentsynth.Programme{{Signal: segmentsynth.Speech(seed), Length: c.cold}, {Signal: intro, Length: 45}, {Signal: segmentsynth.Silence(), Length: 1}, {Signal: segmentsynth.Speech(seed + 1), Length: body}, {Signal: credits, Length: 40}}
+		pieces := []piece{{"testsrc2", c.cold}, {"smptebars", 46}, {"testsrc2", body}, {"color=c=black," + crawl, 40}}
+		if c.post > 0 {
+			audio = append(audio, segmentsynth.Part{Signal: segmentsynth.Speech(seed + 2), Length: c.post})
+			pieces = append(pieces, piece{"testsrc2", c.post})
+		}
+		audio = append(audio, segmentsynth.Part{Signal: segmentsynth.Silence(), Length: 2})
+		pieces = append(pieces, piece{"color=c=black", 2})
+		var kept []piece
+		for _, p := range pieces {
+			if p.length > 0 {
+				kept = append(kept, p)
+			}
+		}
+		write(filepath.Join(show, fmt.Sprintf("Synthetic Show (2026) - S01E%02d.mkv", i+1)), audio, kept)
+	}
+	film := segmentsynth.Programme{{Signal: segmentsynth.Speech(900), Length: 900}, {Signal: credits, Length: 213}, {Signal: segmentsynth.Silence(), Length: 3}}
+	write(filepath.Join(out, "Movies", "Synthetic Film (2026)", "Synthetic Film (2026).mkv"), film, []piece{{"testsrc2", 900}, {"color=c=black," + crawl, 80}, {"testsrc2", 30}, {"color=c=black," + crawl, 100}, {"color=c=black", 3}, {"testsrc2", 25}, {"color=c=black", 3}})
+	t.Logf("wrote the demo show to %s and the film to %s", filepath.Join(out, "TV"), filepath.Join(out, "Movies"))
+}
