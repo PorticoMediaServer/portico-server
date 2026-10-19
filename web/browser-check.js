@@ -6,11 +6,24 @@
  * says so plainly instead of drawing an empty page or failing half way through. It tests what the
  * floor stands for, not a version number: colour mixing in CSS (every surface uses it), the
  * language features of that generation, and module scripts. The words come from the catalogue
- * when the build writes this file (`__PORTICO_*__`).
+ * when the build writes this file (`__PORTICO_*__`), in the browser's language when Portico has it.
  */
 (function () {
   var title = __PORTICO_UNSUPPORTED_TITLE__;
   var body = __PORTICO_UNSUPPORTED_BODY__;
+  // The browser's first language Portico is translated into: the exact tag, then the language alone.
+  var words = __PORTICO_UNSUPPORTED_WORDS__;
+  var languages = (navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language || '']);
+  for (var i = 0; i < languages.length; i++) {
+    var tag = String(languages[i]).toLowerCase();
+    var found = words[tag] || words[tag.split('-')[0]];
+    if (found) {
+      title = found[0];
+      body = found[1];
+      break;
+    }
+    if (tag.split('-')[0] === 'en') break;
+  }
   function supported() {
     try {
       return typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('color', 'color-mix(in srgb, red, blue)')

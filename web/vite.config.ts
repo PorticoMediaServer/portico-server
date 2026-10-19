@@ -3,6 +3,8 @@ import react from '@vitejs/plugin-react';
 import {createReadStream, readdirSync, readFileSync, statSync} from 'node:fs';
 import {fileURLToPath} from 'node:url';
 import {enUS} from '../packages/i18n/src/catalog/en-US.ts';
+import {catalogue, translatedLocales} from '../packages/i18n/src/catalog/index.ts';
+import '../packages/i18n/src/catalog/bundled.ts';
 const at = (p: string) => fileURLToPath(new URL(p, import.meta.url));
 
 /*
@@ -59,9 +61,15 @@ function vendoredFiles(): Plugin {
  */
 const browserFloor = ['chrome111', 'edge111', 'firefox113', 'safari16.4', 'ios16.4'];
 function browserCheck(): Plugin {
+  // Each translated language's words, by tag, for the browser's own language (the app is not running yet).
+  const words = Object.fromEntries(translatedLocales.flatMap(locale => {
+    const w = catalogue(locale), title = w['web.browser.unsupportedTitle'], body = w['web.browser.unsupportedBody'];
+    return title && body ? [[locale.toLowerCase(), [title, body]]] : [];
+  }));
   const source = () => readFileSync(at('./browser-check.js'), 'utf8')
     .replace('__PORTICO_UNSUPPORTED_TITLE__', JSON.stringify(enUS['web.browser.unsupportedTitle']))
-    .replace('__PORTICO_UNSUPPORTED_BODY__', JSON.stringify(enUS['web.browser.unsupportedBody']));
+    .replace('__PORTICO_UNSUPPORTED_BODY__', JSON.stringify(enUS['web.browser.unsupportedBody']))
+    .replace('__PORTICO_UNSUPPORTED_WORDS__', JSON.stringify(words));
   return {
     name: 'portico-browser-check',
     configureServer(server) {
