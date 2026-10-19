@@ -10,15 +10,15 @@ export {enUS, type MessageId};
  * translations (translations/<locale>.json, generated into ./translated/). A registered language
  * with few or no translations yet reads en-US for every message it lacks.
  */
-export const supportedLocales = ['en-US', 'en-CA', 'en-GB', 'fr', 'es', 'de', 'ru', 'pt-BR', 'it', 'nl', 'pl', 'sv', 'da', 'nb', 'cs', 'tr', 'uk', 'zh-Hans', 'zh-Hant', 'ja', 'ko', 'fr-CA', 'es-419', 'pt-PT', 'el', 'hu', 'ro', 'fi', 'id', 'vi', 'th', 'hi', 'en-XA'] as const;
+export const supportedLocales = ['en-US', 'en-CA', 'en-GB', 'fr', 'fr-CA', 'es', 'es-419', 'de', 'ru', 'pt-BR', 'pt-PT', 'it', 'nl', 'pl', 'sv', 'da', 'nb', 'fi', 'cs', 'hu', 'ro', 'el', 'tr', 'uk', 'id', 'vi', 'th', 'hi', 'zh-Hans', 'zh-Hant', 'ja', 'ko', 'en-XA'] as const;
 export type SupportedLocale = (typeof supportedLocales)[number];
 export const sourceLocale: SupportedLocale = 'en-US';
 /** Accented, padded English for finding hard-coded words and clipped labels; never offered as a choice. */
 export const pseudoLocale = 'en-XA' satisfies SupportedLocale;
-/** The languages a viewer can choose. */
+/** The languages a viewer can choose, each regional variant beside its base language. */
 export const selectableLocales = supportedLocales.filter(l => l !== pseudoLocale);
 
-export const translatedLocales = ['fr', 'es', 'de', 'ru', 'pt-BR', 'it', 'nl', 'pl', 'sv', 'da', 'nb', 'cs', 'tr', 'uk', 'zh-Hans', 'zh-Hant', 'ja', 'ko', 'fr-CA', 'es-419', 'pt-PT', 'el', 'hu', 'ro', 'fi', 'id', 'vi', 'th', 'hi'] as const satisfies readonly SupportedLocale[];
+export const translatedLocales = ['fr', 'fr-CA', 'es', 'es-419', 'de', 'ru', 'pt-BR', 'pt-PT', 'it', 'nl', 'pl', 'sv', 'da', 'nb', 'fi', 'cs', 'hu', 'ro', 'el', 'tr', 'uk', 'id', 'vi', 'th', 'hi', 'zh-Hans', 'zh-Hant', 'ja', 'ko'] as const satisfies readonly SupportedLocale[];
 export type TranslatedLocale = (typeof translatedLocales)[number];
 type Messages = Partial<Record<MessageId, string>>;
 
