@@ -1402,6 +1402,7 @@ export const webMessages = {
   'web.segments.failure': "{state, select, unsupported {This file can't be read for detection.} other {Detection stopped trying this file after three attempts.}}",
   'web.segments.libraries': 'Libraries',
   'web.segments.libraryMode': '{mode, select, off {Off} standard {Listening to episodes} thorough {Listening and reading the picture} other {{mode}}}',
+  'web.segments.libraryModeFilms': '{mode, select, off {Off} standard {Chapter titles only} thorough {Reading the picture} other {{mode}}}',
   'web.segments.followsServer': 'follows the server',
   'web.segments.review': 'Review',
   'web.segments.titlesIn': 'Shows and films in {library}',

@@ -39,7 +39,7 @@ export function SegmentsPanel() {
       </SettingsGroup>
       {s && s.libraries.length ? <SettingsGroup title={t('web.segments.libraries')}>
         {s.libraries.map(l => (
-          <SettingsRow key={l.libraryId} label={l.name} help={`${t('web.segments.libraryMode', {mode: l.mode})}${l.choice === 'server' ? ' · ' + t('web.segments.followsServer') : ''}`}
+          <SettingsRow key={l.libraryId} label={l.name} help={`${t(l.itemKind === 'movie' ? 'web.segments.libraryModeFilms' : 'web.segments.libraryMode', {mode: l.mode})}${l.choice === 'server' ? ' · ' + t('web.segments.followsServer') : ''}`}
             control={<Button size="sm" variant={library === l.libraryId ? 'secondary' : 'ghost'} label={t('web.segments.review')} onClick={() => setLibrary(library === l.libraryId ? '' : l.libraryId)} />} />
         ))}
       </SettingsGroup> : null}
@@ -116,7 +116,7 @@ function SegmentReview({id, onBack}: {id: string; onBack: () => void}) {
                 help={entry.markers.length ? undefined : t('web.segments.entryState', {state: entry.state})}
                 control={entry.sourceId ? <Button size="sm" variant="ghost" icon="plus" label={t('web.segments.add')} disabled={action.busy} onClick={() => setEditing({entry})} /> : undefined} />
               {entry.markers.map(m => (
-                <SettingsRow key={m.id} label={t('web.segments.kind', {kind: m.kind})} help={markerLine(m)}
+                <SettingsRow key={m.id} stack label={t('web.segments.kind', {kind: m.kind})} help={markerLine(m)}
                   state={<Status tone={trust(m) === 'automatic' || trust(m) === 'approved' ? 'healthy' : trust(m) === 'hidden' ? 'neutral' : 'accent'}>{t('web.segments.trust', {trust: trust(m)})}</Status>}
                   control={<>
                     <Button size="sm" variant="ghost" icon="play" label={t('web.segments.watch')} onClick={() => player.play(entry.itemId, Math.max(0, Number(m.startUS) / 1e6 - 3))} />

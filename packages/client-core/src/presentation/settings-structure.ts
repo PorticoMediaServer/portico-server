@@ -388,7 +388,7 @@ const serverPages: readonly AuthoredPage[] = [
   {id: 'metadata', title: 'settings.server.metadata', icon: 'image', platforms: ['web', 'phone'], sections: [panel('settings', 'server.metadataSettings', 'settings.server.metadata')]},
   // Intro and credits detection: the server's mode on every owner client; its progress and the
   // owner's review of what it found, by show and season, on the web.
-  {id: 'segments', title: 'settings.server.segments', icon: 'forward', platforms: ['web', 'phone'], sections: [
+  {id: 'segments', title: 'settings.server.segments', icon: 'next', platforms: ['web', 'phone'], sections: [
     {id: 'mode', rows: [
       setting('runtime', 'library.segmentDetection', 'settings.server.segmentMode', {type: 'choice', choices: choices('settings.server.segmentMode', ['standard', 'thorough', 'off'])}, {help: 'settings.server.segmentModeHelp'}),
     ]},
