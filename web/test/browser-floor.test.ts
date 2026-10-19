@@ -19,5 +19,5 @@ test('an older engine is told before the app starts, and the app then stays out 
   const html = read('../index.html');
   assert.ok(html.indexOf('/browser-check.js') < html.indexOf('/src/main.tsx'), 'the check runs first');
   assert.doesNotMatch(read('../browser-check.js').replace(/\/\*[\s\S]*?\*\//g, ''), /=>|\blet\b|\bconst\b|`/, 'the check is written in the oldest syntax');
-  assert.match(read('../src/main.tsx'), /__porticoUnsupportedBrowser\) createRoot/);
+  assert.match(read('../src/main.tsx'), /__porticoUnsupportedBrowser\) void preloadI18n\(\)\.finally\(\(\) => createRoot/);
 });

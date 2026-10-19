@@ -12,7 +12,10 @@ const shellModule = () => componentModule(new URL('../src/shell/Shell.tsx', impo
 test('the signed-in shell offers Skip to content first, and its target is the page’s main region', () => {
   const shell = src('shell/Shell.tsx');
   const frame = shell.slice(shell.indexOf('<div ref={frame}'));
-  const skip = frame.indexOf("<a href={'#' + MAIN_ID} className={s.skipLink} onClick={skipToContent}>{t('web.shell.skipToContent')}</a>");
+  // The link lives in ShellAids, under the I18nProvider, so it speaks the viewer's language.
+  const aids = shell.slice(shell.indexOf('function ShellAids()'));
+  assert.ok(aids.indexOf("<a href={'#' + MAIN_ID} className={s.skipLink} onClick={skipToContent}>{t('web.shell.skipToContent')}</a>") > 0, 'ShellAids renders the skip link');
+  const skip = frame.indexOf('<ShellAids />');
   assert.ok(skip > 0, 'the skip link is rendered in the frame');
   assert.ok(skip < frame.indexOf('<Rail ') && skip < frame.indexOf('<TopBar'), 'before the rail and the top bar, so it is the first stop');
   const main = frame.indexOf('<main id={MAIN_ID} tabIndex={-1} className={s.content}>');
