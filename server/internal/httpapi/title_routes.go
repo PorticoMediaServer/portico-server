@@ -189,7 +189,7 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			return separateArtistResponse{ArtistID: artist}, identityRouteError(err)
 		})
 	v1Route(r, apikit.Metadata{Admission: laneAdmin, ID: "remove_library", Method: "DELETE", Path: "/v1/admin/libraries/{id}", Summary: "Remove a library: it disappears at once and is taken apart in the background; files on disk are not touched and each profile's state is kept in case its titles return",
-		Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4096, Status: 202, Errors: append([]string{"revision_mismatch", "confirmation_mismatch", "administration_unavailable"}, ownerErrors...)},
+		Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, BodyLimit: 4096, Status: 202, Errors: append([]string{"revision_mismatch", "confirmation_mismatch", "administration_unavailable"}, ownerErrors...)},
 		func(ctx context.Context, q *http.Request, in removeLibraryRequest) (removeLibraryResponse, error) {
 			p, _ := d.foundationCaller(q)
 			id := q.PathValue("id")
@@ -197,7 +197,7 @@ func registerIdentityRoutes(r *apikit.Registry, d Dependencies) {
 			if enqueue == nil {
 				return removeLibraryResponse{}, &apierror.Error{Code: "administration_unavailable"}
 			}
-			err := d.Catalog.RemoveLibrary(ctx, id, in.Confirmation, in.ExpectedRevision, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }, enqueue)
+			err := d.Catalog.RemoveLibrary(ctx, id, in.Confirmation, in.ExpectedRevision, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(ctx, tx, p, id) }, enqueue)
 			if err != nil {
 				return removeLibraryResponse{}, identityRouteError(err)
 			}

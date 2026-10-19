@@ -364,6 +364,7 @@ func (s *Service) SelectDirectProfile(ctx context.Context, bearer, id string, q 
 	return s.SelectDirectProfileFrom(ctx, bearer, id, q, true)
 }
 func (s *Service) SelectDirectProfileFrom(ctx context.Context, bearer, id string, q DirectSelection, private bool) (DirectSelectionResult, error) {
+	ctx = WithRecoveryLocality(ctx, private)
 	out := DirectSelectionResult{}
 	if !validFamilyID(id) || len(q.PIN) > 4 || len(q.TrustToken) > 128 || len(q.InstallationID) > 128 || q.Trust && !validFamilyID(q.InstallationID) {
 		return out, ErrDirectInput

@@ -172,6 +172,9 @@ export class RequestTimeoutError extends Error {
  * do not come through here and have no such limit.
  */
 export function requestDeadlineMs(path: string, method: string): number {
+  // The server's claim watch lasts ten minutes and streams whitespace until its
+  // final JSON answer. Give the body the whole approval window plus a margin.
+  if (method === 'POST' && path.split('?')[0] === routePath('post_networking_claim_await_approval')) return 615_000;
   const held = /[?&]waitMs=(\d{1,7})(?:&|$)/.exec(path);
   if (held) return Math.min(Number(held[1]), 600_000) + 15_000;
   if (method === 'GET' || method === 'HEAD') return 30_000;
@@ -1996,6 +1999,7 @@ export {PlayerSessionChoices,playerSessionChoices} from './player-session-choice
 export * from './listening.ts';
 export * from './preferences.ts';
 export {parseSegmentMarkers,parseSegmentMarkerSet,canSkipAutomatically,type SegmentMarker,type SegmentMarkerKind,type SegmentMarkerSet} from './segment-markers.ts';
+export {activeSegment,skipsAutomatically,skipTarget,followedByScene,closingKind,SKIP_LEAD_SECONDS,UNDO_SECONDS,type SkipMode} from './segment-skip.ts';
 export {parseQueuePostPlay,passoutCheckRequired,type QueuePostPlay,type QueueAdvanceMode} from './post-play.ts';
 export * from './home.ts';
 export * from './play-history.ts';

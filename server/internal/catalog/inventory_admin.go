@@ -54,6 +54,9 @@ func (s *Service) Inventory(ctx context.Context, r AdminRequest, source, state s
 		})
 		return out, err
 	}
+	if _, err := adminLibraryScope(ctx, &r); err != nil {
+		return InventoryPageResult{}, err
+	}
 	out := InventoryPageResult{Scope: AdminScope{r.ServerID, r.ViewerFence}, LibraryID: r.LibraryID, SourceID: source, Items: []InventoryRow{}}
 	if err := adminLimit(&r); err != nil {
 		return out, err

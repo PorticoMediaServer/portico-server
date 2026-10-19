@@ -462,7 +462,7 @@ func (s *Service) homeEngineEntries(profile string, ids []string) ([]ContentEntr
 	// From the requested ids, each a unique public_id seek and a browse row by
 	// key (an item's row is its own entity's). Joined on an expression instead,
 	// this scanned every browse row of the server on every Home row.
-	rows, e := s.read().Query(`SELECT pid(ent.public_id),CASE e.kind WHEN 1 THEN 'movie' WHEN 2 THEN 'show' WHEN 4 THEN 'episode' WHEN 5 THEN 'artist' WHEN 6 THEN 'album' WHEN 7 THEN 'song' WHEN 8 THEN 'book' WHEN 9 THEN 'audiobook_file' END,e.title,e.year,l.library_id
+	rows, e := s.read().Query(`SELECT pid(ent.public_id),CASE e.kind WHEN 1 THEN 'movie' WHEN 2 THEN 'show' WHEN 3 THEN 'season' WHEN 4 THEN 'episode' WHEN 5 THEN 'artist' WHEN 6 THEN 'album' WHEN 7 THEN 'song' WHEN 8 THEN 'book' WHEN 9 THEN 'audiobook_file' END,e.title,e.year,l.library_id
  FROM (SELECT DISTINCT value FROM json_each(?)) requested CROSS JOIN catalog_entities ent ON ent.public_id=pid_blob(requested.value)
  CROSS JOIN catalog_browse_rows e ON e.entity_id=ent.id JOIN catalog_libraries l ON l.id=e.library_id`, idsJSON(ids))
 	if e != nil {
@@ -485,6 +485,22 @@ func (s *Service) homeEngineEntries(profile string, ids []string) ([]ContentEntr
 	rows.Close()
 	if e != nil {
 		return nil, e
+	}
+	// Recently Added names a season when a whole season arrived: it reads as
+	// the season, under its show (a season without a browse row is read here).
+	answered := map[string]bool{}
+	for _, entity := range entities {
+		answered[entity.id] = true
+	}
+	seasons, e := s.homeSeasonEntities(ids)
+	if e != nil {
+		return nil, e
+	}
+	for _, id := range ids {
+		if season, ok := seasons[id]; ok && !answered[id] {
+			answered[id] = true
+			entities = append(entities, recEntity{id: season.id, kind: "season", title: season.title, library: season.library})
+		}
 	}
 	itemIDs := []string{}
 	containerIDs := []string{}
@@ -579,6 +595,10 @@ func (s *Service) homeEngineEntries(profile string, ids []string) ([]ContentEntr
 		if entity.year > 0 {
 			entry.Subtitle = strconv.Itoa(entity.year)
 		}
+		if season, ok := seasons[entity.id]; ok {
+			number := season.number
+			entry.Subtitle, entry.SeasonNumber = season.show, &number
+		}
 		entry.PosterURL = artwork[entity.id]
 		out = append(out, entry)
 	}
@@ -667,4 +687,58 @@ func (s *Service) communityCandidates(r HomeRequest) ([]string, error) {
 		out = append(out, id)
 	}
 	return out, rows.Err()
+}
+
+type homeSeason struct {
+	id, title, show, library string
+	number                   int
+}
+
+// homeSeasonEntities reads the requested ids that are seasons: the season's
+// own title, its number and its show's title.
+func (s *Service) homeSeasonEntities(ids []string) (map[string]homeSeason, error) {
+	out := map[string]homeSeason{}
+	rest := ids
+	if len(rest) == 0 {
+		return out, nil
+	}
+	rows, err := s.read().Query(`SELECT pid(se.public_id),se.title,sn.number,show.title,l.library_id
+ FROM (SELECT DISTINCT value FROM json_each(?)) requested CROSS JOIN catalog_entities se ON se.public_id=pid_blob(requested.value)
+ CROSS JOIN catalog_seasons sn ON sn.entity_id=se.id CROSS JOIN catalog_entities show ON show.id=sn.show_id
+ JOIN catalog_libraries l ON l.id=se.library_id WHERE se.retired=0`, idsJSON(rest))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var season homeSeason
+		if err = rows.Scan(&season.id, &season.title, &season.number, &season.show, &season.library); err != nil {
+			return nil, err
+		}
+		if season.title == "" {
+			season.title = seasonTitle(season.number)
+		}
+		out[season.id] = season
+	}
+	return out, rows.Err()
+}
+
+// homeRecentSeasonCounts says how many seasons each show on a Recently Added
+// shelf has ("6 seasons"): a show there stands for several seasons added at
+// once. Specials and seasons with no episodes are not counted.
+func (s *Service) homeRecentSeasonCounts(entries []ContentEntry) error {
+	for i := range entries {
+		if entries[i].Kind != "show" {
+			continue
+		}
+		var count int
+		if err := s.read().QueryRow(`SELECT count(*) FROM catalog_seasons sn CROSS JOIN catalog_entities show ON show.id=sn.show_id
+ WHERE show.public_id=pid_blob(?) AND sn.number>0 AND EXISTS(SELECT 1 FROM catalog_episodes e WHERE e.show_id=sn.show_id AND e.season_id=sn.entity_id)`, entries[i].ID).Scan(&count); err != nil {
+			return err
+		}
+		if count > 0 {
+			entries[i].SeasonCount = &count
+		}
+	}
+	return nil
 }

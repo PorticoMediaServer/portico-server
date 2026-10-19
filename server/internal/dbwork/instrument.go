@@ -304,6 +304,10 @@ type observedConn struct {
 	statements statementCache
 	readers    *readerScope
 	readerTx   *readerLease
+	// authorityDirty is transaction-local: a reader may reauthorize against
+	// the old snapshot after a statement bump and before its commit. Only an
+	// authority-writing transaction needs a second bump when it commits.
+	authorityDirty bool
 }
 
 func (c *observedConn) Prepare(query string) (driver.Stmt, error) {
@@ -353,6 +357,7 @@ func (c *observedConn) Begin() (driver.Tx, error) {
 	c.readerTx = lease
 	observeTransaction(context.Background())
 	c.inTx = true
+	c.authorityDirty = false
 	c.changes = nil
 	return &observedTx{inner: inner, conn: c}, nil
 }
@@ -374,6 +379,7 @@ func (c *observedConn) BeginTx(ctx context.Context, opts driver.TxOptions) (driv
 	c.readerTx = lease
 	observeTransaction(ctx)
 	c.inTx = true
+	c.authorityDirty = false
 	c.changes, _ = ctx.Value(changeKey{}).(*changeSet)
 	return &observedTx{inner: inner, conn: c}, nil
 }
@@ -387,8 +393,7 @@ func (c *observedConn) ExecContext(ctx context.Context, query string, args []dri
 	traceStatement(ctx, query)
 	out, err := c.cachedExec(ctx, query, args)
 	if err == nil {
-		noticeAuthorityWrite(query)
-		c.changes.note(query)
+		c.noteWrite(query)
 	}
 	observe(ctx, query, time.Since(start), c.inTx)
 	return out, err
@@ -413,8 +418,7 @@ func (c *observedConn) QueryContext(ctx context.Context, query string, args []dr
 	}
 	// A write that returns rows (UPDATE … RETURNING) arrives here, not through
 	// ExecContext, and is as much an authority write: ending a session is one.
-	noticeAuthorityWrite(query)
-	c.changes.note(query)
+	c.noteWrite(query)
 	return &observedRows{inner: out, ctx: ctx, query: query, start: start, inTx: c.inTx, release: release, reader: lease}, nil
 }
 
@@ -428,6 +432,7 @@ func (c *observedConn) Ping(ctx context.Context) error {
 func (c *observedConn) ResetSession(ctx context.Context) error {
 	c.finishReadTransaction()
 	c.inTx = false
+	c.authorityDirty = false
 	if resetter, ok := c.inner.(driver.SessionResetter); ok {
 		return resetter.ResetSession(ctx)
 	}
@@ -447,8 +452,14 @@ type observedTx struct {
 }
 
 func (t *observedTx) Commit() error {
-	t.conn.inTx = false
 	err := t.inner.Commit()
+	if err == nil && t.conn.authorityDirty {
+		// Invalidate verdicts obtained after the statement bump while other
+		// connections could still see the old committed authority.
+		BumpAuthority()
+	}
+	t.conn.inTx = false
+	t.conn.authorityDirty = false
 	t.conn.finishReadTransaction()
 	return err
 }
@@ -456,6 +467,7 @@ func (t *observedTx) Commit() error {
 func (t *observedTx) Rollback() error {
 	t.conn.inTx = false
 	err := t.inner.Rollback()
+	t.conn.authorityDirty = false
 	t.conn.finishReadTransaction()
 	return err
 }
@@ -476,7 +488,7 @@ func (s *observedStmt) Exec(args []driver.Value) (driver.Result, error) {
 	start := time.Now()
 	out, err := s.inner.Exec(args)
 	if err == nil {
-		s.conn.changes.note(s.query)
+		s.conn.noteWrite(s.query)
 	}
 	observe(context.Background(), "", time.Since(start), s.conn.inTx)
 	return out, err
@@ -497,7 +509,7 @@ func (s *observedStmt) Query(args []driver.Value) (driver.Rows, error) {
 		observe(context.Background(), "", time.Since(start), s.conn.inTx)
 		return nil, err
 	}
-	s.conn.changes.note(s.query)
+	s.conn.noteWrite(s.query)
 	return &observedRows{inner: out, ctx: context.Background(), start: start, inTx: s.conn.inTx, reader: lease}, nil
 }
 
@@ -512,7 +524,7 @@ func (s *observedStmt) ExecContext(ctx context.Context, args []driver.NamedValue
 	start := time.Now()
 	out, err := execer.ExecContext(ctx, args)
 	if err == nil {
-		s.conn.changes.note(s.query)
+		s.conn.noteWrite(s.query)
 	}
 	observe(ctx, "", time.Since(start), s.conn.inTx)
 	return out, err
@@ -537,7 +549,7 @@ func (s *observedStmt) QueryContext(ctx context.Context, args []driver.NamedValu
 		observe(ctx, "", time.Since(start), s.conn.inTx)
 		return nil, err
 	}
-	s.conn.changes.note(s.query)
+	s.conn.noteWrite(s.query)
 	return &observedRows{inner: out, ctx: ctx, start: start, inTx: s.conn.inTx, reader: lease}, nil
 }
 
@@ -690,24 +702,38 @@ var authorityTables = []string{
 	"dvr_private_libraries", "onboarding_state_v1", "quick_connect_v1",
 	"api_credentials", "identity_account_factors", "identity_browser_accounts",
 	"hosted_profile_revisions", "hosted_profile_erasure_receipts", "social_group_members",
+	// Ending a claim revokes or deletes its grants. Track that authority,
+	// rather than preparation progress, to stop open downloads immediately.
+	"download_grants",
 }
 
-// noticeAuthorityWrite bumps the generation when a statement writes an authority
-// table. Reads are ignored: the check runs only for a statement that begins with
-// a mutation keyword, which is a one-character comparison for the overwhelming
-// majority of traffic.
-func noticeAuthorityWrite(query string) {
+// noteWrite preserves statement-time invalidation and remembers authority writes
+// until commit. database/sql serializes driver calls on each connection.
+func (c *observedConn) noteWrite(query string) {
+	if noticeAuthorityWrite(query) && c.inTx {
+		c.authorityDirty = true
+	}
+	c.changes.note(query)
+}
+
+// noticeAuthorityWrite bumps the generation and reports whether a statement
+// writes an authority table. Reads are ignored: the check runs only for a
+// statement that begins with a mutation keyword, which is a one-character
+// comparison for the overwhelming majority of traffic.
+func noticeAuthorityWrite(query string) bool {
 	if len(query) < 6 {
-		return
+		return false
 	}
 	switch query[0] {
 	case 'i', 'I', 'u', 'U', 'd', 'D', 'r', 'R':
 	default:
-		return
+		return false
 	}
 	if headOf(query).authority {
 		BumpAuthority()
+		return true
 	}
+	return false
 }
 
 // authorityWrite is whether a statement that begins with a mutation keyword's

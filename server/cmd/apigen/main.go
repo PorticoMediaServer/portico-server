@@ -70,6 +70,8 @@ func main() {
 	for _, pattern := range []string{"GET ", "POST ", "PUT ", "/", "/dlna/", "GET /receiver/cast/"} {
 		fmt.Fprintf(&lanes, "%q: %q,\n", pattern, "default")
 	}
+	// DLNA media bodies stream for as long as a player plays.
+	fmt.Fprintf(&lanes, "%q: %q,\n", "/dlna/media/", "media-body")
 	lanes.WriteString("}\n")
 	generatedLanes, err := format.Source(lanes.Bytes())
 	if err != nil {

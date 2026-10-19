@@ -3,6 +3,8 @@ package recordingaccess
 import (
 	"database/sql"
 	"encoding/json"
+
+	"portico.local/server/internal/identity"
 )
 
 func directLibraryAllowed(role, raw string, restriction sql.NullString, library string) bool {
@@ -27,5 +29,5 @@ func directLibraryAllowed(role, raw string, restriction sql.NullString, library 
 		}
 		return false
 	}
-	return (role == "owner" || contains(libraries)) && (!restriction.Valid || contains(narrowed))
+	return (identity.Administrative(role) || contains(libraries)) && (!restriction.Valid || contains(narrowed))
 }

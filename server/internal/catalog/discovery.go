@@ -400,6 +400,11 @@ func (s *Service) DiscoverWithRestrictions(library, profile string, restrictions
 		if e != nil {
 			return out, e
 		}
+		if spec.LibraryID != "" {
+			if e = s.homeRecentSeasonCounts(entries); e != nil {
+				return out, e
+			}
+		}
 		id := spec.ID
 		if spec.LibraryID != "" {
 			id = "recently_added"

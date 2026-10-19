@@ -86,7 +86,7 @@ func newRouteIdentityFixture(t *testing.T) *routeIdentityFixture {
 	t.Cleanup(func() { keys.Close() })
 	gate, runner := lifecycleRunner(t)
 	f := &routeIdentityFixture{db: db, keys: keys, dir: dir, key: key, gate: gate, log: &capturedLog{}, clock: time.Date(2026, 9, 23, 14, 45, 0, 0, time.UTC)}
-	f.handler = NewRouteIdentityHandler(keys, runner)
+	f.handler = NewRouteIdentityHandler(keys, runner, nil, nil)
 	f.handler.failures = newFailureLog(f.log.logf)
 	f.handler.failures.now = func() time.Time { return f.clock }
 	return f

@@ -26,7 +26,7 @@ export function ShellSkeleton() {
     <div className={cx(s.frame, collapsed && !compact && s.collapsed)} aria-busy aria-label={t('launch.title')}>
       {!compact ? (
         <nav className={s.rail} aria-hidden>
-          <span className={s.brand}><BrandMark size={26} /><span><Wordmark height={16} /></span></span>
+          <span className={s.brand}><BrandMark size={28} className={s.brandMark} /><span className={s.brandWord}><Wordmark height={28} /></span></span>
           <div className={s.railGroup}>
             {row('home', t('web.shell.home'), 'home')}
             {row('search', t('web.shell.search'), 'search')}

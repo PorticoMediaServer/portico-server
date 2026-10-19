@@ -25,6 +25,9 @@ type AnalysisSpec struct {
 	IntervalUS    int64
 	MaxFrames     int
 	MaxDurationUS int64
+	// RegionUS is the length read from StartUS by the segment detection
+	// recipes, which measure one stretch of a file rather than all of it.
+	RegionUS int64
 	// Width/Height select the trickplay frame geometry. Zero keeps the historic
 	// 320x180 preview frame. Both must be even, bounded, and chosen by the
 	// caller from validated policy, never from media or a client request.
@@ -48,8 +51,14 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 	}
 	seekFrames := int64(0)
 	args := []string{"-hide_banner", "-nostdin", "-v", "error", "-threads", "1", "-filter_threads", "1"}
-	preview := s.Kind == "image" || s.Kind == "trickplay" || s.Kind == "scenes"
-	if preview {
+	preview := s.Kind == "image" || s.Kind == "trickplay" || s.Kind == "scenes" || s.Kind == "segment_frames"
+	region := s.Kind == "segment_audio" || s.Kind == "segment_frames"
+	if region && (s.RegionUS <= 0 || s.RegionUS > s.MaxDurationUS) {
+		return nil, ErrInvalidConfiguration
+	}
+	if preview || region {
+		// A damaged packet costs a measurement a moment of a region, not
+		// the measurement.
 		args = append(args, "-max_error_rate", "0.05")
 	} else {
 		args = append(args, "-xerror")
@@ -61,7 +70,7 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 	if hardware {
 		args = append(args, "-init_hw_device", "vulkan=tone", "-filter_hw_device", "tone")
 	}
-	if s.Kind == "image" {
+	if s.Kind == "image" || region && s.StartUS > 0 {
 		args = append(args, "-ss", fmt.Sprintf("%d.%06d", s.StartUS/1000000, s.StartUS%1000000))
 	}
 	if audioConversion(s.Kind) {
@@ -74,7 +83,21 @@ func AnalysisArgs(input string, s AnalysisSpec) ([]string, error) {
 		args = append(args, "-flags2", "+skip_manual")
 	}
 	args = append(args, "-protocol_whitelist", "http,tcp", "-format_whitelist", "mov,matroska,mp3,flac,ogg,wav,aac,mpegts,avi,aiff,asf,ape,wv,tta,amr,w64,caf,dsf,iff,mpc,mpc8,mpeg,mpegvideo", "-probesize", "8388608", "-analyzeduration", "10000000", "-i", input, "-map_metadata", "-1", "-map_chapters", "-1", "-threads", "1")
+	if region {
+		args = append(args, "-t", fmt.Sprintf("%d.%06d", s.RegionUS/1000000, s.RegionUS%1000000))
+	}
 	switch s.Kind {
+	case "segment_audio":
+		// The fingerprint's input: the first audio track as 8 kHz mono, padded
+		// from the region's start so sample n is always StartUS + n/8000 s.
+		args = append(args, "-map", "0:a:0", "-vn", "-sn", "-dn", "-af", "aresample=8000:async=1:first_pts=0", "-ac", "1", "-ar", "8000", "-c:a", "pcm_s16le", "-f", "s16le", "pipe:1")
+	case "segment_frames":
+		// One small grey picture a second for the credits reader.
+		if s.Width != 0 || s.Height != 0 || s.IntervalUS != 1000000 || s.MaxFrames < 1 || s.MaxFrames > 65536 {
+			return nil, ErrInvalidConfiguration
+		}
+		filter := "fps=1:start_time=0,scale=256:144:force_original_aspect_ratio=decrease:reset_sar=1,pad=256:144:(ow-iw)/2:(oh-ih)/2,setsar=1" + tone + ",format=gray"
+		args = append(args, "-map", "0:v:0", "-an", "-sn", "-dn", "-vf", filter, "-frames:v", fmt.Sprint(s.MaxFrames), "-pix_fmt", "gray", "-f", "rawvideo", "pipe:1")
 	case "pcm_shared":
 		// One decode for every audio analysis (waveform, fingerprint, loudness): the
 		// first audio track as 48 kHz stereo, the rate loudness is measured at.
@@ -190,7 +213,7 @@ func analysisRunKey(spec AnalysisSpec, key string) string {
 }
 
 func analysisNeedsHardware(s AnalysisSpec) bool {
-	return (s.Kind == "image" || s.Kind == "trickplay" || s.Kind == "scenes") && s.SourceVideo.DynamicRange == "dolby_vision" && DolbyVisionBaseRange(s.SourceVideo.DolbyVisionProfile, s.SourceVideo.DolbyVisionCompatibility) == ""
+	return (s.Kind == "image" || s.Kind == "trickplay" || s.Kind == "scenes" || s.Kind == "segment_frames") && s.SourceVideo.DynamicRange == "dolby_vision" && DolbyVisionBaseRange(s.SourceVideo.DolbyVisionProfile, s.SourceVideo.DolbyVisionCompatibility) == ""
 }
 func analysisPreviewTone(video PreviewVideoFacts, preview bool) (string, bool, error) {
 	if !preview {

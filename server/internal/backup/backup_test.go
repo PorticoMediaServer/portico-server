@@ -178,7 +178,7 @@ func TestListDeletePrune(t *testing.T) {
 		if err := os.MkdirAll(dir, 0700); err != nil {
 			t.Fatal(err)
 		}
-		manifest := Manifest{Format: Format, Version: Version, ServerID: "srv-test", SchemaVersion: 1, CreatedAt: base.Add(-time.Duration(i+1) * time.Hour).Format(time.RFC3339), Kind: KindPreRestore}
+		manifest := Manifest{Format: Format, Version: LegacyVersion, ServerID: "srv-test", SchemaVersion: 1, CreatedAt: base.Add(-time.Duration(i+1) * time.Hour).Format(time.RFC3339), Kind: KindPreRestore}
 		raw, _ := json.Marshal(manifest)
 		if err := os.WriteFile(filepath.Join(dir, ManifestName), raw, 0600); err != nil {
 			t.Fatal(err)

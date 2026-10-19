@@ -5,10 +5,9 @@ later change follows.
 
 ## The baseline
 
-`migrations/0001_baseline.sql` is the whole schema a new install gets. It replaced
-the earlier development migration chain. Current pre-release schema changes are
-folded into it; no post-baseline development migrations ship and no historical
-data backfill runs at startup. A database whose ledger
+`migrations/0001_baseline.sql` is the schema a new install starts from. It
+replaced the earlier development migration chain; no historical data backfill
+runs at startup. A database whose ledger
 (`schema_migrations`) does not record migration 1 was written by an earlier
 pre-release Portico; `Open` refuses it, and backup restore refuses it, with one
 plain message:
@@ -16,11 +15,14 @@ plain message:
 > This database was created by an earlier pre-release Portico and can't be
 > upgraded. Move it aside and start fresh.
 
-Until the first release, a schema change edits `0001_baseline.sql` directly;
-then `python3 scripts/schema-sync.py` (from the repository root) refreshes the
-recorded digest, the known-object list and the known-column list. From the first release on, the
-baseline is immutable like every applied migration (its digest is checked on
-every open), and each change is a new migration that follows the rules below.
+The baseline is immutable like every applied migration. The demo server and
+every tester's server have recorded it with its digest, which is checked on
+every open, so editing it would leave each of them unable to start without
+moving its database aside (`TestSchemaMigrationsAreNumberedAndImmutable` pins
+the digest). Each schema change is a new numbered migration that follows the
+rules below, with `schemaVersion` raised to the highest number; then
+`python3 scripts/schema-sync.py` (from the repository root) refreshes the
+known-object and known-column lists. `0002_segment_detection.sql` is the first.
 
 ## Migration rules
 

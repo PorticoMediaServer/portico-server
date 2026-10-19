@@ -24,7 +24,9 @@ import (
 	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/dlna"
 	"portico.local/server/internal/enrichment"
+	"runtime"
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/downloads"
@@ -222,6 +224,10 @@ func logSetupBlock(port int, loopback bool) {
 	}
 }
 func run() (runErr error) {
+	setupHosts, setupHostsErr := httpapi.ParseSetupHosts(os.Getenv("PORTICO_SETUP_HOSTS"))
+	if setupHostsErr != nil {
+		return setupHostsErr
+	}
 	persistence.SetMigrationCopyScrubber(identity.ScrubBackupCopy)
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
@@ -802,11 +808,23 @@ func run() (runErr error) {
 		defer close(retentionDone)
 		supervise.Loop(ctx, "cmd.analysis-retention", analysisService.RunRetention)
 	})
+	segmentsDone := make(chan struct{})
+	supervise.Go("cmd.segment-detection", func() {
+		defer close(segmentsDone)
+		supervise.Loop(ctx, "cmd.segment-detection", analysisService.RunSegments)
+	})
 	drain.add("scanner", cancel, scanDone)
 	drain.add("analysis-retention", nil, retentionDone)
+	drain.add("segment-detection", nil, segmentsDone)
 	meta := metadata.New(db, os.Getenv("PORTICO_TMDB_READ_ACCESS_TOKEN"))
 	meta.Admission = workAdmission.Admit
 	meta.SubtitleCredentials = subtitleProvider.SetCredentials
+	meta.SubtitleStatus = func() metadata.OpenSubtitlesStatus {
+		return metadata.OpenSubtitlesStatus(subtitleProvider.OwnerStatus())
+	}
+	meta.SubtitleCheck = func(ctx context.Context) metadata.OpenSubtitlesStatus {
+		return metadata.OpenSubtitlesStatus(subtitleProvider.Check(ctx))
+	}
 	if e = meta.ConfigureAcoustID(os.Getenv("PORTICO_ACOUSTID_CLIENT_KEY")); e != nil {
 		return e
 	}
@@ -1093,7 +1111,7 @@ func run() (runErr error) {
 		deliverySettings.Refresh(ctx)
 		claimHandler.Remote().Wake()
 		invalidateCustomSource()
-	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins})
+	}, WebDirectory: os.Getenv("PORTICO_WEB_DIR"), Analysis: analysisService, Prepared: preparedVersions, Downloads: offlineDownloads, DVR: recordingStore, Subtitles: subtitleService, Lyrics: lyricService, LyricsBulk: lyricFetch, LyricsProbe: ffprobeTool, LibraryChannels: generatedChannels, Console: console, Scheduler: scheduler, Measurements: measurements, Networking: claimHandler, CustomCertificate: customCertificate, RouteIdentity: networking.NewRouteIdentityHandler(claimKeys, claimRunner, claimHandler.Certificates(), customCertificate), LiveChannels: liveSources, PlaybackRuntime: currentPlayback, AudioMedia: subtitleRenderer, Storage: storeIO, Mounts: managed, RemoteSources: sources, DB: db, Watchdog: watchdog, Identity: ident, Catalog: cat, Ingestion: scanner, Playback: player, Hosted: control, Metadata: meta, Origins: origins, SetupHosts: setupHosts})
 	// The timeout and 5xx log lines name the registered route pattern, which
 	// only the router can resolve for a request seen outside the mux.
 	measurements.Pattern = httpapi.RoutePattern
@@ -1203,27 +1221,37 @@ func run() (runErr error) {
 		drain.add("remote-network", stopNetwork, networkDone)
 	}
 	if env("PORTICO_DISCOVERY", "1") != "0" {
+		homeNetworks := func(ctx context.Context) []netip.Prefix {
+			document, err := console.Settings(ctx, operations.AllowServerScope)
+			if err != nil {
+				return nil
+			}
+			var networks []netip.Prefix
+			for _, raw := range document.Effective.LANNetworks {
+				if p, ok := operations.ParseNetwork(raw); ok {
+					networks = append(networks, p)
+				}
+			}
+			return networks
+		}
 		administration.Advertiser.Bind(ctx, func(life context.Context) {
 			discovery := networking.NewDiscovery(claimKeys, claimRunner, ident.Name)
-			discovery.SetHomeNetworks(func(ctx context.Context) []netip.Prefix {
-				document, err := console.Settings(ctx, operations.AllowServerScope)
-				if err != nil {
-					return nil
-				}
-				var networks []netip.Prefix
-				for _, raw := range document.Effective.LANNetworks {
-					if p, ok := operations.ParseNetwork(raw); ok {
-						networks = append(networks, p)
-					}
-				}
-				return networks
-			})
+			discovery.SetHomeNetworks(homeNetworks)
 			discovery.Run(life, listener.Addr().String())
 		})
 		discoveryDone := make(chan struct{})
 		drain.add("discovery", func() {
 			supervise.Go("cmd.discovery.stop", func() { administration.Advertiser.Close(); close(discoveryDone) })
 		}, discoveryDone)
+		// SSDP for the DLNA server; the owner's switch starts and stops it.
+		administration.DLNA.Bind(ctx, func(life context.Context) {
+			dlna.Advertise(life, dlna.Advertisement{Bind: listener.Addr().String(), UUID: dlna.DeviceUUID(ident.ID()),
+				Server: runtime.GOOS + "/1.0 UPnP/1.0 Portico/" + buildinfo.Info()["version"], Home: homeNetworks})
+		})
+		dlnaDone := make(chan struct{})
+		drain.add("dlna", func() {
+			supervise.Go("cmd.dlna.stop", func() { administration.DLNA.Close(); close(dlnaDone) })
+		}, dlnaDone)
 	}
 
 	log.Printf("Ordinary connection ceiling set to %d, plus 32 reserved for the console (HTTP/2 streams per connection: %d)", connectionLimit, server.HTTP2.MaxConcurrentStreams)

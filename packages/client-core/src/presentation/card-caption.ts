@@ -4,7 +4,8 @@ import type {MessageId, MessageValues} from '../../../i18n/src/index.ts';
 /**
  * The line under a card's title, one rule for every client (Justin, 2 Oct 2026): an album always
  * names its artist, a book its author, an episode its number and show, and nothing ever reads
- * "0 items". Continue Watching says what is left ("S1 E3 · 24 min left").
+ * "0 items". Continue Watching says what is left ("24 min left"). Cards lay TV out in Plex's
+ * shape through `cardLines` (Justin, 18 Oct 2026); this is the line for everything else.
  */
 type Translate = (id: MessageId, values?: MessageValues) => string;
 export type CaptionEntry = Pick<ContentEntry, 'kind' | 'subtitle' | 'seasonNumber' | 'episodeNumber' | 'absoluteNumber' | 'count' | 'duration' | 'artist' | 'author' | 'year' | 'airDate' | 'latestEpisode' | 'progressSeconds' | 'countIsLowerBound'>;
@@ -90,6 +91,43 @@ export function continueCaption(entry: CaptionEntry, t: Translate): string | und
 /** A Continue Watching card's title: the show for an episode, whose number is in the caption. */
 export function continueTitle(entry: Pick<ContentEntry, 'kind' | 'title' | 'subtitle'>): string {
   return entry.kind === 'episode' ? parts(entry.subtitle)[0] ?? entry.title : entry.title;
+}
+
+/** A card's text, top to bottom: its title, the line under it and, for TV, a third line. */
+export type CardLines = Readonly<{title: string; caption?: string; detail?: string}>;
+export type CardLinesEntry = CaptionEntry & Pick<ContentEntry, 'title' | 'seasonCount'>;
+
+/**
+ * A card's lines, in Plex's shape for TV (Justin, 18 Oct 2026), on every client and every row:
+ * an episode reads its show, its own title, then "S1 · E3"; a season its show, then "Season 1";
+ * a show added whole (Recently Added) its title, then "6 seasons". Everything else is its title
+ * over `cardCaption`.
+ */
+export function cardLines(entry: CardLinesEntry, t: Translate, options: Readonly<{locale?: string}> = {}): CardLines {
+  const show = parts(entry.subtitle)[0];
+  switch (entry.kind) {
+    case 'episode': {
+      const code = entry.absoluteNumber != null ? t('title.episodeAbsolute', {number: entry.absoluteNumber})
+        : entry.episodeNumber == null ? undefined
+        : entry.seasonNumber != null ? t('card.episodeCode', {season: entry.seasonNumber, episode: entry.episodeNumber})
+        : t('title.episodeOnly', {episode: entry.episodeNumber});
+      if (!show) return {title: entry.title, caption: code};
+      return {title: show, caption: entry.title && entry.title !== show ? entry.title : undefined, detail: code};
+    }
+    case 'season': {
+      const season = entry.seasonNumber === 0 ? t('title.specials') : entry.seasonNumber != null ? t('title.season', {number: entry.seasonNumber}) : entry.title;
+      return show ? {title: show, caption: season} : {title: season};
+    }
+    case 'show':
+      if (entry.seasonCount) return {title: entry.title, caption: t('title.seasonCount', {count: entry.seasonCount})};
+      break;
+  }
+  return {title: entry.title, caption: cardCaption(entry, t, options)};
+}
+
+/** A Continue Watching card's lines: an episode as everywhere else (the bar shows what is left); anything else says what is left. */
+export function continueLines(entry: CardLinesEntry, t: Translate, options: Readonly<{locale?: string}> = {}): CardLines {
+  return entry.kind === 'episode' ? cardLines(entry, t, options) : {title: entry.title, caption: continueCaption(entry, t)};
 }
 
 /** The rows of what the viewer is in the middle of: Home's, and a library's Discover tab's. */

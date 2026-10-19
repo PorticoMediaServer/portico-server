@@ -213,7 +213,10 @@ func tryStageBackupFolder(t *testing.T, state, serverID, probe string, change fu
 	if _, e = candidate.Exec(`INSERT INTO configuration(key,value) VALUES('restore_probe',?)`, probe); e != nil {
 		t.Fatal(e)
 	}
-	candidate.Close()
+	if e = candidate.Close(); e != nil {
+		t.Fatal(e)
+	}
+	refreshBackupDatabaseManifest(t, folder)
 	if change != nil {
 		change(folder)
 	}
@@ -305,6 +308,25 @@ func changeBackupDatabase(t *testing.T, folder string, statements ...string) {
 			t.Fatalf("%s: %v", statement, e)
 		}
 	}
+	if e = connection.Close(); e != nil {
+		t.Fatal(e)
+	}
+	if e = candidate.Close(); e != nil {
+		t.Fatal(e)
+	}
+	refreshBackupDatabaseManifest(t, folder)
+}
+
+// refreshBackupDatabaseManifest records a deliberate fixture edit as content
+// produced by the backup writer. Restore tests must reach the startup checks,
+// rather than all passing at the earlier database-checksum boundary.
+func refreshBackupDatabaseManifest(t *testing.T, folder string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(folder, backup.DatabaseName))
+	if err != nil {
+		t.Fatal(err)
+	}
+	replaceBackupFile(t, folder, backup.DatabaseName, raw)
 }
 
 // startable runs the loads start-up performs on a state folder, with the code

@@ -133,21 +133,21 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/administration.go:218
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.FilesystemPage]](registry, apikit.Metadata{ID: "get_admin_filesystem", Method: "GET", Path: "/v1/admin/filesystem", Summary: "Read server filesystem", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.FilesystemPage]](registry, apikit.Metadata{ID: "get_admin_filesystem", Method: "GET", Path: "/v1/admin/filesystem", Summary: "Read server filesystem", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:232
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.LibrarySettingsIndex]](registry, apikit.Metadata{ID: "get_admin_library_settings", Method: "GET", Path: "/v1/admin/library-settings", Summary: "Read server library settings", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.LibrarySettingsIndex]](registry, apikit.Metadata{ID: "get_admin_library_settings", Method: "GET", Path: "/v1/admin/library-settings", Summary: "Read server library settings", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:243
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.AnalysisMatrix]](registry, apikit.Metadata{ID: "get_admin_analysis_operations", Method: "GET", Path: "/v1/admin/analysis-operations", Summary: "Read server analysis operations", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.AnalysisMatrix]](registry, apikit.Metadata{ID: "get_admin_analysis_operations", Method: "GET", Path: "/v1/admin/analysis-operations", Summary: "Read server analysis operations", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdminHeavy, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:249
 	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[struct {
 		Providers []administration.MetadataProvider `json:"providers"`
-	}]](registry, apikit.Metadata{ID: "get_admin_metadata_providers", Method: "GET", Path: "/v1/admin/metadata-providers", Summary: "Read server metadata providers", Access: apikit.Owner, Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	}]](registry, apikit.Metadata{ID: "get_admin_metadata_providers", Method: "GET", Path: "/v1/admin/metadata-providers", Summary: "Read server metadata providers", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:262

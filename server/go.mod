@@ -1,6 +1,6 @@
 module portico.local/server
 
-go 1.26.2
+go 1.26.9
 
 require (
 	golang.org/x/crypto v0.56.0

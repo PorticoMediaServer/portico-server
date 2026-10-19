@@ -52,6 +52,11 @@ var (
 	// MissingTitleRules are the owner's choices for when a title whose files
 	// have gone from disk is removed.
 	MissingTitleRules = []string{"immediately", "after_days", "never"}
+	// SegmentDetectionModes are the server's intro and credits detection
+	// choices: off; standard, which compares the sound of a show's episodes;
+	// thorough, which also reads the picture near the end of every episode
+	// and film. Libraries may follow this or choose for themselves.
+	SegmentDetectionModes = []string{"off", "standard", "thorough"}
 	// Administration (workstream G) publishes connectivity and diagnostics
 	// policy through this same registry, so the console has one authority for
 	// every server setting rather than a second document per feature area.
@@ -110,6 +115,7 @@ func Registry() []Field {
 		field("updates.feedUrl", "updates", "string", DefaultUpdateFeedURL, nil, nil, nil, "hot", "administration updates report", "Release feed checked for newer versions. Clear the address to turn update checks off."),
 		field("library.missingTitles", "library", "enumeration", "after_days", nil, nil, MissingTitleRules, "hot", "catalog missing titles", "When a title whose files are no longer on disk is removed from the library: immediately, after a number of days, or never. Until then it stays, marked missing, and a file that comes back restores it. Each profile's watch state is kept either way."),
 		field("library.missingTitlesDays", "library", "integer", 30, bounded(1), bounded(3650), nil, "hot", "catalog missing titles", "How many days a missing title is kept when the rule is after a number of days."),
+		field("library.segmentDetection", "library", "enumeration", "standard", nil, nil, SegmentDetectionModes, "hot", "mediaanalysis segment detection", "Finds intros and end credits so viewers can skip them. Standard compares the sound of a show's episodes and costs a few seconds of processing per episode. Thorough also reads the picture near the end of every episode and film to find credits and post-credits scenes; it decodes video and takes minutes per file. Each library can follow this or choose its own."),
 		field("remoteSignInPolicy", "connectivity", "enumeration", "allow", nil, nil, RemoteSignInPolicies, "next-operation", "sign-in admission", "Who may sign in from outside this network. Owner-only still allows existing remote sessions to finish."),
 		field("remoteBitrateLimitKbps", "connectivity", "integer", 0, bounded(0), bounded(200000), nil, "next-operation", "playback delivery planning", "Server-wide ceiling on video bitrate for remote playback, in kbps. 0 means no ceiling."),
 		field("lanNetworks", "connectivity", "string-list", networkpolicy.DefaultHomeNetworks(), nil, nil, nil, "hot", "connectivity status and remote classification", "Home networks. Only these addresses count as local. An empty list makes every connection remote."),
@@ -124,6 +130,7 @@ func Registry() []Field {
 		field("customCertificateKeyPath", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener", "Path to the PEM private key for the custom certificate."),
 		field("customCertificateDomain", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener and route publication", "The domain the custom certificate serves. It is published to members as an access URL on the remote access port."),
 		field("lanDiscoveryEnabled", "connectivity", "boolean", true, nil, nil, nil, "hot", "LAN discovery advertisement", "Advertise this server on the local network with mDNS/Bonjour. The connectivity status report says whether this host can."),
+		field("dlnaEnabled", "connectivity", "boolean", false, nil, nil, nil, "hot", "DLNA server", "Let DLNA players on the home networks browse and play every library without signing in. Off by default; never offered outside the home networks."),
 		field("deviceApprovalRequired", "access", "boolean", false, nil, nil, nil, "next-operation", "identity device registration", "Hold each new device until the owner or an administrator approves it. The owner's own devices are never held. Devices already in use stay approved."),
 		field("apiRequestsPerMinute", "access", "integer", 0, bounded(0), bounded(100000), nil, "hot", "API key and access token admission", "How many requests one API key or personal access token may make each minute. 0 uses the default of 600."),
 		field("blockMemberAccessTokens", "access", "boolean", false, nil, nil, nil, "next-operation", "personal access token creation", "Stop members creating personal access tokens. Tokens that already exist keep working until they are revoked."),
@@ -189,6 +196,10 @@ type Settings struct {
 	// files are no longer on disk (catalog.MissingRule reads them).
 	MissingTitles     string `json:"library.missingTitles"`
 	MissingTitlesDays int    `json:"library.missingTitlesDays"`
+	// SegmentDetection is the server's intro and credits detection mode
+	// (SegmentDetectionModes). A document saved before the field existed
+	// reads as empty, which is the default, standard.
+	SegmentDetection string `json:"library.segmentDetection"`
 	// Connectivity, access and diagnostics policy (workstream G). The console
 	// document is their single authority; the typed /v1/admin/connectivity and
 	// /v1/admin/logs endpoints project these same fields.
@@ -199,6 +210,10 @@ type Settings struct {
 	LANNetworks            []string `json:"lanNetworks"`
 	AccessURLs             []string `json:"accessUrls"`
 	LANDiscoveryEnabled    bool     `json:"lanDiscoveryEnabled"`
+	// DLNAEnabled is the owner's one DLNA switch: anonymous browsing and
+	// playback of everything, for players on the home networks only. Off is
+	// the zero value, so a document saved before the field existed reads off.
+	DLNAEnabled bool `json:"dlnaEnabled"`
 	// Network parity with the usual self-hosted servers (25 Sep): proxies that
 	// may speak for the client address, the server's own public address counted
 	// as the LAN, the owner's upload capacity (the remote stream budget), the
@@ -225,7 +240,7 @@ type LogRetention struct {
 // DefaultSettings is the registry's own answer before any owner write, so a
 // fresh database and a document saved before these fields existed agree.
 func DefaultSettings() Settings {
-	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30,
+	return Settings{AnalysisStorageGiB: 32, AnalysisStageStorageMiB: 256, SubtitleTrackLimit: medialimits.DefaultSubtitleTracks, SubtitleFileLimitMiB: medialimits.DefaultSubtitleFileMiB, Name: "Portico", TranscodingEnabled: true, HDRToneMapping: true, HardwareBackend: "auto", HDRToneMappingAlgorithm: "hable", X264Preset: "veryfast", DirectStreamRemux: true, PlanningPolicy: "maximum_fidelity", ThrottleBufferMs: 60000, PlayedRetentionMs: 180000, SessionStorageMiB: 4096, DiagnosticDays: 30, NotificationDays: 180, JobDays: 30, UpdateChannel: "stable", UpdateFeedURL: DefaultUpdateFeedURL, MissingTitles: "after_days", MissingTitlesDays: 30, SegmentDetection: "standard",
 		RemoteSignInPolicy: "allow", LANNetworks: networkpolicy.DefaultHomeNetworks(), AccessURLs: []string{}, LANDiscoveryEnabled: true, TrustedProxies: []string{}, LogLevel: "info", LogRetention: []LogRetention{}}
 }
 
@@ -445,6 +460,12 @@ func validateSettings(v *Settings) error {
 	}
 	if v.MissingTitlesDays < 1 || v.MissingTitlesDays > 3650 {
 		fields = append(fields, "values.library.missingTitlesDays")
+	}
+	if v.SegmentDetection == "" {
+		v.SegmentDetection = "standard"
+	}
+	if !oneOf(v.SegmentDetection, SegmentDetectionModes) {
+		fields = append(fields, "values.library.segmentDetection")
 	}
 	fields = append(fields, validateAdministration(v)...)
 	if len(fields) > 0 {

@@ -53,12 +53,16 @@ func New(root, binary string, store *storage.Client) (*Service, error) {
 }
 
 func (s *Service) Prepare(ctx context.Context, library, path string, f assets.Facts) assets.Facts {
-	return s.PrepareKind(ctx, library, "music", path, f)
+	return s.PrepareKind(ctx, library, "music", "", path, f)
 }
-func (s *Service) PrepareKind(ctx context.Context, library, kind, path string, f assets.Facts) assets.Facts {
+
+// PrepareKind adds a music or audiobook file's local evidence: sidecars, cover
+// and, for an audiobook, cue/sidecar chapters and what its folders under the
+// library root say (root may be empty when unknown).
+func (s *Service) PrepareKind(ctx context.Context, library, kind, root, path string, f assets.Facts) assets.Facts {
 	ctx, cancel := context.WithTimeout(ctx, 20*time.Second)
 	defer cancel()
-	f = s.prepareAudioEvidence(ctx, library, kind, path, f)
+	f = s.prepareAudioEvidence(ctx, library, kind, root, path, f)
 	if s.storage != nil {
 		if raw, e := s.storage.ReadAudioCover(ctx, library, path); e == nil {
 			if key, e := s.store(raw); e == nil {

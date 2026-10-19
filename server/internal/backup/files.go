@@ -207,8 +207,24 @@ func readManifest(dir string) (Manifest, error) {
 	if err = json.Unmarshal(raw, &manifest); err != nil {
 		return manifest, err
 	}
-	if manifest.Format != Format || manifest.Version != Version {
+	if manifest.Format != Format || (manifest.Version != Version && manifest.Version != LegacyVersion) {
 		return manifest, ErrInvalid
+	}
+	if _, ok := stateFileNames(manifest.Files); !ok {
+		return manifest, ErrSourceInvalid
+	}
+	database := false
+	for _, entry := range manifest.Files {
+		digest, err := hex.DecodeString(entry.SHA256)
+		if entry.Bytes < 0 || err != nil || len(digest) != sha256.Size {
+			return manifest, ErrSourceInvalid
+		}
+		database = database || entry.Name == DatabaseName
+	}
+	// Version 1 ordinary backups omitted the database. Keep that deliberate
+	// recovery path, with SQLite/schema validation still mandatory in Stage.
+	if manifest.Version == Version && !database {
+		return manifest, ErrSourceInvalid
 	}
 	return manifest, nil
 }
@@ -326,4 +342,52 @@ func regularManifestFile(root, name string) error {
 		}
 	}
 	return nil
+}
+
+// checkSourceHashes also refuses unverified WAL frames: SQLite would replay
+// them over an otherwise verified database during candidate inspection. Empty
+// unlisted WALs are harmless and can be created by a concurrent read-only open.
+func checkSourceHashes(dir string, manifest Manifest) error {
+	if err := checkManifestHashes(dir, manifest.Files); err != nil {
+		return err
+	}
+	for _, entry := range manifest.Files {
+		if entry.Name == DatabaseName+"-wal" {
+			return nil
+		}
+	}
+	info, err := os.Lstat(filepath.Join(dir, DatabaseName+"-wal"))
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil || !info.Mode().IsRegular() {
+		return ErrSourceInvalid
+	}
+	if info.Size() != 0 {
+		return ErrIntegrity
+	}
+	return nil
+}
+
+// hashFile hashes a finalized regular payload without loading it into memory.
+func hashFile(ctx context.Context, folder, name string) (FileEntry, error) {
+	entry := FileEntry{Name: name}
+	if err := regularManifestFile(folder, name); err != nil {
+		return entry, err
+	}
+	file, err := os.Open(filepath.Join(folder, filepath.FromSlash(name)))
+	if err != nil {
+		return entry, err
+	}
+	hash := sha256.New()
+	size, copyErr := io.Copy(hash, &scrubReader{ctx: ctx, r: file})
+	closeErr := file.Close()
+	if copyErr != nil {
+		return entry, copyErr
+	}
+	if closeErr != nil {
+		return entry, closeErr
+	}
+	entry.Bytes, entry.SHA256 = size, hex.EncodeToString(hash.Sum(nil))
+	return entry, nil
 }

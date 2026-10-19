@@ -14,11 +14,15 @@ import (
 )
 
 func (d Dependencies) adminRequest(r *http.Request, kind string) (catalog.AdminRequest, error) {
-	p, e := d.owner(r)
+	p, e := d.libraryAdministrationRead(r, r.PathValue("id"))
 	if e != nil {
 		return catalog.AdminRequest{}, e
 	}
 	out := catalog.AdminRequest{ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%s:%d", presentationIdentity(p), p.Epoch)))), Limit: 40, LibraryID: r.PathValue("id")}
+	out.Authorize = func(ctx context.Context, tx *sql.Tx, library string) error {
+		return d.libraryAdministrationAuthorize(ctx, tx, p, library)
+	}
+	out.LibraryScope = d.libraryAdministrationScope(p)
 	for key, values := range r.URL.Query() {
 		if len(values) != 1 {
 			return out, catalog.ErrAdminQuery
@@ -83,7 +87,7 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 				failure(w, e)
 				return
 			}
-			if _, e = d.owner(r); e != nil {
+			if _, e = d.libraryAdministrationRead(r, q.LibraryID); e != nil {
 				failure(w, e)
 				return
 			}
@@ -92,7 +96,7 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 	}
 	// The owner's order of the libraries, as every client lists them (GET /v1/libraries).
 	d.httpHandle(mux, "PUT /v1/admin/libraries/order", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.administrator(r)
 		if e != nil {
 			failure(w, e)
 			return
@@ -104,7 +108,9 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		if e = d.Catalog.OrderLibraries(r.Context(), body.LibraryIDs, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }); e != nil {
+		if e = d.Catalog.OrderLibraries(r.Context(), body.LibraryIDs, func(tx *sql.Tx) error {
+			return d.libraryAdministrationAuthority(p, body.LibraryIDs...)(r.Context(), tx)
+		}); e != nil {
 			failure(w, e)
 			return
 		}
@@ -112,7 +118,7 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 	})
 	// How one show's episodes are presented (Spec — Title Pages §4): the owner's, from the show's page.
 	d.httpHandle(mux, "PUT /v1/admin/libraries/{id}/shows/{show}/settings", func(w http.ResponseWriter, r *http.Request) {
-		p, e := d.owner(r)
+		p, e := d.administrator(r)
 		if e != nil {
 			failure(w, e)
 			return
@@ -122,7 +128,7 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		out, e := d.Catalog.SetShowSettings(r.Context(), r.PathValue("id"), r.PathValue("show"), body, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, r.PathValue("id")) })
+		out, e := d.Catalog.SetShowSettings(r.Context(), r.PathValue("id"), r.PathValue("show"), body, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, r.PathValue("id")) })
 		if e != nil {
 			failure(w, e)
 			return
@@ -143,12 +149,12 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		p, e := d.owner(r)
+		p, e := d.administrator(r)
 		if e != nil {
 			failure(w, e)
 			return
 		}
-		if e = d.Catalog.RenameLibrary(r.Context(), q.LibraryID, body.Name, body.ExpectedRevision, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") }); e != nil {
+		if e = d.Catalog.RenameLibrary(r.Context(), q.LibraryID, body.Name, body.ExpectedRevision, func(tx *sql.Tx) error { return d.libraryAdministrationAuthorize(r.Context(), tx, p, q.LibraryID) }); e != nil {
 			if errors.Is(e, catalog.ErrLibraryConfigurationConflict) {
 				write(w, 409, map[string]any{"error": map[string]any{"code": "library_configuration_conflict", "message": publicErrorMessage("library_configuration_conflict"), "retryable": false}})
 				return
@@ -161,7 +167,7 @@ func (d Dependencies) adminRoutes(mux *http.ServeMux) {
 			failure(w, e)
 			return
 		}
-		if _, e = d.owner(r); e != nil {
+		if _, e = d.libraryAdministrationRead(r, q.LibraryID); e != nil {
 			failure(w, e)
 			return
 		}

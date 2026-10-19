@@ -337,7 +337,17 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 			r.Errors().Write(w, "", v1Error(downloadError(e)))
 			return
 		}
-		defer out.Reader.Close()
+		reader := newDownloadReader(q.Context(), out.Reader, func() error {
+			scope, err := d.Downloads.ResolveGrant(q.Context(), q.PathValue("grant"))
+			if err != nil {
+				return err
+			}
+			if scope.Artifact != out.Artifact {
+				return downloads.ErrUnavailable
+			}
+			return d.allowedLibrary(q.Context(), identity.Principal{Viewer: scope.Viewer}, scope.LibraryID)
+		})
+		defer reader.Close()
 		if e = d.allowedLibrary(q.Context(), identity.Principal{Viewer: out.Viewer}, out.LibraryID); e != nil {
 			r.Errors().Write(w, "", &apierror.Error{Code: "invalid_download_grant", Cause: e})
 			return
@@ -352,7 +362,7 @@ func registerDownloads(r *apikit.Registry, d Dependencies) {
 		w.Header().Set("X-Portico-Artifact-Sha256", out.Artifact.SHA256)
 		body := withRollingDeadline(w)
 		defer body.release()
-		http.ServeContent(body, q, out.Artifact.FileName, out.Modified, out.Reader)
+		http.ServeContent(body, q, out.Artifact.FileName, out.Modified, reader)
 	}
 	rawRoute := func(id, method, path, summary string, lane apikit.Lane, query []string, serve http.HandlerFunc) {
 		m := apikit.Metadata{ResponseContentType: "application/octet-stream", Admission: admission(id), ID: id, Method: method, Path: path, Summary: summary, Access: apikit.Public, Requires: scope(id), Lane: lane, Cost: apikit.Constant, Status: 200, Query: query, Errors: []string{"invalid_request", "invalid_download_grant", "downloads_not_allowed", "download_unavailable", "download_not_ready", "download_source_offline", "downloads_unavailable", "not_found", "internal"}}

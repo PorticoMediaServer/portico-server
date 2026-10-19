@@ -1,6 +1,8 @@
 import {routePath} from "../../contracts/src/routes.ts";
 /** P09 connection evidence. None of these values grants a viewer or media lease. */
 export type ServerPin = Readonly<{serverId:string;publicKey:string;fingerprint:string}>;
+/** Verified route identity plus optional authorization of exact TLS leaf certificates. */
+export type RouteProof = Readonly<ServerPin & {tlsCertificateFingerprints?:readonly string[]}>;
 export type SignedRoutes = Readonly<{payload:string;signature:string}>;
 export type RouteKey = Readonly<{keyId:string;publicKey:string}>;
 export type RouteCandidate = Readonly<{baseUrl:string;class:'lan'|'public'|'manual';quality:'reachable'|'probe_required';generation:string}>;
@@ -114,18 +116,25 @@ export async function routeJSON(response:Response,signal:AbortSignal,max=32768):
  const reader=response.body.getReader(),chunks:Uint8Array[]=[];let length=0;const abort=()=>{void reader.cancel().catch(()=>{});};signal.addEventListener('abort',abort,{once:true});
  try{for(;;){if(signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');const next=await reader.read();if(next.done)break;length+=next.value.byteLength;if(length>max)throw new RouteError('invalid_response','Connection response exceeded its limit.');chunks.push(next.value);}if(signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');const bytes=new Uint8Array(length);let n=0;for(const b of chunks){bytes.set(b,n);n+=b.length;}return JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));}finally{signal.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});try{reader.releaseLock();}catch{}}
 }
-export async function probeRoute(origin:string,pin:ServerPin|undefined,options:{fetcher?:typeof fetch;crypto?:RouteCrypto;signal?:AbortSignal;now?:()=>number}={}):Promise<ServerPin> {
+export async function probeRoute(origin:string,pin:ServerPin|undefined,options:{fetcher?:typeof fetch;crypto?:RouteCrypto;signal?:AbortSignal;now?:()=>number}={}):Promise<RouteProof> {
  const baseUrl=routeOrigin(origin),crypto=options.crypto??webRouteCrypto,nonce=routeBase64(crypto.random(32));
  const controller=new AbortController(),cancel=()=>controller.abort();options.signal?.addEventListener('abort',cancel,{once:true});const timer=setTimeout(cancel,3000);
  try{
   if(options.signal?.aborted)cancel();if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');
-  const response=await (options.fetcher??globalThis.fetch)((baseUrl) + routePath("prove_network_identity"),{method:'POST',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Accept:'application/json','Content-Type':'application/json'},body:JSON.stringify({baseUrl,nonce})});
+  const response=await (options.fetcher??globalThis.fetch)((baseUrl) + routePath("prove_network_identity"),{method:'POST',redirect:'error',credentials:'omit',referrerPolicy:'no-referrer',signal:controller.signal,headers:{Accept:'application/json; portico-route-proof=2','Content-Type':'application/json'},body:JSON.stringify({baseUrl,nonce})});
   const signed=envelope(await routeJSON(response,controller.signal,8192)),v=parseSignedJSON(signed);
-  if(v.kind!=='portico.route-proof'||v.version!=='1'||v.baseUrl!==baseUrl||v.nonce!==nonce||typeof v.serverId!=='string'||typeof v.publicKey!=='string'||typeof v.fingerprint!=='string')throw new RouteError('identity_mismatch','The server did not prove this connection.');
+  if(Object.keys(v).some(k=>!['kind','version','baseUrl','nonce','serverId','publicKey','fingerprint','issuedAt','expiresAt',...(v.version==='2'?['tlsCertificateFingerprints']:[])].includes(k))||v.kind!=='portico.route-proof'||(v.version!=='1'&&v.version!=='2')||v.baseUrl!==baseUrl||v.nonce!==nonce||typeof v.serverId!=='string'||typeof v.publicKey!=='string'||typeof v.fingerprint!=='string')throw new RouteError('identity_mismatch','The server did not prove this connection.');
+  let fingerprints:readonly string[]|undefined;
+  if(v.tlsCertificateFingerprints!==undefined){
+   const values=v.tlsCertificateFingerprints;
+   if(!Array.isArray(values)||values.length<1||values.length>8||new Set(values).size!==values.length)throw new RouteError('invalid_identity','Invalid TLS certificate binding.');
+   for(const value of values)routeBytes(value,32);
+   fingerprints=Object.freeze([...values] as string[]);
+  }
   const actual=await serverPin(v.serverId,v.publicKey,v.fingerprint,crypto);if(pin&&!sameServerPin(actual,pin))throw new RouteError('identity_mismatch','This address belongs to a different server. No credentials were sent.');
   if(!await crypto.verify(routeBytes(actual.publicKey,32),routeBytes(signed.signature,64),routeBytes(signed.payload)))throw new RouteError('identity_mismatch','The server could not prove its identity. No credentials were sent.');
   // After the signature: only a proof this server really signed over our nonce can blame the clocks.
   proofTimes(v,30000,options.now?.()??Date.now());
-  if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');return actual;
+  if(controller.signal.aborted)throw new RouteError('cancelled','Connection check cancelled.');return fingerprints?Object.freeze({...actual,tlsCertificateFingerprints:fingerprints}):actual;
  }finally{clearTimeout(timer);options.signal?.removeEventListener('abort',cancel);controller.abort();}
 }

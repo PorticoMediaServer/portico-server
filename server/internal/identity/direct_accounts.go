@@ -340,6 +340,9 @@ func (s *Service) directCallerTx(ctx context.Context, tx *sql.Tx, bearer string,
 	if _, err = s.SessionFamilyTx(ctx, tx, record.principal); err != nil {
 		return c, err
 	}
+	if err = s.checkRecoveryContextTx(ctx, tx, record.principal, record.ID); err != nil {
+		return c, err
+	}
 	// A screen paired as a Cast target plays and does nothing else: no account
 	// route is open to it, whichever profile paired it.
 	if record.principal.Grant == GrantCastTarget {

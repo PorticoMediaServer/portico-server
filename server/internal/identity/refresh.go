@@ -72,6 +72,9 @@ func (s *Service) RefreshSession(ctx context.Context, secret, installation, requ
 	if err = s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
 		return Envelope{}, err
 	}
+	if err = s.checkRecoveryContextTx(ctx, tx, p, family); err != nil {
+		return Envelope{}, err
+	}
 	// Outside the member's allowed hours the renewal is refused before anything
 	// rotates: the refresh credential stays valid and works again later.
 	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {
@@ -131,6 +134,21 @@ func refreshAAD(family, predecessor, installation, request string) string {
 // exact-response replay window (after its successor was used). The caller must
 // commit its revocation.
 func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, installation, request string) (Envelope, string, error) {
+	// Check locality even for rejected reuse before the caller can revoke a
+	// family. A denied remote request must neither disclose a receipt nor mutate
+	// a recovery family that is usable only on the home network.
+	var p Principal
+	var knownFamily string
+	err := tx.QueryRowContext(ctx, `SELECT f.id,f.authority,f.account_id FROM authorization_session_families f WHERE f.id IN (SELECT family_id FROM identity_refresh_predecessors WHERE predecessor_hash=? UNION SELECT family_id FROM identity_refresh_receipts WHERE predecessor_hash=?)`, predecessor, predecessor).Scan(&knownFamily, &p.Authority, &p.AccountID)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return Envelope{}, "", err
+	}
+	if err == nil {
+		if err = s.checkRecoveryContextTx(ctx, tx, p, knownFamily); err != nil {
+			return Envelope{}, "", err
+		}
+	}
+
 	var family, storedRequest, until string
 	var sealed []byte
 	if err := tx.QueryRowContext(ctx, `SELECT family_id,request_id,ciphertext,expires_at FROM identity_refresh_receipts WHERE predecessor_hash=?`, predecessor).Scan(&family, &storedRequest, &sealed, &until); err != nil {
@@ -163,11 +181,14 @@ func (s *Service) replayRefreshTx(ctx context.Context, tx *sql.Tx, predecessor, 
 	if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM authorization_session_families f JOIN identity_refresh_credentials c ON c.family_id=f.id JOIN identity_devices d ON d.id=c.device_id JOIN authorization_family_tokens t ON t.family_id=f.id AND t.generation=f.current_generation WHERE f.id=? AND f.revoked=0 AND d.approval_state='approved' AND d.installation_id=? AND c.token_hash=? AND t.token_hash=?)`, family, installation, Digest(out.RefreshToken), Digest(out.AccessToken)).Scan(&live); err != nil || !live {
 		return Envelope{}, "", ErrRenewalRetired
 	}
-	p := Principal{Viewer: out.Viewer, Hash: Digest(out.AccessToken)}
+	p = Principal{Viewer: out.Viewer, Hash: Digest(out.AccessToken)}
 	if err = tx.QueryRowContext(ctx, `SELECT epoch,server_id FROM authorization_session_families WHERE id=?`, family).Scan(&p.Epoch, &p.ServerID); err != nil {
 		return Envelope{}, "", ErrUnauthorized
 	}
 	if err = s.checkFamilyPrincipalTx(ctx, tx, p); err != nil {
+		return Envelope{}, "", err
+	}
+	if err = s.checkRecoveryContextTx(ctx, tx, p, family); err != nil {
 		return Envelope{}, "", err
 	}
 	if err = admitAccountTx(ctx, tx, p.AccountID); err != nil {

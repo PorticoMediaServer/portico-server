@@ -117,7 +117,7 @@ export const show = createRoute({
   validateSearch: (raw: Record<string, unknown>): {library?: string; season?: string; episode?: string; title?: string} & GroupSearch => ({library: str(raw.library), season: str(raw.season), episode: str(raw.episode), title: str(raw.title), ...groupSearch(raw)}),
   component: ShowScreen,
 });
-/** The episode panel over its show (Spec — Title Pages §3); a direct visit opens the show with the panel open. */
+/** An episode opened in place on its show's page (Spec — Title Pages §3); a direct visit opens the show with it open. */
 export const showEpisode = createRoute({
   getParentRoute: () => app,
   path: '/show/$showId/episode/$episodeId',

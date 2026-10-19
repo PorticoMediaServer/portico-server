@@ -34,7 +34,7 @@ export function ServerlessShell({device}: {device?: DeviceAccess}) {
     <div className={cx(s.frame, compact && l.compact)}>
       {!compact ? (
         <nav className={s.rail} aria-label={t('web.shell.primary')}>
-          <span className={s.brand}><BrandMark size={26} /><span><Wordmark height={16} /></span></span>
+          <span className={s.brand}><BrandMark size={28} className={s.brandMark} /><span className={s.brandWord}><Wordmark height={28} /></span></span>
           <div className={s.railGroup}>
             <ListRow icon="home" title={t('web.shell.home')} />
           </div>

@@ -5,12 +5,12 @@ import type {PlaybackSnapshot} from './index.ts';
 import {firstOfEach,keepReadable,oneOfOr} from './tolerant.ts';
 import {wireDurations} from './wire-units.ts';
 
-export const analysisOperations = ['checksum','chapter_images','trickplay','waveform','loudness','fingerprint','segment_detection'] as const;
+export const analysisOperations = ['checksum','chapter_images','trickplay','waveform','loudness','fingerprint'] as const;
 export type AnalysisOperation = typeof analysisOperations[number];
 export type AnalysisTarget = Readonly<{libraryId:string;itemId:string;sourceId?:string;sessionId?:string;generation?:number}>;
 export type AnalysisScope = Readonly<{serverId:string;libraryId:string;itemId:string;viewerFence:string;sessionId:string;sessionGeneration:number}>;
 export type AnalysisSource = Readonly<{id:string;revision:string;mappingRevision:string;durationUS:string;needsProbe:boolean}>;
-export type AnalysisMarker = Readonly<{id:string;kind:'intro'|'recap'|'credits'|'commercial'|'chapter';title:string;startUS:string;endUS:string;confidence:number;provenance:string;approved:boolean;edited:boolean}>;
+export type AnalysisMarker = Readonly<{id:string;kind:'intro'|'recap'|'credits'|'commercial'|'outro'|'chapter';title:string;startUS:string;endUS:string;confidence:number;provenance:string;approved:boolean;edited:boolean}>;
 export type AnalysisPreview = Readonly<{id:string;kind:'trickplay'|'chapter_images';startUS:string;endUS:string;width:number;height:number}>;
 export type AnalysisResult = Readonly<{stage:AnalysisOperation;algorithm:string;originAssurance:string;createdMS:number;summary:Readonly<Record<string,unknown>>;artifactId?:string}>;
 export type AnalysisJob = Readonly<{jobId:string;jobStatus:string;stage:string;state:string;attempt:number;processedBytes:string;errorCode:string;updatedMS:number}>;
@@ -50,7 +50,7 @@ export function parseAnalysis(raw:unknown,bound:ContentScope,t:AnalysisTarget):A
  // A tier this app does not know reads as custom: the operations the server lists are what it shows.
  const tier=oneOfOr('analysis','policy.tier',p.tier,['file_list_only','basic','complete','custom'] as const,'custom');
  const results=firstOfEach('analysis','results',keepReadable('analysis','results',list(raw.results,16),r=>{assert(object(r)&&analysisOperations.includes(r.stage as AnalysisOperation)&&text(r.algorithm,128)&&['observed_acquisition','strong_version'].includes(String(r.originAssurance))&&integer(r.createdMS)&&object(r.summary)&&(!r.artifactId||opaque(r.artifactId)));return Object.freeze({...r,summary:Object.freeze({...r.summary})}) as AnalysisResult;}),r=>r.stage);
- const markers=firstOfEach('analysis','markers',keepReadable('analysis','markers',list(raw.markers,512),m=>{assert(object(m)&&opaque(m.id)&&['intro','recap','credits','commercial','chapter'].includes(String(m.kind))&&text(m.title,512)&&text(m.provenance,512)&&analysisMicroseconds(m.startUS)&&analysisMicroseconds(m.endUS)&&Number(m.startUS)<Number(m.endUS)&&Number(m.endUS)<=Number(source.durationUS)&&typeof m.confidence==='number'&&Number.isFinite(m.confidence)&&m.confidence>=0&&m.confidence<=1&&typeof m.approved==='boolean'&&typeof m.edited==='boolean');return Object.freeze({...m}) as AnalysisMarker;}),m=>m.id);
+ const markers=firstOfEach('analysis','markers',keepReadable('analysis','markers',list(raw.markers,512),m=>{assert(object(m)&&opaque(m.id)&&['intro','recap','credits','commercial','outro','chapter'].includes(String(m.kind))&&text(m.title,512)&&text(m.provenance,512)&&analysisMicroseconds(m.startUS)&&analysisMicroseconds(m.endUS)&&Number(m.startUS)<Number(m.endUS)&&Number(m.endUS)<=Number(source.durationUS)&&typeof m.confidence==='number'&&Number.isFinite(m.confidence)&&m.confidence>=0&&m.confidence<=1&&typeof m.approved==='boolean'&&typeof m.edited==='boolean');return Object.freeze({...m}) as AnalysisMarker;}),m=>m.id);
  const previews=keepReadable('analysis','previews',list(raw.previews,12),p=>{assert(object(p)&&opaque(p.id)&&['trickplay','chapter_images'].includes(String(p.kind))&&analysisMicroseconds(p.startUS)&&analysisMicroseconds(p.endUS)&&Number(p.startUS)<Number(p.endUS)&&Number(p.endUS)<=Number(source.durationUS)&&integer(p.width)&&p.width>0&&p.width<=4096&&integer(p.height)&&p.height>0&&p.height<=4096);return Object.freeze({...p}) as AnalysisPreview;});
  const jobs=keepReadable('analysis','jobs',list(raw.jobs,33),j=>{assert(object(j)&&text(j.jobId,256)&&j.jobId&&text(j.jobStatus,64)&&text(j.stage,64)&&text(j.state,64)&&integer(j.attempt)&&analysisMicroseconds(j.processedBytes)&&text(j.errorCode,128)&&integer(j.updatedMS));return Object.freeze({...j}) as AnalysisJob;});
  const sources=keepReadable('analysis','sources',list(raw.sources,32),v=>{assert(object(v)&&text(v.id,256)&&v.id&&text(v.label,128));return Object.freeze({id:v.id,label:v.label});});
@@ -127,9 +127,9 @@ export function analysisInputUS(seconds:string):string {
  if(!analysisMicroseconds(value))throw new Error('Time is outside the supported range.');return value;
 }
 export function analysisInputSeconds(us:string):string {if(!analysisMicroseconds(us))throw new Error('Invalid time.');const value=us.padStart(7,'0');return `${value.slice(0,-6)}.${value.slice(-6)}`;}
-export const analysisLabels:Record<string,string>={probe:'Technical probe',local_metadata:'Local metadata',subtitles:'Local subtitles',checksum:'SHA-256 checksum',chapter_images:'Chapter images',trickplay:'Seek previews',waveform:'Waveform',loudness:'Loudness (measurement only)',fingerprint:'Audio fingerprint',segment_detection:'Segment candidates'};
+export const analysisLabels:Record<string,string>={probe:'Technical probe',local_metadata:'Local metadata',subtitles:'Local subtitles',checksum:'SHA-256 checksum',chapter_images:'Chapter images',trickplay:'Seek previews',waveform:'Waveform',loudness:'Loudness (measurement only)',fingerprint:'Audio fingerprint'};
 export const analysisGroups:readonly {label:string;operations:readonly string[]}[]=[
  {label:'Bounded metadata reads',operations:['probe','local_metadata','subtitles']},
  {label:'Preview images · repeated or full video reads',operations:['chapter_images','trickplay']},
- {label:'Deep analysis · full media reads',operations:['checksum','waveform','loudness','fingerprint','segment_detection']},
+ {label:'Deep analysis · full media reads',operations:['checksum','waveform','loudness','fingerprint']},
 ];

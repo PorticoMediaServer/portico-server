@@ -685,7 +685,8 @@ func restrictionWriteRoutes() map[string]writeRoute {
 
 		// Registrations the lane table records in unusual forms.
 		"/":                                    writeExempt("the web app shell and first-run setup page (installation.go): static; no catalogue ids"),
-		"/dlna/":                               writeExempt("no handler is registered for it (stale lane entry); the admission test keeps the table complete"),
+		"/dlna/":                               writeExempt("the owner's DLNA switch (dlna_routes.go): no profile and no write; when on it deliberately serves every library to the home network, ignoring profile restrictions"),
+		"/dlna/media/":                         writeExempt("DLNA media bodies (dlna_routes.go): read-only, profile-free by the owner's choice; LAN-only and off by default"),
 		"POST ":                                writeExempt("the lane scanner's reading of a concatenated registration (screen_metadata.go: \"POST \"+base+\"/search\" and \"/retry\"); owner-only screen metadata, refused to a member (probed through PUT /v1/libraries/{id}/metadata/screen)"),
 		"PUT ":                                 writeExempt("the lane scanner's reading of a concatenated registration (screen_metadata.go: \"PUT \"+base); owner-only screen metadata"),
 		"HEAD /v1/media/{grant}/audio":         writeExempt(reasonGrantWrite + " (HEAD of a grant-bound media URL)"),

@@ -1,7 +1,7 @@
 import React, {useCallback} from 'react';
 import type {ContentEntry, ContentSection} from '@core/library-content.ts';
-import {captionFor, continueTitle, formatDuration, iconFor, isContinueRow, progressFor, shapeFor} from '@core/presentation/index.ts';
-import {cardCaptionOf, continueCaptionOf} from '../../app/content';
+import {captionFor, formatDuration, iconFor, isContinueRow, progressFor, shapeFor} from '@core/presentation/index.ts';
+import {cardCaptionOf, cardLinesOf} from '../../app/content';
 import {useEntryHref, useOpenEntry} from '../../app/open';
 import {accumulatePage, SECTION_WINDOW_AT, type PageStore} from './section-pages';
 import {arrivals} from '@core/freshness-actions.ts';
@@ -288,10 +288,13 @@ export const EntryCard = React.memo(function EntryCard({entry, siblings, inShow,
     }
     actions.toggle(entry);
   }, [actions, siblings, entry]);
+  const lines = cardLinesOf(entry, resume);
   return (
     <Card
-      title={resume ? continueTitle(entry) : entry.title}
-      caption={resume ? continueCaptionOf(entry) : cardCaptionOf(entry)}
+      title={lines.title}
+      caption={lines.caption}
+      detail={lines.detail}
+      name={lines.title !== entry.title || lines.detail ? [lines.title, lines.caption, lines.detail].filter(Boolean).join(', ') : undefined}
       className={arrived ? 'card-arrived' : undefined}
       path={entry.posterUrl ?? entry.backdropUrl}
       shape={shape}

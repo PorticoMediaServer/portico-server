@@ -22,6 +22,9 @@ type AccessArea struct {
 	Logs       *servicelog.Recorder
 	ClientLogs *servicelog.ClientLogStore
 	Advertiser *connectivity.Advertiser
+	// DLNA starts and stops the SSDP advertisement with the owner's switch;
+	// the /dlna/ routes read the switch themselves on every request.
+	DLNA *connectivity.Advertiser
 }
 
 // administrationRoutes registers every route in the people, diagnostics and

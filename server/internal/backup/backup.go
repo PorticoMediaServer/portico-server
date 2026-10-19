@@ -46,7 +46,9 @@ const (
 	RestoreResultFile = "restore-result.json"
 	// Format and Version identify the manifest shape.
 	Format  = "portico-backup"
-	Version = 1
+	Version = 2
+	// LegacyVersion predates mandatory database hashes. It remains readable for recovery.
+	LegacyVersion = 1
 	// DefaultKeepCount is the shipped scheduled-backup retention, matching the
 	// maintenance settings default.
 	DefaultKeepCount = 7
@@ -477,6 +479,13 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 			return "", err
 		}
 	}
+	// The scrubber may have written WAL frames. Fold them into the database
+	// and close SQLite before flushing/hashing the final standalone payload.
+	database, err := finalizeDatabase(ctx, filepath.Join(partial, DatabaseName))
+	if err != nil {
+		_ = os.RemoveAll(partial)
+		return "", err
+	}
 	if job != nil {
 		job.report("files", estimate, estimate)
 	}
@@ -485,6 +494,7 @@ func (s *Service) createBackup(ctx context.Context, job *Job, kind Kind) (string
 		_ = os.RemoveAll(partial)
 		return "", err
 	}
+	entries = append(entries, database)
 	manifest := Manifest{
 		Format: Format, Version: Version,
 		ServerID: s.serverID, ServerVersion: s.serverVersion,

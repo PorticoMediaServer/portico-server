@@ -30,6 +30,12 @@ func OpenIsolatedPlayback(ctx context.Context, db *sql.DB, c *storage.Client, se
 	if e != nil {
 		return nil, e
 	}
+	return OpenIsolatedSource(ctx, c, v)
+}
+
+// OpenIsolatedSource opens a catalogued local file through the storage helper,
+// checked against the size and modification time the catalogue recorded.
+func OpenIsolatedSource(ctx context.Context, c *storage.Client, v PlaybackSource) (*IsolatedPlaybackReader, error) {
 	// A local file is opened and version-checked once by the supervised helper,
 	// which hands back the open descriptor and exits; the bytes are then read
 	// in-process. The fully isolated reader keeps a helper process alive for

@@ -5,13 +5,15 @@ import {formatClock} from '@core/presentation/index.ts';
 import type {PlayerEngine} from './engine';
 import type {SkipMode} from './SkipPrompt';
 import {upNextCountdown, upNextOffer, type ClosingMarker, type UpNextOffer} from '@core/up-next.ts';
+import {followedByScene} from '@core/segment-skip.ts';
 import s from './Player.module.css';
 
 type NextTitle = Readonly<{title: string; kind: string; posterUrl?: string; stillUrl?: string}>;
 
 /**
  * The next title, offered in a corner while the credits run, with its artwork and a countdown.
- * "Play now" goes straight to it; "Watch credits" puts the card away for this title. The count
+ * "Play now" goes straight to it; "Watch credits" puts the card away for this title. When a scene
+ * follows the credits, "Skip credits" goes to that scene instead. The count
  * starts the next title by itself only where `upNextCountdown` says so (the viewer's "Start the next
  * episode during the credits", off by default, with autoplay on and credits the server is sure of);
  * otherwise it says when the end card will start it.
@@ -56,6 +58,7 @@ export function UpNextCredits({engine, offer, next, postPlay, rate, onDismiss}: 
   const due = countdown?.automatic && countdown.seconds <= 0;
   useEffect(() => { if (due) leave(true); }); // eslint-disable-line react-hooks/exhaustive-deps
   const episode = next.kind === 'episode';
+  const scene = !!offer.marker && followedByScene(offer.marker, state.duration);
   const art = next.stillUrl ?? next.posterUrl;
   const total = Math.max(1, postPlay?.countdownSeconds ?? 10);
   return (
@@ -71,6 +74,7 @@ export function UpNextCredits({engine, offer, next, postPlay, rate, onDismiss}: 
       {countdown?.automatic ? <div className={s.upNextMeter} aria-hidden><i style={{width: `${Math.min(100, (elapsed / total) * 100)}%`}} /></div> : null}
       <div className={s.upNextActions}>
         <Button variant="glass" icon="play" label={t('player.upNext.playNow')} onClick={() => leave(false)} />
+        {scene && offer.marker ? <Button variant="glass" icon="forward" label={t('player.skip', {kind: offer.marker.kind})} onClick={() => { const marker = offer.marker!; engine.service.markerSkipped(marker.id, 'manual', engine.state.positionSeconds); onDismiss(); engine.seekTo(marker.endSeconds); }} /> : null}
         <Button variant="ghost" size="sm" label={t(offer.marker ? 'player.upNext.watchCredits' : 'player.upNext.notNow')} onClick={onDismiss} />
       </div>
     </div>

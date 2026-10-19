@@ -97,7 +97,13 @@ func openBridge(ctx context.Context, input subtitles.RenderInput, ledger *extent
 		case <-r.Context().Done():
 			return
 		}
-		if input.Validate(r.Context()) != nil {
+		// A decoder hangs up mid-response whenever it seeks or has read all it
+		// needs. That ends this response, never a read already sent to the
+		// source: the observed source reader gives up on itself when a read it
+		// is serving is cancelled, which would lose the input for every later
+		// request of the same analysis. Source calls run under the bridge's own
+		// lifetime; the request's only stops further calls.
+		if r.Context().Err() != nil || input.Validate(life) != nil {
 			http.Error(w, "source changed", 409)
 			return
 		}
@@ -145,7 +151,10 @@ func openBridge(ctx context.Context, input subtitles.RenderInput, ledger *extent
 		for pos := start; pos <= end; {
 			base := (pos / chunk) * chunk
 			n := min(chunk, size-base)
-			data, e := input.ReadExtent(r.Context(), base, n)
+			if r.Context().Err() != nil {
+				return
+			}
+			data, e := input.ReadExtent(life, base, n)
 			if e != nil || ledger.check(base, data) != nil {
 				return
 			}

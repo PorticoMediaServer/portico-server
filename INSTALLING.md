@@ -36,6 +36,15 @@ use a reachable hostname or IP; IPv6 URLs need brackets, for example
 firewall where you want access. Portico does not support installation under a
 URL path such as `https://example.com/portico`; use a hostname of its own.
 
+### Browser setup through a custom hostname
+First-run browser setup accepts IP addresses, `localhost`, and the server machine's
+hostname (including its `.local` name). For a custom DNS name or reverse proxy,
+set `PORTICO_SETUP_HOSTS` to the exact browser authorities before starting the
+server, for example `media.example.com,media.example.com:8443`. Entries include
+the port when the URL includes one. This independent allowlist prevents an
+unrelated website from rebinding its DNS name to an unconfigured server.
+It does not change API CORS or proxy trust. Native app setup remains available.
+
 ### Debian/Ubuntu and RPM systems
 
 For x64 packages (use the arm64 filenames on ARM64):
@@ -191,6 +200,12 @@ docker logs --tail 100 portico
 docker restart --time 45 portico
 ```
 
+For first-run setup at a host name such as `nas.local`, add
+`-e PORTICO_SETUP_HOSTS=nas.local:32500` to `docker run`, or open the host's
+IP address instead. The container's machine name is not the host's name. Router
+DNS suffixes and Tailscale MagicDNS names also need their exact authority in
+this list when used for browser setup.
+
 The container runs as `portico`; host permissions must allow that user to read
 media. The read-only media mount above prevents deletion. Use a writable mount
 only where you intend to allow media writes. To upgrade, pull the chosen image,
@@ -254,6 +269,13 @@ Hosted is optional. Changes reload within 30 seconds of the next handshake or
 status request; a broken replacement retains the last valid certificate until
 it expires. Status appears in `GET /v1/admin/connectivity/status`.
 
+Updated native apps can automatically trust an owner's self-signed or private-CA
+certificate when the server's signed identity proof lists that exact certificate.
+Portico takes this list from the TLS material it serves, including the managed
+renewal fallback. If TLS terminates at a reverse proxy, Portico cannot infer the
+proxy's certificate: an untrusted proxy certificate requires the app's explicit
+trust question. Older servers also use that question path with updated apps.
+
 **Connection limit** (`connectionLimit`) accepts 0 for the memory-based default,
 or a number up to 65536. Restart after changing it. The console and sign-in have
 32 reserved connections beyond the ordinary limit. Request lanes, header
@@ -261,8 +283,8 @@ deadlines and HTTP/2 stream limits still apply. Capacity is not a tested viewer
 count; increase it according to the machine and workload.
 
 First-run setup needs no local code. Browser setup writes require JSON and the
-same request origin; cross-site forms and cross-site preflights cannot claim the
-server. Native API clients may omit Origin but must send `application/json`.
+same request origin and a local or explicitly allowed setup hostname; cross-site
+forms and cross-site preflights cannot claim the server. Native API clients may omit Origin but must send `application/json`.
 
 ## Backup and restore
 

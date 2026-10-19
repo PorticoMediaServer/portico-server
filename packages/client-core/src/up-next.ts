@@ -1,3 +1,4 @@
+import {followedByScene} from './segment-skip.ts';
 /**
  * When to offer the next title before this one has ended: while its closing credits run.
  *
@@ -39,7 +40,9 @@ export function upNextOffer(input: Readonly<{
  * default), with autoplay on and credits the server is sure of (`automaticSafe`), does the card
  * count the viewer's post-play countdown and start the next title when it reaches zero, as Plex
  * does. Otherwise nothing starts early: the count is the rest of this title, at its speed, plus the
- * countdown the end card will run. With autoplay off there is no count.
+ * countdown the end card will run. Credits that end before the title does (a mid- or post-credits
+ * scene follows) count to the end card too, so the scene is never skipped by a countdown. With
+ * autoplay off there is no count.
  */
 export type UpNextCountdown = Readonly<{automatic: boolean; seconds: number}>;
 export function upNextCountdown(input: Readonly<{
@@ -50,7 +53,9 @@ export function upNextCountdown(input: Readonly<{
 }>): UpNextCountdown | null {
   if (!input.autoplay) return null;
   const countdown = Math.max(0, input.countdownSeconds);
-  if (input.startDuringCredits === true && input.offer.marker?.automaticSafe) return {automatic: true, seconds: Math.max(0, Math.ceil(countdown - input.elapsedSeconds))};
+  // Credits followed by a scene of this title never start the next one early: the scene would be lost.
+  const marker = input.offer.marker;
+  if (input.startDuringCredits === true && marker?.automaticSafe && !followedByScene(marker, input.durationSeconds)) return {automatic: true, seconds: Math.max(0, Math.ceil(countdown - input.elapsedSeconds))};
   const left = Math.max(0, input.durationSeconds - input.positionSeconds) / Math.max(0.25, input.rate || 1);
   return {automatic: false, seconds: Math.ceil(left + countdown)};
 }

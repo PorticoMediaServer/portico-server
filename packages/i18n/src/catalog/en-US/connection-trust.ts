@@ -4,7 +4,7 @@
  */
 export const connectionTrustMessages = {
   'connection.certificate.changed': 'This server’s certificate changed, and Portico couldn’t confirm it’s the same server. Trust it only if you know the server was reset or moved.',
-  'connection.certificate.unverified': 'This server uses its own certificate and couldn’t prove it’s a Portico server. Trust it only if you know this address.',
+  'connection.certificate.unverified': 'This server uses its own certificate, and Portico couldn’t confirm the certificate belongs to it. Trust it only if you know this address.',
   'connection.certificate.untrusted': 'Portico couldn’t check this server’s certificate. Try again.',
   'connection.certificate.trust': 'Trust this server',
   'connection.certificate.question': 'Trust this server’s certificate?',

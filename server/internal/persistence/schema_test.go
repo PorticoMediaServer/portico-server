@@ -14,10 +14,18 @@ func TestSchemaMigrationsAreNumberedAndImmutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(migrations) != 1 || migrations[0].version != baselineSchemaVersion {
+	if len(migrations) == 0 || migrations[0].version != baselineSchemaVersion || migrations[0].name != "0001_baseline.sql" {
 		t.Fatal("missing baseline")
 	}
+	// Every installed server has recorded the baseline with this digest and
+	// checks it on each open, so editing the file would make all of them refuse
+	// to start. A schema change is a new numbered migration.
+	if migrations[0].digest != shippedBaselineDigest {
+		t.Fatalf("0001_baseline.sql changed (sha256 %s); add a numbered migration instead", migrations[0].digest)
+	}
 }
+
+const shippedBaselineDigest = "e1d88a4370c8e63956f24d2dd25a797be6805002b4b983f5d2a001542eb15acc"
 
 func TestASecondOpenRunsNoSchemaWork(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "state.sqlite")

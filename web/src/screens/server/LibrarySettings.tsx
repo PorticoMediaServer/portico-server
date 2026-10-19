@@ -14,6 +14,8 @@ import {useScreenLookup} from './MetadataLookup';
 import {MetadataSourceGroup, useMetadataAgent} from './MetadataSource';
 import {Button, Dialog, Input, ListRow, Loading, Notice, Select, SettingsGroup, SettingsRow, Surface, Switch, Text} from '../../ui';
 
+const VIDEO_LIBRARIES = new Set(['movie', 'tv', 'anime']);
+
 function useServerId() { const {system, session} = useSession(); return system?.id ?? session?.viewer.serverId ?? ''; }
 
 /** CD-43: the server caps roots at 64 and marks the page truncated. The roots are a window, never
@@ -190,6 +192,8 @@ export function LibrarySettingsSections({library, tab}: {library: {id: string; n
           </SettingsGroup> : null}
           {tab === 'scanning' ? <SettingsGroup>
             <SettingsRow label={t('scan.monitorChanges')} help={t('scan.monitorChanges.help')} control={<Switch checked={draft.monitorChanges} onCheckedChange={v => setDraft({...draft, monitorChanges: v})} label={t('scan.monitorChanges')} />} />
+            {/* Intro and credits detection: the server's mode (Server › Intros and credits) unless this library chooses its own. */}
+            {doc.enumerations.segmentDetection && VIDEO_LIBRARIES.has(doc.libraryKind) ? <SettingsRow label={t('web.librarySettings.segments')} help={t('web.librarySettings.segmentsHelp')} control={<Select hideLabel label={t('web.librarySettings.segments')} value={draft.segmentDetection} onChange={e => setDraft({...draft, segmentDetection: e.target.value as typeof draft.segmentDetection})} options={doc.enumerations.segmentDetection.map(choice => ({value: choice, label: t('web.librarySettings.segmentChoice', {choice})}))} />} /> : null}
           </SettingsGroup> : null}
           {tab === 'scanning' ? byCost.map(g => (
             <SettingsGroup key={g.cost.id} title={g.cost.name} description={g.cost.description}>

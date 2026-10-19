@@ -45,7 +45,9 @@ func initializeAdministration(ctx context.Context, db *sql.DB, console *operatio
 	installMessageLogOutput(recorder)
 	advertiser := connectivity.NewAdvertiser(connectivity.AdvertiserOptions{Instance: ident.Name(), Host: ident.Name(), Port: port,
 		TXT: []string{"serverId=" + ident.ID(), "product=portico"}})
-	out := httpapi.AccessArea{Access: access.New(db), Logs: recorder, ClientLogs: servicelog.NewClientLogStore(db), Advertiser: advertiser}
+	// The DLNA switch reuses the same start/stop controller for its SSDP run.
+	dlnaAdvertiser := connectivity.NewAdvertiser(connectivity.AdvertiserOptions{})
+	out := httpapi.AccessArea{Access: access.New(db), Logs: recorder, ClientLogs: servicelog.NewClientLogStore(db), Advertiser: advertiser, DLNA: dlnaAdvertiser}
 	// Invite-only sign-up spends its invitation through the invitation store.
 	ident.RedeemInvitation = out.Access.RegistrationRedeemer()
 	if console != nil {
@@ -56,6 +58,7 @@ func initializeAdministration(ctx context.Context, db *sql.DB, console *operatio
 				log.Printf("warn: Client report retention: %v", err)
 			}
 			advertiser.Apply(document.Effective.LANDiscoveryEnabled)
+			dlnaAdvertiser.Apply(document.Effective.DLNAEnabled)
 		}
 	}
 	// A debug window that was open when the process stopped stays open: an owner
@@ -67,6 +70,7 @@ func initializeAdministration(ctx context.Context, db *sql.DB, console *operatio
 	}
 	return out, func() {
 		advertiser.Close()
+		dlnaAdvertiser.Close()
 		_ = recorder.Close()
 	}
 }

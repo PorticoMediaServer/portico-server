@@ -526,6 +526,9 @@ index screen_metadata_publication_target
 index screen_metadata_work_target
 index screen_publications_provider
 index search_history_recent
+index segment_files_show
+index segment_files_work
+index segment_shows_dirty
 index show_people_credits_order
 index show_people_credits_person
 index social_cast_devices_previous
@@ -1199,6 +1202,9 @@ table screen_metadata_policies
 table screen_metadata_publications
 table screen_metadata_work
 table search_history
+table segment_catchup
+table segment_files
+table segment_shows
 table setup_rate_limits_v1
 table show_people_credits
 table social_cast_bootstraps

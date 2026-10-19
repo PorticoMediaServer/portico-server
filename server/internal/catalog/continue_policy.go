@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"time"
+
+	"portico.local/server/internal/segmentmarkers"
 )
 
 // ContinueWatchingSettings belongs to a library's owner configuration. A nil
@@ -71,19 +73,23 @@ func continueWatchingSettingsTx(tx *sql.Tx, item string) (ContinueWatchingSettin
 	return readContinueWatchingSettings(body), nil
 }
 
-// The first approved credits marker in the current source revision can finish
-// a video before its percentage threshold. Unapproved detector guesses cannot
-// mark a title watched. Item boundaries convert a multi-episode file's source
-// timeline to the selected episode's own position.
+// The first trusted credits marker in the current source revision can finish
+// a video before its percentage threshold. Trusted is what the player may skip
+// unattended (segmentmarkers.AutomaticSafe): approved by the owner, or
+// confirmed by the show's other episodes while the library's detection is on.
+// Single-file guesses cannot mark a title watched. Item boundaries convert a
+// multi-episode file's source timeline to the selected episode's own position.
 func firstApprovedCreditsTx(tx *sql.Tx, item string) (sql.NullFloat64, error) {
 	var start sql.NullFloat64
 	err := tx.QueryRow(`SELECT min((m.start_us/1000000.0)-ia.start_seconds)
- FROM catalog_asset_links ia JOIN catalog_assets a ON a.id=ia.asset_id
+ FROM catalog_entities i JOIN catalog_libraries l ON l.id=i.library_id
+ JOIN catalog_asset_links ia ON ia.entity_id=i.id JOIN catalog_assets a ON a.id=ia.asset_id
  JOIN inventory_objects o ON o.asset_id=a.token AND o.retired=0 AND o.state='available'
  JOIN analysis_markers m ON m.object_id=o.id AND m.source_revision=o.revision
- WHERE ia.entity_id=(SELECT id FROM catalog_entities WHERE public_id=pid_blob(?)) AND m.kind='credits' AND m.approved=1 AND m.deleted=0
+ WHERE i.public_id=pid_blob(?) AND m.kind='credits' AND m.deleted=0
+ AND (m.approved=1 OR m.provenance LIKE ? AND m.confidence>=? AND COALESCE(NULLIF((SELECT json_extract(d.body,'$.segmentDetection') FROM admin_documents d WHERE d.scope='library:'||l.library_id),'server'),(SELECT json_extract(c.body,'$."library.segmentDetection"') FROM console_documents c WHERE c.scope='server'),'standard')<>'off')
  AND m.start_us>=ia.start_seconds*1000000.0
- AND m.start_us<COALESCE(ia.end_seconds,a.duration)*1000000.0`, item).Scan(&start)
+ AND m.start_us<COALESCE(ia.end_seconds,a.duration)*1000000.0`, item, segmentmarkers.MeasuredFamily+":%", segmentmarkers.AutomaticConfidence).Scan(&start)
 	return start, err
 }
 

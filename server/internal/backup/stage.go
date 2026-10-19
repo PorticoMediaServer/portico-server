@@ -77,7 +77,7 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 		return out, ErrRestorePending
 	}
 	s.restoreProgress("verify-files", 0, 0)
-	srcDB, srcDir, files, err := s.resolveSource(source)
+	srcDB, srcDir, files, manifest, err := s.resolveSource(source)
 	if err != nil {
 		return out, err
 	}
@@ -135,6 +135,14 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 			return out, ErrSourceInvalid
 		}
 	}
+	// Verify the private copy against the exact manifest captured before copying.
+	// A source that changes after initial verification must not be staged. Do this
+	// before SQLite inspection can checkpoint or otherwise rewrite the candidate.
+	if manifest != nil {
+		if err = checkSourceHashes(incoming, *manifest); err != nil {
+			return out, err
+		}
+	}
 	s.restoreProgress("integrity", estimate, estimate)
 	schemaVersion, err := persistence.InspectCandidate(ctx, filepath.Join(incoming, DatabaseName))
 	if err != nil {
@@ -181,9 +189,8 @@ func (s *Service) Stage(ctx context.Context, source Source) (StageResult, error)
 }
 
 // stateFileNames returns a manifest's state files: every entry except the
-// database, which restore stages on its own. An ordinary backup lists only state
-// files; a pre-restore backup (made by moving the live files) also lists the
-// database and its WAL, which checkManifestHashes has already verified.
+// database/WAL, which restore stages on its own. Version 1 ordinary backups
+// omitted the database; current backups and pre-restore copies cover it too.
 func stateFileNames(files []FileEntry) ([]string, bool) {
 	names := make([]string, 0, len(files))
 	seen := make(map[string]bool, len(files))
@@ -260,52 +267,52 @@ func restorableFile(name string) bool {
 
 // resolveSource maps a restore source to its database file, the directory its
 // state files live in, and those files' relative names.
-func (s *Service) resolveSource(source Source) (db, dir string, files []string, err error) {
+func (s *Service) resolveSource(source Source) (db, dir string, files []string, expected *Manifest, err error) {
 	if source.BackupID != "" {
 		if err = checkID(source.BackupID); err != nil {
-			return "", "", nil, ErrSourceInvalid
+			return "", "", nil, nil, ErrSourceInvalid
 		}
 		folder, err := s.backupPath(source.BackupID)
 		if err != nil {
-			return "", "", nil, ErrSourceInvalid
+			return "", "", nil, nil, ErrSourceInvalid
 		}
 		manifest, err := readManifest(folder)
 		if err != nil {
-			return "", "", nil, ErrSourceInvalid
+			return "", "", nil, nil, ErrSourceInvalid
 		}
 		names, ok := stateFileNames(manifest.Files)
 		if !ok {
-			return "", "", nil, ErrSourceInvalid
+			return "", "", nil, nil, ErrSourceInvalid
 		}
-		if err = checkManifestHashes(folder, manifest.Files); err != nil {
-			return "", "", nil, err
+		if err = checkSourceHashes(folder, manifest); err != nil {
+			return "", "", nil, nil, err
 		}
-		return filepath.Join(folder, DatabaseName), folder, names, nil
+		return filepath.Join(folder, DatabaseName), folder, names, &manifest, nil
 	}
 	path := source.Path
 	if path == "" || !filepath.IsAbs(path) || path != filepath.Clean(path) {
-		return "", "", nil, ErrSourceInvalid
+		return "", "", nil, nil, ErrSourceInvalid
 	}
 	info, err := os.Lstat(path)
 	if err != nil {
-		return "", "", nil, ErrSourceInvalid
+		return "", "", nil, nil, ErrSourceInvalid
 	}
 	if info.IsDir() {
 		manifest, err := readManifest(path)
 		if err != nil {
-			return "", "", nil, ErrSourceInvalid
+			return "", "", nil, nil, ErrSourceInvalid
 		}
 		names, ok := stateFileNames(manifest.Files)
 		if !ok {
-			return "", "", nil, ErrSourceInvalid
+			return "", "", nil, nil, ErrSourceInvalid
 		}
-		if err = checkManifestHashes(path, manifest.Files); err != nil {
-			return "", "", nil, err
+		if err = checkSourceHashes(path, manifest); err != nil {
+			return "", "", nil, nil, err
 		}
-		return filepath.Join(path, DatabaseName), path, names, nil
+		return filepath.Join(path, DatabaseName), path, names, &manifest, nil
 	}
 	if !info.Mode().IsRegular() {
-		return "", "", nil, ErrSourceInvalid
+		return "", "", nil, nil, ErrSourceInvalid
 	}
-	return path, "", nil, nil
+	return path, "", nil, nil, nil
 }

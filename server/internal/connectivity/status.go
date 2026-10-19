@@ -28,6 +28,7 @@ type Policy struct {
 	LANNetworks             []string `json:"lanNetworks"`
 	AccessURLs              []string `json:"accessUrls"`
 	LANDiscoveryEnabled     bool     `json:"lanDiscoveryEnabled"`
+	DLNAEnabled             bool     `json:"dlnaEnabled"`
 	TrustedProxies          []string `json:"trustedProxies"`
 	UploadCapacityKbps      int      `json:"uploadCapacityKbps"`
 	PausedSessionTimeout    int      `json:"pausedSessionTimeoutMinutes"`
@@ -41,7 +42,7 @@ type Policy struct {
 func ProjectPolicy(document operations.SettingsDocument) Policy {
 	v := document.Effective
 	out := Policy{ConnectionLimit: v.ConnectionLimit, AdvertiseURL: v.AdvertiseURL, Revision: document.Revision, RemoteSignIn: v.RemoteSignInPolicy, RemoteBitrateLimitKbps: v.RemoteBitrateLimitKbps,
-		LANNetworks: v.LANNetworks, AccessURLs: v.AccessURLs, LANDiscoveryEnabled: v.LANDiscoveryEnabled,
+		LANNetworks: v.LANNetworks, AccessURLs: v.AccessURLs, LANDiscoveryEnabled: v.LANDiscoveryEnabled, DLNAEnabled: v.DLNAEnabled,
 		TrustedProxies: v.TrustedProxies, UploadCapacityKbps: v.UploadCapacityKbps, PausedSessionTimeout: v.PausedSessionTimeoutMinutes,
 		AdvertisedInterface: v.AdvertisedInterface, CustomCertificatePath: v.CustomCertificatePath, CustomCertificateKey: v.CustomCertificateKeyPath, CustomCertificateDomain: v.CustomCertificateDomain}
 	if out.TrustedProxies == nil {

@@ -232,7 +232,7 @@ func TestPlaybackV1SkipReportsAreMarkerEvidence(t *testing.T) {
 		`INSERT OR IGNORE INTO library_sources(id,library_id,configured_root,root,incarnation,generation) VALUES('skip-source','` + f.library + `','/isolated/skips','/isolated/skips','incarnation',1)`,
 		`INSERT INTO inventory_objects(id,source_id,asset_id,root_incarnation,relative_path,revision,evidence_json,size,modified_ns) VALUES('object','skip-source','` + asset + `','incarnation','a.mp4','revision','{}',1,1),('other-object','skip-source','` + other + `','incarnation','b.mp4','revision','{}',1,1)`,
 		`INSERT INTO analysis_markers(id,object_id,source_revision,source_binding,kind,start_us,end_us,confidence,provenance,result_id,approved) VALUES
- ('safe-intro','object','revision','binding','intro',5000000,35000000,.9,'luminance_opening_boundary:v1','result',0),
+ ('safe-intro','object','revision','binding','intro',5000000,35000000,.9,'season_audio_match:intro:v1','result',0),
  ('unsafe-recap','object','revision','binding','recap',0,4000000,.85,'embedded_chapter_label:v1','result',0),
  ('elsewhere','other-object','revision','binding','intro',0,4000000,.9,'luminance_opening_boundary:v1','result',0)`,
 	} {

@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/compactcatalog"
+	"portico.local/server/internal/dirsync"
 	"portico.local/server/internal/entityid"
 	"portico.local/server/internal/progressio"
 	"regexp"
@@ -351,13 +352,7 @@ func (s *Service) installArtworkFile(raw []byte, w, h int) (artworkInstalled, er
 	if err = os.Rename(temp, target); err != nil {
 		return a, err
 	}
-	dir, err := os.Open(s.cacheRoot)
-	if err != nil {
-		return a, err
-	}
-	err = dir.Sync()
-	dir.Close()
-	return a, err
+	return a, dirsync.Sync(s.cacheRoot)
 }
 
 type artworkWork struct {

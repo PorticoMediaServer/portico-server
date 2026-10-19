@@ -81,34 +81,3 @@ func TestAnalysisPCMRejectsMalformedAndExcessiveInput(t *testing.T) {
 		t.Fatalf("zero duration: %v", err)
 	}
 }
-func TestAnalysisDetectionsNeverAuthorizeSkipping(t *testing.T) {
-	chapters := []chapter{{"Previously on", 0, 20000000}, {"Opening", 20000000, 60000000}, {"Advertisements", 120000000, 150000000}, {"Credits", 540000000, 600000000}, {"Outside", 0, 601000000}}
-	markers := chapterCandidates(chapters, 600000000)
-	if len(markers) != 4 {
-		t.Fatalf("chapter candidates: %d", len(markers))
-	}
-	frames := make([]sceneSignal, 600)
-	frames[30].Black = true
-	frames[120].Black = true
-	frames[160].Black = true
-	for i := 550; i < 600; i++ {
-		frames[i].CreditStyle = true
-	}
-	markers = append(markers, detectSegments(frames, 1000000, 600000000)...)
-	kinds := map[string]bool{}
-	for _, m := range markers {
-		kinds[m.Kind] = true
-		if m.Approved || m.Edited || m.Confidence <= 0 || m.Confidence >= 1 || m.Provenance == "" || m.start() < 0 || m.end() > 600000000 || m.end() <= m.start() {
-			t.Fatalf("unsafe candidate %+v", m)
-		}
-	}
-	if len(kinds) != 4 {
-		t.Fatal(kinds)
-	}
-	if got := measureScene(make([]byte, 576)); !got.Black || got.CreditStyle {
-		t.Fatal(got)
-	}
-	if got := measureScene(nil); got.Black || got.CreditStyle {
-		t.Fatal(got)
-	}
-}

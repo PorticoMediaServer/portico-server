@@ -245,7 +245,7 @@ type Transfer struct {
 // is known, not withdrawn and not run out, the claim is still ready and still
 // points at bytes this server has, and the viewer may still see the title and
 // still download. Every request made with the address passes through here, so
-// permission withdrawn in the middle of a long transfer stops the next request.
+// an open transfer can use this same check to stop on a withdrawn permission.
 //
 // Using an address keeps it alive: its lifetime slides forward, written at
 // most once every few minutes. A transfer is made of many ranged requests, so

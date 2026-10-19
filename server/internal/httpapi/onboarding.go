@@ -46,6 +46,10 @@ func fmtSetupInterval(n int) string {
 func (d Dependencies) onboardingRoutes(mux *http.ServeMux) {
 	d.httpHandle(mux, "POST /v1/setup/resume", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Cache-Control", "no-store")
+		if !d.setupRequestAllowed(r) {
+			failure(w, identity.ErrUnauthorized)
+			return
+		}
 		var q struct {
 			RequestID  string `json:"requestId"`
 			SetupToken string `json:"setupToken"`

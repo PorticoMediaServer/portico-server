@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"strconv"
+	"strings"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
+	"portico.local/server/internal/mediaanalysis"
 	"portico.local/server/internal/operations"
 	"portico.local/server/internal/playback"
 	"portico.local/server/internal/preparedmedia"
@@ -326,31 +328,62 @@ func readChapters(ctx context.Context, tx *sql.Tx, entity int64, asset, kind str
 	return out, rows.Err()
 }
 
+// readMarkers applies the viewer projection's rules to what travels offline:
+// weak or ambiguous guesses stay with the owner, overlapping markers of a kind
+// become the one a viewer would be shown, and a library whose detection is off
+// carries only markers an owner made or approved.
 func readMarkers(ctx context.Context, tx *sql.Tx, asset string) ([]BundleMarker, error) {
 	out := []BundleMarker{}
-	rows, e := tx.QueryContext(ctx, `SELECT m.kind,m.start_us,m.end_us,m.approved,m.confidence,m.provenance FROM inventory_objects o JOIN analysis_markers m ON m.object_id=o.id AND m.source_revision=o.revision
+	rows, e := tx.QueryContext(ctx, `SELECT m.id,m.kind,m.start_us,m.end_us,m.approved,m.confidence,m.provenance,src.library_id FROM inventory_objects o JOIN library_sources src ON src.id=o.source_id JOIN analysis_markers m ON m.object_id=o.id AND m.source_revision=o.revision
  WHERE o.asset_id=? AND o.retired=0 AND o.state='available' AND m.deleted=0 ORDER BY m.start_us,m.id LIMIT 256`, asset)
 	if e != nil {
 		return out, e
 	}
-	defer rows.Close()
+	type stored struct {
+		segmentmarkers.Candidate
+		library  string
+		detected bool // a detector's, not an owner's
+	}
+	var found []stored
 	for rows.Next() {
-		var m BundleMarker
+		var m stored
 		var start, end int64
-		var approved bool
-		var confidence float64
 		var provenance string
-		if e = rows.Scan(&m.Kind, &start, &end, &approved, &confidence, &provenance); e != nil {
+		if e = rows.Scan(&m.ID, &m.Kind, &start, &end, &m.Approved, &m.Confidence, &provenance, &m.library); e != nil {
+			rows.Close()
 			return out, e
 		}
-		if !segmentmarkers.ViewerKind(m.Kind) || end <= start || start < 0 {
+		if !segmentmarkers.ViewerKind(m.Kind) || end <= start || start < 0 || !segmentmarkers.ViewerVisible(m.Approved, m.Confidence, provenance) {
 			continue
 		}
+		m.detected = !m.Approved && !strings.HasPrefix(provenance, "owner:")
 		m.StartSeconds, m.EndSeconds = float64(start)/1e6, float64(end)/1e6
-		m.Automatic = segmentmarkers.AutomaticSafe(approved, confidence, provenance)
-		out = append(out, m)
+		m.AutomaticSafe = segmentmarkers.AutomaticSafe(m.Approved, m.Confidence, provenance)
+		found = append(found, m)
 	}
-	return out, rows.Err()
+	rows.Close()
+	if e = rows.Err(); e != nil {
+		return out, e
+	}
+	off := map[string]bool{}
+	var candidates []segmentmarkers.Candidate
+	for _, m := range found {
+		if _, known := off[m.library]; !known {
+			mode, e := mediaanalysis.SegmentLibraryModeTx(ctx, tx, m.library)
+			if e != nil {
+				return out, e
+			}
+			off[m.library] = mode == mediaanalysis.SegmentModeOff
+		}
+		if m.detected && off[m.library] {
+			continue
+		}
+		candidates = append(candidates, m.Candidate)
+	}
+	for _, m := range segmentmarkers.Strongest(candidates) {
+		out = append(out, BundleMarker{Kind: m.Kind, StartSeconds: m.StartSeconds, EndSeconds: m.EndSeconds, Automatic: m.AutomaticSafe})
+	}
+	return out, nil
 }
 
 func readAudio(ctx context.Context, tx *sql.Tx, asset string, converted bool) ([]BundleAudio, error) {

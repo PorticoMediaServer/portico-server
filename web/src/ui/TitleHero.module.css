@@ -1,4 +1,6 @@
-.root { --title-hero-height: min(70vh, 720px); position: relative; }
+/* One height for every title, with or without a backdrop: enough for the identity and its art,
+   short enough that the first row (cast, tracks, episodes) shows on a laptop screen. */
+.root { --title-hero-height: clamp(440px, 54vh, 580px); position: relative; }
 .backdrop { z-index: 0; }
 /* No backdrop: a tinted gradient, never an empty box. */
 .fallback { position: absolute; inset: 0 0 auto 0; height: var(--title-hero-height); pointer-events: none;
@@ -27,28 +29,30 @@
 .poster { aspect-ratio: 2 / 3; }
 .square { aspect-ratio: 1 / 1; }
 .circle { aspect-ratio: 1 / 1; border-radius: 50%; }
-/* M26 compact hero: no tall band. The title's own art sits beside the
-   identity over a blurred, darkened version of itself. */
-.compact { --title-hero-height: auto; }
-.compact .hero { min-height: 0; padding-top: 88px; padding-bottom: 28px; }
-.compact .withArtwork { grid-template-columns: clamp(120px, 14vw, 184px) 1fr; }
+/* M26 compact hero (no backdrop): the same geometry as a backdrop hero, the title's own art
+   beside the identity over a blurred, darkened version of itself. It melts into the page exactly
+   like a backdrop (the mask and scrims of Backdrop.module.css), never ending on a hard edge. */
 .compactBg { position: absolute; inset: 0; overflow: hidden; pointer-events: none;
-  background: linear-gradient(180deg, var(--surface-raised) 0%, var(--surface-projector) 100%); }
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%); mask-image: linear-gradient(180deg, #000 0%, #000 55%, transparent 100%); }
 .compactBgArt { position: absolute; inset: 0; }
-.compactBgArt img { width: 100%; height: 100%; filter: blur(48px) brightness(0.55) saturate(1.25); transform: scale(1.15); }
-.compactBg::after { content: ''; position: absolute; inset: 0;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--color-ink) 25%, transparent) 0%, transparent 40%, color-mix(in srgb, var(--color-ink) 45%, transparent) 100%); }
+.compactBgArt img { width: 100%; height: 100%; filter: blur(48px) brightness(0.6) saturate(1.25); transform: scale(1.15); }
+.compactBg::after { content: ''; position: absolute; inset: 0; background:
+  linear-gradient(180deg, color-mix(in srgb, var(--surface-projector) 35%, transparent) 0%, transparent 28%, color-mix(in srgb, var(--surface-projector) 55%, transparent) 62%, var(--surface-projector) 100%),
+  linear-gradient(90deg, color-mix(in srgb, var(--surface-projector) 60%, transparent) 0%, color-mix(in srgb, var(--surface-projector) 20%, transparent) 45%, transparent 75%); }
 /* Collection/playlist mosaic: 2×2 posters or covers where custom art is absent. */
 .mosaic { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .mosaicTile { width: 100%; }
 @media (max-width: 720px) {
-  /* Phones: a 16:9 backdrop, then the identity block. The compact hero keeps
-     its small art beside the title instead. */
+  /* Phones: a 16:9 band, then the identity block, for every title. Without a backdrop the band
+     is the title's own art, blurred, with the art itself in its middle (a cover, a poster, an
+     artist's circle), so an album opens the way a film does. */
   .root { --title-hero-height: calc(100vw * 9 / 16 + 120px); }
   .hero, .withArtwork { grid-template-columns: 1fr; min-height: 0; padding-top: calc(100vw * 9 / 16 - 64px); }
   .artwork { display: none; }
-  .compact .hero, .compact .withArtwork { grid-template-columns: 96px 1fr; padding-top: 76px; align-items: start; }
-  .compact .artwork { display: block; }
+  .compactBg { inset: 0 0 auto 0; height: var(--title-hero-height); }
+  /* The band's middle, in the hero's own box (it starts below the Back row, 52px down). */
+  .compact .artwork { display: block; position: absolute; left: 50%; top: calc(100vw * 9 / 32 - 52px); translate: -50% -50%; width: auto; height: calc(100vw * 9 / 16 * 0.7); }
+  .compact .artwork.mosaic { aspect-ratio: 2 / 3; }
   .primary, .primary > :first-child { width: 100%; }
 }
 

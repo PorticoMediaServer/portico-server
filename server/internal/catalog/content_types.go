@@ -107,6 +107,10 @@ type ContentEntry struct {
 	// AbsoluteNumber is an episode's number across the show's seasons, sent
 	// when the show is set to absolute numbering: it reads "Episode 1043".
 	AbsoluteNumber *int `json:"absoluteNumber,omitempty"`
+	// SeasonCount is how many seasons a show has, sent on a Recently Added
+	// shelf when the show itself is the addition (several seasons at once):
+	// its card reads "6 seasons" (a single episode or season is sent instead).
+	SeasonCount *int `json:"seasonCount,omitempty"`
 	// Rating is the community rating (0–10) and Resolution the best file's
 	// picture class ("4k", "1080p", "720p", "sd"): browse pages only, for the
 	// list view's columns. Absent when unknown.

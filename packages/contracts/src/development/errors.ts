@@ -121,6 +121,12 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "conversion_capacity",
+    "status": 429,
+    "message": "This server is already converting as many streams as it is allowed. Wait a moment or stop another stream, then try again.",
+    "retry": "same_request"
+  },
+  {
     "code": "credential_busy",
     "status": 429,
     "message": "This API key or access token has too many requests running. Try again shortly.",
@@ -700,6 +706,42 @@ export const errors = [
     "code": "subtitle_operation_conflict",
     "status": 409,
     "message": "This request was already used for a different subtitle edit.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_provider_busy",
+    "status": 429,
+    "message": "OpenSubtitles asked for a pause. Try again shortly.",
+    "retry": "same_request"
+  },
+  {
+    "code": "subtitle_provider_key_rejected",
+    "status": 503,
+    "message": "OpenSubtitles did not accept this server's API key.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_provider_not_configured",
+    "status": 503,
+    "message": "Online subtitle search is not set up on this server.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_provider_quota",
+    "status": 429,
+    "message": "This server has used its OpenSubtitles downloads for today.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_provider_sign_in_failed",
+    "status": 503,
+    "message": "OpenSubtitles did not accept this server's account.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_provider_sign_in_required",
+    "status": 503,
+    "message": "OpenSubtitles downloads need an account on this server.",
     "retry": "never"
   },
   {

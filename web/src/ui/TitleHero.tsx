@@ -16,12 +16,14 @@ export type TitleHeroAction = {label: string; icon?: IconName; onClick: () => vo
  * outside <Page> so the backdrop bleeds to the content edges; its own content
  * keeps the page's width and gutters. Movie, show
  * and anime, album, artist, audiobook, person, collection and playlist fill
- * the same slots. Its height doesn't change between types: min(70vh, 720px)
- * on desktop; on phones a 16:9 backdrop with the identity block beneath.
+ * the same slots. Its height doesn't change between types, with or without a
+ * backdrop: clamp(440px, 54vh, 580px) on desktop, growing only when the
+ * identity needs more; on phones a 16:9 backdrop with the identity beneath.
  *
  * - Backdrop: full bleed with a bottom and left scrim; without one, the
- *   compact hero: art beside the title over a blurred, darkened version of
- *   that art (never a tall empty band).
+ *   compact hero: the art over a blurred, darkened version of itself, beside
+ *   the title on wide layouts and in the middle of the band on phones. Both
+ *   melt into the page the same way, never on a hard edge.
  * - Identity: logo art when there is one, else the title in display type.
  * - Facts: one `·`-separated line; the content rating is a chip.
  * - Tagline on a line of its own; synopsis: two lines; More expands in place.
@@ -61,9 +63,9 @@ export function TitleHero({backdrop, artwork, logo, title, originalTitle, contex
 }) {
   const [expanded, setExpanded] = useState(false);
   const shownFacts = facts.filter(f => f !== undefined && f !== null && f !== false && f !== '');
-  // M26: no backdrop means the compact hero (art beside the title over a
-  // blurred, darkened version of that art), never the tall empty band. While
-  // loading, the skeleton keeps the full geometry so the page doesn't jump.
+  // M26: no backdrop means the compact hero: the title's own art over a
+  // blurred, darkened version of it, in the same geometry as a backdrop hero
+  // (beside the title on wide layouts, in the middle of the 16:9 band on phones).
   const compact = heroLayout({backdropUrl: backdrop, loading}) === 'compact';
   // No empty frames: artwork shows while loading, when there's a path, for a
   // mosaic, or for an initial (an artist without an image keeps its circle).

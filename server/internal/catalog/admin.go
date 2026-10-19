@@ -2,8 +2,11 @@ package catalog
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/requestinput"
 	"strings"
@@ -83,9 +86,37 @@ type AdminJobs struct {
 	NextCursor string     `json:"nextCursor"`
 }
 type AdminRequest struct {
+	Authorize    func(context.Context, *sql.Tx, string) error
+	LibraryScope func(context.Context, *sql.Tx) ([]string, error)
+
 	AssetID                                                   string
 	ServerID, ViewerFence, Profile, LibraryID, Status, Cursor string
 	Limit                                                     int
+}
+
+func adminLibraryScope(ctx context.Context, r *AdminRequest) (any, error) {
+	tx := dbwork.Snapshot(ctx)
+	if r.Authorize != nil {
+		if err := r.Authorize(ctx, tx, r.LibraryID); err != nil {
+			return nil, err
+		}
+	}
+	if r.LibraryScope == nil {
+		return nil, nil
+	}
+	ids, err := r.LibraryScope(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	if ids == nil {
+		return nil, nil
+	}
+	raw, err := json.Marshal(ids)
+	if err != nil {
+		return nil, err
+	}
+	r.ViewerFence = fmt.Sprintf("%x", sha256.Sum256(append([]byte(r.ViewerFence+":"), raw...)))
+	return string(raw), nil
 }
 
 func adminJobAction(j *AdminJob) {
@@ -153,13 +184,19 @@ func (s *Service) adminJobs(ctx context.Context, r AdminRequest) (AdminJobs, err
 	if !valid {
 		return out, ErrAdminQuery
 	}
+	allowed, err := adminLibraryScope(ctx, &r)
+	if err != nil {
+		return out, err
+	}
+	out.Scope.ViewerFence = r.ViewerFence
 	scope, rev, c, e := s.adminCursor(ctx, r, "admin_jobs")
 	if e != nil {
 		return out, e
 	}
 	out.Revision = rev.Catalog
 	where := "1=1"
-	args := []any{}
+	where += " AND (? IS NULL OR l.id IN (SELECT value FROM json_each(?)))"
+	args := []any{allowed, allowed}
 	if r.LibraryID != "" {
 		var found int
 		if e = s.read().QueryRowContext(ctx, `SELECT 1 FROM libraries WHERE id=?`, r.LibraryID).Scan(&found); e != nil {
@@ -221,6 +258,11 @@ func (s *Service) adminLibraries(ctx context.Context, r AdminRequest) (AdminLibr
 	if e := adminLimit(&r); e != nil {
 		return out, e
 	}
+	allowed, err := adminLibraryScope(ctx, &r)
+	if err != nil {
+		return out, err
+	}
+	out.Scope.ViewerFence = r.ViewerFence
 	scope, rev, c, e := s.adminCursor(ctx, r, "admin_libraries")
 	if e != nil {
 		return out, e
@@ -228,7 +270,8 @@ func (s *Service) adminLibraries(ctx context.Context, r AdminRequest) (AdminLibr
 	out.Revision = rev.Catalog
 	// A library being removed is gone as far as anyone can see.
 	where := "NOT EXISTS(SELECT 1 FROM catalog_libraries gone WHERE gone.library_id=l.id AND gone.retired=1)"
-	args := []any{}
+	where += " AND (? IS NULL OR l.id IN (SELECT value FROM json_each(?)))"
+	args := []any{allowed, allowed}
 	if r.LibraryID != "" {
 		where += " AND l.id=?"
 		args = append(args, r.LibraryID)

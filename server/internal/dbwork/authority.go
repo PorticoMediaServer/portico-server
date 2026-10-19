@@ -51,7 +51,8 @@ func bearsAuthority(class Class) bool {
 }
 
 // noteCommitted is called when a gated transaction commits on a class that did
-// not declare itself authority-bearing. The statements it ran have already been
-// examined for authority tables one at a time, so there is nothing further to
-// decide here; it exists so the commit path reads as the whole of the rule.
+// not declare itself authority-bearing. The observed driver already invalidates
+// authority at statement time and again on commit if that transaction wrote an
+// authority table. Nothing else needs invalidating here: ordinary progress and
+// heartbeat transactions must leave the authority caches intact.
 func noteCommitted(Class) {}
