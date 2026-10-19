@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {catalogue, catalogueReady, createI18n, enUS, formatMessage, loadCatalogue, provideCatalogue, messageArguments, parseMessage, resolveRegion, translatedLocales, type MessageId} from '../../i18n/src/index.ts';
 import {pseudoMessage} from '../../i18n/src/catalog/pseudo.ts';
-import {checkTranslation, classify, generatedModule, generatedPath, readTranslations, requiredCategories, translatableIds} from '../../i18n/scripts/translations-lib.mjs';
+import {baseOf, checkTranslation, classify, generatedModule, generatedPath, readTranslations, requiredCategories, translatableIds} from '../../i18n/scripts/translations-lib.mjs';
 import {applyXliff, exportXliff, parseXliff} from '../../i18n/scripts/translations.mjs';
 import {localeChoices} from '../src/presentation/region-choices.ts';
 
@@ -50,9 +50,16 @@ test('translations: plural forms follow the catalogue’s language, numbers the 
   assert.equal(forms[2]!.replace(/[\d\s]/g, ''), forms[4]!.replace(/[\d\s]/g, ''));
   // A message Japanese lacks reads English and keeps English plurals: Japanese has no "one" form.
   await loadCatalogue('ja');
-  const japanese = createI18n(resolveRegion({locale: 'ja-JP'}, {locales: ['en-US'], timeZone: 'UTC'}));
-  assert.equal(japanese.locale, 'ja');
-  assert.equal(japanese.t('count.titles', {count: 1}), '1 title');
+  const loaded = catalogue('ja');
+  const {['count.titles']: _dropped, ...withoutTitles} = loaded;
+  provideCatalogue('ja', withoutTitles);
+  try {
+    const japanese = createI18n(resolveRegion({locale: 'ja-JP'}, {locales: ['en-US'], timeZone: 'UTC'}));
+    assert.equal(japanese.locale, 'ja');
+    assert.equal(japanese.t('count.titles', {count: 1}), '1 title');
+  } finally {
+    provideCatalogue('ja', loaded);
+  }
   const english = createI18n(resolveRegion({locale: 'sw-KE'}, {locales: ['en-US'], timeZone: 'UTC'}));
   assert.equal(english.locale, 'en-US');
   assert.equal(english.t('count.titles', {count: 1}), '1 title');
@@ -111,7 +118,8 @@ test('XLIFF: export carries source, target, state and context; import takes it b
 });
 
 test('a registered language with nothing translated exports every message, and a partial import is usable', () => {
-  for (const locale of ['pt-BR', 'pl', 'uk', 'zh-Hant', 'ja'] as const) {
+  // Whichever registered languages are still untranslated (translations arrive over time).
+  for (const locale of translatedLocales.filter(l => !baseOf(l) && Object.keys(readTranslations(l).messages).length === 0)) {
     const units = parseXliff(exportXliff(locale));
     assert.equal(units.length, translatableIds().length, locale);
     assert.ok(units.every(u => u.target === undefined), locale);
@@ -156,10 +164,14 @@ test('regional variants read their own words, then their base language, then en-
   const changed = xml.replace(/(<trans-unit id="error\.offline"[^]*?<target[^>]*>)[^<]*/, '$1Cet appareil n’est pas branché sur Internet. Vérifiez votre connexion, puis réessayez.');
   const report = applyXliff('fr-CA', changed, record);
   assert.equal(report.rejected.length, 0);
-  assert.deepEqual(Object.keys(record.messages), ['error.offline']);
+  // Only what differs from French is stored: the variant's own words plus the one just changed.
+  const own = new Set([...Object.keys(readTranslations('fr-CA').messages).filter(id => translatableIds().includes(id)), 'error.offline']);
+  assert.deepEqual(Object.keys(record.messages).sort(), [...own].sort());
+  assert.ok(!(inheritedId in record.messages) || own.has(inheritedId));
   const status = classify('fr-CA', record);
-  assert.deepEqual([status.current.length, status.missing.length], [1, 0]);
-  assert.equal(status.inherited.length, translatableIds().length - 1);
+  assert.equal(status.missing.length, 0);
+  assert.equal(status.current.length + status.stale.length, own.size);
+  assert.equal(status.inherited.length, translatableIds().length - own.size);
 });
 
 test('pseudo-locale: every message stays valid ICU with its arguments, accented, bracketed and about a third longer', () => {
