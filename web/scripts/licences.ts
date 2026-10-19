@@ -98,6 +98,7 @@ function subtitleAndFontComponents(read: (rel: string) => string): CollectedComp
     out.push({id: `font:${f.family}`, name: f.family, version: f.package.split(' ').slice(1).join(' '), licence: f.license, group: 'fonts', text, url: f.upstream.split(' ')[0], ...(f.copyright ? {copyright: [f.copyright]} : {})});
   }
   out.push({id: 'font:manrope', name: 'Manrope', licence: 'OFL-1.1', group: 'fonts', text: read('web/src/ui/fonts/OFL.txt'), url: 'https://github.com/googlefonts/manrope'});
+  out.push({id: 'font:noto-sans-web', name: 'Noto Sans (Japanese, Chinese, Korean, Thai and Devanagari web subsets)', version: 'Fontsource 5.3', licence: 'OFL-1.1', group: 'fonts', text: read('web/src/ui/fonts/noto/OFL.txt'), url: 'https://github.com/notofonts'});
   out.push({id: 'icons:lucide', name: 'Lucide icons', licence: 'ISC', group: 'fonts', text: read('packages/design/LICENSE-LUCIDE'), url: 'https://lucide.dev'});
   return out;
 }

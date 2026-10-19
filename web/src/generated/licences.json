@@ -1490,13 +1490,22 @@
    ]
   },
   {
+   "id": "font:noto-sans-web",
+   "name": "Noto Sans (Japanese, Chinese, Korean, Thai and Devanagari web subsets)",
+   "version": "Fontsource 5.3",
+   "licence": "OFL-1.1",
+   "group": "fonts",
+   "url": "https://github.com/notofonts",
+   "text": 24
+  },
+  {
    "id": "font:Noto Sans Arabic",
    "name": "Noto Sans Arabic",
    "version": "20201225-2build1",
    "licence": "OFL-1.1",
    "group": "fonts",
    "url": "https://github.com/notofonts/noto-fonts",
-   "text": 24
+   "text": 25
   },
   {
    "id": "font:Noto Sans Bengali",
@@ -1505,7 +1514,7 @@
    "licence": "OFL-1.1",
    "group": "fonts",
    "url": "https://github.com/notofonts/noto-fonts",
-   "text": 24
+   "text": 25
   },
   {
    "id": "font:Noto Sans Devanagari",
@@ -1514,7 +1523,7 @@
    "licence": "OFL-1.1",
    "group": "fonts",
    "url": "https://github.com/notofonts/noto-fonts",
-   "text": 24
+   "text": 25
   },
   {
    "id": "font:Noto Sans Hebrew",
@@ -1523,7 +1532,7 @@
    "licence": "OFL-1.1",
    "group": "fonts",
    "url": "https://github.com/notofonts/noto-fonts",
-   "text": 24
+   "text": 25
   },
   {
    "id": "font:Noto Sans Tamil",
@@ -1532,7 +1541,7 @@
    "licence": "OFL-1.1",
    "group": "fonts",
    "url": "https://github.com/notofonts/noto-fonts",
-   "text": 24
+   "text": 25
   },
   {
    "id": "font:Noto Sans Thai",
@@ -1541,7 +1550,7 @@
    "licence": "OFL-1.1",
    "group": "fonts",
    "url": "https://github.com/notofonts/noto-fonts",
-   "text": 24
+   "text": 25
   },
   {
    "id": "server-font:DejaVu Sans",
@@ -1549,7 +1558,7 @@
    "licence": "Bitstream Vera / Arev font terms; DejaVu changes public domain",
    "group": "server",
    "url": "https://dejavu-fonts.github.io",
-   "text": 25
+   "text": 26
   },
   {
    "id": "server:ffmpeg",
@@ -1567,7 +1576,7 @@
    "licence": "MIT",
    "group": "server",
    "url": "https://pkg.go.dev/github.com/dustin/go-humanize@v1.0.1",
-   "text": 26,
+   "text": 27,
    "copyright": [
     "Copyright (c) 2005-2008  Dustin Sallings <dustin@spy.net>"
    ]
@@ -1579,7 +1588,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/github.com/google/uuid@v1.6.0",
-   "text": 27,
+   "text": 28,
    "copyright": [
     "Copyright (c) 2009,2014 Google Inc. All rights reserved."
    ]
@@ -1591,7 +1600,7 @@
    "licence": "MIT",
    "group": "server",
    "url": "https://pkg.go.dev/github.com/mattn/go-isatty@v0.0.24",
-   "text": 28,
+   "text": 29,
    "copyright": [
     "Copyright (c) Yasuhiro MATSUMOTO <mattn.jp@gmail.com>"
    ]
@@ -1615,7 +1624,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/github.com/remyoudompheng/bigfft@v0.0.0-20230129092748-24d4a6f8daec",
-   "text": 27,
+   "text": 28,
    "copyright": [
     "Copyright (c) 2012 The Go Authors. All rights reserved."
    ]
@@ -1627,7 +1636,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://go.dev",
-   "text": 29,
+   "text": 30,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1639,7 +1648,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/golang.org/x/crypto@v0.56.0",
-   "text": 29,
+   "text": 30,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1651,7 +1660,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/golang.org/x/image@v0.46.0",
-   "text": 29,
+   "text": 30,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1663,7 +1672,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/golang.org/x/sys@v0.48.0",
-   "text": 29,
+   "text": 30,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1675,7 +1684,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/golang.org/x/text@v0.42.0",
-   "text": 29,
+   "text": 30,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1686,7 +1695,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://cs.opensource.google/go/x/image",
-   "text": 30,
+   "text": 31,
    "copyright": [
     "Copyright 2009 The Go Authors."
    ]
@@ -1698,7 +1707,7 @@
    "licence": "MIT",
    "group": "server",
    "url": "https://pkg.go.dev/modernc.org/libc@v1.75.6",
-   "text": 31,
+   "text": 32,
    "copyright": [
     "Copyright (c) 2017 The Libc Authors. All rights reserved."
    ]
@@ -1710,7 +1719,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/modernc.org/mathutil@v1.7.1",
-   "text": 32,
+   "text": 33,
    "copyright": [
     "Copyright (c) 2014 The mathutil Authors. All rights reserved."
    ]
@@ -1722,7 +1731,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://pkg.go.dev/modernc.org/memory@v1.12.1",
-   "text": 33,
+   "text": 34,
    "copyright": [
     "Copyright (c) 2017 The Memory Authors. All rights reserved."
    ]
@@ -1734,7 +1743,7 @@
    "licence": "BSD-3-Clause; SQLite is public domain",
    "group": "server",
    "url": "https://pkg.go.dev/modernc.org/sqlite@v1.58.0",
-   "text": 34,
+   "text": 35,
    "copyright": [
     "Copyright (c) 2017 The Sqlite Authors. All rights reserved."
    ]
@@ -1745,7 +1754,7 @@
    "licence": "OFL-1.1",
    "group": "server",
    "url": "https://github.com/notofonts/noto-cjk",
-   "text": 35
+   "text": 36
   },
   {
    "id": "server-font:Noto Sans Devanagari (server)",
@@ -1753,7 +1762,7 @@
    "licence": "OFL-1.1",
    "group": "server",
    "url": "https://github.com/notofonts/devanagari",
-   "text": 36,
+   "text": 37,
    "copyright": [
     "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/devanagari)"
    ]
@@ -1764,7 +1773,7 @@
    "licence": "OFL-1.1",
    "group": "server",
    "url": "https://github.com/notofonts/thai",
-   "text": 36,
+   "text": 37,
    "copyright": [
     "Copyright 2022 The Noto Project Authors (https://github.com/notofonts/thai)"
    ]
@@ -1775,7 +1784,7 @@
    "licence": "BSD-3-Clause",
    "group": "server",
    "url": "https://gitlab.com/cznic/sqlite",
-   "text": 37,
+   "text": 38,
    "copyright": [
     "Copyright (c) 2017 The Sqlite Authors. All rights reserved."
    ]
@@ -1806,6 +1815,7 @@
   "Noto Sans Arabic, Noto Sans Bengali, Noto Sans Devanagari, Noto Sans Hebrew, Noto Sans Tamil, Noto Sans Thai\nCopyright 2010, 2012-2020 Google Inc. Copyright 2015-2020 Google LLC.\n\nLiberation Sans (files/default.woff2)\nDigitized data copyright (c) 2010 Google Corporation. Copyright (c) 2012 Red Hat, Inc.\nLiberation is a trademark of Red Hat, Inc.\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.\nThis license is copied below, and is also available with a FAQ at: https://openfontlicense.org\n\n-----------------------------------------------------------\nSIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n-----------------------------------------------------------\n\nPREAMBLE\n\nThe goals of the Open Font License (OFL) are to stimulate\nworldwide development of collaborative font projects,\nto support the font creation efforts\nof academic and linguistic communities,\nand to provide a free and open framework\nin which fonts may be shared and improved\nin partnership with others.\n\nThe OFL allows the licensed fonts to be used, studied,\nmodified and redistributed freely\nas long as they are not sold by themselves.\nThe fonts, including any derivative works,\ncan be bundled, embedded,\nredistributed and/or sold with any software\nprovided that any reserved names are not used\nby derivative works.\nThe fonts and derivatives, however,\ncannot be released under any other type of license.\nThe requirement for fonts to remain under this license\ndoes not apply to any document\ncreated using the fonts or their derivatives.\n\nDEFINITIONS\n\n\"Font Software\" refers to the set of files\nreleased by the Copyright Holder(s) under this license\nand clearly marked as such.\nThis may include source files, build scripts and documentation.\n\n\"Reserved Font Name\" refers to any names specified as such\nafter the copyright statement(s).\n\n\"Original Version\" refers to the collection\nof Font Software components\nas distributed by the Copyright Holder(s).\n\n\"Modified Version\" refers to any derivative\nmade by adding to, deleting, or substituting --\nin part or in whole --\nany of the components of the Original Version,\nby changing formats\nor by porting the Font Software to a new environment.\n\n\"Author\" refers to any designer, engineer, programmer,\ntechnical writer or other person\nwho contributed to the Font Software.\n\nPERMISSION & CONDITIONS\n\nPermission is hereby granted, free of charge,\nto any person obtaining a copy of the Font Software,\nto use, study, copy, merge, embed, modify, redistribute,\nand sell modified and unmodified copies of the Font Software,\nsubject to the following conditions:\n\n1) Neither the Font Software nor any of its individual components,\nin Original or Modified Versions,\nmay be sold by itself.\n\n2) Original or Modified Versions of the Font Software\nmay be bundled, redistributed and/or sold with any software,\nprovided that each copy contains the above copyright notice\nand this license.\nThese can be included either as stand-alone text files,\nhuman-readable headers or in the appropriate\nmachine-readable metadata fields within text or binary files\nas long as those fields can be easily viewed by the user.\n\n3) No Modified Version of the Font Software may use\nthe Reserved Font Name(s)\nunless explicit written permission is granted\nby the corresponding Copyright Holder.\nThis restriction only applies to the primary font name\nas presented to the users.\n\n4) The name(s) of the Copyright Holder(s)\nor the Author(s) of the Font Software\nshall not be used to promote,\nendorse or advertise any Modified Version,\nexcept to acknowledge the contribution(s)\nof the Copyright Holder(s) and the Author(s)\nor with their explicit written permission.\n\n5) The Font Software,\nmodified or unmodified, in part or in whole,\nmust be distributed entirely under this license,\nand must not be distributed under any other license.\nThe requirement for fonts to remain under this license\ndoes not apply to any document\ncreated using the Font Software.\n\nTERMINATION\n\nThis license becomes null and void\nif any of the above conditions are not met.\n\nDISCLAIMER\n\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\",\nWITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,\nINCLUDING BUT NOT LIMITED TO\nANY WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT.\nIN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE\nFOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT,\nINCIDENTAL, OR CONSEQUENTIAL DAMAGES,\nWHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,\nARISING FROM, OUT OF THE USE OR INABILITY TO USE\nTHE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.",
   "ISC License\n\nPermission to use, copy, modify, and/or distribute this software for any\npurpose with or without fee is hereby granted, provided that the above\ncopyright notice and this permission notice appear in all copies.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\" AND THE AUTHOR DISCLAIMS ALL WARRANTIES\nWITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF\nMERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR\nANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES\nWHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN\nACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF\nOR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.\n\n---\n\nThe following Lucide icons are derived from the Feather project:\n\nairplay, alert-circle, alert-octagon, alert-triangle, aperture, arrow-down-circle, arrow-down-left, arrow-down-right, arrow-down, arrow-left-circle, arrow-left, arrow-right-circle, arrow-right, arrow-up-circle, arrow-up-left, arrow-up-right, arrow-up, at-sign, calendar, cast, check, chevron-down, chevron-left, chevron-right, chevron-up, chevrons-down, chevrons-left, chevrons-right, chevrons-up, circle, clipboard, clock, code, columns, command, compass, corner-down-left, corner-down-right, corner-left-down, corner-left-up, corner-right-down, corner-right-up, corner-up-left, corner-up-right, crosshair, database, divide-circle, divide-square, dollar-sign, download, external-link, feather, frown, hash, headphones, help-circle, info, italic, key, layout, life-buoy, link-2, link, loader, lock, log-in, log-out, maximize, meh, minimize, minimize-2, minus-circle, minus-square, minus, monitor, moon, more-horizontal, more-vertical, move, music, navigation-2, navigation, octagon, pause-circle, percent, plus-circle, plus-square, plus, power, radio, rss, search, server, share, shopping-bag, sidebar, smartphone, smile, square, table-2, tablet, target, terminal, trash-2, trash, triangle, tv, type, upload, x-circle, x-octagon, x-square, x, zoom-in, zoom-out\n\nThe MIT License (MIT) (for the icons listed above)\n\nCopyright (c) 2013-present Cole Bemis\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in all\ncopies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.",
   "This Font Software is licensed under the SIL Open Font License, Version 1.1.\nThis license is copied below, and is also available with a FAQ at:\nhttp://scripts.sil.org/OFL\n\n-----------------------------------------------------------\nSIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n-----------------------------------------------------------\n\nPREAMBLE\nThe goals of the Open Font License (OFL) are to stimulate worldwide\ndevelopment of collaborative font projects, to support the font creation\nefforts of academic and linguistic communities, and to provide a free and\nopen framework in which fonts may be shared and improved in partnership\nwith others.\n\nThe OFL allows the licensed fonts to be used, studied, modified and\nredistributed freely as long as they are not sold by themselves. The\nfonts, including any derivative works, can be bundled, embedded,\nredistributed and/or sold with any software provided that any reserved\nnames are not used by derivative works. The fonts and derivatives,\nhowever, cannot be released under any other type of license. The\nrequirement for fonts to remain under this license does not apply\nto any document created using the fonts or their derivatives.\n\nDEFINITIONS\n\"Font Software\" refers to the set of files released by the Copyright\nHolder(s) under this license and clearly marked as such. This may\ninclude source files, build scripts and documentation.\n\n\"Reserved Font Name\" refers to any names specified as such after the\ncopyright statement(s).\n\n\"Original Version\" refers to the collection of Font Software components as\ndistributed by the Copyright Holder(s).\n\n\"Modified Version\" refers to any derivative made by adding to, deleting,\nor substituting -- in part or in whole -- any of the components of the\nOriginal Version, by changing formats or by porting the Font Software to a\nnew environment.\n\n\"Author\" refers to any designer, engineer, programmer, technical\nwriter or other person who contributed to the Font Software.\n\nPERMISSION & CONDITIONS\nPermission is hereby granted, free of charge, to any person obtaining\na copy of the Font Software, to use, study, copy, merge, embed, modify,\nredistribute, and sell modified and unmodified copies of the Font\nSoftware, subject to the following conditions:\n\n1) Neither the Font Software nor any of its individual components,\nin Original or Modified Versions, may be sold by itself.\n\n2) Original or Modified Versions of the Font Software may be bundled,\nredistributed and/or sold with any software, provided that each copy\ncontains the above copyright notice and this license. These can be\nincluded either as stand-alone text files, human-readable headers or\nin the appropriate machine-readable metadata fields within text or\nbinary files as long as those fields can be easily viewed by the user.\n\n3) No Modified Version of the Font Software may use the Reserved Font\nName(s) unless explicit written permission is granted by the corresponding\nCopyright Holder. This restriction only applies to the primary font name as\npresented to the users.\n\n4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font\nSoftware shall not be used to promote, endorse or advertise any\nModified Version, except to acknowledge the contribution(s) of the\nCopyright Holder(s) and the Author(s) or with their explicit written\npermission.\n\n5) The Font Software, modified or unmodified, in part or in whole,\nmust be distributed entirely under this license, and must not be\ndistributed under any other license. The requirement for fonts to\nremain under this license does not apply to any document created\nusing the Font Software.\n\nTERMINATION\nThis license becomes null and void if any of the above conditions are\nnot met.\n\nDISCLAIMER\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE\nCOPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL\nDAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM\nOTHER DEALINGS IN THE FONT SOFTWARE.",
+  "Google Inc.\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.\nThis license is copied below, and is also available with a FAQ at:\nhttp://scripts.sil.org/OFL\n\n-----------------------------------------------------------\nSIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n-----------------------------------------------------------\n\nPREAMBLE\nThe goals of the Open Font License (OFL) are to stimulate worldwide\ndevelopment of collaborative font projects, to support the font creation\nefforts of academic and linguistic communities, and to provide a free and\nopen framework in which fonts may be shared and improved in partnership\nwith others.\n\nThe OFL allows the licensed fonts to be used, studied, modified and\nredistributed freely as long as they are not sold by themselves. The\nfonts, including any derivative works, can be bundled, embedded,\nredistributed and/or sold with any software provided that any reserved\nnames are not used by derivative works. The fonts and derivatives,\nhowever, cannot be released under any other type of license. The\nrequirement for fonts to remain under this license does not apply\nto any document created using the fonts or their derivatives.\n\nDEFINITIONS\n\"Font Software\" refers to the set of files released by the Copyright\nHolder(s) under this license and clearly marked as such. This may\ninclude source files, build scripts and documentation.\n\n\"Reserved Font Name\" refers to any names specified as such after the\ncopyright statement(s).\n\n\"Original Version\" refers to the collection of Font Software components as\ndistributed by the Copyright Holder(s).\n\n\"Modified Version\" refers to any derivative made by adding to, deleting,\nor substituting -- in part or in whole -- any of the components of the\nOriginal Version, by changing formats or by porting the Font Software to a\nnew environment.\n\n\"Author\" refers to any designer, engineer, programmer, technical\nwriter or other person who contributed to the Font Software.\n\nPERMISSION & CONDITIONS\nPermission is hereby granted, free of charge, to any person obtaining\na copy of the Font Software, to use, study, copy, merge, embed, modify,\nredistribute, and sell modified and unmodified copies of the Font\nSoftware, subject to the following conditions:\n\n1) Neither the Font Software nor any of its individual components,\nin Original or Modified Versions, may be sold by itself.\n\n2) Original or Modified Versions of the Font Software may be bundled,\nredistributed and/or sold with any software, provided that each copy\ncontains the above copyright notice and this license. These can be\nincluded either as stand-alone text files, human-readable headers or\nin the appropriate machine-readable metadata fields within text or\nbinary files as long as those fields can be easily viewed by the user.\n\n3) No Modified Version of the Font Software may use the Reserved Font\nName(s) unless explicit written permission is granted by the corresponding\nCopyright Holder. This restriction only applies to the primary font name as\npresented to the users.\n\n4) The name(s) of the Copyright Holder(s) or the Author(s) of the Font\nSoftware shall not be used to promote, endorse or advertise any\nModified Version, except to acknowledge the contribution(s) of the\nCopyright Holder(s) and the Author(s) or with their explicit written\npermission.\n\n5) The Font Software, modified or unmodified, in part or in whole,\nmust be distributed entirely under this license, and must not be\ndistributed under any other license. The requirement for fonts to\nremain under this license does not apply to any document created\nusing the Font Software.\n\nTERMINATION\nThis license becomes null and void if any of the above conditions are\nnot met.\n\nDISCLAIMER\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL THE\nCOPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL\nDAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM\nOTHER DEALINGS IN THE FONT SOFTWARE.",
   "Noto Sans Arabic, Noto Sans Bengali, Noto Sans Devanagari, Noto Sans Hebrew, Noto Sans Tamil, Noto Sans Thai\nCopyright 2010, 2012-2020 Google Inc. Copyright 2015-2020 Google LLC.\n\nLiberation Sans (default.woff2 in ../libass-wasm/files)\nDigitized data copyright (c) 2010 Google Corporation. Copyright (c) 2012 Red Hat, Inc.\nLiberation is a trademark of Red Hat, Inc.\n\nThis Font Software is licensed under the SIL Open Font License, Version 1.1.\nThis license is copied below, and is also available with a FAQ at: https://openfontlicense.org\n\n-----------------------------------------------------------\nSIL OPEN FONT LICENSE Version 1.1 - 26 February 2007\n-----------------------------------------------------------\n\nPREAMBLE\n\nThe goals of the Open Font License (OFL) are to stimulate\nworldwide development of collaborative font projects,\nto support the font creation efforts\nof academic and linguistic communities,\nand to provide a free and open framework\nin which fonts may be shared and improved\nin partnership with others.\n\nThe OFL allows the licensed fonts to be used, studied,\nmodified and redistributed freely\nas long as they are not sold by themselves.\nThe fonts, including any derivative works,\ncan be bundled, embedded,\nredistributed and/or sold with any software\nprovided that any reserved names are not used\nby derivative works.\nThe fonts and derivatives, however,\ncannot be released under any other type of license.\nThe requirement for fonts to remain under this license\ndoes not apply to any document\ncreated using the fonts or their derivatives.\n\nDEFINITIONS\n\n\"Font Software\" refers to the set of files\nreleased by the Copyright Holder(s) under this license\nand clearly marked as such.\nThis may include source files, build scripts and documentation.\n\n\"Reserved Font Name\" refers to any names specified as such\nafter the copyright statement(s).\n\n\"Original Version\" refers to the collection\nof Font Software components\nas distributed by the Copyright Holder(s).\n\n\"Modified Version\" refers to any derivative\nmade by adding to, deleting, or substituting --\nin part or in whole --\nany of the components of the Original Version,\nby changing formats\nor by porting the Font Software to a new environment.\n\n\"Author\" refers to any designer, engineer, programmer,\ntechnical writer or other person\nwho contributed to the Font Software.\n\nPERMISSION & CONDITIONS\n\nPermission is hereby granted, free of charge,\nto any person obtaining a copy of the Font Software,\nto use, study, copy, merge, embed, modify, redistribute,\nand sell modified and unmodified copies of the Font Software,\nsubject to the following conditions:\n\n1) Neither the Font Software nor any of its individual components,\nin Original or Modified Versions,\nmay be sold by itself.\n\n2) Original or Modified Versions of the Font Software\nmay be bundled, redistributed and/or sold with any software,\nprovided that each copy contains the above copyright notice\nand this license.\nThese can be included either as stand-alone text files,\nhuman-readable headers or in the appropriate\nmachine-readable metadata fields within text or binary files\nas long as those fields can be easily viewed by the user.\n\n3) No Modified Version of the Font Software may use\nthe Reserved Font Name(s)\nunless explicit written permission is granted\nby the corresponding Copyright Holder.\nThis restriction only applies to the primary font name\nas presented to the users.\n\n4) The name(s) of the Copyright Holder(s)\nor the Author(s) of the Font Software\nshall not be used to promote,\nendorse or advertise any Modified Version,\nexcept to acknowledge the contribution(s)\nof the Copyright Holder(s) and the Author(s)\nor with their explicit written permission.\n\n5) The Font Software,\nmodified or unmodified, in part or in whole,\nmust be distributed entirely under this license,\nand must not be distributed under any other license.\nThe requirement for fonts to remain under this license\ndoes not apply to any document\ncreated using the Font Software.\n\nTERMINATION\n\nThis license becomes null and void\nif any of the above conditions are not met.\n\nDISCLAIMER\n\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\",\nWITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED,\nINCLUDING BUT NOT LIMITED TO\nANY WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT.\nIN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE\nFOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT,\nINCIDENTAL, OR CONSEQUENTIAL DAMAGES,\nWHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,\nARISING FROM, OUT OF THE USE OR INABILITY TO USE\nTHE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE FONT SOFTWARE.",
   "Fonts are (c) Bitstream (see below). DejaVu changes are in public domain.\nGlyphs imported from Arev fonts are (c) Tavmjong Bah (see below)\n\nBitstream Vera Fonts Copyright\n------------------------------\n\nCopyright (c) 2003 by Bitstream, Inc. All Rights Reserved. Bitstream Vera is\na trademark of Bitstream, Inc.\n\nPermission is hereby granted, free of charge, to any person obtaining a copy\nof the fonts accompanying this license (\"Fonts\") and associated\ndocumentation files (the \"Font Software\"), to reproduce and distribute the\nFont Software, including without limitation the rights to use, copy, merge,\npublish, distribute, and/or sell copies of the Font Software, and to permit\npersons to whom the Font Software is furnished to do so, subject to the\nfollowing conditions:\n\nThe above copyright and trademark notices and this permission notice shall\nbe included in all copies of one or more of the Font Software typefaces.\n\nThe Font Software may be modified, altered, or added to, and in particular\nthe designs of glyphs or characters in the Fonts may be modified and\nadditional glyphs or characters may be added to the Fonts, only if the fonts\nare renamed to names not containing either the words \"Bitstream\" or the word\n\"Vera\".\n\nThis License becomes null and void to the extent applicable to Fonts or Font\nSoftware that has been modified and is distributed under the \"Bitstream\nVera\" names.\n\nThe Font Software may be sold as part of a larger software package but no\ncopy of one or more of the Font Software typefaces may be sold by itself.\n\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS\nOR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT OF COPYRIGHT, PATENT,\nTRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL BITSTREAM OR THE GNOME\nFOUNDATION BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, INCLUDING\nANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL DAMAGES,\nWHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF\nTHE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM OTHER DEALINGS IN THE\nFONT SOFTWARE.\n\nExcept as contained in this notice, the names of Gnome, the Gnome\nFoundation, and Bitstream Inc., shall not be used in advertising or\notherwise to promote the sale, use or other dealings in this Font Software\nwithout prior written authorization from the Gnome Foundation or Bitstream\nInc., respectively. For further information, contact: fonts at gnome dot\norg.\n\nArev Fonts Copyright\n------------------------------\n\nCopyright (c) 2006 by Tavmjong Bah. All Rights Reserved.\n\nPermission is hereby granted, free of charge, to any person obtaining\na copy of the fonts accompanying this license (\"Fonts\") and\nassociated documentation files (the \"Font Software\"), to reproduce\nand distribute the modifications to the Bitstream Vera Font Software,\nincluding without limitation the rights to use, copy, merge, publish,\ndistribute, and/or sell copies of the Font Software, and to permit\npersons to whom the Font Software is furnished to do so, subject to\nthe following conditions:\n\nThe above copyright and trademark notices and this permission notice\nshall be included in all copies of one or more of the Font Software\ntypefaces.\n\nThe Font Software may be modified, altered, or added to, and in\nparticular the designs of glyphs or characters in the Fonts may be\nmodified and additional glyphs or characters may be added to the\nFonts, only if the fonts are renamed to names not containing either\nthe words \"Tavmjong Bah\" or the word \"Arev\".\n\nThis License becomes null and void to the extent applicable to Fonts\nor Font Software that has been modified and is distributed under the\n\"Tavmjong Bah Arev\" names.\n\nThe Font Software may be sold as part of a larger software package but\nno copy of one or more of the Font Software typefaces may be sold by\nitself.\n\nTHE FONT SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND,\nEXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO ANY WARRANTIES OF\nMERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT\nOF COPYRIGHT, PATENT, TRADEMARK, OR OTHER RIGHT. IN NO EVENT SHALL\nTAVMJONG BAH BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,\nINCLUDING ANY GENERAL, SPECIAL, INDIRECT, INCIDENTAL, OR CONSEQUENTIAL\nDAMAGES, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING\nFROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM\nOTHER DEALINGS IN THE FONT SOFTWARE.\n\nExcept as contained in this notice, the name of Tavmjong Bah shall not\nbe used in advertising or otherwise to promote the sale, use or other\ndealings in this Font Software without prior written authorization\nfrom Tavmjong Bah. For further information, contact: tavmjong @ free\n. fr.\n\n$Id: LICENSE 2133 2007-11-28 02:46:28Z lechimp $",
   "Permission is hereby granted, free of charge, to any person obtaining a copy\nof this software and associated documentation files (the \"Software\"), to deal\nin the Software without restriction, including without limitation the rights\nto use, copy, modify, merge, publish, distribute, sublicense, and/or sell\ncopies of the Software, and to permit persons to whom the Software is\nfurnished to do so, subject to the following conditions:\n\nThe above copyright notice and this permission notice shall be included in\nall copies or substantial portions of the Software.\n\nTHE SOFTWARE IS PROVIDED \"AS IS\", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR\nIMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,\nFITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE\nAUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER\nLIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,\nOUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE\nSOFTWARE.\n\n<http://www.opensource.org/licenses/mit-license.php>",
@@ -1841,6 +1851,7 @@
   "third_party/libass-wasm/provenance.json": "bfe51a509a7e3a02ded176f177f3be5daac13cd3401e4989caca113ffa344a98",
   "third_party/subtitle-fonts/OFL-1.1.txt": "3faab92706ea33a0e07905e98656e56940b7b09d7d15d6590c76bc38c1b83316",
   "third_party/subtitle-fonts/provenance.json": "e6705ca70cebee55c057dabc8224f1493e29669725c0c045f89653a07941537a",
+  "web/src/ui/fonts/noto/OFL.txt": "18aabf190848725e2576eefb5c29ba06aac1029d02132252a7f312eac2e50cf3",
   "web/src/ui/fonts/OFL.txt": "58172e0c0fac2cda8a37b348164bb55e44b0e69051e557e92b1d3f6910141f7b"
  }
 }

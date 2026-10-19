@@ -79,6 +79,7 @@ alone is not a complete source bundle.
 | Distributed font/art | Licence and local notice |
 | --- | --- |
 | Manrope web interface font (Latin, Latin Extended, Cyrillic, Greek and Vietnamese slices) | OFL-1.1, `web/src/ui/fonts/OFL.txt` |
+| Noto Sans web subsets (Japanese, Simplified and Traditional Chinese, Korean, Thai, Devanagari) | OFL-1.1, `web/src/ui/fonts/noto/OFL.txt` |
 | Liberation Sans 2.00.5 subtitle default | OFL-1.1, `third_party/libass-wasm/OFL-1.1.txt` |
 | Noto Sans Arabic, Hebrew, Thai, Devanagari, Bengali, Tamil | OFL-1.1, `third_party/subtitle-fonts/OFL-1.1.txt` |
 | Noto Sans CJK JP, decoder fallback and browser subtitles (served by the server) | OFL-1.1, `server/internal/mediaexec/fonts/NotoCJK-LICENSE` |
