@@ -6982,6 +6982,21 @@
    "source": "Unpin {name}",
    "state": "machine"
   },
+  "platform.downloadsChannel": {
+   "text": "다운로드",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "platform.downloadsRunning": {
+   "text": "오프라인 시청을 위해 다운로드 중",
+   "source": "Downloading for offline viewing",
+   "state": "machine"
+  },
+  "platform.localNetworkUsage": {
+   "text": "Portico 서버, 주변의 TV, Google Cast 기기를 찾아요. 로컬 네트워크 검색 없이도 직접 입력한 주소와 TV 코드를 사용할 수 있어요.",
+   "source": "Find your Portico servers, nearby TVs and Google Cast devices. Manual addresses and TV codes also work without local network discovery.",
+   "state": "machine"
+  },
   "playOn.airplay": {
    "text": "AirPlay",
    "source": "AirPlay",
@@ -7875,6 +7890,11 @@
   "player.opt.playNow": {
    "text": "지금 재생",
    "source": "Play now",
+   "state": "machine"
+  },
+  "player.opt.providedByOpenSubtitles": {
+   "text": "OpenSubtitles.com 제공 자막",
+   "source": "Subtitles provided by OpenSubtitles.com",
    "state": "machine"
   },
   "player.opt.quality": {
@@ -10517,6 +10537,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "아티스트",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "책",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "카테고리",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "챕터",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "작가 및 시리즈",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "디스크",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "에피소드",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "재생목록",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "가장 많이 재생한 곡",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "시즌",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "노래",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "지정되지 않은 절대 에피소드",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "인증 앱에 Portico 추가하기",
    "source": "Add Portico to your authenticator app",
@@ -11857,6 +11937,31 @@
    "source": "Server logs, detailed capture for troubleshooting, and support bundles.",
    "state": "machine"
   },
+  "server.maintenance.cadence.custom": {
+   "text": "선택한 요일",
+   "source": "Chosen days",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.nightly": {
+   "text": "매일 밤",
+   "source": "Every night",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekdays": {
+   "text": "평일",
+   "source": "Weekdays",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekends": {
+   "text": "주말",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekly": {
+   "text": "주 1회",
+   "source": "Once a week",
+   "state": "machine"
+  },
   "server.messageEveryone": {
    "text": "모두에게 메시지",
    "source": "Message everyone",
@@ -11942,14 +12047,94 @@
    "source": "Shared by every library that looks its titles up online.",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesAccountEnvironment": {
+   "text": "서버 환경 변수에 계정이 설정되어 있어요",
+   "source": "An account is set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountHelp": {
+   "text": "OpenSubtitles는 로그인한 계정만 다운로드할 수 있고, 다운로드 횟수는 계정별로 하루 단위로 집계돼요.",
+   "source": "OpenSubtitles lets signed-in accounts download, and counts downloads per account each day.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountRejected": {
+   "text": "OpenSubtitles가 사용자 이름이나 비밀번호를 허용하지 않았어요. 확인하고 저장한 뒤 다시 테스트하세요.",
+   "source": "OpenSubtitles didn’t accept the username or password. Check them, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesConnection": {
+   "text": "연결",
+   "source": "Connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsLeft": {
+   "text": "오늘 {remaining, plural, other {#회}} 남았어요",
+   "source": "{remaining, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsOf": {
+   "text": "오늘 {allowed, plural, other {#회}} 중 {remaining}회 남았어요",
+   "source": "{remaining} of {allowed, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesGetKey": {
+   "text": "OpenSubtitles.com에서 키 받기",
+   "source": "Get a key at OpenSubtitles.com",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKey": {
    "text": "OpenSubtitles API 키",
    "source": "OpenSubtitles API key",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesKeyEnvironment": {
+   "text": "서버 환경 변수에 설정되어 있어요",
+   "source": "Set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyNone": {
+   "text": "아직 키가 없어요",
+   "source": "No key yet",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKeyOwn": {
-   "text": "내 키 사용 중",
-   "source": "Your own key is in use",
+   "text": "키가 저장되었어요",
+   "source": "Your key is saved",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyRejected": {
+   "text": "OpenSubtitles가 API 키를 허용하지 않았어요. 키를 확인하고 저장한 뒤 다시 테스트하세요.",
+   "source": "OpenSubtitles didn’t accept the API key. Check it, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyWorks": {
+   "text": "키는 작동해요. Portico가 다운로드할 수 있도록 계정도 추가하세요.",
+   "source": "The key works. Add your account too, so Portico can download.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesLater": {
+   "text": "OpenSubtitles가 Portico에 잠시 기다리도록 요청했어요. 나중에 다시 시도하세요.",
+   "source": "OpenSubtitles asked Portico to wait. Try again later.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNeedsAccount": {
+   "text": "검색은 작동하지만, OpenSubtitles는 로그인한 계정만 다운로드할 수 있어요. 사용자 이름과 비밀번호를 추가하세요.",
+   "source": "Searching works, but OpenSubtitles only lets signed-in accounts download. Add your username and password.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNoPassword": {
+   "text": "로그인하려면 계정 비밀번호를 추가하세요.",
+   "source": "Add the account’s password to sign in.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotSetUp": {
+   "text": "설정되어 있지 않아요. 자막을 검색하려면 OpenSubtitles API 키를 추가하세요.",
+   "source": "Not set up. Add your OpenSubtitles API key to search for subtitles.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotTested": {
+   "text": "아직 테스트하지 않았어요",
+   "source": "Not tested yet",
    "state": "machine"
   },
   "server.metadata.openSubtitlesPassword": {
@@ -11962,9 +12147,49 @@
    "source": "A password is saved",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesQuotaUsed": {
+   "text": "오늘의 다운로드 한도를 모두 사용했어요. {time}에 다시 시작돼요.",
+   "source": "Today’s downloads are used up. They start again at {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesRemoveKey": {
+   "text": "내 키 삭제",
+   "source": "Remove my key",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesSignOut": {
    "text": "계정 삭제",
    "source": "Remove the account",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSignedIn": {
+   "text": "로그인되어 작동 중이에요",
+   "source": "Signed in and working",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSlowDown": {
+   "text": "OpenSubtitles가 Portico에 {time}까지 기다리도록 요청했어요.",
+   "source": "OpenSubtitles asked Portico to wait until {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTest": {
+   "text": "연결 테스트",
+   "source": "Test connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTestUnsaved": {
+   "text": "변경 사항을 저장한 뒤 테스트하세요.",
+   "source": "Save your changes, then test them.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTesting": {
+   "text": "테스트 중…",
+   "source": "Testing…",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesUnreachable": {
+   "text": "OpenSubtitles에 연결할 수 없었어요. 잠시 후 다시 테스트하세요.",
+   "source": "OpenSubtitles couldn’t be reached. Test again in a little while.",
    "state": "machine"
   },
   "server.metadata.openSubtitlesUser": {
@@ -11988,8 +12213,8 @@
    "state": "machine"
   },
   "server.metadata.subtitlesLede": {
-   "text": "부탁하면 Portico가 OpenSubtitles에서 자막을 찾아요. 하루 검색·다운로드를 더 쓰려면 내 API 키와 계정을 쓰세요.",
-   "source": "Portico looks for subtitles at OpenSubtitles when you ask it to. Use your own API key and account for more searches and downloads a day.",
+   "text": "Portico는 내 무료 계정과 API 키로 OpenSubtitles.com을 검색해요. opensubtitles.com에서 계정을 만든 뒤 프로필에서 API 컨슈머를 추가하면 키를 받을 수 있어요.",
+   "source": "Portico searches OpenSubtitles.com with your own free account and API key. Create an account at opensubtitles.com, then add an API consumer in your profile there to get a key.",
    "state": "machine"
   },
   "server.missing.removeBody": {
@@ -12920,6 +13145,106 @@
   "server.storage.added": {
    "text": "추가됐어요.",
    "source": "Added.",
+   "state": "machine"
+  },
+  "server.storage.category.artwork": {
+   "text": "아트워크",
+   "source": "Artwork",
+   "state": "machine"
+  },
+  "server.storage.category.artwork.description": {
+   "text": "서버가 가져오거나, 추출하거나, 받은 포스터, 배경 이미지, 썸네일이에요.",
+   "source": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+   "state": "machine"
+  },
+  "server.storage.category.backups": {
+   "text": "백업",
+   "source": "Backups",
+   "state": "machine"
+  },
+  "server.storage.category.backups.description": {
+   "text": "서버 백업이에요.",
+   "source": "Server backups.",
+   "state": "machine"
+  },
+  "server.storage.category.conversions": {
+   "text": "변환 작업 파일",
+   "source": "Conversion working files",
+   "state": "machine"
+  },
+  "server.storage.category.conversions.description": {
+   "text": "스트림을 변환하는 동안 기록된 세그먼트예요. 재생 중인 것이 없으면 안전하게 삭제할 수 있어요.",
+   "source": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+   "state": "machine"
+  },
+  "server.storage.category.downloads": {
+   "text": "다운로드",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "server.storage.category.downloads.description": {
+   "text": "클라이언트가 오프라인으로 가져갈 수 있도록 준비된 패키지예요.",
+   "source": "Packages staged for a client to take offline.",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache": {
+   "text": "라이브 버퍼",
+   "source": "Live buffer",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache.description": {
+   "text": "버퍼링된 라이브 및 채널 세그먼트예요.",
+   "source": "Buffered live and channel segments.",
+   "state": "machine"
+  },
+  "server.storage.category.logs": {
+   "text": "로그",
+   "source": "Logs",
+   "state": "machine"
+  },
+  "server.storage.category.logs.description": {
+   "text": "디스크에 기록된 진단 기록이에요.",
+   "source": "Diagnostic records written to disk.",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media": {
+   "text": "준비된 미디어",
+   "source": "Prepared media",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media.description": {
+   "text": "다운로드용이나 원본을 재생할 수 없는 기기를 위해 준비한 최적화 버전이에요.",
+   "source": "Optimised versions prepared for download or for a device that cannot play the original.",
+   "state": "machine"
+  },
+  "server.storage.category.recordings": {
+   "text": "녹화",
+   "source": "Recordings",
+   "state": "machine"
+  },
+  "server.storage.category.recordings.description": {
+   "text": "캡처된 녹화예요. 콘텐츠이므로 유지 관리 페이지에서 절대 삭제하지 않아요.",
+   "source": "Captured recordings. These are content: the maintenance page never removes them.",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles": {
+   "text": "자막",
+   "source": "Subtitles",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles.description": {
+   "text": "추출, 다운로드, 렌더링된 자막 트랙이에요.",
+   "source": "Extracted, downloaded and rendered subtitle tracks.",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay": {
+   "text": "트릭플레이 타일",
+   "source": "Trickplay tiles",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay.description": {
+   "text": "파일마다 만든 탐색용 타일이에요. 보통 다시 만들 수 있는 것 중 가장 큰 항목이에요.",
+   "source": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
    "state": "machine"
   },
   "server.storage.passwordSaved": {
@@ -14175,6 +14500,16 @@
   "settings.server.diskUsage": {
    "text": "디스크 사용량",
    "source": "Disk usage",
+   "state": "machine"
+  },
+  "settings.server.dlna": {
+   "text": "DLNA",
+   "source": "DLNA",
+   "state": "machine"
+  },
+  "settings.server.dlnaHelp": {
+   "text": "홈 네트워크의 TV, 게임 콘솔, 기타 DLNA 기기가 로그인 없이 이 서버의 모든 콘텐츠를 둘러보고 재생할 수 있게 해요.",
+   "source": "Lets TVs, consoles and other DLNA devices on your home network browse and play everything on this server, without signing in.",
    "state": "machine"
   },
   "settings.server.encoderSpeed": {
@@ -15495,6 +15830,41 @@
   "subtitles.error.missing": {
    "text": "이 자막은 더 이상 없어요. 현재 선택을 새로고침하세요.",
    "source": "This subtitle is no longer available. Refresh the current choices.",
+   "state": "machine"
+  },
+  "subtitles.error.providerBusy": {
+   "text": "OpenSubtitles가 바빠요. 잠시 후 다시 시도하세요.",
+   "source": "OpenSubtitles is busy. Try again in a moment.",
+   "state": "machine"
+  },
+  "subtitles.error.providerKeyRejected": {
+   "text": "OpenSubtitles가 이 서버의 키를 허용하지 않았어요. 소유자에게 확인을 요청하세요.",
+   "source": "OpenSubtitles didn’t accept this server’s key. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerNotConfigured": {
+   "text": "이 서버에서는 자막 검색이 설정되어 있지 않아요. 소유자에게 OpenSubtitles 키를 추가해 달라고 요청하세요.",
+   "source": "Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuota": {
+   "text": "이 서버가 오늘의 OpenSubtitles 다운로드 한도를 모두 사용했어요. {time}에 다시 시작돼요.",
+   "source": "This server has used today’s OpenSubtitles downloads. They start again at {time}.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuotaLater": {
+   "text": "이 서버가 오늘의 OpenSubtitles 다운로드 한도를 모두 사용했어요. 내일 다시 시도하세요.",
+   "source": "This server has used today’s OpenSubtitles downloads. Try again tomorrow.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInFailed": {
+   "text": "OpenSubtitles가 이 서버의 계정을 허용하지 않았어요. 소유자에게 확인을 요청하세요.",
+   "source": "OpenSubtitles didn’t accept this server’s account. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInRequired": {
+   "text": "OpenSubtitles는 로그인한 계정만 다운로드할 수 있어요. 소유자에게 계정 추가를 요청하세요.",
+   "source": "OpenSubtitles only lets signed-in accounts download. Ask the owner to add an account.",
    "state": "machine"
   },
   "title.aboutEpisode": {
@@ -20427,6 +20797,11 @@
    "source": "Network folders are checked more patiently before files are marked missing.",
    "state": "machine"
   },
+  "web.libraries.lyricsQueued": {
+   "text": "가사를 가져오도록 대기열에 추가되었어요. 진행 상황은 설정 › 스케줄에서 볼 수 있어요.",
+   "source": "Lyrics are queued to be fetched. Settings › Schedule shows the progress.",
+   "state": "machine"
+  },
   "web.libraries.metadataLanguage": {
    "text": "메타데이터 언어",
    "source": "Metadata language",
@@ -23040,6 +23415,31 @@
   "web.metadataSource.onlineDescription": {
    "text": "타이틀, 아트워크, 출연진, 평점을 온라인에서 조회해요. 내 파일과 NFO 세부 정보가 먼저 쓰여요.",
    "source": "Looks up titles, artwork, cast and ratings online. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.anime": {
+   "text": "온라인 제공자 하나로 애니메이션을 매칭해 제목, 에피소드, 아트워크를 가져와요. TheTVDB나 AniList를 고르지 않으면 TMDB를 사용해요. 내 파일과 NFO 세부 정보를 먼저 사용해요.",
+   "source": "Matches anime with one online provider for titles, episodes and artwork: TMDB unless you choose TheTVDB or AniList. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.audiobook": {
+   "text": "책에 포함된 태그, 함께 있는 세부 정보, 로컬 표지를 사용해요. 온라인 오디오북 소스는 사용할 수 없어요.",
+   "source": "Uses embedded book tags, sidecar details and local covers. Online audiobook sources are not available.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.movie": {
+   "text": "TMDB에서 영화를 매칭해 제목, 아트워크, 출연진, 평점을 가져와요. 내 파일과 NFO 세부 정보를 먼저 사용해요.",
+   "source": "Matches films with TMDB for titles, artwork, cast and ratings. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.music": {
+   "text": "세부 정보와 아트워크를 위해 MusicBrainz와 Cover Art Archive로 앨범을 매칭해요. 파일에 포함된 태그를 먼저 사용해요.",
+   "source": "Matches albums with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.tv": {
+   "text": "온라인 제공자 하나로 TV 시리즈를 매칭해 제목, 에피소드, 아트워크, 평점을 가져와요. TheTVDB를 고르지 않으면 TMDB를 사용해요. 내 파일과 NFO 세부 정보를 먼저 사용해요.",
+   "source": "Matches shows with one online provider for titles, episodes, artwork and ratings: TMDB unless you choose TheTVDB. Your own files and NFO details are used first.",
    "state": "machine"
   },
   "web.metadataSource.onlineName": {

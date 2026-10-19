@@ -27,9 +27,12 @@ one of them needs a native-speaker review before release.
 
 ### How the translations were made
 - **Source:** US English is the only source catalogue; Canadian and British English are derived from it by spelling rules.
-- **Translated catalogue:** French, Spanish, German and Russian were translated by Claude (Opus). The other
-  locales were translated by Muse Spark (one lane per locale). Every locale then got an adversarial review
-  by DeepSeek, and the coordinator integrated the reviewed results.
+- **Translated catalogue:** French, Spanish, German and Russian were translated by Claude (Opus). Most other
+  locales were translated by Muse Spark (one lane per locale); Turkish, Vietnamese, Simplified Chinese,
+  European Portuguese and the late-added messages were translated by Claude Haiku after the Muse Spark quota ran
+  out. Only Latin American Spanish got an adversarial review (DeepSeek), whose corrections are applied
+  (`packages/i18n/translations/reviews/`). Separate model reviews were dropped by decision: every language gets a
+  proper review before it ships.
 - **Review marking:** every message is stored with state `machine`. A human reviewer's XLIFF marked `final`
   imports as `reviewed`. `packages/i18n/TRANSLATING.md` covers the workflow (export, import, status, check)
   and how to keep the branch current as English changes on `main`.

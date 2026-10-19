@@ -6982,6 +6982,21 @@
    "source": "Unpin {name}",
    "state": "machine"
   },
+  "platform.downloadsChannel": {
+   "text": "Pobrane",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "platform.downloadsRunning": {
+   "text": "Pobieranie do oglądania offline",
+   "source": "Downloading for offline viewing",
+   "state": "machine"
+  },
+  "platform.localNetworkUsage": {
+   "text": "Znajdź swoje serwery Portico, pobliskie telewizory i urządzenia Google Cast. Adresy wpisane ręcznie i kody TV działają też bez wykrywania sieci lokalnej.",
+   "source": "Find your Portico servers, nearby TVs and Google Cast devices. Manual addresses and TV codes also work without local network discovery.",
+   "state": "machine"
+  },
   "playOn.airplay": {
    "text": "AirPlay",
    "source": "AirPlay",
@@ -7875,6 +7890,11 @@
   "player.opt.playNow": {
    "text": "Odtwórz teraz",
    "source": "Play now",
+   "state": "machine"
+  },
+  "player.opt.providedByOpenSubtitles": {
+   "text": "Napisy dostarcza OpenSubtitles.com",
+   "source": "Subtitles provided by OpenSubtitles.com",
    "state": "machine"
   },
   "player.opt.quality": {
@@ -10517,6 +10537,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "Wykonawcy",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "Książki",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "Kategorie",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "Rozdziały",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "Autor i seria",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "Płyty",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "Odcinki",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "Playlisty",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "Twoje najczęściej odtwarzane",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "Sezony",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "Utwory",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "Nieprzypisane odcinki absolutne",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "Dodaj Portico do swojej aplikacji uwierzytelniającej",
    "source": "Add Portico to your authenticator app",
@@ -11857,6 +11937,31 @@
    "source": "Server logs, detailed capture for troubleshooting, and support bundles.",
    "state": "machine"
   },
+  "server.maintenance.cadence.custom": {
+   "text": "Wybrane dni",
+   "source": "Chosen days",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.nightly": {
+   "text": "Każdej nocy",
+   "source": "Every night",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekdays": {
+   "text": "Dni robocze",
+   "source": "Weekdays",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekends": {
+   "text": "Weekendy",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekly": {
+   "text": "Raz w tygodniu",
+   "source": "Once a week",
+   "state": "machine"
+  },
   "server.messageEveryone": {
    "text": "Napisz do wszystkich",
    "source": "Message everyone",
@@ -11942,14 +12047,94 @@
    "source": "Shared by every library that looks its titles up online.",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesAccountEnvironment": {
+   "text": "Konto jest ustawione w środowisku serwera",
+   "source": "An account is set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountHelp": {
+   "text": "OpenSubtitles pozwala pobierać tylko z zalogowanych kont i liczy pobrania osobno dla każdego konta, każdego dnia.",
+   "source": "OpenSubtitles lets signed-in accounts download, and counts downloads per account each day.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountRejected": {
+   "text": "OpenSubtitles nie zaakceptował nazwy użytkownika lub hasła. Sprawdź je, zapisz i przetestuj ponownie.",
+   "source": "OpenSubtitles didn’t accept the username or password. Check them, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesConnection": {
+   "text": "Połączenie",
+   "source": "Connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsLeft": {
+   "text": "{remaining, plural, one {Pozostało # pobranie dziś} few {Pozostało # pobrania dziś} many {Pozostało # pobrań dziś} other {Pozostało # pobrania dziś}}",
+   "source": "{remaining, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsOf": {
+   "text": "{remaining} z {allowed, plural, one {# pobranie} few {# pobrania} many {# pobrań} other {# pobrania}} dostępnych dziś",
+   "source": "{remaining} of {allowed, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesGetKey": {
+   "text": "Pobierz klucz na OpenSubtitles.com",
+   "source": "Get a key at OpenSubtitles.com",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKey": {
    "text": "Klucz API OpenSubtitles",
    "source": "OpenSubtitles API key",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesKeyEnvironment": {
+   "text": "Ustawiony w środowisku serwera",
+   "source": "Set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyNone": {
+   "text": "Brak klucza",
+   "source": "No key yet",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKeyOwn": {
-   "text": "Używany jest Twój własny klucz",
-   "source": "Your own key is in use",
+   "text": "Twój klucz jest zapisany",
+   "source": "Your key is saved",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyRejected": {
+   "text": "OpenSubtitles nie zaakceptował klucza API. Sprawdź go, zapisz i przetestuj ponownie.",
+   "source": "OpenSubtitles didn’t accept the API key. Check it, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyWorks": {
+   "text": "Klucz działa. Dodaj też swoje konto, aby Portico mógł pobierać.",
+   "source": "The key works. Add your account too, so Portico can download.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesLater": {
+   "text": "OpenSubtitles poprosił Portico, aby poczekał. Spróbuj później.",
+   "source": "OpenSubtitles asked Portico to wait. Try again later.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNeedsAccount": {
+   "text": "Wyszukiwanie działa, ale OpenSubtitles pozwala pobierać tylko z zalogowanych kont. Dodaj swoją nazwę użytkownika i hasło.",
+   "source": "Searching works, but OpenSubtitles only lets signed-in accounts download. Add your username and password.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNoPassword": {
+   "text": "Dodaj hasło do konta, aby się zalogować.",
+   "source": "Add the account’s password to sign in.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotSetUp": {
+   "text": "Nie skonfigurowano. Dodaj swój klucz API OpenSubtitles, aby wyszukiwać napisy.",
+   "source": "Not set up. Add your OpenSubtitles API key to search for subtitles.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotTested": {
+   "text": "Jeszcze nie testowano",
+   "source": "Not tested yet",
    "state": "machine"
   },
   "server.metadata.openSubtitlesPassword": {
@@ -11962,9 +12147,49 @@
    "source": "A password is saved",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesQuotaUsed": {
+   "text": "Dzisiejsze pobrania się wyczerpały. Zaczną się od nowa o {time}.",
+   "source": "Today’s downloads are used up. They start again at {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesRemoveKey": {
+   "text": "Usuń mój klucz",
+   "source": "Remove my key",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesSignOut": {
    "text": "Usuń konto",
    "source": "Remove the account",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSignedIn": {
+   "text": "Zalogowano i działa",
+   "source": "Signed in and working",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSlowDown": {
+   "text": "OpenSubtitles poprosił Portico, aby poczekał do {time}.",
+   "source": "OpenSubtitles asked Portico to wait until {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTest": {
+   "text": "Testuj połączenie",
+   "source": "Test connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTestUnsaved": {
+   "text": "Zapisz zmiany, a potem je przetestuj.",
+   "source": "Save your changes, then test them.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTesting": {
+   "text": "Testowanie…",
+   "source": "Testing…",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesUnreachable": {
+   "text": "Nie udało się połączyć z OpenSubtitles. Przetestuj ponownie za chwilę.",
+   "source": "OpenSubtitles couldn’t be reached. Test again in a little while.",
    "state": "machine"
   },
   "server.metadata.openSubtitlesUser": {
@@ -11988,8 +12213,8 @@
    "state": "machine"
   },
   "server.metadata.subtitlesLede": {
-   "text": "Portico szuka napisów w OpenSubtitles, gdy je o to poprosisz. Użyj własnego klucza API i konta, aby mieć więcej wyszukiwań i pobrań dziennie.",
-   "source": "Portico looks for subtitles at OpenSubtitles when you ask it to. Use your own API key and account for more searches and downloads a day.",
+   "text": "Portico wyszukuje napisy na OpenSubtitles.com za pomocą Twojego własnego bezpłatnego konta i klucza API. Załóż konto na opensubtitles.com, a potem dodaj tam w swoim profilu konsumenta API, aby otrzymać klucz.",
+   "source": "Portico searches OpenSubtitles.com with your own free account and API key. Create an account at opensubtitles.com, then add an API consumer in your profile there to get a key.",
    "state": "machine"
   },
   "server.missing.removeBody": {
@@ -12920,6 +13145,106 @@
   "server.storage.added": {
    "text": "Dodano.",
    "source": "Added.",
+   "state": "machine"
+  },
+  "server.storage.category.artwork": {
+   "text": "Grafiki",
+   "source": "Artwork",
+   "state": "machine"
+  },
+  "server.storage.category.artwork.description": {
+   "text": "Plakaty, tła i miniatury, które serwer pobrał, wyodrębnił lub otrzymał.",
+   "source": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+   "state": "machine"
+  },
+  "server.storage.category.backups": {
+   "text": "Kopie zapasowe",
+   "source": "Backups",
+   "state": "machine"
+  },
+  "server.storage.category.backups.description": {
+   "text": "Kopie zapasowe serwera.",
+   "source": "Server backups.",
+   "state": "machine"
+  },
+  "server.storage.category.conversions": {
+   "text": "Pliki robocze konwersji",
+   "source": "Conversion working files",
+   "state": "machine"
+  },
+  "server.storage.category.conversions.description": {
+   "text": "Segmenty zapisane podczas konwersji strumienia. Można je bezpiecznie usunąć, gdy nic nie jest odtwarzane.",
+   "source": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+   "state": "machine"
+  },
+  "server.storage.category.downloads": {
+   "text": "Pobrane",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "server.storage.category.downloads.description": {
+   "text": "Pakiety przygotowane, aby klient mógł zabrać je offline.",
+   "source": "Packages staged for a client to take offline.",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache": {
+   "text": "Bufor na żywo",
+   "source": "Live buffer",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache.description": {
+   "text": "Zbuforowane segmenty transmisji na żywo i kanałów.",
+   "source": "Buffered live and channel segments.",
+   "state": "machine"
+  },
+  "server.storage.category.logs": {
+   "text": "Logi",
+   "source": "Logs",
+   "state": "machine"
+  },
+  "server.storage.category.logs.description": {
+   "text": "Zapisy diagnostyczne zapisane na dysku.",
+   "source": "Diagnostic records written to disk.",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media": {
+   "text": "Przygotowane multimedia",
+   "source": "Prepared media",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media.description": {
+   "text": "Zoptymalizowane wersje przygotowane do pobrania albo dla urządzenia, które nie odtworzy oryginału.",
+   "source": "Optimised versions prepared for download or for a device that cannot play the original.",
+   "state": "machine"
+  },
+  "server.storage.category.recordings": {
+   "text": "Nagrania",
+   "source": "Recordings",
+   "state": "machine"
+  },
+  "server.storage.category.recordings.description": {
+   "text": "Zarejestrowane nagrania. To treści: strona konserwacji nigdy ich nie usuwa.",
+   "source": "Captured recordings. These are content: the maintenance page never removes them.",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles": {
+   "text": "Napisy",
+   "source": "Subtitles",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles.description": {
+   "text": "Wyodrębnione, pobrane i wyrenderowane ścieżki napisów.",
+   "source": "Extracted, downloaded and rendered subtitle tracks.",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay": {
+   "text": "Miniatury przewijania",
+   "source": "Trickplay tiles",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay.description": {
+   "text": "Miniatury podglądu przewijania tworzone dla każdego pliku. Zwykle to największa kategoria, którą można wygenerować ponownie.",
+   "source": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
    "state": "machine"
   },
   "server.storage.passwordSaved": {
@@ -14175,6 +14500,16 @@
   "settings.server.diskUsage": {
    "text": "Użycie dysku",
    "source": "Disk usage",
+   "state": "machine"
+  },
+  "settings.server.dlna": {
+   "text": "DLNA",
+   "source": "DLNA",
+   "state": "machine"
+  },
+  "settings.server.dlnaHelp": {
+   "text": "Pozwala telewizorom, konsolom i innym urządzeniom DLNA w Twojej sieci domowej przeglądać i odtwarzać wszystko z tego serwera, bez logowania.",
+   "source": "Lets TVs, consoles and other DLNA devices on your home network browse and play everything on this server, without signing in.",
    "state": "machine"
   },
   "settings.server.encoderSpeed": {
@@ -15495,6 +15830,41 @@
   "subtitles.error.missing": {
    "text": "Te napisy nie są już dostępne. Odśwież bieżące opcje.",
    "source": "This subtitle is no longer available. Refresh the current choices.",
+   "state": "machine"
+  },
+  "subtitles.error.providerBusy": {
+   "text": "OpenSubtitles jest zajęty. Spróbuj ponownie za chwilę.",
+   "source": "OpenSubtitles is busy. Try again in a moment.",
+   "state": "machine"
+  },
+  "subtitles.error.providerKeyRejected": {
+   "text": "OpenSubtitles nie zaakceptował klucza tego serwera. Poproś właściciela o jego sprawdzenie.",
+   "source": "OpenSubtitles didn’t accept this server’s key. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerNotConfigured": {
+   "text": "Wyszukiwanie napisów nie jest skonfigurowane na tym serwerze. Poproś właściciela o dodanie klucza OpenSubtitles.",
+   "source": "Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuota": {
+   "text": "Ten serwer wykorzystał dzisiejsze pobrania z OpenSubtitles. Zaczną się od nowa o {time}.",
+   "source": "This server has used today’s OpenSubtitles downloads. They start again at {time}.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuotaLater": {
+   "text": "Ten serwer wykorzystał dzisiejsze pobrania z OpenSubtitles. Spróbuj jutro.",
+   "source": "This server has used today’s OpenSubtitles downloads. Try again tomorrow.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInFailed": {
+   "text": "OpenSubtitles nie zaakceptował konta tego serwera. Poproś właściciela o jego sprawdzenie.",
+   "source": "OpenSubtitles didn’t accept this server’s account. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInRequired": {
+   "text": "OpenSubtitles pozwala pobierać tylko z zalogowanych kont. Poproś właściciela o dodanie konta.",
+   "source": "OpenSubtitles only lets signed-in accounts download. Ask the owner to add an account.",
    "state": "machine"
   },
   "title.aboutEpisode": {
@@ -20427,6 +20797,11 @@
    "source": "Network folders are checked more patiently before files are marked missing.",
    "state": "machine"
   },
+  "web.libraries.lyricsQueued": {
+   "text": "Teksty są w kolejce do pobrania. Ustawienia › Harmonogram pokazuje postęp.",
+   "source": "Lyrics are queued to be fetched. Settings › Schedule shows the progress.",
+   "state": "machine"
+  },
   "web.libraries.metadataLanguage": {
    "text": "Język metadanych",
    "source": "Metadata language",
@@ -23040,6 +23415,31 @@
   "web.metadataSource.onlineDescription": {
    "text": "Wyszukuje tytuły, grafiki, obsadę i oceny online. Twoje własne pliki i szczegóły NFO są używane najpierw.",
    "source": "Looks up titles, artwork, cast and ratings online. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.anime": {
+   "text": "Dopasowuje anime do jednego dostawcy online: tytuły, odcinki i grafiki. Domyślnie TMDB, chyba że wybierzesz TheTVDB lub AniList. Najpierw używane są Twoje pliki i szczegóły NFO.",
+   "source": "Matches anime with one online provider for titles, episodes and artwork: TMDB unless you choose TheTVDB or AniList. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.audiobook": {
+   "text": "Używa wbudowanych tagów książek, plików towarzyszących i lokalnych okładek. Internetowe źródła audiobooków są niedostępne.",
+   "source": "Uses embedded book tags, sidecar details and local covers. Online audiobook sources are not available.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.movie": {
+   "text": "Dopasowuje filmy do TMDB: tytuły, grafiki, obsadę i oceny. Najpierw używane są Twoje pliki i szczegóły NFO.",
+   "source": "Matches films with TMDB for titles, artwork, cast and ratings. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.music": {
+   "text": "Dopasowuje albumy do MusicBrainz i Cover Art Archive: szczegóły i grafiki. Najpierw używane są wbudowane tagi.",
+   "source": "Matches albums with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.tv": {
+   "text": "Dopasowuje seriale do jednego dostawcy online: tytuły, odcinki, grafiki i oceny. Domyślnie TMDB, chyba że wybierzesz TheTVDB. Najpierw używane są Twoje pliki i szczegóły NFO.",
+   "source": "Matches shows with one online provider for titles, episodes, artwork and ratings: TMDB unless you choose TheTVDB. Your own files and NFO details are used first.",
    "state": "machine"
   },
   "web.metadataSource.onlineName": {

@@ -6982,6 +6982,21 @@
    "source": "Unpin {name}",
    "state": "machine"
   },
+  "platform.downloadsChannel": {
+   "text": "Λήψεις",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "platform.downloadsRunning": {
+   "text": "Λήψη για προβολή εκτός σύνδεσης",
+   "source": "Downloading for offline viewing",
+   "state": "machine"
+  },
+  "platform.localNetworkUsage": {
+   "text": "Βρες τους διακομιστές σου Portico, τις τηλεοράσεις κοντά σου και τις συσκευές Google Cast. Οι χειροκίνητες διευθύνσεις και οι κωδικοί τηλεόρασης λειτουργούν και χωρίς εντοπισμό στο τοπικό δίκτυο.",
+   "source": "Find your Portico servers, nearby TVs and Google Cast devices. Manual addresses and TV codes also work without local network discovery.",
+   "state": "machine"
+  },
   "playOn.airplay": {
    "text": "AirPlay",
    "source": "AirPlay",
@@ -7875,6 +7890,11 @@
   "player.opt.playNow": {
    "text": "Αναπαραγωγή τώρα",
    "source": "Play now",
+   "state": "machine"
+  },
+  "player.opt.providedByOpenSubtitles": {
+   "text": "Υπότιτλοι από το OpenSubtitles.com",
+   "source": "Subtitles provided by OpenSubtitles.com",
    "state": "machine"
   },
   "player.opt.quality": {
@@ -10517,6 +10537,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "Καλλιτέχνες",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "Βιβλία",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "Κατηγορίες",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "Κεφάλαια",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "Συγγραφέας και σειρά",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "Δίσκοι",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "Επεισόδια",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "Λίστες αναπαραγωγής",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "Τα πιο παιγμένα σου",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "Σεζόν",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "Τραγούδια",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "Μη αντιστοιχισμένα απόλυτα επεισόδια",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "Προσθήκη του Portico στην εφαρμογή επαλήθευσης",
    "source": "Add Portico to your authenticator app",
@@ -11857,6 +11937,31 @@
    "source": "Server logs, detailed capture for troubleshooting, and support bundles.",
    "state": "machine"
   },
+  "server.maintenance.cadence.custom": {
+   "text": "Επιλεγμένες μέρες",
+   "source": "Chosen days",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.nightly": {
+   "text": "Κάθε νύχτα",
+   "source": "Every night",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekdays": {
+   "text": "Καθημερινές",
+   "source": "Weekdays",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekends": {
+   "text": "Σαββατοκύριακα",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekly": {
+   "text": "Μία φορά την εβδομάδα",
+   "source": "Once a week",
+   "state": "machine"
+  },
   "server.messageEveryone": {
    "text": "Μήνυμα σε όλους",
    "source": "Message everyone",
@@ -11942,14 +12047,94 @@
    "source": "Shared by every library that looks its titles up online.",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesAccountEnvironment": {
+   "text": "Ένας λογαριασμός ορίζεται στο περιβάλλον του διακομιστή",
+   "source": "An account is set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountHelp": {
+   "text": "Το OpenSubtitles επιτρέπει λήψεις μόνο σε συνδεδεμένους λογαριασμούς και μετράει τις λήψεις ανά λογαριασμό κάθε μέρα.",
+   "source": "OpenSubtitles lets signed-in accounts download, and counts downloads per account each day.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountRejected": {
+   "text": "Το OpenSubtitles δεν αποδέχτηκε το όνομα χρήστη ή τον κωδικό. Έλεγξέ τα, αποθήκευσε και δοκίμασε ξανά.",
+   "source": "OpenSubtitles didn’t accept the username or password. Check them, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesConnection": {
+   "text": "Σύνδεση",
+   "source": "Connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsLeft": {
+   "text": "{remaining, plural, one {# λήψη απομένει σήμερα} other {# λήψεις απομένουν σήμερα}}",
+   "source": "{remaining, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsOf": {
+   "text": "{remaining} από {allowed, plural, one {# λήψη} other {# λήψεις}} απομένουν σήμερα",
+   "source": "{remaining} of {allowed, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesGetKey": {
+   "text": "Πάρε κλειδί από το OpenSubtitles.com",
+   "source": "Get a key at OpenSubtitles.com",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKey": {
    "text": "Κλειδί API OpenSubtitles",
    "source": "OpenSubtitles API key",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesKeyEnvironment": {
+   "text": "Ορίζεται στο περιβάλλον του διακομιστή",
+   "source": "Set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyNone": {
+   "text": "Δεν υπάρχει ακόμα κλειδί",
+   "source": "No key yet",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKeyOwn": {
-   "text": "Το δικό σου κλειδί χρησιμοποιείται",
-   "source": "Your own key is in use",
+   "text": "Το κλειδί σου είναι αποθηκευμένο",
+   "source": "Your key is saved",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyRejected": {
+   "text": "Το OpenSubtitles δεν αποδέχτηκε το κλειδί API. Έλεγξέ το, αποθήκευσε και δοκίμασε ξανά.",
+   "source": "OpenSubtitles didn’t accept the API key. Check it, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyWorks": {
+   "text": "Το κλειδί λειτουργεί. Πρόσθεσε και τον λογαριασμό σου, ώστε το Portico να μπορεί να κάνει λήψεις.",
+   "source": "The key works. Add your account too, so Portico can download.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesLater": {
+   "text": "Το OpenSubtitles ζήτησε από το Portico να περιμένει. Δοκίμασε ξανά αργότερα.",
+   "source": "OpenSubtitles asked Portico to wait. Try again later.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNeedsAccount": {
+   "text": "Η αναζήτηση λειτουργεί, αλλά το OpenSubtitles επιτρέπει λήψεις μόνο σε συνδεδεμένους λογαριασμούς. Πρόσθεσε το όνομα χρήστη και τον κωδικό σου.",
+   "source": "Searching works, but OpenSubtitles only lets signed-in accounts download. Add your username and password.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNoPassword": {
+   "text": "Πρόσθεσε τον κωδικό του λογαριασμού για να συνδεθείς.",
+   "source": "Add the account’s password to sign in.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotSetUp": {
+   "text": "Δεν έχει ρυθμιστεί. Πρόσθεσε το κλειδί API σου για το OpenSubtitles για να αναζητάς υπότιτλους.",
+   "source": "Not set up. Add your OpenSubtitles API key to search for subtitles.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotTested": {
+   "text": "Δεν έχει δοκιμαστεί ακόμα",
+   "source": "Not tested yet",
    "state": "machine"
   },
   "server.metadata.openSubtitlesPassword": {
@@ -11962,9 +12147,49 @@
    "source": "A password is saved",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesQuotaUsed": {
+   "text": "Οι σημερινές λήψεις έχουν εξαντληθεί. Θα ξαναρχίσουν στις {time}.",
+   "source": "Today’s downloads are used up. They start again at {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesRemoveKey": {
+   "text": "Αφαίρεσε το κλειδί μου",
+   "source": "Remove my key",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesSignOut": {
    "text": "Κατάργηση λογαριασμού",
    "source": "Remove the account",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSignedIn": {
+   "text": "Συνδεδεμένο και λειτουργεί",
+   "source": "Signed in and working",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSlowDown": {
+   "text": "Το OpenSubtitles ζήτησε από το Portico να περιμένει μέχρι τις {time}.",
+   "source": "OpenSubtitles asked Portico to wait until {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTest": {
+   "text": "Δοκίμασε τη σύνδεση",
+   "source": "Test connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTestUnsaved": {
+   "text": "Αποθήκευσε τις αλλαγές σου και μετά δοκίμασέ τις.",
+   "source": "Save your changes, then test them.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTesting": {
+   "text": "Γίνεται δοκιμή…",
+   "source": "Testing…",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesUnreachable": {
+   "text": "Δεν ήταν δυνατή η επικοινωνία με το OpenSubtitles. Δοκίμασε ξανά σε λίγο.",
+   "source": "OpenSubtitles couldn’t be reached. Test again in a little while.",
    "state": "machine"
   },
   "server.metadata.openSubtitlesUser": {
@@ -11988,8 +12213,8 @@
    "state": "machine"
   },
   "server.metadata.subtitlesLede": {
-   "text": "Το Portico ψάχνει υπότιτλους στα OpenSubtitles όταν του το ζητάς. Χρησιμοποίησε το δικό σου κλειδί API και λογαριασμό για περισσότερες αναζητήσεις και λήψεις την ημέρα.",
-   "source": "Portico looks for subtitles at OpenSubtitles when you ask it to. Use your own API key and account for more searches and downloads a day.",
+   "text": "Το Portico αναζητά υπότιτλους στο OpenSubtitles.com με τον δικό σου δωρεάν λογαριασμό και κλειδί API. Δημιούργησε λογαριασμό στο opensubtitles.com και μετά πρόσθεσε στο προφίλ σου εκεί έναν πελάτη API για να πάρεις κλειδί.",
+   "source": "Portico searches OpenSubtitles.com with your own free account and API key. Create an account at opensubtitles.com, then add an API consumer in your profile there to get a key.",
    "state": "machine"
   },
   "server.missing.removeBody": {
@@ -12920,6 +13145,106 @@
   "server.storage.added": {
    "text": "Προστέθηκε.",
    "source": "Added.",
+   "state": "machine"
+  },
+  "server.storage.category.artwork": {
+   "text": "Εξώφυλλα",
+   "source": "Artwork",
+   "state": "machine"
+  },
+  "server.storage.category.artwork.description": {
+   "text": "Αφίσες, φόντα και μικρογραφίες που ο διακομιστής έχει λάβει ή εξαγάγει.",
+   "source": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+   "state": "machine"
+  },
+  "server.storage.category.backups": {
+   "text": "Αντίγραφα ασφαλείας",
+   "source": "Backups",
+   "state": "machine"
+  },
+  "server.storage.category.backups.description": {
+   "text": "Αντίγραφα ασφαλείας του διακομιστή.",
+   "source": "Server backups.",
+   "state": "machine"
+  },
+  "server.storage.category.conversions": {
+   "text": "Αρχεία εργασίας μετατροπής",
+   "source": "Conversion working files",
+   "state": "machine"
+  },
+  "server.storage.category.conversions.description": {
+   "text": "Τμήματα που γράφτηκαν ενώ μετατρεπόταν μια ροή. Ασφαλές να διαγραφούν όταν δεν παίζει τίποτα.",
+   "source": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+   "state": "machine"
+  },
+  "server.storage.category.downloads": {
+   "text": "Λήψεις",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "server.storage.category.downloads.description": {
+   "text": "Πακέτα που έχουν ετοιμαστεί για να τα πάρει ένας πελάτης εκτός σύνδεσης.",
+   "source": "Packages staged for a client to take offline.",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache": {
+   "text": "Προσωρινή μνήμη ζωντανής μετάδοσης",
+   "source": "Live buffer",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache.description": {
+   "text": "Τμήματα ζωντανών μεταδόσεων και καναλιών που βρίσκονται στην προσωρινή μνήμη.",
+   "source": "Buffered live and channel segments.",
+   "state": "machine"
+  },
+  "server.storage.category.logs": {
+   "text": "Αρχεία καταγραφής",
+   "source": "Logs",
+   "state": "machine"
+  },
+  "server.storage.category.logs.description": {
+   "text": "Διαγνωστικές εγγραφές που αποθηκεύονται στον δίσκο.",
+   "source": "Diagnostic records written to disk.",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media": {
+   "text": "Προετοιμασμένα μέσα",
+   "source": "Prepared media",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media.description": {
+   "text": "Βελτιστοποιημένες εκδόσεις που ετοιμάστηκαν για λήψη ή για συσκευή που δεν μπορεί να αναπαράγει το αρχικό.",
+   "source": "Optimised versions prepared for download or for a device that cannot play the original.",
+   "state": "machine"
+  },
+  "server.storage.category.recordings": {
+   "text": "Εγγραφές",
+   "source": "Recordings",
+   "state": "machine"
+  },
+  "server.storage.category.recordings.description": {
+   "text": "Εγγραφές που έχουν καταγραφεί. Είναι περιεχόμενο· η σελίδα συντήρησης δεν τις αφαιρεί ποτέ.",
+   "source": "Captured recordings. These are content: the maintenance page never removes them.",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles": {
+   "text": "Υπότιτλοι",
+   "source": "Subtitles",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles.description": {
+   "text": "Εξαγόμενες, ληφθείσες και αποδοσμένες γραμμές υποτίτλων.",
+   "source": "Extracted, downloaded and rendered subtitle tracks.",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay": {
+   "text": "Μικρογραφίες προεπισκόπησης",
+   "source": "Trickplay tiles",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay.description": {
+   "text": "Μικρογραφίες προεπισκόπησης για τη μετακίνηση στο βίντεο, για κάθε αρχείο. Συνήθως είναι η μεγαλύτερη κατηγορία που μπορεί να ξαναδημιουργηθεί.",
+   "source": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
    "state": "machine"
   },
   "server.storage.passwordSaved": {
@@ -14175,6 +14500,16 @@
   "settings.server.diskUsage": {
    "text": "Χρήση δίσκου",
    "source": "Disk usage",
+   "state": "machine"
+  },
+  "settings.server.dlna": {
+   "text": "DLNA",
+   "source": "DLNA",
+   "state": "machine"
+  },
+  "settings.server.dlnaHelp": {
+   "text": "Επιτρέπει σε τηλεοράσεις, κονσόλες και άλλες συσκευές DLNA στο οικιακό σου δίκτυο να περιηγούνται και να αναπαράγουν όλα όσα έχει αυτός ο διακομιστής, χωρίς σύνδεση.",
+   "source": "Lets TVs, consoles and other DLNA devices on your home network browse and play everything on this server, without signing in.",
    "state": "machine"
   },
   "settings.server.encoderSpeed": {
@@ -15495,6 +15830,41 @@
   "subtitles.error.missing": {
    "text": "Αυτός ο υπότιτλος δεν είναι πλέον διαθέσιμος. Ανανέωσε τις τρέχουσες επιλογές.",
    "source": "This subtitle is no longer available. Refresh the current choices.",
+   "state": "machine"
+  },
+  "subtitles.error.providerBusy": {
+   "text": "Το OpenSubtitles είναι απασχολημένο. Δοκίμασε ξανά σε λίγο.",
+   "source": "OpenSubtitles is busy. Try again in a moment.",
+   "state": "machine"
+  },
+  "subtitles.error.providerKeyRejected": {
+   "text": "Το OpenSubtitles δεν αποδέχτηκε το κλειδί αυτού του διακομιστή. Ζήτα από τον κάτοχο να το ελέγξει.",
+   "source": "OpenSubtitles didn’t accept this server’s key. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerNotConfigured": {
+   "text": "Η αναζήτηση υποτίτλων δεν έχει ρυθμιστεί σε αυτόν τον διακομιστή. Ζήτα από τον κάτοχο να προσθέσει ένα κλειδί OpenSubtitles.",
+   "source": "Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuota": {
+   "text": "Αυτός ο διακομιστής έχει εξαντλήσει τις σημερινές λήψεις του OpenSubtitles. Θα ξαναρχίσουν στις {time}.",
+   "source": "This server has used today’s OpenSubtitles downloads. They start again at {time}.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuotaLater": {
+   "text": "Αυτός ο διακομιστής έχει εξαντλήσει τις σημερινές λήψεις του OpenSubtitles. Δοκίμασε ξανά αύριο.",
+   "source": "This server has used today’s OpenSubtitles downloads. Try again tomorrow.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInFailed": {
+   "text": "Το OpenSubtitles δεν αποδέχτηκε τον λογαριασμό αυτού του διακομιστή. Ζήτα από τον κάτοχο να τον ελέγξει.",
+   "source": "OpenSubtitles didn’t accept this server’s account. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInRequired": {
+   "text": "Το OpenSubtitles επιτρέπει λήψεις μόνο σε συνδεδεμένους λογαριασμούς. Ζήτα από τον κάτοχο να προσθέσει λογαριασμό.",
+   "source": "OpenSubtitles only lets signed-in accounts download. Ask the owner to add an account.",
    "state": "machine"
   },
   "title.aboutEpisode": {
@@ -20427,6 +20797,11 @@
    "source": "Network folders are checked more patiently before files are marked missing.",
    "state": "machine"
   },
+  "web.libraries.lyricsQueued": {
+   "text": "Οι στίχοι μπήκαν στην ουρά για λήψη. Ρυθμίσεις › Χρονοδιάγραμμα δείχνει την πρόοδο.",
+   "source": "Lyrics are queued to be fetched. Settings › Schedule shows the progress.",
+   "state": "machine"
+  },
   "web.libraries.metadataLanguage": {
    "text": "Γλώσσα μεταδεδομένων",
    "source": "Metadata language",
@@ -23040,6 +23415,31 @@
   "web.metadataSource.onlineDescription": {
    "text": "Αναζητά τίτλους, εξώφυλλα, ηθοποιούς και βαθμολογίες online. Τα δικά σου αρχεία και οι λεπτομέρειες NFO χρησιμοποιούνται πρώτα.",
    "source": "Looks up titles, artwork, cast and ratings online. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.anime": {
+   "text": "Αντιστοιχίζει anime με έναν online πάροχο για τίτλους, επεισόδια και εξώφυλλα: TMDB, εκτός αν επιλέξεις TheTVDB ή AniList. Πρώτα χρησιμοποιούνται τα δικά σου αρχεία και οι λεπτομέρειες NFO.",
+   "source": "Matches anime with one online provider for titles, episodes and artwork: TMDB unless you choose TheTVDB or AniList. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.audiobook": {
+   "text": "Χρησιμοποιεί τις ενσωματωμένες ετικέτες βιβλίου, τις συνοδευτικές λεπτομέρειες και τα τοπικά εξώφυλλα. Οι online πηγές ηχητικών βιβλίων δεν είναι διαθέσιμες.",
+   "source": "Uses embedded book tags, sidecar details and local covers. Online audiobook sources are not available.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.movie": {
+   "text": "Αντιστοιχίζει ταινίες με το TMDB για τίτλους, εξώφυλλα, συντελεστές και βαθμολογίες. Πρώτα χρησιμοποιούνται τα δικά σου αρχεία και οι λεπτομέρειες NFO.",
+   "source": "Matches films with TMDB for titles, artwork, cast and ratings. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.music": {
+   "text": "Αντιστοιχίζει άλμπουμ με το MusicBrainz και το Cover Art Archive για λεπτομέρειες και εξώφυλλα. Πρώτα χρησιμοποιούνται οι ενσωματωμένες ετικέτες.",
+   "source": "Matches albums with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.tv": {
+   "text": "Αντιστοιχίζει σειρές με έναν online πάροχο για τίτλους, επεισόδια, εξώφυλλα και βαθμολογίες: TMDB, εκτός αν επιλέξεις TheTVDB. Πρώτα χρησιμοποιούνται τα δικά σου αρχεία και οι λεπτομέρειες NFO.",
+   "source": "Matches shows with one online provider for titles, episodes, artwork and ratings: TMDB unless you choose TheTVDB. Your own files and NFO details are used first.",
    "state": "machine"
   },
   "web.metadataSource.onlineName": {

@@ -6982,6 +6982,21 @@
    "source": "Unpin {name}",
    "state": "machine"
   },
+  "platform.downloadsChannel": {
+   "text": "Descărcări",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "platform.downloadsRunning": {
+   "text": "Se descarcă pentru vizionare offline",
+   "source": "Downloading for offline viewing",
+   "state": "machine"
+  },
+  "platform.localNetworkUsage": {
+   "text": "Găsește serverele Portico, televizoarele din apropiere și dispozitivele Google Cast. Adresele introduse manual și codurile de pe televizor funcționează și fără descoperirea în rețeaua locală.",
+   "source": "Find your Portico servers, nearby TVs and Google Cast devices. Manual addresses and TV codes also work without local network discovery.",
+   "state": "machine"
+  },
   "playOn.airplay": {
    "text": "AirPlay",
    "source": "AirPlay",
@@ -7875,6 +7890,11 @@
   "player.opt.playNow": {
    "text": "Redă acum",
    "source": "Play now",
+   "state": "machine"
+  },
+  "player.opt.providedByOpenSubtitles": {
+   "text": "Subtitrări furnizate de OpenSubtitles.com",
+   "source": "Subtitles provided by OpenSubtitles.com",
    "state": "machine"
   },
   "player.opt.quality": {
@@ -10517,6 +10537,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "Artiști",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "Cărți",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "Categorii",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "Capitole",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "Autor și serie",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "Discuri",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "Episoade",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "Liste de redare",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "Cele mai ascultate",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "Sezoane",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "Melodii",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "Episoade absolute nealocate",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "Adaugă Portico în aplicația ta de autentificare",
    "source": "Add Portico to your authenticator app",
@@ -11857,6 +11937,31 @@
    "source": "Server logs, detailed capture for troubleshooting, and support bundles.",
    "state": "machine"
   },
+  "server.maintenance.cadence.custom": {
+   "text": "În zilele alese",
+   "source": "Chosen days",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.nightly": {
+   "text": "În fiecare noapte",
+   "source": "Every night",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekdays": {
+   "text": "În zilele lucrătoare",
+   "source": "Weekdays",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekends": {
+   "text": "În weekenduri",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekly": {
+   "text": "O dată pe săptămână",
+   "source": "Once a week",
+   "state": "machine"
+  },
   "server.messageEveryone": {
    "text": "Trimite mesaj tuturor",
    "source": "Message everyone",
@@ -11942,14 +12047,94 @@
    "source": "Shared by every library that looks its titles up online.",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesAccountEnvironment": {
+   "text": "Un cont este setat în mediul serverului",
+   "source": "An account is set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountHelp": {
+   "text": "OpenSubtitles permite descărcarea doar conturilor autentificate și numără descărcările pe cont, zilnic.",
+   "source": "OpenSubtitles lets signed-in accounts download, and counts downloads per account each day.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountRejected": {
+   "text": "OpenSubtitles nu a acceptat numele de utilizator sau parola. Verifică-le, salvează-le și testează din nou.",
+   "source": "OpenSubtitles didn’t accept the username or password. Check them, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesConnection": {
+   "text": "Conexiune",
+   "source": "Connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsLeft": {
+   "text": "{remaining, plural, one {# descărcare rămasă} few {# descărcări rămase} other {# de descărcări rămase}} astăzi",
+   "source": "{remaining, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsOf": {
+   "text": "Mai sunt {remaining} din {allowed, plural, one {# descărcare} few {# descărcări} other {# de descărcări}} astăzi",
+   "source": "{remaining} of {allowed, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesGetKey": {
+   "text": "Obține o cheie de la OpenSubtitles.com",
+   "source": "Get a key at OpenSubtitles.com",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKey": {
    "text": "Cheie API OpenSubtitles",
    "source": "OpenSubtitles API key",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesKeyEnvironment": {
+   "text": "Setată în mediul serverului",
+   "source": "Set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyNone": {
+   "text": "Nicio cheie încă",
+   "source": "No key yet",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKeyOwn": {
-   "text": "Cheia ta proprie e în uz",
-   "source": "Your own key is in use",
+   "text": "Cheia ta este salvată",
+   "source": "Your key is saved",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyRejected": {
+   "text": "OpenSubtitles nu a acceptat cheia API. Verific-o, salvează-o și testează din nou.",
+   "source": "OpenSubtitles didn’t accept the API key. Check it, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyWorks": {
+   "text": "Cheia funcționează. Adaugă și contul tău, ca Portico să poată descărca.",
+   "source": "The key works. Add your account too, so Portico can download.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesLater": {
+   "text": "OpenSubtitles i-a cerut lui Portico să aștepte. Încearcă din nou mai târziu.",
+   "source": "OpenSubtitles asked Portico to wait. Try again later.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNeedsAccount": {
+   "text": "Căutarea funcționează, dar OpenSubtitles permite descărcarea doar conturilor autentificate. Adaugă numele de utilizator și parola.",
+   "source": "Searching works, but OpenSubtitles only lets signed-in accounts download. Add your username and password.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNoPassword": {
+   "text": "Adaugă parola contului ca să te autentifici.",
+   "source": "Add the account’s password to sign in.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotSetUp": {
+   "text": "Nu este configurat. Adaugă cheia ta API OpenSubtitles ca să cauți subtitrări.",
+   "source": "Not set up. Add your OpenSubtitles API key to search for subtitles.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotTested": {
+   "text": "Nu a fost testat încă",
+   "source": "Not tested yet",
    "state": "machine"
   },
   "server.metadata.openSubtitlesPassword": {
@@ -11962,9 +12147,49 @@
    "source": "A password is saved",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesQuotaUsed": {
+   "text": "Descărcările de astăzi s-au epuizat. Se reiau la {time}.",
+   "source": "Today’s downloads are used up. They start again at {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesRemoveKey": {
+   "text": "Elimină cheia mea",
+   "source": "Remove my key",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesSignOut": {
    "text": "Elimină contul",
    "source": "Remove the account",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSignedIn": {
+   "text": "Autentificat și funcționează",
+   "source": "Signed in and working",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSlowDown": {
+   "text": "OpenSubtitles i-a cerut lui Portico să aștepte până la {time}.",
+   "source": "OpenSubtitles asked Portico to wait until {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTest": {
+   "text": "Testează conexiunea",
+   "source": "Test connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTestUnsaved": {
+   "text": "Salvează modificările, apoi testează-le.",
+   "source": "Save your changes, then test them.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTesting": {
+   "text": "Se testează…",
+   "source": "Testing…",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesUnreachable": {
+   "text": "OpenSubtitles nu poate fi contactat. Testează din nou peste puțin timp.",
+   "source": "OpenSubtitles couldn’t be reached. Test again in a little while.",
    "state": "machine"
   },
   "server.metadata.openSubtitlesUser": {
@@ -11988,8 +12213,8 @@
    "state": "machine"
   },
   "server.metadata.subtitlesLede": {
-   "text": "Portico caută subtitrări la OpenSubtitles când îi ceri. Folosește-ți propria cheie API și contul pentru mai multe căutări și descărcări pe zi.",
-   "source": "Portico looks for subtitles at OpenSubtitles when you ask it to. Use your own API key and account for more searches and downloads a day.",
+   "text": "Portico caută subtitrări pe OpenSubtitles.com cu propriul tău cont gratuit și cu propria cheie API. Creează un cont pe opensubtitles.com, apoi adaugă un consumator API în profilul tău de acolo ca să obții o cheie.",
+   "source": "Portico searches OpenSubtitles.com with your own free account and API key. Create an account at opensubtitles.com, then add an API consumer in your profile there to get a key.",
    "state": "machine"
   },
   "server.missing.removeBody": {
@@ -12920,6 +13145,106 @@
   "server.storage.added": {
    "text": "Adăugat.",
    "source": "Added.",
+   "state": "machine"
+  },
+  "server.storage.category.artwork": {
+   "text": "Imagini",
+   "source": "Artwork",
+   "state": "machine"
+  },
+  "server.storage.category.artwork.description": {
+   "text": "Postere, fundaluri și miniaturi pe care serverul le-a preluat, extras sau primit.",
+   "source": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+   "state": "machine"
+  },
+  "server.storage.category.backups": {
+   "text": "Backup-uri",
+   "source": "Backups",
+   "state": "machine"
+  },
+  "server.storage.category.backups.description": {
+   "text": "Backup-urile serverului.",
+   "source": "Server backups.",
+   "state": "machine"
+  },
+  "server.storage.category.conversions": {
+   "text": "Fișiere de lucru pentru conversii",
+   "source": "Conversion working files",
+   "state": "machine"
+  },
+  "server.storage.category.conversions.description": {
+   "text": "Segmente scrise în timpul conversiei unui flux. Pot fi șterse în siguranță când nu se redă nimic.",
+   "source": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+   "state": "machine"
+  },
+  "server.storage.category.downloads": {
+   "text": "Descărcări",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "server.storage.category.downloads.description": {
+   "text": "Pachete pregătite pentru ca un client să le ia offline.",
+   "source": "Packages staged for a client to take offline.",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache": {
+   "text": "Buffer live",
+   "source": "Live buffer",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache.description": {
+   "text": "Segmentele live și de canal din buffer.",
+   "source": "Buffered live and channel segments.",
+   "state": "machine"
+  },
+  "server.storage.category.logs": {
+   "text": "Jurnale",
+   "source": "Logs",
+   "state": "machine"
+  },
+  "server.storage.category.logs.description": {
+   "text": "Înregistrări de diagnostic scrise pe disc.",
+   "source": "Diagnostic records written to disk.",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media": {
+   "text": "Media pregătită",
+   "source": "Prepared media",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media.description": {
+   "text": "Versiuni optimizate pregătite pentru descărcare sau pentru un dispozitiv care nu poate reda originalul.",
+   "source": "Optimised versions prepared for download or for a device that cannot play the original.",
+   "state": "machine"
+  },
+  "server.storage.category.recordings": {
+   "text": "Înregistrări",
+   "source": "Recordings",
+   "state": "machine"
+  },
+  "server.storage.category.recordings.description": {
+   "text": "Înregistrări capturate. Acestea sunt conținut: pagina de întreținere nu le șterge niciodată.",
+   "source": "Captured recordings. These are content: the maintenance page never removes them.",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles": {
+   "text": "Subtitrări",
+   "source": "Subtitles",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles.description": {
+   "text": "Piste de subtitrări extrase, descărcate și randate.",
+   "source": "Extracted, downloaded and rendered subtitle tracks.",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay": {
+   "text": "Miniaturi de derulare",
+   "source": "Trickplay tiles",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay.description": {
+   "text": "Miniaturi pentru derulare, generate pentru fiecare fișier. De obicei, aceasta este cea mai mare categorie care poate fi regenerată.",
+   "source": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
    "state": "machine"
   },
   "server.storage.passwordSaved": {
@@ -14175,6 +14500,16 @@
   "settings.server.diskUsage": {
    "text": "Utilizare disc",
    "source": "Disk usage",
+   "state": "machine"
+  },
+  "settings.server.dlna": {
+   "text": "DLNA",
+   "source": "DLNA",
+   "state": "machine"
+  },
+  "settings.server.dlnaHelp": {
+   "text": "Permite televizoarelor, consolelor și altor dispozitive DLNA din rețeaua ta de acasă să răsfoiască și să redea tot ce există pe acest server, fără autentificare.",
+   "source": "Lets TVs, consoles and other DLNA devices on your home network browse and play everything on this server, without signing in.",
    "state": "machine"
   },
   "settings.server.encoderSpeed": {
@@ -15495,6 +15830,41 @@
   "subtitles.error.missing": {
    "text": "Această subtitrare nu mai este disponibilă. Actualizează opțiunile curente.",
    "source": "This subtitle is no longer available. Refresh the current choices.",
+   "state": "machine"
+  },
+  "subtitles.error.providerBusy": {
+   "text": "OpenSubtitles este ocupat. Încearcă din nou peste puțin timp.",
+   "source": "OpenSubtitles is busy. Try again in a moment.",
+   "state": "machine"
+  },
+  "subtitles.error.providerKeyRejected": {
+   "text": "OpenSubtitles nu a acceptat cheia acestui server. Cere proprietarului s-o verifice.",
+   "source": "OpenSubtitles didn’t accept this server’s key. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerNotConfigured": {
+   "text": "Căutarea de subtitrări nu este configurată pe acest server. Cere proprietarului să adauge o cheie OpenSubtitles.",
+   "source": "Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuota": {
+   "text": "Serverul a folosit descărcările OpenSubtitles de astăzi. Acestea se reiau la {time}.",
+   "source": "This server has used today’s OpenSubtitles downloads. They start again at {time}.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuotaLater": {
+   "text": "Serverul a folosit descărcările OpenSubtitles de astăzi. Încearcă din nou mâine.",
+   "source": "This server has used today’s OpenSubtitles downloads. Try again tomorrow.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInFailed": {
+   "text": "OpenSubtitles nu a acceptat contul acestui server. Cere proprietarului să-l verifice.",
+   "source": "OpenSubtitles didn’t accept this server’s account. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInRequired": {
+   "text": "OpenSubtitles permite descărcarea doar conturilor autentificate. Cere proprietarului să adauge un cont.",
+   "source": "OpenSubtitles only lets signed-in accounts download. Ask the owner to add an account.",
    "state": "machine"
   },
   "title.aboutEpisode": {
@@ -20427,6 +20797,11 @@
    "source": "Network folders are checked more patiently before files are marked missing.",
    "state": "machine"
   },
+  "web.libraries.lyricsQueued": {
+   "text": "Versurile sunt puse în coadă pentru descărcare. Setări › Program arată progresul.",
+   "source": "Lyrics are queued to be fetched. Settings › Schedule shows the progress.",
+   "state": "machine"
+  },
   "web.libraries.metadataLanguage": {
    "text": "Limba metadatelor",
    "source": "Metadata language",
@@ -23040,6 +23415,31 @@
   "web.metadataSource.onlineDescription": {
    "text": "Caută online titluri, imagini, distribuție și evaluări. Fișierele tale proprii și detaliile NFO sunt folosite mai întâi.",
    "source": "Looks up titles, artwork, cast and ratings online. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.anime": {
+   "text": "Potrivește anime-urile cu un furnizor online pentru titluri, episoade și imagini: TMDB, cu excepția cazului în care alegi TheTVDB sau AniList. Fișierele tale proprii și detaliile NFO sunt folosite mai întâi.",
+   "source": "Matches anime with one online provider for titles, episodes and artwork: TMDB unless you choose TheTVDB or AniList. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.audiobook": {
+   "text": "Folosește etichetele de carte încorporate, detaliile însoțitoare și copertele locale. Sursele online pentru cărți audio nu sunt disponibile.",
+   "source": "Uses embedded book tags, sidecar details and local covers. Online audiobook sources are not available.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.movie": {
+   "text": "Potrivește filmele cu TMDB pentru titluri, imagini, distribuție și evaluări. Fișierele tale proprii și detaliile NFO sunt folosite mai întâi.",
+   "source": "Matches films with TMDB for titles, artwork, cast and ratings. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.music": {
+   "text": "Potrivește albumele cu MusicBrainz și Cover Art Archive pentru detalii și imagini. Etichetele încorporate sunt folosite mai întâi.",
+   "source": "Matches albums with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.tv": {
+   "text": "Potrivește serialele cu un furnizor online pentru titluri, episoade, imagini și evaluări: TMDB, cu excepția cazului în care alegi TheTVDB. Fișierele tale proprii și detaliile NFO sunt folosite mai întâi.",
+   "source": "Matches shows with one online provider for titles, episodes, artwork and ratings: TMDB unless you choose TheTVDB. Your own files and NFO details are used first.",
    "state": "machine"
   },
   "web.metadataSource.onlineName": {

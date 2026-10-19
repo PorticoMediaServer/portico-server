@@ -6982,6 +6982,21 @@
    "source": "Unpin {name}",
    "state": "machine"
   },
+  "platform.downloadsChannel": {
+   "text": "Завантаження",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "platform.downloadsRunning": {
+   "text": "Завантаження для перегляду офлайн",
+   "source": "Downloading for offline viewing",
+   "state": "machine"
+  },
+  "platform.localNetworkUsage": {
+   "text": "Пошук ваших серверів Portico, телевізорів поблизу й пристроїв Google Cast. Ручні адреси та коди для телевізорів працюють і без пошуку в локальній мережі.",
+   "source": "Find your Portico servers, nearby TVs and Google Cast devices. Manual addresses and TV codes also work without local network discovery.",
+   "state": "machine"
+  },
   "playOn.airplay": {
    "text": "AirPlay",
    "source": "AirPlay",
@@ -7875,6 +7890,11 @@
   "player.opt.playNow": {
    "text": "Відтворити зараз",
    "source": "Play now",
+   "state": "machine"
+  },
+  "player.opt.providedByOpenSubtitles": {
+   "text": "Субтитри надає OpenSubtitles.com",
+   "source": "Subtitles provided by OpenSubtitles.com",
    "state": "machine"
   },
   "player.opt.quality": {
@@ -10517,6 +10537,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "Виконавці",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "Книжки",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "Категорії",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "Глави",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "Автор і серія",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "Диски",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "Серії",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "Плейлисти",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "Найчастіше прослухане",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "Сезони",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "Пісні",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "Непризначені абсолютні серії",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "Додайте Portico до застосунку-автентифікатора",
    "source": "Add Portico to your authenticator app",
@@ -11857,6 +11937,31 @@
    "source": "Server logs, detailed capture for troubleshooting, and support bundles.",
    "state": "machine"
   },
+  "server.maintenance.cadence.custom": {
+   "text": "Обрані дні",
+   "source": "Chosen days",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.nightly": {
+   "text": "Щоночі",
+   "source": "Every night",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekdays": {
+   "text": "Будні дні",
+   "source": "Weekdays",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekends": {
+   "text": "Вихідні",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekly": {
+   "text": "Раз на тиждень",
+   "source": "Once a week",
+   "state": "machine"
+  },
   "server.messageEveryone": {
    "text": "Написати всім",
    "source": "Message everyone",
@@ -11942,14 +12047,94 @@
    "source": "Shared by every library that looks its titles up online.",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesAccountEnvironment": {
+   "text": "Обліковий запис задано в середовищі сервера",
+   "source": "An account is set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountHelp": {
+   "text": "OpenSubtitles дозволяє завантаження лише для облікових записів, які ввійшли, і щодня рахує завантаження для кожного облікового запису.",
+   "source": "OpenSubtitles lets signed-in accounts download, and counts downloads per account each day.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountRejected": {
+   "text": "OpenSubtitles не прийняв ім’я користувача або пароль. Перевірте їх, збережіть і перевірте знову.",
+   "source": "OpenSubtitles didn’t accept the username or password. Check them, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesConnection": {
+   "text": "З’єднання",
+   "source": "Connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsLeft": {
+   "text": "Сьогодні залишилося {remaining, plural, one {# завантаження} few {# завантаження} many {# завантажень} other {# завантаження}}",
+   "source": "{remaining, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsOf": {
+   "text": "{remaining} з {allowed, plural, one {# завантаження} few {# завантаження} many {# завантажень} other {# завантаження}} залишилося сьогодні",
+   "source": "{remaining} of {allowed, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesGetKey": {
+   "text": "Отримайте ключ на OpenSubtitles.com",
+   "source": "Get a key at OpenSubtitles.com",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKey": {
    "text": "API-ключ OpenSubtitles",
    "source": "OpenSubtitles API key",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesKeyEnvironment": {
+   "text": "Задано в середовищі сервера",
+   "source": "Set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyNone": {
+   "text": "Ключа ще немає",
+   "source": "No key yet",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKeyOwn": {
-   "text": "Використовується ваш ключ",
-   "source": "Your own key is in use",
+   "text": "Ваш ключ збережено",
+   "source": "Your key is saved",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyRejected": {
+   "text": "OpenSubtitles не прийняв API-ключ. Перевірте його, збережіть і перевірте знову.",
+   "source": "OpenSubtitles didn’t accept the API key. Check it, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyWorks": {
+   "text": "Ключ працює. Додайте також обліковий запис, щоб Portico міг завантажувати.",
+   "source": "The key works. Add your account too, so Portico can download.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesLater": {
+   "text": "OpenSubtitles попросив Portico почекати. Спробуйте пізніше.",
+   "source": "OpenSubtitles asked Portico to wait. Try again later.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNeedsAccount": {
+   "text": "Пошук працює, але OpenSubtitles дозволяє завантаження лише для облікових записів, які ввійшли. Додайте ім’я користувача та пароль.",
+   "source": "Searching works, but OpenSubtitles only lets signed-in accounts download. Add your username and password.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNoPassword": {
+   "text": "Щоб увійти, додайте пароль облікового запису.",
+   "source": "Add the account’s password to sign in.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotSetUp": {
+   "text": "Не налаштовано. Додайте ваш API-ключ OpenSubtitles, щоб шукати субтитри.",
+   "source": "Not set up. Add your OpenSubtitles API key to search for subtitles.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotTested": {
+   "text": "Ще не перевірено",
+   "source": "Not tested yet",
    "state": "machine"
   },
   "server.metadata.openSubtitlesPassword": {
@@ -11962,9 +12147,49 @@
    "source": "A password is saved",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesQuotaUsed": {
+   "text": "Сьогоднішні завантаження вичерпано. Вони відновляться о {time}.",
+   "source": "Today’s downloads are used up. They start again at {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesRemoveKey": {
+   "text": "Видалити мій ключ",
+   "source": "Remove my key",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesSignOut": {
    "text": "Прибрати обліковий запис",
    "source": "Remove the account",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSignedIn": {
+   "text": "Вхід виконано, працює",
+   "source": "Signed in and working",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSlowDown": {
+   "text": "OpenSubtitles попросив Portico почекати до {time}.",
+   "source": "OpenSubtitles asked Portico to wait until {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTest": {
+   "text": "Перевірити з’єднання",
+   "source": "Test connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTestUnsaved": {
+   "text": "Збережіть зміни, а потім перевірте їх.",
+   "source": "Save your changes, then test them.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTesting": {
+   "text": "Перевірка…",
+   "source": "Testing…",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesUnreachable": {
+   "text": "Не вдалося зв’язатися з OpenSubtitles. Перевірте знову трохи пізніше.",
+   "source": "OpenSubtitles couldn’t be reached. Test again in a little while.",
    "state": "machine"
   },
   "server.metadata.openSubtitlesUser": {
@@ -11988,8 +12213,8 @@
    "state": "machine"
   },
   "server.metadata.subtitlesLede": {
-   "text": "Portico шукає субтитри на OpenSubtitles, коли ви про це просите. Укажіть власний API-ключ і обліковий запис, щоб отримати більше пошуків і завантажень на день.",
-   "source": "Portico looks for subtitles at OpenSubtitles when you ask it to. Use your own API key and account for more searches and downloads a day.",
+   "text": "Portico шукає субтитри на OpenSubtitles.com за допомогою вашого власного безкоштовного облікового запису та API-ключа. Створіть обліковий запис на opensubtitles.com, а потім додайте в своєму профілі там API-клієнт, щоб отримати ключ.",
+   "source": "Portico searches OpenSubtitles.com with your own free account and API key. Create an account at opensubtitles.com, then add an API consumer in your profile there to get a key.",
    "state": "machine"
   },
   "server.missing.removeBody": {
@@ -12920,6 +13145,106 @@
   "server.storage.added": {
    "text": "Додано.",
    "source": "Added.",
+   "state": "machine"
+  },
+  "server.storage.category.artwork": {
+   "text": "Зображення",
+   "source": "Artwork",
+   "state": "machine"
+  },
+  "server.storage.category.artwork.description": {
+   "text": "Постери, фони та мініатюри, які сервер отримав, витягнув або які йому передали.",
+   "source": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+   "state": "machine"
+  },
+  "server.storage.category.backups": {
+   "text": "Резервні копії",
+   "source": "Backups",
+   "state": "machine"
+  },
+  "server.storage.category.backups.description": {
+   "text": "Резервні копії сервера.",
+   "source": "Server backups.",
+   "state": "machine"
+  },
+  "server.storage.category.conversions": {
+   "text": "Робочі файли конвертації",
+   "source": "Conversion working files",
+   "state": "machine"
+  },
+  "server.storage.category.conversions.description": {
+   "text": "Сегменти, записані під час конвертації потоку. Безпечно видаляти, коли нічого не відтворюється.",
+   "source": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+   "state": "machine"
+  },
+  "server.storage.category.downloads": {
+   "text": "Завантаження",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "server.storage.category.downloads.description": {
+   "text": "Пакети, підготовлені для клієнта, щоб він міг взяти їх в офлайн.",
+   "source": "Packages staged for a client to take offline.",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache": {
+   "text": "Буфер прямого ефіру",
+   "source": "Live buffer",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache.description": {
+   "text": "Буферизовані сегменти прямого ефіру та каналів.",
+   "source": "Buffered live and channel segments.",
+   "state": "machine"
+  },
+  "server.storage.category.logs": {
+   "text": "Журнали",
+   "source": "Logs",
+   "state": "machine"
+  },
+  "server.storage.category.logs.description": {
+   "text": "Діагностичні записи, збережені на диску.",
+   "source": "Diagnostic records written to disk.",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media": {
+   "text": "Підготовлені медіа",
+   "source": "Prepared media",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media.description": {
+   "text": "Оптимізовані версії, підготовлені для завантаження або для пристрою, який не може відтворити оригінал.",
+   "source": "Optimised versions prepared for download or for a device that cannot play the original.",
+   "state": "machine"
+  },
+  "server.storage.category.recordings": {
+   "text": "Записи",
+   "source": "Recordings",
+   "state": "machine"
+  },
+  "server.storage.category.recordings.description": {
+   "text": "Збережені записи. Це вміст, який сторінка обслуговування ніколи не видаляє.",
+   "source": "Captured recordings. These are content: the maintenance page never removes them.",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles": {
+   "text": "Субтитри",
+   "source": "Subtitles",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles.description": {
+   "text": "Витягнуті, завантажені та відрендерені доріжки субтитрів.",
+   "source": "Extracted, downloaded and rendered subtitle tracks.",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay": {
+   "text": "Плитки перемотування",
+   "source": "Trickplay tiles",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay.description": {
+   "text": "Мініатюри для перемотування, створені для кожного файлу. Зазвичай це найбільша категорія, яку можна створити знову.",
+   "source": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
    "state": "machine"
   },
   "server.storage.passwordSaved": {
@@ -14175,6 +14500,16 @@
   "settings.server.diskUsage": {
    "text": "Використання диска",
    "source": "Disk usage",
+   "state": "machine"
+  },
+  "settings.server.dlna": {
+   "text": "DLNA",
+   "source": "DLNA",
+   "state": "machine"
+  },
+  "settings.server.dlnaHelp": {
+   "text": "Дозволяє телевізорам, консолям та іншим пристроям DLNA у вашій домашній мережі переглядати й відтворювати все на цьому сервері без входу в обліковий запис.",
+   "source": "Lets TVs, consoles and other DLNA devices on your home network browse and play everything on this server, without signing in.",
    "state": "machine"
   },
   "settings.server.encoderSpeed": {
@@ -15495,6 +15830,41 @@
   "subtitles.error.missing": {
    "text": "Ці субтитри більше недоступні. Оновіть список варіантів.",
    "source": "This subtitle is no longer available. Refresh the current choices.",
+   "state": "machine"
+  },
+  "subtitles.error.providerBusy": {
+   "text": "OpenSubtitles зайнятий. Спробуйте ще раз за хвилинку.",
+   "source": "OpenSubtitles is busy. Try again in a moment.",
+   "state": "machine"
+  },
+  "subtitles.error.providerKeyRejected": {
+   "text": "OpenSubtitles не прийняв ключ цього сервера. Попросіть власника перевірити його.",
+   "source": "OpenSubtitles didn’t accept this server’s key. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerNotConfigured": {
+   "text": "Пошук субтитрів на цьому сервері не налаштовано. Попросіть власника додати ключ OpenSubtitles.",
+   "source": "Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuota": {
+   "text": "Цей сервер використав сьогоднішні завантаження OpenSubtitles. Вони відновляться о {time}.",
+   "source": "This server has used today’s OpenSubtitles downloads. They start again at {time}.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuotaLater": {
+   "text": "Цей сервер використав сьогоднішні завантаження OpenSubtitles. Спробуйте знову завтра.",
+   "source": "This server has used today’s OpenSubtitles downloads. Try again tomorrow.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInFailed": {
+   "text": "OpenSubtitles не прийняв обліковий запис цього сервера. Попросіть власника перевірити його.",
+   "source": "OpenSubtitles didn’t accept this server’s account. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInRequired": {
+   "text": "OpenSubtitles дозволяє завантаження лише для облікових записів, які ввійшли. Попросіть власника додати обліковий запис.",
+   "source": "OpenSubtitles only lets signed-in accounts download. Ask the owner to add an account.",
    "state": "machine"
   },
   "title.aboutEpisode": {
@@ -20427,6 +20797,11 @@
    "source": "Network folders are checked more patiently before files are marked missing.",
    "state": "machine"
   },
+  "web.libraries.lyricsQueued": {
+   "text": "Тексти пісень поставлено в чергу. Налаштування › Розклад показує перебіг виконання.",
+   "source": "Lyrics are queued to be fetched. Settings › Schedule shows the progress.",
+   "state": "machine"
+  },
   "web.libraries.metadataLanguage": {
    "text": "Мова метаданих",
    "source": "Metadata language",
@@ -23040,6 +23415,31 @@
   "web.metadataSource.onlineDescription": {
    "text": "Шукає в інтернеті назви, зображення, акторів і оцінки. Спершу використовуються ваші файли й дані з NFO.",
    "source": "Looks up titles, artwork, cast and ratings online. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.anime": {
+   "text": "Зіставляє аніме з одним онлайн-джерелом для назв, серій і зображень: TMDB, якщо ви не оберете TheTVDB або AniList. Спершу використовуються ваші власні файли та відомості NFO.",
+   "source": "Matches anime with one online provider for titles, episodes and artwork: TMDB unless you choose TheTVDB or AniList. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.audiobook": {
+   "text": "Використовує вбудовані теги книжок, супровідні відомості та локальні обкладинки. Онлайн-джерела аудіокниг недоступні.",
+   "source": "Uses embedded book tags, sidecar details and local covers. Online audiobook sources are not available.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.movie": {
+   "text": "Зіставляє фільми з TMDB для назв, зображень, акторського складу та рейтингів. Спершу використовуються ваші власні файли та відомості NFO.",
+   "source": "Matches films with TMDB for titles, artwork, cast and ratings. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.music": {
+   "text": "Зіставляє альбоми з MusicBrainz і Cover Art Archive для відомостей і зображень. Спершу використовуються вбудовані теги.",
+   "source": "Matches albums with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.tv": {
+   "text": "Зіставляє серіали з одним онлайн-джерелом для назв, серій, зображень і рейтингів: TMDB, якщо ви не оберете TheTVDB. Спершу використовуються ваші власні файли та відомості NFO.",
+   "source": "Matches shows with one online provider for titles, episodes, artwork and ratings: TMDB unless you choose TheTVDB. Your own files and NFO details are used first.",
    "state": "machine"
   },
   "web.metadataSource.onlineName": {

@@ -7892,6 +7892,11 @@
    "source": "Play now",
    "state": "machine"
   },
+  "player.opt.providedByOpenSubtitles": {
+   "text": "Feliratokat az OpenSubtitles.com biztosítja.",
+   "source": "Subtitles provided by OpenSubtitles.com",
+   "state": "machine"
+  },
   "player.opt.quality": {
    "text": "Minőség",
    "source": "Quality",
@@ -10532,6 +10537,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "Előadók",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "Könyvek",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "Kategóriák",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "Fejezetek",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "Szerző és sorozat",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "Lemezek",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "Epizódok",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "Lejátszási listák",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "A legtöbbet játszott",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "Évadok",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "Dalok",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "Hozzá nem rendelt abszolút epizódok",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "Add hozzá a Portico alkalmazást a hitelesítőappodhoz",
    "source": "Add Portico to your authenticator app",
@@ -11872,6 +11937,31 @@
    "source": "Server logs, detailed capture for troubleshooting, and support bundles.",
    "state": "machine"
   },
+  "server.maintenance.cadence.custom": {
+   "text": "Kiválasztott napokon",
+   "source": "Chosen days",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.nightly": {
+   "text": "Minden éjjel",
+   "source": "Every night",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekdays": {
+   "text": "Hétköznapokon",
+   "source": "Weekdays",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekends": {
+   "text": "Hétvégén",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekly": {
+   "text": "Hetente egyszer",
+   "source": "Once a week",
+   "state": "machine"
+  },
   "server.messageEveryone": {
    "text": "Üzenet mindenkinek",
    "source": "Message everyone",
@@ -11957,14 +12047,94 @@
    "source": "Shared by every library that looks its titles up online.",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesAccountEnvironment": {
+   "text": "Fiók van beállítva a szerver környezetében",
+   "source": "An account is set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountHelp": {
+   "text": "Az OpenSubtitles csak bejelentkezett fiókokból enged letölteni, és a letöltéseket naponta fiókonként számolja.",
+   "source": "OpenSubtitles lets signed-in accounts download, and counts downloads per account each day.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountRejected": {
+   "text": "Az OpenSubtitles nem fogadta el a felhasználónevet vagy a jelszót. Ellenőrizd őket, mentsd, majd teszteld újra.",
+   "source": "OpenSubtitles didn’t accept the username or password. Check them, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesConnection": {
+   "text": "Kapcsolat",
+   "source": "Connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsLeft": {
+   "text": "{remaining, plural, one {# letöltés} other {# letöltés}} maradt ma",
+   "source": "{remaining, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsOf": {
+   "text": "{remaining} maradt a mai {allowed, plural, one {# letöltésből} other {# letöltésből}}",
+   "source": "{remaining} of {allowed, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesGetKey": {
+   "text": "Kulcs kérése az OpenSubtitles.com oldalon",
+   "source": "Get a key at OpenSubtitles.com",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKey": {
    "text": "OpenSubtitles API-kulcs",
    "source": "OpenSubtitles API key",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesKeyEnvironment": {
+   "text": "A szerver környezetében van beállítva",
+   "source": "Set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyNone": {
+   "text": "Még nincs kulcs",
+   "source": "No key yet",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKeyOwn": {
-   "text": "Saját kulcs van használatban",
-   "source": "Your own key is in use",
+   "text": "A kulcsod mentve van",
+   "source": "Your key is saved",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyRejected": {
+   "text": "Az OpenSubtitles nem fogadta el az API-kulcsot. Ellenőrizd, mentsd, majd teszteld újra.",
+   "source": "OpenSubtitles didn’t accept the API key. Check it, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyWorks": {
+   "text": "A kulcs működik. Adj hozzá a fiókodat is, hogy a Portico letölthessen.",
+   "source": "The key works. Add your account too, so Portico can download.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesLater": {
+   "text": "Az OpenSubtitles kérte, hogy a Portico várjon. Próbáld újra később.",
+   "source": "OpenSubtitles asked Portico to wait. Try again later.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNeedsAccount": {
+   "text": "A keresés működik, de az OpenSubtitles csak bejelentkezett fiókokból enged letölteni. Add meg a felhasználónevedet és a jelszavadat.",
+   "source": "Searching works, but OpenSubtitles only lets signed-in accounts download. Add your username and password.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNoPassword": {
+   "text": "Add meg a fiók jelszavát a bejelentkezéshez.",
+   "source": "Add the account’s password to sign in.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotSetUp": {
+   "text": "Nincs beállítva. Add meg az OpenSubtitles API-kulcsodat a feliratkereséshez.",
+   "source": "Not set up. Add your OpenSubtitles API key to search for subtitles.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotTested": {
+   "text": "Még nincs tesztelve",
+   "source": "Not tested yet",
    "state": "machine"
   },
   "server.metadata.openSubtitlesPassword": {
@@ -11977,9 +12147,49 @@
    "source": "A password is saved",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesQuotaUsed": {
+   "text": "A mai letöltések elfogytak. Újraindul: {time}.",
+   "source": "Today’s downloads are used up. They start again at {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesRemoveKey": {
+   "text": "Saját kulcs eltávolítása",
+   "source": "Remove my key",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesSignOut": {
    "text": "Fiók eltávolítása",
    "source": "Remove the account",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSignedIn": {
+   "text": "Bejelentkezve, működik",
+   "source": "Signed in and working",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSlowDown": {
+   "text": "Az OpenSubtitles várakozást kért a Portico-tól, legkorábban: {time}.",
+   "source": "OpenSubtitles asked Portico to wait until {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTest": {
+   "text": "Kapcsolat tesztelése",
+   "source": "Test connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTestUnsaved": {
+   "text": "Mentsd el a módosításokat, aztán teszteld őket.",
+   "source": "Save your changes, then test them.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTesting": {
+   "text": "Tesztelés…",
+   "source": "Testing…",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesUnreachable": {
+   "text": "Az OpenSubtitles nem érhető el. Teszteld újra egy kis idő múlva.",
+   "source": "OpenSubtitles couldn’t be reached. Test again in a little while.",
    "state": "machine"
   },
   "server.metadata.openSubtitlesUser": {
@@ -12003,8 +12213,8 @@
    "state": "machine"
   },
   "server.metadata.subtitlesLede": {
-   "text": "A Portico kérésre az OpenSubtitlesnél keres feliratokat. Saját API-kulccsal és fiókkal több keresés és letöltés jár naponta.",
-   "source": "Portico looks for subtitles at OpenSubtitles when you ask it to. Use your own API key and account for more searches and downloads a day.",
+   "text": "A Portico a saját ingyenes OpenSubtitles.com-fiókoddal és API-kulcsoddal keres feliratokat. Hozz létre fiókot az opensubtitles.com oldalon, majd a profilodban adj hozzá egy API-fogyasztót a kulcs megszerzéséhez.",
+   "source": "Portico searches OpenSubtitles.com with your own free account and API key. Create an account at opensubtitles.com, then add an API consumer in your profile there to get a key.",
    "state": "machine"
   },
   "server.missing.removeBody": {
@@ -12935,6 +13145,106 @@
   "server.storage.added": {
    "text": "Hozzáadva.",
    "source": "Added.",
+   "state": "machine"
+  },
+  "server.storage.category.artwork": {
+   "text": "Grafikák",
+   "source": "Artwork",
+   "state": "machine"
+  },
+  "server.storage.category.artwork.description": {
+   "text": "A szerver által letöltött, kinyert vagy kapott plakátok, háttérképek és bélyegképek.",
+   "source": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+   "state": "machine"
+  },
+  "server.storage.category.backups": {
+   "text": "Biztonsági mentések",
+   "source": "Backups",
+   "state": "machine"
+  },
+  "server.storage.category.backups.description": {
+   "text": "A szerver biztonsági mentései.",
+   "source": "Server backups.",
+   "state": "machine"
+  },
+  "server.storage.category.conversions": {
+   "text": "Konvertálási munkafájlok",
+   "source": "Conversion working files",
+   "state": "machine"
+  },
+  "server.storage.category.conversions.description": {
+   "text": "Egy stream konvertálása közben írt szegmensek. Nyugodtan törölhetők, ha nincs lejátszás folyamatban.",
+   "source": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+   "state": "machine"
+  },
+  "server.storage.category.downloads": {
+   "text": "Letöltések",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "server.storage.category.downloads.description": {
+   "text": "Ügyfél számára offline használatra előkészített csomagok.",
+   "source": "Packages staged for a client to take offline.",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache": {
+   "text": "Élő puffer",
+   "source": "Live buffer",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache.description": {
+   "text": "Pufferelt élő és csatornaszegmensek.",
+   "source": "Buffered live and channel segments.",
+   "state": "machine"
+  },
+  "server.storage.category.logs": {
+   "text": "Naplók",
+   "source": "Logs",
+   "state": "machine"
+  },
+  "server.storage.category.logs.description": {
+   "text": "A lemezre írt diagnosztikai naplók.",
+   "source": "Diagnostic records written to disk.",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media": {
+   "text": "Előkészített média",
+   "source": "Prepared media",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media.description": {
+   "text": "Letöltéshez, vagy olyan eszközhöz készült optimalizált változatok, amely nem tudja lejátszani az eredetit.",
+   "source": "Optimised versions prepared for download or for a device that cannot play the original.",
+   "state": "machine"
+  },
+  "server.storage.category.recordings": {
+   "text": "Felvételek",
+   "source": "Recordings",
+   "state": "machine"
+  },
+  "server.storage.category.recordings.description": {
+   "text": "Rögzített felvételek. Ezek tartalmak: a karbantartási oldal soha nem távolítja el őket.",
+   "source": "Captured recordings. These are content: the maintenance page never removes them.",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles": {
+   "text": "Feliratok",
+   "source": "Subtitles",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles.description": {
+   "text": "Kinyert, letöltött és renderelt feliratsávok.",
+   "source": "Extracted, downloaded and rendered subtitle tracks.",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay": {
+   "text": "Tekerési csempék",
+   "source": "Trickplay tiles",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay.description": {
+   "text": "Fájlonként generált tekerési csempék. Ez általában a legnagyobb újragenerálható kategória.",
+   "source": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
    "state": "machine"
   },
   "server.storage.passwordSaved": {
@@ -14190,6 +14500,16 @@
   "settings.server.diskUsage": {
    "text": "Lemezhasználat",
    "source": "Disk usage",
+   "state": "machine"
+  },
+  "settings.server.dlna": {
+   "text": "DLNA",
+   "source": "DLNA",
+   "state": "machine"
+  },
+  "settings.server.dlnaHelp": {
+   "text": "Lehetővé teszi, hogy az otthoni hálózatodon lévő tévék, konzolok és más DLNA-eszközök bejelentkezés nélkül böngészhessék és lejátszhassák ezen a szerveren lévő összes tartalmat.",
+   "source": "Lets TVs, consoles and other DLNA devices on your home network browse and play everything on this server, without signing in.",
    "state": "machine"
   },
   "settings.server.encoderSpeed": {
@@ -15510,6 +15830,41 @@
   "subtitles.error.missing": {
    "text": "Ez a felirat már nem érhető el. Frissítsd az aktuális választékot.",
    "source": "This subtitle is no longer available. Refresh the current choices.",
+   "state": "machine"
+  },
+  "subtitles.error.providerBusy": {
+   "text": "Az OpenSubtitles most foglalt. Próbáld újra pár perc múlva.",
+   "source": "OpenSubtitles is busy. Try again in a moment.",
+   "state": "machine"
+  },
+  "subtitles.error.providerKeyRejected": {
+   "text": "Az OpenSubtitles nem fogadta el ennek a szervernek a kulcsát. Kérd meg a tulajdonost, hogy ellenőrizze.",
+   "source": "OpenSubtitles didn’t accept this server’s key. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerNotConfigured": {
+   "text": "A feliratkeresés nincs beállítva ezen a szerveren. Kérd meg a tulajdonost, hogy adjon hozzá OpenSubtitles-kulcsot.",
+   "source": "Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuota": {
+   "text": "A mai OpenSubtitles-letöltési keret elfogyott ezen a szerveren. Újraindul: {time}.",
+   "source": "This server has used today’s OpenSubtitles downloads. They start again at {time}.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuotaLater": {
+   "text": "A mai OpenSubtitles-letöltési keret elfogyott ezen a szerveren. Holnap próbáld újra.",
+   "source": "This server has used today’s OpenSubtitles downloads. Try again tomorrow.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInFailed": {
+   "text": "Az OpenSubtitles nem fogadta el ennek a szervernek a fiókját. Kérd meg a tulajdonost, hogy ellenőrizze.",
+   "source": "OpenSubtitles didn’t accept this server’s account. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInRequired": {
+   "text": "Az OpenSubtitles csak bejelentkezett fiókokból enged letölteni. Kérd meg a tulajdonost, hogy adjon hozzá egy fiókot.",
+   "source": "OpenSubtitles only lets signed-in accounts download. Ask the owner to add an account.",
    "state": "machine"
   },
   "title.aboutEpisode": {
@@ -20442,6 +20797,11 @@
    "source": "Network folders are checked more patiently before files are marked missing.",
    "state": "machine"
   },
+  "web.libraries.lyricsQueued": {
+   "text": "A dalszövegek letöltése sorba került. A Beállítások › Ütemezés mutatja a haladást.",
+   "source": "Lyrics are queued to be fetched. Settings › Schedule shows the progress.",
+   "state": "machine"
+  },
   "web.libraries.metadataLanguage": {
    "text": "Metaadatok nyelve",
    "source": "Metadata language",
@@ -23055,6 +23415,31 @@
   "web.metadataSource.onlineDescription": {
    "text": "Címeket, grafikákat, szereplőket és értékeléseket keres online. Előbb a saját fájljaidat és NFO-adataidat használja.",
    "source": "Looks up titles, artwork, cast and ratings online. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.anime": {
+   "text": "Az animéket egy online szolgáltatóval egyezteti címekhez, epizódokhoz és grafikákhoz: alapértelmezés szerint a TMDB, kivéve ha a TheTVDB-t vagy az AniList-et választod. Előbb a saját fájljaidat és NFO-adataidat használja.",
+   "source": "Matches anime with one online provider for titles, episodes and artwork: TMDB unless you choose TheTVDB or AniList. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.audiobook": {
+   "text": "Beágyazott könyvcímkéket, kísérő adatokat és helyi borítókat használ. Online hangoskönyv-források nem érhetők el.",
+   "source": "Uses embedded book tags, sidecar details and local covers. Online audiobook sources are not available.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.movie": {
+   "text": "A filmeket a TMDB-ben egyezteti címekhez, grafikákhoz, szereplőkhöz és értékelésekhez. Előbb a saját fájljaidat és NFO-adataidat használja.",
+   "source": "Matches films with TMDB for titles, artwork, cast and ratings. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.music": {
+   "text": "Az albumokat a MusicBrainz és a Cover Art Archive segítségével egyezteti részletekhez és grafikákhoz. Előbb a beágyazott címkéket használja.",
+   "source": "Matches albums with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.tv": {
+   "text": "A sorozatokat egy online szolgáltatóval egyezteti címekhez, epizódokhoz, grafikákhoz és értékelésekhez: alapértelmezés szerint a TMDB, kivéve ha a TheTVDB-t választod. Előbb a saját fájljaidat és NFO-adataidat használja.",
+   "source": "Matches shows with one online provider for titles, episodes, artwork and ratings: TMDB unless you choose TheTVDB. Your own files and NFO details are used first.",
    "state": "machine"
   },
   "web.metadataSource.onlineName": {

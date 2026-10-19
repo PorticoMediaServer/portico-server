@@ -6982,6 +6982,21 @@
    "source": "Unpin {name}",
    "state": "machine"
   },
+  "platform.downloadsChannel": {
+   "text": "डाउनलोड",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "platform.downloadsRunning": {
+   "text": "ऑफ़लाइन देखने के लिए डाउनलोड हो रहा है",
+   "source": "Downloading for offline viewing",
+   "state": "machine"
+  },
+  "platform.localNetworkUsage": {
+   "text": "अपने Portico सर्वर, आस-पास के TV और Google Cast डिवाइस खोजें। लोकल नेटवर्क खोज के बिना भी मैन्युअल पते और TV कोड काम करते हैं।",
+   "source": "Find your Portico servers, nearby TVs and Google Cast devices. Manual addresses and TV codes also work without local network discovery.",
+   "state": "machine"
+  },
   "playOn.airplay": {
    "text": "AirPlay",
    "source": "AirPlay",
@@ -7875,6 +7890,11 @@
   "player.opt.playNow": {
    "text": "अभी चलाएँ",
    "source": "Play now",
+   "state": "machine"
+  },
+  "player.opt.providedByOpenSubtitles": {
+   "text": "सबटाइटल OpenSubtitles.com ने दिए हैं",
+   "source": "Subtitles provided by OpenSubtitles.com",
    "state": "machine"
   },
   "player.opt.quality": {
@@ -10517,6 +10537,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "कलाकार",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "किताबें",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "श्रेणियाँ",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "चैप्टर",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "लेखक और सीरीज़",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "डिस्क",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "एपिसोड",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "प्लेलिस्ट",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "सबसे ज़्यादा चलाए गए",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "सीज़न",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "गाने",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "बिना असाइन किए गए एब्सोल्यूट एपिसोड",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "अपने ऑथेंटिकेटर ऐप में Portico जोड़ें",
    "source": "Add Portico to your authenticator app",
@@ -11857,6 +11937,31 @@
    "source": "Server logs, detailed capture for troubleshooting, and support bundles.",
    "state": "machine"
   },
+  "server.maintenance.cadence.custom": {
+   "text": "चुने हुए दिन",
+   "source": "Chosen days",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.nightly": {
+   "text": "हर रात",
+   "source": "Every night",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekdays": {
+   "text": "सोमवार से शुक्रवार",
+   "source": "Weekdays",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekends": {
+   "text": "सप्ताहांत",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekly": {
+   "text": "हफ़्ते में एक बार",
+   "source": "Once a week",
+   "state": "machine"
+  },
   "server.messageEveryone": {
    "text": "सबको संदेश भेजें",
    "source": "Message everyone",
@@ -11942,14 +12047,94 @@
    "source": "Shared by every library that looks its titles up online.",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesAccountEnvironment": {
+   "text": "सर्वर के एनवायरनमेंट में एक खाता सेट है",
+   "source": "An account is set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountHelp": {
+   "text": "OpenSubtitles साइन इन किए खातों को डाउनलोड करने देता है, और हर खाते के डाउनलोड रोज़ गिनता है।",
+   "source": "OpenSubtitles lets signed-in accounts download, and counts downloads per account each day.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountRejected": {
+   "text": "OpenSubtitles ने यूज़रनेम या पासवर्ड स्वीकार नहीं किया। इन्हें जाँचें, सहेजें, और फिर जाँचें।",
+   "source": "OpenSubtitles didn’t accept the username or password. Check them, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesConnection": {
+   "text": "कनेक्शन",
+   "source": "Connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsLeft": {
+   "text": "आज {remaining, plural, one {# डाउनलोड बचा है} other {# डाउनलोड बचे हैं}}",
+   "source": "{remaining, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsOf": {
+   "text": "आज {allowed, plural, one {# डाउनलोड} other {# डाउनलोड}} में से {remaining} बचे हैं",
+   "source": "{remaining} of {allowed, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesGetKey": {
+   "text": "OpenSubtitles.com पर कुंजी लें",
+   "source": "Get a key at OpenSubtitles.com",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKey": {
    "text": "OpenSubtitles API कुंजी",
    "source": "OpenSubtitles API key",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesKeyEnvironment": {
+   "text": "सर्वर के एनवायरनमेंट में सेट है",
+   "source": "Set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyNone": {
+   "text": "अभी कोई कुंजी नहीं",
+   "source": "No key yet",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKeyOwn": {
-   "text": "आपकी अपनी कुंजी इस्तेमाल हो रही है",
-   "source": "Your own key is in use",
+   "text": "आपकी कुंजी सहेजी गई है",
+   "source": "Your key is saved",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyRejected": {
+   "text": "OpenSubtitles ने API कुंजी स्वीकार नहीं की। इसे जाँचें, सहेजें, और फिर जाँचें।",
+   "source": "OpenSubtitles didn’t accept the API key. Check it, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyWorks": {
+   "text": "कुंजी काम करती है। Portico डाउनलोड कर सके, इसके लिए अपना खाता भी जोड़ें।",
+   "source": "The key works. Add your account too, so Portico can download.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesLater": {
+   "text": "OpenSubtitles ने Portico से रुकने को कहा है। बाद में फिर कोशिश करें।",
+   "source": "OpenSubtitles asked Portico to wait. Try again later.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNeedsAccount": {
+   "text": "खोज काम करती है, लेकिन OpenSubtitles केवल साइन इन किए खातों को डाउनलोड करने देता है। अपना यूज़रनेम और पासवर्ड जोड़ें।",
+   "source": "Searching works, but OpenSubtitles only lets signed-in accounts download. Add your username and password.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNoPassword": {
+   "text": "साइन इन के लिए खाते का पासवर्ड जोड़ें।",
+   "source": "Add the account’s password to sign in.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotSetUp": {
+   "text": "सेट नहीं है। सबटाइटल खोजने के लिए अपनी OpenSubtitles API कुंजी जोड़ें।",
+   "source": "Not set up. Add your OpenSubtitles API key to search for subtitles.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotTested": {
+   "text": "अभी तक जाँचा नहीं गया",
+   "source": "Not tested yet",
    "state": "machine"
   },
   "server.metadata.openSubtitlesPassword": {
@@ -11962,9 +12147,49 @@
    "source": "A password is saved",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesQuotaUsed": {
+   "text": "आज के डाउनलोड खत्म हो गए हैं। ये {time} पर फिर शुरू होंगे।",
+   "source": "Today’s downloads are used up. They start again at {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesRemoveKey": {
+   "text": "मेरी कुंजी हटाएँ",
+   "source": "Remove my key",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesSignOut": {
    "text": "खाता हटाएँ",
    "source": "Remove the account",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSignedIn": {
+   "text": "साइन इन है और काम कर रहा है",
+   "source": "Signed in and working",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSlowDown": {
+   "text": "OpenSubtitles ने Portico से {time} तक रुकने को कहा है।",
+   "source": "OpenSubtitles asked Portico to wait until {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTest": {
+   "text": "कनेक्शन जाँचें",
+   "source": "Test connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTestUnsaved": {
+   "text": "पहले अपने बदलाव सहेजें, फिर उन्हें जाँचें।",
+   "source": "Save your changes, then test them.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTesting": {
+   "text": "जाँच हो रही है…",
+   "source": "Testing…",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesUnreachable": {
+   "text": "OpenSubtitles तक पहुँचा नहीं जा सका। थोड़ी देर बाद फिर जाँचें।",
+   "source": "OpenSubtitles couldn’t be reached. Test again in a little while.",
    "state": "machine"
   },
   "server.metadata.openSubtitlesUser": {
@@ -11988,8 +12213,8 @@
    "state": "machine"
   },
   "server.metadata.subtitlesLede": {
-   "text": "आपके कहने पर Portico OpenSubtitles पर सबटाइटल खोजता है। रोज़ ज़्यादा खोज और डाउनलोड के लिए अपनी API कुंजी और खाता इस्तेमाल करें।",
-   "source": "Portico looks for subtitles at OpenSubtitles when you ask it to. Use your own API key and account for more searches and downloads a day.",
+   "text": "Portico आपके अपने मुफ़्त खाते और API कुंजी से OpenSubtitles.com पर खोज करता है। opensubtitles.com पर खाता बनाएँ, फिर वहाँ अपनी प्रोफ़ाइल में एक API consumer जोड़ें, ताकि कुंजी मिल सके।",
+   "source": "Portico searches OpenSubtitles.com with your own free account and API key. Create an account at opensubtitles.com, then add an API consumer in your profile there to get a key.",
    "state": "machine"
   },
   "server.missing.removeBody": {
@@ -12920,6 +13145,106 @@
   "server.storage.added": {
    "text": "जोड़ा गया।",
    "source": "Added.",
+   "state": "machine"
+  },
+  "server.storage.category.artwork": {
+   "text": "आर्टवर्क",
+   "source": "Artwork",
+   "state": "machine"
+  },
+  "server.storage.category.artwork.description": {
+   "text": "पोस्टर, बैकड्रॉप और थंबनेल जो सर्वर ने लाए, निकाले या पाए हैं।",
+   "source": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+   "state": "machine"
+  },
+  "server.storage.category.backups": {
+   "text": "बैकअप",
+   "source": "Backups",
+   "state": "machine"
+  },
+  "server.storage.category.backups.description": {
+   "text": "सर्वर के बैकअप।",
+   "source": "Server backups.",
+   "state": "machine"
+  },
+  "server.storage.category.conversions": {
+   "text": "कन्वर्ज़न की कार्य फ़ाइलें",
+   "source": "Conversion working files",
+   "state": "machine"
+  },
+  "server.storage.category.conversions.description": {
+   "text": "स्ट्रीम कन्वर्ट होते समय लिखे गए सेगमेंट। कुछ न चल रहा हो तो इन्हें हटाना सुरक्षित है।",
+   "source": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+   "state": "machine"
+  },
+  "server.storage.category.downloads": {
+   "text": "डाउनलोड",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "server.storage.category.downloads.description": {
+   "text": "किसी क्लाइंट के ऑफ़लाइन लेने के लिए तैयार किए गए पैकेज।",
+   "source": "Packages staged for a client to take offline.",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache": {
+   "text": "लाइव बफ़र",
+   "source": "Live buffer",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache.description": {
+   "text": "बफ़र किए गए लाइव और चैनल सेगमेंट।",
+   "source": "Buffered live and channel segments.",
+   "state": "machine"
+  },
+  "server.storage.category.logs": {
+   "text": "लॉग",
+   "source": "Logs",
+   "state": "machine"
+  },
+  "server.storage.category.logs.description": {
+   "text": "डिस्क पर लिखे गए जाँच के रिकॉर्ड।",
+   "source": "Diagnostic records written to disk.",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media": {
+   "text": "तैयार मीडिया",
+   "source": "Prepared media",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media.description": {
+   "text": "डाउनलोड के लिए, या ऐसे डिवाइस के लिए तैयार ऑप्टिमाइज़्ड संस्करण जो मूल फ़ाइल नहीं चला सकता।",
+   "source": "Optimised versions prepared for download or for a device that cannot play the original.",
+   "state": "machine"
+  },
+  "server.storage.category.recordings": {
+   "text": "रिकॉर्डिंग",
+   "source": "Recordings",
+   "state": "machine"
+  },
+  "server.storage.category.recordings.description": {
+   "text": "रिकॉर्ड की गई रिकॉर्डिंग। ये कंटेंट हैं: मेंटेनेंस पेज इन्हें कभी नहीं हटाता।",
+   "source": "Captured recordings. These are content: the maintenance page never removes them.",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles": {
+   "text": "सबटाइटल",
+   "source": "Subtitles",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles.description": {
+   "text": "निकाले गए, डाउनलोड किए गए और रेंडर किए गए सबटाइटल ट्रैक।",
+   "source": "Extracted, downloaded and rendered subtitle tracks.",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay": {
+   "text": "ट्रिकप्ले टाइल्स",
+   "source": "Trickplay tiles",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay.description": {
+   "text": "हर फ़ाइल के लिए बनाई गई स्क्रबिंग टाइल्स। आमतौर पर यही सबसे बड़ी दोबारा बनाई जा सकने वाली श्रेणी है।",
+   "source": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
    "state": "machine"
   },
   "server.storage.passwordSaved": {
@@ -14175,6 +14500,16 @@
   "settings.server.diskUsage": {
    "text": "डिस्क इस्तेमाल",
    "source": "Disk usage",
+   "state": "machine"
+  },
+  "settings.server.dlna": {
+   "text": "DLNA",
+   "source": "DLNA",
+   "state": "machine"
+  },
+  "settings.server.dlnaHelp": {
+   "text": "आपके होम नेटवर्क पर TV, कंसोल और दूसरे DLNA डिवाइस बिना साइन इन किए इस सर्वर की सब चीज़ें ब्राउज़ और चला सकते हैं।",
+   "source": "Lets TVs, consoles and other DLNA devices on your home network browse and play everything on this server, without signing in.",
    "state": "machine"
   },
   "settings.server.encoderSpeed": {
@@ -15495,6 +15830,41 @@
   "subtitles.error.missing": {
    "text": "यह सबटाइटल अब उपलब्ध नहीं है। मौजूदा विकल्प रिफ़्रेश करें।",
    "source": "This subtitle is no longer available. Refresh the current choices.",
+   "state": "machine"
+  },
+  "subtitles.error.providerBusy": {
+   "text": "OpenSubtitles अभी व्यस्त है। थोड़ी देर बाद फिर कोशिश करें।",
+   "source": "OpenSubtitles is busy. Try again in a moment.",
+   "state": "machine"
+  },
+  "subtitles.error.providerKeyRejected": {
+   "text": "OpenSubtitles ने इस सर्वर की कुंजी स्वीकार नहीं की। मालिक से इसे जाँचने को कहें।",
+   "source": "OpenSubtitles didn’t accept this server’s key. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerNotConfigured": {
+   "text": "इस सर्वर पर सबटाइटल खोज सेट नहीं है। मालिक से OpenSubtitles की कुंजी जोड़ने को कहें।",
+   "source": "Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuota": {
+   "text": "इस सर्वर के आज के OpenSubtitles डाउनलोड खत्म हो गए हैं। ये {time} पर फिर शुरू होंगे।",
+   "source": "This server has used today’s OpenSubtitles downloads. They start again at {time}.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuotaLater": {
+   "text": "इस सर्वर के आज के OpenSubtitles डाउनलोड खत्म हो गए हैं। कल फिर कोशिश करें।",
+   "source": "This server has used today’s OpenSubtitles downloads. Try again tomorrow.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInFailed": {
+   "text": "OpenSubtitles ने इस सर्वर का खाता स्वीकार नहीं किया। मालिक से इसे जाँचने को कहें।",
+   "source": "OpenSubtitles didn’t accept this server’s account. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInRequired": {
+   "text": "OpenSubtitles केवल साइन इन किए खातों को डाउनलोड करने देता है। मालिक से एक खाता जोड़ने को कहें।",
+   "source": "OpenSubtitles only lets signed-in accounts download. Ask the owner to add an account.",
    "state": "machine"
   },
   "title.aboutEpisode": {
@@ -20427,6 +20797,11 @@
    "source": "Network folders are checked more patiently before files are marked missing.",
    "state": "machine"
   },
+  "web.libraries.lyricsQueued": {
+   "text": "गानों के बोल लाने के लिए कतार में रखे गए हैं। प्रगति सेटिंग्स › शेड्यूल में दिखती है।",
+   "source": "Lyrics are queued to be fetched. Settings › Schedule shows the progress.",
+   "state": "machine"
+  },
   "web.libraries.metadataLanguage": {
    "text": "मेटाडेटा भाषा",
    "source": "Metadata language",
@@ -23040,6 +23415,31 @@
   "web.metadataSource.onlineDescription": {
    "text": "टाइटल, आर्टवर्क, कास्ट और रेटिंग ऑनलाइन खोजता है। आपकी अपनी फ़ाइलें और NFO विवरण पहले इस्तेमाल होते हैं।",
    "source": "Looks up titles, artwork, cast and ratings online. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.anime": {
+   "text": "टाइटल, एपिसोड और आर्टवर्क के लिए एनिमे का मिलान एक ऑनलाइन प्रदाता से होता है: जब तक आप TheTVDB या AniList न चुनें, TMDB। पहले आपकी अपनी फ़ाइलें और NFO विवरण इस्तेमाल होते हैं।",
+   "source": "Matches anime with one online provider for titles, episodes and artwork: TMDB unless you choose TheTVDB or AniList. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.audiobook": {
+   "text": "किताब के अंदर के टैग, साथ की फ़ाइलों के विवरण और लोकल कवर इस्तेमाल होते हैं। ऑनलाइन ऑडियोबुक स्रोत उपलब्ध नहीं हैं।",
+   "source": "Uses embedded book tags, sidecar details and local covers. Online audiobook sources are not available.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.movie": {
+   "text": "टाइटल, आर्टवर्क, कास्ट और रेटिंग के लिए फ़िल्मों का मिलान TMDB से होता है। पहले आपकी अपनी फ़ाइलें और NFO विवरण इस्तेमाल होते हैं।",
+   "source": "Matches films with TMDB for titles, artwork, cast and ratings. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.music": {
+   "text": "विवरण और आर्टवर्क के लिए एल्बम का मिलान MusicBrainz और Cover Art Archive से होता है। पहले फ़ाइलों के अंदर के टैग इस्तेमाल होते हैं।",
+   "source": "Matches albums with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.tv": {
+   "text": "टाइटल, एपिसोड, आर्टवर्क और रेटिंग के लिए शो का मिलान एक ऑनलाइन प्रदाता से होता है: जब तक आप TheTVDB न चुनें, TMDB। पहले आपकी अपनी फ़ाइलें और NFO विवरण इस्तेमाल होते हैं।",
+   "source": "Matches shows with one online provider for titles, episodes, artwork and ratings: TMDB unless you choose TheTVDB. Your own files and NFO details are used first.",
    "state": "machine"
   },
   "web.metadataSource.onlineName": {

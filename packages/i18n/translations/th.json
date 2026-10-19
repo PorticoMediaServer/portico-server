@@ -6982,6 +6982,21 @@
    "source": "Unpin {name}",
    "state": "machine"
   },
+  "platform.downloadsChannel": {
+   "text": "ดาวน์โหลด",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "platform.downloadsRunning": {
+   "text": "กำลังดาวน์โหลดเพื่อรับชมแบบออฟไลน์",
+   "source": "Downloading for offline viewing",
+   "state": "machine"
+  },
+  "platform.localNetworkUsage": {
+   "text": "ค้นหาเซิร์ฟเวอร์ Portico ทีวี และอุปกรณ์ Google Cast ที่อยู่ใกล้เคียง ที่อยู่ที่กรอกเองและรหัสทีวีก็ใช้งานได้โดยไม่ต้องค้นหาในเครือข่ายภายในเช่นกัน",
+   "source": "Find your Portico servers, nearby TVs and Google Cast devices. Manual addresses and TV codes also work without local network discovery.",
+   "state": "machine"
+  },
   "playOn.airplay": {
    "text": "AirPlay",
    "source": "AirPlay",
@@ -7875,6 +7890,11 @@
   "player.opt.playNow": {
    "text": "เล่นตอนนี้",
    "source": "Play now",
+   "state": "machine"
+  },
+  "player.opt.providedByOpenSubtitles": {
+   "text": "คำบรรยายจัดหาโดย OpenSubtitles.com",
+   "source": "Subtitles provided by OpenSubtitles.com",
    "state": "machine"
   },
   "player.opt.quality": {
@@ -10517,6 +10537,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "ศิลปิน",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "หนังสือ",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "หมวดหมู่",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "บท",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "ผู้แต่งและชุด",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "แผ่น",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "ตอน",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "เพลย์ลิสต์",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "ที่คุณเล่นบ่อยที่สุด",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "ซีซัน",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "เพลง",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "ตอนแบบสัมบูรณ์ที่ยังไม่ได้กำหนด",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "เพิ่มPorticoในแอปยืนยันตัวตน",
    "source": "Add Portico to your authenticator app",
@@ -11857,6 +11937,31 @@
    "source": "Server logs, detailed capture for troubleshooting, and support bundles.",
    "state": "machine"
   },
+  "server.maintenance.cadence.custom": {
+   "text": "วันที่เลือก",
+   "source": "Chosen days",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.nightly": {
+   "text": "ทุกคืน",
+   "source": "Every night",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekdays": {
+   "text": "วันธรรมดา",
+   "source": "Weekdays",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekends": {
+   "text": "วันหยุดสุดสัปดาห์",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekly": {
+   "text": "สัปดาห์ละครั้ง",
+   "source": "Once a week",
+   "state": "machine"
+  },
   "server.messageEveryone": {
    "text": "ส่งข้อความถึงทุกคน",
    "source": "Message everyone",
@@ -11942,14 +12047,94 @@
    "source": "Shared by every library that looks its titles up online.",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesAccountEnvironment": {
+   "text": "มีบัญชีตั้งค่าไว้ในสภาพแวดล้อมของเซิร์ฟเวอร์",
+   "source": "An account is set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountHelp": {
+   "text": "OpenSubtitles ดาวน์โหลดได้เฉพาะบัญชีที่ลงชื่อเข้าใช้แล้ว และนับการดาวน์โหลดแยกตามบัญชีในแต่ละวัน",
+   "source": "OpenSubtitles lets signed-in accounts download, and counts downloads per account each day.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountRejected": {
+   "text": "OpenSubtitles ไม่ยอมรับชื่อผู้ใช้หรือรหัสผ่าน ตรวจสอบ บันทึก แล้วทดสอบอีกครั้ง",
+   "source": "OpenSubtitles didn’t accept the username or password. Check them, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesConnection": {
+   "text": "การเชื่อมต่อ",
+   "source": "Connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsLeft": {
+   "text": "เหลือ {remaining, plural, one {# การดาวน์โหลด} other {# การดาวน์โหลด}} วันนี้",
+   "source": "{remaining, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsOf": {
+   "text": "เหลือ {remaining} จาก {allowed, plural, one {# การดาวน์โหลด} other {# การดาวน์โหลด}} วันนี้",
+   "source": "{remaining} of {allowed, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesGetKey": {
+   "text": "รับคีย์ที่ OpenSubtitles.com",
+   "source": "Get a key at OpenSubtitles.com",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKey": {
    "text": "คีย์API OpenSubtitles",
    "source": "OpenSubtitles API key",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesKeyEnvironment": {
+   "text": "ตั้งค่าไว้ในสภาพแวดล้อมของเซิร์ฟเวอร์",
+   "source": "Set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyNone": {
+   "text": "ยังไม่มีคีย์",
+   "source": "No key yet",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKeyOwn": {
-   "text": "ใช้คีย์ของคุณ",
-   "source": "Your own key is in use",
+   "text": "คีย์ของคุณถูกบันทึกแล้ว",
+   "source": "Your key is saved",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyRejected": {
+   "text": "OpenSubtitles ไม่ยอมรับคีย์ API ตรวจสอบ บันทึก แล้วทดสอบอีกครั้ง",
+   "source": "OpenSubtitles didn’t accept the API key. Check it, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyWorks": {
+   "text": "คีย์ใช้งานได้ เพิ่มบัญชีของคุณด้วยเพื่อให้ Portico ดาวน์โหลดได้",
+   "source": "The key works. Add your account too, so Portico can download.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesLater": {
+   "text": "OpenSubtitles ขอให้ Portico รอ ลองอีกครั้งภายหลัง",
+   "source": "OpenSubtitles asked Portico to wait. Try again later.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNeedsAccount": {
+   "text": "การค้นหาใช้งานได้ แต่ OpenSubtitles ดาวน์โหลดได้เฉพาะบัญชีที่ลงชื่อเข้าใช้แล้ว เพิ่มชื่อผู้ใช้และรหัสผ่านของคุณ",
+   "source": "Searching works, but OpenSubtitles only lets signed-in accounts download. Add your username and password.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNoPassword": {
+   "text": "เพิ่มรหัสผ่านของบัญชีเพื่อลงชื่อเข้าใช้",
+   "source": "Add the account’s password to sign in.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotSetUp": {
+   "text": "ยังไม่ได้ตั้งค่า เพิ่มคีย์ API ของ OpenSubtitles เพื่อค้นหาคำบรรยาย",
+   "source": "Not set up. Add your OpenSubtitles API key to search for subtitles.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotTested": {
+   "text": "ยังไม่ได้ทดสอบ",
+   "source": "Not tested yet",
    "state": "machine"
   },
   "server.metadata.openSubtitlesPassword": {
@@ -11962,9 +12147,49 @@
    "source": "A password is saved",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesQuotaUsed": {
+   "text": "การดาวน์โหลดของวันนี้ใช้จนครบแล้ว การดาวน์โหลดจะเริ่มใหม่เมื่อ {time}",
+   "source": "Today’s downloads are used up. They start again at {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesRemoveKey": {
+   "text": "ลบคีย์ของคุณ",
+   "source": "Remove my key",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesSignOut": {
    "text": "นำบัญชีออก",
    "source": "Remove the account",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSignedIn": {
+   "text": "ลงชื่อเข้าใช้แล้วและใช้งานได้",
+   "source": "Signed in and working",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSlowDown": {
+   "text": "OpenSubtitles ขอให้ Portico รอจนถึง {time}",
+   "source": "OpenSubtitles asked Portico to wait until {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTest": {
+   "text": "ทดสอบการเชื่อมต่อ",
+   "source": "Test connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTestUnsaved": {
+   "text": "บันทึกการเปลี่ยนแปลงก่อน แล้วจึงทดสอบ",
+   "source": "Save your changes, then test them.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTesting": {
+   "text": "กำลังทดสอบ…",
+   "source": "Testing…",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesUnreachable": {
+   "text": "เชื่อมต่อ OpenSubtitles ไม่ได้ ทดสอบอีกครั้งในอีกสักครู่",
+   "source": "OpenSubtitles couldn’t be reached. Test again in a little while.",
    "state": "machine"
   },
   "server.metadata.openSubtitlesUser": {
@@ -11988,8 +12213,8 @@
    "state": "machine"
   },
   "server.metadata.subtitlesLede": {
-   "text": "Porticoค้นคำบรรยายที่OpenSubtitlesเมื่อคุณขอ ใช้คีย์APIและบัญชีตัวเองเพื่อค้นและดาวน์โหลดเพิ่มต่อวัน",
-   "source": "Portico looks for subtitles at OpenSubtitles when you ask it to. Use your own API key and account for more searches and downloads a day.",
+   "text": "Portico ค้นหาคำบรรยายจาก OpenSubtitles.com ด้วยบัญชีฟรีและคีย์ API ของคุณเอง สร้างบัญชีที่ opensubtitles.com แล้วเพิ่มแอป API ในโปรไฟล์ของคุณที่นั่นเพื่อรับคีย์",
+   "source": "Portico searches OpenSubtitles.com with your own free account and API key. Create an account at opensubtitles.com, then add an API consumer in your profile there to get a key.",
    "state": "machine"
   },
   "server.missing.removeBody": {
@@ -12920,6 +13145,106 @@
   "server.storage.added": {
    "text": "เพิ่มแล้ว",
    "source": "Added.",
+   "state": "machine"
+  },
+  "server.storage.category.artwork": {
+   "text": "อาร์ตเวิร์ก",
+   "source": "Artwork",
+   "state": "machine"
+  },
+  "server.storage.category.artwork.description": {
+   "text": "โปสเตอร์ ภาพพื้นหลัง และภาพขนาดย่อที่เซิร์ฟเวอร์ดึงมา แยกออก หรือได้รับมา",
+   "source": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+   "state": "machine"
+  },
+  "server.storage.category.backups": {
+   "text": "สำรองข้อมูล",
+   "source": "Backups",
+   "state": "machine"
+  },
+  "server.storage.category.backups.description": {
+   "text": "การสำรองข้อมูลของเซิร์ฟเวอร์",
+   "source": "Server backups.",
+   "state": "machine"
+  },
+  "server.storage.category.conversions": {
+   "text": "ไฟล์ทำงานการแปลงสื่อ",
+   "source": "Conversion working files",
+   "state": "machine"
+  },
+  "server.storage.category.conversions.description": {
+   "text": "ส่วนข้อมูลที่เขียนขณะแปลงสตรีม ลบได้อย่างปลอดภัยเมื่อไม่มีการเล่นอยู่",
+   "source": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+   "state": "machine"
+  },
+  "server.storage.category.downloads": {
+   "text": "ดาวน์โหลด",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "server.storage.category.downloads.description": {
+   "text": "แพ็กเกจที่เตรียมไว้ให้ไคลเอนต์นำไปใช้แบบออฟไลน์",
+   "source": "Packages staged for a client to take offline.",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache": {
+   "text": "บัฟเฟอร์สด",
+   "source": "Live buffer",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache.description": {
+   "text": "ส่วนของสัญญาณสดและช่องที่พักไว้ในบัฟเฟอร์",
+   "source": "Buffered live and channel segments.",
+   "state": "machine"
+  },
+  "server.storage.category.logs": {
+   "text": "บันทึก",
+   "source": "Logs",
+   "state": "machine"
+  },
+  "server.storage.category.logs.description": {
+   "text": "บันทึกการวินิจฉัยที่เขียนลงดิสก์",
+   "source": "Diagnostic records written to disk.",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media": {
+   "text": "สื่อที่เตรียมไว้",
+   "source": "Prepared media",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media.description": {
+   "text": "เวอร์ชันที่ปรับให้เหมาะสม เตรียมไว้สำหรับดาวน์โหลด หรือสำหรับอุปกรณ์ที่เล่นต้นฉบับไม่ได้",
+   "source": "Optimised versions prepared for download or for a device that cannot play the original.",
+   "state": "machine"
+  },
+  "server.storage.category.recordings": {
+   "text": "การบันทึก",
+   "source": "Recordings",
+   "state": "machine"
+  },
+  "server.storage.category.recordings.description": {
+   "text": "การบันทึกที่อัดไว้ นี่คือเนื้อหา: หน้าการบำรุงรักษาจะไม่ลบออกเลย",
+   "source": "Captured recordings. These are content: the maintenance page never removes them.",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles": {
+   "text": "คำบรรยาย",
+   "source": "Subtitles",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles.description": {
+   "text": "แทร็กคำบรรยายที่ดึงออกมา ดาวน์โหลด และเรนเดอร์แล้ว",
+   "source": "Extracted, downloaded and rendered subtitle tracks.",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay": {
+   "text": "ภาพตัวอย่างการเลื่อนดู",
+   "source": "Trickplay tiles",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay.description": {
+   "text": "ภาพตัวอย่างการเลื่อนดูที่สร้างแยกตามไฟล์ โดยทั่วไปเป็นหมวดที่ใหญ่ที่สุดที่สร้างใหม่ได้",
+   "source": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
    "state": "machine"
   },
   "server.storage.passwordSaved": {
@@ -14175,6 +14500,16 @@
   "settings.server.diskUsage": {
    "text": "ใช้ดิสก์",
    "source": "Disk usage",
+   "state": "machine"
+  },
+  "settings.server.dlna": {
+   "text": "DLNA",
+   "source": "DLNA",
+   "state": "machine"
+  },
+  "settings.server.dlnaHelp": {
+   "text": "อนุญาตให้ทีวี คอนโซล และอุปกรณ์ DLNA อื่นๆ ในเครือข่ายบ้านเรียกดูและเล่นทุกอย่างบนเซิร์ฟเวอร์นี้ได้โดยไม่ต้องลงชื่อเข้าใช้",
+   "source": "Lets TVs, consoles and other DLNA devices on your home network browse and play everything on this server, without signing in.",
    "state": "machine"
   },
   "settings.server.encoderSpeed": {
@@ -15495,6 +15830,41 @@
   "subtitles.error.missing": {
    "text": "ไม่มีคำบรรยายนี้แล้ว รีเฟรชตัวเลือกปัจจุบัน",
    "source": "This subtitle is no longer available. Refresh the current choices.",
+   "state": "machine"
+  },
+  "subtitles.error.providerBusy": {
+   "text": "OpenSubtitles กำลังยุ่ง ลองอีกครั้งในอีกสักครู่",
+   "source": "OpenSubtitles is busy. Try again in a moment.",
+   "state": "machine"
+  },
+  "subtitles.error.providerKeyRejected": {
+   "text": "OpenSubtitles ไม่ยอมรับคีย์ของเซิร์ฟเวอร์นี้ ขอให้เจ้าของตรวจสอบ",
+   "source": "OpenSubtitles didn’t accept this server’s key. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerNotConfigured": {
+   "text": "การค้นหาคำบรรยายยังไม่ได้ตั้งค่าบนเซิร์ฟเวอร์นี้ ขอให้เจ้าของเพิ่มคีย์ OpenSubtitles",
+   "source": "Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuota": {
+   "text": "เซิร์ฟเวอร์นี้ใช้การดาวน์โหลด OpenSubtitles ของวันนี้ครบแล้ว การดาวน์โหลดจะเริ่มใหม่เมื่อ {time}",
+   "source": "This server has used today’s OpenSubtitles downloads. They start again at {time}.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuotaLater": {
+   "text": "เซิร์ฟเวอร์นี้ใช้การดาวน์โหลด OpenSubtitles ของวันนี้ครบแล้ว ลองใหม่พรุ่งนี้",
+   "source": "This server has used today’s OpenSubtitles downloads. Try again tomorrow.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInFailed": {
+   "text": "OpenSubtitles ไม่ยอมรับบัญชีของเซิร์ฟเวอร์นี้ ขอให้เจ้าของตรวจสอบ",
+   "source": "OpenSubtitles didn’t accept this server’s account. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInRequired": {
+   "text": "OpenSubtitles ดาวน์โหลดได้เฉพาะบัญชีที่ลงชื่อเข้าใช้แล้วเท่านั้น ขอให้เจ้าของเพิ่มบัญชี",
+   "source": "OpenSubtitles only lets signed-in accounts download. Ask the owner to add an account.",
    "state": "machine"
   },
   "title.aboutEpisode": {
@@ -20427,6 +20797,11 @@
    "source": "Network folders are checked more patiently before files are marked missing.",
    "state": "machine"
   },
+  "web.libraries.lyricsQueued": {
+   "text": "เนื้อเพลงถูกใส่คิวไว้เพื่อดึงข้อมูล การตั้งค่า › กำหนด แสดงความคืบหน้า",
+   "source": "Lyrics are queued to be fetched. Settings › Schedule shows the progress.",
+   "state": "machine"
+  },
   "web.libraries.metadataLanguage": {
    "text": "ภาษาข้อมูลเมตาต้า",
    "source": "Metadata language",
@@ -23040,6 +23415,31 @@
   "web.metadataSource.onlineDescription": {
    "text": "ค้นหาชื่อเรื่อง อาร์ตเวิร์ก นักแสดงและคะแนนออนไลน์ ไฟล์และรายละเอียดNFOของคุณใช้ก่อน",
    "source": "Looks up titles, artwork, cast and ratings online. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.anime": {
+   "text": "จับคู่อนิเมะกับผู้ให้บริการออนไลน์รายเดียวเพื่อหาชื่อเรื่อง ตอน และอาร์ตเวิร์ก: ใช้ TMDB เว้นแต่คุณจะเลือก TheTVDB หรือ AniList ไฟล์ของคุณเองและรายละเอียด NFO จะถูกใช้ก่อน",
+   "source": "Matches anime with one online provider for titles, episodes and artwork: TMDB unless you choose TheTVDB or AniList. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.audiobook": {
+   "text": "ใช้แท็กหนังสือที่ฝังอยู่ รายละเอียดที่แนบมา และปกในเครื่อง แหล่งหนังสือเสียงออนไลน์ยังไม่พร้อมใช้งาน",
+   "source": "Uses embedded book tags, sidecar details and local covers. Online audiobook sources are not available.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.movie": {
+   "text": "จับคู่ภาพยนตร์กับ TMDB เพื่อหาชื่อเรื่อง อาร์ตเวิร์ก นักแสดง และคะแนน ไฟล์ของคุณเองและรายละเอียด NFO จะถูกใช้ก่อน",
+   "source": "Matches films with TMDB for titles, artwork, cast and ratings. Your own files and NFO details are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.music": {
+   "text": "จับคู่อัลบั้มกับ MusicBrainz และ Cover Art Archive เพื่อดูรายละเอียดและอาร์ตเวิร์ก ใช้แท็กที่ฝังอยู่ก่อน",
+   "source": "Matches albums with MusicBrainz and Cover Art Archive for details and artwork. Embedded tags are used first.",
+   "state": "machine"
+  },
+  "web.metadataSource.onlineDescription.tv": {
+   "text": "จับคู่รายการกับผู้ให้บริการออนไลน์รายเดียวเพื่อหาชื่อเรื่อง ตอน อาร์ตเวิร์ก และคะแนน: ใช้ TMDB เว้นแต่คุณจะเลือก TheTVDB ไฟล์ของคุณเองและรายละเอียด NFO จะถูกใช้ก่อน",
+   "source": "Matches shows with one online provider for titles, episodes, artwork and ratings: TMDB unless you choose TheTVDB. Your own files and NFO details are used first.",
    "state": "machine"
   },
   "web.metadataSource.onlineName": {
