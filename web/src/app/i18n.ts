@@ -80,6 +80,10 @@ function publish(i18n: I18n): void {
   setUiI18n(i18n);
   setErrorI18n(i18n);
   setServiceI18n(i18n);
+  // Han unification: the same code point renders with a Japanese, Simplified or
+  // Traditional face depending on the page language, so the CSS font stacks
+  // (`:lang(ja)` etc.) read it here.
+  if (typeof document !== 'undefined' && document.documentElement.lang !== i18n.locale) document.documentElement.lang = i18n.locale;
 }
 
 /**

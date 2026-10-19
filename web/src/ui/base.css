@@ -4,6 +4,18 @@
  * this file only derives roles from them. No other stylesheet may introduce
  * a colour literal.
  */
+@import './fonts/noto/japanese-400.css';
+@import './fonts/noto/japanese-700.css';
+@import './fonts/noto/chinese-simplified-400.css';
+@import './fonts/noto/chinese-simplified-700.css';
+@import './fonts/noto/chinese-traditional-400.css';
+@import './fonts/noto/chinese-traditional-700.css';
+@import './fonts/noto/korean-400.css';
+@import './fonts/noto/korean-700.css';
+@import './fonts/noto/thai-400.css';
+@import './fonts/noto/thai-700.css';
+@import './fonts/noto/devanagari-400.css';
+@import './fonts/noto/devanagari-700.css';
 @font-face {
   font-family: 'Portico Sans';
   /* PERF-25: one variable Manrope (wght 200-800), Latin subset, bundled through
@@ -130,6 +142,28 @@
   --font: 'Portico Sans', 'Avenir Next', 'Avenir', system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
 }
+
+/*
+ * CJK, Thai and Hindi. Portico Sans (Manrope) has no glyphs for these scripts,
+ * so each locale's stack names the Noto Sans face for its script after it;
+ * Manrope stays first, so Latin inside CJK/Thai/Hindi text keeps the design face.
+ * The faces are the Noto subsets in fonts/noto/ (SIL OFL), each limited by
+ * unicode-range, so a page downloads a script's file only when it draws a
+ * character from that script. Han unification means one code point needs a
+ * locale-appropriate face, so each stack is chosen by `lang` (set on <html>
+ * from the active locale). Weights 400 and 700 cover Manrope's range: the
+ * browser matches other weights to the nearer of the two.
+ */
+:lang(ja) { --font: 'Portico Sans', 'Noto Sans JP', sans-serif; }
+:lang(zh-Hans) { --font: 'Portico Sans', 'Noto Sans SC', sans-serif; }
+:lang(zh-Hant) { --font: 'Portico Sans', 'Noto Sans TC', sans-serif; }
+:lang(ko) { --font: 'Portico Sans', 'Noto Sans KR', sans-serif; }
+:lang(th) { --font: 'Portico Sans', 'Noto Sans Thai', sans-serif; }
+:lang(hi) { --font: 'Portico Sans', 'Noto Sans Devanagari', sans-serif; }
+/* Japanese kinsoku: strict keeps a line from starting or ending on a forbidden character. */
+:lang(ja) { line-break: strict; }
+/* Korean breaks at spaces, as Hangul words do; a run with no space still wraps rather than overflowing. */
+:lang(ko) { word-break: keep-all; overflow-wrap: anywhere; }
 
 *, *::before, *::after { box-sizing: border-box; }
 html { height: 100%; -webkit-text-size-adjust: 100%; }
