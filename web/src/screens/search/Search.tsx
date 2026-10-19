@@ -78,6 +78,9 @@ export function SearchScreen() {
   const linked = useRef(address.q !== undefined && address.q !== mem.text);
   if (linked.current) { linked.current = false; mem.text = address.q ?? ''; mem.chip = (address.type as ChipId | undefined) ?? 'all'; }
   const [text, setTextState] = useState(mem.text);
+  // An IME composition is not a query yet: the search waits for the finished text, and Enter or
+  // an arrow key that picks a candidate is not a submit or a jump into the results.
+  const [composing, setComposing] = useState(false);
   const [chip, setChipState] = useState<ChipId>(mem.chip);
   const [recent, setRecent] = useState<string[]>(mem.recent);
   const setText = (value: string) => { mem.text = value; setTextState(value); };
@@ -107,13 +110,14 @@ export function SearchScreen() {
   }, [service]);
   useEffect(() => {
     if (timer.current) clearTimeout(timer.current);
+    if (composing) return;
     if (restored.current) { restored.current = false; return; }
     timer.current = setTimeout(() => submit(text, group), DEBOUNCE_MS);
     return () => {
       if (timer.current) clearTimeout(timer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [text]);
+  }, [text, composing]);
   const firstGroup = useRef(true);
   useEffect(() => {
     if (firstGroup.current) { firstGroup.current = false; return; }
@@ -171,7 +175,7 @@ export function SearchScreen() {
         <Inset>
           <div className={s.field}>
             <Icon name="search" size={20} className={s.fieldIcon} />
-            <input ref={input} className={s.input} type="search" value={text} onChange={e => setText(e.target.value)} placeholder={t('web.search.placeholder')} aria-label={t('web.search.title')} autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="search" onKeyDown={e => { if (e.key === 'Enter') { submit(text, group); commit(text); } else if (e.key === 'ArrowDown') { e.preventDefault(); intoResults(); } }} />
+            <input ref={input} className={s.input} type="search" value={text} onChange={e => setText(e.target.value)} onCompositionStart={() => setComposing(true)} onCompositionEnd={e => { setComposing(false); setText(e.currentTarget.value); }} placeholder={t('web.search.placeholder')} aria-label={t('web.search.title')} autoCapitalize="off" autoCorrect="off" spellCheck={false} enterKeyHint="search" onKeyDown={e => { if (e.nativeEvent.isComposing) return; if (e.key === 'Enter') { submit(text, group); commit(text); } else if (e.key === 'ArrowDown') { e.preventDefault(); intoResults(); } }} />
             {text ? <Button variant="ghost" icon="close" aria-label={t('web.search.clear')} size="sm" className={s.clear} onClick={() => { setText(''); input.current?.focus(); }} /> : null}
           </div>
           {problem && hasQuery ? <Text variant="caption" tone="secondary" role="status">{t(problem === 'short' ? 'web.search.tooShort' : problem === 'words' ? 'web.search.tooManyWords' : 'web.search.tooLong')}</Text> : null}

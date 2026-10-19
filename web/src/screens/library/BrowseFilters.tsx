@@ -153,15 +153,17 @@ export function FieldControl({libraryId, field, predicates, onChange}: {libraryI
   const target = filterValuesField(field);
   const [values, setValues] = useState<readonly BrowseFacetValue[]>();
   const [q, setQ] = useState('');
+  // An IME composition is not a filter yet: the list waits for the finished text.
+  const [composing, setComposing] = useState(false);
   const [loading, setLoading] = useState(false);
   const counted = control === 'values' && (field.id === 'year' || !!field.facetSource || field.controlHint === 'facet-multi-select');
   useEffect(() => {
-    if (!counted) return;
+    if (!counted || composing) return;
     let cancelled = false;
     setLoading(true);
     const timer = setTimeout(() => { facets(target.facet, q).then(v => { if (!cancelled) setValues(v); }, () => { if (!cancelled) setValues([]); }).finally(() => { if (!cancelled) setLoading(false); }); }, q ? 200 : 0);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [facets, counted, target.facet, q]);
+  }, [facets, counted, target.facet, q, composing]);
   const name = fieldLabel(field.id, field.labelKey);
   /** One choice of several: a row that is the current one or not. */
   const choices = (items: readonly {id: string; label: string; selected: boolean; choose: () => void}[]) => (
@@ -176,7 +178,7 @@ export function FieldControl({libraryId, field, predicates, onChange}: {libraryI
     const set = (next: Set<string>) => onChange(next.size ? [{field: target.field, operator: target.operator, value: [...next].map(x => (numeric ? Number(x) : x))} as Predicate] : []);
     return (
       <>
-        {(values?.length ?? 0) > 10 || q ? <Input label={t('web.filters.find', {field: name.toLowerCase()})} hideLabel placeholder={t('web.filters.findPlaceholder')} value={q} onChange={e => setQ(e.target.value)} /> : null}
+        {(values?.length ?? 0) > 10 || q ? <Input label={t('web.filters.find', {field: name.toLowerCase()})} hideLabel placeholder={t('web.filters.findPlaceholder')} value={q} onChange={e => setQ(e.target.value)} onCompositionStart={() => setComposing(true)} onCompositionEnd={e => { setComposing(false); setQ(e.currentTarget.value); }} /> : null}
         <div className={s.options}>
           {loading && !values ? <div className={s.loading}><Spinner /></div> : null}
           {options.map(o => (
