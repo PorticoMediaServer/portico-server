@@ -334,7 +334,7 @@ func (s *Service) analyzeOne(parent context.Context, job string, source catalog.
 			err = s.db.QueryRowContext(ctx, `SELECT kind FROM libraries WHERE id=?`, source.LibraryID).Scan(&kind)
 			if err == nil {
 				if kind == "music" || kind == "audiobook" {
-					f = s.LocalMetadata.PrepareKind(readContext("local_metadata"), source.LibraryID, kind, path, f)
+					f = s.LocalMetadata.PrepareKind(readContext("local_metadata"), source.LibraryID, kind, source.ResolvedPath, path, f)
 				} else if kind == "movie" || kind == "tv" || kind == "anime" {
 					f = s.LocalMetadata.VideoNFO(readContext("local_metadata"), source.LibraryID, source.ResolvedPath, path, kind, f)
 					if kind == "movie" {
