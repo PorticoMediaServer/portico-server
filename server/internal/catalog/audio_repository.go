@@ -332,7 +332,12 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 	}
 	folder := filepath.Dir(path)
 	disc := tagNumber(firstTag(f.Tags, "disc"))
-	if number, ok := naming.DiscFolder(filepath.Base(folder)); ok {
+	discFolder := naming.DiscFolder
+	if kind == "audiobook" {
+		// "Series/Vol. 2 - Title" is a book, not the series' second disc.
+		discFolder = naming.AudiobookDiscFolder
+	}
+	if number, ok := discFolder(filepath.Base(folder)); ok {
 		if disc == nil {
 			disc = number
 		}
@@ -343,6 +348,13 @@ func (s *Service) commitAudio(ctx context.Context, tx *sql.Tx, library, kind, ro
 		albumTitle = filepath.Base(folder)
 		if kind == "audiobook" && filepath.Clean(folder) == filepath.Clean(root) {
 			albumTitle = title
+		} else if kind == "audiobook" {
+			// The title folder without its place in a series, year, narrator or ASIN.
+			if rel, e := filepath.Rel(root, path); e == nil && !strings.HasPrefix(rel, "..") {
+				if read := naming.ReadAudiobookFolder(rel); read.Title != "" {
+					albumTitle = read.Title
+				}
+			}
 		}
 		if f.LocalMetadataIssue == "" {
 			f.LocalMetadataIssue = "album_or_book_identity_from_local_path"
