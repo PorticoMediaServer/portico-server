@@ -18,7 +18,7 @@ import {readFileSync, writeFileSync, existsSync} from 'node:fs';
 import {pathToFileURL} from 'node:url';
 import {resolve} from 'node:path';
 import {enUS} from '../src/catalog/en-US.ts';
-import {checkTranslation, classify, generatedModule, generatedPath, messageNotes, readTranslations, states, translatableIds, translatedLocales, writeTranslations} from './translations-lib.mjs';
+import {baseOf, checkTranslation, classify, generatedModule, generatedPath, messageNotes, readTranslations, states, translatableIds, translatedLocales, usableText, variantNote, writeTranslations} from './translations-lib.mjs';
 
 const escape = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const unescape = text => text
@@ -31,7 +31,11 @@ const xliffState = {machine: 'needs-review-translation', translated: 'translated
 
 export function exportXliff(locale, {all = false} = {}) {
   const record = readTranslations(locale);
-  const status = classify(locale, record);
+  const base = baseOf(locale);
+  const baseRecord = base ? readTranslations(base) : undefined;
+  const status = classify(locale, record, baseRecord);
+  // A variant's translator reviews everything: the base's words are its starting point.
+  if (base) all = true;
   const invalid = new Map(status.invalid.map(i => [i.id, i.problems]));
   const stale = new Set(status.stale);
   const notes = messageNotes();
@@ -41,8 +45,11 @@ export function exportXliff(locale, {all = false} = {}) {
     const needsWork = !m || stale.has(id) || invalid.has(id) || m.state === 'machine';
     if (!all && !needsWork) continue;
     const parts = [`      <trans-unit id="${escape(id)}" resname="${escape(id)}">`, `        <source>${escape(enUS[id])}</source>`];
+    const inherited = !m && baseRecord ? usableText(base, id, baseRecord) : undefined;
     if (m) parts.push(`        <target state="${stale.has(id) || invalid.has(id) ? 'needs-translation' : xliffState[m.state] ?? 'translated'}">${escape(m.text)}</target>`);
+    else if (inherited !== undefined) parts.push(`        <target state="${xliffState[baseRecord.messages[id].state] ?? 'translated'}">${escape(inherited)}</target>`);
     if (notes[id]) parts.push(`        <note from="developer">${escape(notes[id])}</note>`);
+    if (inherited !== undefined) parts.push(`        <note from="portico">Inherited from ${base}. ${escape(variantNote(locale))}</note>`);
     if (m && stale.has(id)) parts.push(`        <note from="portico">The English changed after this was translated. It was: ${escape(m.source)}</note>`);
     if (invalid.has(id)) parts.push(`        <note from="portico">Not usable: ${escape(invalid.get(id).join('; '))}</note>`);
     if (m?.state === 'machine' && !stale.has(id) && !invalid.has(id)) parts.push('        <note from="portico">Machine translation: review it, then mark it final.</note>');
@@ -78,14 +85,16 @@ export function parseXliff(xml) {
 }
 
 /** Merge an XLIFF file's translations into a locale's record (in place); the caller writes it. */
-export function applyXliff(locale, xml, record, {state} = {}) {
-  const report = {imported: 0, stale: 0, skipped: 0, rejected: []};
+export function applyXliff(locale, xml, record, {state, baseRecord = baseOf(locale) ? readTranslations(baseOf(locale)) : undefined} = {}) {
+  const report = {imported: 0, stale: 0, skipped: 0, inherited: 0, rejected: []};
   for (const unit of parseXliff(xml)) {
     if (!(unit.id in enUS) || unit.target === undefined || !unit.target.trim()) { report.skipped++; continue; }
     const kept = state ?? ourState[unit.state ?? 'translated'];
     if (!kept) { report.skipped++; continue; }
     const problems = checkTranslation(locale, unit.id, unit.target);
     if (problems.length) { report.rejected.push({id: unit.id, problems}); continue; }
+    // A variant's target that is still its base's words is no override: it stays (or becomes) inherited.
+    if (baseRecord && unit.target === usableText(baseOf(locale), unit.id, baseRecord)) { delete record.messages[unit.id]; report.inherited++; continue; }
     record.messages[unit.id] = {text: unit.target, source: unit.source, state: kept};
     report.imported++;
     if (unit.source !== enUS[unit.id]) report.stale++;
@@ -97,7 +106,7 @@ export function statusReport() {
   const total = translatableIds().length;
   return Object.keys(translatedLocales).map(locale => {
     const s = classify(locale);
-    return {locale, name: translatedLocales[locale], total, current: s.current.length, stale: s.stale.length, invalid: s.invalid.length, missing: s.missing.length, orphaned: s.orphaned.length, ...Object.fromEntries(states.map(st => [st, s.byState[st] ?? 0])), complete: Math.floor((s.current.length / total) * 1000) / 10};
+    return {locale, name: translatedLocales[locale], base: baseOf(locale), total, current: s.current.length, inherited: s.inherited.length, stale: s.stale.length, invalid: s.invalid.length, missing: s.missing.length, orphaned: s.orphaned.length, ...Object.fromEntries(states.map(st => [st, s.byState[st] ?? 0])), complete: Math.floor(((s.current.length + s.inherited.length) / total) * 1000) / 10};
   });
 }
 
@@ -123,10 +132,10 @@ function main(argv) {
     case 'status': {
       const rows = statusReport();
       if (rest.includes('--json')) { console.log(JSON.stringify(rows, null, 2)); return 0; }
-      console.log('| Locale | Complete | Current | Stale | Invalid | Missing | Machine | Translated | Reviewed |');
-      console.log('|---|---:|---:|---:|---:|---:|---:|---:|---:|');
-      for (const r of rows) console.log(`| ${r.locale} ${r.name} | ${r.complete}% | ${r.current} | ${r.stale} | ${r.invalid} | ${r.missing} | ${r.machine} | ${r.translated} | ${r.reviewed} |`);
-      console.log(`\n${rows[0]?.total ?? 0} translatable messages. Stale = translated from English that has since changed (still used while its arguments match). Invalid and missing messages read en-US.`);
+      console.log('| Locale | Complete | Current | Inherited | Stale | Invalid | Missing | Machine | Translated | Reviewed |');
+      console.log('|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|');
+      for (const r of rows) console.log(`| ${r.locale} ${r.name}${r.base ? ` (from ${r.base})` : ''} | ${r.complete}% | ${r.current} | ${r.inherited} | ${r.stale} | ${r.invalid} | ${r.missing} | ${r.machine} | ${r.translated} | ${r.reviewed} |`);
+      console.log(`\n${rows[0]?.total ?? 0} translatable messages. Inherited = a regional variant reads its base language's translation. Stale = translated from English that has since changed (still used while its arguments match). Invalid and missing messages read en-US.`);
       return 0;
     }
     case 'export': needLocale(); process.stdout.write(exportXliff(locale, {all: rest.includes('--all')})); return 0;
@@ -141,7 +150,7 @@ function main(argv) {
       const report = applyXliff(locale, readFileSync(file, 'utf8'), record, {state});
       writeTranslations(record);
       for (const r of report.rejected) console.error(`rejected ${r.id}: ${r.problems.join('; ')}`);
-      console.log(`imported ${report.imported} (${report.stale} from older English), skipped ${report.skipped}, rejected ${report.rejected.length}`);
+      console.log(`imported ${report.imported} (${report.stale} from older English), ${report.inherited ? `left ${report.inherited} inherited from ${baseOf(locale)}, ` : ''}skipped ${report.skipped}, rejected ${report.rejected.length}`);
       build({write: true});
       return report.rejected.length ? 1 : 0;
     }

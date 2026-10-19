@@ -16,7 +16,11 @@ import {readFileSync, readdirSync, writeFileSync, existsSync, mkdirSync} from 'n
 import {dirname, join, resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {enUS} from '../src/catalog/en-US.ts';
-import {messageStructure, parseMessage} from '../src/messageformat.ts';
+import {messageStructure} from '../src/messageformat.ts';
+import {variantBase} from '../src/catalog/index.ts';
+
+/** A regional variant's base language (fr-CA → fr); its record holds only the messages it words differently. */
+export const baseOf = locale => variantBase[locale];
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const root = resolve(here, '..');
@@ -24,7 +28,11 @@ export const translationsDir = join(root, 'translations');
 export const generatedDir = join(root, 'src/catalog/translated');
 
 /** The translated locales: catalogue id → English name, for reports and translator files. */
-export const translatedLocales = {fr: 'French (France)', es: 'Spanish (Spain)', de: 'German', ru: 'Russian'};
+export const translatedLocales = {
+  fr: 'French (France)', es: 'Spanish (Spain)', de: 'German', ru: 'Russian',
+  'pt-BR': 'Portuguese (Brazil)', it: 'Italian', nl: 'Dutch', pl: 'Polish', sv: 'Swedish', da: 'Danish', nb: 'Norwegian Bokmål', cs: 'Czech', tr: 'Turkish', uk: 'Ukrainian', 'zh-Hans': 'Chinese (Simplified)', 'zh-Hant': 'Chinese (Traditional)', ja: 'Japanese', ko: 'Korean',
+  'fr-CA': 'French (Canada)', 'es-419': 'Spanish (Latin America)', 'pt-PT': 'Portuguese (Portugal)', el: 'Greek', hu: 'Hungarian', ro: 'Romanian', fi: 'Finnish', id: 'Indonesian', vi: 'Vietnamese', th: 'Thai', hi: 'Hindi',
+};
 export const states = ['machine', 'translated', 'reviewed'];
 
 /** Messages that read the same in every language: a language's own name is written in that language. */
@@ -101,6 +109,12 @@ export function checkTranslation(locale, id, text, source = enUS[id]) {
   return problems;
 }
 
+/** A record's translation of a message when it can be used (it fits today's English), else undefined. */
+export function usableText(locale, id, record) {
+  const m = record.messages[id];
+  return m && !checkTranslation(locale, id, m.text).length ? m.text : undefined;
+}
+
 /** translations/<locale>.json, or an empty record. */
 export function readTranslations(locale) {
   const file = join(translationsDir, `${locale}.json`);
@@ -122,11 +136,16 @@ export function writeTranslations(record) {
  * `stale` (translated from older English; still used while its arguments match), `invalid` (fails
  * the checks; not used), `missing`.
  */
-export function classify(locale, record = readTranslations(locale)) {
-  const out = {current: [], stale: [], invalid: [], missing: [], orphaned: [], byState: Object.fromEntries(states.map(s => [s, 0]))};
+export function classify(locale, record = readTranslations(locale), baseRecord = baseOf(locale) ? readTranslations(baseOf(locale)) : undefined) {
+  const out = {current: [], stale: [], invalid: [], missing: [], inherited: [], orphaned: [], byState: Object.fromEntries(states.map(s => [s, 0]))};
   for (const id of translatableIds()) {
     const m = record.messages[id];
-    if (!m) { out.missing.push(id); continue; }
+    if (!m) {
+      // A variant reads its base's translation for anything it does not override.
+      if (baseRecord && usableText(baseOf(locale), id, baseRecord) !== undefined) out.inherited.push(id);
+      else out.missing.push(id);
+      continue;
+    }
     const problems = checkTranslation(locale, id, m.text);
     if (problems.length) { out.invalid.push({id, problems}); continue; }
     (m.source === enUS[id] ? out.current : out.stale).push(id);
@@ -134,6 +153,11 @@ export function classify(locale, record = readTranslations(locale)) {
   }
   for (const id of Object.keys(record.messages)) if (!(id in enUS) || untranslatable(id)) out.orphaned.push(id);
   return out;
+}
+
+/** Context for a variant's translator. */
+export function variantNote(locale) {
+  return `${translatedLocales[locale]} reads ${translatedLocales[baseOf(locale)]} (${baseOf(locale)}) for every message it does not override. Change the text only where ${locale} words it differently; a target left as the ${baseOf(locale)} text stays inherited.`;
 }
 
 const quote = text => `'${text.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`;

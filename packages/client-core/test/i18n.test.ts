@@ -71,12 +71,31 @@ test('locale resolution: exact, then the region\'s English or the same language,
   assert.equal(resolveLocale(undefined), 'en-US');
   // Other languages: exact, then any region of the language; a language with no catalogue reads the next choice, then en-US.
   assert.equal(resolveLocale('fr-FR'), 'fr');
-  assert.equal(resolveLocale(['fr-CA', 'en-CA']), 'fr');
+  assert.equal(resolveLocale(['fr-CA', 'en-CA']), 'fr-CA');
   assert.equal(resolveLocale('de-AT'), 'de');
-  assert.equal(resolveLocale('es-MX'), 'es');
   assert.equal(resolveLocale('ru'), 'ru');
-  assert.equal(resolveLocale(['ja-JP', 'de-DE']), 'de');
-  assert.equal(resolveLocale('ja-JP'), 'en-US');
+  assert.equal(resolveLocale(['ja-JP', 'de-DE']), 'ja');
+  assert.equal(resolveLocale(['sw-KE', 'de-DE']), 'de');
+  assert.equal(resolveLocale('sw-KE'), 'en-US');
+  // Chinese by script, Norwegian in any form as Bokmål, Portuguese anywhere as Brazil's.
+  assert.equal(resolveLocale('zh-CN'), 'zh-Hans');
+  assert.equal(resolveLocale('zh'), 'zh-Hans');
+  assert.equal(resolveLocale('zh-TW'), 'zh-Hant');
+  assert.equal(resolveLocale('zh-Hant-HK'), 'zh-Hant');
+  assert.equal(resolveLocale('zh-Hans-HK'), 'zh-Hans');
+  assert.equal(resolveLocale('no'), 'nb');
+  assert.equal(resolveLocale('nn-NO'), 'nb');
+  assert.equal(resolveLocale('pt'), 'pt-BR');
+  // Regional variants: Canadian French, Latin American Spanish, European Portuguese.
+  assert.equal(resolveLocale('fr-CA'), 'fr-CA');
+  assert.equal(resolveLocale('fr-BE'), 'fr');
+  assert.equal(resolveLocale('es-MX'), 'es-419');
+  assert.equal(resolveLocale(['es-MX', 'es']), 'es-419');
+  assert.equal(resolveLocale('es-ES'), 'es');
+  assert.equal(resolveLocale('es'), 'es');
+  assert.equal(resolveLocale('pt-PT'), 'pt-PT');
+  assert.equal(resolveLocale('pt-AO'), 'pt-PT');
+  assert.equal(resolveLocale('pt-BR'), 'pt-BR');
   // The pseudo-locale is only an exact choice: another English region never lands on it.
   assert.equal(resolveLocale('en-XA'), 'en-XA');
   assert.equal(resolveLocale('en-XB'), 'en-GB');
@@ -89,7 +108,7 @@ test('region preferences: auto follows the device for words and formats; explici
   assert.equal(resolveRegion(undefined, {locales: ['en-GB']}).uiLocale, 'en-GB');
   // A profile that chooses a catalogue gets it; a language we don't ship reads the device's English.
   assert.equal(resolveRegion({locale: 'en-CA'}, {locales: ['en-US']}).uiLocale, 'en-CA');
-  assert.equal(resolveRegion({locale: 'ja-JP'}, {locales: ['en-CA']}).uiLocale, 'en-CA');
+  assert.equal(resolveRegion({locale: 'sw-KE'}, {locales: ['en-CA']}).uiLocale, 'en-CA');
   const explicit = resolveRegion({locale: 'fr-FR', hourCycle: 'h12'}, device);
   assert.equal(explicit.uiLocale, 'fr');
   assert.equal(explicit.formatLocale, 'fr-FR');
@@ -100,6 +119,7 @@ test('region preferences: auto follows the device for words and formats; explici
   // A language chosen without a region keeps the device's region for formats when the device speaks it.
   const quebec = resolveRegion({locale: 'fr'}, {locales: ['fr-CA', 'en-CA']});
   assert.deepEqual([quebec.uiLocale, quebec.formatLocale], ['fr', 'fr-CA']);
+  assert.equal(resolveRegion({locale: 'auto'}, {locales: ['fr-CA']}).uiLocale, 'fr-CA');
   assert.equal(resolveRegion({locale: 'fr'}, {locales: ['en-CA']}).formatLocale, 'fr');
   // The pseudo-locale reads accented English and formats as US English.
   const pseudo = resolveRegion({locale: 'en-XA'}, {locales: ['de-DE']});
