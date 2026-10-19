@@ -1,4 +1,28 @@
-# Portico Media Server
+<div align="center">
+  <a href="https://getportico.tv">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/PorticoMediaServer/getportico-tv/main/public/brand/portico-wordmark-white.svg">
+      <img src="https://raw.githubusercontent.com/PorticoMediaServer/getportico-tv/main/public/brand/portico-wordmark-black.svg" alt="Portico" width="420">
+    </picture>
+  </a>
+
+  <h1>Portico Media Server</h1>
+
+  <p><strong>Portico is a free personal media server that turns your media collection into a refined streaming experience across all of your devices.</strong></p>
+
+  <p>
+    <a href="https://getportico.tv">Website</a> ·
+    <a href="https://github.com/PorticoMediaServer/portico-server/releases">Releases</a> ·
+    <a href="https://github.com/PorticoMediaServer/portico-server/issues">Report an issue</a>
+  </p>
+
+  <p>
+    <a href="LICENSE"><img alt="GPL-3.0-or-later" src="https://img.shields.io/badge/license-GPL--3.0--or--later-59636e?style=flat-square"></a>
+    <img alt="Prerelease software" src="https://img.shields.io/badge/status-prerelease-e09f3e?style=flat-square">
+  </p>
+</div>
+
+---
 
 Portico organizes and streams media you keep on your own storage. The server is
 written in Go, uses SQLite, and serves its React web app on the same address.
