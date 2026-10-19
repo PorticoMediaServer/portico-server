@@ -75,8 +75,11 @@ var artwork = map[int][2]string{
 
 // entitySelect reads entities the way the tree shows them, ignoring every
 // viewer filter by design. A playable item is listed only with an available,
-// local original (a remote .strm source has no file to serve here).
-const entitySelect = `SELECT e.id,pid(e.public_id),e.kind,e.title,e.year,COALESCE(pid(p.public_id),''),COALESCE(p.title,''),COALESCE(gp.title,''),
+// local original (a remote .strm source has no file to serve here). The column
+// list is kept apart from SELECT so it is never prepared as a statement alone.
+const entitySelect = `SELECT ` + entityColumns
+
+const entityColumns = `e.id,pid(e.public_id),e.kind,e.title,e.year,COALESCE(pid(p.public_id),''),COALESCE(p.title,''),COALESCE(gp.title,''),
  COALESCE(song.track_number,part.part_number,episode.number,0),
  COALESCE(a.token,''),COALESCE(a.container,''),COALESCE(a.video_codec,''),COALESCE(a.audio_codec,''),COALESCE(a.width,0),COALESCE(a.height,0),COALESCE(a.duration,0),COALESCE(a.size,0),
  CASE WHEN k.container=1 THEN (SELECT COUNT(*) FROM catalog_entities c WHERE c.parent_id=e.id AND c.retired=0) ELSE 0 END`
