@@ -829,6 +829,7 @@ func New(d Dependencies) http.Handler {
 	d.audioRoutes(mux)
 	d.lyricRoutes(mux)
 	d.analysisRoutes(mux)
+	d.segmentRoutes(mux)
 	d.trickplayRoutes(mux)
 	d.searchRoutes(mux)
 	d.peopleRoutes(mux)

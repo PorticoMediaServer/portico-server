@@ -87,23 +87,15 @@ func TestScanCostPerFile(t *testing.T) {
 			}
 		}
 		basic := time.Since(start)
-		var trickplay, scenes, frames time.Duration
+		var trickplay, segments, thorough time.Duration
 		if video {
 			trickplay = run(t, input, decoder.AnalysisSpec{Kind: "trickplay", MaxDurationUS: duration, IntervalUS: 10000000, MaxFrames: 1000}, drain)
-			scenes = run(t, input, decoder.AnalysisSpec{Kind: "scenes", MaxDurationUS: duration, IntervalUS: 1000000, MaxFrames: 65535}, drain)
-			// After: one decode at the scene rate and the tile size serves both.
-			frames = run(t, input, decoder.AnalysisSpec{Kind: "trickplay", MaxDurationUS: duration, IntervalUS: 1000000, MaxFrames: 65535}, func(r io.Reader) error {
-				frame, scene := make([]byte, 320*180*3), make([]byte, 32*18)
-				for {
-					if _, e := io.ReadFull(r, frame); e == io.EOF {
-						return nil
-					} else if e != nil {
-						return e
-					}
-					sceneFromTile(frame, 320, 180, scene)
-					measureScene(scene)
-				}
-			})
+			// Intro and credits detection reads regions, not the whole file.
+			plan := planSegments("episode", SegmentModeThorough, duration, true, true)
+			for _, r := range []region{plan.Opening, plan.Closing} {
+				segments += run(t, input, decoder.AnalysisSpec{Kind: "segment_audio", StartUS: r.StartUS, RegionUS: r.LengthUS, MaxDurationUS: duration}, drain)
+			}
+			thorough = segments + run(t, input, decoder.AnalysisSpec{Kind: "segment_frames", StartUS: plan.Frames.StartUS, RegionUS: plan.Frames.LengthUS, IntervalUS: 1000000, MaxFrames: int(plan.Frames.LengthUS/1000000) + 2, MaxDurationUS: duration}, drain)
 		}
 		// One decode serves the waveform and the loudness (before, each decoded the file).
 		var summaries map[string]any
@@ -112,9 +104,7 @@ func TestScanCostPerFile(t *testing.T) {
 			summaries, e = analyzeSharedAudio(r, duration, []string{"waveform", "loudness"})
 			return e
 		})
-		separate := trickplay + scenes + shared
-		after := frames + shared
-		t.Logf("%s, %d s: Default %v | Complete %v (shared video %v, shared audio %v); with separate video decodes %v (trickplay %v, scenes %v) | loudness %v",
-			s.name, s.seconds, basic.Round(time.Millisecond), after.Round(time.Millisecond), frames.Round(time.Millisecond), shared.Round(time.Millisecond), separate.Round(time.Millisecond), trickplay.Round(time.Millisecond), scenes.Round(time.Millisecond), summaries["loudness"].(map[string]any)["integratedLUFS"])
+		t.Logf("%s, %d s: Default %v | Complete %v (trickplay %v, shared audio %v) | segment detection standard %v, thorough %v | loudness %v",
+			s.name, s.seconds, basic.Round(time.Millisecond), (trickplay + shared).Round(time.Millisecond), trickplay.Round(time.Millisecond), shared.Round(time.Millisecond), segments.Round(time.Millisecond), thorough.Round(time.Millisecond), summaries["loudness"].(map[string]any)["integratedLUFS"])
 	}
 }

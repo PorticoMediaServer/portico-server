@@ -2551,6 +2551,74 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "get_admin_segments",
+    "method": "GET",
+    "path": "/v1/admin/segments",
+    "summary": "Read intro and credits detection status",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_segments_titles",
+    "method": "GET",
+    "path": "/v1/admin/segments/titles",
+    "summary": "List a library's shows and films for intro and credits review",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "query": [
+      "libraryId",
+      "cursor",
+      "limit"
+    ],
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "get_admin_segments_titles_id",
+    "method": "GET",
+    "path": "/v1/admin/segments/titles/{id}",
+    "summary": "Read one show's or film's detected intros and credits",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "get_admin_session_controls",
     "method": "GET",
     "path": "/v1/admin/sessions/{id}/controls",
@@ -9593,6 +9661,48 @@ export const routes = [
     "admission": "admin"
   },
   {
+    "id": "post_admin_segments_titles_id_approve",
+    "method": "POST",
+    "path": "/v1/admin/segments/titles/{id}/approve",
+    "summary": "Approve a show's or season's detected segments",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 2097152,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
+    "id": "post_admin_segments_titles_id_redetect",
+    "method": "POST",
+    "path": "/v1/admin/segments/titles/{id}/redetect",
+    "summary": "Detect a show's or film's intros and credits again",
+    "access": "owner",
+    "requires": "admin",
+    "lane": "default",
+    "cost": "page_sized",
+    "bodyLimit": 0,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "http": true,
+    "admission": "admin"
+  },
+  {
     "id": "post_admin_state_permissions_fix",
     "method": "POST",
     "path": "/v1/admin/state-permissions:fix",
@@ -16302,6 +16412,9 @@ export const routePaths = {
   "get_admin_playback_operations_operationId": "/v1/admin/playback-operations/{operationId}",
   "get_admin_playback_sessions": "/v1/admin/playback-sessions",
   "get_admin_resource_usage": "/v1/admin/resource-usage",
+  "get_admin_segments": "/v1/admin/segments",
+  "get_admin_segments_titles": "/v1/admin/segments/titles",
+  "get_admin_segments_titles_id": "/v1/admin/segments/titles/{id}",
   "get_admin_session_controls": "/v1/admin/sessions/{id}/controls",
   "get_admin_storage_usage": "/v1/admin/storage-usage",
   "get_admin_support_report": "/v1/admin/support-report",
@@ -16595,6 +16708,8 @@ export const routePaths = {
   "post_admin_notifications_broadcast": "/v1/admin/notifications/broadcast",
   "post_admin_playback_sessions_id_stop": "/v1/admin/playback-sessions/{id}/stop",
   "post_admin_restart": "/v1/admin/restart",
+  "post_admin_segments_titles_id_approve": "/v1/admin/segments/titles/{id}/approve",
+  "post_admin_segments_titles_id_redetect": "/v1/admin/segments/titles/{id}/redetect",
   "post_admin_state_permissions_fix": "/v1/admin/state-permissions:fix",
   "post_admin_storage_usage_category_cleanup": "/v1/admin/storage-usage/{category}/cleanup",
   "post_albums_id_metadata_musicbrainz_policy": "/v1/albums/{id}/metadata/musicbrainz/policy",

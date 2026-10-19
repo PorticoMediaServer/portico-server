@@ -8,7 +8,7 @@ import (
 	"sort"
 )
 
-var analysisRuntime = map[string]string{"probe": "probe", "local_metadata": "local_metadata", "subtitle_discovery": "subtitles", "loudness": "loudness", "audio_fingerprint": "fingerprint", "trickplay": "trickplay", "chapter_images": "chapter_images", "segment_detection": "segment_detection", "checksum": "checksum", "waveform": "waveform"}
+var analysisRuntime = map[string]string{"probe": "probe", "local_metadata": "local_metadata", "subtitle_discovery": "subtitles", "loudness": "loudness", "audio_fingerprint": "fingerprint", "trickplay": "trickplay", "chapter_images": "chapter_images", "checksum": "checksum", "waveform": "waveform"}
 
 func libraryMediaKind(kind string) string {
 	switch kind {

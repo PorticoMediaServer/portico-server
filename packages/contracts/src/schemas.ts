@@ -3910,6 +3910,9 @@ export const schemas = {
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "library.segmentDetection": {
+            "type": "string"
+          },
           "logLevel": {
             "type": "string"
           },
@@ -4082,6 +4085,7 @@ export const schemas = {
           "updates.feedUrl",
           "library.missingTitles",
           "library.missingTitlesDays",
+          "library.segmentDetection",
           "remoteSignInPolicy",
           "remoteBitrateLimitKbps",
           "connectionLimit",
@@ -4222,6 +4226,9 @@ export const schemas = {
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "library.segmentDetection": {
+                "type": "string"
               },
               "logLevel": {
                 "type": "string"
@@ -4395,6 +4402,7 @@ export const schemas = {
               "updates.feedUrl",
               "library.missingTitles",
               "library.missingTitlesDays",
+              "library.segmentDetection",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -4552,6 +4560,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "library.segmentDetection": {
+                "type": "string"
+              },
               "logLevel": {
                 "type": "string"
               },
@@ -4724,6 +4735,7 @@ export const schemas = {
               "updates.feedUrl",
               "library.missingTitles",
               "library.missingTitlesDays",
+              "library.segmentDetection",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -20499,6 +20511,498 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "GetAdminSegmentsRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminSegmentsResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "result": {
+        "properties": {
+          "catchUpComplete": {
+            "type": "boolean"
+          },
+          "choices": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "failures": {
+            "items": {
+              "properties": {
+                "errorCode": {
+                  "type": "string"
+                },
+                "itemId": {
+                  "type": "string"
+                },
+                "state": {
+                  "type": "string"
+                },
+                "title": {
+                  "type": "string"
+                },
+                "updatedMS": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "itemId",
+                "title",
+                "state",
+                "errorCode",
+                "updatedMS"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "files": {
+            "properties": {
+              "complete": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "failed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "pending": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "unsupported": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "pending",
+              "complete",
+              "failed",
+              "unsupported"
+            ],
+            "type": "object"
+          },
+          "lastFullPassMS": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "libraries": {
+            "items": {
+              "properties": {
+                "choice": {
+                  "type": "string"
+                },
+                "files": {
+                  "properties": {
+                    "complete": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "failed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "pending": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unsupported": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "pending",
+                    "complete",
+                    "failed",
+                    "unsupported"
+                  ],
+                  "type": "object"
+                },
+                "itemKind": {
+                  "type": "string"
+                },
+                "libraryId": {
+                  "type": "string"
+                },
+                "mode": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "libraryId",
+                "name",
+                "itemKind",
+                "choice",
+                "mode",
+                "files"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "modes": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "showsWaiting": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "mode",
+          "modes",
+          "choices",
+          "libraries",
+          "files",
+          "showsWaiting",
+          "catchUpComplete",
+          "lastFullPassMS",
+          "failures"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "result"
+    ],
+    "type": "object"
+  },
+  "GetAdminSegmentsTitlesIdRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminSegmentsTitlesIdResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "result": {
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "libraryId": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string"
+          },
+          "seasons": {
+            "items": {
+              "properties": {
+                "entries": {
+                  "items": {
+                    "properties": {
+                      "durationUS": {
+                        "type": "string"
+                      },
+                      "errorCode": {
+                        "type": "string"
+                      },
+                      "itemId": {
+                        "type": "string"
+                      },
+                      "mappingRevision": {
+                        "type": "string"
+                      },
+                      "markerRevision": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "markers": {
+                        "items": {
+                          "properties": {
+                            "approved": {
+                              "type": "boolean"
+                            },
+                            "automaticSafe": {
+                              "type": "boolean"
+                            },
+                            "basis": {
+                              "type": "string"
+                            },
+                            "confidence": {
+                              "type": "number"
+                            },
+                            "edited": {
+                              "type": "boolean"
+                            },
+                            "endUS": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "provenance": {
+                              "type": "string"
+                            },
+                            "startUS": {
+                              "type": "string"
+                            },
+                            "viewerVisible": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "id",
+                            "kind",
+                            "startUS",
+                            "endUS",
+                            "confidence",
+                            "provenance",
+                            "basis",
+                            "approved",
+                            "edited",
+                            "automaticSafe",
+                            "viewerVisible"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      "number": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "sourceId": {
+                        "type": "string"
+                      },
+                      "sourceRevision": {
+                        "type": "string"
+                      },
+                      "state": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "itemId",
+                      "title",
+                      "number",
+                      "durationUS",
+                      "state",
+                      "errorCode",
+                      "sourceId",
+                      "sourceRevision",
+                      "mappingRevision",
+                      "markerRevision",
+                      "markers"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "number": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "number",
+                "title",
+                "entries"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "kind",
+          "libraryId",
+          "mode",
+          "seasons"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "result"
+    ],
+    "type": "object"
+  },
+  "GetAdminSegmentsTitlesRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "GetAdminSegmentsTitlesResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "result": {
+        "properties": {
+          "libraryId": {
+            "type": "string"
+          },
+          "nextCursor": {
+            "type": "string"
+          },
+          "titles": {
+            "items": {
+              "properties": {
+                "files": {
+                  "properties": {
+                    "complete": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "failed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "pending": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "unsupported": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "pending",
+                    "complete",
+                    "failed",
+                    "unsupported"
+                  ],
+                  "type": "object"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "markers": {
+                  "properties": {
+                    "approved": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "automatic": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "dismissed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "suggested": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "automatic",
+                    "suggested",
+                    "approved",
+                    "dismissed"
+                  ],
+                  "type": "object"
+                },
+                "title": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "title",
+                "kind",
+                "files",
+                "markers"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "libraryId",
+          "titles",
+          "nextCursor"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "result"
+    ],
+    "type": "object"
+  },
   "GetAdminSessionControlsRequest": {
     "properties": {},
     "required": [],
@@ -25241,6 +25745,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "library.segmentDetection": {
+                "type": "string"
+              },
               "logLevel": {
                 "type": "string"
               },
@@ -25413,6 +25920,7 @@ export const schemas = {
               "updates.feedUrl",
               "library.missingTitles",
               "library.missingTitlesDays",
+              "library.segmentDetection",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -25570,6 +26078,9 @@ export const schemas = {
                 "minimum": -9007199254740991,
                 "type": "integer"
               },
+              "library.segmentDetection": {
+                "type": "string"
+              },
               "logLevel": {
                 "type": "string"
               },
@@ -25742,6 +26253,7 @@ export const schemas = {
               "updates.feedUrl",
               "library.missingTitles",
               "library.missingTitlesDays",
+              "library.segmentDetection",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -51851,6 +52363,9 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "segmentDetection": {
+            "type": "string"
           }
         },
         "required": [
@@ -51859,7 +52374,8 @@ export const schemas = {
           "continueWatching",
           "providers",
           "analysis",
-          "navigation"
+          "navigation",
+          "segmentDetection"
         ],
         "type": "object"
       },
@@ -81586,6 +82102,90 @@ export const schemas = {
     "required": [],
     "type": "object"
   },
+  "PostAdminSegmentsTitlesIdApproveRequest": {
+    "properties": {
+      "kinds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "season": {
+        "maximum": 9007199254740991,
+        "minimum": -9007199254740991,
+        "nullable": true,
+        "type": "integer"
+      }
+    },
+    "required": [
+      "kinds",
+      "season"
+    ],
+    "type": "object"
+  },
+  "PostAdminSegmentsTitlesIdApproveResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "result": {
+        "properties": {
+          "changed": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "result"
+    ],
+    "type": "object"
+  },
+  "PostAdminSegmentsTitlesIdRedetectRequest": {
+    "properties": {},
+    "required": [],
+    "type": "object"
+  },
+  "PostAdminSegmentsTitlesIdRedetectResponse": {
+    "properties": {
+      "protocolVersion": {
+        "type": "string"
+      },
+      "result": {
+        "properties": {
+          "changed": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "changed"
+        ],
+        "type": "object"
+      },
+      "serverId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "protocolVersion",
+      "serverId",
+      "result"
+    ],
+    "type": "object"
+  },
   "PostAdminStatePermissionsFixRequest": {
     "properties": {},
     "required": [],
@@ -99840,6 +100440,9 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "segmentDetection": {
+            "type": "string"
           }
         },
         "required": [
@@ -99848,7 +100451,8 @@ export const schemas = {
           "continueWatching",
           "providers",
           "analysis",
-          "navigation"
+          "navigation",
+          "segmentDetection"
         ],
         "type": "object"
       }
@@ -100134,6 +100738,9 @@ export const schemas = {
               "type": "object"
             },
             "type": "array"
+          },
+          "segmentDetection": {
+            "type": "string"
           }
         },
         "required": [
@@ -100142,7 +100749,8 @@ export const schemas = {
           "continueWatching",
           "providers",
           "analysis",
-          "navigation"
+          "navigation",
+          "segmentDetection"
         ],
         "type": "object"
       },

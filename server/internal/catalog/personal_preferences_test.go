@@ -59,7 +59,7 @@ func TestPlaybackThresholdsFollowViewerPreferences(t *testing.T) {
 	}
 }
 
-func TestLibraryVideoCompletionUsesApprovedCreditsOrThreshold(t *testing.T) {
+func TestLibraryVideoCompletionUsesTrustedCreditsOrThreshold(t *testing.T) {
 	for _, tc := range []struct {
 		name, mode string
 		position   float64
@@ -67,15 +67,21 @@ func TestLibraryVideoCompletionUsesApprovedCreditsOrThreshold(t *testing.T) {
 		marker     bool
 		approved   int
 		want       bool
+		provenance string
+		detection  string
 	}{
-		{"default ninety percent", "earliest", 90, 90, false, 0, true},
-		{"owner threshold eighty percent", "threshold", 80, 80, false, 0, true},
-		{"approved credits finish early", "earliest", 85, 90, true, 1, true},
-		{"threshold ignores credits", "threshold", 85, 90, true, 1, false},
-		{"credits mode uses marker", "credits", 85, 90, true, 1, true},
-		{"credits mode falls back without approval", "credits", 95, 90, true, 0, true},
-		{"credits mode falls back without a marker", "credits", 95, 90, false, 0, true},
-		{"unapproved guess cannot finish", "earliest", 85, 90, true, 0, false},
+		{"default ninety percent", "earliest", 90, 90, false, 0, true, "", ""},
+		{"owner threshold eighty percent", "threshold", 80, 80, false, 0, true, "", ""},
+		{"approved credits finish early", "earliest", 85, 90, true, 1, true, "", ""},
+		{"threshold ignores credits", "threshold", 85, 90, true, 1, false, "", ""},
+		{"credits mode uses marker", "credits", 85, 90, true, 1, true, "", ""},
+		{"credits mode falls back without approval", "credits", 95, 90, true, 0, true, "", ""},
+		{"credits mode falls back without a marker", "credits", 95, 90, false, 0, true, "", ""},
+		{"unapproved guess cannot finish", "earliest", 85, 90, true, 0, false, "", ""},
+		{"credits confirmed by other episodes finish early", "earliest", 85, 90, true, 0, true, "season_audio_match:credits:v1", ""},
+		{"confirmed credits do not count once detection is off", "earliest", 85, 90, true, 0, false, "season_audio_match:credits:v1", "off"},
+		{"approved credits count with detection off", "earliest", 85, 90, true, 1, true, "", "off"},
+		{"a picture guess cannot finish", "earliest", 85, 90, true, 0, false, "visual_credits:v1", ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			s, db, v := savedFixture(t)
@@ -91,13 +97,21 @@ func TestLibraryVideoCompletionUsesApprovedCreditsOrThreshold(t *testing.T) {
 	 VALUES('object','source',?,'root','item.mkv','revision','{}',1,1)`, item.Token); err != nil {
 				t.Fatal(err)
 			}
-			body, _ := json.Marshal(map[string]any{"continueWatching": map[string]any{"videoPlayedThreshold": tc.threshold, "videoCompletion": tc.mode}})
+			document := map[string]any{"continueWatching": map[string]any{"videoPlayedThreshold": tc.threshold, "videoCompletion": tc.mode}}
+			if tc.detection != "" {
+				document["segmentDetection"] = tc.detection
+			}
+			body, _ := json.Marshal(document)
 			if _, err := db.Exec(`INSERT INTO admin_documents(scope,revision,body,updated_ms) VALUES('library:library',2,?,0)`, string(body)); err != nil {
 				t.Fatal(err)
 			}
 			if tc.marker {
+				provenance, confidence := "test", 1.0
+				if tc.provenance != "" {
+					provenance, confidence = tc.provenance, 0.9
+				}
 				if _, err := db.Exec(`INSERT INTO analysis_markers(id,object_id,source_revision,source_binding,kind,start_us,end_us,confidence,provenance,result_id,approved)
- VALUES('credits','object','revision','binding','credits',80000000,100000000,1,'test','',?)`, tc.approved); err != nil {
+ VALUES('credits','object','revision','binding','credits',80000000,100000000,?,?,'',?)`, confidence, provenance, tc.approved); err != nil {
 					t.Fatal(err)
 				}
 			}

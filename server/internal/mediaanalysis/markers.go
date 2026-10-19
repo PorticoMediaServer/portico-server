@@ -86,7 +86,7 @@ func (s *Service) Mutate(ctx context.Context, a Access, m Mutation) (MutationRes
 	id := m.MarkerID
 	if m.Action == "create" || m.Action == "edit" {
 		switch m.Kind {
-		case "intro", "recap", "credits", "commercial", "chapter":
+		case "intro", "recap", "credits", "commercial", "outro", "chapter":
 		default:
 			return out, ErrInput
 		}

@@ -54,3 +54,25 @@ func TestAnalysisPreviewColorAndDisplayGeometry(t *testing.T) {
 		t.Fatal(args, err)
 	}
 }
+
+func TestSegmentRegionRecipes(t *testing.T) {
+	audio, err := AnalysisArgs("http://127.0.0.1:1234/input/test", AnalysisSpec{Kind: "segment_audio", StartUS: 1_500_000_000, RegionUS: 480_000_000, MaxDurationUS: 2_000_000_000})
+	joined := " " + strings.Join(audio, " ") + " "
+	if err != nil || !strings.Contains(joined, " -ss 1500.000000 -protocol_whitelist") || !strings.Contains(joined, " -t 480.000000 ") || !strings.Contains(joined, "aresample=8000:async=1:first_pts=0 -ac 1 -ar 8000") || !strings.Contains(joined, "-max_error_rate 0.05") || strings.Contains(joined, " -xerror ") {
+		t.Fatal(joined, err)
+	}
+	opening, _ := AnalysisArgs("input", AnalysisSpec{Kind: "segment_audio", RegionUS: 600_000_000, MaxDurationUS: 2_000_000_000})
+	if strings.Contains(strings.Join(opening, " "), "-ss") {
+		t.Fatal("an opening region seeks", opening)
+	}
+	frames, err := AnalysisArgs("input", AnalysisSpec{Kind: "segment_frames", StartUS: 60_000_000, RegionUS: 900_000_000, IntervalUS: 1000000, MaxFrames: 901, MaxDurationUS: 2_000_000_000, SourceVideo: PreviewVideoFacts{DynamicRange: "hdr10"}})
+	graph := strings.Join(frames, " ")
+	if err != nil || !strings.Contains(graph, "fps=1:start_time=0,scale=256:144") || !strings.Contains(graph, "tonemap=") || !strings.Contains(graph, "format=gray -frames:v 901 -pix_fmt gray -f rawvideo pipe:1") {
+		t.Fatal(graph, err)
+	}
+	for _, spec := range []AnalysisSpec{{Kind: "segment_audio", MaxDurationUS: 10}, {Kind: "segment_audio", RegionUS: 11, MaxDurationUS: 10}, {Kind: "segment_frames", RegionUS: 5, MaxDurationUS: 10, IntervalUS: 500000, MaxFrames: 5}, {Kind: "segment_frames", RegionUS: 5, MaxDurationUS: 10, IntervalUS: 1000000, MaxFrames: 5, Width: 320, Height: 180}} {
+		if _, err := AnalysisArgs("ignored", spec); err == nil {
+			t.Fatalf("accepted unsafe recipe %+v", spec)
+		}
+	}
+}

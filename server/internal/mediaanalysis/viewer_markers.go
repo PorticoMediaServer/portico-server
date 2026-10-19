@@ -6,19 +6,22 @@ import (
 	"errors"
 	"portico.local/server/internal/dbwork"
 	"strconv"
-	"strings"
 
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/segmentmarkers"
 )
 
 // ViewerMarkers projects detected segments onto the viewer path. It is the only
-// read of analysis markers that is not owner-only, so it applies three rules the
+// read of analysis markers that is not owner-only, so it applies rules the
 // owner view does not:
 //
 //   - the caller's library authorization runs inside this transaction, exactly
 //     as it does for the rest of the viewer's item reads;
-//   - dismissed markers and owner-only kinds are never projected;
+//   - dismissed markers, owner-only kinds and weak guesses
+//     (segmentmarkers.ViewerVisible) are never projected, and neither are
+//     detections in a library whose detection the owner turned off;
+//   - overlapping markers of one kind become the strongest one, so a chapter
+//     title and a measured intro make one button;
 //   - each projected marker carries the server's skip decision, so no client
 //     has to interpret confidence, provenance or approval.
 //
@@ -85,29 +88,37 @@ func ViewerMarkersTx(ctx context.Context, tx *sql.Tx, a Access, sourceID string)
 	if e != nil && !errors.Is(e, sql.ErrNoRows) {
 		return out, e
 	}
-	// The fence is the played source plus the owner-editable marker revision.
-	// Approving or dismissing a marker changes it; nothing else does.
-	out.Revision = token(v.ID, v.Revision, v.MappingRevision, strconv.FormatInt(revision, 10))
+	mode, e := SegmentLibraryModeTx(ctx, tx, a.LibraryID)
+	if e != nil {
+		return out, e
+	}
+	// The fence is the played source, the marker revision (detection and
+	// owner edits both move it) and whether the library's detection is on.
+	out.Revision = token(v.ID, v.Revision, v.MappingRevision, strconv.FormatInt(revision, 10), strconv.FormatBool(mode == SegmentModeOff))
 	rows, e := tx.QueryContext(ctx, `SELECT id,kind,start_us,end_us,confidence,provenance,approved FROM analysis_markers WHERE object_id=? AND source_revision=? AND source_binding=? AND deleted=0 AND end_us>? AND start_us<? ORDER BY start_us,id LIMIT 513`, v.ObjectID, v.Revision, v.SourceBinding, v.Start, v.End)
 	if e != nil {
 		return out, e
 	}
+	var candidates []segmentmarkers.Candidate
 	for rows.Next() {
-		var m segmentmarkers.Marker
+		var c segmentmarkers.Candidate
 		var start, end int64
-		var confidence float64
 		var provenance string
-		var approved bool
-		if e = rows.Scan(&m.ID, &m.Kind, &start, &end, &confidence, &provenance, &approved); e != nil {
+		if e = rows.Scan(&c.ID, &c.Kind, &start, &end, &c.Confidence, &provenance, &c.Approved); e != nil {
 			break
 		}
-		if !segmentmarkers.ViewerKind(m.Kind) || !approved && confidence < 0.85 && (strings.Contains(provenance, "luminance") || strings.Contains(provenance, "semantic_ambiguous")) {
+		if !segmentmarkers.ViewerKind(c.Kind) || !segmentmarkers.ViewerVisible(c.Approved, c.Confidence, provenance) {
 			continue
 		}
-		m.StartSeconds = float64(max(start, v.Start)-v.Start) / 1e6
-		m.EndSeconds = float64(min(end, v.End)-v.Start) / 1e6
-		m.AutomaticSafe = segmentmarkers.AutomaticSafe(approved, confidence, provenance)
-		out.Markers = append(out.Markers, m)
+		// Turning a library's detection off takes its detections away from
+		// viewers; markers an owner made or approved stay.
+		if mode == SegmentModeOff && !c.Approved {
+			continue
+		}
+		c.StartSeconds = float64(max(start, v.Start)-v.Start) / 1e6
+		c.EndSeconds = float64(min(end, v.End)-v.Start) / 1e6
+		c.AutomaticSafe = segmentmarkers.AutomaticSafe(c.Approved, c.Confidence, provenance)
+		candidates = append(candidates, c)
 	}
 	if e == nil {
 		e = rows.Err()
@@ -116,6 +127,10 @@ func ViewerMarkersTx(ctx context.Context, tx *sql.Tx, a Access, sourceID string)
 	if e != nil {
 		return segmentmarkers.Set{Markers: []segmentmarkers.Marker{}}, e
 	}
+	if len(candidates) > 512 {
+		return segmentmarkers.Set{Markers: []segmentmarkers.Marker{}}, ErrBudget
+	}
+	out.Markers = segmentmarkers.Strongest(candidates)
 	if len(out.Markers) > 512 {
 		return segmentmarkers.Set{Markers: []segmentmarkers.Marker{}}, ErrBudget
 	}

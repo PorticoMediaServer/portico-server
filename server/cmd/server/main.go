@@ -808,8 +808,14 @@ func run() (runErr error) {
 		defer close(retentionDone)
 		supervise.Loop(ctx, "cmd.analysis-retention", analysisService.RunRetention)
 	})
+	segmentsDone := make(chan struct{})
+	supervise.Go("cmd.segment-detection", func() {
+		defer close(segmentsDone)
+		supervise.Loop(ctx, "cmd.segment-detection", analysisService.RunSegments)
+	})
 	drain.add("scanner", cancel, scanDone)
 	drain.add("analysis-retention", nil, retentionDone)
+	drain.add("segment-detection", nil, segmentsDone)
 	meta := metadata.New(db, os.Getenv("PORTICO_TMDB_READ_ACCESS_TOKEN"))
 	meta.Admission = workAdmission.Admit
 	meta.SubtitleCredentials = subtitleProvider.SetCredentials
