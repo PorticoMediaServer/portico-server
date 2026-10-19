@@ -97,10 +97,29 @@ func TestScanLoopDoesNotRespinAQuantumThatDidNotAdvance(t *testing.T) {
 	// The loop admits the job; the quantum itself is then refused, so it ends
 	// without moving the run.
 	var calls atomic.Int64
-	s.Admission = func(context.Context, *sql.Tx, string) (bool, error) { return calls.Add(1)%2 == 1, nil }
+	refused := make(chan struct{})
+	s.Admission = func(context.Context, *sql.Tx, string) (bool, error) {
+		n := calls.Add(1)
+		if n == 2 {
+			close(refused)
+		}
+		return n%2 == 1, nil
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
+	started := time.Now()
 	go func() { s.Run(ctx); close(done) }()
+	defer func() { cancel(); <-done }()
+	// Observe a refused quantum, rather than spending the no-respin window
+	// waiting for the loop's initial database reads to reach admission.
+	select {
+	case <-refused:
+		t.Logf("initial refusal ready in %s (calls=%d)", time.Since(started), calls.Load())
+	case <-done:
+		t.Fatalf("scan loop ended before refusal: calls=%d startup=%s", calls.Load(), time.Since(started))
+	case <-time.After(30 * time.Second):
+		t.Fatalf("refusal not reached within 30s: calls=%d startup=%s", calls.Load(), time.Since(started))
+	}
 	time.Sleep(500 * time.Millisecond)
 	cancel()
 	<-done
