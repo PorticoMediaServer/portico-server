@@ -106,7 +106,13 @@ export function parseMessage(source: string): Node[] {
   return result;
 }
 
-export type FormatOptions = {locale: string; timeZone?: string; hour12?: boolean};
+/**
+ * `locale` formats numbers and dates; `pluralLocale` (default `locale`) picks plural forms. They
+ * differ when the words are in another language than the formats: a French catalogue read with
+ * Canadian-English dates still needs French plural rules, and an English catalogue on a Japanese
+ * device still needs "one" and "other".
+ */
+export type FormatOptions = {locale: string; pluralLocale?: string; timeZone?: string; hour12?: boolean};
 
 const pluralCache = new Map<string, Intl.PluralRules | null>();
 function pluralCategory(locale: string, n: number, ordinal: boolean): string {
@@ -153,7 +159,7 @@ function render(nodes: Node[], values: MessageValues, o: FormatOptions, pound?: 
         const raw = Number(values[n.name]);
         const v = Number.isFinite(raw) ? raw : 0;
         const exact = n.options[`=${v}`];
-        const branch = exact ?? n.options[pluralCategory(o.locale, v - n.offset, n.ordinal)] ?? n.options.other!;
+        const branch = exact ?? n.options[pluralCategory(o.pluralLocale ?? o.locale, v - n.offset, n.ordinal)] ?? n.options.other!;
         out += render(branch, values, o, v - n.offset);
         break;
       }
@@ -177,4 +183,72 @@ export function messageArguments(source: string): string[] {
   const walk = (nodes: Node[]) => { for (const n of nodes) { if ('name' in n) names.add(n.name); if (n.kind === 'plural' || n.kind === 'select') Object.values(n.options).forEach(walk); } };
   walk(parseMessage(source));
   return [...names].sort();
+}
+
+export type ArgumentKind = 'text' | 'number' | 'date' | 'time' | 'plural' | 'selectordinal' | 'select';
+
+/**
+ * What a message needs from its caller, for checking a translation against its source: each
+ * argument's kind, each select's keys, and each plural's exact (`=n`) keys, offset and categories.
+ * An argument used more than once keeps its most specific kind (a plural beats a bare `{n}`).
+ */
+export type MessageStructure = Readonly<{
+  args: Readonly<Record<string, ArgumentKind>>;
+  selects: Readonly<Record<string, readonly string[]>>;
+  plurals: readonly Readonly<{name: string; ordinal: boolean; offset: number; exact: readonly string[]; categories: readonly string[]}>[];
+}>;
+
+const kindRank: Record<ArgumentKind, number> = {text: 0, number: 1, date: 1, time: 1, select: 2, plural: 2, selectordinal: 2};
+
+export function messageStructure(source: string): MessageStructure {
+  const args: Record<string, ArgumentKind> = {};
+  const selects: Record<string, string[]> = {};
+  const plurals: {name: string; ordinal: boolean; offset: number; exact: string[]; categories: string[]}[] = [];
+  const note = (name: string, kind: ArgumentKind) => { const had = args[name]; if (!had || kindRank[kind] > kindRank[had]) args[name] = kind; };
+  const walk = (nodes: Node[]) => {
+    for (const n of nodes) {
+      switch (n.kind) {
+        case 'text': case 'pound': break;
+        case 'arg': note(n.name, 'text'); break;
+        case 'number': note(n.name, 'number'); break;
+        case 'date': case 'time': note(n.name, n.kind); break;
+        case 'select': note(n.name, 'select'); selects[n.name] = [...new Set([...(selects[n.name] ?? []), ...Object.keys(n.options)])].sort(); Object.values(n.options).forEach(walk); break;
+        case 'plural': {
+          note(n.name, n.ordinal ? 'selectordinal' : 'plural');
+          const keys = Object.keys(n.options);
+          plurals.push({name: n.name, ordinal: n.ordinal, offset: n.offset, exact: keys.filter(k => k.startsWith('=')).sort(), categories: keys.filter(k => !k.startsWith('=')).sort()});
+          Object.values(n.options).forEach(walk);
+          break;
+        }
+      }
+    }
+  };
+  walk(parseMessage(source));
+  return {args, selects, plurals};
+}
+
+/**
+ * Rewrite a message's literal text, keeping its arguments, plurals and selects exactly; the result
+ * is valid ICU again (quotes, braces and `#` re-escaped). The pseudo-locale is made with this.
+ */
+export function mapMessageText(source: string, map: (text: string) => string, wrap?: (body: string) => [before: string, after: string]): string {
+  const quote = (text: string, inPlural: boolean) => {
+    let out = text.replace(/'/g, "''");
+    out = out.replace(inPlural ? /[{}#]+/g : /[{}]+/g, run => `'${run}'`);
+    return out;
+  };
+  const print = (nodes: Node[], inPlural: boolean): string => nodes.map(n => {
+    switch (n.kind) {
+      case 'text': return quote(map(n.value), inPlural);
+      case 'pound': return '#';
+      case 'arg': return `{${n.name}}`;
+      case 'number': case 'date': case 'time': return `{${n.name}, ${n.kind}${n.style ? `, ${n.style}` : ''}}`;
+      case 'select': return `{${n.name}, select, ${Object.entries(n.options).map(([k, v]) => `${k} {${print(v, inPlural)}}`).join(' ')}}`;
+      case 'plural': return `{${n.name}, ${n.ordinal ? 'selectordinal' : 'plural'}, ${n.offset ? `offset:${n.offset} ` : ''}${Object.entries(n.options).map(([k, v]) => `${k} {${print(v, true)}}`).join(' ')}}`;
+    }
+  }).join('');
+  const body = print(parseMessage(source), false);
+  if (!wrap) return body;
+  const [before, after] = wrap(body);
+  return quote(before, false) + body + quote(after, false);
 }

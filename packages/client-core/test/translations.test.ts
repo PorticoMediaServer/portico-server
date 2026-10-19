@@ -1,0 +1,132 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {catalogue, catalogueReady, createI18n, enUS, formatMessage, loadCatalogue, messageArguments, parseMessage, resolveRegion, translatedLocales, type MessageId} from '../../i18n/src/index.ts';
+import {pseudoMessage} from '../../i18n/src/catalog/pseudo.ts';
+import {checkTranslation, classify, generatedModule, generatedPath, readTranslations, requiredCategories, translatableIds} from '../../i18n/scripts/translations-lib.mjs';
+import {applyXliff, exportXliff, parseXliff} from '../../i18n/scripts/translations.mjs';
+import {localeChoices} from '../src/presentation/region-choices.ts';
+
+const region = (locale: string) => resolveRegion({locale}, {locales: ['en-US'], timeZone: 'UTC'});
+
+test('translations: every translated message parses and takes the English arguments, plurals and select keys', async () => {
+  for (const locale of translatedLocales) {
+    await loadCatalogue(locale);
+    assert.ok(catalogueReady(locale), locale);
+    for (const [id, text] of Object.entries(catalogue(locale))) {
+      assert.ok(id in enUS, `${locale} ${id} is not an en-US message`);
+      assert.deepEqual(checkTranslation(locale, id, text!), [], `${locale} ${id}`);
+    }
+  }
+});
+
+test('translations: the generated modules are today’s translations/<locale>.json, and no record holds an unusable translation', () => {
+  for (const locale of translatedLocales) {
+    assert.equal(readFileSync(generatedPath(locale), 'utf8'), generatedModule(locale), `${locale}: run node packages/i18n/scripts/translations.mjs build`);
+    const record = readTranslations(locale);
+    const broken = classify(locale, record).invalid.filter(i => record.messages[i.id]!.source === enUS[i.id as MessageId]);
+    assert.deepEqual(broken, [], locale);
+  }
+});
+
+test('translations: a message a locale lacks reads en-US, before and after its catalogue loads', async () => {
+  const fr = createI18n(region('fr-FR'));
+  assert.equal(fr.locale, 'fr');
+  await loadCatalogue('fr');
+  const words = catalogue('fr');
+  const untranslated = (Object.keys(enUS) as MessageId[]).find(id => words[id] === undefined)!;
+  assert.equal(createI18n(region('fr')).t(untranslated), enUS[untranslated] && formatMessage(enUS[untranslated], {}, {locale: 'fr'}));
+  // A language's own name is never translated, so it is always the en-US text.
+  assert.equal(createI18n(region('de')).t('locale.fr'), 'Français');
+});
+
+test('translations: plural forms follow the catalogue’s language, numbers the format locale', async () => {
+  await loadCatalogue('ru');
+  const ru = createI18n(region('ru'));
+  const forms = [1, 2, 5, 21, 112].map(n => ru.t('count.titles', {count: n}));
+  // one, few, many, one, many: the noun agrees with the number.
+  assert.equal(new Set(forms.map(f => f.replace(/[\d\s]/g, ''))).size, 3, forms.join(' | '));
+  assert.equal(forms[0]!.replace(/[\d\s]/g, ''), forms[3]!.replace(/[\d\s]/g, ''));
+  assert.equal(forms[2]!.replace(/[\d\s]/g, ''), forms[4]!.replace(/[\d\s]/g, ''));
+  // English words with Japanese formats still say "1 title": Japanese has no "one" form.
+  const english = createI18n(resolveRegion({locale: 'ja-JP'}, {locales: ['en-US'], timeZone: 'UTC'}));
+  assert.equal(english.locale, 'en-US');
+  assert.equal(english.t('count.titles', {count: 1}), '1 title');
+  assert.equal(formatMessage('{n, plural, one {# título} other {# títulos}}', {n: 1000}, {locale: 'de-DE', pluralLocale: 'es'}), '1.000 títulos');
+});
+
+test('translation checks: arguments, apostrophes, plural categories, select keys, product names', () => {
+  assert.deepEqual(requiredCategories('ru'), ['few', 'many', 'one', 'other']);
+  assert.deepEqual(requiredCategories('fr'), ['one', 'other']);
+  const id = 'error.rateLimitedSeconds' as const;
+  assert.deepEqual(checkTranslation('fr', id, 'Trop de tentatives. Réessayez dans {seconds, plural, one {# seconde} other {# secondes}}.'), []);
+  assert.match(checkTranslation('ru', id, 'Повторите через {seconds, plural, one {# секунду} other {# секунд}}.').join(), /missing few, many/);
+  assert.match(checkTranslation('fr', id, 'Réessayez plus tard.').join(), /missing the argument \{seconds\}/);
+  assert.match(checkTranslation('fr', 'pin.progress', "{count} sur {length} chiffres saisis, c'est tout").join(), /U\+2019/);
+  assert.match(checkTranslation('fr', 'pin.progress', '{count} sur {lenght} chiffres').join(), /\{lenght\} is not an argument/);
+  // A bare number in English may become a plural where the language needs the noun to agree.
+  assert.deepEqual(checkTranslation('ru', 'pin.progress', 'Введено {count} из {length, plural, one {# цифры} few {# цифр} many {# цифр} other {# цифры}}'), []);
+  const accountId = (Object.keys(enUS) as MessageId[]).find(k => enUS[k] === 'Portico can’t reach your Portico Account right now. It will keep trying.')!;
+  assert.match(checkTranslation('de', accountId, 'Portico erreicht dein Konto gerade nicht. Es wird weiter versucht.').join(), /Portico Account/);
+  const selectId = (Object.keys(enUS) as MessageId[]).find(k => /\{\w+, select, /.test(enUS[k]))!;
+  const renamed = enUS[selectId].replace(/(\{\w+, select, )(\w+)/, '$1renamed');
+  assert.match(checkTranslation('de', selectId, renamed).join(), /must keep exactly the keys/);
+});
+
+test('XLIFF: export carries source, target, state and context; import takes it back and keeps the English it translated', () => {
+  const locale = 'de';
+  const record = readTranslations(locale);
+  const xml = exportXliff(locale, {all: true});
+  const units = parseXliff(xml);
+  assert.equal(units.length, translatableIds().length);
+  const translated = units.find(u => u.target !== undefined);
+  if (translated) {
+    const copy = {...record, messages: {} as typeof record.messages};
+    const report = applyXliff(locale, xml, copy);
+    assert.equal(report.rejected.length, 0);
+    assert.equal(copy.messages[translated.id]!.text, record.messages[translated.id]!.text);
+    assert.equal(copy.messages[translated.id]!.state, record.messages[translated.id]!.state);
+  }
+  // A reviewer's file: entities and CDATA decode, final means reviewed, a broken target is refused.
+  const id = 'error.rateLimitedSeconds';
+  const file = `<xliff version="1.2"><file source-language="en-US" target-language="de"><body>
+    <trans-unit id="${id}"><source>${enUS[id].replace(/</g, '&lt;')}</source><target state="final">Zu viele Versuche &amp; so. Versuche es in {seconds, plural, one {# Sekunde} other {# Sekunden}} erneut.</target></trans-unit>
+    <trans-unit id="error.offline"><source>${enUS['error.offline']}</source><target state="needs-review-translation"><![CDATA[Dieses Gerät ist offline.]]></target></trans-unit>
+    <trans-unit id="error.busy"><source>${enUS['error.busy']}</source><target state="translated">Kaputt {oops}</target></trans-unit>
+    <trans-unit id="error.timeout"><source>An older English text.</source><target state="translated">Dein Server hat zu lange gebraucht.</target></trans-unit>
+  </body></file></xliff>`;
+  const into = {locale, name: 'German', messages: {} as Record<string, {text: string; source: string; state: string}>};
+  const report = applyXliff(locale, file, into);
+  assert.equal(into.messages[id]!.state, 'reviewed');
+  assert.match(into.messages[id]!.text, /Versuche &amp;|Versuche & so/);
+  assert.equal(into.messages['error.offline']!.state, 'machine');
+  assert.equal(into.messages['error.offline']!.text, 'Dieses Gerät ist offline.');
+  assert.deepEqual(report.rejected.map(r => r.id), ['error.busy']);
+  assert.equal(report.stale, 1);
+  assert.equal(into.messages['error.timeout']!.source, 'An older English text.');
+});
+
+test('pseudo-locale: every message stays valid ICU with its arguments, accented, bracketed and about a third longer', () => {
+  for (const [id, source] of Object.entries(enUS)) {
+    const pseudo = pseudoMessage(source);
+    assert.doesNotThrow(() => parseMessage(pseudo), id);
+    assert.deepEqual(messageArguments(pseudo), messageArguments(source), id);
+  }
+  const i18n = createI18n(region('en-XA'));
+  const text = i18n.t('home.row.recentlyAddedIn', {library: 'Movies'});
+  assert.match(text, /^\[Ŕéçéñţļý áððéð îñ Movies .+\]$/);
+  assert.ok(text.length >= 'Recently added in Movies'.length * 1.3, text);
+  assert.equal(i18n.t('count.titles', {count: 1}).startsWith('[1 '), true);
+  assert.equal(formatMessage(pseudoMessage("It''s '{literal}'"), {}, {locale: 'en-US'}).startsWith('[Îţ’š {ļîţéŕáļ}') || formatMessage(pseudoMessage("It''s '{literal}'"), {}, {locale: 'en-US'}).startsWith("[Îţ'š {ļîţéŕáļ}"), true);
+});
+
+test('language choices: follow the device, then each language named in itself; never the pseudo-locale', () => {
+  const choices = localeChoices(createI18n(region('de')));
+  assert.equal(choices[0]!.id, 'auto');
+  const named = Object.fromEntries(choices.map(c => [c.id, c.label]));
+  assert.equal(named.fr, 'Français');
+  assert.equal(named.ru, 'Русский');
+  assert.equal(named['en-XA'], undefined);
+  // Someone who set it by hand still sees what they chose.
+  assert.ok(localeChoices(createI18n(), 'en-XA').some(c => c.id === 'en-XA'));
+});

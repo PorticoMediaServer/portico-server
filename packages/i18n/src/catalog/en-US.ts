@@ -1024,6 +1024,11 @@ export const enUS = {
   'locale.en-US': 'English (United States)',
   'locale.en-CA': 'English (Canada)',
   'locale.en-GB': 'English (United Kingdom)',
+  // Each language is named in itself, in every language, so it can be found by someone who can't read the current one.
+  'locale.fr': 'Français',
+  'locale.es': 'Español',
+  'locale.de': 'Deutsch',
+  'locale.ru': 'Русский',
   'preferences.none': 'None',
   'preferences.editOnWeb': 'Change this in Portico on the web.',
   'preferences.hide': 'Hide',

@@ -61,16 +61,25 @@ test('ICU: arguments, plural with # and =0, select, ordinal, quoting', () => {
   assert.throws(() => parseMessage('{n, plural, one {x}}'));
 });
 
-test('locale resolution: exact, then the region\'s English, then en-US', () => {
+test('locale resolution: exact, then the region\'s English or the same language, then en-US', () => {
   assert.equal(resolveLocale('en-CA'), 'en-CA');
   assert.equal(resolveLocale('en_CA'), 'en-CA');
   assert.equal(resolveLocale('en-GB'), 'en-GB');
   assert.equal(resolveLocale('en-AU'), 'en-GB');
   assert.equal(resolveLocale('en'), 'en-US');
   assert.equal(resolveLocale('en-PH'), 'en-US');
-  assert.equal(resolveLocale(['fr-CA', 'en-CA']), 'en-CA');
-  assert.equal(resolveLocale('fr-FR'), 'en-US');
   assert.equal(resolveLocale(undefined), 'en-US');
+  // Other languages: exact, then any region of the language; a language with no catalogue reads the next choice, then en-US.
+  assert.equal(resolveLocale('fr-FR'), 'fr');
+  assert.equal(resolveLocale(['fr-CA', 'en-CA']), 'fr');
+  assert.equal(resolveLocale('de-AT'), 'de');
+  assert.equal(resolveLocale('es-MX'), 'es');
+  assert.equal(resolveLocale('ru'), 'ru');
+  assert.equal(resolveLocale(['ja-JP', 'de-DE']), 'de');
+  assert.equal(resolveLocale('ja-JP'), 'en-US');
+  // The pseudo-locale is only an exact choice: another English region never lands on it.
+  assert.equal(resolveLocale('en-XA'), 'en-XA');
+  assert.equal(resolveLocale('en-XB'), 'en-GB');
 });
 
 test('region preferences: auto follows the device for words and formats; explicit values win; the time zone is always the device’s', () => {
@@ -80,13 +89,21 @@ test('region preferences: auto follows the device for words and formats; explici
   assert.equal(resolveRegion(undefined, {locales: ['en-GB']}).uiLocale, 'en-GB');
   // A profile that chooses a catalogue gets it; a language we don't ship reads the device's English.
   assert.equal(resolveRegion({locale: 'en-CA'}, {locales: ['en-US']}).uiLocale, 'en-CA');
+  assert.equal(resolveRegion({locale: 'ja-JP'}, {locales: ['en-CA']}).uiLocale, 'en-CA');
   const explicit = resolveRegion({locale: 'fr-FR', hourCycle: 'h12'}, device);
-  assert.equal(explicit.uiLocale, 'en-CA');
+  assert.equal(explicit.uiLocale, 'fr');
   assert.equal(explicit.formatLocale, 'fr-FR');
   assert.equal(explicit.timeZone, 'America/Halifax');
   assert.equal(explicit.hour12, true);
   // A zone a stale profile document or an old caller still carries is not read at all.
   assert.equal(resolveRegion({locale: 'auto', timeZone: 'Europe/Paris'} as never, device).timeZone, 'America/Halifax');
+  // A language chosen without a region keeps the device's region for formats when the device speaks it.
+  const quebec = resolveRegion({locale: 'fr'}, {locales: ['fr-CA', 'en-CA']});
+  assert.deepEqual([quebec.uiLocale, quebec.formatLocale], ['fr', 'fr-CA']);
+  assert.equal(resolveRegion({locale: 'fr'}, {locales: ['en-CA']}).formatLocale, 'fr');
+  // The pseudo-locale reads accented English and formats as US English.
+  const pseudo = resolveRegion({locale: 'en-XA'}, {locales: ['de-DE']});
+  assert.deepEqual([pseudo.uiLocale, pseudo.formatLocale], ['en-XA', 'en-US']);
   // A device that reports no zone, or one the runtime does not know, leaves the runtime's own.
   assert.equal(resolveRegion(undefined, {locales: ['en-CA']}).timeZone, undefined);
   assert.equal(resolveRegion(undefined, {locales: ['en-CA'], timeZone: 'Not/AZone'}).timeZone, undefined);
