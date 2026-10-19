@@ -392,7 +392,7 @@ func personCreditCountSQL(viewer Viewer, person string) (string, []any) {
 // matches up to peopleRankedMaximum; exact is false beyond it.
 func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset int, order, direction string) (out []PersonSummary, total int, exact bool, e error) {
 	credited, creditedArgs := personCreditedSQL(viewer, "people.id")
-	extra, extraArgs := searchCJKPredicate("portico_search_fold(people.name)", q)
+	extra, extraArgs := searchSubwordPredicate("portico_search_fold(people.name)", q)
 	matched := `catalog_people_names JOIN catalog_people people ON people.id=catalog_people_names.rowid WHERE catalog_people_names MATCH ? AND ` + credited + extra
 	matchedArgs := append(append([]any{match}, creditedArgs...), extraArgs...)
 	if e = s.read().QueryRow(`SELECT count(*) FROM (SELECT 1 FROM `+matched+` LIMIT `+strconv.Itoa(peopleRankedMaximum+1)+`)`, matchedArgs...).Scan(&total); e != nil {
@@ -486,7 +486,7 @@ func (s *Service) peopleMatches(q, match string, viewer Viewer, limit, offset in
 // peopleWalkWindow people held neither the page nor the end of the list.
 func (s *Service) peopleNameWalk(q, match string, viewer Viewer, limit, offset int, order, direction string) (ids []int64, ok bool, e error) {
 	credited, creditedArgs := personCreditedSQL(viewer, "people.id")
-	extra, extraArgs := searchCJKPredicate("portico_search_fold(people.name)", q)
+	extra, extraArgs := searchSubwordPredicate("portico_search_fold(people.name)", q)
 	want := offset + limit
 	dir := "ASC"
 	if order == "title" && direction == "desc" {

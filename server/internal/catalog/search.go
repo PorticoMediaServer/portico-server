@@ -512,7 +512,7 @@ func (s *Service) searchCatalogGroup(ctx context.Context, r SearchRequest, g sea
 	where := ` AND e.kind=? AND (? OR l.library_id IN(SELECT value FROM json_each(?))) AND l.retired=0 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id)`
 	filterArgs := []any{kind, r.AllLibraries, string(raw)}
 	for _, word := range strings.Fields(facettext.SearchFold(r.Q)) {
-		if strings.ContainsFunc(word, facettext.CJK) {
+		if strings.ContainsFunc(word, facettext.Subword) {
 			where += ` AND instr(d.normalized,?)>0`
 			filterArgs = append(filterArgs, word)
 		}
@@ -1043,11 +1043,11 @@ func searchGroupLabelKey(id string) string {
 	return "search.chip." + id
 }
 
-func searchCJKPredicate(column, q string) (string, []any) {
+func searchSubwordPredicate(column, q string) (string, []any) {
 	clause := ""
 	args := []any{}
 	for _, word := range strings.Fields(facettext.SearchFold(q)) {
-		if strings.ContainsFunc(word, facettext.CJK) {
+		if strings.ContainsFunc(word, facettext.Subword) {
 			clause += " AND instr(" + column + ",?)>0"
 			args = append(args, word)
 		}

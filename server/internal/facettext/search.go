@@ -25,6 +25,21 @@ func CJK(r rune) bool {
 	return unicode.In(r, unicode.Han, unicode.Hiragana, unicode.Katakana, unicode.Hangul)
 }
 
+// Thai runs without spaces between words, like Chinese: a query is a substring
+// of a phrase, not a space-separated word.
+func Thai(r rune) bool {
+	return unicode.In(r, unicode.Thai)
+}
+
+// Subword reports scripts with no word spaces. Their queries are indexed as
+// bigrams and verified as substrings rather than matched as whole words. The
+// prolonged sound mark joins katakana words (タワー) but Unicode files it
+// outside the Katakana script, so it is named here: without it a word
+// containing one would index and query as one token and never match inside.
+func Subword(r rune) bool {
+	return CJK(r) || Thai(r) || r == 'ー'
+}
+
 // SearchDocument adds punctuation-separated words and CJK unigrams/bigrams.
 // CJK candidates are checked for the actual substring after the indexed seek.
 // The expansion is linear in input size; hostile metadata cannot grow it without bound.
@@ -38,11 +53,11 @@ func SearchDocument(value string) string {
 	for _, word := range words {
 		runes := []rune(word)
 		for i, r := range runes {
-			if !CJK(r) {
+			if !Subword(r) {
 				continue
 			}
 			tokens = append(tokens, string(r))
-			if i+1 < len(runes) && CJK(runes[i+1]) {
+			if i+1 < len(runes) && Subword(runes[i+1]) {
 				tokens = append(tokens, string(runes[i:i+2]))
 			}
 		}
@@ -63,14 +78,14 @@ func SearchTerms(value string) []string {
 	out := []string{}
 	for _, word := range words {
 		runes := []rune(word)
-		allCJK := true
+		allSubword := true
 		for _, r := range runes {
-			if !CJK(r) {
-				allCJK = false
+			if !Subword(r) {
+				allSubword = false
 				break
 			}
 		}
-		if allCJK && len(runes) > 1 {
+		if allSubword && len(runes) > 1 {
 			for i := 0; i+1 < len(runes); i++ {
 				out = append(out, string(runes[i:i+2]))
 			}

@@ -41,6 +41,17 @@ func TestShortPrefixesAreUniqueAndRankTitles(t *testing.T) {
 	if _, ok := IndexedSearchTerms("東京"); ok {
 		t.Fatal("CJK path lost")
 	}
+	if _, ok := IndexedSearchTerms("กรุงเทพ"); ok {
+		t.Fatal("Thai path lost")
+	}
+	// Thai runs without word spaces, so it indexes as bigrams like CJK: a
+	// mid-phrase query meets the index, and the substring check confirms it.
+	if terms := SearchTerms("กรุงเทพ"); !reflect.DeepEqual(terms, []string{"กร", "รง", "งเ", "เท", "ทพ"}) {
+		t.Fatal(terms)
+	}
+	if terms := SearchTerms("東京タワー"); !reflect.DeepEqual(terms, []string{"東京", "京タ", "タワ", "ワー"}) {
+		t.Fatal(terms)
+	}
 	if _, ok := IndexedSearchTerms("Harborsharbors"); ok {
 		t.Fatal("long token path lost")
 	}

@@ -32,7 +32,7 @@ func SearchPrefixes(document, title string) string {
 		titleTerms[word] = true
 	}
 	for _, word := range strings.Fields(document) {
-		if strings.ContainsFunc(word, CJK) {
+		if strings.ContainsFunc(word, Subword) {
 			continue
 		}
 		runes := []rune(word)
@@ -70,7 +70,7 @@ func IndexedSearchTerms(q string) ([]string, bool) {
 		if NumericSearchTerm(word) {
 			maximum = NumericSearchPrefixRunes
 		}
-		if utf8.RuneCountInString(word) > maximum || strings.ContainsFunc(word, CJK) {
+		if utf8.RuneCountInString(word) > maximum || strings.ContainsFunc(word, Subword) {
 			return nil, false
 		}
 	}

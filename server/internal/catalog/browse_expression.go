@@ -661,7 +661,7 @@ func (c *browseCompiler) entityPredicate(field browseField, node BrowseNode) (st
 			clause = `EXISTS(SELECT 1 FROM catalog_search_titles JOIN catalog_search_documents d ON d.entity_id=catalog_search_titles.rowid WHERE catalog_search_titles.rowid=e.entity_id AND catalog_search_titles MATCH ?`
 		}
 		for _, word := range strings.Fields(normalized) {
-			if strings.ContainsFunc(word, facettext.CJK) {
+			if strings.ContainsFunc(word, facettext.Subword) {
 				clause += ` AND instr(d.normalized,?)>0`
 				c.args = append(c.args, word)
 			}

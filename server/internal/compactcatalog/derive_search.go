@@ -74,7 +74,10 @@ func deriveSearch(ctx context.Context, tx *sql.Tx, ids string) error {
 
 func init() {
 	Register(DomainSearch, Derivation{
-		Version: 9,
+		// Version 10 indexes Thai and the katakana prolonged sound mark as CJK-like
+		// bigrams, so a mid-phrase Thai or katakana fragment is searchable; raising
+		// it rebuilds the index.
+		Version: 10,
 		Drain: func(ctx context.Context, tx *sql.Tx, keys []Key, limit int) ([]int64, error) {
 			ids := keyIDs(keys)
 			return ids, deriveSearch(ctx, tx, mustJSON(ids))
