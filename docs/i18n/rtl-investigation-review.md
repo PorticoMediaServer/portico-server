@@ -1,6 +1,6 @@
 # Adversarial review: RTL investigation report — 2026-10-18
 
-Reviewed: `/home/justin/projects/Portico/apps/portico-server/.scratch/reviews/2026-10-18-rtl-investigation.md`
+Reviewed: `docs/i18n/rtl-investigation.md`
 Against: the three read-only worktrees of `feature/i18n-languages-20261018` (server/native/roku) and `portico-internal/Product Contracts/accessibility-and-language/contract.md`. Read-only; nothing edited. No sub-agents. All counts re-run with ripgrep/node over the same trees (node_modules excluded).
 
 ## Verdict
