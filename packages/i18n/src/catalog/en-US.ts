@@ -1024,6 +1024,21 @@ export const enUS = {
   'locale.en-US': 'English (United States)',
   'locale.en-CA': 'English (Canada)',
   'locale.en-GB': 'English (United Kingdom)',
+  // Fixed section names the server sends as `section.<id>` (catalog/*.go, with the same English as
+  // its fallback). Ids whose title is a library's or playlist's own name, or differs by page
+  // (items, entries, files, releases), have no message here and keep the server's words.
+  'section.categories': 'Categories',
+  'section.seasons': 'Seasons',
+  'section.unassigned_absolute': 'Unassigned absolute episodes',
+  'section.episodes': 'Episodes',
+  'section.chapters': 'Chapters',
+  'section.playlists': 'Playlists',
+  'section.artists': 'Artists',
+  'section.songs': 'Songs',
+  'section.books': 'Books',
+  'section.discs': 'Discs',
+  'section.context': 'Author & series',
+  'section.popularTracks': 'Your most played',
   // Words the operating system shows for the apps: Android's download notification and channel, and
   // iOS's local network permission prompt (generated into each platform's own string files).
   'platform.downloadsChannel': 'Downloads',

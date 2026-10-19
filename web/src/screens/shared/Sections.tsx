@@ -15,11 +15,12 @@ import {serverTextLabel} from '@core/presentation/index.ts';
 
 /**
  * A section's title. A heading whose key is a row title code (`home.row.*`: a Discover personal
- * row, a title page's More like X) is the catalogue message with its params, else its fallback;
- * other headings keep the server's words as before.
+ * row, a title page's More like X) or a fixed section name (`section.*`: Seasons, Songs, Chapters)
+ * is the catalogue message with its params, else its fallback. A section named for its library or
+ * playlist has no catalogue message and keeps the server's words.
  */
 export function sectionHeading(i18n: I18n, heading: ContentHeading): string {
-  return heading.key.startsWith('home.row.') ? serverTextLabel(i18n, heading, heading.fallback) : heading.fallback;
+  return heading.key.startsWith('home.row.') || heading.key.startsWith('section.') ? serverTextLabel(i18n, heading, heading.fallback) : heading.fallback;
 }
 import {Button, Card, Grid, Icon, ListRow, Section, Shelf, Skeleton, Surface, Inset, WindowedGrid, createStaticCollection, gridColumnMin, type ShelfDensity, type GridDensity} from '../../ui';
 import l from './EntryListRow.module.css';

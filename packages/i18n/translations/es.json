@@ -10532,6 +10532,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "Artistas",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "Libros",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "Categorías",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "Capítulos",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "Autor y serie",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "Discos",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "Episodios",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "Listas de reproducción",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "Lo que más escuchas",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "Temporadas",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "Canciones",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "Episodios con numeración absoluta sin asignar",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "Añade Portico a tu app de autenticación",
    "source": "Add Portico to your authenticator app",

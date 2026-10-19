@@ -10532,6 +10532,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "Künstler",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "Bücher",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "Kategorien",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "Kapitel",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "Autor & Reihe",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "Discs",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "Folgen",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "Playlists",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "Deine meistgehörten Songs",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "Staffeln",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "Songs",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "Nicht zugeordnete Folgen mit absoluter Nummer",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "Füge Portico zu deiner Authenticator-App hinzu",
    "source": "Add Portico to your authenticator app",

@@ -10532,6 +10532,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "Artistes",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "Livres",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "Catégories",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "Chapitres",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "Auteur et série",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "Disques",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "Épisodes",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "Playlists",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "Vos titres les plus écoutés",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "Saisons",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "Morceaux",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "Épisodes en numérotation absolue non attribués",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "Ajoutez Portico à votre application d’authentification",
    "source": "Add Portico to your authenticator app",

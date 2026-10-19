@@ -10532,6 +10532,66 @@
    "source": "Top result",
    "state": "machine"
   },
+  "section.artists": {
+   "text": "Исполнители",
+   "source": "Artists",
+   "state": "machine"
+  },
+  "section.books": {
+   "text": "Книги",
+   "source": "Books",
+   "state": "machine"
+  },
+  "section.categories": {
+   "text": "Категории",
+   "source": "Categories",
+   "state": "machine"
+  },
+  "section.chapters": {
+   "text": "Главы",
+   "source": "Chapters",
+   "state": "machine"
+  },
+  "section.context": {
+   "text": "Автор и цикл",
+   "source": "Author & series",
+   "state": "machine"
+  },
+  "section.discs": {
+   "text": "Диски",
+   "source": "Discs",
+   "state": "machine"
+  },
+  "section.episodes": {
+   "text": "Серии",
+   "source": "Episodes",
+   "state": "machine"
+  },
+  "section.playlists": {
+   "text": "Плейлисты",
+   "source": "Playlists",
+   "state": "machine"
+  },
+  "section.popularTracks": {
+   "text": "Вы чаще всего слушаете",
+   "source": "Your most played",
+   "state": "machine"
+  },
+  "section.seasons": {
+   "text": "Сезоны",
+   "source": "Seasons",
+   "state": "machine"
+  },
+  "section.songs": {
+   "text": "Песни",
+   "source": "Songs",
+   "state": "machine"
+  },
+  "section.unassigned_absolute": {
+   "text": "Серии со сквозной нумерацией без сезона",
+   "source": "Unassigned absolute episodes",
+   "state": "machine"
+  },
   "security.addToAuthenticator": {
    "text": "Добавьте Portico в приложение-аутентификатор",
    "source": "Add Portico to your authenticator app",
