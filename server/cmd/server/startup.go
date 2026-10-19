@@ -172,15 +172,17 @@ func runDeferredMaintenance(ctx context.Context, db *sql.DB) {
 // Recovery never opens the database, writes state, or offers an unauthenticated
 // repair button. Public replies contain an actionable category, not log errors
 // that may include media paths, URLs or credentials.
-type startupRecovery struct{ Title, Phase, Advice, Recovery, AdviceID string }
+// A failed phase's own label is a diagnostic and stays as written; PhaseID is set when the phase
+// line is catalogue copy instead, so the page can translate it.
+type startupRecovery struct{ Title, Phase, PhaseID, Advice, Recovery, AdviceID string }
 
-var recoveryPage = template.Must(template.New("recovery").Parse(`<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}}</title><body><main><h1>{{.Title}}</h1><p>{{.Phase}}</p><p>{{.Advice}}</p><p>{{.Recovery}}</p></main></body></html>`))
+var recoveryPage = template.Must(template.New("recovery").Parse(`<!doctype html><html lang="{{.Lang}}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>{{.Title}}</title><body><main><h1>{{.Title}}</h1><p>{{.Phase}}</p><p>{{.Advice}}</p><p>{{.Recovery}}</p></main></body></html>`))
 
 func (s *startupReporter) fail(err error) {
-	phase := startupCopy["server.startup.phase"]
+	phase, phaseID := startupCopy["server.startup.phase"], "server.startup.phase"
 	for _, p := range s.snapshot() {
 		if p.Failed != "" || p.Finished == 0 {
-			phase = p.Label
+			phase, phaseID = p.Label, ""
 			break
 		}
 	}
@@ -197,7 +199,7 @@ func (s *startupReporter) fail(err error) {
 		adviceID = "server.startup.instance"
 	}
 	s.mu.Lock()
-	s.failure = &startupRecovery{Title: startupCopy["server.startup.failed"], Phase: phase, Advice: startupCopy[adviceID], Recovery: startupCopy["server.startup.recovery"], AdviceID: adviceID}
+	s.failure = &startupRecovery{Title: startupCopy["server.startup.failed"], Phase: phase, PhaseID: phaseID, Advice: startupCopy[adviceID], Recovery: startupCopy["server.startup.recovery"], AdviceID: adviceID}
 	s.mu.Unlock()
 }
 func (s *startupRecovery) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -206,14 +208,25 @@ func (s *startupRecovery) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 	if r.URL.Path == "/" && strings.Contains(r.Header.Get("Accept"), "text/html") {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Vary", "Accept-Language")
 		w.WriteHeader(http.StatusServiceUnavailable)
-		_ = recoveryPage.Execute(w, s)
+		_ = recoveryPage.Execute(w, s.page(startupLanguage(r.Header.Get("Accept-Language"))))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusServiceUnavailable)
 	_ = json.NewEncoder(w).Encode(map[string]any{"ready": false, "status": "startup_failed", "phase": s.Phase, "message": s.Advice, "messageId": s.AdviceID, "retryable": false})
 }
+
+// page is the recovery page's words in a language.
+func (s *startupRecovery) page(lang string) map[string]string {
+	phase := s.Phase
+	if s.PhaseID != "" {
+		phase = startupText(lang, s.PhaseID)
+	}
+	return map[string]string{"Lang": lang, "Title": startupText(lang, "server.startup.failed"), "Phase": phase, "Advice": startupText(lang, s.AdviceID), "Recovery": startupText(lang, "server.startup.recovery")}
+}
+
 func serveStartupRecovery(ctx context.Context, listener net.Listener, reporter *startupReporter) {
 	server := &http.Server{Handler: reporter, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 5 * time.Second, MaxHeaderBytes: 32 << 10}
 	done := make(chan struct{})

@@ -7,6 +7,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
 	"testing"
@@ -57,5 +58,56 @@ func TestRecoveryCopyMatchesStringCatalogue(t *testing.T) {
 		if !strings.Contains(string(source), string(key)+": "+string(value)) {
 			t.Errorf("recovery copy %s is missing or differs from the catalogue", id)
 		}
+	}
+}
+
+func TestRecoveryTranslationsMatchTheTranslatedCatalogues(t *testing.T) {
+	for lang, copy := range translatedStartupCopy {
+		raw, err := os.ReadFile("../../../packages/i18n/translations/" + lang + ".json")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var record struct {
+			Messages map[string]struct{ Text string } `json:"messages"`
+		}
+		if err := json.Unmarshal(raw, &record); err != nil {
+			t.Fatal(err)
+		}
+		for id := range startupCopy {
+			if copy[id] == "" || copy[id] != record.Messages[id].Text {
+				t.Errorf("%s recovery copy %s is missing or differs from translations/%s.json", lang, id, lang)
+			}
+		}
+	}
+}
+
+func TestRecoveryPageFollowsAcceptLanguage(t *testing.T) {
+	recovery := &startupRecovery{Phase: startupCopy["server.startup.phase"], PhaseID: "server.startup.phase", Advice: startupCopy["server.startup.space"], AdviceID: "server.startup.space"}
+	for header, want := range map[string]string{"": "en", "fr-CA,fr;q=0.9,en;q=0.8": "fr", "de-AT": "de", "es-419": "es", "ru-RU,ru": "ru", "ja-JP": "en", "en-GB": "en", "not a header;;": "en"} {
+		if got := startupLanguage(header); got != want {
+			t.Errorf("Accept-Language %q: got %s, want %s", header, got, want)
+		}
+	}
+	request, _ := http.NewRequest("GET", "/", nil)
+	request.Header.Set("Accept", "text/html")
+	request.Header.Set("Accept-Language", "ru")
+	response := httptest.NewRecorder()
+	recovery.ServeHTTP(response, request)
+	body := response.Body.String()
+	if !strings.Contains(body, `lang="ru"`) || !strings.Contains(body, translatedStartupCopy["ru"]["server.startup.space"]) || !strings.Contains(body, translatedStartupCopy["ru"]["server.startup.phase"]) || response.Header().Get("Vary") != "Accept-Language" {
+		t.Fatalf("russian recovery page: %s", body)
+	}
+	// A failed phase's own label is a diagnostic and stays as written; the API reply stays English.
+	labelled := &startupRecovery{Phase: "Open and install the database", AdviceID: "server.startup.space"}
+	response = httptest.NewRecorder()
+	labelled.ServeHTTP(response, request)
+	if !strings.Contains(response.Body.String(), "Open and install the database") {
+		t.Fatalf("phase label: %s", response.Body.String())
+	}
+	request.Header.Set("Accept", "application/json")
+	response = httptest.NewRecorder()
+	recovery.ServeHTTP(response, request)
+	if !strings.Contains(response.Body.String(), "Free space on the drive") {
+		t.Fatalf("json reply: %s", response.Body.String())
 	}
 }
