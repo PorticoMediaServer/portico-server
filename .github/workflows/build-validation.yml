@@ -26,7 +26,7 @@ concurrency:
 env:
   GOCACHE: ${{ github.workspace }}/.cache/go-build
   GOMODCACHE: ${{ github.workspace }}/.cache/go-mod
-  VALIDATION_VERSION: 0.0.${{ github.run_number }}
+  VALIDATION_VERSION: 0.0.1
   # Keep disposable signing files in the project parent, outside the checkout.
   PORTICO_RELEASE_SIGNING_KEY_FILE: ${{ github.workspace }}/../.private/server-validation-signing/private-key
   PORTICO_RELEASE_PUBLIC_KEY_FILE: ${{ github.workspace }}/../.private/server-validation-signing/validation-public-key

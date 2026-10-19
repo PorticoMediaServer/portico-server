@@ -65,8 +65,9 @@ def origin():
     commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     if subprocess.run(["git", "diff", "--quiet", "HEAD"], cwd=ROOT).returncode:
         raise ValueError("Qualification requires a clean reviewed checkout")
-    if subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard"], cwd=ROOT).strip():
-        raise ValueError("Qualification refuses unreviewed source files")
+    untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard"], cwd=ROOT, text=True).splitlines()
+    if untracked:
+        raise ValueError("Qualification refuses unreviewed source files: " + ", ".join(untracked[:10]))
     if commit != values["GITHUB_SHA"] or commit != values["GITHUB_WORKFLOW_SHA"]:
         raise ValueError("Source and executed workflow must name the same reviewed commit")
     if not re.fullmatch(r"[0-9a-f]{40}", commit):
