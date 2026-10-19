@@ -3884,6 +3884,9 @@
           "customCertificatePath": {
             "type": "string"
           },
+          "dlnaEnabled": {
+            "type": "boolean"
+          },
           "expectedRevision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -3960,6 +3963,9 @@
           "customCertificatePath": {
             "type": "string"
           },
+          "dlnaEnabled": {
+            "type": "boolean"
+          },
           "lanDiscoveryEnabled": {
             "type": "boolean"
           },
@@ -4008,6 +4014,7 @@
           "lanNetworks",
           "accessUrls",
           "lanDiscoveryEnabled",
+          "dlnaEnabled",
           "trustedProxies",
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
@@ -4083,6 +4090,9 @@
                 "type": "integer"
               },
               "directStreamRemux": {
+                "type": "boolean"
+              },
+              "dlnaEnabled": {
                 "type": "boolean"
               },
               "ffmpegPath": {
@@ -4316,6 +4326,7 @@
               "lanNetworks",
               "accessUrls",
               "lanDiscoveryEnabled",
+              "dlnaEnabled",
               "trustedProxies",
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
@@ -4404,6 +4415,9 @@
                     "type": "integer"
                   },
                   "directStreamRemux": {
+                    "type": "boolean"
+                  },
+                  "dlnaEnabled": {
                     "type": "boolean"
                   },
                   "ffmpegPath": {
@@ -4637,6 +4651,7 @@
                   "lanNetworks",
                   "accessUrls",
                   "lanDiscoveryEnabled",
+                  "dlnaEnabled",
                   "trustedProxies",
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
@@ -4743,6 +4758,9 @@
                   "directStreamRemux": {
                     "type": "boolean"
                   },
+                  "dlnaEnabled": {
+                    "type": "boolean"
+                  },
                   "ffmpegPath": {
                     "type": "string"
                   },
@@ -4974,6 +4992,7 @@
                   "lanNetworks",
                   "accessUrls",
                   "lanDiscoveryEnabled",
+                  "dlnaEnabled",
                   "trustedProxies",
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
@@ -26066,6 +26085,9 @@
           "customCertificatePath": {
             "type": "string"
           },
+          "dlnaEnabled": {
+            "type": "boolean"
+          },
           "lanDiscoveryEnabled": {
             "type": "boolean"
           },
@@ -26114,6 +26136,7 @@
           "lanNetworks",
           "accessUrls",
           "lanDiscoveryEnabled",
+          "dlnaEnabled",
           "trustedProxies",
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
@@ -26276,6 +26299,9 @@
               "customCertificatePath": {
                 "type": "string"
               },
+              "dlnaEnabled": {
+                "type": "boolean"
+              },
               "lanDiscoveryEnabled": {
                 "type": "boolean"
               },
@@ -26324,6 +26350,7 @@
               "lanNetworks",
               "accessUrls",
               "lanDiscoveryEnabled",
+              "dlnaEnabled",
               "trustedProxies",
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
@@ -26638,6 +26665,9 @@
                   "directStreamRemux": {
                     "type": "boolean"
                   },
+                  "dlnaEnabled": {
+                    "type": "boolean"
+                  },
                   "ffmpegPath": {
                     "type": "string"
                   },
@@ -26869,6 +26899,7 @@
                   "lanNetworks",
                   "accessUrls",
                   "lanDiscoveryEnabled",
+                  "dlnaEnabled",
                   "trustedProxies",
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
@@ -26975,6 +27006,9 @@
                   "directStreamRemux": {
                     "type": "boolean"
                   },
+                  "dlnaEnabled": {
+                    "type": "boolean"
+                  },
                   "ffmpegPath": {
                     "type": "string"
                   },
@@ -27206,6 +27240,7 @@
                   "lanNetworks",
                   "accessUrls",
                   "lanDiscoveryEnabled",
+                  "dlnaEnabled",
                   "trustedProxies",
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
@@ -125234,6 +125269,9 @@
                     "customCertificatePath": {
                       "type": "string"
                     },
+                    "dlnaEnabled": {
+                      "type": "boolean"
+                    },
                     "lanDiscoveryEnabled": {
                       "type": "boolean"
                     },
@@ -125282,6 +125320,7 @@
                     "lanNetworks",
                     "accessUrls",
                     "lanDiscoveryEnabled",
+                    "dlnaEnabled",
                     "trustedProxies",
                     "uploadCapacityKbps",
                     "pausedSessionTimeoutMinutes",
@@ -125372,6 +125411,9 @@
                   "customCertificatePath": {
                     "type": "string"
                   },
+                  "dlnaEnabled": {
+                    "type": "boolean"
+                  },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -125456,6 +125498,9 @@
                     "customCertificatePath": {
                       "type": "string"
                     },
+                    "dlnaEnabled": {
+                      "type": "boolean"
+                    },
                     "lanDiscoveryEnabled": {
                       "type": "boolean"
                     },
@@ -125504,6 +125549,7 @@
                     "lanNetworks",
                     "accessUrls",
                     "lanDiscoveryEnabled",
+                    "dlnaEnabled",
                     "trustedProxies",
                     "uploadCapacityKbps",
                     "pausedSessionTimeoutMinutes",
@@ -125721,6 +125767,9 @@
                         "customCertificatePath": {
                           "type": "string"
                         },
+                        "dlnaEnabled": {
+                          "type": "boolean"
+                        },
                         "lanDiscoveryEnabled": {
                           "type": "boolean"
                         },
@@ -125769,6 +125818,7 @@
                         "lanNetworks",
                         "accessUrls",
                         "lanDiscoveryEnabled",
+                        "dlnaEnabled",
                         "trustedProxies",
                         "uploadCapacityKbps",
                         "pausedSessionTimeoutMinutes",
@@ -129174,6 +129224,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "dlnaEnabled": {
+                              "type": "boolean"
+                            },
                             "ffmpegPath": {
                               "type": "string"
                             },
@@ -129405,6 +129458,7 @@
                             "lanNetworks",
                             "accessUrls",
                             "lanDiscoveryEnabled",
+                            "dlnaEnabled",
                             "trustedProxies",
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
@@ -129511,6 +129565,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "dlnaEnabled": {
+                              "type": "boolean"
+                            },
                             "ffmpegPath": {
                               "type": "string"
                             },
@@ -129742,6 +129799,7 @@
                             "lanNetworks",
                             "accessUrls",
                             "lanDiscoveryEnabled",
+                            "dlnaEnabled",
                             "trustedProxies",
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
@@ -129921,6 +129979,9 @@
                         "type": "integer"
                       },
                       "directStreamRemux": {
+                        "type": "boolean"
+                      },
+                      "dlnaEnabled": {
                         "type": "boolean"
                       },
                       "ffmpegPath": {
@@ -130154,6 +130215,7 @@
                       "lanNetworks",
                       "accessUrls",
                       "lanDiscoveryEnabled",
+                      "dlnaEnabled",
                       "trustedProxies",
                       "uploadCapacityKbps",
                       "pausedSessionTimeoutMinutes",
@@ -130250,6 +130312,9 @@
                               "type": "integer"
                             },
                             "directStreamRemux": {
+                              "type": "boolean"
+                            },
+                            "dlnaEnabled": {
                               "type": "boolean"
                             },
                             "ffmpegPath": {
@@ -130483,6 +130548,7 @@
                             "lanNetworks",
                             "accessUrls",
                             "lanDiscoveryEnabled",
+                            "dlnaEnabled",
                             "trustedProxies",
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
@@ -130589,6 +130655,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "dlnaEnabled": {
+                              "type": "boolean"
+                            },
                             "ffmpegPath": {
                               "type": "string"
                             },
@@ -130820,6 +130889,7 @@
                             "lanNetworks",
                             "accessUrls",
                             "lanDiscoveryEnabled",
+                            "dlnaEnabled",
                             "trustedProxies",
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",

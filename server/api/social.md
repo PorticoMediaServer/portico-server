@@ -485,7 +485,7 @@ somewhere else. Its only external resource is Google's Cast receiver framework
 script; it fetches media, credentials and progress exclusively from the Portico
 server that served it.
 
-## 5. What this server does not do
+## 5. What this server does not do, and DLNA
 
 **AirPlay is client-only. No server work exists for it, by design.** AirPlay uses
 the originating-player model: the system route picker moves audio and video, and
@@ -496,22 +496,41 @@ Backgrounding is not Stop; route loss is a recoverable pause, not a terminal
 state. If a future AirPlay target ever runs a first-party Portico receiver with
 its own credentials, it follows §3 above rather than this model.
 
-**DLNA is a deliberate omission.** It is not in the sharing and social playback
-contract, and it is not implemented here. That is a choice, not an oversight, and
-these are the reasons:
+**DLNA is one owner switch, not part of the playback contract.** `dlnaEnabled`
+(a connectivity setting, off by default, applied on save) turns on a small UPnP
+MediaServer so TVs, consoles and other DLNA players on the home network can
+browse and play everything on this server. It is deliberately simple:
 
-* DLNA/UPnP has no viewer identity. A renderer on the LAN is anonymous, so there
-  is no profile to scope a library to, no progress owner and no per-viewer
-  visibility — the three things every other surface in this document is built on.
-  A DLNA path would need a parallel, weaker authorization model beside the one
-  the rest of the server enforces.
-* It has no readiness or commit step, so the two-phase guarantee in §3 cannot be
-  offered. A DLNA `SetAVTransportURI` is a hope, not a handoff.
-* It requires an unauthenticated, long-lived media URL on the LAN. Every other
-  media path here is a short-lived grant bound to a session.
-* It is progressive-download only in practice, which means no adaptive delivery,
-  no subtitle selection and no quality ladder.
+* **No viewer.** DLNA has no identity, so there is no sign-in, no profile, no
+  progress, and no library, rating or restriction filter. When the switch is on,
+  every library and every playable file is browsable and playable. That is the
+  owner's choice, made once, for the whole home network.
+* **Home network only.** Every `/dlna/` request is refused unless the switch is
+  on (404) and the socket peer is inside the owner's `lanNetworks` (403). A
+  request carrying forwarding headers (`Forwarded`, `X-Forwarded-For`,
+  `X-Real-IP` and similar) is refused even from a home address, because a proxy
+  can relay a remote client. A file that is streaming re-checks both every few
+  seconds, so switching DLNA off ends streams already under way. SSDP sockets are
+  opened only on interfaces with an address inside the home networks, use the
+  default multicast TTL of one, and answer searches only from home addresses,
+  with a server-wide answer budget.
+* **Originals only.** Media is served at `/dlna/media/{token}` by the file's opaque
+  catalogue token, never by path, and only while the file belongs to a live title
+  in a live library. Range and HEAD are supported; there is no conversion,
+  subtitle selection or quality ladder. Remote (`.strm`) sources are not listed.
+* **No callbacks.** `SUBSCRIBE` is acknowledged so strict players carry on, but no
+  event is ever sent: the server makes no request to a player-supplied
+  `CALLBACK` (CallStranger, CVE-2020-12695). SOAP bodies are bounded to 16 KiB.
 
-If DLNA is ever added it belongs behind an explicit server-owner opt-in, scoped
-to named libraries, with its own documented authorization model — not as an
-extension of the endpoints above.
+| Path | What it is |
+| --- | --- |
+| `GET /dlna/device.xml` | Device description: `MediaServer:1`, friendly name = server name, UDN derived from the server's persisted identity. |
+| `GET /dlna/scpd/{cds,cms,mrr}.xml` | ContentDirectory:1, ConnectionManager:1 and `X_MS_MediaReceiverRegistrar:1` descriptions. |
+| `POST /dlna/control/{cds,cms,mrr}` | SOAP control. ContentDirectory: `Browse` (metadata and direct children, paged, at most 500 per answer), empty search and sort capabilities, `GetSystemUpdateID`. ConnectionManager: protocol info and the single connection `0`. Registrar: `IsAuthorized`/`IsValidated` answer 1. |
+| `SUBSCRIBE`/`UNSUBSCRIBE /dlna/event/*` | Acknowledged, never called back. |
+| `GET`/`HEAD /dlna/media/{token}` | The original file, with `contentFeatures.dlna.org` and `transferMode.dlna.org`. Runs in the media-body admission lane. |
+| `GET /dlna/art/{entityId}` | 400-pixel display artwork for `upnp:albumArtURI`. |
+
+The tree is the root, one folder per library, then each library's natural
+hierarchy: films A–Z; shows, seasons, episodes; artists, albums, tracks;
+audiobook authors, books, parts (books with no author sit at the library level).

@@ -124,6 +124,7 @@ func Registry() []Field {
 		field("customCertificateKeyPath", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener", "Path to the PEM private key for the custom certificate."),
 		field("customCertificateDomain", "connectivity", "string", "", nil, nil, nil, "hot", "TLS listener and route publication", "The domain the custom certificate serves. It is published to members as an access URL on the remote access port."),
 		field("lanDiscoveryEnabled", "connectivity", "boolean", true, nil, nil, nil, "hot", "LAN discovery advertisement", "Advertise this server on the local network with mDNS/Bonjour. The connectivity status report says whether this host can."),
+		field("dlnaEnabled", "connectivity", "boolean", false, nil, nil, nil, "hot", "DLNA server", "Let DLNA players on the home networks browse and play every library without signing in. Off by default; never offered outside the home networks."),
 		field("deviceApprovalRequired", "access", "boolean", false, nil, nil, nil, "next-operation", "identity device registration", "Hold each new device until the owner or an administrator approves it. The owner's own devices are never held. Devices already in use stay approved."),
 		field("apiRequestsPerMinute", "access", "integer", 0, bounded(0), bounded(100000), nil, "hot", "API key and access token admission", "How many requests one API key or personal access token may make each minute. 0 uses the default of 600."),
 		field("blockMemberAccessTokens", "access", "boolean", false, nil, nil, nil, "next-operation", "personal access token creation", "Stop members creating personal access tokens. Tokens that already exist keep working until they are revoked."),
@@ -199,6 +200,10 @@ type Settings struct {
 	LANNetworks            []string `json:"lanNetworks"`
 	AccessURLs             []string `json:"accessUrls"`
 	LANDiscoveryEnabled    bool     `json:"lanDiscoveryEnabled"`
+	// DLNAEnabled is the owner's one DLNA switch: anonymous browsing and
+	// playback of everything, for players on the home networks only. Off is
+	// the zero value, so a document saved before the field existed reads off.
+	DLNAEnabled bool `json:"dlnaEnabled"`
 	// Network parity with the usual self-hosted servers (25 Sep): proxies that
 	// may speak for the client address, the server's own public address counted
 	// as the LAN, the owner's upload capacity (the remote stream budget), the

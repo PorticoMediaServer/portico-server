@@ -225,6 +225,7 @@ correctly instead of silently overwriting each other.
 | `connectionLimit` | Ordinary connection ceiling, 0 for the memory-based default. Restart to apply; console/sign-in connections have a separate reserve. |
 | `accessUrls` | Additional HTTP or HTTPS origins; no paths. Hosted publication filters to HTTPS. |
 | `lanDiscoveryEnabled` | mDNS/Bonjour advertisement, applied immediately on save. |
+| `dlnaEnabled` | The DLNA server (see [social.md §5](social.md#5-what-this-server-does-not-do-and-dlna)). Off by default; on and off apply immediately on save, including SSDP advertisement and goodbye. |
 
 ### LAN discovery
 

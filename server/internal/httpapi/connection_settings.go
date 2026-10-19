@@ -28,6 +28,9 @@ func (d Dependencies) applyLiveSettings(ctx context.Context) error {
 	if d.Access.Advertiser != nil {
 		d.Access.Advertiser.Apply(current.Effective.LANDiscoveryEnabled)
 	}
+	if d.Access.DLNA != nil {
+		d.Access.DLNA.Apply(current.Effective.DLNAEnabled)
+	}
 	if d.SettingsApplied != nil {
 		d.SettingsApplied(ctx)
 	}

@@ -3659,6 +3659,9 @@ export const schemas = {
       "customCertificatePath": {
         "type": "string"
       },
+      "dlnaEnabled": {
+        "type": "boolean"
+      },
       "expectedRevision": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
@@ -3735,6 +3738,9 @@ export const schemas = {
       "customCertificatePath": {
         "type": "string"
       },
+      "dlnaEnabled": {
+        "type": "boolean"
+      },
       "lanDiscoveryEnabled": {
         "type": "boolean"
       },
@@ -3783,6 +3789,7 @@ export const schemas = {
       "lanNetworks",
       "accessUrls",
       "lanDiscoveryEnabled",
+      "dlnaEnabled",
       "trustedProxies",
       "uploadCapacityKbps",
       "pausedSessionTimeoutMinutes",
@@ -3858,6 +3865,9 @@ export const schemas = {
             "type": "integer"
           },
           "directStreamRemux": {
+            "type": "boolean"
+          },
+          "dlnaEnabled": {
             "type": "boolean"
           },
           "ffmpegPath": {
@@ -4079,6 +4089,7 @@ export const schemas = {
           "lanNetworks",
           "accessUrls",
           "lanDiscoveryEnabled",
+          "dlnaEnabled",
           "trustedProxies",
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
@@ -4167,6 +4178,9 @@ export const schemas = {
                 "type": "integer"
               },
               "directStreamRemux": {
+                "type": "boolean"
+              },
+              "dlnaEnabled": {
                 "type": "boolean"
               },
               "ffmpegPath": {
@@ -4388,6 +4402,7 @@ export const schemas = {
               "lanNetworks",
               "accessUrls",
               "lanDiscoveryEnabled",
+              "dlnaEnabled",
               "trustedProxies",
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
@@ -4494,6 +4509,9 @@ export const schemas = {
               "directStreamRemux": {
                 "type": "boolean"
               },
+              "dlnaEnabled": {
+                "type": "boolean"
+              },
               "ffmpegPath": {
                 "type": "string"
               },
@@ -4713,6 +4731,7 @@ export const schemas = {
               "lanNetworks",
               "accessUrls",
               "lanDiscoveryEnabled",
+              "dlnaEnabled",
               "trustedProxies",
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
@@ -24601,6 +24620,9 @@ export const schemas = {
       "customCertificatePath": {
         "type": "string"
       },
+      "dlnaEnabled": {
+        "type": "boolean"
+      },
       "lanDiscoveryEnabled": {
         "type": "boolean"
       },
@@ -24649,6 +24671,7 @@ export const schemas = {
       "lanNetworks",
       "accessUrls",
       "lanDiscoveryEnabled",
+      "dlnaEnabled",
       "trustedProxies",
       "uploadCapacityKbps",
       "pausedSessionTimeoutMinutes",
@@ -24811,6 +24834,9 @@ export const schemas = {
           "customCertificatePath": {
             "type": "string"
           },
+          "dlnaEnabled": {
+            "type": "boolean"
+          },
           "lanDiscoveryEnabled": {
             "type": "boolean"
           },
@@ -24859,6 +24885,7 @@ export const schemas = {
           "lanNetworks",
           "accessUrls",
           "lanDiscoveryEnabled",
+          "dlnaEnabled",
           "trustedProxies",
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
@@ -25171,6 +25198,9 @@ export const schemas = {
               "directStreamRemux": {
                 "type": "boolean"
               },
+              "dlnaEnabled": {
+                "type": "boolean"
+              },
               "ffmpegPath": {
                 "type": "string"
               },
@@ -25390,6 +25420,7 @@ export const schemas = {
               "lanNetworks",
               "accessUrls",
               "lanDiscoveryEnabled",
+              "dlnaEnabled",
               "trustedProxies",
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
@@ -25496,6 +25527,9 @@ export const schemas = {
               "directStreamRemux": {
                 "type": "boolean"
               },
+              "dlnaEnabled": {
+                "type": "boolean"
+              },
               "ffmpegPath": {
                 "type": "string"
               },
@@ -25715,6 +25749,7 @@ export const schemas = {
               "lanNetworks",
               "accessUrls",
               "lanDiscoveryEnabled",
+              "dlnaEnabled",
               "trustedProxies",
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",

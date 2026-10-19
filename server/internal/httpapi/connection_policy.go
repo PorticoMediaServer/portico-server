@@ -32,6 +32,8 @@ type connectionSettingValue struct {
 	// remoteSignIn is the owner's choice for sign-in from outside the home
 	// network: one of the identity.RemoteSignIn* values.
 	remoteSignIn string
+	// dlna is the owner's DLNA switch (dlna_routes.go).
+	dlna bool
 }
 
 // set installs a settings document as the live policy. Receipts and
@@ -56,7 +58,7 @@ func (c *connectionPolicyCache) setLocked(document operations.SettingsDocument) 
 		urls = append(urls, document.Effective.AdvertiseURL)
 	}
 	urls = append(urls, document.Effective.AccessURLs...)
-	c.setting.Store(&connectionSettingValue{revision: document.Revision, locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: document.Effective.CustomCertificateDomain, apiPerMinute: document.Effective.APIRequestsPerMinute, remoteSignIn: remoteSignInPolicy(document.Effective.RemoteSignInPolicy)})
+	c.setting.Store(&connectionSettingValue{revision: document.Revision, locality: newLocalityPolicy(document.Effective), accessURLs: urls, certificateDomain: document.Effective.CustomCertificateDomain, apiPerMinute: document.Effective.APIRequestsPerMinute, remoteSignIn: remoteSignInPolicy(document.Effective.RemoteSignInPolicy), dlna: document.Effective.DLNAEnabled})
 }
 
 // remoteSignInPolicy reads the stored choice. An empty value is the default,

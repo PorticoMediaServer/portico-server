@@ -24,7 +24,9 @@ import (
 	"portico.local/server/internal/childprocess"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/dlna"
 	"portico.local/server/internal/enrichment"
+	"runtime"
 
 	"portico.local/server/internal/decoder"
 	"portico.local/server/internal/downloads"
@@ -1213,27 +1215,37 @@ func run() (runErr error) {
 		drain.add("remote-network", stopNetwork, networkDone)
 	}
 	if env("PORTICO_DISCOVERY", "1") != "0" {
+		homeNetworks := func(ctx context.Context) []netip.Prefix {
+			document, err := console.Settings(ctx, operations.AllowServerScope)
+			if err != nil {
+				return nil
+			}
+			var networks []netip.Prefix
+			for _, raw := range document.Effective.LANNetworks {
+				if p, ok := operations.ParseNetwork(raw); ok {
+					networks = append(networks, p)
+				}
+			}
+			return networks
+		}
 		administration.Advertiser.Bind(ctx, func(life context.Context) {
 			discovery := networking.NewDiscovery(claimKeys, claimRunner, ident.Name)
-			discovery.SetHomeNetworks(func(ctx context.Context) []netip.Prefix {
-				document, err := console.Settings(ctx, operations.AllowServerScope)
-				if err != nil {
-					return nil
-				}
-				var networks []netip.Prefix
-				for _, raw := range document.Effective.LANNetworks {
-					if p, ok := operations.ParseNetwork(raw); ok {
-						networks = append(networks, p)
-					}
-				}
-				return networks
-			})
+			discovery.SetHomeNetworks(homeNetworks)
 			discovery.Run(life, listener.Addr().String())
 		})
 		discoveryDone := make(chan struct{})
 		drain.add("discovery", func() {
 			supervise.Go("cmd.discovery.stop", func() { administration.Advertiser.Close(); close(discoveryDone) })
 		}, discoveryDone)
+		// SSDP for the DLNA server; the owner's switch starts and stops it.
+		administration.DLNA.Bind(ctx, func(life context.Context) {
+			dlna.Advertise(life, dlna.Advertisement{Bind: listener.Addr().String(), UUID: dlna.DeviceUUID(ident.ID()),
+				Server: runtime.GOOS + "/1.0 UPnP/1.0 Portico/" + buildinfo.Info()["version"], Home: homeNetworks})
+		})
+		dlnaDone := make(chan struct{})
+		drain.add("dlna", func() {
+			supervise.Go("cmd.dlna.stop", func() { administration.DLNA.Close(); close(dlnaDone) })
+		}, dlnaDone)
 	}
 
 	log.Printf("Ordinary connection ceiling set to %d, plus 32 reserved for the console (HTTP/2 streams per connection: %d)", connectionLimit, server.HTTP2.MaxConcurrentStreams)

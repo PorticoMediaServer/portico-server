@@ -648,4 +648,5 @@ var routeLanes = map[string]string{
 	"/":                                                                          "default",
 	"/dlna/":                                                                     "default",
 	"GET /receiver/cast/":                                                        "default",
+	"/dlna/media/":                                                               "media-body",
 }

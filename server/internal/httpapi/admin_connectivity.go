@@ -27,6 +27,7 @@ type ConnectivityChange struct {
 	LANNetworks      *[]string `json:"lanNetworks,omitempty"`
 	AccessURLs       *[]string `json:"accessUrls,omitempty"`
 	LANDiscovery     *bool     `json:"lanDiscoveryEnabled,omitempty"`
+	DLNA             *bool     `json:"dlnaEnabled,omitempty"`
 	TrustedProxies   *[]string `json:"trustedProxies,omitempty"`
 	UploadCapacity   *int      `json:"uploadCapacityKbps,omitempty"`
 	PausedTimeout    *int      `json:"pausedSessionTimeoutMinutes,omitempty"`
@@ -58,6 +59,9 @@ func (d Dependencies) changeConnectivity(r *http.Request, body ConnectivityChang
 		}
 		if body.LANDiscovery != nil {
 			v.LANDiscoveryEnabled = *body.LANDiscovery
+		}
+		if body.DLNA != nil {
+			v.DLNAEnabled = *body.DLNA
 		}
 		if body.TrustedProxies != nil {
 			v.TrustedProxies = *body.TrustedProxies

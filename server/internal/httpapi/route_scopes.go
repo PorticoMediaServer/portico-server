@@ -10,5 +10,6 @@ var routeScopes = map[string]apikit.Scope{
 	"PUT ":                apikit.ScopeOpen,
 	"/":                   apikit.ScopeOpen,
 	"/dlna/":              apikit.ScopeOpen,
+	"/dlna/media/":        apikit.ScopeOpen,
 	"GET /receiver/cast/": apikit.ScopeOpen,
 }

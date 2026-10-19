@@ -796,6 +796,7 @@ func New(d Dependencies) http.Handler {
 		add(d, mux)
 	}
 	d.installationRoutes(mux)
+	d.dlnaRoutes(mux)
 	d.foundationRoutes(mux)
 	d.consoleRoutes(mux)
 	d.directIdentityRoutes(mux)
