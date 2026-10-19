@@ -2,7 +2,7 @@ import {encodedRoutePath, routePattern} from "../../contracts/src/routes.ts";
 import {enUS,type MessageId} from '../../i18n/src/index.ts';
 import {unreadableServerResponse} from './server-messages.ts';
 import {keepReadable} from './tolerant.ts';
-import {serviceText} from './presentation/service-text.ts';
+import {serviceI18n, serviceText} from './presentation/service-text.ts';
 import type {LibraryContentApi} from './library-content.ts';
 
 export type SubtitleFormat='srt'|'vtt'|'ass'|'ssa'|'pgs'|'sup'|'vobsub'|'idx'|'dvb'|'smi'|'sami'|'ttml'|'dfxp';
@@ -140,6 +140,20 @@ export async function readSubtitleDocument(response:Response,signal:AbortSignal)
  try{while(!signal.aborted){const {done,value}=await reader.read();if(done)break;total+=value.length;if(total>max)invalid();chunks.push(value);}if(signal.aborted)throw new Error('Subtitle request cancelled.');const bytes=new Uint8Array(total);let offset=0;for(const chunk of chunks){bytes.set(chunk,offset);offset+=chunk.length;}return validateSubtitleDocument(JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes)));}
  finally{signal.removeEventListener('abort',abort);void reader.cancel().catch(()=>{});reader.releaseLock();}
 }
+const providerMessages:Readonly<Record<string,MessageId>>={subtitle_provider_not_configured:'subtitles.error.providerNotConfigured',subtitle_provider_key_rejected:'subtitles.error.providerKeyRejected',subtitle_provider_sign_in_failed:'subtitles.error.providerSignInFailed',subtitle_provider_sign_in_required:'subtitles.error.providerSignInRequired',subtitle_provider_busy:'subtitles.error.providerBusy'};
+/** OpenSubtitles' refusals, by the server's code: who can fix it, and for a used-up quota, when it resets.
+ * Only a pause OpenSubtitles asked for is worth retrying from the player. */
+export function providerProblem(e:unknown,now=Date.now()):Readonly<{text:string;canRetry:boolean}>|undefined{
+ const problem=e as {code?:unknown;retryAfterSeconds?:unknown}|null;const code=typeof problem?.code==='string'?problem.code:'';
+ if(code==='subtitle_provider_quota'){
+  const wait=typeof problem?.retryAfterSeconds==='number'&&problem.retryAfterSeconds>0&&problem.retryAfterSeconds<=172800?problem.retryAfterSeconds:0;
+  if(!wait)return Object.freeze({text:serviceText('subtitles.error.providerQuotaLater'),canRetry:false});
+  const at=now+wait*1000,i18n=serviceI18n();
+  return Object.freeze({text:serviceText('subtitles.error.providerQuota',{time:wait<20*3600?i18n.time(at):i18n.dateTime(at)}),canRetry:false});
+ }
+ const id=providerMessages[code];
+ return id?Object.freeze({text:serviceText(id),canRetry:code==='subtitle_provider_busy'}):undefined;
+}
 export function subtitleReason(reason?:string,translate:(id:MessageId)=>string=id=>enUS[id]):string{
  const key:Record<string,MessageId>={provider_not_configured:'player.subtitleReason.provider',provider_sign_in_failed:'player.subtitleReason.signIn',unsupported_format:'player.subtitleReason.format',unsupported_text_features:'player.subtitleReason.text',extraction_unavailable:'player.subtitleReason.extraction',source_changed:'player.subtitleReason.changed',source_unavailable:'player.subtitleReason.source',ambiguous_association:'player.subtitleReason.association',unsupported_timing:'player.subtitleReason.timing',capacity:'player.subtitleReason.capacity'};
  return translate(key[reason??'']??'player.subtitleReason.unavailable');
@@ -188,6 +202,8 @@ export class SubtitleService {
   const denied=problem.status===401||problem.status===403,conflict=problem.status===409;
   const invalidInput=problem.status===400||problem.status===422,missing=problem.status===404;
   const invalidData=problem.code==='invalid_subtitles';
+  const provider=providerProblem(e);
+  if(provider){this.publish({error:provider.text,canRetry:provider.canRetry});if(!provider.canRetry)this.retryOperation=undefined;return;}
   const canRetry=!denied&&!conflict&&!invalidInput&&!missing&&!invalidData;
   this.publish({error:denied?serviceText('subtitles.error.denied'):conflict?serviceText('subtitles.error.changed'):invalidInput?serviceText('subtitles.error.invalidInput'):missing?serviceText('subtitles.error.missing'):invalidData?unreadableServerResponse:serviceText('subtitles.error.failed'),canRetry,suppressed:denied||invalidData||!this.state.plan,...(denied?{catalog:null,plan:null,candidates:[]}: {})});
   if(!canRetry)this.retryOperation=undefined;

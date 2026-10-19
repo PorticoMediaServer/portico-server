@@ -69,6 +69,57 @@ Audiobooks/Author/Book/Chapter 01.m4b
 Keep album/book files together. Embedded book chapters and separate chapter
 files are distinct inputs; do not rename every track to the book title.
 
+### Audiobook folders
+
+Folders are read the way Audiobookshelf reads them, so a library arranged for
+it works unchanged:
+
+```text
+Audiobooks/Author/Title/…
+Audiobooks/Author/Series/Book 1 - Title/…      (also "1. Title", "01 - Title",
+Audiobooks/Author/Series/Title - Vol. 2/…       "Volume 3 - Title")
+Audiobooks/Author/1999 - Title {Narrator}/…    (or "(1999) - Title")
+Audiobooks/Author/Title [B0015T963C]/Disc 1/…  (an ASIN; "Disc 1", "CD2" or
+Audiobooks/Author/Title (Series #3)/…           "Part 3" alone is a disc)
+```
+
+`Title (Series #3)` is Portico's own addition, used when there is no series
+folder. A series folder counts only with an author folder above it, and a number at
+the start of a title is a place in the series only when there is a series
+("101 Dalmatians" stays the title). A folder such as `Vol. 2 - Title` is a book,
+not a disc. Folder evidence is the weakest: it fills only what tags and
+sidecars leave empty. Author, narrator and ASIN come from folders only for
+files with no album tag, so a tagged book never changes identity because of a
+folder name.
+
+### Audiobook sidecars
+
+Next to a book's files, Portico reads (later ones win where they say
+something):
+
+1. the files' embedded tags (title, author, narrator, series and position,
+   ISBN/ASIN, chapters);
+2. `desc.txt` (the description) and `reader.txt` (narrators, one per line or
+   separated by `;` or `&`);
+3. `metadata.opf`, then `<file>.opf` (EPUB/Calibre OPF);
+4. `book.nfo`, then `<file>.nfo`;
+5. `metadata.json`, Audiobookshelf's book file (title, authors, narrators,
+   series such as `"Saga #2"`, genres, published year or date, publisher,
+   description, ISBN, ASIN, language and chapters; its subtitle, tags,
+   explicit and abridged flags are not used);
+6. `<file>.portico.json`, Portico's own per-file sidecar.
+
+Text sidecars and cue sheets may be UTF-8 (with or without a byte-order mark),
+UTF-16 with a byte-order mark, or Latin-1/Windows-1252.
+
+Chapters come from, strongest first: a cue sheet named after the file
+(`Title.cue` beside `Title.m4b`) or after its folder; then `metadata.json`'s
+chapters when they span exactly that file (a single-file book); then the
+file's embedded chapters. A cue sheet's `FILE` entries map its tracks to each
+file, so one sheet can describe a multi-file book; `INDEX 01` (or `INDEX 00`)
+times are read as mm:ss:ff. Edits an owner makes to a book stay above every
+local source.
+
 ## Ignore files
 
 Dot-prefixed entries, system/recycle folders, `.grab` entries, sample folders
@@ -97,7 +148,8 @@ A library's Metadata tab chooses its provider and language. TMDB is the default
 for film, TV and anime; the registry also offers TheTVDB for film/TV/anime and
 AniList for anime. Music uses MusicBrainz. Audiobook metadata is local in the current provider registry. Choose
 local metadata only (`metadataAgent: "local"`) to use filenames, embedded tags,
-NFO files and local artwork without online matching. The available choices are
+NFO, OPF, Audiobookshelf and cue sidecars and local artwork without online
+matching. The available choices are
 published by `GET /v1/library-kinds/{kind}/metadata-agents`; use the server's list in an API client.
 Owner-supplied TMDB/TheTVDB credentials are server-wide Metadata settings.
 

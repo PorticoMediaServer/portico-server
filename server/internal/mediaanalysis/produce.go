@@ -216,41 +216,6 @@ func (s *Service) produce(ctx context.Context, b binding, stage string, input In
 			break
 		}
 		out.Summary = trickplaySummary{TrickplayDescriptor: geometry.descriptor(count, spec.IntervalUS, b.DurationUS), Sampled: true}
-	case "segment_detection":
-		chapters, e := s.chapters(ctx, b.AssetID)
-		if e != nil {
-			return out, e
-		}
-		out.Markers = chapterCandidates(chapters, b.DurationUS)
-		signals := []sceneSignal{}
-		if b.VideoCodec != "" {
-			spec.Kind = "scenes"
-			spec.IntervalUS = max(int64(1000000), (b.DurationUS+65534)/65535)
-			spec.MaxFrames = 65536
-			err = decode(ctx, key, spec, func(r io.Reader) error {
-				frame := make([]byte, 32*18)
-				for {
-					_, e := io.ReadFull(r, frame)
-					if e == io.EOF {
-						return nil
-					}
-					if e != nil {
-						return e
-					}
-					if len(signals) >= spec.MaxFrames {
-						return ErrBudget
-					}
-					signals = append(signals, measureScene(frame))
-				}
-			})
-			if err == nil {
-				out.Markers = append(out.Markers, detectSegments(signals, spec.IntervalUS, b.DurationUS)...)
-			}
-		}
-		if len(out.Markers) > 512 {
-			return out, ErrBudget
-		}
-		out.Summary = map[string]any{"detector": "chapter-label-and-luminance-v1", "candidateCount": len(out.Markers), "sampledFrames": len(signals), "sampleIntervalUS": fmt.Sprint(spec.IntervalUS), "automaticSkip": false, "accuracy": "heuristic; owner review required"}
 	default:
 		return out, ErrUnsupported
 	}

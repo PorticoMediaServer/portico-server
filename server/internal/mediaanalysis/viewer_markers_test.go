@@ -40,7 +40,9 @@ func viewerMarkerDB(t *testing.T) viewerMarkerFixtureState {
 		deleted    int
 	}{
 		{"approved-intro", "intro", 5000000, 35000000, .3, "luminance_opening_boundary:v1", 1, 0},
-		{"measured-credits", "credits", 100000000, 120000000, .9, "sustained_end_title_luminance:v1", 0, 0},
+		{"measured-credits", "credits", 100000000, 120000000, .9, "season_audio_match:credits:v1", 0, 0},
+		{"picture-credits", "credits", 101000000, 120000000, .65, "visual_credits:v1", 0, 0},
+		{"single-file-guess", "intro", 200000000, 230000000, .97, "sustained_end_title_luminance:v1", 0, 0},
 		{"weak-commercial", "commercial", 40000000, 50000000, .25, "paired_black_boundaries_semantic_ambiguous:v1", 0, 0},
 		{"titled-recap", "recap", 0, 4000000, .85, "embedded_chapter_label:v1", 0, 0},
 		{"dismissed-outro", "outro", 60000000, 70000000, 1, "sustained_end_title_luminance:v1", 1, 1},
@@ -70,8 +72,11 @@ func TestViewerMarkersProjectSkipDecisionAndHideDismissedAndOwnerKinds(t *testin
 	for _, m := range set.Markers {
 		safe[m.ID] = m.AutomaticSafe
 	}
-	if len(set.Markers) != 3 {
+	if len(set.Markers) != 4 {
 		t.Fatalf("projected markers=%+v", set.Markers)
+	}
+	if _, ok := safe["picture-credits"]; ok {
+		t.Fatal("a single-file guess overlapping a measurement of the same credits made a second button")
 	}
 	if _, ok := safe["dismissed-outro"]; ok {
 		t.Fatal("a dismissed marker reached the viewer path")
@@ -82,7 +87,7 @@ func TestViewerMarkersProjectSkipDecisionAndHideDismissedAndOwnerKinds(t *testin
 	if _, ok := safe["weak-commercial"]; ok {
 		t.Fatal("an unreviewed scene guess reached the viewer")
 	}
-	for id, want := range map[string]bool{"approved-intro": true, "measured-credits": true, "titled-recap": false} {
+	for id, want := range map[string]bool{"approved-intro": true, "measured-credits": true, "titled-recap": false, "single-file-guess": false} {
 		if got, ok := safe[id]; !ok || got != want {
 			t.Fatalf("%s automaticSafe=%v present=%v want %v", id, got, ok, want)
 		}
@@ -138,5 +143,26 @@ func TestViewerMarkersFollowSourceSelectionAndClockRefusals(t *testing.T) {
 	}
 	if len(set.Markers) != 0 {
 		t.Fatalf("markers survived a changed source binding: %+v", set.Markers)
+	}
+}
+
+func TestViewerMarkersKeepOnlyOwnerMarkersWhenDetectionIsOff(t *testing.T) {
+	f := viewerMarkerDB(t)
+	before, err := ViewerMarkers(context.Background(), f.db, viewerMarkerAccess(f.item), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = f.db.Exec(`INSERT INTO admin_documents(scope,revision,body,updated_ms) VALUES('library:library',1,'{"segmentDetection":"off"}',1)`); err != nil {
+		t.Fatal(err)
+	}
+	set, err := ViewerMarkers(context.Background(), f.db, viewerMarkerAccess(f.item), "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(set.Markers) != 1 || set.Markers[0].ID != "approved-intro" {
+		t.Fatalf("detections survived a library turning detection off: %+v", set.Markers)
+	}
+	if set.Revision == before.Revision {
+		t.Fatal("the marker set kept its revision when detection was turned off")
 	}
 }

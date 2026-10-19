@@ -111,7 +111,8 @@ export type SettingsCustomId =
   | 'server.logs' | 'server.detailWindow' | 'server.records' | 'server.capabilities' | 'server.supportExport' | 'server.feedback' | 'server.stateFolder'
   | 'server.identity' | 'server.updates' | 'server.restart' | 'server.clientReports'
   | 'server.setAsideTitles' | 'server.backgroundPause' | 'server.ffmpegStatus' | 'server.resourceUsage' | 'server.storageStatus' | 'server.downloadUsage'
-  | 'server.playbackProblems' | 'server.skippedParts';
+  | 'server.playbackProblems' | 'server.skippedParts'
+  | 'server.segments';
 
 type RowCopy = Readonly<{
   label: MessageId;
@@ -385,6 +386,14 @@ const serverPages: readonly AuthoredPage[] = [
   // What every library shares when it looks titles up: the owner's own provider keys and how much local artwork is kept.
   // Which provider a library uses is that library's own setting (Libraries › a library › Metadata).
   {id: 'metadata', title: 'settings.server.metadata', icon: 'image', platforms: ['web', 'phone'], sections: [panel('settings', 'server.metadataSettings', 'settings.server.metadata')]},
+  // Intro and credits detection: the server's mode on every owner client; its progress and the
+  // owner's review of what it found, by show and season, on the web.
+  {id: 'segments', title: 'settings.server.segments', icon: 'next', platforms: ['web', 'phone'], sections: [
+    {id: 'mode', rows: [
+      setting('runtime', 'library.segmentDetection', 'settings.server.segmentMode', {type: 'choice', choices: choices('settings.server.segmentMode', ['standard', 'thorough', 'off'])}, {help: 'settings.server.segmentModeHelp'}),
+    ]},
+    panel('review', 'server.segments', undefined, {platforms: ['web']}),
+  ]},
   {id: 'live', title: 'settings.server.live', icon: 'live', needs: c => c.liveTV !== false,
     tabs: [{id: 'sources', title: 'settings.server.liveSources'}, {id: 'recording', title: 'settings.server.recording'}, {id: 'channels', title: 'settings.server.libraryChannels'}],
     sections: [
@@ -511,6 +520,7 @@ const serverPages: readonly AuthoredPage[] = [
       custom('server.connection', 'settings.server.yourConnection'),
       setting('connectivity', 'lanNetworks', 'web.connectivity.homeNetworks', {type: 'lines', example: '192.168.2.0/24'}, {help: 'settings.server.homeNetworksHelp'}),
       on('connectivity', 'lanDiscoveryEnabled', 'web.connectivity.discovery', 'settings.server.discoveryHelp'),
+      on('connectivity', 'dlnaEnabled', 'settings.server.dlna', 'settings.server.dlnaHelp'),
       custom('server.addresses'),
     ]},
     {id: 'outside', title: 'web.connectivity.outside', description: 'web.connectivity.outsideLede', rows: [

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/mediaanalysis"
 	"sort"
 )
 
@@ -65,8 +66,6 @@ func AnalysisOperations() []AnalysisOperation {
 		{"trickplay", "Trickplay tiles", "decode", "Decodes evenly spaced frames into scrubbing tiles. Storage grows with interval and tile width.", video, false, []string{"probe"}, true, false},
 		{"chapter_images", "Chapter images", "decode", "Decodes one frame per chapter for the chapter list.", video, false, []string{"probe"}, true, false},
 		{"video_preview", "Video preview", "decode", "Encodes a short silent preview clip used when browsing.", video, false, []string{"probe"}, true, false},
-		{"segment_detection", "Intro and recap detection", "decode", "Suggests segments from chapter names and scene changes. Review uncertain suggestions before viewers can skip them.", []string{"show", "episode"}, false, []string{"probe"}, true, false},
-		{"credits_detection", "Credits detection", "decode", "Finds where the end credits begin so playback can offer the next episode.", video, false, []string{"probe"}, true, false},
 		{"subtitle_download", "Subtitle download", "network", "Asks the configured subtitle provider for tracks the file does not carry.", video, false, []string{"subtitle_discovery"}, true, true},
 		{"lyrics", "Lyrics", "network", "Fetches timed lyrics for tracks that have none.", []string{"music"}, false, []string{"probe"}, true, true},
 	}
@@ -155,6 +154,10 @@ type LibrarySettings struct {
 	Providers          []ProviderSelection              `json:"providers"`
 	Analysis           []string                         `json:"analysis"`
 	Navigation         GeneratedNavigation              `json:"navigation"`
+	// SegmentDetection is this library's intro and credits detection choice
+	// (mediaanalysis.SegmentLibraryChoices): "server" follows the server's
+	// mode; off, standard or thorough decide for this library alone.
+	SegmentDetection string `json:"segmentDetection"`
 }
 
 // ChapterThumbnailModes is the published choice list for chapter images.
@@ -176,6 +179,7 @@ func DefaultLibrarySettings() LibrarySettings {
 		Providers:          []ProviderSelection{},
 		Analysis:           enabled,
 		Navigation:         GeneratedNavigation{TrickplayIntervalMs: 10000, TrickplayTileWidth: 320, TrickplayMaxTiles: 400, ChapterThumbnailMode: "embedded", VideoPreviewEnabled: false, VideoPreviewMs: 30000},
+		SegmentDetection:   "server",
 	}
 }
 
@@ -186,6 +190,9 @@ func normalizeLibrarySettings(v *LibrarySettings) {
 	}
 	if v.Analysis == nil {
 		v.Analysis = []string{}
+	}
+	if v.SegmentDetection == "" {
+		v.SegmentDetection = "server"
 	}
 	sort.Strings(v.Analysis)
 	sort.Slice(v.Providers, func(i, j int) bool { return v.Providers[i].MediaKind < v.Providers[j].MediaKind })
@@ -269,6 +276,9 @@ func validateLibrarySettings(v *LibrarySettings) error {
 	if !oneOf(v.Navigation.ChapterThumbnailMode, ChapterThumbnailModes...) {
 		fields = append(fields, "settings.navigation.chapterThumbnailMode")
 	}
+	if !oneOf(v.SegmentDetection, mediaanalysis.SegmentLibraryChoices...) {
+		fields = append(fields, "settings.segmentDetection")
+	}
 	if len(fields) > 0 {
 		return invalid(fields...)
 	}
@@ -329,7 +339,7 @@ func libraryDefaults(context.Context, *sql.Tx) (LibrarySettings, error) {
 }
 
 func (s *Service) libraryDocument(ctx context.Context, tx *sql.Tx, id string) (LibraryDocument, error) {
-	out := LibraryDocument{LibraryID: id, Matrix: Matrix(), Modes: map[string][]string{"chapterThumbnailMode": ChapterThumbnailModes, "videoCompletion": {"earliest", "threshold", "credits"}}}
+	out := LibraryDocument{LibraryID: id, Matrix: Matrix(), Modes: map[string][]string{"chapterThumbnailMode": ChapterThumbnailModes, "videoCompletion": {"earliest", "threshold", "credits"}, "segmentDetection": mediaanalysis.SegmentLibraryChoices}}
 	name, kind, err := libraryExists(ctx, tx, id)
 	if err != nil {
 		return out, err

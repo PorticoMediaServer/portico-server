@@ -709,6 +709,42 @@ export const errors = [
     "retry": "never"
   },
   {
+    "code": "subtitle_provider_busy",
+    "status": 429,
+    "message": "OpenSubtitles asked for a pause. Try again shortly.",
+    "retry": "same_request"
+  },
+  {
+    "code": "subtitle_provider_key_rejected",
+    "status": 503,
+    "message": "OpenSubtitles did not accept this server's API key.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_provider_not_configured",
+    "status": 503,
+    "message": "Online subtitle search is not set up on this server.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_provider_quota",
+    "status": 429,
+    "message": "This server has used its OpenSubtitles downloads for today.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_provider_sign_in_failed",
+    "status": 503,
+    "message": "OpenSubtitles did not accept this server's account.",
+    "retry": "never"
+  },
+  {
+    "code": "subtitle_provider_sign_in_required",
+    "status": 503,
+    "message": "OpenSubtitles downloads need an account on this server.",
+    "retry": "never"
+  },
+  {
     "code": "subtitle_renderer_configuration",
     "status": 422,
     "message": "Ask the owner to finish setting up subtitle rendering.",

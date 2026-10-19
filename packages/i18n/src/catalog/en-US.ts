@@ -1858,6 +1858,7 @@ export const enUS = {
   'player.opt.versionChangeFailed': 'The version couldn’t be changed. Playback continues as it was.',
   'player.chapter.numbered': 'Chapter {number}',
   'player.skip': '{kind, select, intro {Skip intro} recap {Skip recap} credits {Skip credits} commercial {Skip ad} outro {Skip outro} other {Skip}}',
+  'player.skipped': '{kind, select, intro {Skipped intro} recap {Skipped recap} credits {Skipped credits} commercial {Skipped ad} outro {Skipped outro} other {Skipped}}',
   'player.post.stillWatching': 'Still watching?',
   'player.post.upNext': 'Up next',
   'player.post.pausedAfterEpisodes': 'Playback paused after several episodes. Confirm to keep going.',

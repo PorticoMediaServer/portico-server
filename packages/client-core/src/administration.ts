@@ -14,7 +14,10 @@ export type MetadataProvider=Readonly<{id:MetadataProviderId;name:string;mediaKi
 export type ProviderSelection=Readonly<{mediaKind:string;provider:MetadataProviderId;apiKeySet:boolean;language:string;region:string}>;
 export type ChapterThumbnailMode='none'|'embedded'|'generated';
 export type GeneratedNavigation=Readonly<{trickplayIntervalMs:number;trickplayTileWidth:number;trickplayMaxTiles:number;chapterThumbnailMode:ChapterThumbnailMode;videoPreviewEnabled:boolean;videoPreviewMs:number}>;
-export type LibrarySettings=Readonly<{allowMediaDeletion:boolean;monitorChanges:boolean;providers:readonly ProviderSelection[];analysis:readonly string[];navigation:GeneratedNavigation}>;
+/** A library's intro and credits detection: follow the server's mode, or choose for this library. */
+export type SegmentDetectionChoice='server'|'off'|'standard'|'thorough';
+export const segmentDetectionChoices:readonly SegmentDetectionChoice[]=['server','off','standard','thorough'];
+export type LibrarySettings=Readonly<{allowMediaDeletion:boolean;monitorChanges:boolean;providers:readonly ProviderSelection[];analysis:readonly string[];navigation:GeneratedNavigation;segmentDetection:SegmentDetectionChoice}>;
 export type LibrarySource=Readonly<{id:string;name:string;root:string;classification:'local'|'network';enabled:boolean}>;
 export type LibraryAdminDocument=Readonly<{libraryId:string;libraryName:string;libraryKind:string;revision:number;digest:string;settings:LibrarySettings;analysisMatrix:AnalysisMatrix;availableProviders:readonly MetadataProvider[];enumerations:Readonly<Record<string,readonly string[]>>;sources:readonly LibrarySource[]}>;
 export type DeleteFile=Readonly<{assetId:string;path:string;bytes:number;present:boolean;shared:boolean}>;
@@ -156,7 +159,9 @@ function parseNavigation(v:unknown):GeneratedNavigation{
 }
 function parseLibrarySettings(v:unknown):LibrarySettings{
  if(!object(v)||!flag(v.allowMediaDeletion)||!flag(v.monitorChanges))invalid('library settings');
- return Object.freeze({allowMediaDeletion:v.allowMediaDeletion,monitorChanges:v.monitorChanges,providers:Object.freeze(list(v.providers,16,'library providers').map(parseSelection)),analysis:strings(v.analysis,128,'library analysis'),navigation:parseNavigation(v.navigation)});
+ return Object.freeze({allowMediaDeletion:v.allowMediaDeletion,monitorChanges:v.monitorChanges,providers:Object.freeze(list(v.providers,16,'library providers').map(parseSelection)),analysis:strings(v.analysis,128,'library analysis'),navigation:parseNavigation(v.navigation),
+  // A server from before the choice existed follows its own mode.
+  segmentDetection:v.segmentDetection===undefined?'server':choice(v.segmentDetection,segmentDetectionChoices,'library segment detection')});
 }
 /** parseLibraryDocument reads one library's administration document. */
 export function parseLibraryDocument(v:unknown):LibraryAdminDocument{

@@ -144,6 +144,24 @@ func TestMetadataSettingsNeverReturnCredentials(t *testing.T) {
 	if e != nil || out.OpenSubtitlesUsername != "" || out.OpenSubtitlesPasswordConfigured || !out.OpenSubtitlesKeyConfigured {
 		t.Fatal("clearing the account must drop its password and keep the key", out, e)
 	}
+	// The owner sees where OpenSubtitles' credentials come from and how it last answered, and can test them.
+	if out.OpenSubtitles.KeySource != "none" || out.OpenSubtitles.DownloadsRemaining != -1 {
+		t.Fatal("no provider: nothing in force", out.OpenSubtitles)
+	}
+	s.SubtitleStatus = func() OpenSubtitlesStatus {
+		return OpenSubtitlesStatus{KeySource: "owner", AccountSource: "none", Account: "none", DownloadsRemaining: 4, DownloadsAllowed: -1}
+	}
+	checked := 0
+	s.SubtitleCheck = func(context.Context) OpenSubtitlesStatus {
+		checked++
+		return OpenSubtitlesStatus{KeySource: "owner", AccountSource: "none", Account: "none", Problem: "provider_key_rejected", DownloadsRemaining: -1, DownloadsAllowed: -1}
+	}
+	if read, e := s.MetadataSettings(ctx); e != nil || read.OpenSubtitles.KeySource != "owner" || read.OpenSubtitles.DownloadsRemaining != 4 {
+		t.Fatal(read.OpenSubtitles, e)
+	}
+	if status, e := s.CheckOpenSubtitles(ctx); e != nil || checked != 1 || status.Problem != "provider_key_rejected" {
+		t.Fatal(status, e)
+	}
 }
 
 func TestLocaleChangeAndExplicitShowRefreshBypassHeldDocuments(t *testing.T) {

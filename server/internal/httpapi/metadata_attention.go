@@ -119,6 +119,21 @@ func registerMetadataSettings(registry *apikit.Registry, d Dependencies) {
 		out, e := d.Metadata.UpdateMetadataSettings(ctx, in, func(tx *sql.Tx) error { return d.resourceAuthorize(tx, p, "") })
 		return out, metadataAttentionError(e)
 	})
+	// Test connection: one or two OpenSubtitles requests, within its sign-in limits.
+	checks := &personalLimiter{}
+	v1Route(registry, apikit.Metadata{Admission: laneAdmin, ID: "check_opensubtitles", Method: "POST", Path: "/v1/admin/metadata/settings/opensubtitles/check", Summary: "Test the OpenSubtitles key and account in force", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Cost: apikit.Constant, Status: 200, OptionalBody: true, BodyLimit: 4096, Errors: []string{"unauthorized", "not_permitted", "rate_limited", "internal"}}, func(ctx context.Context, r *http.Request, _ noBody) (metadata.OpenSubtitlesStatus, error) {
+		p, e := d.owner(r)
+		if e != nil {
+			return metadata.OpenSubtitlesStatus{}, e
+		}
+		if !checks.allow(viewerScope(p)) {
+			return metadata.OpenSubtitlesStatus{}, &apierror.Error{Code: "rate_limited"}
+		}
+		if d.Metadata == nil {
+			return metadata.OpenSubtitlesStatus{}, errMetadataUnavailable()
+		}
+		return d.Metadata.CheckOpenSubtitles(ctx)
+	})
 }
 
 type refreshReceipt struct {

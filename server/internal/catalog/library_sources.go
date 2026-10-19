@@ -101,11 +101,15 @@ func validTrickplay(t TrickplaySettings) bool {
 }
 
 var BasicScanOperations = []string{"probe", "local_metadata", "subtitles"}
-var DeepScanOperations = []string{"checksum", "chapter_images", "trickplay", "waveform", "loudness", "fingerprint", "segment_detection"}
+
+// Intro and credits detection is not a scan stage: mediaanalysis runs it as
+// its own background work, compared across a show's episodes, under the
+// server's and each library's detection mode.
+var DeepScanOperations = []string{"checksum", "chapter_images", "trickplay", "waveform", "loudness", "fingerprint"}
 
 // Complete prepares the navigation and audio features viewers can use. An owner
 // can explicitly request integrity reads or diagnostic fingerprints in Custom.
-var CompleteScanOperations = []string{"chapter_images", "trickplay", "waveform", "loudness", "segment_detection"}
+var CompleteScanOperations = []string{"chapter_images", "trickplay", "waveform", "loudness"}
 
 func (p ScanPolicy) Allows(operation string) bool {
 	if p.Tier == "file_list_only" {
@@ -143,7 +147,7 @@ func ValidateScanPolicy(p ScanPolicy) (ScanPolicy, error) {
 		}
 		// Local extraction/subtitle timing requires a bounded probe. Do not silently
 		// broaden an owner's Custom content-read permission to satisfy dependencies.
-		if (seen["local_metadata"] || seen["subtitles"] || seen["chapter_images"] || seen["trickplay"] || seen["waveform"] || seen["loudness"] || seen["fingerprint"] || seen["segment_detection"]) && !seen["probe"] {
+		if (seen["local_metadata"] || seen["subtitles"] || seen["chapter_images"] || seen["trickplay"] || seen["waveform"] || seen["loudness"] || seen["fingerprint"]) && !seen["probe"] {
 			return p, ErrAdminQuery
 		}
 		if p.Operations == nil {
@@ -166,6 +170,21 @@ func scanScanPolicy(row interface{ Scan(...any) error }) (ScanPolicy, error) {
 	}
 	if err == nil && p.Tier == "complete" {
 		p, err = ValidateScanPolicy(p)
+	}
+	if err == nil && p.Tier == "custom" {
+		// A stored operation this build no longer runs as a scan stage (the
+		// retired segment_detection) would otherwise stay wanted forever.
+		known := append(append([]string{}, BasicScanOperations...), DeepScanOperations...)
+		kept := p.Operations[:0]
+		for _, op := range p.Operations {
+			for _, k := range known {
+				if op == k {
+					kept = append(kept, op)
+					break
+				}
+			}
+		}
+		p.Operations = kept
 	}
 	return p, err
 }

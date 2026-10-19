@@ -30,6 +30,7 @@ import {FeedbackPanel} from '../server/Feedback';
 import {PlayHistoryPanel} from '../server/PlayHistory';
 import {StatePermissionsCard} from '../server/StatePermissions';
 import {PlaybackProblemsPanel} from '../server/PlaybackProblems';
+import {SegmentsPanel} from '../server/Segments';
 
 /** Panels that are rows inside their section's group; every other panel brings its own surface and heading. */
 const ROW_PANELS: ReadonlySet<SettingsCustomId> = new Set(['server.secureConnection', 'server.certificateStatus', 'server.addresses', 'server.connection', 'server.ownCertificateStatus', 'server.backgroundPause', 'server.ffmpegStatus', 'server.retention', 'server.detailWindow', 'server.identity']);
@@ -71,6 +72,7 @@ export function ServerPanel({id}: {id: SettingsCustomId}) {
     case 'server.remoteSources': return <RemoteSourcesPanel />;
     case 'server.backups': return <BackupsGroup />;
     case 'server.missingTitles': return <MissingTitlesPanel />;
+    case 'server.segments': return <SegmentsPanel />;
     case 'server.windows': return <WindowsPanel />;
     case 'server.jobs': return <ScheduledJobsPanel />;
     case 'server.detailWindow': return <DetailWindowRow />;

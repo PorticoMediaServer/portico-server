@@ -154,7 +154,10 @@ needs to list, show and play the title with no server in reach:
 - `media`: the container, codecs and picture size of the downloaded file;
 - `artwork`: each picture with a `path`;
 - `chapters` and `markers` (intro, recap, credits and the like; `automatic` says the server would
-  skip it unprompted), on the file's own timeline;
+  skip it unprompted), on the file's own timeline. Markers follow the viewer rules of playback:
+  weak or ambiguous detector guesses are left out, overlapping markers of one kind become the
+  strongest one, and a library whose detection is off carries only markers its owner made or
+  approved ([Intro and credits detection](segments.md));
 - `audio`: the audio tracks inside the file, in order;
 - `subtitles`: each track with its `files`, keyed by form. `vtt` is the track as plain text
   (every text track, and a styled one's plain reading). `ass`, `pgs`, `vobsub` and `dvb` are the

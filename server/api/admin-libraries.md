@@ -157,7 +157,7 @@ operation the server knows, grouped by what it costs:
 | --- | --- | --- |
 | `metadata-only` | One small read per file | `probe`, `local_metadata`, `artwork_extraction`, `subtitle_discovery`, `chapter_read` |
 | `single-pass-read` | Reads the file once, no video decode | `deep_stream_analysis`, `subtitle_extraction`, `loudness`, `audio_fingerprint` |
-| `decode` | Decodes frames; sustained CPU or a busy encoder | `trickplay`, `chapter_images`, `video_preview`, `segment_detection`, `credits_detection` |
+| `decode` | Decodes frames; sustained CPU or a busy encoder | `trickplay`, `chapter_images`, `video_preview` |
 | `network` | Contacts a provider off this machine | `subtitle_download`, `lyrics` |
 
 Each operation publishes the media kinds it applies to, whether it is on by
@@ -165,6 +165,12 @@ default, whether it writes artifacts (which is why the storage page has a
 category for it), and the operations it `requires`. A selection that enables an
 operation without its dependency is refused by name, because the operation would
 otherwise silently never run.
+
+Intro and credits detection is not in the matrix: it is its own background
+work under the server's mode, and each library's settings carry
+`segmentDetection` — `server` (follow the server, the default), `off`,
+`standard` or `thorough`; the choices are published as
+`enumerations.segmentDetection`. See [Intro and credits detection](segments.md).
 
 **Generated navigation** — trickplay interval, tile width and maximum tile count;
 the chapter thumbnail mode (`none`, `embedded`, `generated`); and whether a video

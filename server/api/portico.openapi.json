@@ -3884,6 +3884,9 @@
           "customCertificatePath": {
             "type": "string"
           },
+          "dlnaEnabled": {
+            "type": "boolean"
+          },
           "expectedRevision": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
@@ -3960,6 +3963,9 @@
           "customCertificatePath": {
             "type": "string"
           },
+          "dlnaEnabled": {
+            "type": "boolean"
+          },
           "lanDiscoveryEnabled": {
             "type": "boolean"
           },
@@ -4008,6 +4014,7 @@
           "lanNetworks",
           "accessUrls",
           "lanDiscoveryEnabled",
+          "dlnaEnabled",
           "trustedProxies",
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
@@ -4085,6 +4092,9 @@
               "directStreamRemux": {
                 "type": "boolean"
               },
+              "dlnaEnabled": {
+                "type": "boolean"
+              },
               "ffmpegPath": {
                 "type": "string"
               },
@@ -4124,6 +4134,9 @@
                 "maximum": 9007199254740991,
                 "minimum": -9007199254740991,
                 "type": "integer"
+              },
+              "library.segmentDetection": {
+                "type": "string"
               },
               "logLevel": {
                 "type": "string"
@@ -4309,6 +4322,7 @@
               "updates.feedUrl",
               "library.missingTitles",
               "library.missingTitlesDays",
+              "library.segmentDetection",
               "remoteSignInPolicy",
               "remoteBitrateLimitKbps",
               "connectionLimit",
@@ -4316,6 +4330,7 @@
               "lanNetworks",
               "accessUrls",
               "lanDiscoveryEnabled",
+              "dlnaEnabled",
               "trustedProxies",
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
@@ -4406,6 +4421,9 @@
                   "directStreamRemux": {
                     "type": "boolean"
                   },
+                  "dlnaEnabled": {
+                    "type": "boolean"
+                  },
                   "ffmpegPath": {
                     "type": "string"
                   },
@@ -4445,6 +4463,9 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "library.segmentDetection": {
+                    "type": "string"
                   },
                   "logLevel": {
                     "type": "string"
@@ -4630,6 +4651,7 @@
                   "updates.feedUrl",
                   "library.missingTitles",
                   "library.missingTitlesDays",
+                  "library.segmentDetection",
                   "remoteSignInPolicy",
                   "remoteBitrateLimitKbps",
                   "connectionLimit",
@@ -4637,6 +4659,7 @@
                   "lanNetworks",
                   "accessUrls",
                   "lanDiscoveryEnabled",
+                  "dlnaEnabled",
                   "trustedProxies",
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
@@ -4743,6 +4766,9 @@
                   "directStreamRemux": {
                     "type": "boolean"
                   },
+                  "dlnaEnabled": {
+                    "type": "boolean"
+                  },
                   "ffmpegPath": {
                     "type": "string"
                   },
@@ -4782,6 +4808,9 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "library.segmentDetection": {
+                    "type": "string"
                   },
                   "logLevel": {
                     "type": "string"
@@ -4967,6 +4996,7 @@
                   "updates.feedUrl",
                   "library.missingTitles",
                   "library.missingTitlesDays",
+                  "library.segmentDetection",
                   "remoteSignInPolicy",
                   "remoteBitrateLimitKbps",
                   "connectionLimit",
@@ -4974,6 +5004,7 @@
                   "lanNetworks",
                   "accessUrls",
                   "lanDiscoveryEnabled",
+                  "dlnaEnabled",
                   "trustedProxies",
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
@@ -5756,6 +5787,54 @@
           "state",
           "lease",
           "presentation"
+        ],
+        "type": "object"
+      },
+      "CheckOpensubtitlesRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "CheckOpensubtitlesResponse": {
+        "properties": {
+          "account": {
+            "type": "string"
+          },
+          "accountSource": {
+            "type": "string"
+          },
+          "checkedAt": {
+            "type": "string"
+          },
+          "downloadsAllowed": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "downloadsRemaining": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "downloadsResetAt": {
+            "type": "string"
+          },
+          "keySource": {
+            "type": "string"
+          },
+          "problem": {
+            "type": "string"
+          },
+          "retryAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "keySource",
+          "accountSource",
+          "account",
+          "downloadsRemaining",
+          "downloadsAllowed"
         ],
         "type": "object"
       },
@@ -21775,6 +21854,498 @@
         ],
         "type": "object"
       },
+      "GetAdminSegmentsRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetAdminSegmentsResponse": {
+        "properties": {
+          "protocolVersion": {
+            "type": "string"
+          },
+          "result": {
+            "properties": {
+              "catchUpComplete": {
+                "type": "boolean"
+              },
+              "choices": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "failures": {
+                "items": {
+                  "properties": {
+                    "errorCode": {
+                      "type": "string"
+                    },
+                    "itemId": {
+                      "type": "string"
+                    },
+                    "state": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "updatedMS": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "itemId",
+                    "title",
+                    "state",
+                    "errorCode",
+                    "updatedMS"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "files": {
+                "properties": {
+                  "complete": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "failed": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "pending": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "unsupported": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "pending",
+                  "complete",
+                  "failed",
+                  "unsupported"
+                ],
+                "type": "object"
+              },
+              "lastFullPassMS": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "libraries": {
+                "items": {
+                  "properties": {
+                    "choice": {
+                      "type": "string"
+                    },
+                    "files": {
+                      "properties": {
+                        "complete": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "failed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "pending": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "unsupported": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "pending",
+                        "complete",
+                        "failed",
+                        "unsupported"
+                      ],
+                      "type": "object"
+                    },
+                    "itemKind": {
+                      "type": "string"
+                    },
+                    "libraryId": {
+                      "type": "string"
+                    },
+                    "mode": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "libraryId",
+                    "name",
+                    "itemKind",
+                    "choice",
+                    "mode",
+                    "files"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "modes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "showsWaiting": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "mode",
+              "modes",
+              "choices",
+              "libraries",
+              "files",
+              "showsWaiting",
+              "catchUpComplete",
+              "lastFullPassMS",
+              "failures"
+            ],
+            "type": "object"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocolVersion",
+          "serverId",
+          "result"
+        ],
+        "type": "object"
+      },
+      "GetAdminSegmentsTitlesIdRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetAdminSegmentsTitlesIdResponse": {
+        "properties": {
+          "protocolVersion": {
+            "type": "string"
+          },
+          "result": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "libraryId": {
+                "type": "string"
+              },
+              "mode": {
+                "type": "string"
+              },
+              "seasons": {
+                "items": {
+                  "properties": {
+                    "entries": {
+                      "items": {
+                        "properties": {
+                          "durationUS": {
+                            "type": "string"
+                          },
+                          "errorCode": {
+                            "type": "string"
+                          },
+                          "itemId": {
+                            "type": "string"
+                          },
+                          "mappingRevision": {
+                            "type": "string"
+                          },
+                          "markerRevision": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "markers": {
+                            "items": {
+                              "properties": {
+                                "approved": {
+                                  "type": "boolean"
+                                },
+                                "automaticSafe": {
+                                  "type": "boolean"
+                                },
+                                "basis": {
+                                  "type": "string"
+                                },
+                                "confidence": {
+                                  "type": "number"
+                                },
+                                "edited": {
+                                  "type": "boolean"
+                                },
+                                "endUS": {
+                                  "type": "string"
+                                },
+                                "id": {
+                                  "type": "string"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "provenance": {
+                                  "type": "string"
+                                },
+                                "startUS": {
+                                  "type": "string"
+                                },
+                                "viewerVisible": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "kind",
+                                "startUS",
+                                "endUS",
+                                "confidence",
+                                "provenance",
+                                "basis",
+                                "approved",
+                                "edited",
+                                "automaticSafe",
+                                "viewerVisible"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          },
+                          "number": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "sourceId": {
+                            "type": "string"
+                          },
+                          "sourceRevision": {
+                            "type": "string"
+                          },
+                          "state": {
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "itemId",
+                          "title",
+                          "number",
+                          "durationUS",
+                          "state",
+                          "errorCode",
+                          "sourceId",
+                          "sourceRevision",
+                          "mappingRevision",
+                          "markerRevision",
+                          "markers"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    },
+                    "number": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "number",
+                    "title",
+                    "entries"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "title": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "kind",
+              "libraryId",
+              "mode",
+              "seasons"
+            ],
+            "type": "object"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocolVersion",
+          "serverId",
+          "result"
+        ],
+        "type": "object"
+      },
+      "GetAdminSegmentsTitlesRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetAdminSegmentsTitlesResponse": {
+        "properties": {
+          "protocolVersion": {
+            "type": "string"
+          },
+          "result": {
+            "properties": {
+              "libraryId": {
+                "type": "string"
+              },
+              "nextCursor": {
+                "type": "string"
+              },
+              "titles": {
+                "items": {
+                  "properties": {
+                    "files": {
+                      "properties": {
+                        "complete": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "failed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "pending": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "unsupported": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "pending",
+                        "complete",
+                        "failed",
+                        "unsupported"
+                      ],
+                      "type": "object"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "markers": {
+                      "properties": {
+                        "approved": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "automatic": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "dismissed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "suggested": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "automatic",
+                        "suggested",
+                        "approved",
+                        "dismissed"
+                      ],
+                      "type": "object"
+                    },
+                    "title": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "title",
+                    "kind",
+                    "files",
+                    "markers"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "libraryId",
+              "titles",
+              "nextCursor"
+            ],
+            "type": "object"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocolVersion",
+          "serverId",
+          "result"
+        ],
+        "type": "object"
+      },
       "GetAdminSessionControlsRequest": {
         "properties": {},
         "required": [],
@@ -26018,6 +26589,9 @@
           "customCertificatePath": {
             "type": "string"
           },
+          "dlnaEnabled": {
+            "type": "boolean"
+          },
           "lanDiscoveryEnabled": {
             "type": "boolean"
           },
@@ -26066,6 +26640,7 @@
           "lanNetworks",
           "accessUrls",
           "lanDiscoveryEnabled",
+          "dlnaEnabled",
           "trustedProxies",
           "uploadCapacityKbps",
           "pausedSessionTimeoutMinutes",
@@ -26228,6 +26803,9 @@
               "customCertificatePath": {
                 "type": "string"
               },
+              "dlnaEnabled": {
+                "type": "boolean"
+              },
               "lanDiscoveryEnabled": {
                 "type": "boolean"
               },
@@ -26276,6 +26854,7 @@
               "lanNetworks",
               "accessUrls",
               "lanDiscoveryEnabled",
+              "dlnaEnabled",
               "trustedProxies",
               "uploadCapacityKbps",
               "pausedSessionTimeoutMinutes",
@@ -26590,6 +27169,9 @@
                   "directStreamRemux": {
                     "type": "boolean"
                   },
+                  "dlnaEnabled": {
+                    "type": "boolean"
+                  },
                   "ffmpegPath": {
                     "type": "string"
                   },
@@ -26629,6 +27211,9 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "library.segmentDetection": {
+                    "type": "string"
                   },
                   "logLevel": {
                     "type": "string"
@@ -26814,6 +27399,7 @@
                   "updates.feedUrl",
                   "library.missingTitles",
                   "library.missingTitlesDays",
+                  "library.segmentDetection",
                   "remoteSignInPolicy",
                   "remoteBitrateLimitKbps",
                   "connectionLimit",
@@ -26821,6 +27407,7 @@
                   "lanNetworks",
                   "accessUrls",
                   "lanDiscoveryEnabled",
+                  "dlnaEnabled",
                   "trustedProxies",
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
@@ -26927,6 +27514,9 @@
                   "directStreamRemux": {
                     "type": "boolean"
                   },
+                  "dlnaEnabled": {
+                    "type": "boolean"
+                  },
                   "ffmpegPath": {
                     "type": "string"
                   },
@@ -26966,6 +27556,9 @@
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
                     "type": "integer"
+                  },
+                  "library.segmentDetection": {
+                    "type": "string"
                   },
                   "logLevel": {
                     "type": "string"
@@ -27151,6 +27744,7 @@
                   "updates.feedUrl",
                   "library.missingTitles",
                   "library.missingTitlesDays",
+                  "library.segmentDetection",
                   "remoteSignInPolicy",
                   "remoteBitrateLimitKbps",
                   "connectionLimit",
@@ -27158,6 +27752,7 @@
                   "lanNetworks",
                   "accessUrls",
                   "lanDiscoveryEnabled",
+                  "dlnaEnabled",
                   "trustedProxies",
                   "uploadCapacityKbps",
                   "pausedSessionTimeoutMinutes",
@@ -53881,6 +54476,9 @@
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "segmentDetection": {
+                "type": "string"
               }
             },
             "required": [
@@ -53889,7 +54487,8 @@
               "continueWatching",
               "providers",
               "analysis",
-              "navigation"
+              "navigation",
+              "segmentDetection"
             ],
             "type": "object"
           },
@@ -55624,6 +56223,49 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "openSubtitles": {
+            "properties": {
+              "account": {
+                "type": "string"
+              },
+              "accountSource": {
+                "type": "string"
+              },
+              "checkedAt": {
+                "type": "string"
+              },
+              "downloadsAllowed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "downloadsRemaining": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "downloadsResetAt": {
+                "type": "string"
+              },
+              "keySource": {
+                "type": "string"
+              },
+              "problem": {
+                "type": "string"
+              },
+              "retryAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "keySource",
+              "accountSource",
+              "account",
+              "downloadsRemaining",
+              "downloadsAllowed"
+            ],
+            "type": "object"
+          },
           "openSubtitlesKeyConfigured": {
             "type": "boolean"
           },
@@ -55654,7 +56296,8 @@
           "tvdbCredentialConfigured",
           "openSubtitlesKeyConfigured",
           "openSubtitlesUsername",
-          "openSubtitlesPasswordConfigured"
+          "openSubtitlesPasswordConfigured",
+          "openSubtitles"
         ],
         "type": "object"
       },
@@ -86560,6 +87203,96 @@
         "required": [],
         "type": "object"
       },
+      "PostAdminSegmentsTitlesIdApproveRequest": {
+        "properties": {
+          "kinds": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "season": {
+            "anyOf": [
+              {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kinds",
+          "season"
+        ],
+        "type": "object"
+      },
+      "PostAdminSegmentsTitlesIdApproveResponse": {
+        "properties": {
+          "protocolVersion": {
+            "type": "string"
+          },
+          "result": {
+            "properties": {
+              "changed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "changed"
+            ],
+            "type": "object"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocolVersion",
+          "serverId",
+          "result"
+        ],
+        "type": "object"
+      },
+      "PostAdminSegmentsTitlesIdRedetectRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "PostAdminSegmentsTitlesIdRedetectResponse": {
+        "properties": {
+          "protocolVersion": {
+            "type": "string"
+          },
+          "result": {
+            "properties": {
+              "changed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "changed"
+            ],
+            "type": "object"
+          },
+          "serverId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocolVersion",
+          "serverId",
+          "result"
+        ],
+        "type": "object"
+      },
       "PostAdminStatePermissionsFixRequest": {
         "properties": {},
         "required": [],
@@ -104970,6 +105703,9 @@
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "segmentDetection": {
+                "type": "string"
               }
             },
             "required": [
@@ -104978,7 +105714,8 @@
               "continueWatching",
               "providers",
               "analysis",
-              "navigation"
+              "navigation",
+              "segmentDetection"
             ],
             "type": "object"
           }
@@ -105270,6 +106007,9 @@
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "segmentDetection": {
+                "type": "string"
               }
             },
             "required": [
@@ -105278,7 +106018,8 @@
               "continueWatching",
               "providers",
               "analysis",
-              "navigation"
+              "navigation",
+              "segmentDetection"
             ],
             "type": "object"
           },
@@ -105587,6 +106328,49 @@
             "minimum": -9007199254740991,
             "type": "integer"
           },
+          "openSubtitles": {
+            "properties": {
+              "account": {
+                "type": "string"
+              },
+              "accountSource": {
+                "type": "string"
+              },
+              "checkedAt": {
+                "type": "string"
+              },
+              "downloadsAllowed": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "downloadsRemaining": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "downloadsResetAt": {
+                "type": "string"
+              },
+              "keySource": {
+                "type": "string"
+              },
+              "problem": {
+                "type": "string"
+              },
+              "retryAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "keySource",
+              "accountSource",
+              "account",
+              "downloadsRemaining",
+              "downloadsAllowed"
+            ],
+            "type": "object"
+          },
           "openSubtitlesKeyConfigured": {
             "type": "boolean"
           },
@@ -105617,7 +106401,8 @@
           "tvdbCredentialConfigured",
           "openSubtitlesKeyConfigured",
           "openSubtitlesUsername",
-          "openSubtitlesPasswordConfigured"
+          "openSubtitlesPasswordConfigured",
+          "openSubtitles"
         ],
         "type": "object"
       },
@@ -125098,6 +125883,9 @@
                     "customCertificatePath": {
                       "type": "string"
                     },
+                    "dlnaEnabled": {
+                      "type": "boolean"
+                    },
                     "lanDiscoveryEnabled": {
                       "type": "boolean"
                     },
@@ -125146,6 +125934,7 @@
                     "lanNetworks",
                     "accessUrls",
                     "lanDiscoveryEnabled",
+                    "dlnaEnabled",
                     "trustedProxies",
                     "uploadCapacityKbps",
                     "pausedSessionTimeoutMinutes",
@@ -125236,6 +126025,9 @@
                   "customCertificatePath": {
                     "type": "string"
                   },
+                  "dlnaEnabled": {
+                    "type": "boolean"
+                  },
                   "expectedRevision": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -125320,6 +126112,9 @@
                     "customCertificatePath": {
                       "type": "string"
                     },
+                    "dlnaEnabled": {
+                      "type": "boolean"
+                    },
                     "lanDiscoveryEnabled": {
                       "type": "boolean"
                     },
@@ -125368,6 +126163,7 @@
                     "lanNetworks",
                     "accessUrls",
                     "lanDiscoveryEnabled",
+                    "dlnaEnabled",
                     "trustedProxies",
                     "uploadCapacityKbps",
                     "pausedSessionTimeoutMinutes",
@@ -125585,6 +126381,9 @@
                         "customCertificatePath": {
                           "type": "string"
                         },
+                        "dlnaEnabled": {
+                          "type": "boolean"
+                        },
                         "lanDiscoveryEnabled": {
                           "type": "boolean"
                         },
@@ -125633,6 +126432,7 @@
                         "lanNetworks",
                         "accessUrls",
                         "lanDiscoveryEnabled",
+                        "dlnaEnabled",
                         "trustedProxies",
                         "uploadCapacityKbps",
                         "pausedSessionTimeoutMinutes",
@@ -129038,6 +129838,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "dlnaEnabled": {
+                              "type": "boolean"
+                            },
                             "ffmpegPath": {
                               "type": "string"
                             },
@@ -129077,6 +129880,9 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "library.segmentDetection": {
+                              "type": "string"
                             },
                             "logLevel": {
                               "type": "string"
@@ -129262,6 +130068,7 @@
                             "updates.feedUrl",
                             "library.missingTitles",
                             "library.missingTitlesDays",
+                            "library.segmentDetection",
                             "remoteSignInPolicy",
                             "remoteBitrateLimitKbps",
                             "connectionLimit",
@@ -129269,6 +130076,7 @@
                             "lanNetworks",
                             "accessUrls",
                             "lanDiscoveryEnabled",
+                            "dlnaEnabled",
                             "trustedProxies",
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
@@ -129375,6 +130183,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "dlnaEnabled": {
+                              "type": "boolean"
+                            },
                             "ffmpegPath": {
                               "type": "string"
                             },
@@ -129414,6 +130225,9 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "library.segmentDetection": {
+                              "type": "string"
                             },
                             "logLevel": {
                               "type": "string"
@@ -129599,6 +130413,7 @@
                             "updates.feedUrl",
                             "library.missingTitles",
                             "library.missingTitlesDays",
+                            "library.segmentDetection",
                             "remoteSignInPolicy",
                             "remoteBitrateLimitKbps",
                             "connectionLimit",
@@ -129606,6 +130421,7 @@
                             "lanNetworks",
                             "accessUrls",
                             "lanDiscoveryEnabled",
+                            "dlnaEnabled",
                             "trustedProxies",
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
@@ -129787,6 +130603,9 @@
                       "directStreamRemux": {
                         "type": "boolean"
                       },
+                      "dlnaEnabled": {
+                        "type": "boolean"
+                      },
                       "ffmpegPath": {
                         "type": "string"
                       },
@@ -129826,6 +130645,9 @@
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
+                      },
+                      "library.segmentDetection": {
+                        "type": "string"
                       },
                       "logLevel": {
                         "type": "string"
@@ -130011,6 +130833,7 @@
                       "updates.feedUrl",
                       "library.missingTitles",
                       "library.missingTitlesDays",
+                      "library.segmentDetection",
                       "remoteSignInPolicy",
                       "remoteBitrateLimitKbps",
                       "connectionLimit",
@@ -130018,6 +130841,7 @@
                       "lanNetworks",
                       "accessUrls",
                       "lanDiscoveryEnabled",
+                      "dlnaEnabled",
                       "trustedProxies",
                       "uploadCapacityKbps",
                       "pausedSessionTimeoutMinutes",
@@ -130116,6 +130940,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "dlnaEnabled": {
+                              "type": "boolean"
+                            },
                             "ffmpegPath": {
                               "type": "string"
                             },
@@ -130155,6 +130982,9 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "library.segmentDetection": {
+                              "type": "string"
                             },
                             "logLevel": {
                               "type": "string"
@@ -130340,6 +131170,7 @@
                             "updates.feedUrl",
                             "library.missingTitles",
                             "library.missingTitlesDays",
+                            "library.segmentDetection",
                             "remoteSignInPolicy",
                             "remoteBitrateLimitKbps",
                             "connectionLimit",
@@ -130347,6 +131178,7 @@
                             "lanNetworks",
                             "accessUrls",
                             "lanDiscoveryEnabled",
+                            "dlnaEnabled",
                             "trustedProxies",
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
@@ -130453,6 +131285,9 @@
                             "directStreamRemux": {
                               "type": "boolean"
                             },
+                            "dlnaEnabled": {
+                              "type": "boolean"
+                            },
                             "ffmpegPath": {
                               "type": "string"
                             },
@@ -130492,6 +131327,9 @@
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
                               "type": "integer"
+                            },
+                            "library.segmentDetection": {
+                              "type": "string"
                             },
                             "logLevel": {
                               "type": "string"
@@ -130677,6 +131515,7 @@
                             "updates.feedUrl",
                             "library.missingTitles",
                             "library.missingTitlesDays",
+                            "library.segmentDetection",
                             "remoteSignInPolicy",
                             "remoteBitrateLimitKbps",
                             "connectionLimit",
@@ -130684,6 +131523,7 @@
                             "lanNetworks",
                             "accessUrls",
                             "lanDiscoveryEnabled",
+                            "dlnaEnabled",
                             "trustedProxies",
                             "uploadCapacityKbps",
                             "pausedSessionTimeoutMinutes",
@@ -140489,6 +141329,9 @@
                             "type": "object"
                           },
                           "type": "array"
+                        },
+                        "segmentDetection": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -140497,7 +141340,8 @@
                         "continueWatching",
                         "providers",
                         "analysis",
-                        "navigation"
+                        "navigation",
+                        "segmentDetection"
                       ],
                       "type": "object"
                     },
@@ -140748,6 +141592,9 @@
                           "type": "object"
                         },
                         "type": "array"
+                      },
+                      "segmentDetection": {
+                        "type": "string"
                       }
                     },
                     "required": [
@@ -140756,7 +141603,8 @@
                       "continueWatching",
                       "providers",
                       "analysis",
-                      "navigation"
+                      "navigation",
+                      "segmentDetection"
                     ],
                     "type": "object"
                   }
@@ -141056,6 +141904,9 @@
                             "type": "object"
                           },
                           "type": "array"
+                        },
+                        "segmentDetection": {
+                          "type": "string"
                         }
                       },
                       "required": [
@@ -141064,7 +141915,8 @@
                         "continueWatching",
                         "providers",
                         "analysis",
-                        "navigation"
+                        "navigation",
+                        "segmentDetection"
                       ],
                       "type": "object"
                     },
@@ -154031,6 +154883,49 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "openSubtitles": {
+                      "properties": {
+                        "account": {
+                          "type": "string"
+                        },
+                        "accountSource": {
+                          "type": "string"
+                        },
+                        "checkedAt": {
+                          "type": "string"
+                        },
+                        "downloadsAllowed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "downloadsRemaining": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "downloadsResetAt": {
+                          "type": "string"
+                        },
+                        "keySource": {
+                          "type": "string"
+                        },
+                        "problem": {
+                          "type": "string"
+                        },
+                        "retryAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "keySource",
+                        "accountSource",
+                        "account",
+                        "downloadsRemaining",
+                        "downloadsAllowed"
+                      ],
+                      "type": "object"
+                    },
                     "openSubtitlesKeyConfigured": {
                       "type": "boolean"
                     },
@@ -154061,7 +154956,8 @@
                     "tvdbCredentialConfigured",
                     "openSubtitlesKeyConfigured",
                     "openSubtitlesUsername",
-                    "openSubtitlesPasswordConfigured"
+                    "openSubtitlesPasswordConfigured",
+                    "openSubtitles"
                   ],
                   "type": "object"
                 }
@@ -154180,6 +155076,49 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "openSubtitles": {
+                      "properties": {
+                        "account": {
+                          "type": "string"
+                        },
+                        "accountSource": {
+                          "type": "string"
+                        },
+                        "checkedAt": {
+                          "type": "string"
+                        },
+                        "downloadsAllowed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "downloadsRemaining": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "downloadsResetAt": {
+                          "type": "string"
+                        },
+                        "keySource": {
+                          "type": "string"
+                        },
+                        "problem": {
+                          "type": "string"
+                        },
+                        "retryAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "keySource",
+                        "accountSource",
+                        "account",
+                        "downloadsRemaining",
+                        "downloadsAllowed"
+                      ],
+                      "type": "object"
+                    },
                     "openSubtitlesKeyConfigured": {
                       "type": "boolean"
                     },
@@ -154210,7 +155149,8 @@
                     "tvdbCredentialConfigured",
                     "openSubtitlesKeyConfigured",
                     "openSubtitlesUsername",
-                    "openSubtitlesPasswordConfigured"
+                    "openSubtitlesPasswordConfigured",
+                    "openSubtitles"
                   ],
                   "type": "object"
                 }
@@ -154263,6 +155203,118 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 32768,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/metadata/settings/opensubtitles/check": {
+      "post": {
+        "operationId": "check_opensubtitles",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {},
+                "required": [],
+                "type": "object"
+              }
+            }
+          },
+          "required": false
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "account": {
+                      "type": "string"
+                    },
+                    "accountSource": {
+                      "type": "string"
+                    },
+                    "checkedAt": {
+                      "type": "string"
+                    },
+                    "downloadsAllowed": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "downloadsRemaining": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "downloadsResetAt": {
+                      "type": "string"
+                    },
+                    "keySource": {
+                      "type": "string"
+                    },
+                    "problem": {
+                      "type": "string"
+                    },
+                    "retryAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "keySource",
+                    "accountSource",
+                    "account",
+                    "downloadsRemaining",
+                    "downloadsAllowed"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Test the OpenSubtitles key and account in force",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "constant",
+        "x-error-codes": [
+          "unauthorized",
+          "not_permitted",
+          "rate_limited",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 4096,
         "x-scope": "admin"
       }
     },
@@ -157133,6 +158185,917 @@
         ],
         "x-lane": "default",
         "x-max-body-bytes": 4096,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/segments": {
+      "get": {
+        "operationId": "get_admin_segments",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "protocolVersion": {
+                      "type": "string"
+                    },
+                    "result": {
+                      "properties": {
+                        "catchUpComplete": {
+                          "type": "boolean"
+                        },
+                        "choices": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "failures": {
+                          "items": {
+                            "properties": {
+                              "errorCode": {
+                                "type": "string"
+                              },
+                              "itemId": {
+                                "type": "string"
+                              },
+                              "state": {
+                                "type": "string"
+                              },
+                              "title": {
+                                "type": "string"
+                              },
+                              "updatedMS": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "itemId",
+                              "title",
+                              "state",
+                              "errorCode",
+                              "updatedMS"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "files": {
+                          "properties": {
+                            "complete": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "failed": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "pending": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "unsupported": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "pending",
+                            "complete",
+                            "failed",
+                            "unsupported"
+                          ],
+                          "type": "object"
+                        },
+                        "lastFullPassMS": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "libraries": {
+                          "items": {
+                            "properties": {
+                              "choice": {
+                                "type": "string"
+                              },
+                              "files": {
+                                "properties": {
+                                  "complete": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "failed": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "pending": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "unsupported": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "pending",
+                                  "complete",
+                                  "failed",
+                                  "unsupported"
+                                ],
+                                "type": "object"
+                              },
+                              "itemKind": {
+                                "type": "string"
+                              },
+                              "libraryId": {
+                                "type": "string"
+                              },
+                              "mode": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "libraryId",
+                              "name",
+                              "itemKind",
+                              "choice",
+                              "mode",
+                              "files"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "mode": {
+                          "type": "string"
+                        },
+                        "modes": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "showsWaiting": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "mode",
+                        "modes",
+                        "choices",
+                        "libraries",
+                        "files",
+                        "showsWaiting",
+                        "catchUpComplete",
+                        "lastFullPassMS",
+                        "failures"
+                      ],
+                      "type": "object"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocolVersion",
+                    "serverId",
+                    "result"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read intro and credits detection status",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/segments/titles": {
+      "get": {
+        "operationId": "get_admin_segments_titles",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "libraryId",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "protocolVersion": {
+                      "type": "string"
+                    },
+                    "result": {
+                      "properties": {
+                        "libraryId": {
+                          "type": "string"
+                        },
+                        "nextCursor": {
+                          "type": "string"
+                        },
+                        "titles": {
+                          "items": {
+                            "properties": {
+                              "files": {
+                                "properties": {
+                                  "complete": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "failed": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "pending": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "unsupported": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "pending",
+                                  "complete",
+                                  "failed",
+                                  "unsupported"
+                                ],
+                                "type": "object"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "markers": {
+                                "properties": {
+                                  "approved": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "automatic": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "dismissed": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "suggested": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "automatic",
+                                  "suggested",
+                                  "approved",
+                                  "dismissed"
+                                ],
+                                "type": "object"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "title",
+                              "kind",
+                              "files",
+                              "markers"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        }
+                      },
+                      "required": [
+                        "libraryId",
+                        "titles",
+                        "nextCursor"
+                      ],
+                      "type": "object"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocolVersion",
+                    "serverId",
+                    "result"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "List a library's shows and films for intro and credits review",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/segments/titles/{id}": {
+      "get": {
+        "operationId": "get_admin_segments_titles_id",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "protocolVersion": {
+                      "type": "string"
+                    },
+                    "result": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "libraryId": {
+                          "type": "string"
+                        },
+                        "mode": {
+                          "type": "string"
+                        },
+                        "seasons": {
+                          "items": {
+                            "properties": {
+                              "entries": {
+                                "items": {
+                                  "properties": {
+                                    "durationUS": {
+                                      "type": "string"
+                                    },
+                                    "errorCode": {
+                                      "type": "string"
+                                    },
+                                    "itemId": {
+                                      "type": "string"
+                                    },
+                                    "mappingRevision": {
+                                      "type": "string"
+                                    },
+                                    "markerRevision": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "markers": {
+                                      "items": {
+                                        "properties": {
+                                          "approved": {
+                                            "type": "boolean"
+                                          },
+                                          "automaticSafe": {
+                                            "type": "boolean"
+                                          },
+                                          "basis": {
+                                            "type": "string"
+                                          },
+                                          "confidence": {
+                                            "type": "number"
+                                          },
+                                          "edited": {
+                                            "type": "boolean"
+                                          },
+                                          "endUS": {
+                                            "type": "string"
+                                          },
+                                          "id": {
+                                            "type": "string"
+                                          },
+                                          "kind": {
+                                            "type": "string"
+                                          },
+                                          "provenance": {
+                                            "type": "string"
+                                          },
+                                          "startUS": {
+                                            "type": "string"
+                                          },
+                                          "viewerVisible": {
+                                            "type": "boolean"
+                                          }
+                                        },
+                                        "required": [
+                                          "id",
+                                          "kind",
+                                          "startUS",
+                                          "endUS",
+                                          "confidence",
+                                          "provenance",
+                                          "basis",
+                                          "approved",
+                                          "edited",
+                                          "automaticSafe",
+                                          "viewerVisible"
+                                        ],
+                                        "type": "object"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "number": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "sourceId": {
+                                      "type": "string"
+                                    },
+                                    "sourceRevision": {
+                                      "type": "string"
+                                    },
+                                    "state": {
+                                      "type": "string"
+                                    },
+                                    "title": {
+                                      "type": "string"
+                                    }
+                                  },
+                                  "required": [
+                                    "itemId",
+                                    "title",
+                                    "number",
+                                    "durationUS",
+                                    "state",
+                                    "errorCode",
+                                    "sourceId",
+                                    "sourceRevision",
+                                    "mappingRevision",
+                                    "markerRevision",
+                                    "markers"
+                                  ],
+                                  "type": "object"
+                                },
+                                "type": "array"
+                              },
+                              "number": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "title": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "number",
+                              "title",
+                              "entries"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "title": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "title",
+                        "kind",
+                        "libraryId",
+                        "mode",
+                        "seasons"
+                      ],
+                      "type": "object"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocolVersion",
+                    "serverId",
+                    "result"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read one show's or film's detected intros and credits",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/segments/titles/{id}/approve": {
+      "post": {
+        "operationId": "post_admin_segments_titles_id_approve",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "kinds": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "season": {
+                    "anyOf": [
+                      {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kinds",
+                  "season"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "protocolVersion": {
+                      "type": "string"
+                    },
+                    "result": {
+                      "properties": {
+                        "changed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "changed"
+                      ],
+                      "type": "object"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocolVersion",
+                    "serverId",
+                    "result"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Approve a show's or season's detected segments",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-max-body-bytes": 2097152,
+        "x-scope": "admin"
+      }
+    },
+    "/v1/admin/segments/titles/{id}/redetect": {
+      "post": {
+        "operationId": "post_admin_segments_titles_id_redetect",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "protocolVersion": {
+                      "type": "string"
+                    },
+                    "result": {
+                      "properties": {
+                        "changed": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "changed"
+                      ],
+                      "type": "object"
+                    },
+                    "serverId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "protocolVersion",
+                    "serverId",
+                    "result"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Detect a show's or film's intros and credits again",
+        "x-access": "owner",
+        "x-admission": "admin",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
         "x-scope": "admin"
       }
     },
@@ -205573,7 +207536,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -218561,7 +220530,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -219957,7 +221932,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -220305,7 +222286,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-scope": "read"
@@ -220495,7 +222482,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -220641,7 +222634,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -220796,7 +222795,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -221163,7 +223168,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -221325,7 +223336,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -221492,7 +223509,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -221640,7 +223663,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -221839,7 +223868,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "default",
         "x-max-body-bytes": 805306368,
@@ -237489,7 +239524,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -237593,7 +239634,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -237724,7 +239771,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -237836,7 +239889,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -237946,7 +240005,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238065,7 +240130,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238169,7 +240240,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238271,7 +240348,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238375,7 +240458,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238477,7 +240566,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238581,7 +240676,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238683,7 +240784,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238787,7 +240894,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238889,7 +241002,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -238993,7 +241112,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -239095,7 +241220,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -239199,7 +241330,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"
@@ -239301,7 +241438,13 @@
           "subtitle_operation_conflict",
           "subtitle_capacity",
           "subtitle_unsupported",
-          "subtitle_invalid_input"
+          "subtitle_invalid_input",
+          "subtitle_provider_not_configured",
+          "subtitle_provider_key_rejected",
+          "subtitle_provider_sign_in_failed",
+          "subtitle_provider_sign_in_required",
+          "subtitle_provider_quota",
+          "subtitle_provider_busy"
         ],
         "x-lane": "media",
         "x-scope": "open"

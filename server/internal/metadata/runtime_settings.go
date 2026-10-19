@@ -24,7 +24,51 @@ type MetadataSettings struct {
 	OpenSubtitlesKeyConfigured      bool   `json:"openSubtitlesKeyConfigured"`
 	OpenSubtitlesUsername           string `json:"openSubtitlesUsername"`
 	OpenSubtitlesPasswordConfigured bool   `json:"openSubtitlesPasswordConfigured"`
+	// Where the key and account in force come from and how OpenSubtitles last answered.
+	OpenSubtitles OpenSubtitlesStatus `json:"openSubtitles"`
 }
+
+// OpenSubtitlesStatus mirrors subtitles.OwnerStatus field for field (the
+// server converts one to the other); it never carries a secret.
+type OpenSubtitlesStatus struct {
+	// "owner", "environment" or "none".
+	KeySource     string `json:"keySource"`
+	AccountSource string `json:"accountSource"`
+	// "none", "incomplete", "not_checked", "signed_in" or "rejected".
+	Account string `json:"account"`
+	// The last refusal (provider_key_rejected, provider_sign_in_failed,
+	// provider_sign_in_required, provider_quota_exhausted, provider_rate_limited,
+	// provider_unreachable); empty when the last exchange worked.
+	Problem   string `json:"problem,omitempty"`
+	CheckedAt string `json:"checkedAt,omitempty"`
+	RetryAt   string `json:"retryAt,omitempty"`
+	// As OpenSubtitles last reported them; -1 when unknown.
+	DownloadsRemaining int    `json:"downloadsRemaining"`
+	DownloadsAllowed   int    `json:"downloadsAllowed"`
+	DownloadsResetAt   string `json:"downloadsResetAt,omitempty"`
+}
+
+var noSubtitleProvider = OpenSubtitlesStatus{KeySource: "none", AccountSource: "none", Account: "none", DownloadsRemaining: -1, DownloadsAllowed: -1}
+
+func (s *Service) subtitleStatus() OpenSubtitlesStatus {
+	if s.SubtitleStatus == nil {
+		return noSubtitleProvider
+	}
+	return s.SubtitleStatus()
+}
+
+// CheckOpenSubtitles asks OpenSubtitles whether the credentials in force work
+// now (Server › Metadata › Test connection).
+func (s *Service) CheckOpenSubtitles(ctx context.Context) (OpenSubtitlesStatus, error) {
+	if e := s.loadProviderSettings(ctx); e != nil {
+		return noSubtitleProvider, e
+	}
+	if s.SubtitleCheck == nil {
+		return noSubtitleProvider, nil
+	}
+	return s.SubtitleCheck(ctx), nil
+}
+
 type MetadataSettingsUpdate struct {
 	ExpectedRevision       int64   `json:"expectedRevision"`
 	LocalArtworkLimitBytes int64   `json:"localArtworkLimitBytes"`
@@ -83,6 +127,7 @@ func (s *Service) MetadataSettings(ctx context.Context) (MetadataSettings, error
 	if e == nil && s.LocalArtworkUsage != nil {
 		out.LocalArtworkUsedBytes, e = s.LocalArtworkUsage(ctx)
 	}
+	out.OpenSubtitles = s.subtitleStatus()
 	return out, e
 }
 func LocalArtworkLimit(ctx context.Context, db *sql.DB) int64 {
@@ -171,6 +216,7 @@ func (s *Service) UpdateMetadataSettings(ctx context.Context, in MetadataSetting
 	if s.LocalArtworkUsage != nil {
 		out.LocalArtworkUsedBytes, e = s.LocalArtworkUsage(ctx)
 	}
+	out.OpenSubtitles = s.subtitleStatus()
 	return out, e
 }
 func (s *Service) loadProviderSettings(ctx context.Context) error {

@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"testing"
+	"time"
 
 	"portico.local/server/internal/decoder"
 )
@@ -71,5 +72,65 @@ func TestMediaBridgeComposesWithConfinedDecoder(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// fragileInput behaves like the observed source reader: a read cancelled while
+// it is being served loses the input for good.
+type fragileInput struct {
+	data []byte
+	lost bool
+}
+
+func (f *fragileInput) Evidence() string { return "observed:fixture" }
+func (f *fragileInput) Size() int64      { return int64(len(f.data)) }
+func (f *fragileInput) Validate(ctx context.Context) error {
+	if f.lost {
+		return errors.New("lost")
+	}
+	return nil
+}
+func (f *fragileInput) Close() error { return nil }
+func (f *fragileInput) ReadExtent(ctx context.Context, offset, length int64) ([]byte, error) {
+	if f.lost {
+		return nil, errors.New("lost")
+	}
+	select {
+	case <-ctx.Done():
+		f.lost = true
+		return nil, ctx.Err()
+	case <-time.After(20 * time.Millisecond):
+	}
+	return f.data[offset : offset+length], nil
+}
+
+func TestAnalysisBridgeSurvivesADecoderHangingUpMidResponse(t *testing.T) {
+	input := &fragileInput{data: make([]byte, 8<<20)}
+	b, err := openBridge(context.Background(), input, &extentLedger{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer b.Close()
+	// A seeking decoder reads the start of a long response and drops it.
+	response, err := http.Get(b.url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = io.ReadFull(response.Body, make([]byte, 64<<10)); err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+	time.Sleep(100 * time.Millisecond)
+	// Its next request, at the new position, still reaches the source.
+	request, _ := http.NewRequest(http.MethodGet, b.url, nil)
+	request.Header.Set("Range", "bytes=6291456-6291471")
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	response.Body.Close()
+	if input.lost || response.StatusCode != 206 || len(body) != 16 {
+		t.Fatalf("the source was lost when the decoder hung up: lost=%v status=%d bytes=%d", input.lost, response.StatusCode, len(body))
 	}
 }

@@ -156,17 +156,11 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	if stage != "checksum" && b.BasicRevision != b.SourceRevision {
 		return false, "", ErrConflict
 	}
-	// One decode of the audio serves every audio stage that is due with this
-	// one; one decode of the video serves trickplay and scene detection.
+	// One decode of the audio serves every audio stage that is due with this one.
 	stages := []string{stage}
 	var group []string
-	switch {
-	case isSharedAudioStage(stage):
+	if isSharedAudioStage(stage) {
 		group = sharedAudioStages
-	case isSharedVideoStage(stage):
-		if _, _, _, _, ok := s.sharedVideoPlan(b); ok {
-			group = sharedVideoStages
-		}
 	}
 	if group != nil {
 		for _, op := range group {
@@ -246,8 +240,6 @@ func (s *Service) RunOne(ctx context.Context, request Request) (done bool, warni
 	switch {
 	case isSharedAudioStage(stage):
 		results, err = s.produceSharedAudio(ctx, b, stages, decode, publications)
-	case isSharedVideoStage(stage) && len(stages) == 2:
-		results, err = s.produceSharedVideo(ctx, b, decode, publications)
 	default:
 		results[stage], err = s.produce(ctx, b, stage, counted, decode, publications[stage])
 	}
@@ -332,73 +324,11 @@ func (s *Service) publish(ctx context.Context, b binding, stage, id, evidence, t
 	}
 	s.publication.Lock()
 	defer s.publication.Unlock()
-	// Obtain every distinct gate before sealing any object. Fail-fast acquisition
-	// cannot deadlock other publishers/readers; physical contention is a retry,
-	// not evidence that the generated media is invalid.
-	gates := map[string]*os.File{}
-	defer func() {
-		for _, gate := range gates {
-			_ = gate.Close()
-		}
-	}()
-	for _, a := range out.Artifacts {
-		if gates[a.Object.Digest] != nil {
-			continue
-		}
-		gate, err := s.custody.exclusive(a.Object.Digest)
-		if errors.Is(err, livechannels.ErrPhysicalBusy) {
-			return storage.ErrBusy
-		}
-		if err != nil {
-			return err
-		}
-		gates[a.Object.Digest] = gate
-	}
-	for i := range out.Artifacts {
-		a := &out.Artifacts[i]
-		if a.RetainedKey == "" {
-			return ErrInput
-		}
-		writer, e := s.artifacts.ResumeRetained(ctx, a.RetainedKey, a.Object.Size, a.Object.Size)
-		if e != nil {
-			return e
-		}
-		checkpoint, e := writer.Checkpoint()
-		if e != nil || checkpoint != a.Object {
-			writer.Abort()
-			if e != nil {
-				return e
-			}
-			return ErrConflict
-		}
-		object, e := writer.Seal(ctx)
-		if e != nil {
-			writer.Abort()
-			return e
-		}
-		a.Object = object
-	}
-	var stored int64
-	if e := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(size),0) FROM (SELECT MAX(size) AS size FROM analysis_artifacts GROUP BY digest)`).Scan(&stored); e != nil {
+	release, e := s.sealArtifacts(ctx, &out)
+	if e != nil {
 		return e
 	}
-	added := map[string]bool{}
-	for _, a := range out.Artifacts {
-		if added[a.Object.Digest] {
-			continue
-		}
-		added[a.Object.Digest] = true
-		var existing bool
-		if e := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM analysis_artifacts WHERE digest=?)`, a.Object.Digest).Scan(&existing); e != nil {
-			return e
-		}
-		if !existing {
-			stored += a.Object.Size
-		}
-	}
-	if stored > s.cacheLimit(ctx) {
-		return ErrBudget
-	}
+	defer release()
 	gated3, e := dbwork.Begin(ctx, s.db, dbwork.ClassBackgroundMedia)
 	if e != nil {
 		return e
@@ -480,4 +410,79 @@ func (s *Service) publish(ctx context.Context, b binding, stage, id, evidence, t
 		return e
 	}
 	return gated3.Commit()
+}
+
+// sealArtifacts seals every artifact a stage staged and checks the cache
+// budget with them counted. The caller holds s.publication and keeps the
+// returned release (which closes the object gates) until its rows commit.
+func (s *Service) sealArtifacts(ctx context.Context, out *produced) (func(), error) {
+	// Obtain every distinct gate before sealing any object. Fail-fast acquisition
+	// cannot deadlock other publishers/readers; physical contention is a retry,
+	// not evidence that the generated media is invalid.
+	gates := map[string]*os.File{}
+	release := func() {
+		for _, gate := range gates {
+			_ = gate.Close()
+		}
+	}
+	fail := func(e error) (func(), error) { release(); return nil, e }
+	for _, a := range out.Artifacts {
+		if gates[a.Object.Digest] != nil {
+			continue
+		}
+		gate, err := s.custody.exclusive(a.Object.Digest)
+		if errors.Is(err, livechannels.ErrPhysicalBusy) {
+			return fail(storage.ErrBusy)
+		}
+		if err != nil {
+			return fail(err)
+		}
+		gates[a.Object.Digest] = gate
+	}
+	for i := range out.Artifacts {
+		a := &out.Artifacts[i]
+		if a.RetainedKey == "" {
+			return fail(ErrInput)
+		}
+		writer, e := s.artifacts.ResumeRetained(ctx, a.RetainedKey, a.Object.Size, a.Object.Size)
+		if e != nil {
+			return fail(e)
+		}
+		checkpoint, e := writer.Checkpoint()
+		if e != nil || checkpoint != a.Object {
+			writer.Abort()
+			if e != nil {
+				return fail(e)
+			}
+			return fail(ErrConflict)
+		}
+		object, e := writer.Seal(ctx)
+		if e != nil {
+			writer.Abort()
+			return fail(e)
+		}
+		a.Object = object
+	}
+	var stored int64
+	if e := s.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(size),0) FROM (SELECT MAX(size) AS size FROM analysis_artifacts GROUP BY digest)`).Scan(&stored); e != nil {
+		return fail(e)
+	}
+	added := map[string]bool{}
+	for _, a := range out.Artifacts {
+		if added[a.Object.Digest] {
+			continue
+		}
+		added[a.Object.Digest] = true
+		var existing bool
+		if e := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM analysis_artifacts WHERE digest=?)`, a.Object.Digest).Scan(&existing); e != nil {
+			return fail(e)
+		}
+		if !existing {
+			stored += a.Object.Size
+		}
+	}
+	if stored > s.cacheLimit(ctx) {
+		return fail(ErrBudget)
+	}
+	return release, nil
 }

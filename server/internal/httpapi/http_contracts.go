@@ -50,6 +50,9 @@ func registerHTTPContracts(registry *apikit.Registry) error {
 	if err := registerAdministrationHTTPContracts(registry); err != nil {
 		return err
 	}
+	if err := registerSegmentHTTPContracts(registry); err != nil {
+		return err
+	}
 	if err := registerSetupHTTPContracts(registry); err != nil {
 		return err
 	}
