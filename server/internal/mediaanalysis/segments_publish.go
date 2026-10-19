@@ -107,10 +107,14 @@ func markShowDirty(ctx context.Context, tx *sql.Tx, show int64) error {
 }
 
 type storedMarker struct {
-	id, kind, provenance string
-	start, end           int64
-	edited, deleted      bool
+	id, kind, provenance      string
+	start, end                int64
+	approved, edited, deleted bool
 }
+
+// owned is a marker the owner decided on: made, adjusted, approved or
+// dismissed. No detector changes or removes one.
+func (m storedMarker) owned() bool { return m.approved || m.edited || m.deleted }
 
 func overlaps(aStart, aEnd, bStart, bEnd int64) bool { return aStart < bEnd && bStart < aEnd }
 
@@ -122,14 +126,14 @@ func overlaps(aStart, aEnd, bStart, bEnd int64) bool { return aStart < bEnd && b
 // moves the marker revision, so clients' marker sets stay valid otherwise.
 func replaceDetectorMarkers(ctx context.Context, tx *sql.Tx, f segmentFile, resultID string, family func(string) bool, detections []segmentdetect.Detection, supersede bool) (bool, error) {
 	binding := f.binding()
-	rows, err := tx.QueryContext(ctx, `SELECT id,kind,start_us,end_us,provenance,edited,deleted FROM analysis_markers WHERE object_id=? AND source_revision=? AND source_binding=? LIMIT 1025`, f.ObjectID, f.Revision, binding)
+	rows, err := tx.QueryContext(ctx, `SELECT id,kind,start_us,end_us,provenance,approved,edited,deleted FROM analysis_markers WHERE object_id=? AND source_revision=? AND source_binding=? LIMIT 1025`, f.ObjectID, f.Revision, binding)
 	if err != nil {
 		return false, err
 	}
 	var stored []storedMarker
 	for rows.Next() {
 		var m storedMarker
-		if err = rows.Scan(&m.id, &m.kind, &m.start, &m.end, &m.provenance, &m.edited, &m.deleted); err != nil {
+		if err = rows.Scan(&m.id, &m.kind, &m.start, &m.end, &m.provenance, &m.approved, &m.edited, &m.deleted); err != nil {
 			rows.Close()
 			return false, err
 		}
@@ -153,7 +157,7 @@ func replaceDetectorMarkers(ctx context.Context, tx *sql.Tx, f segmentFile, resu
 		}
 		owned := false
 		for _, m := range stored {
-			owned = owned || m.edited && m.kind == d.Kind && overlaps(m.start, m.end, d.StartUS, d.EndUS)
+			owned = owned || (m.approved || m.edited) && m.kind == d.Kind && overlaps(m.start, m.end, d.StartUS, d.EndUS)
 		}
 		if !owned {
 			desired = append(desired, wanted{token(f.ObjectID, f.Revision, binding, d.Kind, fmt.Sprint(d.StartUS), fmt.Sprint(d.EndUS), d.Provenance), d})
@@ -166,7 +170,7 @@ func replaceDetectorMarkers(ctx context.Context, tx *sql.Tx, f segmentFile, resu
 	var remove []string
 	present := map[string]bool{}
 	for _, m := range stored {
-		if m.edited || m.deleted {
+		if m.owned() {
 			continue
 		}
 		switch {
@@ -195,7 +199,7 @@ func replaceDetectorMarkers(ctx context.Context, tx *sql.Tx, f segmentFile, resu
 	}
 	sort.Strings(remove)
 	for _, id := range remove {
-		if _, err = tx.ExecContext(ctx, `DELETE FROM analysis_markers WHERE id=? AND edited=0`, id); err != nil {
+		if _, err = tx.ExecContext(ctx, `DELETE FROM analysis_markers WHERE id=? AND approved=0 AND edited=0 AND deleted=0`, id); err != nil {
 			return false, err
 		}
 	}

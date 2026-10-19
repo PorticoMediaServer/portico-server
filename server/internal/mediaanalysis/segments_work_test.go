@@ -280,3 +280,61 @@ func TestSegmentReviewApproveDismissAndRedetectKeepOwnerDecisions(t *testing.T) 
 		t.Fatalf("titles %+v %v", page, err)
 	}
 }
+
+// A server upgraded from before intro and credits detection has settings and
+// library documents that never mention it: the server runs standard, its video
+// libraries follow it, and a library's own later choice wins.
+func TestSegmentModesOfDocumentsSavedBeforeDetectionExisted(t *testing.T) {
+	c := catalogtest.Open(t)
+	c.Library("tv", "TV", "tv", "/tv")
+	c.Library("films", "Films", "movie", "/films")
+	c.Library("music", "Music", "music", "/music")
+	c.Exec(`INSERT INTO console_documents(scope,revision,body,updated_ms) VALUES('server',4,'{"name":"Den","analysisStorageGiB":64}',1)`)
+	c.Exec(`INSERT INTO admin_documents(scope,revision,body,updated_ms) VALUES('library:tv',2,'{"allowMediaDeletion":true}',1)`)
+	ctx := context.Background()
+	libraries, server, err := segmentLibrariesTx(ctx, c.DB)
+	if err != nil || server != SegmentModeStandard {
+		t.Fatalf("server mode %q (%v)", server, err)
+	}
+	got := map[string]string{}
+	for _, l := range libraries {
+		got[l.ID] = l.Choice + ":" + l.Mode
+	}
+	if len(got) != 2 || got["tv"] != "server:standard" || got["films"] != "server:standard" {
+		t.Fatalf("%v", got)
+	}
+	c.Exec(`UPDATE admin_documents SET body='{"allowMediaDeletion":true,"segmentDetection":"off"}' WHERE scope='library:tv'`)
+	if libraries, _, err = segmentLibrariesTx(ctx, c.DB); err != nil || libraries[1].ID != "tv" || libraries[1].Mode != SegmentModeOff {
+		t.Fatalf("%+v %v", libraries, err)
+	}
+}
+
+// The scan-stage detector this replaced left single-file guesses on existing
+// installs. Measuring the file replaces them; one the owner approved stays,
+// and no detection of its kind is laid over it.
+func TestSegmentWorkerReplacesTheRetiredDetectorsGuesses(t *testing.T) {
+	f := newSegmentFixture(t)
+	for i, cold := range []float64{0, 30, 60} {
+		f.episode(fmt.Sprintf("s1e%d", i+1), 1, i+1, cold)
+	}
+	binding := token("incarnation", "1", "")
+	f.c.Exec(`INSERT INTO analysis_markers(id,object_id,source_revision,source_binding,kind,start_us,end_us,confidence,provenance,result_id,approved) VALUES
+	 ('old-guess',?,'r1',?,'intro',0,30000000,.3,'luminance_opening_boundary:v1','old-result',0),
+	 ('old-approved',?,'r1',?,'credits',380000000,391000000,.35,'sustained_end_title_luminance:v1','old-result',1)`,
+		f.objects["s1e1"], binding, f.objects["s1e1"], binding)
+	f.settle()
+	var guess, approved bool
+	for _, m := range f.markers("s1e1") {
+		guess = guess || m.provenance == "luminance_opening_boundary:v1" && !m.gone
+		approved = approved || m.provenance == "sustained_end_title_luminance:v1" && m.approved && !m.gone
+	}
+	if guess || !approved {
+		t.Fatalf("old guess live %v, approved old marker live %v: %+v", guess, approved, f.markers("s1e1"))
+	}
+	if intro := f.live("s1e1", "intro"); len(intro) != 1 || intro[0].provenance != segmentdetect.IntroProvenance {
+		t.Fatalf("%+v", f.markers("s1e1"))
+	}
+	if credits := f.live("s1e1", "credits"); len(credits) != 1 || !credits[0].approved {
+		t.Fatalf("a detection was laid over the owner's credits: %+v", f.markers("s1e1"))
+	}
+}
