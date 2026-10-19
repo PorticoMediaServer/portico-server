@@ -11872,6 +11872,31 @@
    "source": "Server logs, detailed capture for troubleshooting, and support bundles.",
    "state": "machine"
   },
+  "server.maintenance.cadence.custom": {
+   "text": "Días elegidos",
+   "source": "Chosen days",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.nightly": {
+   "text": "Todas las noches",
+   "source": "Every night",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekdays": {
+   "text": "Entre semana",
+   "source": "Weekdays",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekends": {
+   "text": "Fines de semana",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekly": {
+   "text": "Una vez por semana",
+   "source": "Once a week",
+   "state": "machine"
+  },
   "server.messageEveryone": {
    "text": "Enviar mensaje a todos",
    "source": "Message everyone",
@@ -12945,6 +12970,106 @@
   "server.storage.added": {
    "text": "Añadido.",
    "source": "Added.",
+   "state": "machine"
+  },
+  "server.storage.category.artwork": {
+   "text": "Imágenes",
+   "source": "Artwork",
+   "state": "machine"
+  },
+  "server.storage.category.artwork.description": {
+   "text": "Pósteres, fondos y miniaturas que el servidor ha descargado, extraído o recibido.",
+   "source": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+   "state": "machine"
+  },
+  "server.storage.category.backups": {
+   "text": "Copias de seguridad",
+   "source": "Backups",
+   "state": "machine"
+  },
+  "server.storage.category.backups.description": {
+   "text": "Copias de seguridad del servidor.",
+   "source": "Server backups.",
+   "state": "machine"
+  },
+  "server.storage.category.conversions": {
+   "text": "Archivos temporales de conversión",
+   "source": "Conversion working files",
+   "state": "machine"
+  },
+  "server.storage.category.conversions.description": {
+   "text": "Segmentos escritos mientras se convertía una transmisión. Puedes eliminarlos sin problema cuando no se esté reproduciendo nada.",
+   "source": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+   "state": "machine"
+  },
+  "server.storage.category.downloads": {
+   "text": "Descargas",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "server.storage.category.downloads.description": {
+   "text": "Paquetes preparados para que un dispositivo los lleve sin conexión.",
+   "source": "Packages staged for a client to take offline.",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache": {
+   "text": "Búfer en directo",
+   "source": "Live buffer",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache.description": {
+   "text": "Segmentos almacenados en búfer de directos y canales.",
+   "source": "Buffered live and channel segments.",
+   "state": "machine"
+  },
+  "server.storage.category.logs": {
+   "text": "Registros",
+   "source": "Logs",
+   "state": "machine"
+  },
+  "server.storage.category.logs.description": {
+   "text": "Registros de diagnóstico guardados en el disco.",
+   "source": "Diagnostic records written to disk.",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media": {
+   "text": "Contenido preparado",
+   "source": "Prepared media",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media.description": {
+   "text": "Versiones optimizadas preparadas para descargar o para un dispositivo que no puede reproducir el original.",
+   "source": "Optimised versions prepared for download or for a device that cannot play the original.",
+   "state": "machine"
+  },
+  "server.storage.category.recordings": {
+   "text": "Grabaciones",
+   "source": "Recordings",
+   "state": "machine"
+  },
+  "server.storage.category.recordings.description": {
+   "text": "Grabaciones realizadas. Son contenido: la página de mantenimiento nunca las elimina.",
+   "source": "Captured recordings. These are content: the maintenance page never removes them.",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles": {
+   "text": "Subtítulos",
+   "source": "Subtitles",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles.description": {
+   "text": "Pistas de subtítulos extraídas, descargadas y renderizadas.",
+   "source": "Extracted, downloaded and rendered subtitle tracks.",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay": {
+   "text": "Miniaturas de desplazamiento",
+   "source": "Trickplay tiles",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay.description": {
+   "text": "Miniaturas para desplazarte por el vídeo, generadas por archivo. Suele ser la categoría regenerable más grande.",
+   "source": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
    "state": "machine"
   },
   "server.storage.passwordSaved": {

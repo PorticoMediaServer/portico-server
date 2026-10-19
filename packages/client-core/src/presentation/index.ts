@@ -16,6 +16,7 @@ export {playOnDestinations, webDestinationSupport, type DestinationCapabilities,
 export {serviceI18n, serviceProblem, serviceText, setServiceI18n} from './service-text.ts';
 export {serverTextLabel, type ServerLabel} from './server-text.ts';
 export {metadataAgentWords, type MetadataAgentLike} from './metadata-agent.ts';
+export {storageCategoryWords, maintenanceCadenceName} from './maintenance-words.ts';
 export {isBitmapSubtitleFormat, isBitmapResource, isTextResource, textTrackForLanguage, sourceFactsOf, sourceIs4kOrHdr, bitmapWarningNeeded, ownerPlaybackSwitches, type BitmapTrackLike, type OwnerPlaybackSwitches, type SourceFacts} from './bitmap-subtitles.ts';
 export {formatBehindSec, isBehindLive, behindLiveSec, programmeRangeLabel} from './live-label.ts';
 export {nowNextProgrammes, miniGuideNeighbors, sortChannelsByNumber, type MiniGuideChannel, type MiniGuideProgramme, type MiniGuideRow} from './mini-guide.ts';

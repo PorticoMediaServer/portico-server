@@ -11872,6 +11872,31 @@
    "source": "Server logs, detailed capture for troubleshooting, and support bundles.",
    "state": "machine"
   },
+  "server.maintenance.cadence.custom": {
+   "text": "Выбранные дни",
+   "source": "Chosen days",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.nightly": {
+   "text": "Каждую ночь",
+   "source": "Every night",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekdays": {
+   "text": "По будням",
+   "source": "Weekdays",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekends": {
+   "text": "По выходным",
+   "source": "Weekends",
+   "state": "machine"
+  },
+  "server.maintenance.cadence.weekly": {
+   "text": "Раз в неделю",
+   "source": "Once a week",
+   "state": "machine"
+  },
   "server.messageEveryone": {
    "text": "Написать всем",
    "source": "Message everyone",
@@ -12945,6 +12970,106 @@
   "server.storage.added": {
    "text": "Добавлено.",
    "source": "Added.",
+   "state": "machine"
+  },
+  "server.storage.category.artwork": {
+   "text": "Изображения",
+   "source": "Artwork",
+   "state": "machine"
+  },
+  "server.storage.category.artwork.description": {
+   "text": "Постеры, фоны и миниатюры, которые сервер загрузил, извлёк или получил.",
+   "source": "Posters, backdrops and thumbnails the server has fetched, extracted or been given.",
+   "state": "machine"
+  },
+  "server.storage.category.backups": {
+   "text": "Резервные копии",
+   "source": "Backups",
+   "state": "machine"
+  },
+  "server.storage.category.backups.description": {
+   "text": "Резервные копии сервера.",
+   "source": "Server backups.",
+   "state": "machine"
+  },
+  "server.storage.category.conversions": {
+   "text": "Временные файлы конвертации",
+   "source": "Conversion working files",
+   "state": "machine"
+  },
+  "server.storage.category.conversions.description": {
+   "text": "Сегменты, записанные во время конвертации потока. Их можно удалить, когда ничего не воспроизводится.",
+   "source": "Segments written while a stream was being converted. Safe to remove when nothing is playing.",
+   "state": "machine"
+  },
+  "server.storage.category.downloads": {
+   "text": "Загрузки",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "server.storage.category.downloads.description": {
+   "text": "Пакеты, подготовленные для просмотра на устройстве офлайн.",
+   "source": "Packages staged for a client to take offline.",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache": {
+   "text": "Буфер эфира",
+   "source": "Live buffer",
+   "state": "machine"
+  },
+  "server.storage.category.live-cache.description": {
+   "text": "Буферизованные сегменты эфира и каналов.",
+   "source": "Buffered live and channel segments.",
+   "state": "machine"
+  },
+  "server.storage.category.logs": {
+   "text": "Журналы",
+   "source": "Logs",
+   "state": "machine"
+  },
+  "server.storage.category.logs.description": {
+   "text": "Диагностические записи на диске.",
+   "source": "Diagnostic records written to disk.",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media": {
+   "text": "Подготовленные файлы",
+   "source": "Prepared media",
+   "state": "machine"
+  },
+  "server.storage.category.prepared-media.description": {
+   "text": "Оптимизированные версии для скачивания или для устройств, которые не могут воспроизвести оригинал.",
+   "source": "Optimised versions prepared for download or for a device that cannot play the original.",
+   "state": "machine"
+  },
+  "server.storage.category.recordings": {
+   "text": "Записи",
+   "source": "Recordings",
+   "state": "machine"
+  },
+  "server.storage.category.recordings.description": {
+   "text": "Сделанные записи. Это контент: страница обслуживания никогда их не удаляет.",
+   "source": "Captured recordings. These are content: the maintenance page never removes them.",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles": {
+   "text": "Субтитры",
+   "source": "Subtitles",
+   "state": "machine"
+  },
+  "server.storage.category.subtitles.description": {
+   "text": "Извлечённые, скачанные и отрисованные дорожки субтитров.",
+   "source": "Extracted, downloaded and rendered subtitle tracks.",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay": {
+   "text": "Миниатюры перемотки",
+   "source": "Trickplay tiles",
+   "state": "machine"
+  },
+  "server.storage.category.trickplay.description": {
+   "text": "Миниатюры для перемотки, создаваемые для каждого файла. Обычно это самая большая категория, которую можно создать заново.",
+   "source": "Scrubbing tiles generated per file. This is usually the largest regenerable category.",
    "state": "machine"
   },
   "server.storage.passwordSaved": {

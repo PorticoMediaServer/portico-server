@@ -216,3 +216,13 @@ test('the shared duration, size and bit-rate helpers follow the published catalo
     setServiceI18n(createI18n());
   }
 });
+
+test('storage categories and day presets read in the viewer’s language by id; an unknown id keeps the server’s words', async () => {
+  const {storageCategoryWords, maintenanceCadenceName} = await import('../src/presentation/maintenance-words.ts');
+  await loadCatalogue('fr');
+  const fr = createI18n(region('fr'));
+  assert.deepEqual(storageCategoryWords(fr, {id: 'logs', name: 'Logs', description: 'Diagnostic records written to disk.'}), {name: catalogue('fr')['server.storage.category.logs'], description: catalogue('fr')['server.storage.category.logs.description']});
+  assert.deepEqual(storageCategoryWords(fr, {id: 'future', name: 'Future files', description: 'New.'}), {name: 'Future files', description: 'New.'});
+  assert.equal(maintenanceCadenceName(fr, {id: 'weekly', name: 'Once a week'}), catalogue('fr')['server.maintenance.cadence.weekly']);
+  assert.equal(maintenanceCadenceName(fr, {id: 'fortnightly', name: 'Every other week'}), 'Every other week');
+});

@@ -12,6 +12,7 @@ import {ListPager} from './ListPager';
 import {useSession} from '../../app/session';
 import {useI18n, type I18n} from '../../app/i18n';
 import {Button, ConfirmDialog, Freshness, Input, Notice, SettingsEmpty, SettingsFooter, SettingsGroup, SettingsLoading, SettingsNote, SettingsRow, Status, Switch} from '../../ui';
+import {storageCategoryWords} from '@core/presentation/index.ts';
 
 // A scan that finds files gone, or back, moves this list.
 const MISSING_MOVES = [dependsOn.content()];
@@ -40,18 +41,20 @@ export function DiskUsagePanel() {
   const [chosen, setChosen] = useState<StorageUsage>();
   const [days, setDays] = useState(30);
   const report = read.data;
+  const chosenName = chosen ? storageCategoryWords(i18n, chosen).name : '';
   return (
     <SettingsGroup title={t('settings.server.diskUsage')} description={t('web.maintenance.storageLede')} action={<Freshness at={read.at} refreshing={read.loading} onRefresh={read.reload} />}>
       {read.error ? <SettingsNote><Notice tone={report ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
       {action.notice ? <SettingsNote><Notice tone="success" compact>{action.notice}</Notice></SettingsNote> : null}
       {!report && read.loading ? <SettingsLoading thing={t('server.thing.diskUsage')} /> : null}
       {report ? <SettingsRow label={t('web.maintenance.totalLabel')} meta={i18n.bytes(report.totalBytes)} help={report.truncated ? t('web.maintenance.truncatedHelp') : undefined} /> : null}
-      {report?.categories.filter(c => c.present).map(c => (
-        <SettingsRow key={c.id} label={c.name} help={c.regenerable ? t('web.maintenance.regenerableHelp', {description: c.description}) : c.description} meta={i18n.bytes(c.bytes)}
-          control={c.cleanable && c.bytes > 0 ? <Button size="sm" variant="ghost" label={t('server.cleanUp')} onClick={() => { setChosen(c); setDays(30); action.clear(); }} /> : undefined} />
-      ))}
-      {/* Tier 2: files go. The word to type is the folder's own name; the server is sent its id. */}
-      <ConfirmDialog open={!!chosen} onOpenChange={o => !o && setChosen(undefined)} title={t('web.maintenance.cleanUpTitle', {name: chosen?.name ?? ''})} typedConfirmation={chosen?.name} busy={action.busy} error={action.error || undefined} destructive={!chosen?.regenerable}
+      {report?.categories.filter(c => c.present).map(c => {
+        const words = storageCategoryWords(i18n, c);
+        return <SettingsRow key={c.id} label={words.name} help={c.regenerable ? t('web.maintenance.regenerableHelp', {description: words.description}) : words.description} meta={i18n.bytes(c.bytes)}
+          control={c.cleanable && c.bytes > 0 ? <Button size="sm" variant="ghost" label={t('server.cleanUp')} onClick={() => { setChosen(c); setDays(30); action.clear(); }} /> : undefined} />;
+      })}
+      {/* Tier 2: files go. The word to type is the folder's name as shown; the server is sent its id. */}
+      <ConfirmDialog open={!!chosen} onOpenChange={o => !o && setChosen(undefined)} title={t('web.maintenance.cleanUpTitle', {name: chosenName})} typedConfirmation={chosen ? chosenName : undefined} busy={action.busy} error={action.error || undefined} destructive={!chosen?.regenerable}
         body={<div style={{display: 'flex', flexDirection: 'column', gap: 12}}><span>{t('server.cleanup.body', {canRecreate: chosen?.regenerable ? 'yes' : 'no'})}</span><Input label={t('web.maintenance.olderThan')} type="number" min={0} max={3650} value={days} onChange={e => setDays(Math.max(0, Number(e.target.value) || 0))} style={{width: 140}} /></div>}
         confirmLabel={t('server.cleanUp')} onConfirm={() => void action.run(async () => { if (!chosen) return; const payload = {olderThanDays: days, confirmation: chosen.id}; const key = JSON.stringify({id: chosen.id, ...payload}); await admin.send<{bytesFreedText: string; filesRemoved: number}>(`/v1/admin/storage-usage/${encodeURIComponent(chosen.id)}/cleanup`, {...payload, operationId: opIds.forPayload(key)}); opIds.release(); setChosen(undefined); read.reload(); }, t('server.cleanup.done'))} />
     </SettingsGroup>

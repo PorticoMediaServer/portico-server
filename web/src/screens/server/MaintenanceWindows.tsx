@@ -10,6 +10,7 @@ import {rebaseDraft} from '@core/freshness-actions.ts';
 import {useSession} from '../../app/session';
 import {useI18n, type MessageId} from '../../app/i18n';
 import {Button, Dialog, Input, Notice, Select, SettingsGroup, SettingsRow, Status, Switch, Text, TextArea} from '../../ui';
+import {maintenanceCadenceName, storageCategoryWords} from '@core/presentation/index.ts';
 import {FormLoadNotice, useServerForm} from '../settings/ServerForms';
 import page from '../settings/Settings.module.css';
 
@@ -25,7 +26,8 @@ function useTaskLabel() {
  * runs in each window. Edits go to the page's maintenance form, saved with the page.
  */
 export function WindowsPanel() {
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const task = useTaskLabel();
   const {form, state} = useServerForm<MaintenanceSettings, MaintenanceDocument>('maintenance');
   const draft = state.draft, doc = state.status;
@@ -38,7 +40,7 @@ export function WindowsPanel() {
           control={<div style={{display: 'flex', flexDirection: 'column', gap: 12, width: '100%'}}>
             <div style={{display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center'}}>
               <Switch checked={w.enabled} onCheckedChange={v => change(i, {enabled: v})} label={t('web.dvr.on')} />
-              <Select hideLabel label={t('web.maintenance.days')} value={w.cadence} onChange={e => { const c = doc.cadences.find(x => x.id === e.target.value); change(i, {cadence: e.target.value, days: c ? [...c.days] : w.days}); }} options={doc.cadences.map(c => ({value: c.id, label: c.name}))} />
+              <Select hideLabel label={t('web.maintenance.days')} value={w.cadence} onChange={e => { const c = doc.cadences.find(x => x.id === e.target.value); change(i, {cadence: e.target.value, days: c ? [...c.days] : w.days}); }} options={doc.cadences.map(c => ({value: c.id, label: maintenanceCadenceName(i18n, c)}))} />
               <Text variant="caption" tone="tertiary">{t('server.windows.from')}</Text>
               <Input hideLabel label={t('web.maintenance.startsAt')} type="time" value={clock(w.startMinute)} onChange={e => change(i, {startMinute: minutes(e.target.value)})} style={{width: 120}} />
               <Text variant="caption" tone="tertiary">{t('server.windows.for')}</Text>
@@ -125,14 +127,15 @@ function ScheduleRow({schedule, onSaved}: {schedule: Schedule; onSaved: () => vo
  * rows above them are authored in the structure; all of them save with the page.
  */
 export function RetentionRows() {
-  const {t} = useI18n();
+  const i18n = useI18n();
+  const {t} = i18n;
   const maintenance = useServerForm<MaintenanceSettings, MaintenanceDocument>('maintenance');
   const logs = useServerForm<LogsDraft, LogSettings>('logs');
   const days = t('settings.unit.days');
   const draft = maintenance.state.draft, doc = maintenance.state.status;
   return (
     <>
-      {draft && doc ? retentionRows(Object.keys(draft.retention), key => doc.storageCategories.find(c => c.retentionKey === key)?.name, t).map(({key, label}) => (
+      {draft && doc ? retentionRows(Object.keys(draft.retention), key => { const c = doc.storageCategories.find(x => x.retentionKey === key); return c ? storageCategoryWords(i18n, c).name : undefined; }, t).map(({key, label}) => (
         <SettingsRow key={key} label={label}
           control={<span className={page.numberField}><Input hideLabel label={label} type="number" min={0} max={doc.retentionMaxima[key] ?? 3650} value={draft.retention[key]} onChange={e => maintenance.form.set(d => ({...d, retention: {...d.retention, [key]: Math.min(doc.retentionMaxima[key] ?? 3650, Math.max(0, Number(e.target.value) || 0))}}))} /><span className={page.unit}>{days}</span></span>} />
       )) : null}
