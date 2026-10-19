@@ -6982,6 +6982,21 @@
    "source": "Unpin {name}",
    "state": "machine"
   },
+  "platform.downloadsChannel": {
+   "text": "Загрузки",
+   "source": "Downloads",
+   "state": "machine"
+  },
+  "platform.downloadsRunning": {
+   "text": "Скачивание для просмотра офлайн",
+   "source": "Downloading for offline viewing",
+   "state": "machine"
+  },
+  "platform.localNetworkUsage": {
+   "text": "Находите свои серверы Portico, телевизоры и устройства Google Cast поблизости. Адреса, введённые вручную, и коды для ТВ работают и без поиска в локальной сети.",
+   "source": "Find your Portico servers, nearby TVs and Google Cast devices. Manual addresses and TV codes also work without local network discovery.",
+   "state": "machine"
+  },
   "playOn.airplay": {
    "text": "AirPlay",
    "source": "AirPlay",

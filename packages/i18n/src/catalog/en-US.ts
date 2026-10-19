@@ -1024,6 +1024,11 @@ export const enUS = {
   'locale.en-US': 'English (United States)',
   'locale.en-CA': 'English (Canada)',
   'locale.en-GB': 'English (United Kingdom)',
+  // Words the operating system shows for the apps: Android's download notification and channel, and
+  // iOS's local network permission prompt (generated into each platform's own string files).
+  'platform.downloadsChannel': 'Downloads',
+  'platform.downloadsRunning': 'Downloading for offline viewing',
+  'platform.localNetworkUsage': 'Find your Portico servers, nearby TVs and Google Cast devices. Manual addresses and TV codes also work without local network discovery.',
   // Each language is named in itself, in every language, so it can be found by someone who can't read the current one.
   'locale.fr': 'Français (France)',
   'locale.es': 'Español (España)',
