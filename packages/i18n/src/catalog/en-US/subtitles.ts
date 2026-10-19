@@ -1,8 +1,18 @@
 /**
  * en-US messages for subtitles the player draws itself (styled and image subtitles) and for the
- * "up next" card shown during the credits. Merged into `enUS` statically like `web.ts`.
+ * "up next" card shown during the credits, and for subtitles found online. Merged into `enUS`
+ * statically like `web.ts`.
  */
 export const drawnSubtitleMessages = {
+  // ── Subtitles found online: the attribution OpenSubtitles asks for, and its refusals ──
+  'player.opt.providedByOpenSubtitles': 'Subtitles provided by OpenSubtitles.com',
+  'subtitles.error.providerNotConfigured': 'Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.',
+  'subtitles.error.providerKeyRejected': 'OpenSubtitles didn’t accept this server’s key. Ask the owner to check it.',
+  'subtitles.error.providerSignInFailed': 'OpenSubtitles didn’t accept this server’s account. Ask the owner to check it.',
+  'subtitles.error.providerSignInRequired': 'OpenSubtitles only lets signed-in accounts download. Ask the owner to add an account.',
+  'subtitles.error.providerQuota': 'This server has used today’s OpenSubtitles downloads. They start again at {time}.',
+  'subtitles.error.providerQuotaLater': 'This server has used today’s OpenSubtitles downloads. Try again tomorrow.',
+  'subtitles.error.providerBusy': 'OpenSubtitles is busy. Try again in a moment.',
   'player.subtitles.position': 'Position',
   'player.subtitles.positionHelp': 'Move subtitles up or down the picture',
   'player.subtitles.moveUp': 'Up',

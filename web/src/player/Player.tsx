@@ -857,10 +857,17 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
                       {(subtitlePlan.discovered ?? []).filter(d => !(subtitlePlan.resources ?? []).some(r => r.discoveryId === d.id && r.enabled)).map(d => optionRow(trackName(d, i18n.locale) || d.title, false, () => { void subtitles.add(d).catch(subtitleChangeFailed); setOpenBox(null); }, d.enabled ? i18n.t('player.opt.add') : subtitleReason(d.reason), subtitles.snapshot.busy || !d.enabled))}
                       {subtitles.snapshot.catalog?.provider.enabled ? (
                         subtitleSearch ? (
-                          subtitles.snapshot.busy && !subtitles.snapshot.candidates.length ? <Text variant="caption" tone="tertiary">{i18n.t('player.opt.lookingForSubtitles')}</Text>
-                            : subtitles.snapshot.candidates.length ? subtitles.snapshot.candidates.map(c => optionRow(`${c.title} · ${c.language}`, false, () => { void subtitles.service!.apply(c, 'personal', 'Downloaded by the viewer for personal viewing').then(() => setSubtitleSearch(false), () => {}); }, c.attribution, subtitles.snapshot.busy))
-                            : <Text variant="caption" tone="tertiary">{i18n.t('player.opt.noSubtitlesFound')}</Text>
-                        ) : optionRow(i18n.t('player.opt.findSubtitles'), false, () => { setSubtitleSearch(true); void subtitles.service!.search().catch(() => {}); })
+                          <>
+                            {/* A refused search or download says why (the quota, the owner's key), never "nothing found". */}
+                            {subtitles.snapshot.error && !subtitles.snapshot.busy ? <Text variant="caption" tone="secondary" role="status">{subtitles.snapshot.error}</Text> : null}
+                            {subtitles.snapshot.busy && !subtitles.snapshot.candidates.length ? <Text variant="caption" tone="tertiary">{i18n.t('player.opt.lookingForSubtitles')}</Text>
+                              : subtitles.snapshot.candidates.length ? subtitles.snapshot.candidates.map(c => optionRow(`${c.title} · ${c.language}`, false, () => { void subtitles.service!.apply(c, 'personal', 'Downloaded by the viewer for personal viewing').then(() => setSubtitleSearch(false), () => {}); }, c.attribution, subtitles.snapshot.busy))
+                              : subtitles.snapshot.error ? (subtitles.snapshot.canRetry ? <Button size="sm" variant="outline" label={i18n.t('action.tryAgain')} onClick={() => { void subtitles.service!.search().catch(() => {}); }} /> : null)
+                              : <Text variant="caption" tone="tertiary">{i18n.t('player.opt.noSubtitlesFound')}</Text>}
+                            {/* OpenSubtitles' terms: the attribution, linked, wherever its subtitles are searched or picked. */}
+                            <Text variant="caption" tone="tertiary"><a href="https://www.opensubtitles.com" target="_blank" rel="noopener noreferrer">{i18n.t('player.opt.providedByOpenSubtitles')}</a></Text>
+                          </>
+                        ) : optionRow(i18n.t('player.opt.findSubtitles'), false, () => { setSubtitleSearch(true); void subtitles.service!.search().catch(() => {}); }, i18n.t('player.opt.providedByOpenSubtitles'))
                       ) : null}
                       {subtitlePlan.selected ? <div style={{display: 'flex', gap: 4, alignItems: 'center', flexWrap: 'wrap'}} title={i18n.t('player.opt.timingHelp')}><Text variant="caption" tone="tertiary">{i18n.t('player.opt.timing')} {i18n.t('player.opt.offsetSeconds', {seconds: subtitles.offsetSeconds.toFixed(1)})}</Text>{[-0.5, -0.1, 0.1, 0.5].map(step => <Button key={step} size="sm" variant="ghost" label={(step > 0 ? '+' : '−') + Math.abs(step)} onClick={() => { subtitles.nudge(step); }} />)}</div> : null}
                       {subtitles.forcedChoice ? forcedOnlyRow : null}

@@ -1,7 +1,10 @@
 import {routePath} from "../../contracts/src/routes.ts";
 import {unreadableServerResponse} from './server-messages.ts';
+import type {I18n, MessageId} from '../../i18n/src/index.ts';
+/** Where the OpenSubtitles key and account in force come from and how OpenSubtitles last answered. Never a secret. */
+export type OpenSubtitlesStatus=Readonly<{keySource:'owner'|'environment'|'none';accountSource:'owner'|'environment'|'none';account:'none'|'incomplete'|'not_checked'|'signed_in'|'rejected';problem:string;checkedAt:string;retryAt:string;downloadsRemaining:number;downloadsAllowed:number;downloadsResetAt:string}>;
 /** The OpenSubtitles fields say whether the owner saved their own key and password (never sent back) and the account name. */
-export type MetadataSettings=Readonly<{revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean}>;
+export type MetadataSettings=Readonly<{revision:number;localArtworkLimitBytes:number;localArtworkUsedBytes:number;includeAdult:boolean;tmdbCredentialConfigured:boolean;tvdbCredentialConfigured:boolean;openSubtitlesKeyConfigured:boolean;openSubtitlesUsername:string;openSubtitlesPasswordConfigured:boolean;openSubtitles:OpenSubtitlesStatus}>;
 /** A credential left out is unchanged; an empty one goes back to the server's own (for the username: no account). */
 export type MetadataSettingsChange=Readonly<{expectedRevision:number;localArtworkLimitBytes:number;includeAdult:boolean;tmdbReadToken?:string;tvdbProjectKey?:string;openSubtitlesApiKey?:string;openSubtitlesUsername?:string;openSubtitlesPassword?:string}>;
 export function parseMetadataSettings(raw:unknown):MetadataSettings{
@@ -10,10 +13,45 @@ export function parseMetadataSettings(raw:unknown):MetadataSettings{
  if(typeof v.revision!=='number'||!Number.isSafeInteger(v.revision)||v.revision<1||typeof v.localArtworkLimitBytes!=='number'||!Number.isSafeInteger(v.localArtworkLimitBytes)||v.localArtworkLimitBytes<1||typeof v.includeAdult!=='boolean'||typeof v.tmdbCredentialConfigured!=='boolean'||typeof v.tvdbCredentialConfigured!=='boolean')throw new Error(unreadableServerResponse);
  if(typeof v.localArtworkUsedBytes!=="number"||!Number.isSafeInteger(v.localArtworkUsedBytes)||v.localArtworkUsedBytes<0)throw new Error(unreadableServerResponse);
  return Object.freeze({localArtworkUsedBytes:v.localArtworkUsedBytes,revision:v.revision,localArtworkLimitBytes:v.localArtworkLimitBytes,includeAdult:v.includeAdult,tmdbCredentialConfigured:v.tmdbCredentialConfigured,tvdbCredentialConfigured:v.tvdbCredentialConfigured,
-  openSubtitlesKeyConfigured:v.openSubtitlesKeyConfigured===true,openSubtitlesUsername:typeof v.openSubtitlesUsername==='string'&&v.openSubtitlesUsername.length<=512?v.openSubtitlesUsername:'',openSubtitlesPasswordConfigured:v.openSubtitlesPasswordConfigured===true});
+  openSubtitlesKeyConfigured:v.openSubtitlesKeyConfigured===true,openSubtitlesUsername:typeof v.openSubtitlesUsername==='string'&&v.openSubtitlesUsername.length<=512?v.openSubtitlesUsername:'',openSubtitlesPasswordConfigured:v.openSubtitlesPasswordConfigured===true,openSubtitles:parseOpenSubtitlesStatus(v.openSubtitles)});
+}
+const word=<T extends string>(v:unknown,allowed:readonly T[],fallback:T):T=>allowed.includes(v as T)?v as T:fallback;
+const instant=(v:unknown)=>typeof v==='string'&&v.length<=40&&Number.isFinite(Date.parse(v))?v:'';
+const count=(v:unknown)=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0?v:-1;
+/** A status that cannot be read is "nothing known", never a reason to refuse the settings page. */
+export function parseOpenSubtitlesStatus(raw:unknown):OpenSubtitlesStatus{
+ const v=(typeof raw==='object'&&raw!==null&&!Array.isArray(raw)?raw:{}) as Record<string,unknown>;
+ const sources=['owner','environment','none'] as const;
+ return Object.freeze({keySource:word(v.keySource,sources,'none'),accountSource:word(v.accountSource,sources,'none'),account:word(v.account,['none','incomplete','not_checked','signed_in','rejected'] as const,'none'),
+  problem:typeof v.problem==='string'&&/^[a-z_]{1,64}$/.test(v.problem)?v.problem:'',checkedAt:instant(v.checkedAt),retryAt:instant(v.retryAt),downloadsRemaining:count(v.downloadsRemaining),downloadsAllowed:count(v.downloadsAllowed),downloadsResetAt:instant(v.downloadsResetAt)});
+}
+export type OpenSubtitlesSummary=Readonly<{tone:'healthy'|'warning'|'danger'|'neutral';text:string;downloads?:string}>;
+/** A time that may be tomorrow: the time alone within the day, otherwise with its date. */
+function when(i18n:I18n,at:string,now:number):string{const t=Date.parse(at);return t-now<20*3600_000?i18n.time(t):i18n.dateTime(t);}
+/** What Server › Metadata says about OpenSubtitles: whether it is set up, works, and how many downloads are left, in the owner's words. */
+export function openSubtitlesSummary(status:OpenSubtitlesStatus,i18n:I18n,now=Date.now()):OpenSubtitlesSummary{
+ const {t}=i18n;
+ const downloads=status.downloadsRemaining<0?undefined:status.downloadsAllowed>0?t('server.metadata.openSubtitlesDownloadsOf',{remaining:status.downloadsRemaining,allowed:status.downloadsAllowed}):t('server.metadata.openSubtitlesDownloadsLeft',{remaining:status.downloadsRemaining});
+ const later=(id:MessageId,at:string)=>at?t(id,{time:when(i18n,at,now)}):t('server.metadata.openSubtitlesLater');
+ if(status.keySource==='none')return Object.freeze({tone:'neutral',text:t('server.metadata.openSubtitlesNotSetUp')});
+ if(status.account==='rejected'||status.problem==='provider_sign_in_failed')return Object.freeze({tone:'danger',text:t('server.metadata.openSubtitlesAccountRejected')});
+ const problems:Record<string,()=>OpenSubtitlesSummary>={
+  provider_key_rejected:()=>({tone:'danger',text:t('server.metadata.openSubtitlesKeyRejected')}),
+  provider_sign_in_required:()=>({tone:'warning',text:t('server.metadata.openSubtitlesNeedsAccount')}),
+  provider_quota_exhausted:()=>({tone:'warning',text:later('server.metadata.openSubtitlesQuotaUsed',status.downloadsResetAt||status.retryAt)}),
+  provider_rate_limited:()=>({tone:'warning',text:later('server.metadata.openSubtitlesSlowDown',status.retryAt)}),
+  provider_unreachable:()=>({tone:'warning',text:t('server.metadata.openSubtitlesUnreachable')}),
+ };
+ const problem=problems[status.problem];
+ if(problem)return Object.freeze({...problem(),...(downloads?{downloads}:{})});
+ if(status.account==='incomplete')return Object.freeze({tone:'warning',text:t('server.metadata.openSubtitlesNoPassword')});
+ if(!status.checkedAt)return Object.freeze({tone:'neutral',text:t('server.metadata.openSubtitlesNotTested')});
+ return Object.freeze({tone:'healthy',text:status.account==='signed_in'?t('server.metadata.openSubtitlesSignedIn'):t('server.metadata.openSubtitlesKeyWorks'),...(downloads?{downloads}:{})});
 }
 type Request=<T>(path:string,method?:string,body?:unknown)=>Promise<T>;
-export function metadataSettingsService(request:Request){const path=routePath("get_metadata_settings");return Object.freeze({async read(){return parseMetadataSettings(await request<unknown>(path));},async save(change:MetadataSettingsChange){return parseMetadataSettings(await request<unknown>(path,'PUT',change));}});}
+export function metadataSettingsService(request:Request){const path=routePath("get_metadata_settings");return Object.freeze({async read(){return parseMetadataSettings(await request<unknown>(path));},async save(change:MetadataSettingsChange){return parseMetadataSettings(await request<unknown>(path,'PUT',change));},
+ /** Test connection: OpenSubtitles is asked now whether the saved key and account work. */
+ async checkOpenSubtitles(){return parseOpenSubtitlesStatus(await request<unknown>(routePath("check_opensubtitles"),'POST'));}});}
 const GIBIBYTE=2**30;
 /** The stored artwork limit as its field shows it, in gigabytes: a whole number where it is one, otherwise up to two places. */
 export function artworkLimitText(bytes:number):string{const gb=bytes/GIBIBYTE;return Number.isInteger(gb)?String(gb):gb.toFixed(2).replace(/0+$/,'').replace(/\.$/,'');}

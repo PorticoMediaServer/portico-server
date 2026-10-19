@@ -1,6 +1,6 @@
 import {useEffect, useMemo, useState} from 'react';
 import {useNavigate} from '@tanstack/react-router';
-import {artworkLimitBytes as limitBytes, artworkLimitText as limitText, metadataSettingsService, type MetadataSettings, type MetadataSettingsChange} from '@core/metadata-settings.ts';
+import {artworkLimitBytes as limitBytes, artworkLimitText as limitText, metadataSettingsService, openSubtitlesSummary, type MetadataSettings, type MetadataSettingsChange, type OpenSubtitlesStatus} from '@core/metadata-settings.ts';
 import {problem, useRead} from '../../admin/console';
 import {isStaleAnswer} from '@core/freshness-actions.ts';
 import {useInlineForm} from '../settings/ServerForms';
@@ -13,6 +13,8 @@ import page from '../settings/Settings.module.css';
 type KeyEdit = Readonly<{typed: string; remove: boolean}>;
 const untouched: KeyEdit = {typed: '', remove: false};
 const keyChange = (edit: KeyEdit): string | undefined => (edit.remove ? '' : edit.typed.trim() ? edit.typed.trim() : undefined);
+/** Where an OpenSubtitles API key comes from: Portico ships none, so it is the owner's, saved here or in the server's environment. */
+const openSubtitlesConsumers = 'https://www.opensubtitles.com/en/consumers';
 
 /**
  * Metadata: what every library shares when it looks titles up. The owner's own provider keys
@@ -36,7 +38,11 @@ export function MetadataSettingsPanel() {
   const [subtitleKey, setSubtitleKey] = useState<KeyEdit>(untouched);
   const [subtitleUser, setSubtitleUser] = useState('');
   const [subtitlePassword, setSubtitlePassword] = useState('');
-  const reset = (d: MetadataSettings) => { setLimit(limitText(d.localArtworkLimitBytes)); setAdult(d.includeAdult); setTmdb(untouched); setTvdb(untouched); setSubtitleKey(untouched); setSubtitleUser(d.openSubtitlesUsername); setSubtitlePassword(''); };
+  // Test connection's answer, until the settings are read again.
+  const [checked, setChecked] = useState<OpenSubtitlesStatus | null>(null);
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState<unknown>(null);
+  const reset = (d: MetadataSettings) => { setLimit(limitText(d.localArtworkLimitBytes)); setAdult(d.includeAdult); setTmdb(untouched); setTvdb(untouched); setSubtitleKey(untouched); setSubtitleUser(d.openSubtitlesUsername); setSubtitlePassword(''); setChecked(null); setCheckError(null); };
   useEffect(() => { if (doc) reset(doc); }, [doc]);
   const bytes = limitBytes(limit);
   const userChange = doc && subtitleUser.trim() !== doc.openSubtitlesUsername ? subtitleUser.trim() : undefined;
@@ -65,7 +71,18 @@ export function MetadataSettingsPanel() {
       read.reload();
     },
   });
+  const testConnection = async () => {
+    setChecking(true);
+    setCheckError(null);
+    try { setChecked(await service.checkOpenSubtitles()); }
+    catch (e) { setCheckError(e); }
+    finally { setChecking(false); }
+  };
   if (!doc) return read.error ? <Notice tone="error" action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice> : <Loading label={t('settings.server.metadata')} />;
+  const subtitleStatus = checked ?? doc.openSubtitles;
+  const summary = openSubtitlesSummary(subtitleStatus, i18n);
+  // Test connection tests what is saved, so unsaved OpenSubtitles changes are saved first.
+  const subtitleDirty = Object.keys(subtitleChanges()).length > 0;
   const key = (label: string, set: boolean, edit: KeyEdit, change: (next: KeyEdit) => void) => (
     <SettingsRow label={label} help={t('server.metadata.keyHelp')} stack
       state={<Status tone={edit.remove ? 'warning' : set ? 'healthy' : 'neutral'}>{edit.remove ? t('server.metadata.keyRemoving') : set ? t('server.metadata.keySet') : t('server.metadata.keyOurs')}</Status>}
@@ -86,12 +103,13 @@ export function MetadataSettingsPanel() {
       </SettingsGroup>
       <SettingsGroup title={t('server.metadata.subtitles')} description={t('server.metadata.subtitlesLede')}>
         <SettingsRow label={t('server.metadata.openSubtitlesKey')} stack
-          state={<Status tone={subtitleKey.remove ? 'warning' : doc.openSubtitlesKeyConfigured ? 'healthy' : 'neutral'}>{subtitleKey.remove ? t('server.metadata.keyRemoving') : doc.openSubtitlesKeyConfigured ? t('server.metadata.openSubtitlesKeyOwn') : t('server.metadata.openSubtitlesKeyServer')}</Status>}
+          state={<Status tone={subtitleKey.remove ? 'warning' : subtitleStatus.keySource !== 'none' ? 'healthy' : 'neutral'}>{subtitleKey.remove ? t('server.metadata.keyRemoving') : subtitleStatus.keySource === 'owner' ? t('server.metadata.openSubtitlesKeyOwn') : subtitleStatus.keySource === 'environment' ? t('server.metadata.openSubtitlesKeyEnvironment') : t('server.metadata.openSubtitlesKeyNone')}</Status>}
           control={<div style={{display: 'flex', gap: 8, alignItems: 'flex-start', flexWrap: 'wrap', width: '100%'}}>
             <div style={{flex: 1, minWidth: 220, maxWidth: 520}}><PasswordInput hideLabel label={t('server.metadata.openSubtitlesKey')} autoComplete="off" spellCheck={false} maxLength={2048} disabled={subtitleKey.remove} placeholder={doc.openSubtitlesKeyConfigured ? t('server.metadata.keyReplace') : t('server.metadata.keyPaste')} value={subtitleKey.typed} onChange={e => setSubtitleKey({typed: e.target.value, remove: false})} /></div>
-            {doc.openSubtitlesKeyConfigured ? <Button variant="ghost" label={subtitleKey.remove ? t('server.metadata.keyKeep') : t('server.metadata.openSubtitlesUseServer')} onClick={() => setSubtitleKey({typed: '', remove: !subtitleKey.remove})} /> : null}
+            {doc.openSubtitlesKeyConfigured ? <Button variant="ghost" label={subtitleKey.remove ? t('server.metadata.keyKeep') : t('server.metadata.openSubtitlesRemoveKey')} onClick={() => setSubtitleKey({typed: '', remove: !subtitleKey.remove})} /> : <Button variant="ghost" label={t('server.metadata.openSubtitlesGetKey')} href={openSubtitlesConsumers} target="_blank" rel="noopener noreferrer" />}
           </div>} />
-        <SettingsRow label={t('server.metadata.openSubtitlesUser')}
+        <SettingsRow label={t('server.metadata.openSubtitlesUser')} help={t('server.metadata.openSubtitlesAccountHelp')}
+          state={!doc.openSubtitlesUsername && !subtitleUser.trim() && subtitleStatus.accountSource === 'environment' ? t('server.metadata.openSubtitlesAccountEnvironment') : undefined}
           control={<div style={{display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap'}}>
             <Input hideLabel label={t('server.metadata.openSubtitlesUser')} autoComplete="off" spellCheck={false} maxLength={512} value={subtitleUser} onChange={e => setSubtitleUser(e.target.value)} />
             {doc.openSubtitlesUsername ? <Button variant="ghost" label={t('server.metadata.openSubtitlesSignOut')} onClick={() => { setSubtitleUser(''); setSubtitlePassword(''); }} /> : null}
@@ -100,6 +118,11 @@ export function MetadataSettingsPanel() {
           <SettingsRow label={t('server.metadata.openSubtitlesPassword')} state={doc.openSubtitlesPasswordConfigured && !subtitlePassword && userChange === undefined ? t('server.metadata.openSubtitlesPasswordSaved') : undefined}
             control={<PasswordInput hideLabel label={t('server.metadata.openSubtitlesPassword')} autoComplete="new-password" maxLength={512} value={subtitlePassword} onChange={e => setSubtitlePassword(e.target.value)} />} />
         ) : null}
+        <SettingsRow label={t('server.metadata.openSubtitlesConnection')}
+          help={subtitleDirty ? t('server.metadata.openSubtitlesTestUnsaved') : summary.downloads}
+          state={<Status tone={summary.tone}>{summary.text}</Status>}
+          control={subtitleStatus.keySource !== 'none' || subtitleDirty ? <Button size="sm" variant="secondary" label={checking ? t('server.metadata.openSubtitlesTesting') : t('server.metadata.openSubtitlesTest')} disabled={checking || subtitleDirty} onClick={() => void testConnection()} /> : undefined} />
+        {checkError ? <Notice tone="error" compact>{problem(checkError, 'action')}</Notice> : null}
       </SettingsGroup>
       <SettingsGroup title={t('server.metadata.artwork')}>
         <SettingsRow label={t('metadata.settings.artworkLimit')} help={t('server.metadata.artworkHelp')} state={t('server.metadata.artworkUsed', {used: i18n.bytes(doc.localArtworkUsedBytes), limit: i18n.bytes(doc.localArtworkLimitBytes)})}
