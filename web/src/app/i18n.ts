@@ -1,5 +1,5 @@
 import React, {createContext, useContext, useEffect, useLayoutEffect, useMemo, useState} from 'react';
-import {catalogueReady, createI18n, defaultI18n, loadCatalogue, resolveRegion, type DeviceRegion, type I18n, type SupportedLocale} from '@i18n';
+import {catalogue, catalogueReady, createI18n, defaultI18n, loadCatalogue, resolveRegion, type DeviceRegion, type I18n, type SupportedLocale} from '@i18n';
 import {useServerPreferences} from './server-preferences';
 import {setUiI18n} from '../ui/i18n';
 import {setErrorI18n} from './errors';
@@ -17,16 +17,28 @@ function browserRegion(): DeviceRegion {
 
 const device = browserRegion();
 
-/** The catalogue that follows the browser alone: signed-out screens, and a profile that leaves both choices on Automatic. */
-let browser: I18n | undefined;
-function browserI18n(): I18n {
-  // Made again once its words arrive: until then a translated language reads en-US.
-  if (!browser || (!browser.ready && catalogueReady(browser.locale))) browser = createI18n(resolveRegion(undefined, device));
-  return browser;
+/** The language the last signed-in profile chose on this browser (absent for Automatic). */
+const LAST_LOCALE = 'portico.locale.v1';
+function lastLocale(): string | undefined {
+  try { return localStorage.getItem(LAST_LOCALE) ?? undefined; } catch { return undefined; }
 }
 
-/** The language the last signed-in profile read in, so its words can be fetched before the first screen. */
-const LAST_LOCALE = 'portico.locale.v1';
+/**
+ * The catalogue for screens with no profile's preferences yet: signing in, setup, and the moment
+ * before a profile's preferences arrive. The language this browser's last profile chose, else the
+ * browser's own; a profile that leaves both choices on Automatic reads it too.
+ */
+let browser: I18n | undefined;
+let browserFor: string | undefined;
+function browserI18n(): I18n {
+  const last = lastLocale();
+  // Made again once its words arrive (until then a translated language reads en-US), or when the remembered language changes.
+  if (!browser || browserFor !== last || (!browser.ready && catalogueReady(browser.locale))) {
+    browser = createI18n(resolveRegion(last ? {locale: last} : undefined, device));
+    browserFor = last;
+  }
+  return browser;
+}
 
 /**
  * Fetch the words the first screen needs before it renders: the browser's language, and the one
@@ -34,8 +46,7 @@ const LAST_LOCALE = 'portico.locale.v1';
  * when read; a failure leaves en-US, which is always complete.
  */
 export async function preloadI18n(): Promise<void> {
-  let last: string | null = null;
-  try { last = localStorage.getItem(LAST_LOCALE); } catch { /* storage blocked */ }
+  const last = lastLocale();
   const wanted = new Set<SupportedLocale>([resolveRegion(undefined, device).uiLocale]);
   if (last) wanted.add(resolveRegion({locale: last}, device).uiLocale);
   await Promise.all([...wanted].map(loadCatalogue));
@@ -62,6 +73,10 @@ let providers = 0;
 function publish(i18n: I18n): void {
   if (active === i18n) return;
   active = i18n;
+  // Screen readers pick their voice, and the browser its hyphenation, from the page's language.
+  // A language with nothing translated yet reads English, and says so.
+  const words = i18n.locale !== 'en-XA' && Object.keys(catalogue(i18n.locale)).length > 0;
+  if (typeof document !== 'undefined') document.documentElement.lang = words ? i18n.locale : 'en';
   setUiI18n(i18n);
   setErrorI18n(i18n);
   setServiceI18n(i18n);
@@ -78,10 +93,19 @@ export function currentI18n(): I18n {
 
 const I18nContext = createContext<I18n | undefined>(undefined);
 
-/** `ready` is part of the key, not an input: the instance is made again when its catalogue arrives. */
-function viewerI18n(locale: string, hourCycle: 'auto' | 'h12' | 'h23', ready: boolean): I18n {
-  void ready;
-  return locale === 'auto' && hourCycle === 'auto' ? browserI18n() : createI18n(resolveRegion({locale, hourCycle}, device));
+/** The browser alone, for a profile that has answered Automatic for both choices. */
+let automatic: I18n | undefined;
+
+/**
+ * The viewer's catalogue. Until the profile's preferences answer, the remembered language stands
+ * in (`browserI18n`). `ready` is part of the key, not an input: the instance is made again when
+ * its catalogue arrives.
+ */
+function viewerI18n(locale: string, hourCycle: 'auto' | 'h12' | 'h23', answered: boolean, ready: boolean): I18n {
+  if (!answered) return browserI18n();
+  if (locale !== 'auto' || hourCycle !== 'auto') return createI18n(resolveRegion({locale, hourCycle}, device));
+  if (!automatic || (!automatic.ready && ready)) automatic = createI18n(resolveRegion(undefined, device));
+  return automatic;
 }
 
 /**
@@ -98,12 +122,18 @@ export function I18nProvider({children}: {children: React.ReactNode}) {
   const prefs = useServerPreferences();
   const locale = prefs.value<string>('region.locale', 'auto');
   const hourCycle = prefs.value<string>('region.hourCycle', 'auto') as 'auto' | 'h12' | 'h23';
-  const uiLocale = useMemo(() => resolveRegion({locale, hourCycle}, device).uiLocale, [locale, hourCycle]);
+  // The profile's own answer: the `auto` read before it arrives is only a default.
+  const answered = prefs.snapshot !== undefined;
+  const uiLocale = useMemo(() => {
+    const last = answered ? undefined : lastLocale();
+    return resolveRegion(answered ? {locale, hourCycle} : last ? {locale: last} : undefined, device).uiLocale;
+  }, [locale, hourCycle, answered]);
   const ready = useCatalogue(uiLocale);
-  const i18n = useMemo(() => viewerI18n(locale, hourCycle, ready), [locale, hourCycle, ready]);
+  const i18n = useMemo(() => viewerI18n(locale, hourCycle, answered, ready), [locale, hourCycle, answered, ready]);
   useEffect(() => {
+    if (!answered) return;
     try { if (locale === 'auto') localStorage.removeItem(LAST_LOCALE); else localStorage.setItem(LAST_LOCALE, locale); } catch { /* storage blocked */ }
-  }, [locale]);
+  }, [locale, answered]);
   publish(i18n);
   useLayoutEffect(() => {
     providers++;
@@ -122,8 +152,9 @@ export function I18nProvider({children}: {children: React.ReactNode}) {
  */
 export function useI18n(): I18n {
   const provided = useContext(I18nContext);
-  // Called either way (a hook): it re-renders a signed-out screen when the browser's words arrive.
-  useCatalogue(resolveRegion(undefined, device).uiLocale);
+  // Called either way (a hook): it re-renders a signed-out screen when its words arrive.
+  const last = lastLocale();
+  useCatalogue(resolveRegion(last ? {locale: last} : undefined, device).uiLocale);
   if (provided) return provided;
   const i18n = browserI18n();
   // Nothing else speaks for a signed-out screen, so the first one to render sets the catalogue.

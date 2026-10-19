@@ -125,6 +125,22 @@ function LazyMetadataEditor() {
   return needed ? <Suspense fallback={null}><MetadataEditorDialog /></Suspense> : null;
 }
 
+/**
+ * The skip link and the card shortcuts' description. A component of their own so they read the
+ * viewer's catalogue: Shell itself renders above the I18nProvider and would get the browser's.
+ */
+function ShellAids() {
+  const {t} = useI18n();
+  return (
+    <>
+      {/* The first stop for a keyboard: hidden until focused, it jumps past the rail to the page. */}
+      <a href={'#' + MAIN_ID} className={s.skipLink} onClick={skipToContent}>{t('web.shell.skipToContent')}</a>
+      {/* The card keyboard shortcuts, described once for assistive technology (cards reference it). */}
+      <span id="card-keyboard-hint" className="visually-hidden">{t('card.keyboardHint')}</span>
+    </>
+  );
+}
+
 /** Where Skip to content lands: the current destination's main region. */
 const MAIN_ID = 'main-content';
 /** Moves focus past the rail and top bar. Focus is set directly: following the fragment would add a history entry. */
@@ -139,7 +155,6 @@ export function skipToContent(event: {preventDefault(): void}) {
  * stack. Player surfaces mount above the content later in the tree.
  */
 export function Shell() {
-  const {t} = useI18n();
   const session = useSession();
   const compact = useCompact();
   const narrow = useNarrow();
@@ -179,10 +194,7 @@ export function Shell() {
       <ChannelSourcesProvider>
         <PageInertUnderPlayer frame={frame} />
         <div ref={frame} className={cx(s.frame, collapsed && s.collapsed)}>
-          {/* The first stop for a keyboard: hidden until focused, it jumps past the rail to the page. */}
-          <a href={'#' + MAIN_ID} className={s.skipLink} onClick={skipToContent}>{t('web.shell.skipToContent')}</a>
-          {/* The card keyboard shortcuts, described once for assistive technology (cards reference it). */}
-          <span id="card-keyboard-hint" className="visually-hidden">{t('card.keyboardHint')}</span>
+          <ShellAids />
           {!compact ? <Rail collapsed={collapsed} onToggle={narrow ? () => setNarrowExpanded(collapsed) : () => update({railExpanded: !preferences.railExpanded})} /> : null}
           <div className={s.main}>
             {compact ? <TopBar /> : null}
