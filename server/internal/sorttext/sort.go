@@ -70,9 +70,13 @@ func Key(title, explicit, language string) string {
 	}
 	return natural(stripLeading(Fold(title)))
 }
+
+// Letter is the alphabet rail stop a title files under. A letter with no case (Han, kana,
+// Hangul, Thai, Devanagari, Hebrew, Arabic) has no alphabetical place on the rail, so it shares
+// "#" with the symbols rather than adding one stop per character.
 func Letter(value string) string {
 	for _, r := range Fold(value) {
-		if unicode.IsLetter(r) {
+		if unicode.IsLetter(r) && unicode.IsUpper(unicode.ToUpper(r)) {
 			return string(unicode.ToUpper(r))
 		}
 		return "#"

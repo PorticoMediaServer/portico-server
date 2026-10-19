@@ -59,7 +59,8 @@ export function bucketIndexFor(
     if (byKey.has(value)) return byKey.get(value);
     const folded=value.trim().normalize('NFD').replace(/\p{M}/gu,'').normalize('NFC').replace(/^[^\p{L}\p{N}]+/u,'');
     const first=[...folded][0]?.toUpperCase()??'#';
-    const key = /\p{L}/u.test(first) ? first : '#';
+    // Uppercase letters only: a caseless script (Han, kana, Hangul, Thai) shares '#', as the server's rail does.
+    const key = /\p{Lu}/u.test(first) ? first : '#';
     return byKey.get(key);
   }
 
