@@ -7892,6 +7892,11 @@
    "source": "Play now",
    "state": "machine"
   },
+  "player.opt.providedByOpenSubtitles": {
+   "text": "Субтитры предоставлены OpenSubtitles.com",
+   "source": "Subtitles provided by OpenSubtitles.com",
+   "state": "machine"
+  },
   "player.opt.quality": {
    "text": "Качество",
    "source": "Quality",
@@ -12042,19 +12047,94 @@
    "source": "Shared by every library that looks its titles up online.",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesAccountEnvironment": {
+   "text": "Аккаунт задан в окружении сервера",
+   "source": "An account is set in the server’s environment",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountHelp": {
+   "text": "OpenSubtitles разрешает скачивание аккаунтам и считает загрузки каждого аккаунта за день.",
+   "source": "OpenSubtitles lets signed-in accounts download, and counts downloads per account each day.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesAccountRejected": {
+   "text": "OpenSubtitles не принял имя пользователя или пароль. Проверьте их, сохраните и проверьте подключение ещё раз.",
+   "source": "OpenSubtitles didn’t accept the username or password. Check them, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesConnection": {
+   "text": "Подключение",
+   "source": "Connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsLeft": {
+   "text": "{remaining, plural, one {Сегодня осталась # загрузка} few {Сегодня осталось # загрузки} many {Сегодня осталось # загрузок} other {Сегодня осталось # загрузки}}",
+   "source": "{remaining, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesDownloadsOf": {
+   "text": "Сегодня осталось {remaining} из {allowed, plural, one {# загрузки} few {# загрузок} many {# загрузок} other {# загрузки}}",
+   "source": "{remaining} of {allowed, plural, one {# download} other {# downloads}} left today",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesGetKey": {
+   "text": "Получить ключ на OpenSubtitles.com",
+   "source": "Get a key at OpenSubtitles.com",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesKey": {
    "text": "API-ключ OpenSubtitles",
    "source": "OpenSubtitles API key",
    "state": "machine"
   },
-  "server.metadata.openSubtitlesKeyOwn": {
-   "text": "Используется ваш ключ",
-   "source": "Your own key is in use",
+  "server.metadata.openSubtitlesKeyEnvironment": {
+   "text": "Задан в окружении сервера",
+   "source": "Set in the server’s environment",
    "state": "machine"
   },
-  "server.metadata.openSubtitlesKeyServer": {
-   "text": "Используется ключ сервера, если он есть",
-   "source": "The server’s own key is in use, if it has one",
+  "server.metadata.openSubtitlesKeyNone": {
+   "text": "Ключа пока нет",
+   "source": "No key yet",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyOwn": {
+   "text": "Ваш ключ сохранён",
+   "source": "Your key is saved",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyRejected": {
+   "text": "OpenSubtitles не принял API-ключ. Проверьте его, сохраните и проверьте подключение ещё раз.",
+   "source": "OpenSubtitles didn’t accept the API key. Check it, save, and test again.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesKeyWorks": {
+   "text": "Ключ работает. Добавьте и аккаунт, чтобы Portico мог скачивать.",
+   "source": "The key works. Add your account too, so Portico can download.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesLater": {
+   "text": "OpenSubtitles попросил Portico подождать. Попробуйте ещё раз позже.",
+   "source": "OpenSubtitles asked Portico to wait. Try again later.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNeedsAccount": {
+   "text": "Поиск работает, но OpenSubtitles разрешает скачивание только с аккаунтом. Добавьте имя пользователя и пароль.",
+   "source": "Searching works, but OpenSubtitles only lets signed-in accounts download. Add your username and password.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNoPassword": {
+   "text": "Добавьте пароль аккаунта, чтобы войти.",
+   "source": "Add the account’s password to sign in.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotSetUp": {
+   "text": "Не настроено. Добавьте свой API-ключ OpenSubtitles, чтобы искать субтитры.",
+   "source": "Not set up. Add your OpenSubtitles API key to search for subtitles.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesNotTested": {
+   "text": "Ещё не проверено",
+   "source": "Not tested yet",
    "state": "machine"
   },
   "server.metadata.openSubtitlesPassword": {
@@ -12067,14 +12147,49 @@
    "source": "A password is saved",
    "state": "machine"
   },
+  "server.metadata.openSubtitlesQuotaUsed": {
+   "text": "Сегодняшние загрузки исчерпаны. Они снова станут доступны в {time}.",
+   "source": "Today’s downloads are used up. They start again at {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesRemoveKey": {
+   "text": "Убрать мой ключ",
+   "source": "Remove my key",
+   "state": "machine"
+  },
   "server.metadata.openSubtitlesSignOut": {
    "text": "Убрать аккаунт",
    "source": "Remove the account",
    "state": "machine"
   },
-  "server.metadata.openSubtitlesUseServer": {
-   "text": "Использовать ключ сервера",
-   "source": "Use the server’s key",
+  "server.metadata.openSubtitlesSignedIn": {
+   "text": "Вход выполнен, всё работает",
+   "source": "Signed in and working",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesSlowDown": {
+   "text": "OpenSubtitles попросил Portico подождать до {time}.",
+   "source": "OpenSubtitles asked Portico to wait until {time}.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTest": {
+   "text": "Проверить подключение",
+   "source": "Test connection",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTestUnsaved": {
+   "text": "Сохраните изменения, затем проверьте их.",
+   "source": "Save your changes, then test them.",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesTesting": {
+   "text": "Проверка…",
+   "source": "Testing…",
+   "state": "machine"
+  },
+  "server.metadata.openSubtitlesUnreachable": {
+   "text": "Не удалось связаться с OpenSubtitles. Проверьте подключение чуть позже.",
+   "source": "OpenSubtitles couldn’t be reached. Test again in a little while.",
    "state": "machine"
   },
   "server.metadata.openSubtitlesUser": {
@@ -12098,8 +12213,8 @@
    "state": "machine"
   },
   "server.metadata.subtitlesLede": {
-   "text": "Portico ищет субтитры на OpenSubtitles, когда вы об этом просите. Укажите свой API-ключ и аккаунт, чтобы получить больше поисков и скачиваний в день.",
-   "source": "Portico looks for subtitles at OpenSubtitles when you ask it to. Use your own API key and account for more searches and downloads a day.",
+   "text": "Portico ищет на OpenSubtitles.com с вашим собственным бесплатным аккаунтом и API-ключом. Создайте аккаунт на opensubtitles.com, затем добавьте в профиле API-потребителя, чтобы получить ключ.",
+   "source": "Portico searches OpenSubtitles.com with your own free account and API key. Create an account at opensubtitles.com, then add an API consumer in your profile there to get a key.",
    "state": "machine"
   },
   "server.missing.removeBody": {
@@ -14387,6 +14502,16 @@
    "source": "Disk usage",
    "state": "machine"
   },
+  "settings.server.dlna": {
+   "text": "DLNA",
+   "source": "DLNA",
+   "state": "machine"
+  },
+  "settings.server.dlnaHelp": {
+   "text": "Позволяет телевизорам, консолям и другим DLNA-устройствам в домашней сети просматривать и воспроизводить всё на этом сервере без входа.",
+   "source": "Lets TVs, consoles and other DLNA devices on your home network browse and play everything on this server, without signing in.",
+   "state": "machine"
+  },
   "settings.server.encoderSpeed": {
    "text": "Скорость кодирования на процессоре",
    "source": "Processor encoding speed",
@@ -15705,6 +15830,41 @@
   "subtitles.error.missing": {
    "text": "Эти субтитры больше недоступны. Обновите список вариантов.",
    "source": "This subtitle is no longer available. Refresh the current choices.",
+   "state": "machine"
+  },
+  "subtitles.error.providerBusy": {
+   "text": "OpenSubtitles сейчас занят. Попробуйте ещё раз через минуту.",
+   "source": "OpenSubtitles is busy. Try again in a moment.",
+   "state": "machine"
+  },
+  "subtitles.error.providerKeyRejected": {
+   "text": "OpenSubtitles не принял ключ этого сервера. Попросите владельца проверить его.",
+   "source": "OpenSubtitles didn’t accept this server’s key. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerNotConfigured": {
+   "text": "Поиск субтитров на этом сервере не настроен. Попросите владельца добавить ключ OpenSubtitles.",
+   "source": "Subtitle search isn’t set up on this server. Ask the owner to add an OpenSubtitles key.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuota": {
+   "text": "Этот сервер исчерпал сегодняшние загрузки OpenSubtitles. Они снова станут доступны в {time}.",
+   "source": "This server has used today’s OpenSubtitles downloads. They start again at {time}.",
+   "state": "machine"
+  },
+  "subtitles.error.providerQuotaLater": {
+   "text": "Этот сервер исчерпал сегодняшние загрузки OpenSubtitles. Попробуйте ещё раз завтра.",
+   "source": "This server has used today’s OpenSubtitles downloads. Try again tomorrow.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInFailed": {
+   "text": "OpenSubtitles не принял аккаунт этого сервера. Попросите владельца проверить его.",
+   "source": "OpenSubtitles didn’t accept this server’s account. Ask the owner to check it.",
+   "state": "machine"
+  },
+  "subtitles.error.providerSignInRequired": {
+   "text": "OpenSubtitles разрешает скачивание только с аккаунтом. Попросите владельца добавить аккаунт.",
+   "source": "OpenSubtitles only lets signed-in accounts download. Ask the owner to add an account.",
    "state": "machine"
   },
   "title.aboutEpisode": {
