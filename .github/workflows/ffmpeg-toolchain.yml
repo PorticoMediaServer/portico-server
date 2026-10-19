@@ -93,6 +93,6 @@ jobs:
             echo "Toolchain release $tag already exists; bump releaseTag for a new build." >&2
             exit 1
           fi
-          gh release create "$tag" .release/* --title "FFmpeg toolchain $tag" --latest=false \
+          gh release create "$tag" .release/* --title "FFmpeg toolchain $tag" --prerelease --latest=false \
             --notes "Qualified FFmpeg and FFprobe build for Portico Media Server, built from the pinned recipe in third_party/ffmpeg/sources.lock.json with GPL and version-3 licensing and without nonfree components. Each archive includes its corresponding source and license texts."
 

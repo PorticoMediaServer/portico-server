@@ -1,4 +1,4 @@
-VERSION ?= 0.1.0
+VERSION ?= 0.0.1
 SERVER_OUTPUT ?= dist/portico-server
 
 .PHONY: test test-go test-clients build-web build-server dev-api dev-web

@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       toolchain_run:
-        description: Prior validation run to reuse matching toolchain artifacts (missing targets rebuild)
+        description: Prior validation run with completed matching toolchain artifacts (missing targets fail)
         type: string
         required: false
         default: ''
@@ -24,6 +24,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  GOCACHE: ${{ github.workspace }}/.cache/go-build
+  GOMODCACHE: ${{ github.workspace }}/.cache/go-mod
   VALIDATION_VERSION: 0.0.${{ github.run_number }}
   # Keep disposable signing files in the project parent, outside the checkout.
   PORTICO_RELEASE_SIGNING_KEY_FILE: ${{ github.workspace }}/../.private/server-validation-signing/private-key
@@ -84,11 +86,8 @@ jobs:
             done
             diff -r third_party/ffmpeg/patches "$work/recipe-check/provenance/contract/patches"
           else
-            if [[ "$VALIDATION_SCOPE" == macos ]]; then
-              echo 'Focused macOS validation requires a completed matching artifact; never restart source builds.' >&2
-              exit 1
-            fi
-            echo 'No prior artifact for this target; build its pinned recipe.'
+            echo 'Reuse requires a completed matching artifact; never restart source builds implicitly.' >&2
+            exit 1
           fi
       - name: Build the pinned FFmpeg recipe
         env: {VALIDATION_SCOPE: '${{ inputs.scope }}'}
