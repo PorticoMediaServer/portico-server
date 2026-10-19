@@ -138,6 +138,7 @@
 .upNextActions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 @media (max-width: 720px) { .upNext { bottom: clamp(140px, 26vh, 200px); right: 16px; } }
 .skip { position: absolute; right: max(24px, env(safe-area-inset-right)); bottom: clamp(150px, 24vh, 220px); display: flex; align-items: center; gap: 6px; }
+.skipNote { padding: 0 6px; font-size: 0.875rem; color: var(--text-secondary); }
 @media (max-width: 720px) { .skip { bottom: clamp(140px, 26vh, 200px); right: 16px; } }
 /* Trickplay preview above the hovered position. */
 .previewWrap { position: absolute; bottom: 28px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; }

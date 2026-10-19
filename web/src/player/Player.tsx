@@ -733,7 +733,7 @@ function FullPlayer({engine, visible}: {engine: PlayerEngine; visible: boolean})
       {!isAudio ? <div className={s.tap} onClick={tap} onDoubleClick={() => { if (pointerKind.current === 'mouse') { clearTimeout(clickTimer.current); void toggleFullscreen(); } }} onWheel={e => { if (!openBox && e.deltaY !== 0) changeVolume(e.deltaY < 0 ? 0.05 : -0.05); }} aria-hidden /> : null}
       {(buffering || state.recovering) && state.intent === 'playing' && !state.error ? <div className={s.spinner} aria-hidden /> : null}
       {!isAudio ? <PostPlay engine={engine} onClose={close} /> : null}
-      {!isAudio && !linear && state.phase === 'ready' ? <SkipPrompt markers={offers.data?.markers ?? null} position={state.positionSeconds} sessionId={state.session?.id} modes={promptModes} onSeek={engine.seekTo} onSkipped={(id, mode, at) => engine.service.markerSkipped(id, mode, at)} /> : null}
+      {!isAudio && !linear && state.phase === 'ready' ? <SkipPrompt markers={offers.data?.markers ?? null} position={state.positionSeconds} duration={state.duration} sessionId={state.session?.id} modes={promptModes} onSeek={engine.seekTo} onSkipped={(id, mode, at) => engine.service.markerSkipped(id, mode, at)} /> : null}
       {upNext.offer && upNext.next ? <UpNextCredits engine={engine} offer={upNext.offer} next={upNext.next} postPlay={upNext.postPlay} rate={rate} onDismiss={upNext.dismiss} /> : null}
       {linear && state.linearStalled && state.phase !== 'error' ? (
         // A channel start that can't proceed says why, instead of "Preparing playback…" forever.
