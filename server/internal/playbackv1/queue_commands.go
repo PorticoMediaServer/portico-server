@@ -367,15 +367,13 @@ func (s *Service) CreateQueue(ctx context.Context, c Caller, key string, req Cre
 			}
 		}
 	}
-	want := digest(req)
-	if len(req.RetainQueueIDs) > 0 {
-		// A saved receipt must not expose the previous viewer's queue/session
-		// after an account or profile change on the same device.
-		want = digest(struct {
-			Request                     CreateQueueRequest
-			Authority, Account, Profile string
-		}{req, c.Principal.Authority, c.Principal.AccountID, c.Principal.ProfileID})
-	}
+	// A saved receipt must not expose the previous viewer's queue/session
+	// after an account or profile change on the same device, even when the
+	// retention set is empty (the same retirement semantics as omission).
+	want := digest(struct {
+		Request                     CreateQueueRequest
+		Authority, Account, Profile string
+	}{req, c.Principal.Authority, c.Principal.AccountID, c.Principal.ProfileID})
 	// A replay is answered by its receipt (review P18).
 	if reply, ok, err := s.createReplay(ctx, c, key, want, req); ok || err != nil {
 		return reply, err

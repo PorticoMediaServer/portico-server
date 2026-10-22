@@ -623,7 +623,7 @@ export class FakePlaybackServer {
     if (sp?.state !== undefined && sp.state !== 'playing' && sp.state !== 'paused') return this.error(400, 'invalid_request');
     const viewer = this.viewerScope();
     const {retainQueueIds: _, ...ordinary} = body;
-    const semantic = {...ordinary, ...(retained.length ? {retainQueueIds: [...retained].sort(), viewer: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId}} : {})};
+    const semantic = {...ordinary, viewer: {authority: viewer.authority, accountId: viewer.accountId, profileId: viewer.profileId}, ...(retained.length ? {retainQueueIds: [...retained].sort()} : {})};
     const canonical = (v: unknown): unknown => Array.isArray(v) ? v.map(canonical) : v && typeof v === 'object' ? Object.fromEntries(Object.entries(v).sort(([a], [b]) => a.localeCompare(b)).map(([k, value]) => [k, canonical(value)])) : v;
     const digest = JSON.stringify(canonical(semantic)), receiptKey = JSON.stringify([this.o.deviceId, key]);
     const receipt = this.queueKeys.get(receiptKey);
@@ -790,6 +790,7 @@ export class FakePlaybackServer {
     q.sessionId = session.id;
     q.prepared = undefined;
     q.revision++;
+    q.updatedAt = this.now();
     this.commits++;
     this.publish('queue.updated', {kind: 'queue', id: q.id}, String(q.revision), {current: q.current});
     const response: FakeResponse = {status: 200, headers: {ETag: etag(q.revision)}, body: {queue: this.header(q), session: this.view(session)}};
