@@ -162,8 +162,14 @@ func TestConversionFallbackKeepsThePresentationCeilings(t *testing.T) {
 		{"the viewer's limit", V1Choice{Limit: true, MaxVideoBitrateBPS: 2_000_000, MaxVideoHeight: 1080}, 2_000_000},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			// 720p at 1.6 Mbit/s fits both canonical ceilings, so it is copied.
-			f := new720pReplanFixture(t, 1_600_000)
+			// The remote preset requires 720p; the explicit viewer limit keeps
+			// its original 1080p source and independently supplied height.
+			var f *replanFixture
+			if test.choice.Remote {
+				f = new720pReplanFixture(t, 1_600_000)
+			} else {
+				f = newReplanFixture(t, 1_600_000)
+			}
 			session := f.start("copied", test.choice)
 			started := f.plan(session.ID)
 			if started.VideoAction != "copy" || started.Target == nil {
