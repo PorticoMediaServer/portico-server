@@ -13,5 +13,9 @@ export const overlaysNativeMessages = {
   'next.overlays.native.sheetPosition': '{position, number} of {count, number}',
   'next.overlays.native.fileInfoNote': 'Portico chooses the version to play from the device and your settings. This list is for information.',
   'next.overlays.native.addedToMyList': 'Added to My List',
-  'next.overlays.native.stillLoading': 'Still loading. Your connection is slow.',
+  'next.overlays.native.stillLoading': 'Still loading. Your connection to {server} is slow.',
+  'next.overlays.native.playDifferentVersion': 'Play a different version…',
+  'next.overlays.native.ownerOnly': 'Owner only',
+  'next.overlays.native.rate': 'Rate',
+  'next.overlays.native.editMetadata': 'Edit metadata',
 } as const satisfies Record<`next.overlays.native.${string}`, string>;
