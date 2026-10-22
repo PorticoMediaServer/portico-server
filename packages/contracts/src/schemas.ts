@@ -8834,6 +8834,12 @@ export const schemas = {
       "repeat": {
         "type": "string"
       },
+      "retainQueueIds": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
       "segments": {
         "items": {
           "properties": {
