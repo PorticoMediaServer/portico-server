@@ -5,12 +5,14 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
 	"portico.local/server/internal/catalogtest"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/identity"
 )
 
 func TestHomeActionProjectionUsesDisplayedEntitiesAndBatchesReturnedItems(t *testing.T) {
@@ -41,7 +43,7 @@ func TestHomeActionProjectionUsesDisplayedEntitiesAndBatchesReturnedItems(t *tes
 	}
 	// One exact-key SQL batch, independent of duplicate cards and the number
 	// of descendants under the returned aggregate titles.
-	if cost().Statements != 1 || deletionReads != 2 {
+	if cost().Statements != 1 || deletionReads != 4 {
 		t.Fatalf("statements=%d deletion policies=%d", cost().Statements, deletionReads)
 	}
 	a := rows[0].Entries[0].HomeActions
@@ -59,6 +61,9 @@ func TestHomeActionProjectionUsesDisplayedEntitiesAndBatchesReturnedItems(t *tes
 	}
 	if a := rows[0].Entries[3].HomeActions; a == nil || a.MyList || a.Watched || !a.Played || a.Delete || a.RefreshMetadata {
 		t.Fatalf("album offers: %+v", a)
+	}
+	if a := rows[0].Entries[3].HomeActions; !a.Selection.MyList {
+		t.Fatal("album lost the genuine descendant My List command")
 	}
 	if a := rows[0].Entries[4].HomeActions; a == nil || !a.MyList || a.Watched || !a.Played || a.Delete {
 		t.Fatalf("book offers: %+v", a)
@@ -91,6 +96,9 @@ func TestHomeActionProjectionFailsClosedForMissingAuthorityAndWrongIdentity(t *t
 	}
 	if a := rows[0].Entries[0].HomeActions; a == nil || a.Play || a.Queue || a.Playlist || a.Collection || a.MyList || a.Favorite || a.Watched || a.EditMetadata || a.RefreshMetadata || a.Delete || a.Download {
 		t.Fatalf("ungranted offers: %+v", a)
+	}
+	if a := rows[0].Entries[0].HomeActions; a.Selection != (HomeSelectionActions{}) {
+		t.Fatalf("missing authority supplied selection grants: %+v", a.Selection)
 	}
 	for _, entry := range rows[0].Entries[1:] {
 		if entry.HomeActions != nil {
@@ -201,5 +209,287 @@ func TestHomeActionSpotlightKeepsAggregateGrantsSeparateFromResume(t *testing.T)
 	}
 	if spotlight[0].Entry.ID != show.Public || spotlight[0].ResumeTarget.Playback.ItemID != episode.Public {
 		t.Fatal("spotlight identity changed")
+	}
+}
+
+func TestHomeActionAvailabilityFindsPermittedMemberBeyond64AndRechecksCurrentPolicy(t *testing.T) {
+	db := homeFixture(t)
+	c := catalogtest.New(t, db)
+	s := New(db)
+	show := c.Show(c.Handle("tv"), "Long series", 2026)
+	season := c.Season(show, 1)
+	unavailable := c.Episode(show, season, 1, "/tv/permitted-unavailable.mkv")
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetAssetAvailableTx(ctx, tx, unavailable.Asset, false)
+	})
+	var hidden catalogtest.Item
+	for number := 2; number <= 81; number++ {
+		hidden = c.Episode(show, season, number, fmt.Sprintf("/tv/private-episode-%d.mkv", number))
+		c.Attributes(hidden.ID, "label", "adult")
+	}
+	permitted := c.Episode(show, season, 82, "/tv/permitted-available.mkv")
+	c.Drain()
+	var before int
+	if err := db.QueryRow(`SELECT count(DISTINCT item_id) FROM catalog_browse_memberships WHERE entity_id=? AND item_id<?`, show.ID, permitted.ID).Scan(&before); err != nil || before <= 64 {
+		t.Fatalf("fixture did not place permitted availability past 64: %d %v", before, err)
+	}
+	v := homeRequestFixture("tv").Viewer
+	v.Restrictions = visibilityRestrictionOf(nil, false, "adult")
+	read := func() []HomeRow {
+		t.Helper()
+		// A copied global/class availability flag is not the command proof.
+		stale := false
+		rows := []HomeRow{{Entries: []ContentEntry{
+			{ID: show.Public, LibraryID: "tv", Kind: "show", Available: &stale},
+			{ID: season.Public, LibraryID: "tv", Kind: "season"},
+		}}}
+		ctx, measured := dbwork.Measure(context.Background())
+		if err := dbwork.WithReadSnapshot(ctx, db, func(ctx context.Context) error {
+			return s.WithContext(ctx).ProjectHomeActions(v, HomeActionAuthority{Personal: true, Bulk: true, Playback: true, Queue: true, Downloads: true}, rows, nil)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if measured().Statements != 1 {
+			t.Fatalf("member count changed projection statement count: %d", measured().Statements)
+		}
+		return rows
+	}
+	check := func(want bool) {
+		t.Helper()
+		rows := read()
+		for _, entry := range rows[0].Entries {
+			a := entry.HomeActions
+			if a == nil || a.Play != want || a.Queue != want || a.Download != want || a.Selection.Play != want || !a.Selection.MyList {
+				t.Fatalf("exact permitted availability=%v: %+v", want, entry)
+			}
+		}
+		raw, err := json.Marshal(rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, secret := range []string{hidden.Public, permitted.Public, "/tv/private-episode", "sourcePath", "filePath"} {
+			if strings.Contains(string(raw), secret) {
+				t.Fatalf("member identity/path leaked into offers: %s", secret)
+			}
+		}
+	}
+	check(true)
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetAssetAvailableTx(ctx, tx, permitted.Asset, false)
+	})
+	c.Drain()
+	check(false) // Hidden available members cannot replace the permitted member.
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetAssetAvailableTx(ctx, tx, permitted.Asset, true)
+	})
+	c.Attributes(permitted.ID, "label", "adult")
+	c.Drain()
+	v.Fence = "restriction-revoked"
+	v.Restrictions.Revision++
+	check(false) // Permission revocation wins over current physical availability.
+	v.Restrictions = identity.ContentRestrictions{}
+	v.Fence = "unrestricted-current"
+	check(true)
+}
+
+func TestHomeActionAggregateDeleteUsesDisplayedTargetAndExactLibraryAuthority(t *testing.T) {
+	db := homeFixture(t)
+	s := New(db)
+	makeRows := func() []HomeRow {
+		rows := []HomeRow{{}}
+		for _, target := range []struct{ name, kind, library string }{
+			{"show", "show", "tv"}, {"s1", "season", "tv"}, {"album", "album", "music"}, {"artist", "artist", "music"}, {"book", "book", "books"},
+		} {
+			rows[0].Entries = append(rows[0].Entries, ContentEntry{ID: homeItem(t, db, target.name).Public, Kind: target.kind, LibraryID: target.library})
+		}
+		return rows
+	}
+	for _, allowed := range []bool{true, false} {
+		rows := makeRows()
+		policies := map[string]int{}
+		if err := dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
+			return s.WithContext(ctx).ProjectHomeActions(homeRequestFixture().Viewer, HomeActionAuthority{DeleteLibrary: func(library string) (bool, error) {
+				policies[library]++
+				return allowed, nil
+			}}, rows, nil)
+		}); err != nil {
+			t.Fatal(err)
+		}
+		for index, entry := range rows[0].Entries {
+			if a := entry.HomeActions; a == nil || a.Delete != allowed || a.Selection.Delete != allowed {
+				t.Fatalf("aggregate delete authority=%v: %+v", allowed, entry)
+			}
+			if entry.ID != makeRows()[0].Entries[index].ID || entry.Playback != nil {
+				t.Fatal("aggregate delete substituted a child")
+			}
+		}
+		if len(policies) != 3 || policies["tv"] != 1 || policies["music"] != 1 || policies["books"] != 1 {
+			t.Fatalf("library policies were not cached per returned library: %+v", policies)
+		}
+	}
+	// A fabricated entry that is no longer visible gets no offers at all.
+	c := catalogtest.New(t, db)
+	for _, name := range []string{"e101", "e102", "e201", "e202"} {
+		c.Attributes(homeItem(t, db, name).ID, "label", "adult")
+	}
+	c.Drain()
+	rows := makeRows()
+	v := homeRequestFixture("tv").Viewer
+	v.Restrictions = visibilityRestrictionOf(nil, false, "adult")
+	policyReads := 0
+	if err := dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
+		return s.WithContext(ctx).ProjectHomeActions(v, HomeActionAuthority{DeleteLibrary: func(string) (bool, error) { policyReads++; return true, nil }}, rows, nil)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range rows[0].Entries {
+		if entry.HomeActions != nil {
+			t.Fatalf("hidden or foreign library target retained delete authority: %+v", entry)
+		}
+	}
+	if policyReads != 0 {
+		t.Fatal("hidden targets probed owner library policy")
+	}
+}
+
+func TestHomeActionSelectionMyListUsesRealPermittedContainerMembers(t *testing.T) {
+	db := homeFixture(t)
+	s := New(db)
+	c := catalogtest.New(t, db)
+	collection, err := s.CreateCollection("movies", "Actual series")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = s.SetCollectionItem(collection.ID, homeItem(t, db, "m1").Public, true); err != nil {
+		t.Fatal(err)
+	}
+	c.Attributes(homeItem(t, db, "t2").ID, "label", "adult")
+	c.Drain()
+	v := homeRequestFixture().Viewer
+	v.Restrictions = visibilityRestrictionOf(nil, false, "adult")
+	for _, bulk := range []bool{false, true} {
+		for _, target := range []struct{ kind, id, library string }{
+			{"show", homeItem(t, db, "show").Public, "tv"}, {"season", homeItem(t, db, "s1").Public, "tv"},
+			{"album", homeItem(t, db, "album").Public, "music"}, {"artist", homeItem(t, db, "artist").Public, "music"},
+			{"book", homeItem(t, db, "book").Public, "books"}, {"collection", collection.ID, "movies"},
+		} {
+			rows := []HomeRow{{Entries: []ContentEntry{{ID: target.id, Kind: target.kind, LibraryID: target.library}}}}
+			if err := dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
+				return s.WithContext(ctx).ProjectHomeActions(v, HomeActionAuthority{Personal: true, Bulk: bulk}, rows, nil)
+			}); err != nil {
+				t.Fatal(err)
+			}
+			a := rows[0].Entries[0].HomeActions
+			if a == nil || a.Selection.MyList != bulk || a.MyList != (target.kind == "show" || target.kind == "book") || a.State.Watchlisted {
+				t.Fatalf("single/selection My List semantics for %s scheduler=%v: %+v", target.kind, bulk, a)
+			}
+			if !bulk {
+				continue
+			}
+			query, args, err := s.bulkSelection(identity.Principal{}, v, JobRequest{Command: "personal-state", Selector: JobSelector{Container: &JobContainer{Kind: target.kind, ID: target.id}}})
+			if err != nil {
+				t.Fatal(err)
+			}
+			members, err := scanInt64s(db.Query(query, args...))
+			if err != nil || len(members) == 0 {
+				t.Fatalf("offered container command has no genuine selector: %s %v %v", target.kind, members, err)
+			}
+			for _, member := range members {
+				if member == c.ID(target.id) || member == homeItem(t, db, "t2").ID {
+					t.Fatalf("bulk selector selected aggregate or hidden descendant: %s %d", target.kind, member)
+				}
+			}
+		}
+	}
+	// Exercise the command's actual write primitive: the album's title flag
+	// stays absent while its permitted descendants join My List.
+	query, args, err := s.bulkSelection(identity.Principal{}, v, JobRequest{Command: "personal-state", Selector: JobSelector{Container: &JobContainer{Kind: "album", ID: homeItem(t, db, "album").Public}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	members, err := scanInt64s(db.Query(query, args...))
+	if err != nil {
+		t.Fatal(err)
+	}
+	yes := true
+	c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		for _, member := range members {
+			var id string
+			if err := tx.QueryRow(`SELECT pid(public_id) FROM catalog_entities WHERE id=?`, member).Scan(&id); err != nil {
+				return err
+			}
+			if err := s.applyJobPersonal(tx, "p", id, JobPersonalArgs{Watchlist: &yes}); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	var count int
+	if err := db.QueryRow(`SELECT count(*) FROM personal_items WHERE profile_id='p' AND watchlisted=1`).Scan(&count); err != nil || count != 2 {
+		t.Fatalf("permitted leaf My List state: %d %v", count, err)
+	}
+	if err := db.QueryRow(`SELECT count(*) FROM personal_items WHERE profile_id='p' AND item_id IN(?,?)`, homeItem(t, db, "album").ID, homeItem(t, db, "t2").ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("bulk state fabricated a title flag or mutated a hidden child: %d %v", count, err)
+	}
+}
+
+func TestHomeActionAvailabilityPredicateSeeksOnlyReturnedMembershipRanges(t *testing.T) {
+	db := homeFixture(t)
+	v := homeRequestFixture("tv").Viewer
+	v.Restrictions = visibilityRestrictionOf(nil, false, "adult")
+	predicate, args := homeActionAvailableSQL(v)
+	args = append(args, homeItem(t, db, "show").Public)
+	rows, err := db.Query(`EXPLAIN QUERY PLAN SELECT `+predicate+` FROM catalog_entities e
+ JOIN catalog_kinds k ON k.id=e.kind LEFT JOIN catalog_item_availability a ON a.entity_id=e.id AND a.retired=0
+ WHERE e.public_id=pid_blob(?)`, args...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var membershipSeek, availabilitySeek bool
+	for rows.Next() {
+		var node, parent, unused int
+		var detail string
+		if err := rows.Scan(&node, &parent, &unused, &detail); err != nil {
+			t.Fatal(err)
+		}
+		if strings.Contains(detail, "SEARCH home_member USING PRIMARY KEY (entity_id=?)") {
+			membershipSeek = true
+		}
+		if strings.Contains(detail, "SEARCH available USING INTEGER PRIMARY KEY") {
+			availabilitySeek = true
+		}
+		if strings.Contains(detail, "SCAN home_member") || strings.Contains(detail, "SCAN available") {
+			t.Fatalf("availability predicate scans outside the returned membership range: %s", detail)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatal(err)
+	}
+	if !membershipSeek || !availabilitySeek {
+		t.Fatalf("indexed membership/availability probes absent: membership=%v availability=%v", membershipSeek, availabilitySeek)
+	}
+}
+
+func TestHomeActionSelectionDoesNotOfferUnavailableJobServices(t *testing.T) {
+	db := homeFixture(t)
+	rows := []HomeRow{{Entries: []ContentEntry{
+		{ID: homeItem(t, db, "m1").Public, Kind: "movie", LibraryID: "movies"},
+		{ID: homeItem(t, db, "show").Public, Kind: "show", LibraryID: "tv"},
+	}}}
+	if err := dbwork.WithReadSnapshot(context.Background(), db, func(ctx context.Context) error {
+		return New(db).WithContext(ctx).ProjectHomeActions(homeRequestFixture().Viewer, HomeActionAuthority{Personal: true, Organize: true, Refresh: true}, rows, nil)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	leaf, aggregate := rows[0].Entries[0].HomeActions, rows[0].Entries[1].HomeActions
+	if leaf == nil || !leaf.MyList || !leaf.Favorite || !leaf.Watched || !leaf.Playlist || !leaf.RefreshMetadata {
+		t.Fatalf("real single-title commands were lost with scheduler absent: %+v", leaf)
+	}
+	if leaf.Selection != (HomeSelectionActions{}) {
+		t.Fatalf("leaf selection borrowed unavailable jobs: %+v", leaf.Selection)
+	}
+	if aggregate == nil || aggregate.Selection.MyList || aggregate.Selection.Playlist || aggregate.Selection.Collection || aggregate.Selection.Refresh || !aggregate.Selection.Favorite || !aggregate.Selection.Watched {
+		t.Fatalf("aggregate selection did not distinguish direct personal commands from jobs: %+v", aggregate)
 	}
 }

@@ -6,7 +6,7 @@ import {homeEntrySelection,homeEntryCapabilities,homeChannelSelection,homeChanne
 const web:HomeActionPlatform={platform:'web',playbackAvailable:true,queueAvailable:true};
 const phone:HomeActionPlatform={platform:'phone-app',playbackAvailable:true,queueAvailable:true,nativeDownloadsAvailable:true};
 function actions(more:Partial<HomeActions>={}):HomeActions {
-  return {play:false,queue:false,playlist:false,collection:false,myList:false,favorite:false,watched:false,played:false,rating:false,editMetadata:false,refreshMetadata:false,delete:false,download:false,details:false,state:{watchlisted:false,favorite:false,watched:false,rating:null,personalRevision:0,containerRevision:0},...more};
+  return {play:false,queue:false,playlist:false,collection:false,myList:false,favorite:false,watched:false,played:false,rating:false,editMetadata:false,refreshMetadata:false,delete:false,download:false,details:false,state:{watchlisted:false,favorite:false,watched:false,rating:null,personalRevision:0,containerRevision:0},selection:{play:more.play===true,queue:more.queue===true,playlist:more.playlist===true,collection:more.collection===true,myList:more.myList===true,favorite:more.favorite===true,watched:more.watched===true,download:more.download===true,edit:more.editMetadata===true,refresh:more.refreshMetadata===true,delete:more.delete===true},...more};
 }
 function entry(kind='movie',more:Record<string,unknown>={}) {
   return validateHomeEntry({kind,id:'title',libraryId:'library',title:'Actual title',navigation:{view:'item',entityId:'title'},...more});
@@ -35,7 +35,38 @@ test('aggregate selection and More retain the displayed identity and title-level
     assert.equal(value.playback!.itemId,'a-child');
     assert.equal(homeEntryCapabilities(value,web).favorite,true);
     assert.equal(homeEntryCapabilities(value,web).watchlisted,kind==='album'?undefined:true);
-    assert.ok(Object.isFrozen(value.homeActions)&&Object.isFrozen(value.homeActions!.state));
+    assert.ok(Object.isFrozen(value.homeActions)&&Object.isFrozen(value.homeActions!.state)&&Object.isFrozen(value.homeActions!.selection));
+  }
+});
+
+test('selection My List is a descendant command and never invents a single-title saved state',()=>{
+  for(const kind of ['show','season','album','artist','book','collection']){
+    const single=kind==='show'||kind==='book';
+    const value=entry(kind,{id:kind,playback:{itemId:'separate-child'},homeActions:actions({myList:single,selection:{...actions().selection,myList:true},state:{watchlisted:false,favorite:false,watched:false,rating:null,personalRevision:0,containerRevision:0}})});
+    const selected=homeEntrySelection(value,web)!;
+    assert.equal(selected.id,kind);assert.equal(selected.capabilities.myList,true);
+    assert.equal(homeEntryCapabilities(value,web).watchlisted,single?false:undefined);
+    assert.equal(value.homeActions!.state.watchlisted,false);
+  }
+  const titleOnly=entry('show',{homeActions:{...actions({play:true,myList:true}),selection:undefined}});
+  assert.ok(Object.values(homeEntrySelection(titleOnly,web)!.capabilities).every(value=>value===false));
+  assert.equal(homeEntryCapabilities(titleOnly,web).watchlisted,false);
+  const malformed=entry('album',{homeActions:{...actions(),selection:{myList:'true',play:1,delete:'owner',privatePath:'/private/file'}}});
+  assert.ok(Object.values(homeEntrySelection(malformed,phone)!.capabilities).every(value=>value===false));
+  assert.equal('privatePath' in malformed.homeActions!.selection,false);
+  const collection:HomeCollection={mediaKind:'movie',collection:{id:'collection',libraryId:'movies',name:'Series',itemCount:1000,revision:1},members:[],actions:actions({selection:{...actions().selection,myList:true}})};
+  assert.equal(homeCollectionSelection(collection,web).capabilities.myList,true);
+  assert.equal(homeCollectionCapabilities(collection,web).watchlisted,undefined);
+});
+
+test('aggregate Delete retains the displayed target and never counts or substitutes descendants',()=>{
+  for(const kind of ['show','season','album','artist','book']){
+    const value=entry(kind,{id:kind,itemCount:900,playback:{itemId:'first-child'},homeActions:actions({delete:true})});
+    const selected=homeEntrySelection(value,web)!;
+    assert.equal(selected.id,kind);assert.equal(selected.capabilities.delete,true);
+    assert.equal(homeEntryCapabilities(value,web).delete,true);
+    assert.equal(homeEntrySelection(value,{platform:'tv'})!.capabilities.delete,false);
+    assert.equal(homeEntryCapabilities(value,{platform:'tv'}).delete,false);
   }
 });
 

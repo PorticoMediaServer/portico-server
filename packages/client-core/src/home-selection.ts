@@ -1,5 +1,5 @@
 import type {ContentEntryKind} from './library-content.ts';
-import type {HomeActions,HomeChannel,HomeCollection,HomeEntry,HomeRow} from './home.ts';
+import type {HomeActions,HomeSelectionActions,HomeChannel,HomeCollection,HomeEntry,HomeRow} from './home.ts';
 import {selectionCapabilities,type SelectionItem} from './selection-model/index.ts';
 import type {EntryCapabilities} from './presentation/entry-actions.ts';
 
@@ -13,7 +13,7 @@ export type HomeActionPlatform=Readonly<{
 export type HomeCatalogueSelection=Extract<SelectionItem,{kind:ContentEntryKind}>;
 export type HomeChannelSelection=Extract<SelectionItem,{kind:'channel'}>;
 
-function offered(actions:HomeActions|undefined,platform:HomeActionPlatform) {
+function offered(actions:HomeSelectionActions|undefined,platform:HomeActionPlatform) {
   const ownerActions=platform.platform!=='tv';
   return {
     play:actions?.play===true&&platform.playbackAvailable===true,
@@ -24,8 +24,8 @@ function offered(actions:HomeActions|undefined,platform:HomeActionPlatform) {
     collection:actions?.collection===true,
     favorite:actions?.favorite===true,
     download:actions?.download===true&&platform.platform==='phone-app'&&platform.nativeDownloadsAvailable===true,
-    edit:actions?.editMetadata===true&&ownerActions,
-    refresh:actions?.refreshMetadata===true&&ownerActions,
+    edit:actions?.edit===true&&ownerActions,
+    refresh:actions?.refresh===true&&ownerActions,
     delete:actions?.delete===true&&ownerActions,
   };
 }
@@ -33,12 +33,12 @@ function offered(actions:HomeActions|undefined,platform:HomeActionPlatform) {
 /** Displayed catalogue identity, never entry.playback.itemId or a resume child. */
 export function homeEntrySelection(entry:HomeEntry,platform:HomeActionPlatform):HomeCatalogueSelection|undefined {
   if(!entry.libraryId)return undefined;
-  return Object.freeze({kind:entry.kind,id:entry.id,libraryId:entry.libraryId,capabilities:selectionCapabilities(entry.kind,offered(entry.homeActions,platform))});
+  return Object.freeze({kind:entry.kind,id:entry.id,libraryId:entry.libraryId,capabilities:selectionCapabilities(entry.kind,offered(entry.homeActions?.selection,platform))});
 }
 
 /** A collection banner selects its canonical collection, not its artwork members. */
 export function homeCollectionSelection(collection:HomeCollection,platform:HomeActionPlatform):HomeCatalogueSelection {
-  return Object.freeze({kind:'collection',id:collection.collection.id,libraryId:collection.collection.libraryId,capabilities:selectionCapabilities('collection',offered(collection.actions,platform))});
+  return Object.freeze({kind:'collection',id:collection.collection.id,libraryId:collection.collection.libraryId,capabilities:selectionCapabilities('collection',offered(collection.actions?.selection,platform))});
 }
 
 /** Source is part of channel identity; no catalogue id or library is synthesized. */
@@ -59,8 +59,10 @@ export function homeRowSelection(row:HomeRow,platform:HomeActionPlatform):readon
 }
 
 function menuCapabilities(kind:ContentEntryKind,actions:HomeActions|undefined,platform:HomeActionPlatform,progressSeconds?:number):EntryCapabilities {
-  const grants=offered(actions,platform);
   if(!actions)return Object.freeze({kind});
+  // Single More uses title commands. Never borrow a descendant-selection grant
+  // to advertise a title-level My List toggle or manufacture its saved state.
+  const grants=offered({...actions,edit:actions.editMetadata,refresh:actions.refreshMetadata},platform);
   const container=['show','season','album','artist','book','collection'].includes(kind);
   return Object.freeze({
     kind,playable:grants.play,queue:grants.queue,

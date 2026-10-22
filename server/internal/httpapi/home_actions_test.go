@@ -2,8 +2,10 @@ package httpapi
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +13,8 @@ import (
 
 	"portico.local/server/internal/administration"
 	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/catalogtest"
+	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/downloads"
 	"portico.local/server/internal/identity"
@@ -217,5 +221,234 @@ func TestHomeChannelOffersUseActualGuideCommandsAndFeatureAuthority(t *testing.T
 	w = homeAPIRequest(t, f.h, f.kids.AccessToken, "GET", "/v1/home/rows/on_now?limit=2", "")
 	if w.Code != http.StatusNotFound || strings.Contains(w.Body.String(), "channel") || strings.Contains(w.Body.String(), "favorite") {
 		t.Fatalf("denied channel offers leaked: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHomeActionAggregateDeleteUsesActualPreviewAndCurrentOwnerPolicy(t *testing.T) {
+	f := newSearchPrivacyFixture(t)
+	ctx := context.Background()
+	f.d.Administration = administration.New(f.db)
+	f.d.Scheduler = operations.NewScheduler(operations.New(f.db))
+	tv := f.c.Library("tv", "Shows", "tv", "/tv")
+	show := f.c.Show(tv, "Long series", 2026)
+	season := f.c.Season(show, 1)
+	secondSeason := f.c.Season(show, 2)
+	var first catalogtest.Item
+	for number := 1; number <= administration.MaxDeleteTargets+1; number++ {
+		targetSeason := season
+		if number%2 == 0 {
+			targetSeason = secondSeason
+		}
+		item := f.c.Episode(show, targetSeason, number, fmt.Sprintf("/tv/series/episode-%d.mkv", number))
+		if number == 1 {
+			first = item
+		}
+	}
+	f.c.Drain()
+	p, err := f.d.Identity.Authenticate(f.token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	auth := f.d.administrationAuthority(p)
+	config, err := f.d.Administration.LibrarySettingsFor(ctx, auth, "tv")
+	if err != nil {
+		t.Fatal(err)
+	}
+	savePolicy := func(allow bool, operation string) {
+		t.Helper()
+		config.Settings.AllowMediaDeletion = allow
+		config, err = f.d.Administration.SaveLibrarySettings(ctx, auth, "tv", administration.Change[administration.LibrarySettings]{ExpectedRevision: config.Revision, OperationID: operation, Settings: config.Settings})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	savePolicy(true, "home-aggregate-delete-allowed")
+	f.h = New(f.d)
+	readShow := func() catalog.ContentEntry {
+		t.Helper()
+		w := homeAPIRequest(t, f.h, f.token, "GET", "/v1/home/rows/new_on_server?limit=12", "")
+		if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "no-store" {
+			t.Fatalf("aggregate Home read %d: %s", w.Code, w.Body.String())
+		}
+		var row catalog.HomeRow
+		if err := json.Unmarshal(w.Body.Bytes(), &row); err != nil {
+			t.Fatal(err)
+		}
+		for _, entry := range row.Entries {
+			if entry.ID == show.Public {
+				return entry
+			}
+		}
+		t.Fatal("real aggregate absent from bounded Home row")
+		return catalog.ContentEntry{}
+	}
+	entry := readShow()
+	if entry.Kind != "show" || entry.HomeActions == nil || !entry.HomeActions.Delete || !entry.HomeActions.Selection.Delete {
+		t.Fatalf("genuine aggregate delete offer missing: %+v", entry)
+	}
+	w := homeAPIRequest(t, f.h, f.token, "POST", "/v1/items/"+entry.ID+"/delete/preview", "")
+	if w.Code != http.StatusOK {
+		t.Fatalf("aggregate preview %d: %s", w.Code, w.Body.String())
+	}
+	var envelope struct {
+		Result administration.DeletePreview `json:"result"`
+	}
+	if err := json.Unmarshal(w.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	preview := envelope.Result
+	if len(preview.Targets) != 1 || preview.Targets[0].ItemID != show.Public || preview.Targets[0].Titles != administration.MaxDeleteTargets+1 || preview.ConfirmationKind != "title" || preview.Confirmation != "Long series" || len(preview.Blocked) != 0 {
+		t.Fatalf("preview replaced the displayed target or imposed a 200-descendant cap: %+v", preview)
+	}
+	// Two hundred is the explicit displayed-target cap, independently of an
+	// aggregate's MaxDeleteMembers. The exact preview enforces both limits.
+	ids := make([]string, administration.MaxDeleteTargets+1)
+	for index := range ids {
+		ids[index] = fmt.Sprintf("displayed-%d", index)
+	}
+	if _, err := f.d.Administration.PreviewDelete(ctx, auth, ids); !errors.Is(err, administration.ErrInput) {
+		t.Fatalf("over-200 displayed targets were not refused: %v", err)
+	}
+	// An offer is not a preview receipt. Current authority/policy, exact title
+	// confirmation and revision still gate the real mutation.
+	request := administration.DeleteRequest{ItemIDs: []string{show.Public}, DeleteFiles: false, Confirmation: "wrong", ExpectedRevision: preview.Revision, OperationID: "home-delete-wrong-title"}
+	if _, err := f.d.Administration.Delete(ctx, auth, administrationActor(p), request); !errors.Is(err, administration.ErrConfirmation) {
+		t.Fatalf("wrong aggregate confirmation accepted: %v", err)
+	}
+	request.OperationID, request.Confirmation, request.ExpectedRevision = "home-delete-stale-preview", preview.Confirmation, preview.Revision+1
+	if _, err := f.d.Administration.Delete(ctx, auth, administrationActor(p), request); !errors.Is(err, administration.ErrConflict) {
+		t.Fatalf("stale aggregate preview accepted: %v", err)
+	}
+	savePolicy(false, "home-aggregate-delete-revoked")
+	if a := readShow().HomeActions; a == nil || a.Delete || a.Selection.Delete {
+		t.Fatalf("revoked library policy retained aggregate offers: %+v", a)
+	}
+	request.OperationID, request.ExpectedRevision = "home-delete-policy-revoked", preview.Revision
+	if _, err := f.d.Administration.Delete(ctx, auth, administrationActor(p), request); !errors.Is(err, administration.ErrDenied) {
+		t.Fatalf("old offer bypassed current library deletion policy: %v", err)
+	}
+	member, err := f.d.Identity.Authenticate(f.kids.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.d.Administration.PreviewDelete(ctx, f.d.administrationAuthority(member), []string{show.Public}); !errors.Is(err, identity.ErrUnauthorized) && !errors.Is(err, identity.ErrForbidden) {
+		t.Fatalf("member preview accepted owner command: %v", err)
+	}
+	// Every refused command left actual descendants untouched.
+	var present bool
+	if err := f.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE public_id=pid_blob(?))`, first.Public).Scan(&present); err != nil || !present {
+		t.Fatalf("refused aggregate delete changed a child: %v %v", present, err)
+	}
+	f.c.Exec(`UPDATE authorization_access SET revoked=1 WHERE hash=?`, p.Hash)
+	if _, err := f.d.Administration.PreviewDelete(ctx, auth, []string{show.Public}); !errors.Is(err, identity.ErrUnauthorized) {
+		t.Fatalf("revoked owner retained actual preview authority: %v", err)
+	}
+	w = homeAPIRequest(t, f.h, f.token, "GET", "/v1/home/rows/new_on_server?limit=12", "")
+	if w.Code == http.StatusOK || strings.Contains(w.Body.String(), "homeActions") {
+		t.Fatalf("revoked owner retained aggregate Home offers: %d %s", w.Code, w.Body.String())
+	}
+}
+
+func TestHomeActionAggregateAvailabilityRetainsSnapshotAndCurrentRestrictionFence(t *testing.T) {
+	f := newSearchPrivacyFixture(t)
+	ctx := context.Background()
+	tv := f.c.Library("tv", "Shows", "tv", "/tv")
+	show := f.c.Show(tv, "Permitted series", 2026)
+	season := f.c.Season(show, 1)
+	secondSeason := f.c.Season(show, 2)
+	unavailable := f.c.Episode(show, season, 1, "/tv/permitted-unavailable.mkv")
+	f.c.Attributes(unavailable.ID, "contentRating", "G")
+	secondUnavailable := f.c.Episode(show, secondSeason, 1, "/tv/permitted-unavailable-second-season.mkv")
+	f.c.Attributes(secondUnavailable.ID, "contentRating", "G")
+	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		if err := compactcatalog.SetAssetAvailableTx(ctx, tx, unavailable.Asset, false); err != nil {
+			return err
+		}
+		return compactcatalog.SetAssetAvailableTx(ctx, tx, secondUnavailable.Asset, false)
+	})
+	var hidden catalogtest.Item
+	for number := 2; number <= 70; number++ {
+		hidden = f.c.Episode(show, season, number, fmt.Sprintf("/tv/hidden-%d.mkv", number))
+		f.c.Attributes(hidden.ID, "contentRating", "R")
+	}
+	permitted := f.c.Episode(show, secondSeason, 71, "/tv/permitted-available.mkv")
+	f.c.Attributes(permitted.ID, "contentRating", "G")
+	f.c.Drain()
+	if _, err := f.d.Catalog.ClassifyPendingRatings(ctx); err != nil {
+		t.Fatal(err)
+	}
+	f.c.Drain()
+	f.c.Exec(`UPDATE direct_profiles SET allowed_libraries='["movies","tv"]',revision=revision+1 WHERE id=?`, f.kids.Viewer.ProfileID)
+	f.restrictLiveTV(false)
+	f.h = New(f.d)
+	read := func(wantPlay bool) catalog.HomeRow {
+		t.Helper()
+		w := homeAPIRequest(t, f.h, f.kids.AccessToken, "GET", "/v1/home/rows/new_on_server?limit=12", "")
+		if w.Code != http.StatusOK {
+			t.Fatalf("restricted Home read %d: %s", w.Code, w.Body.String())
+		}
+		var row catalog.HomeRow
+		if err := json.Unmarshal(w.Body.Bytes(), &row); err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, entry := range row.Entries {
+			if entry.ID != show.Public {
+				continue
+			}
+			found = true
+			if entry.Kind != "show" || entry.HomeActions == nil || entry.HomeActions.Play != wantPlay || entry.HomeActions.Queue != wantPlay || entry.HomeActions.Selection.Play != wantPlay || entry.HomeActions.Delete || entry.HomeActions.Selection.Delete {
+				t.Fatalf("current permitted availability=%v: %+v", wantPlay, entry)
+			}
+		}
+		if !found {
+			t.Fatal("permitted unavailable child should keep the show visible")
+		}
+		for _, secret := range []string{hidden.Public, "/tv/hidden-", "filePath", "sourcePath"} {
+			if strings.Contains(w.Body.String(), secret) {
+				t.Fatalf("restricted Home leaked hidden availability evidence: %s", secret)
+			}
+		}
+		return row
+	}
+	before := read(true) // The only permitted available member is after 64.
+	p, err := f.d.Identity.Authenticate(f.kids.AccessToken)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetAssetAvailableTx(ctx, tx, permitted.Asset, false)
+	})
+	f.c.Drain()
+	afterUnavailable := read(false)
+	if afterUnavailable.Revision.Catalog == before.Revision.Catalog {
+		t.Fatal("availability change did not advance the returned Home revision")
+	}
+	f.c.Write(func(ctx context.Context, tx *sql.Tx) error {
+		return compactcatalog.SetAssetAvailableTx(ctx, tx, permitted.Asset, true)
+	})
+	f.c.Drain()
+	read(true)
+	policy, err := f.d.Identity.ProfileRestrictions(ctx, f.token, p.ProfileID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.d.Identity.SetProfileRestrictions(ctx, f.token, p.ProfileID, identity.ProfileRestrictionEdit{
+		ExpectedRevision: policy.Revision, RatingSystem: policy.RatingSystem, MaximumAgeRating: policy.MaximumAgeRating, AllowUnrated: policy.AllowUnrated, BlockedLabels: []string{"newly-blocked"},
+		AllowDownloads: policy.AllowDownloads, AllowLiveTV: policy.AllowLiveTV, AllowDVR: policy.AllowDVR, AllowWatchTogether: policy.AllowWatchTogether,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	f.c.Attributes(permitted.ID, "label", "newly-blocked")
+	f.c.Drain()
+	afterRestriction := read(false)
+	if afterRestriction.ViewerFence == before.ViewerFence {
+		t.Fatal("restriction revocation retained the prior Home fence")
+	}
+	request := httptest.NewRequest("GET", "/v1/home", nil)
+	request.Header.Set("Authorization", "Bearer "+f.kids.AccessToken)
+	fence, err := f.d.homeActionFenceAfter(request, p)
+	if err != nil || fence != afterRestriction.ViewerFence || fence == before.ViewerFence {
+		t.Fatalf("post-read proof did not retain current restriction fence: %s %v", fence, err)
 	}
 }

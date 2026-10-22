@@ -11,10 +11,16 @@ import {parseGuideChannels, parseGuideSources, type GuideChannel, type GuideSour
 export type HomeArtworkShape = 'poster' | 'square' | 'landscape';
 export type HomeRevision = Readonly<{catalog: number; viewer: number}>;
 export type HomeActionState = Readonly<{watchlisted:boolean;favorite:boolean;watched:boolean;rating:number|null;personalRevision:number;containerRevision:number}>;
+/** Selection commands may expand a container to its permitted playable members.
+ * They do not imply a saved flag on the displayed aggregate itself. */
+export type HomeSelectionActions = Readonly<{
+ play:boolean;queue:boolean;playlist:boolean;collection:boolean;myList:boolean;favorite:boolean;watched:boolean;
+ download:boolean;edit:boolean;refresh:boolean;delete:boolean;
+}>;
 /** Server grants for implemented commands. Platform support is applied separately. */
 export type HomeActions = Readonly<{
  play:boolean;queue:boolean;playlist:boolean;collection:boolean;myList:boolean;favorite:boolean;watched:boolean;played:boolean;rating:boolean;
- editMetadata:boolean;refreshMetadata:boolean;delete:boolean;download:boolean;details:boolean;state:HomeActionState;
+ editMetadata:boolean;refreshMetadata:boolean;delete:boolean;download:boolean;details:boolean;state:HomeActionState;selection:HomeSelectionActions;
 }>;
 export type HomeEntry = ContentEntry & Readonly<{homeActions?:HomeActions}>;
 export type HomeChannelActions = Readonly<{play:boolean;favorite:boolean}>;
@@ -81,8 +87,11 @@ export function parseHomeActions(value:unknown):HomeActions|undefined {
   const s=value.state;
   if(typeof s.watchlisted!=='boolean'||typeof s.favorite!=='boolean'||typeof s.watched!=='boolean'||!whole(s.personalRevision)||!whole(s.containerRevision)||(s.rating!==null&&(typeof s.rating!=='number'||!Number.isFinite(s.rating)||s.rating<0||s.rating>10))){noteSkipped('home','actions.state');return undefined;}
   const flags=['play','queue','playlist','collection','myList','favorite','watched','played','rating','editMetadata','refreshMetadata','delete','download','details'] as const;
-  const offers=Object.fromEntries(flags.map(flag=>[flag,value[flag]===true])) as Omit<HomeActions,'state'>;
-  return Object.freeze({...offers,state:Object.freeze({watchlisted:s.watchlisted,favorite:s.favorite,watched:s.watched,rating:s.rating as number|null,personalRevision:s.personalRevision,containerRevision:s.containerRevision})});
+  const offers=Object.fromEntries(flags.map(flag=>[flag,value[flag]===true])) as Omit<HomeActions,'state'|'selection'>;
+  const selectionFlags=['play','queue','playlist','collection','myList','favorite','watched','download','edit','refresh','delete'] as const;
+  const suppliedSelection:Record<string,unknown>=object(value.selection)?value.selection:{};
+  const selection=Object.freeze(Object.fromEntries(selectionFlags.map(flag=>[flag,suppliedSelection[flag]===true])) as HomeSelectionActions);
+  return Object.freeze({...offers,selection,state:Object.freeze({watchlisted:s.watchlisted,favorite:s.favorite,watched:s.watched,rating:s.rating as number|null,personalRevision:s.personalRevision,containerRevision:s.containerRevision})});
 }
 
 export function validateHomeEntry(value:unknown):HomeEntry {

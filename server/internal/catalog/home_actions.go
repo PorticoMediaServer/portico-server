@@ -3,7 +3,6 @@ package catalog
 import (
 	"database/sql"
 	"encoding/json"
-	"strconv"
 
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/personalstate"
@@ -13,21 +12,39 @@ import (
 // Device support is deliberately separate; these facts never grant a write.
 // Every command rechecks its own authority and current target on execution.
 type HomeActions struct {
-	Play            bool            `json:"play"`
-	Queue           bool            `json:"queue"`
-	Playlist        bool            `json:"playlist"`
-	Collection      bool            `json:"collection"`
-	MyList          bool            `json:"myList"`
-	Favorite        bool            `json:"favorite"`
-	Watched         bool            `json:"watched"`
-	Played          bool            `json:"played"`
-	Rating          bool            `json:"rating"`
-	EditMetadata    bool            `json:"editMetadata"`
-	RefreshMetadata bool            `json:"refreshMetadata"`
-	Delete          bool            `json:"delete"`
-	Download        bool            `json:"download"`
-	Details         bool            `json:"details"`
-	State           HomeActionState `json:"state"`
+	Play            bool                 `json:"play"`
+	Queue           bool                 `json:"queue"`
+	Playlist        bool                 `json:"playlist"`
+	Collection      bool                 `json:"collection"`
+	MyList          bool                 `json:"myList"`
+	Favorite        bool                 `json:"favorite"`
+	Watched         bool                 `json:"watched"`
+	Played          bool                 `json:"played"`
+	Rating          bool                 `json:"rating"`
+	EditMetadata    bool                 `json:"editMetadata"`
+	RefreshMetadata bool                 `json:"refreshMetadata"`
+	Delete          bool                 `json:"delete"`
+	Download        bool                 `json:"download"`
+	Details         bool                 `json:"details"`
+	State           HomeActionState      `json:"state"`
+	Selection       HomeSelectionActions `json:"selection"`
+}
+
+// HomeSelectionActions is the authority for selection commands, independently
+// of the title-level toggles above. In particular a container's bulk My List
+// command changes its permitted playable members, not its own saved flag.
+type HomeSelectionActions struct {
+	Play       bool `json:"play"`
+	Queue      bool `json:"queue"`
+	Playlist   bool `json:"playlist"`
+	Collection bool `json:"collection"`
+	MyList     bool `json:"myList"`
+	Favorite   bool `json:"favorite"`
+	Watched    bool `json:"watched"`
+	Download   bool `json:"download"`
+	Edit       bool `json:"edit"`
+	Refresh    bool `json:"refresh"`
+	Delete     bool `json:"delete"`
 }
 
 type HomeActionState struct {
@@ -60,10 +77,22 @@ type homeActionFacts struct {
 	state         HomeActionState
 }
 
-// As with Home's fallback source walks, a restricted availability proof has a
-// fixed candidate budget. A global member count must never reveal availability
-// that belongs only to children this viewer cannot see.
-const homeActionMemberProofLimit = 64
+// homeActionAvailableSQL tests the current canonical membership, availability
+// and viewer policy in the caller's snapshot. The membership primary key starts
+// with entity_id; CROSS JOIN keeps each returned target's range as the driver,
+// followed by primary-key probes of its members and availability. EXISTS stops
+// on the first permitted available member, with no correctness/candidate cap.
+// Global browse availability and restricted-class sort facts cannot prove this:
+// the class rows currently copy the global member-link availability state.
+func homeActionAvailableSQL(v Viewer) (string, []any) {
+	visible, args := v.itemVisibilitySQL("home_member.item_id")
+	return `CASE WHEN k.playable=1 THEN COALESCE(a.available,0) ELSE EXISTS(
+	 SELECT 1 FROM catalog_browse_memberships home_member
+	 CROSS JOIN catalog_item_availability available ON available.entity_id=home_member.item_id
+	 WHERE home_member.entity_id=e.id AND available.available=1 AND available.retired=0
+	 AND ` + visible + recordingsClause("home_member.item_id", v.EffectiveRestrictions()) + `
+	 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=home_member.item_id)) END`, args
+}
 
 // ProjectHomeActions decorates only the already-authorized returned Home items.
 // It requires the composition snapshot, batches exact entity lookups, and never
@@ -120,18 +149,12 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 		return err
 	}
 	facts := map[string]homeActionFacts{}
-	availability := `COALESCE(a.available,links.available>0,0)`
-	bound := []any{}
-	if v.EffectiveRestrictions().Active() {
-		visible, args := v.itemVisibilitySQL("member.id")
-		availability = `CASE WHEN k.playable=1 THEN COALESCE(a.available,0) ELSE EXISTS(
-		 SELECT 1 FROM (SELECT item_id FROM catalog_browse_memberships WHERE entity_id=e.id ORDER BY item_id LIMIT ` + strconv.Itoa(homeActionMemberProofLimit) + `) candidates
-		 CROSS JOIN catalog_entities member ON member.id=candidates.item_id
-		 JOIN catalog_item_availability available ON available.entity_id=member.id AND available.available=1 AND available.retired=0
-		 WHERE ` + visible + recordingsClause("member.id", v.EffectiveRestrictions()) + `) END`
-		bound = args
-	}
+	availability, bound := homeActionAvailableSQL(v)
 	bound = append(bound, v.Profile, string(raw), v.Profile, v.Profile)
+	leafVisible, leafArgs := v.itemVisibilitySQL("e.id")
+	containerVisible, containerArgs := v.entityVisibilitySQL("e.id", "l.library_id")
+	bound = append(bound, leafArgs...)
+	bound = append(bound, containerArgs...)
 	// The requested primary keys drive every join. Personal state is the
 	// displayed title's row; a show's first episode cannot supply its flags.
 	found, err := s.read().Query(`SELECT pid(e.public_id),k.name,l.library_id,
@@ -140,10 +163,11 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 	 FROM json_each(?) requested CROSS JOIN catalog_entities e ON e.public_id=pid_blob(requested.value)
 	 JOIN catalog_kinds k ON k.id=e.kind JOIN catalog_libraries l ON l.id=e.library_id
 	 LEFT JOIN catalog_item_availability a ON a.entity_id=e.id AND a.retired=0
-	 LEFT JOIN catalog_browse_member_links links ON links.entity_id=e.id
 	 LEFT JOIN personal_items p ON p.item_id=e.id AND p.profile_id=?
 	 LEFT JOIN container_personal_state c ON c.container_id=e.id AND c.kind=k.name AND c.profile_id=?
-	 WHERE e.retired=0 AND l.retired=0`, bound...)
+	 WHERE e.retired=0 AND l.retired=0 AND CASE WHEN k.playable=1 THEN
+	 (`+leafVisible+recordingsClause("e.id", v.EffectiveRestrictions())+` AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=e.id))
+	 ELSE `+containerVisible+` END`, bound...)
 	if err != nil {
 		return err
 	}
@@ -177,9 +201,6 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 			f.state.Watched = *entry.Watched
 		}
 		available := f.available
-		if entry.Available != nil && !*entry.Available || entry.Missing {
-			available = false
-		}
 		a := &HomeActions{State: f.state, Details: true}
 		a.Play = authority.Playback && available
 		a.Queue = authority.Queue && available
@@ -195,7 +216,12 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 		a.EditMetadata = authority.Metadata && (leaf || f.kind == "show" || f.kind == "season" || f.kind == "album" || f.kind == "artist" || f.kind == "book")
 		a.RefreshMetadata = authority.Refresh && (leaf || f.kind == "show")
 		a.Download = authority.Downloads && available && (leaf || f.kind == "show" || f.kind == "season" || f.kind == "album" || f.kind == "book")
-		if authority.DeleteLibrary != nil && leaf {
+		// The real delete preview accepts these displayed aggregate targets and
+		// resolves TitleMembersTx server-side. Its 200 displayed-target limit
+		// and separate 5000 member limit are enforced by that preview, never by
+		// substituting a child or walking descendants on the client.
+		deletable := leaf || f.kind == "show" || f.kind == "season" || f.kind == "album" || f.kind == "artist" || f.kind == "book"
+		if authority.DeleteLibrary != nil && deletable {
 			allowed, known := deletion[f.library]
 			if !known {
 				allowed, err = authority.DeleteLibrary(f.library)
@@ -205,6 +231,17 @@ func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, ro
 				deletion[f.library] = allowed
 			}
 			a.Delete = allowed
+		}
+		a.Selection = HomeSelectionActions{
+			Play: a.Play, Queue: a.Queue,
+			Playlist: a.Playlist && authority.Bulk, Collection: a.Collection && authority.Bulk,
+			MyList: authority.Personal && authority.Bulk,
+			// The canonical selection dispatcher uses jobs for leaf personal
+			// commands and refresh. Supported container favorite/watched have
+			// genuine direct commands independent of the job scheduler.
+			Favorite: a.Favorite && (container || authority.Bulk),
+			Watched:  a.Watched && (container || authority.Bulk), Download: a.Download,
+			Edit: a.EditMetadata, Refresh: a.RefreshMetadata && authority.Bulk, Delete: a.Delete,
 		}
 		entry.HomeActions = a
 	}
