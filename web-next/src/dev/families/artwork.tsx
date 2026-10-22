@@ -53,8 +53,8 @@ function ambient(treatment: 'hero' | 'title' | 'phone' | 'cover' | 'wash' | 'lib
   return function AmbientCase() { const refs = useReferenceArt(), evidence = useArtworkEvidence(); return <Stage><AmbientArt treatment={treatment} palette={evidence?.palette ?? palette} source={evidence?.ambient} sources={evidence?.ambients} foreground={foreground ? evidence?.foreground ?? (treatment === 'poster' ? refs.jujutsu : treatment === 'phone' ? refs.spirited : refs.severance) : undefined} /></Stage>; };
 }
 function colour(shape: 'side' | 'round' | 'top', fill = false): ComponentType { return () => <Stage><ColourBackdrop shape={shape} fill={fill} /></Stage>; }
-function cover(size: 'large' | 'grid' | 'phone' | 'small' | 'long' | 'no-author'): ComponentType {
-  return () => <Stage><GeneratedCover title={fixture(size === 'long' ? 'next.artwork.fixture.war' : 'next.artwork.fixture.timeMachine')} author={size === 'no-author' ? undefined : fixture('next.artwork.fixture.wells')} tint={size === 'long' ? teal : gold} glyph={size === 'long' ? 'W' : 'T'} fontScale={size === 'large' ? 17.1 : size === 'long' ? 12 : 15.5} /></Stage>;
+function cover(size: 'large' | 'grid' | 'phone' | 'phone-book' | 'small' | 'long' | 'no-author'): ComponentType {
+  return () => <Stage><GeneratedCover title={fixture(size === 'long' ? 'next.artwork.fixture.war' : 'next.artwork.fixture.timeMachine')} author={size === 'no-author' ? undefined : fixture('next.artwork.fixture.wells')} tint={size === 'long' ? teal : gold} glyph={size === 'long' ? 'W' : 'T'} fontScale={size === 'large' ? 17.1 : size === 'phone-book' ? 16.9 : size === 'long' ? 12 : 15.5} /></Stage>;
 }
 function artist(count: number): ComponentType { return function ArtistCase() { const refs = useReferenceArt(); return <Stage><ArtistCircle covers={[refs.afterHours, refs.abbey, refs.rumours, refs.taylor].slice(0, count)} alt={t('next.artwork.case.artist')} size={172} /></Stage>; }; }
 function person(covers: boolean): ComponentType { return function PersonCase() { const refs = useReferenceArt(); return <Stage><PersonCircle covers={covers ? [refs.harry, refs.martian] : []} initials={covers ? 'JR' : 'MF'} alt={t('next.artwork.case.person')} size={covers ? 172 : 96} /></Stage>; }; }
@@ -99,7 +99,7 @@ const cases = [
   {id: 'colour-top', labelKey: 'next.artwork.case.colour', width: 390, height: 844, render: colour('top')},
   {id: 'colour-full', labelKey: 'next.artwork.case.colour', width: 390, height: 844, render: colour('top', true)},
   {id: 'generated-art', labelKey: 'next.artwork.case.generated', width: 858, height: 236, render: () => <Stage className={styles.fallback}><GeneratedArt glyph="L" /></Stage>},
-  ...(['large', 'grid', 'phone', 'small', 'long', 'no-author'] as const).map(size => ({id: `generated-cover-${size}`, labelKey: 'next.artwork.case.cover' as const, width: size === 'large' ? 300 : size === 'phone' ? 108 : size === 'small' ? 40 : 170, height: size === 'large' ? 450 : size === 'phone' ? 162 : size === 'small' ? 60 : 255, render: cover(size)})),
+  ...(['large', 'grid', 'phone', 'phone-book', 'small', 'long', 'no-author'] as const).map(size => ({id: `generated-cover-${size}`, labelKey: 'next.artwork.case.cover' as const, width: size === 'large' ? 300 : size === 'phone' ? 108 : size === 'phone-book' ? 168 : size === 'small' ? 40 : 170, height: size === 'large' ? 450 : size === 'phone' ? 162 : size === 'phone-book' ? 252 : size === 'small' ? 60 : 255, render: cover(size)})),
   ...([1, 2, 3, 4] as const).map(count => ({id: `artist-${count}`, labelKey: 'next.artwork.case.artist' as const, width: 172, height: 172, render: artist(count)})),
   {id: 'person-plain', labelKey: 'next.artwork.case.person', width: 96, height: 96, render: person(false)},
   {id: 'person-covers', labelKey: 'next.artwork.case.person', width: 172, height: 172, render: person(true)},

@@ -12,13 +12,13 @@ export function GeneratedArt({glyph, palette, className, style, width, height}: 
 }
 
 export type GeneratedCoverProps = ArtStyleProps & Readonly<{
-  title: string; author?: string; tint: GeneratedCoverTint; glyph?: string;
-  /** In percent of the cover width, supplied by the canonical cover model. */
+  title: string; author?: string; tint: GeneratedCoverTint; glyph: string;
+  /** Authored CSS cqw percentage; defaults to 12.6 without title-based inference. */
   fontScale?: number;
 }>;
 export function GeneratedCover({title, author, tint, glyph, fontScale = 12.6, className, style, width, height}: GeneratedCoverProps) {
   return <span role="img" aria-label={title} className={artClass(styles.generatedCover, className)} style={artSize({width, height, style: {'--art-first': tint.first, '--art-second': tint.second, '--cover-font': `${fontScale}cqw`, ...style} as CSSProperties})}>
-    <span className={styles.coverGlyph} aria-hidden="true">{glyph ?? Array.from(title.trim())[0]}</span>
+    <span className={styles.coverGlyph} aria-hidden="true">{glyph}</span>
     <span className={styles.coverCopy} aria-hidden="true"><b>{title}</b>{author && <small>{author}</small>}</span>
   </span>;
 }
