@@ -97,7 +97,9 @@ export function selectionActions(summary: SelectionSummary, environment: Selecti
   const catalogueOnly = summary.types.every(type => type.kind !== 'channel' && type.kind !== 'person');
   // A guide Play starts one channel. No existing queue accepts a channel set.
   const playableSet = !summary.types.some(type => type.kind === 'channel') || summary.count === 1;
-  const ownerTools = active && catalogueOnly && environment.platform !== 'tv';
+  // DESIGN's every-platform curation rule overrides the TV exclusion in select's
+  // lower-priority notes. Server settings and File info manage different commands.
+  const ownerTools = active && catalogueOnly;
   let edit = hidden;
   if (ownerTools && (environment.isOwner || environment.canEditMetadata)) {
     edit = !summary.every.edit ? disabled('not-permitted')

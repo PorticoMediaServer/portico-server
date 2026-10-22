@@ -14,7 +14,6 @@ export type HomeCatalogueSelection=Extract<SelectionItem,{kind:ContentEntryKind}
 export type HomeChannelSelection=Extract<SelectionItem,{kind:'channel'}>;
 
 function offered(actions:HomeSelectionActions|undefined,platform:HomeActionPlatform) {
-  const ownerMaintenance=platform.platform!=='tv';
   return {
     play:actions?.play===true&&platform.playbackAvailable===true,
     queue:actions?.queue===true&&platform.queueAvailable===true,
@@ -24,11 +23,11 @@ function offered(actions:HomeSelectionActions|undefined,platform:HomeActionPlatf
     collection:actions?.collection===true,
     favorite:actions?.favorite===true,
     download:actions?.download===true&&platform.platform==='phone-app'&&platform.nativeDownloadsAvailable===true,
-    // DESIGN's bulk Edit rule includes TV. Its real server grant is required;
-    // the view-only Server settings rule does not remove title editing.
+    // Catalogue curation is available on TV under DESIGN/Q45. These exact
+    // server offers grant nothing in Server settings or File info management.
     edit:actions?.edit===true,
-    refresh:actions?.refresh===true&&ownerMaintenance,
-    delete:actions?.delete===true&&ownerMaintenance,
+    refresh:actions?.refresh===true,
+    delete:actions?.delete===true,
   };
 }
 
