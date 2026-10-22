@@ -1,4 +1,4 @@
-import {useRef, useState, type ReactNode} from 'react';
+import {useRef, useState, type ImgHTMLAttributes, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {fileInfoModel, type FileFacts, type FileInfoModel} from '@portico/client-core/kit-model';
 import {overlaysFixtures} from '../../../../packages/i18n/src/catalog/en-US/next/dev/overlays-fixtures';
@@ -69,6 +69,11 @@ function DialogCase() {
   return <Fixture event={fixture.event}><Button size="compact" onClick={fixture.show}>{t('next.overlays.clearHistory')}</Button><Dialog open={fixture.open} onOpenChange={fixture.change} title={t('next.overlays.clearHistoryTitle')} description={t('next.overlays.clearHistoryBody')} className={styles.historyDialog} initialFocusRef={cancel}
     footer={<><Button ref={cancel} size="small" onClick={() => fixture.change(false, 'action')}>{t('next.overlays.cancel')}</Button><Button variant="primary" size="small" onClick={() => fixture.change(false, 'action')}>{t('next.overlays.clearHistory')}</Button></>}>{null}</Dialog></Fixture>;
 }
+function RecordingDialog() {
+  const fixture = useFixture(), cancel = useRef<HTMLButtonElement | null>(null);
+  return <Fixture event={fixture.event}><div className={styles.confirmBackplate}><ReferenceImage src="http://100.120.50.24:8787/assets/pool/movies/the-dark-knight--bd.jpg" className={styles.referenceBackdrop} /></div><Dialog responsive={false} role="alertdialog" width={436} open={fixture.open} onOpenChange={fixture.change} title={t('next.overlays.deleteRecordingTitle')} initialFocusRef={cancel}
+    footer={<><Button ref={cancel} size="small" onClick={() => fixture.change(false, 'action')}>{t('next.overlays.cancel')}</Button><Button size="small" icon="i-trash" iconSize={18} className={styles.destructive} onClick={() => fixture.change(false, 'action')}>{t('next.overlays.deleteRecording')}</Button></>}><p><b>{reference.programme}</b>{t('next.overlays.recordingRemoval', {server: reference.server})}</p></Dialog></Fixture>;
+}
 function PanelCase({owner = false}: {owner?: boolean}) {
   const fixture = useFixture(), model = fileInfoModel(files, owner ? {audience: 'owner', ownerFacts: {locations: files.map(file => ({id: file.id, path: `/srv/media/Movies/Dune Part Two (2024)/${file.id}.mkv`, canDelete: true})), canSplit: true, canMerge: true}, manageSurface: 'desktop'} : {audience: 'viewer'}, {t});
   return <Fixture event={fixture.event}><nav className={styles.toolbar}><Button size="small" onClick={() => fixture.setEvent('navigation')}>{t('next.overlays.done')}</Button><Button size="small" onClick={fixture.show}>{t('next.overlays.fileInfo')}</Button></nav>
@@ -83,21 +88,29 @@ function SheetCase({full = false}: {full?: boolean}) {
 }
 function HalfSheet() { return <SheetCase />; }
 function FullSheet() { return <SheetCase full />; }
-function ReferencePoster() {
+function ReferenceImage({alt = '', ...props}: ImgHTMLAttributes<HTMLImageElement>) {
   const [status, setStatus] = useState('loading');
-  return <img src="http://100.120.50.24:8787/assets/pool/movies/titanic.jpg" alt="" data-reference-artwork={status}
+  return <img {...props} alt={alt} data-reference-artwork={status}
     onLoad={event => { void event.currentTarget.decode().then(() => setStatus('decoded'), () => setStatus('failed')); }} onError={() => setStatus('failed')} />;
 }
+function ReferencePoster() { return <ReferenceImage src="http://100.120.50.24:8787/assets/pool/movies/titanic.jpg" />; }
+function ToastBackplate({children}: {children: ReactNode}) {
+  return <div className={styles.toastBackplate}><div className={styles.referencePosters}>{['the-incredibles', 'spirited-away', 'wall-e'].map(value => <ReferenceImage key={value} src={`http://100.120.50.24:8787/assets/pool/movies/${value}.jpg`} />)}</div>{children}</div>;
+}
 function ToastCase({action = false, host = false}: {action?: boolean; host?: boolean}) {
-  const fixture = useFixture(), [value, setValue] = useState<ToastData | null>({id: 'reference', message: <><b>{t('next.overlays.detailsCopied')}</b>{' '}{t('next.overlays.detailsSafe')}</>, icon: 'i-check', tone: 'success'});
+  const fixture = useFixture();
   const message = action ? <>{t('next.overlays.removalPrefix')}<b>{reference.removedFilm}</b>{t('next.overlays.removalSuffix')}</> : <><b>{t('next.overlays.detailsCopied')}</b>{' '}{t('next.overlays.detailsSafe')}</>;
-  const undo = action ? {label: t('next.overlays.undo'), icon: 'i-undo' as const, onAction: () => fixture.setEvent('undo')} : undefined;
-  return <Fixture event={fixture.event}>{host ? <><Button size="small" onClick={() => setValue({id: String(Date.now()), message, action: undo, artwork: action ? <ReferencePoster /> : undefined})}>{t('next.overlays.undo')}</Button><ToastHost toast={value} onDismiss={(id, reason) => { fixture.setEvent(`${id}:${reason}`); setValue(null); }} /></> : <div className={styles.toastPosition}><Toast open={fixture.open} onOpenChange={fixture.change} message={message} action={undo} artwork={action ? <ReferencePoster /> : undefined} icon={action ? undefined : 'i-check'} tone="success" /></div>}</Fixture>;
+  const undo = action ? {label: t('next.overlays.undo'), icon: host ? undefined : 'i-undo' as const, onAction: () => fixture.setEvent('undo')} : undefined;
+  const [value, setValue] = useState<ToastData | null>({id: 'reference', message, action: undo, artwork: action ? <ReferencePoster /> : undefined, icon: action ? undefined : 'i-check', tone: 'success'});
+  const surface = <div className={styles.toastPosition}><Toast open={fixture.open} onOpenChange={fixture.change} message={message} action={undo} artwork={action ? <ReferencePoster /> : undefined} icon={action ? undefined : 'i-check'} tone="success" /></div>;
+  return <Fixture event={fixture.event}>{host ? <><Button size="small" onClick={() => setValue({id: String(Date.now()), message, action: undo, artwork: action ? <ReferencePoster /> : undefined})}>{t('next.overlays.done')}</Button><ToastHost toast={value} onDismiss={(id, reason) => { fixture.setEvent(`${id}:${reason}`); setValue(null); }} /></> : action ? <ToastBackplate>{surface}</ToastBackplate> : surface}</Fixture>;
 }
 function PlainToast() { return <ToastCase />; }
 function ActionToast() { return <ToastCase action />; }
 function PhoneToast() { return <ToastCase action host />; }
-function QuietBanner() { return <Fixture><div className={styles.bannerPosition}><Banner variant="quiet">{t('next.overlays.unreachableStart')}<b>{reference.server}</b>{t('next.overlays.unreachableEnd')}</Banner></div></Fixture>; }
+function QuietBannerCase({phone = false}: {phone?: boolean}) { return <Fixture><div className={phone ? styles.phoneBannerBackplate : styles.bannerBackplate}><ReferenceImage src="http://100.120.50.24:8787/assets/bd-spirited.jpg" className={styles.bannerBackdrop} /><div className={styles.bannerPosition}><Banner variant="quiet">{t('next.overlays.unreachableStart')}<b>{reference.server}</b>{t('next.overlays.unreachableEnd')}</Banner></div></div></Fixture>; }
+function QuietBanner() { return <QuietBannerCase />; }
+function PhoneQuietBanner() { return <QuietBannerCase phone />; }
 function Notice() { const [open, setOpen] = useState(true); return <Fixture><div className={styles.noticePosition}><Banner open={open} icon="i-update" action={{label: t('next.overlays.reload'), onAction: () => setOpen(false)}}><b>{t('next.overlays.updated', {server: reference.server})}</b>{' '}{t('next.overlays.reloadHelp')}</Banner></div></Fixture>; }
 
 export default defineGalleryFamily({id: 'overlays', labelKey: 'next.overlays.gallery', cases: [
@@ -106,6 +119,7 @@ export default defineGalleryFamily({id: 'overlays', labelKey: 'next.overlays.gal
   {id: 'popover', labelKey: 'next.overlays.gallery.popover', width: 600, height: 480, render: NonModalPopover},
   {id: 'modal-popover', labelKey: 'next.overlays.gallery.modalPopover', width: 600, height: 480, render: ModalPopover},
   {id: 'dialog', labelKey: 'next.overlays.gallery.dialog', width: 1440, height: 810, render: DialogCase},
+  {id: 'recording-dialog', labelKey: 'next.overlays.deleteRecordingTitle', width: 1440, height: 900, render: RecordingDialog},
   {id: 'side-panel', labelKey: 'next.overlays.gallery.panel', width: 1440, height: 1260, render: Panel},
   {id: 'side-panel-owner', labelKey: 'next.overlays.gallery.panelOwner', width: 1440, height: 1260, render: OwnerPanel},
   {id: 'sheet-half', labelKey: 'next.overlays.gallery.sheetHalf', width: 390, height: 844, render: HalfSheet},
@@ -114,6 +128,7 @@ export default defineGalleryFamily({id: 'overlays', labelKey: 'next.overlays.gal
   {id: 'toast', labelKey: 'next.overlays.gallery.toast', width: 1440, height: 810, render: PlainToast},
   {id: 'toast-action', labelKey: 'next.overlays.gallery.toastAction', width: 1440, height: 810, render: ActionToast},
   {id: 'phone-toast', labelKey: 'next.overlays.gallery.phoneToast', width: 390, height: 844, render: PhoneToast},
-  {id: 'banner', labelKey: 'next.overlays.gallery.banner', width: 480, height: 200, render: QuietBanner},
+  {id: 'banner', labelKey: 'next.overlays.gallery.banner', width: 1440, height: 900, render: QuietBanner},
+  {id: 'phone-banner', labelKey: 'next.overlays.gallery.banner', width: 390, height: 200, render: PhoneQuietBanner},
   {id: 'notice', labelKey: 'next.overlays.gallery.notice', width: 390, height: 300, render: Notice},
 ]});

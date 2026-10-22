@@ -68,14 +68,17 @@ export function useSurfaceFocus(open: boolean, initialFocusRef?: RefObject<HTMLE
 const anchoredOpenEvent = 'portico:anchored-overlay-open';
 export function useExclusiveAnchor(open: boolean, change: OverlayChange) {
   const callback = useRef(change); callback.current = change;
+  const [superseded, setSuperseded] = useState(false);
   useLayoutEffect(() => {
     if (!open) return;
+    setSuperseded(false);
     const id = Symbol();
     document.dispatchEvent(new CustomEvent(anchoredOpenEvent, {detail: id}));
-    const receive = (event: Event) => { if ((event as CustomEvent<symbol>).detail !== id) callback.current(false, 'action'); };
+    const receive = (event: Event) => { if ((event as CustomEvent<symbol>).detail !== id) { setSuperseded(true); callback.current(false, 'action'); } };
     document.addEventListener(anchoredOpenEvent, receive);
     return () => document.removeEventListener(anchoredOpenEvent, receive);
   }, [open]);
+  return superseded;
 }
 
 export function useDismissReason() {
@@ -94,7 +97,7 @@ export function usePresence(open: boolean, milliseconds: number) {
 }
 
 /** Cancel and retarget from the painted value, including a reversal during entry. */
-export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel' | 'fade' | 'toast' | 'banner') {
+export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel' | 'fade' | 'toast' | 'banner', exitTransform?: RefObject<string | null>) {
   const [element, setElement] = useState<HTMLElement | null>(null);
   const animation = useRef<Animation | null>(null);
   const first = useRef(true);
@@ -107,15 +110,16 @@ export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel
     const initialTransform = kind === 'dialog' ? 'scale(.98)' : kind === 'menu' ? 'translateY(-4px) scale(.98)' : kind === 'panel' ? 'translateX(24px)' : kind === 'toast' ? 'translateY(24px)' : kind === 'banner' ? 'translateY(-100%)' : 'none';
     const from = {opacity: first.current && entering ? 0 : Number(style.opacity), transform: reduced ? 'none' : first.current && entering ? initialTransform : style.transform};
     animation.current?.cancel(); first.current = false;
-    const current = element.animate([from, {opacity: entering ? 1 : 0, transform: reduced ? 'none' : entering ? 'none' : from.transform}], {duration: reduced ? reducedMotion.durationMs : entering ? motion.standard : motion.quick, easing: entering ? easings.out : easings.in, fill: 'both'});
+    const targetTransform = reduced || entering ? 'none' : exitTransform?.current ?? from.transform;
+    const current = element.animate([from, {opacity: entering ? 1 : 0, transform: targetTransform}], {duration: reduced ? reducedMotion.durationMs : entering ? motion.standard : motion.quick, easing: entering ? easings.out : easings.in, fill: 'both'});
     animation.current = current;
     current.onfinish = () => {
       if (animation.current !== current) return;
-      element.style.opacity = entering ? '1' : '0'; element.style.transform = reduced || entering ? 'none' : from.transform;
+      element.style.opacity = entering ? '1' : '0'; element.style.transform = targetTransform;
       current.cancel(); animation.current = null;
     };
     return () => { /* The next run reads the painted value before cancelling. */ };
-  }, [element, open, kind]);
+  }, [element, open, kind, exitTransform]);
   useEffect(() => () => animation.current?.cancel(), []);
   return setElement;
 }

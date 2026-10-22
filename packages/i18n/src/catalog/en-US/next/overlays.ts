@@ -33,6 +33,7 @@ export const overlaysMessages = {
   'next.overlays.clearHistory': 'Clear history',
   'next.overlays.deleteRecordingTitle': 'Delete this recording?',
   'next.overlays.deleteRecordingBody': '{programme}, recorded today at 1:30 PM on Summit Sports, is deleted from {server} for everyone. This can’t be undone.',
+  'next.overlays.recordingRemoval': ', recorded today at 1:30 PM on Summit Sports, is deleted from {server} for everyone. This can’t be undone.',
   'next.overlays.deleteRecording': 'Delete recording',
   'next.overlays.unreachableStart': 'Can’t reach ',
   'next.overlays.unreachableEnd': '. Trying again.',

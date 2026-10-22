@@ -14,34 +14,42 @@ export type ToastProps = Omit<ToastData, 'id'> & {open: boolean; onOpenChange: O
 
 /** One notification surface. The host supplies replacement, placement and lifetime. */
 export function Toast({open, onOpenChange, message, action, icon, artwork, tone = 'default', className, testID}: ToastProps) {
-  const motionRef = useSurfaceMotion(open, 'toast'), elementRef = useRef<HTMLDivElement | null>(null), animation = useRef<Animation | null>(null);
+  const exitTransform = useRef<string | null>(null), motionRef = useSurfaceMotion(open, 'toast', exitTransform), elementRef = useRef<HTMLDivElement | null>(null), animation = useRef<Animation | null>(null);
   const ref = useCallback((element: HTMLDivElement | null) => { elementRef.current = element; motionRef(element); }, [motionRef]);
-  const drag = useRef<{pointer: number; startX: number; startY: number; x: number; y: number; time: number; velocityX: number; velocityY: number} | null>(null);
+  const drag = useRef<{pointer: number; startX: number; startY: number; baseX: number; baseY: number; x: number; y: number; time: number; velocityX: number; velocityY: number} | null>(null);
   const presence = usePresence(open, 160);
   useEffect(() => () => animation.current?.cancel(), []);
   if (!presence) return null;
   return <div ref={ref} role="status" aria-live="polite" aria-atomic="true" className={classes(styles.toast, className)} data-tone={tone} data-testid={testID} data-state={open ? 'open' : 'closed'}
     onPointerDown={event => {
       if (event.button !== 0 || (event.target as HTMLElement).closest('button,a')) return;
+      const painted = getComputedStyle(event.currentTarget), matrix = painted.transform === 'none' ? new DOMMatrixReadOnly() : new DOMMatrixReadOnly(painted.transform);
+      const opacity = painted.opacity;
       animation.current?.cancel(); event.currentTarget.getAnimations().forEach(value => value.cancel());
-      drag.current = {pointer: event.pointerId, startX: event.clientX, startY: event.clientY, x: event.clientX, y: event.clientY, time: event.timeStamp, velocityX: 0, velocityY: 0};
+      event.currentTarget.style.transform = `translate(${matrix.m41}px,${matrix.m42}px)`; event.currentTarget.style.opacity = opacity; exitTransform.current = null;
+      drag.current = {pointer: event.pointerId, startX: event.clientX, startY: event.clientY, baseX: matrix.m41, baseY: matrix.m42, x: event.clientX, y: event.clientY, time: event.timeStamp, velocityX: 0, velocityY: 0};
       event.currentTarget.setPointerCapture(event.pointerId);
     }} onPointerMove={event => {
       const current = drag.current; if (!current || current.pointer !== event.pointerId) return;
       const dt = event.timeStamp - current.time;
       if (dt > 0) { current.velocityX = (event.clientX - current.x) / dt * 1000; current.velocityY = (event.clientY - current.y) / dt * 1000; }
       current.x = event.clientX; current.y = event.clientY; current.time = event.timeStamp;
-      event.currentTarget.style.transform = `translate(${event.clientX - current.startX}px,${Math.max(0, event.clientY - current.startY)}px)`;
+      event.currentTarget.style.transform = `translate(${current.baseX + event.clientX - current.startX}px,${current.baseY + Math.max(0, event.clientY - current.startY)}px)`;
     }} onPointerUp={event => {
       const current = drag.current; if (!current || current.pointer !== event.pointerId) return;
       drag.current = null;
       const x = event.clientX - current.startX, y = Math.max(0, event.clientY - current.startY), paused = event.timeStamp - current.time > 100;
-      if (dismissToast(x, y, paused ? 0 : current.velocityX, paused ? 0 : current.velocityY)) onOpenChange(false, 'gesture');
+      if (dismissToast(x, y, paused ? 0 : current.velocityX, paused ? 0 : current.velocityY)) {
+        const horizontal = Math.abs(x) > y;
+        const exitX = current.baseX + x + (horizontal ? Math.sign(x || current.velocityX) * Math.max(80, Math.abs(current.velocityX) * .12) : 0);
+        const exitY = current.baseY + y + (horizontal ? 0 : Math.max(80, current.velocityY * .12));
+        exitTransform.current = `translate(${exitX}px,${exitY}px)`; onOpenChange(false, 'gesture');
+      }
       else {
         const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches || !!event.currentTarget.closest('[data-reduce-motion="true"]');
         const xs = springFrames(x, 0, current.velocityX, springs.snap, 371), ys = springFrames(y, 0, current.velocityY, springs.snap, 371);
         if (!reduced) animation.current = event.currentTarget.animate(xs.map((value, index) => ({transform: `translate(${value}px,${ys[index]}px)`})), {duration: 371, easing: 'linear'});
-        event.currentTarget.style.transform = 'none';
+        event.currentTarget.style.transform = 'none'; event.currentTarget.style.opacity = '1';
       }
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
     }} onPointerCancel={event => { drag.current = null; event.currentTarget.style.transform = 'none'; }} onLostPointerCapture={event => { if (drag.current) { drag.current = null; event.currentTarget.style.transform = 'none'; } }}>
@@ -70,9 +78,10 @@ export function ToastHost({toast, onDismiss, bottomInset, className, testID}: To
     if (host.current?.contains(document.activeElement)) pauses.add('focus');
     clock.current = {pause, resume};
     start();
-    const visibility = () => document.hidden ? pause('hidden') : resume('hidden');
+    const visibility = () => document.hidden ? pause('hidden') : resume('hidden'), release = () => resume('touch'), blur = () => pause('window'), focus = () => resume('window');
     document.addEventListener('visibilitychange', visibility);
-    return () => { clear(); clock.current = null; document.removeEventListener('visibilitychange', visibility); };
+    document.addEventListener('pointerup', release); document.addEventListener('pointercancel', release); window.addEventListener('blur', blur); window.addEventListener('focus', focus);
+    return () => { clear(); clock.current = null; document.removeEventListener('visibilitychange', visibility); document.removeEventListener('pointerup', release); document.removeEventListener('pointercancel', release); window.removeEventListener('blur', blur); window.removeEventListener('focus', focus); };
   }, [id, hasAction]);
   useLayoutEffect(() => { if (id && host.current) host.current.animate([{opacity: 0}, {opacity: 1}], {duration: 180, easing: 'linear'}); }, [id]);
   const value = toast ?? last.current;
