@@ -149,6 +149,7 @@
 .programmeFlags:empty { display:none; }
 .recording { display:flex; align-items:center; gap:4px; color:var(--color-record); }
 .liveWhen { font-size:13px; color:var(--color-text-tertiary); margin-top:3px; white-space:nowrap; overflow:hidden; }
+.liveWhen > span { overflow:hidden; text-overflow:ellipsis; }
 .liveExtra { font-size:13px; line-height:18px; color:var(--color-text-tertiary); margin-top:8px; }
 .liveResults .liveWhen { line-height:18px; }
 .liveResults .progress { margin-bottom:12px; }
