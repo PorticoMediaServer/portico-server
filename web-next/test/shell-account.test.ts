@@ -20,6 +20,7 @@ const router = `
 const account = `
   import {createElement} from ${JSON.stringify(import.meta.resolve('react'))};
   export const AccountMenu = props => { globalThis.__shellAccountCapture.push(props); return props.trigger; };
+  export const ProfileAvatarFace = ({initial}) => createElement('span', {}, initial);
   export const ProfileAvatar = ({initial, name, art, size, notificationDot, ...props}) => createElement('button', props, initial);
 `;
 registerHooks({
@@ -39,7 +40,7 @@ registerHooks({
 });
 const {Shell} = await import('../src/shell/Shell.tsx');
 function identity(username?: string, profileName = 'Evening profile'): ShellIdentity {
-  return {username, profileName, profileArt: 'mint', primaryProfile: true,
+  return {username, profileName, serverName: 'Study server', profileArt: 'mint', primaryProfile: true,
     viewer: {serverId: 'server-a', accountId: 'account-a', profileId: 'profile-a', authority: 'local', role: 'owner'},
     profiles: [{id: 'profile-a', name: profileName, initial: 'E', art: 'mint'}, {id: 'profile-b', name: 'Kids', initial: 'K'}],
     canManageProfiles: true, accountFacts: [{id: 'server', text: 'Study server', role: 'context'}],

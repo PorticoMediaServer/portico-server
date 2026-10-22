@@ -2,7 +2,7 @@ import {useEffect, useRef, useState, type ComponentType, type ReactNode} from 'r
 import {Link, useNavigate, useRouterState} from '@tanstack/react-router';
 import {defaultI18n} from '@i18n';
 import type {Library, Viewer} from '@core/index.ts';
-import {AccountMenu, ProfileAvatar, type ProfileIdentity, type ProfileTone} from '../kit/shell';
+import {AccountMenu, ProfileAvatar, ProfileAvatarFace, type ProfileIdentity, type ProfileTone} from '../kit/shell';
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon} from '../kit/Icon';
 import {Menu, MenuItem} from '../kit/overlays';
@@ -11,16 +11,18 @@ import {useShellScrolled} from './viewport';
 import {useSizeClass, useCoarsePointer, useWindowScrollAnchor} from '../kit/theme';
 import styles from './shell.module.css';
 import wordmark from './wordmark.svg';
+import type {OwnerActivityProps} from './Activity';
+import {LibraryNavigation} from './LibraryNavigation';
 
 export type ShellIdentity = Readonly<{
-  viewer: Viewer; username?: string; profileName: string; profileArt?: ProfileTone;
+  viewer: Viewer; username?: string; profileName: string; profileArt?: ProfileTone; serverName: string;
   primaryProfile?: boolean; profiles: readonly ProfileIdentity[]; canManageProfiles: boolean; accountFacts: readonly FactPart[];
   libraries: readonly Library[]; liveAvailable: boolean; unread: number; showNotificationDot: boolean;
 }>;
 export type ShellProps = Readonly<{
   identity: ShellIdentity;
-  /** Mount owns its reads. This component is never constructed for non-owner or phone. */
-  OwnerActivity: ComponentType;
+  /** Mount owns its reads. Compact and non-owner shells do not mount it. */
+  OwnerActivity: ComponentType<OwnerActivityProps>;
   dockVisible: boolean;
   onSignOut: () => void;
   overlays?: ReactNode;
@@ -29,12 +31,19 @@ export type ShellProps = Readonly<{
 }>;
 const t = defaultI18n.t;
 function libraryMemory() { try { return window.localStorage; } catch { return undefined; } }
+const collapseMemoryKey = 'portico.next.sidebar-collapsed';
 
 export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSelection, overlays, children}: ShellProps) {
   useWindowScrollAnchor();
   const sizeClass = useSizeClass(), coarsePointer = useCoarsePointer();
   const desktop = sizeClass === 'expanded' && !coarsePointer, compact = sizeClass === 'compact', scrolled = useShellScrolled();
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try { return window.localStorage.getItem(collapseMemoryKey) === 'true'; } catch { return false; }
+  });
+  const toggleSidebar = () => setSidebarCollapsed(value => {
+    try { window.localStorage.setItem(collapseMemoryKey, String(!value)); } catch { /* The live choice still works. */ }
+    return !value;
+  });
   const navigation = compact ? 'tabs' : desktop ? 'topbar' : sizeClass === 'medium' || sidebarCollapsed ? 'rail' : 'sidebar';
   const pathname = useRouterState({select: state => state.location.pathname});
   const query = useRouterState({select: state => state.location.search});
@@ -74,8 +83,11 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
       ...(!desktop ? {notifications: () => { void navigate({to: '/notifications'}); }} : {}),
       watchTogether: () => { void navigate({to: '/watch-together'}); }, feedback: () => { void navigate({to: '/feedback'}); },
       help: () => { void navigate({to: '/help'}); }, signOut: onSignOut,
-    }} trigger={<ProfileAvatar className={styles.avatar} name={identity.profileName} initial={current.initial} art={identity.profileArt} size={desktop ? 34 : 30}
-      notificationDot={!desktop && identity.showNotificationDot && identity.unread > 0} aria-label={t('next.home.shell.profileMenu', {name: identity.profileName})} />} />;
+    }} trigger={navigation === 'sidebar' ? <button type="button" className={styles.profileRow} aria-label={[t('web.account.switchProfileOrServer'), identity.username || t('next.shell.usernameUnavailable'), identity.serverName].join(', ')}>
+      <ProfileAvatarFace initial={current.initial} art={identity.profileArt} size={34} />
+      <span className={styles.profileText}><b>{identity.username || t('next.shell.usernameUnavailable')}</b><small>{identity.serverName}</small></span><Icon name="i-updown" size={18} />
+    </button> : <ProfileAvatar className={styles.avatar} name={identity.profileName} initial={current.initial} art={identity.profileArt} size={desktop ? 34 : 30}
+      notificationDot={compact && identity.showNotificationDot && identity.unread > 0} aria-label={t('next.home.shell.profileMenu', {name: identity.profileName})} />} />;
   return <div className={styles.shell} data-desktop={desktop} data-size-class={sizeClass} data-pointer={coarsePointer ? 'coarse' : 'fine'} data-navigation={navigation} data-has-dock={dockVisible}>
     <a className={styles.skip} href="#portico-content">{t('next.home.shell.skip')}</a>
     <div className={styles.navigation} data-shell-navigation>
@@ -97,17 +109,24 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
           {account}
         </div>
       </nav> : !compact ? <nav className={styles.rail} aria-label={t('next.home.shell.main')}>
-        {sizeClass === 'expanded' && <button type="button" className={styles.collapse} aria-label={t(sidebarCollapsed ? 'sheet.expand' : 'sheet.collapse')} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(value => !value)}><Icon name="i-panels" size={22} /></button>}
-        <div className={styles.railDestinations}>
-          <Link to="/search" search={{q: lastSearch.current}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span>{t('next.home.shell.search')}</span></Link>
-          <Link to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22} /><span>{t('next.home.shell.home')}</span></Link>
-          {identity.libraries.map(library => <Link key={library.id} to="/library/$libraryId" params={{libraryId: library.id}} activeProps={{'aria-current': 'page'}}><Icon name="i-grid" size={22} /><span>{library.name}</span></Link>)}
-          {identity.liveAvailable && <Link to="/live" activeProps={{'aria-current': 'page'}}><Icon name="i-tv" size={22} /><span>{t('next.home.shell.live')}</span></Link>}
-          <Link to="/saved" activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /><span>{t('next.home.shell.saved')}</span></Link>
+        {sizeClass === 'expanded' && <div className={styles.railBrand}>
+          {navigation === 'sidebar' && <Link className={styles.brand} to="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>}
+          <button type="button" className={styles.collapse} aria-label={t(sidebarCollapsed ? 'web.shell.expand' : 'web.shell.collapse')} aria-expanded={!sidebarCollapsed} onClick={toggleSidebar}><Icon name="i-panels" size={22} /></button>
+        </div>}
+        <div className={styles.railPrimary}>
+          <Link className={styles.railItem} to="/search" search={{q: lastSearch.current}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span data-nav-label>{t('next.home.shell.search')}</span></Link>
+          <Link className={styles.railItem} to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22} /><span data-nav-label>{t('next.home.shell.home')}</span></Link>
+        </div>
+        <LibraryNavigation libraries={identity.libraries} sidebar={navigation === 'sidebar'} />
+        <div className={styles.railFixed}>
+          <div className={styles.railDivider} />
+          {identity.liveAvailable && <Link className={styles.railItem} to="/live" activeProps={{'aria-current': 'page'}}><Icon name="i-live" size={22} /><span data-nav-label>{t('next.home.shell.live')}</span></Link>}
+          <Link className={styles.railItem} to="/saved" activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /><span data-nav-label>{t('next.home.shell.saved')}</span></Link>
         </div>
         <div className={styles.railBottom}>
-          {viewer.role === 'owner' && <button type="button" onClick={dashboard}><Icon name="i-activity" size={22} /><span>{t('next.shell.activity')}</span></button>}
-          <Link to="/settings" activeProps={{'aria-current': 'page'}}><Icon name="i-settings" size={22} /><span>{t('next.shell.settings')}</span></Link>
+          <Link className={styles.railItem} to="/notifications" data-icon-only={navigation === 'rail' || undefined} aria-label={identity.unread > 0 ? t('next.home.shell.unread', {count: identity.unread}) : t('next.home.shell.notifications')} activeProps={{'aria-current': 'page'}}><Icon name="i-bell" size={22} />{navigation === 'sidebar' && <span data-nav-label>{t('next.home.shell.notifications')}</span>}{identity.showNotificationDot && identity.unread > 0 && <span data-nav-count aria-hidden="true">{identity.unread}</span>}</Link>
+          {viewer.role === 'owner' && <OwnerActivity presentation={navigation === 'sidebar' ? 'sidebar' : 'rail'} className={styles.railItem} />}
+          <Link className={styles.railItem} to="/settings" activeProps={{'aria-current': 'page'}}><Icon name="i-settings" size={22} /><span data-nav-label>{t('next.shell.settings')}</span></Link>
           {account}
         </div>
       </nav> : <>
