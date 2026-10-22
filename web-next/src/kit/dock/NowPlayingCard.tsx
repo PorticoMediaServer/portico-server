@@ -1,4 +1,4 @@
-import {useId, useLayoutEffect, useRef, type KeyboardEvent, type RefObject} from 'react';
+import {useEffect, useId, useLayoutEffect, useRef, type KeyboardEvent, type RefObject} from 'react';
 import {Icon} from '../Icon';
 import {AmbientArt, Artwork} from '../artwork';
 import {Facts, Control, playbackAction, playbackIcon, playbackLabel, useDockActions} from './parts';
@@ -18,9 +18,12 @@ export function NowPlayingCard(props: NowPlayingCardProps) {
     document.addEventListener('focusin', remember); return () => document.removeEventListener('focusin', remember);
   }, []);
   useLayoutEffect(() => {
+    if (expanded) play.current?.focus({preventScroll: true});
+  }, [expanded]);
+  useEffect(() => {
     if (!expanded) return;
+    // The owner's ref may be on a parent, attached after this child's layout effects.
     const element = returnFocusRef?.current ?? restore.current;
-    play.current?.focus({preventScroll: true});
     return () => { if (element?.isConnected) element.focus({preventScroll: true}); };
   }, [expanded, returnFocusRef]);
   if (view.remote || (view.mode !== 'music' && view.mode !== 'audiobook')) return null;
@@ -31,7 +34,7 @@ export function NowPlayingCard(props: NowPlayingCardProps) {
     const elements = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('button:not(:disabled)')), current = elements.indexOf(document.activeElement as HTMLButtonElement);
     event.preventDefault(); elements[(current + (event.key === 'ArrowLeft' || event.shiftKey ? -1 : 1) + elements.length) % elements.length]?.focus();
   };
-  if (!expanded) return <button type="button" ref={opener} className={[styles.tvCard, className].filter(Boolean).join(' ')} style={style} aria-label={t('next.dock.openNowPlaying')} aria-haspopup="dialog" aria-expanded={false} onFocus={() => onExpandedChange(true)} onClick={() => onExpandedChange(true)}>
+  if (!expanded) return <button type="button" ref={opener} className={[styles.tvCard, className].filter(Boolean).join(' ')} data-paused={!view.playback.playing || undefined} style={style} aria-label={t('next.dock.openNowPlaying')} aria-haspopup="dialog" aria-expanded={false} onFocus={() => onExpandedChange(true)} onClick={() => onExpandedChange(true)}>
     <Artwork source={view.presentation.artwork} alt="" className={styles.tvCover} /><span className={styles.tvText}><b>{view.presentation.identity.title}</b><small><Facts parts={view.presentation.identity.subtitle} /></small></span>
     <span className={styles.tvStatus}>{view.playback.playing ? <LevelMeter variant="tv-large" /> : <Icon name="i-pause" size={20} />}</span><span className={styles.tvLine}><i style={{transform: `scaleX(${progressOf(view)})`}} /></span>
   </button>;

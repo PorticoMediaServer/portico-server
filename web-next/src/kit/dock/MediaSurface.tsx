@@ -11,14 +11,25 @@ type Frame = {left: number; top: number; width: number; height: number};
 const dimensions = ['left', 'top', 'width', 'height'] as const;
 
 /** Mount the owner's one real video element here for its entire life. Never portals or clones. */
-export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden = false, className}: MediaSurfaceProps) {
+export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden = false, finished = false, className}: MediaSurfaceProps) {
   const ref = useRef<HTMLDivElement | null>(null), reduced = useDockReducedMotion(ref);
   const animation = useRef<Animation | null>(null), first = useRef(true), epoch = useRef(0);
   const physics = useRef<Partial<Record<keyof Frame, PlayerMorph>>>({});
   useLayoutEffect(() => {
     const element = ref.current; if (!element) return;
+    let identity: HTMLElement | null = null;
+    const enter = () => { element.dataset.hover = 'true'; }, leave = () => { delete element.dataset.hover; };
+    const bindIdentity = () => {
+      const next = dockSlot.current?.parentElement ?? null;
+      if (next === identity) return;
+      identity?.removeEventListener('pointerenter', enter); identity?.removeEventListener('pointerleave', leave); identity?.removeEventListener('focusin', enter); identity?.removeEventListener('focusout', leave);
+      identity = next;
+      identity?.addEventListener('pointerenter', enter); identity?.addEventListener('pointerleave', leave); identity?.addEventListener('focusin', enter); identity?.addEventListener('focusout', leave);
+      if (identity?.matches(':hover') || identity?.contains(document.activeElement)) enter(); else leave();
+    };
     const apply = (frame: Frame) => { element.style.width = `${frame.width}px`; element.style.height = `${frame.height}px`; element.style.transform = `translate(${frame.left}px, ${frame.top}px)`; };
     const measure = () => {
+      bindIdentity();
       const slot = (expanded ? expandedSlot : dockSlot).current;
       if (!slot) { element.style.visibility = 'hidden'; return; }
       const target = slot.getBoundingClientRect(); if (!target.width || !target.height) { element.style.visibility = 'hidden'; return; }
@@ -43,7 +54,21 @@ export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden
       const slot = dockSlot.current;
       if (expanded || hidden || !slot || !(event.target instanceof HTMLElement) || !event.target.contains(slot)) return;
       const {detail} = event as CustomEvent<DockMotionDetail>;
-      if (detail.kind === 'begin') {
+      if (detail.kind === 'hold') {
+        element.toggleAttribute('data-raised', detail.raised);
+        const bar = event.target.getBoundingClientRect(), slotFrame = slot.getBoundingClientRect(), scale = bar.width / event.target.offsetWidth;
+        if (!scale) return;
+        const cx = bar.left + bar.width / 2, cy = bar.top + bar.height / 2;
+        const base = {left: cx + (slotFrame.left - cx) / scale, top: cy + (slotFrame.top - cy) / scale, width: slotFrame.width / scale, height: slotFrame.height / scale};
+        animation.current?.cancel(); animation.current = null; epoch.current++;
+        apply(base);
+        const frames = detail.scales.map(value => ({transform: `translate(${cx + (base.left - cx) * value}px, ${cy + (base.top - cy) * value}px) scale(${value})`}));
+        if (!detail.duration) element.style.transform = frames[0]!.transform;
+        else {
+          const job = element.animate(frames.map((frame, index) => ({...frame, offset: index === 1 ? .3 : index / (frames.length - 1)})), {duration: detail.duration, easing: 'ease-out', fill: 'forwards'}); animation.current = job;
+          void job.finished.then(() => { if (animation.current !== job) return; apply(base); job.cancel(); animation.current = null; }).catch(() => {});
+        }
+      } else if (detail.kind === 'begin') {
         const frame = element.getBoundingClientRect(); animation.current?.cancel(); animation.current = null; epoch.current++;
         drag = {frame, offset: detail.offset}; apply(frame);
       } else if (detail.kind === 'track' && drag) element.style.transform = `translate(${drag.frame.left + detail.offset - drag.offset}px, ${drag.frame.top}px)`;
@@ -56,13 +81,10 @@ export function MediaSurface({children, expanded, dockSlot, expandedSlot, hidden
       } else if (detail.kind === 'reset') { drag = null; measure(); }
     };
     document.addEventListener(dockMotionEvent, follow);
-    const identity = dockSlot.current?.parentElement;
-    const enter = () => { element.dataset.hover = 'true'; }, leave = () => { delete element.dataset.hover; };
-    identity?.addEventListener('pointerenter', enter); identity?.addEventListener('pointerleave', leave); identity?.addEventListener('focusin', enter); identity?.addEventListener('focusout', leave);
     const observer = new ResizeObserver(measure); if (expandedSlot.current) observer.observe(expandedSlot.current); if (dockSlot.current) observer.observe(dockSlot.current);
     window.addEventListener('resize', measure); window.addEventListener('scroll', measure, true);
     return () => { observer.disconnect(); document.removeEventListener(dockMotionEvent, follow); window.removeEventListener('resize', measure); window.removeEventListener('scroll', measure, true); identity?.removeEventListener('pointerenter', enter); identity?.removeEventListener('pointerleave', leave); identity?.removeEventListener('focusin', enter); identity?.removeEventListener('focusout', leave); };
   }, [expanded, reduced, hidden, dockSlot, expandedSlot]);
   useLayoutEffect(() => () => { epoch.current++; animation.current?.cancel(); }, []);
-  return <div ref={ref} className={[styles.mediaSurface, className].filter(Boolean).join(' ')} data-docked={!expanded || undefined} aria-hidden={!expanded || hidden || undefined}><div className={styles.surfacePicture}>{children}{!expanded && <span className={styles.surfaceExpand}><Icon name="i-zoom" size={22} /></span>}</div></div>;
+  return <div ref={ref} className={[styles.mediaSurface, className].filter(Boolean).join(' ')} data-docked={!expanded || undefined} data-finished={finished || undefined} aria-hidden={!expanded || hidden || undefined}><div className={styles.surfacePicture}>{children}{!expanded && <span className={styles.surfaceExpand}><Icon name={finished ? 'i-back' : 'i-zoom'} size={22} /></span>}</div></div>;
 }
