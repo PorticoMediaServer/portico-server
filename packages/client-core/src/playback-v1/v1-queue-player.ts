@@ -50,7 +50,7 @@ import {QUEUE_WINDOW_MAX, QueueClient, saveQueueAsPlaylist, type CreateResult, t
 import {audioTransitionsEnabled} from '../audio-effects.ts';
 import type {NativeListeningV1Control, NativeListeningV1Event} from '../playback/native-listening.ts';
 import {playableAudio} from './audio-render.ts';
-import {consecutiveOnAlbum, type QueueEntry, type QueueHeader, type Selector, type ServerEvent, type Session} from './types.ts';
+import {ContractError, consecutiveOnAlbum, id, type QueueEntry, type QueueHeader, type Selector, type ServerEvent, type Session} from './types.ts';
 
 /** Items per `items` selector segment, and segments per create (spec §8). */
 const SEGMENT_ITEMS = 500, MAX_SEGMENTS = 16;
@@ -476,6 +476,52 @@ export class V1QueuePlayer implements QueueController {
     this.accept(header, window);
   }
 
+  /** Restore a parked queue at its saved position without ever starting media playing.
+   * The queue stays server-owned: a changed current entry or unavailable bookmark is refused,
+   * never replaced by a one-title queue. This is a fresh playback with no client-held choices;
+   * the server still owns its queue track-language carry policy. */
+  async restorePaused(queueId: string, entryId: string, startSeconds: number): Promise<void> {
+    id(queueId, 'queue id'); id(entryId, 'entry id');
+    if (!Number.isFinite(startSeconds) || startSeconds < 0 || startSeconds > 1e9) throw new ContractError('restore position');
+    if (this.disposed) return;
+    this.publish({phase: 'preparing', view: null, error: null, completion: null});
+    this.playback.leave();
+    const generation = ++this.generation;
+    ++this.epoch;
+    this.qualityOverride = undefined;
+    this.session = undefined;
+    const intent = this.playback.beginQueueIntent(undefined, true, 'paused');
+    const controller = new AbortController();
+    const current = () => !this.disposed && generation === this.generation;
+    const invalidate = () => { if (!current()) controller.abort(); };
+    const offQueue = this.subscribe(invalidate), offPlayback = this.playback.subscribe(invalidate);
+    this.publish({phase: 'preparing', view: null, error: null, completion: null});
+    try {
+      if (!await this.playback.prepareQueueIntent(intent) || !current()) return;
+      const header = await this.client.header(queueId, controller.signal);
+      if (!current() || this.playback.getSnapshot().intentId !== intent) return;
+      const window = await this.client.window(queueId, WINDOW_BEFORE, WINDOW_AFTER, controller.signal);
+      if (!current() || this.playback.getSnapshot().intentId !== intent) return;
+      if (header.id !== queueId || header.current?.entryId !== entryId) throw new PlaybackApiError(409, 'queue_entry_changed', 'after_refresh');
+      const entry = window.find(e => e.entryId === entryId);
+      if (!entry?.available || !entry.itemId) throw new PlaybackApiError(404, 'not_found', 'never');
+      this.header = header; this.window = window;
+      await this.startEntry(queueId, entryId, intent, startSeconds, generation, undefined, 'paused', controller.signal);
+      if (!current()) return;
+      const snapshot = this.playback.getSnapshot(), session = this.currentSession();
+      if (!session || snapshot.session?.id !== session.id || snapshot.intent !== 'paused' || !['starting', 'ready'].includes(snapshot.phase)) throw new ContractError('paused restore adoption');
+      this.publish({phase: 'ready'});
+    } catch (e) {
+      if (!current()) return;
+      const text = message(e, serviceText('queuePlayer.startFailed'));
+      this.publish({phase: 'error', error: text});
+      this.playback.queueFailed('', text);
+      throw e;
+    } finally {
+      offQueue(); offPlayback(); controller.abort();
+    }
+  }
+
   /** Play (or Shuffle): a new queue for this device, playing its first entry (or the shuffle's). */
   private playIds(ids: readonly string[], options: {shuffle?: boolean; startSeconds?: number}) {
     return this.play(segments(ids, !!options.shuffle), ids[0]!, options);
@@ -523,10 +569,18 @@ export class V1QueuePlayer implements QueueController {
   }
 
   /** Starts the session for one entry (a start that wasn't made with the create or advance). */
-  private async startEntry(queueId: string, entryId: string, intent: number, startSeconds?: number, generation: number = this.generation, choices?: PlaybackChoices, state: 'playing' | 'paused' = 'playing') {
+  private async startEntry(queueId: string, entryId: string, intent: number, startSeconds?: number, generation: number = this.generation, choices?: PlaybackChoices, state: 'playing' | 'paused' = 'playing', signal?: AbortSignal) {
     const entry = this.window.find(e => e.entryId === entryId);
-    const r = await this.whileBuilding(() => this.api.start({queue: {queueId, entryId}}, {state, ...this.startChoices(choices), ...(startSeconds === undefined ? {startFrom: 'resume'} : {startPositionMs: Math.round(startSeconds * 1000)}), ...(this.session ? {replacesSessionId: this.session.id} : {})}, this.key(), entry?.durationMs !== undefined ? entry.durationMs / 1000 : undefined));
+    const r = await this.whileBuilding(() => {
+      if (signal?.aborted) throw Object.assign(new Error('aborted'), {name: 'AbortError'});
+      return this.api.start({queue: {queueId, entryId}}, {state, ...this.startChoices(choices), ...(startSeconds === undefined ? {startFrom: 'resume'} : {startPositionMs: Math.round(startSeconds * 1000)}), ...(this.session ? {replacesSessionId: this.session.id} : {})}, this.key(), entry?.durationMs !== undefined ? entry.durationMs / 1000 : undefined, signal);
+    });
     if (generation !== this.generation) { this.api.forget(r.session.id); this.abandon(r.session); return; }
+    const pending = this.playback.getSnapshot();
+    if (signal && (signal.aborted || pending.intentId !== intent || pending.intent !== 'paused' || this.header?.id !== queueId || this.header.current?.entryId !== entryId || r.session.state !== 'paused' || r.session.queue?.queueId !== queueId || r.session.queue.entryId !== entryId || r.session.itemId !== entry?.itemId || r.session.presentation.startPositionMs !== Math.round(startSeconds! * 1000))) {
+      this.api.forget(r.session.id); this.abandon(r.session);
+      throw new ContractError('paused restore session');
+    }
     // The presentation's timeline is the whole title: the engine starts at the chosen position.
     await this.adoptPlayback(r.session, startSeconds === undefined ? r.playback : {...r.playback, resumeSeconds: startSeconds}, intent);
   }

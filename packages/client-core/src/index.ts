@@ -1149,13 +1149,15 @@ export class PlaybackService {
   getQueueController(){return this.queue;}
   installQueue(queue:QueueController){this.queue=queue;this.update({});return()=>{if(this.queue===queue){this.queue=undefined;this.update({});}};}
   /** `fresh`: the viewer started a new playback (a new queue), not the queue moving on. */
-  beginQueueIntent(itemId?:string,fresh=false):number{
+  beginQueueIntent(itemId?:string,fresh=false,state:'playing'|'paused'='playing'):number{
     // Live uses another lane and never becomes a queue replacement predecessor.
     if(this.snapshot.channel)this.leave(false);
     const run=fresh?{playbackRun:this.snapshot.playbackRun+1}:{};
+    // A parked restore is a fresh playback; retry must not resurrect its old track choices.
+    if(fresh&&state==='paused'){this.lastPlay=undefined;this.escalations=0;}
     if(fresh&&this.options.beforeFreshPlayback)this.freshReady=this.options.beforeFreshPlayback().catch(()=>{});
-    if(!this.snapshot.session){this.clearStartup();this.update({phase:'starting',intent:'playing',itemId,error:undefined,...run});}
-    else this.update({intent:'playing',error:undefined,...run});
+    if(!this.snapshot.session){this.clearStartup();this.update({phase:'starting',intent:state,itemId,error:undefined,...run});}
+    else this.update({intent:state,error:undefined,...run});
     return this.snapshot.intentId;
   }
   async prepareQueueIntent(intentId:number):Promise<boolean>{
