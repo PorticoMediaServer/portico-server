@@ -327,3 +327,6 @@
 
 .trackTable[data-platform=phone] .trackActions > button[data-size=xs] { width: 32px; min-width: 32px; height: 32px; opacity: 1; }
 .filterBuilder[data-platform=tv] .facetChip:focus-visible { outline-width: 4px; outline-offset: 4px; }
+
+.filterBuilder[data-platform=tv] .facetChip:focus-visible { background: color-mix(in srgb, var(--color-text) 16%, transparent); color: var(--browse-text); }
+.filterBuilder[data-platform=tv] .facetChip[data-selected] small { color: var(--browse-secondary); }
