@@ -374,6 +374,7 @@ export class HomeSelectionController {
   openMenu(windowId: string, key: string) {
     this.active(); const window = this.windows.get(windowId), current = window?.members.has(key) ? this.resolveMember(window.source, key) : undefined;
     if (!current) throw selectionExecutionError('unregistered-home-entry');
+    if (this.state.menu && (this.state.menu.windowId !== windowId || this.state.menu.key !== key)) this.closeMenu();
     this.menuSource = window!.source;
     this.publish({menu: {windowId, key, member: current.member, groups: this.menuGroups(current.member)}});
   }
@@ -593,6 +594,6 @@ export class HomeSelectionController {
   }
   reloadDelete() {return this.openDelete(this.ticket?.target);}
   closeDelete() {this.cancelAction(); this.deleteBody = undefined; this.publish({deletion: null});}
-  private closeDialogs() {this.cancelAction(); this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null});}
+  private closeDialogs() {this.cancelAction(); this.closeMenu(); this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null});}
   dispose() {if (this.disposed) return; this.cancelAction(); for (const cleanup of this.cleanups) cleanup(); this.selection.dispose(); this.windows.clear(); this.menuWindow = undefined; this.menuSource = undefined; this.held.clear(); this.operationMembers.clear(); this.disposed = true; this.state = Object.freeze({...this.state, displayMembers: [], menu: null, picker: null, editor: null, deletion: null, rating: null}); this.listeners.clear();}
 }
