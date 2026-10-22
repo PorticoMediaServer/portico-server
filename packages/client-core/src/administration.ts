@@ -68,7 +68,7 @@ export type RestoreSource=Readonly<{backupId:string}|{path:string}>;
 export type RestoreProgress=Readonly<{jobId:string;phase:string;bytesDone:number;bytesTotal:number;result?:RestoreStaged;errorCode?:string}>;
 export type RestoreStaged=Readonly<{staged:true;restartRequired:true;validation:Readonly<{schemaVersion:number;integrity:'ok'}>}>;
 /** The 4xx codes POST /v1/admin/backups/restore answers with (spec §4); `insufficient_disk` is shared with start. */
-export const RESTORE_REFUSAL_CODES=Object.freeze(['restore_lock_unavailable','restore_source_invalid','restore_schema_newer','restore_pre_release','restore_integrity_failed','restore_not_portico','insufficient_disk'] as const);
+export const RESTORE_REFUSAL_CODES=Object.freeze(['restore_lock_unavailable','restore_source_invalid','restore_pre_release','restore_integrity_failed','restore_not_portico','insufficient_disk'] as const);
 export type RestoreRefusalCode=typeof RESTORE_REFUSAL_CODES[number];
 /** isRestoreRefusalCode answers whether a failure code is one of the catalogue-mapped restore refusals. */
 export function isRestoreRefusalCode(code:string):code is RestoreRefusalCode{

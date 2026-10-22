@@ -228,7 +228,6 @@ func run() (runErr error) {
 	if setupHostsErr != nil {
 		return setupHostsErr
 	}
-	persistence.SetMigrationCopyScrubber(identity.ScrubBackupCopy)
 	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer cancel()
 	if os.Getenv(supervise.WorkerEnvironment) == "1" {

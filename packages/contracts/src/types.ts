@@ -103,8 +103,6 @@ export type DeleteStorageSourcesWebdavIdRequest = { "expectedGeneration"?: numbe
 export type DeleteStorageSourcesWebdavIdResponse = { "receipt": { "accepted": boolean; "operationId": string; "removed": boolean; "source": { "credentialPresent": boolean; "errorCode"?: string; "generation": number; "id": string; "insecureLocal": boolean; "kind": string; "mountId"?: string; "name": string; "origin"?: string; "rangeSupport": string; "rootPath": string; "state": string } }; "scope": { "serverId": string; "viewerFence": string } };
 export type DeleteTitleVersionRequest = { "confirmation": string; "operationId": string; "previewKey": string };
 export type DeleteTitleVersionResponse = { "bytesDeleted": number; "failed": number; "filesRetained": boolean; "receipts": Array<{ "bytes": number; "code"?: string; "filesDeleted": number; "filesKept": number; "itemId": string; "removed": boolean; "title": string }>; "removed": number; "revision": number };
-export type DeleteUpgradeCopyRequest = {  };
-export type DeleteUpgradeCopyResponse = {  };
 export type DeleteV1ItemsItemIdSubtitlesResourceRequest = { "expectedRevision": number; "operationId": string };
 export type DeleteV1ItemsItemIdSubtitlesResourceResponse = { "catalogRevision": number; "deleted": boolean; "operationId": string; "resourceId": string; "revision": number };
 export type DeleteWebhookRequest = {  };
@@ -610,7 +608,7 @@ export type GetStorageSourceOperationsIdResponse = { "receipt": { "accepted": bo
 export type GetStorageSourcesRequest = {  };
 export type GetStorageSourcesResponse = { "mountSupported": boolean; "scope": { "serverId": string; "viewerFence": string }; "sources": Array<{ "credentialPresent": boolean; "errorCode"?: string; "generation": number; "id": string; "insecureLocal": boolean; "kind": string; "mountId"?: string; "name": string; "origin"?: string; "rangeSupport": string; "rootPath": string; "state": string }> };
 export type GetStorageStatusRequest = {  };
-export type GetStorageStatusResponse = { "backupDirectory": string; "cacheDirectory": string; "databasePath": string; "lastReclaimedAt"?: string; "lastReclaimedBytes": number; "reclaimableBytes": number; "upgradeCopies": Array<{ "bytes": number; "createdAt": string; "id": string; "path": string }> };
+export type GetStorageStatusResponse = { "backupDirectory": string; "cacheDirectory": string; "databasePath": string; "lastReclaimedAt"?: string; "lastReclaimedBytes": number; "reclaimableBytes": number };
 export type GetSubtitleFontsCjkRequest = {  };
 export type GetSubtitleFontsCjkResponse = string;
 export type GetSuggestionsRequest = {  };
@@ -1348,7 +1346,6 @@ export type RouteContracts = {
 "delete_storage_mounts_id": { request: DeleteStorageMountsIdRequest; response: DeleteStorageMountsIdResponse };
 "delete_storage_sources_webdav_id": { request: DeleteStorageSourcesWebdavIdRequest; response: DeleteStorageSourcesWebdavIdResponse };
 "delete_title_version": { request: DeleteTitleVersionRequest; response: DeleteTitleVersionResponse };
-"delete_upgrade_copy": { request: DeleteUpgradeCopyRequest; response: DeleteUpgradeCopyResponse };
 "delete_v1_items_itemId_subtitles_resource": { request: DeleteV1ItemsItemIdSubtitlesResourceRequest; response: DeleteV1ItemsItemIdSubtitlesResourceResponse };
 "delete_webhook": { request: DeleteWebhookRequest; response: DeleteWebhookResponse };
 "download_client_log": { request: DownloadClientLogRequest; response: DownloadClientLogResponse };

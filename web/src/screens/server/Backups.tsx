@@ -18,7 +18,6 @@ const BACKUP_MOVES = [dependsOn.event('operation.updated')];
 export const RESTORE_REFUSAL_MESSAGE_IDS: Record<RestoreRefusalCode, MessageId> = {
   restore_lock_unavailable: 'web.maintenance.restoreLockUnavailable',
   restore_source_invalid: 'web.maintenance.restoreSourceInvalid',
-  restore_schema_newer: 'web.maintenance.restoreSchemaNewer',
   restore_pre_release: 'web.maintenance.restorePreRelease',
   restore_integrity_failed: 'web.maintenance.restoreIntegrityFailed',
   restore_not_portico: 'web.maintenance.restoreNotPortico',

@@ -14,7 +14,6 @@ var routeLanes = map[string]string{
 	"DELETE /v1/admin/libraries/{id}/sources/{source}":                           "admin",
 	"DELETE /v1/admin/library-channels/block-presets/{id}":                       "admin",
 	"DELETE /v1/admin/playback/route-failures/{sourceId}":                        "admin",
-	"DELETE /v1/admin/storage/upgrade-copies/{id}":                               "admin",
 	"DELETE /v1/admin/webhooks/{id}":                                             "admin",
 	"DELETE /v1/cast/devices/{id}":                                               "default",
 	"DELETE /v1/collections/{id}":                                                "browsing",

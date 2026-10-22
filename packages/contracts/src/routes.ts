@@ -1156,26 +1156,6 @@ export const routes = [
     "admission": "admin-heavy"
   },
   {
-    "id": "delete_upgrade_copy",
-    "method": "DELETE",
-    "path": "/v1/admin/storage/upgrade-copies/{id}",
-    "summary": "Delete one automatic pre-upgrade database copy",
-    "access": "owner",
-    "requires": "admin",
-    "lane": "default",
-    "cost": "constant",
-    "bodyLimit": 0,
-    "errors": [
-      "unauthorized",
-      "not_permitted",
-      "not_found",
-      "invalid_request",
-      "internal"
-    ],
-    "status": 204,
-    "admission": "admin"
-  },
-  {
     "id": "delete_v1_items_itemId_subtitles_resource",
     "method": "DELETE",
     "path": "/v1/items/{itemId}/subtitles/{resource}",
@@ -6951,7 +6931,7 @@ export const routes = [
     "id": "get_storage_status",
     "method": "GET",
     "path": "/v1/admin/storage/status",
-    "summary": "Read upgrade copies, active storage destinations and reclaimable database space",
+    "summary": "Read active storage destinations and reclaimable database space",
     "access": "owner",
     "requires": "admin",
     "lane": "default",
@@ -8949,7 +8929,6 @@ export const routes = [
       "request_in_progress",
       "restore_lock_unavailable",
       "restore_source_invalid",
-      "restore_schema_newer",
       "restore_pre_release",
       "restore_integrity_failed",
       "restore_not_portico",
@@ -16437,7 +16416,6 @@ export const routePaths = {
   "delete_storage_mounts_id": "/v1/storage/mounts/{id}",
   "delete_storage_sources_webdav_id": "/v1/storage/sources/webdav/{id}",
   "delete_title_version": "/v1/admin/items/{id}/files/{fileId}",
-  "delete_upgrade_copy": "/v1/admin/storage/upgrade-copies/{id}",
   "delete_v1_items_itemId_subtitles_resource": "/v1/items/{itemId}/subtitles/{resource}",
   "delete_webhook": "/v1/admin/webhooks/{id}",
   "download_client_log": "/v1/admin/diagnostics/client-logs/{id}/download",

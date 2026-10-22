@@ -3406,6 +3406,10 @@ personal_job_failures.ordinal
 personal_job_items.item_id
 personal_job_items.job_id
 personal_job_items.ordinal
+personal_job_membership_outcomes.code
+personal_job_membership_outcomes.item_public_id
+personal_job_membership_outcomes.job_id
+personal_job_membership_outcomes.outcome
 personal_jobs.args
 personal_jobs.command
 personal_jobs.created_ms
@@ -4230,10 +4234,6 @@ scan_queue.job_id
 scan_queue.kind
 scan_queue.path
 scan_queue.status
-schema_migrations.applied_at
-schema_migrations.digest
-schema_migrations.name
-schema_migrations.version
 screen_anime_seasons.anilist_id
 screen_anime_seasons.revision
 screen_anime_seasons.season_number

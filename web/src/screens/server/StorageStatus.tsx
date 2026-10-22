@@ -1,5 +1,5 @@
 import {useMemo, useState} from 'react';
-import {storageStatusService, type UpgradeCopy} from '@core/storage-status.ts';
+import {storageStatusService} from '@core/storage-status.ts';
 import {loadResourceUsage, pauseBackgroundWork, type MaintenanceDocument, type MaintenanceSettings, type RuntimeStatus} from '@core/server-admin/server-forms.ts';
 import type {RuntimeSettings} from '@core/console.ts';
 import {QUIET_READ_EVERY_MS, useAction, useRead} from '../../admin/console';
@@ -62,7 +62,7 @@ export function ResourceUsagePanel() {
 
 /**
  * Storage & backups › where the server keeps things, how much space the database can give back,
- * and the copies it made before an upgrade. The folders are chosen when the server starts, so
+ * with folders chosen when the server starts, so
  * they are shown, not set, here.
  */
 export function StorageStatusPanel() {
@@ -70,26 +70,16 @@ export function StorageStatusPanel() {
   const {t} = i18n;
   const {api} = useSession();
   const service = useMemo(() => storageStatusService(<T,>(path: string, method?: string, body?: unknown) => api.request<T>(path, method, body)), [api]);
-  // Space the database gives back, and a copy made by an upgrade, appear by themselves.
+  // Reclamation facts are refreshed as background maintenance runs.
   const read = useRead(() => service.read(), [service], {every: QUIET_READ_EVERY_MS});
-  const action = useAction();
-  const [removing, setRemoving] = useState<UpgradeCopy>();
   const s = read.data;
   const path = (value: string) => <Text variant="mono" tone="secondary" style={{fontSize: '0.75rem', overflowWrap: 'anywhere'}}>{value}</Text>;
   return (
     <SettingsGroup title={t('server.places.title')} description={t('server.places.lede')}>
       {read.error ? <SettingsNote><Notice tone={s ? 'warning' : 'error'} compact action={{label: t('action.tryAgain'), onClick: read.reload}}>{read.error}</Notice></SettingsNote> : null}
-      {action.error && !removing ? <SettingsNote><Notice tone="error" compact>{action.error}</Notice></SettingsNote> : null}
       {!s && read.loading ? <SettingsLoading thing={t('server.thing.storagePlaces')} /> : null}
       {s ? <SettingsRow label={t('server.places.folders')} stack start control={<KeyValue rows={[[t('server.places.database'), path(s.databasePath)], [t('server.places.cache'), path(s.cacheDirectory)], [t('server.places.backups'), path(s.backupDirectory)]]} />} /> : null}
       {s ? <SettingsRow label={t('server.places.reclaim')} help={s.lastReclaimedAt ? t('server.places.reclaimedLast', {when: i18n.dateTime(s.lastReclaimedAt), size: i18n.bytes(s.lastReclaimedBytes)}) : t('server.places.reclaimHelp')} meta={i18n.bytes(s.reclaimableBytes)} /> : null}
-      {s?.upgradeCopies.map(copy => (
-        <SettingsRow key={copy.id} icon="storage" label={t('server.places.upgradeCopy', {when: i18n.dateTime(copy.createdAt)})} help={<>{i18n.bytes(copy.bytes)}{' · '}{path(copy.path)}</>}
-          control={<Button size="sm" variant="ghost" icon="trash" label={t('action.delete')} onClick={() => { action.clear(); setRemoving(copy); }} />} />
-      ))}
-      {s && !s.upgradeCopies.length ? <SettingsRow label={t('server.places.upgradeCopies')} help={t('server.places.upgradeCopiesNone')} /> : null}
-      <ConfirmDialog open={!!removing} onOpenChange={o => !o && setRemoving(undefined)} title={t('server.places.deleteCopyTitle')} body={t('server.places.deleteCopyBody')} confirmLabel={t('action.delete')} cancelLabel={t('action.cancel')} busy={action.busy} error={action.error || undefined}
-        onConfirm={() => void action.run(async () => { if (!removing) return; await service.removeUpgradeCopy(removing); setRemoving(undefined); read.reload(); })} />
     </SettingsGroup>
   );
 }

@@ -8,7 +8,7 @@ import (
 	"portico.local/server/internal/compactcatalog"
 )
 
-// Source-only until the assembled migration gate: this uses real SQLite and the
+// This uses real SQLite and the
 // root-wired installer, not a mirrored schema or callback-only approximation.
 func TestMetadataPublicationCurrentInitializationDoesNotAdoptRows(t *testing.T) {
 	db, err := Open(freshDatabaseCopy(t, t.TempDir(), "catalog.sqlite"))
@@ -29,7 +29,7 @@ func TestMetadataPublicationCurrentInitializationDoesNotAdoptRows(t *testing.T) 
 	if _, err = db.Exec(`CREATE TRIGGER block_adoption BEFORE INSERT ON metadata_publication_heads BEGIN SELECT RAISE(ABORT,'unexpected adoption'); END`); err != nil {
 		t.Fatal(err)
 	}
-	if err = migrate(context.Background(), db); err != nil {
+	if err = installBaseline(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 	var count int
