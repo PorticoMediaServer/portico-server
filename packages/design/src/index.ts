@@ -1,3 +1,5 @@
+export {generatedCoverTint, type GeneratedCoverTint} from './generated-cover.ts';
+
 /**
  * Portico's shared design projection. Web (packages/design/scripts/tokens.mjs → web-next/src/kit/tokens.css)
  * and native (src-next/kit/theme.ts) read every colour, type role, radius and layer from
