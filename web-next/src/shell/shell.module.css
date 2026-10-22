@@ -11,6 +11,7 @@
 .railDestinations { min-height: 0; overflow-y: auto; flex: 1; }
 .rail a, .railBottom > button, .collapse { min-height: 56px; min-width: 44px; width: 100%; border: 0; background: none; border-radius: 12px; color: var(--color-text-secondary); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 4px; padding: 8px; text-decoration: none; cursor: pointer; font-size: var(--type-tab-bar-size); font-weight: var(--type-tab-bar-weight); line-height: var(--type-tab-bar-line); }
 .rail a span, .railBottom > button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shell[data-navigation='rail'] .railBottom > button span { white-space: normal; overflow: visible; text-overflow: clip; }
 .rail a:hover, .rail a[aria-current='page'], .railBottom > button:hover, .collapse:hover { background: var(--color-raised); color: var(--color-text); }
 .rail a:focus-visible, .rail button:focus-visible { outline: 3px solid var(--color-focus); outline-offset: -3px; }
 .railBottom { display: flex; flex-direction: column; align-items: center; padding-top: 8px; }
