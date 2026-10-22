@@ -2,11 +2,13 @@ package scanevents
 
 import (
 	"context"
+	"crypto/sha256"
 	"database/sql"
 	"fmt"
 	"portico.local/server/internal/apievents"
 	"portico.local/server/internal/dbwork"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -22,8 +24,9 @@ func (p *Publisher) tickTaskProgress(ctx context.Context, now time.Time) (*time.
  FROM inventory_source_active active CROSS JOIN inventory_runs r ON r.job_id=active.job_id CROSS JOIN jobs j ON j.id=r.job_id AND j.status='running'
  CROSS JOIN analysis_stage_runs a ON a.job_id=r.job_id AND a.state='running' AND a.policy_revision=r.policy_revision
  CROSS JOIN inventory_objects o ON o.id=a.object_id AND o.revision=a.source_revision
- UNION ALL SELECT c.id,c.revision||':'||COALESCE(c.processed,0)||':'||COALESCE(p.done,0)||':'||COALESCE(p.failed,0) FROM console_operations c LEFT JOIN personal_jobs p ON p.id=c.resource WHERE c.state IN('queued','running','reconciling')
- UNION ALL SELECT 'segments:'||library_id,count(*)||':'||max(updated_ms) FROM segment_files WHERE state='pending' GROUP BY library_id`)
+ UNION ALL SELECT c.id,c.revision||':'||COALESCE(c.processed,0)||':'||COALESCE(p.done,0)||':'||COALESCE(p.failed,0) FROM console_operations c INDEXED BY console_active_work LEFT JOIN personal_jobs p ON p.id=c.resource WHERE c.state IN ('queued','running','cancellation-requested','reconciling','paused') AND c.state IN('queued','running','reconciling') AND c.kind<>'library-scan'
+ UNION ALL SELECT 'segments:'||library_id,count(*)||':'||max(updated_ms) FROM segment_files INDEXED BY segment_files_work WHERE state='pending' GROUP BY library_id
+ UNION ALL SELECT 'scan-file:'||r.job_id,'' FROM inventory_source_active active CROSS JOIN inventory_runs r ON r.job_id=active.job_id CROSS JOIN jobs j ON j.id=r.job_id AND j.status='running'`)
 	if e != nil {
 		return nil, e
 	}
@@ -32,6 +35,13 @@ func (p *Publisher) tickTaskProgress(ctx context.Context, now time.Time) (*time.
 		var id, signature string
 		if e = rows.Scan(&id, &signature); e != nil {
 			break
+		}
+		if job, scan := strings.CutPrefix(id, "scan-file:"); scan {
+			if p.files == nil {
+				continue
+			}
+			// Keep private paths out of both durable events and tracked state.
+			signature = fmt.Sprintf("%x", sha256.Sum256([]byte(p.files.CurrentActivityFile(job))))
 		}
 		current[id] = signature
 	}

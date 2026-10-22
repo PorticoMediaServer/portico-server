@@ -2,8 +2,13 @@ package ingestion
 
 import (
 	"context"
+	"path/filepath"
+	"portico.local/server/internal/catalog"
+	"portico.local/server/internal/persistence"
+	"portico.local/server/internal/scanevents"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestActivityFileIsActualRelativeAndCancellationFenced(t *testing.T) {
@@ -51,5 +56,82 @@ func TestActivityFileConcurrentWorkersAndReads(t *testing.T) {
 	wg.Wait()
 	if s.CurrentActivityFile("job") != "" {
 		t.Fatal("file observation leaked after work")
+	}
+}
+
+// Real in-process observations invalidate the owner summary on the existing
+// publisher loop even when no inventory/analysis counter or phase changes.
+func TestActivityFileChangesWakeSummaryWithStableCounters(t *testing.T) {
+	db, e := persistence.Open(filepath.Join(t.TempDir(), "db"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer db.Close()
+	for _, q := range []string{
+		`INSERT INTO libraries(id,name,kind,root) VALUES('lib','Movies','movie','/private-root')`,
+		`INSERT INTO jobs(id,library_id,status,created_at) VALUES('job','lib','running','2026-10-22')`,
+		`INSERT INTO inventory_runs(job_id,source_id,source_generation,root_incarnation,root_identity,policy_revision,phase,discovered,analyzed) VALUES('job','lib',1,'inc','root',1,'basic_running',10,2)`,
+		`INSERT INTO inventory_source_active VALUES('lib','job')`,
+	} {
+		if _, e = db.Exec(q); e != nil {
+			t.Fatal(e)
+		}
+	}
+	s := &Service{}
+	work, cancelWork := context.WithCancel(context.Background())
+	defer cancelWork()
+	first := s.activityFile(work, "job", "Movies/first-private.mkv")
+	defer first()
+	p := scanevents.New(db, func(context.Context, string) (catalog.InventoryStatus, error) {
+		return catalog.InventoryStatus{LibraryID: "lib", Sources: []catalog.InventorySourceStatus{{ID: "lib", Status: "running", Phase: "basic_running", Discovered: 10, Analyzed: 2}}}, nil
+	}, nil, s)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); p.Run(ctx) }()
+	defer func() {
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Error("publisher did not stop")
+		}
+	}()
+	waitHints := func(want int) {
+		t.Helper()
+		ticker := time.NewTicker(10 * time.Millisecond)
+		defer ticker.Stop()
+		deadline := time.NewTimer(3 * time.Second)
+		defer deadline.Stop()
+		for {
+			var n int
+			if e := db.QueryRow(`SELECT count(*) FROM api_events WHERE audience='admin' AND type='job.updated' AND data=''`).Scan(&n); e != nil {
+				t.Fatal(e)
+			}
+			if n >= want {
+				if n != want {
+					t.Fatalf("extra file hints: %d, want %d", n, want)
+				}
+				return
+			}
+			select {
+			case <-ticker.C:
+			case <-deadline.C:
+				t.Fatalf("missing current-file invalidation: %d, want %d", n, want)
+			}
+		}
+	}
+	waitHints(1)
+	second := s.activityFile(work, "job", "Movies/second-private.mkv")
+	defer second()
+	first() // The superseded observation must not clear the replacement.
+	waitHints(2)
+	cancelWork()
+	waitHints(3)
+	var viewer, leaked int
+	if e = db.QueryRow(`SELECT count(*) FROM api_events WHERE audience='library:lib'`).Scan(&viewer); e != nil || viewer != 1 {
+		t.Fatal("private observations changed viewer feed", viewer, e)
+	}
+	if e = db.QueryRow(`SELECT count(*) FROM api_events WHERE data LIKE '%private%' OR resource_id LIKE '%private%' OR revision LIKE '%private%'`).Scan(&leaked); e != nil || leaked != 0 {
+		t.Fatal("private observation leaked", leaked, e)
 	}
 }

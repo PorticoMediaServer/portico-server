@@ -185,19 +185,21 @@ const activityTasksCTE = `WITH tasks AS (
  SELECT c.id,c.kind,COALESCE(l.id,'') library_id,COALESCE(l.name,'') library_name,c.state,c.phase,
  CASE WHEN p.id IS NOT NULL THEN p.done+p.failed ELSE c.processed END processed,
  CASE WHEN p.selection_complete=1 THEN p.total END total,CASE WHEN p.id IS NOT NULL THEN 'items' ELSE '' END unit,c.created_ms ordering
- FROM console_operations c LEFT JOIN libraries l ON l.id=c.resource LEFT JOIN personal_jobs p ON p.id=c.resource
- WHERE c.state IN('queued','running','reconciling')
+ FROM console_operations c INDEXED BY console_active_work LEFT JOIN libraries l ON l.id=c.resource LEFT JOIN personal_jobs p ON p.id=c.resource
+ WHERE c.state IN ('queued','running','cancellation-requested','reconciling','paused')
+ AND c.state IN('queued','running','reconciling') AND c.kind<>'library-scan'
  UNION ALL
  SELECT 'analysis:'||a.job_id||':'||a.object_id||':'||a.stage,a.stage,l.id,l.name,'running',a.stage,a.processed_bytes,
- CASE WHEN a.stage='checksum' THEN o.size END,'bytes',a.updated_ms
+ CASE WHEN a.stage='checksum' AND lower(substr(o.relative_path,-5))<>'.strm' AND asset.container<>'strm' THEN o.size END,'bytes',a.updated_ms
  FROM inventory_source_active active CROSS JOIN inventory_runs r ON r.job_id=active.job_id
  CROSS JOIN jobs j ON j.id=r.job_id AND j.status='running'
  CROSS JOIN analysis_stage_runs a ON a.job_id=r.job_id AND a.state='running' AND a.policy_revision=r.policy_revision
  CROSS JOIN inventory_objects o ON o.id=a.object_id AND o.revision=a.source_revision
+ CROSS JOIN catalog_assets asset ON asset.token=o.asset_id
  CROSS JOIN library_sources s ON s.id=r.source_id CROSS JOIN libraries l ON l.id=s.library_id
  UNION ALL
  SELECT 'segments:'||f.library_id,'segments',f.library_id,COALESCE(l.name,''),'queued','segment_evidence',NULL,NULL,'files',MIN(f.updated_ms)
- FROM segment_files f LEFT JOIN libraries l ON l.id=f.library_id WHERE f.state='pending' GROUP BY f.library_id
+ FROM segment_files f INDEXED BY segment_files_work LEFT JOIN libraries l ON l.id=f.library_id WHERE f.state='pending' GROUP BY f.library_id
  ) `
 
 func (d Dependencies) activitySummaryTasks(ctx context.Context, tx *sql.Tx, out *ActivitySummary) error {

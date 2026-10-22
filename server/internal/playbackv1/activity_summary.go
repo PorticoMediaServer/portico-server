@@ -9,17 +9,18 @@ import (
 // ActivitySession is a read-only display projection. It never includes the
 // presentation URL, file paths, transport controls, or capability tokens.
 type ActivitySession struct {
-	ID         string        `json:"id"`
-	User       AdminName     `json:"user"`
-	Profile    AdminName     `json:"profile"`
-	Device     AdminName     `json:"device"`
-	Item       *ActivityItem `json:"item,omitempty"`
-	Kind       string        `json:"kind"`
-	State      string        `json:"state"`
-	PositionMs int64         `json:"positionMs"`
-	DurationMs int64         `json:"durationMs,omitempty"`
-	Decision   Decisions     `json:"decision"`
-	Quality    *Quality      `json:"quality,omitempty"`
+	ID          string        `json:"id"`
+	User        AdminName     `json:"user"`
+	Profile     AdminName     `json:"profile"`
+	Device      AdminName     `json:"device"`
+	Item        *ActivityItem `json:"item,omitempty"`
+	Kind        string        `json:"kind"`
+	State       string        `json:"state"`
+	PositionMs  int64         `json:"positionMs"`
+	DurationMs  int64         `json:"durationMs,omitempty"`
+	Decision    Decisions     `json:"decision"`
+	Quality     *Quality      `json:"quality,omitempty"`
+	VideoHeight int           `json:"videoHeight,omitempty"`
 }
 type ActivityItem struct {
 	ID               string        `json:"id"`
@@ -57,7 +58,7 @@ func (s *Service) ActivitySummarySessions(ctx context.Context) (ActivitySessions
 	}
 	ids := []string{}
 	for _, a := range page.Items {
-		v := ActivitySession{ID: a.ID, User: a.User, Profile: a.Profile, Device: a.Device, Kind: a.Kind, State: a.State, PositionMs: a.PositionMs, DurationMs: a.DurationMs, Decision: a.Decision, Quality: a.Quality}
+		v := ActivitySession{ID: a.ID, User: a.User, Profile: a.Profile, Device: a.Device, Kind: a.Kind, State: a.State, PositionMs: a.PositionMs, DurationMs: a.DurationMs, Decision: a.Decision, Quality: a.Quality, VideoHeight: a.VideoHeight}
 		if a.Item != nil {
 			v.Item = &ActivityItem{ID: a.Item.ID, Title: a.Item.Title, Kind: a.Kind, Art: []ActivityArt{}}
 			if a.Kind != "channel" {

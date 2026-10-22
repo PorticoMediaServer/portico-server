@@ -26,23 +26,34 @@ type entry struct {
 	revision  int64
 }
 
+// ActivityFiles is the owner's in-process scan observation. Its values are
+// used only to detect changes; file names never enter an event payload.
+type ActivityFiles interface {
+	CurrentActivityFile(job string) string
+}
+
 type Publisher struct {
 	db      *sql.DB
 	status  func(ctx context.Context, library string) (catalog.InventoryStatus, error)
 	now     func() time.Time
 	tracked map[string]entry
 	tasks   map[string]activityTaskEntry
+	files   ActivityFiles
 }
 
-func New(db *sql.DB, status func(ctx context.Context, library string) (catalog.InventoryStatus, error), now func() time.Time) *Publisher {
+func New(db *sql.DB, status func(ctx context.Context, library string) (catalog.InventoryStatus, error), now func() time.Time, files ...ActivityFiles) *Publisher {
 	if now == nil {
 		now = time.Now
 	}
-	return &Publisher{db: db, status: status, now: now, tracked: map[string]entry{}}
+	p := &Publisher{db: db, status: status, now: now, tracked: map[string]entry{}}
+	if len(files) > 0 {
+		p.files = files[0]
+	}
+	return p
 }
 
-func Run(ctx context.Context, db *sql.DB, status func(ctx context.Context, library string) (catalog.InventoryStatus, error)) {
-	New(db, status, nil).Run(ctx)
+func Run(ctx context.Context, db *sql.DB, status func(ctx context.Context, library string) (catalog.InventoryStatus, error), files ...ActivityFiles) {
+	New(db, status, nil, files...).Run(ctx)
 }
 
 func (p *Publisher) Run(ctx context.Context) {
@@ -113,7 +124,17 @@ type pendingEvent struct {
 // due, writes them in a single short transaction. Tracked state changes only
 // after the commit succeeds; on a write error nothing is updated and the next
 // tick retries.
-func (p *Publisher) tick(ctx context.Context, now time.Time) (*time.Time, error) {
+func (p *Publisher) tick(ctx context.Context, now time.Time) (due *time.Time, err error) {
+	// A failed first write has no tracked entry yet. Retain a retry deadline
+	// even then, so an unchanged active queue cannot lose its invalidation.
+	defer func() {
+		if err != nil {
+			retry := now.Add(progressInterval)
+			if due == nil || retry.Before(*due) {
+				due = &retry
+			}
+		}
+	}()
 	taskDue, err := p.tickTaskProgress(ctx, now)
 	if err != nil {
 		return nil, err

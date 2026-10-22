@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"portico.local/server/internal/assets"
 	"portico.local/server/internal/compactcatalog"
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/persistence"
@@ -430,5 +431,53 @@ func TestActivitySparseOpenCost(t *testing.T) {
 			t.Fatal(page, e)
 		}
 		t.Logf("sparse open full API query run%d=%s", i+1, time.Since(start))
+	}
+}
+
+func TestActivityVideoHeightUsesCommittedGeometry(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		plan DeliveryPlan
+		want int
+	}{
+		{"effective cap", DeliveryPlan{VideoAction: "convert", TargetHeight: 720, Trace: &DecisionTrace{Video: &TraceVideo{Width: 1920, Height: 1080}}}, 720},
+		{"never upscale to a ceiling", DeliveryPlan{VideoAction: "convert", TargetHeight: 1080, Trace: &DecisionTrace{Video: &TraceVideo{Width: 1280, Height: 720}}}, 720},
+		{"width bound", DeliveryPlan{VideoAction: "convert", TargetWidth: 960, TargetHeight: 1080, Trace: &DecisionTrace{Video: &TraceVideo{Width: 1920, Height: 1080}}}, 540},
+		{"rotation", DeliveryPlan{VideoAction: "convert", TargetWidth: 1920, TargetHeight: 1080, Trace: &DecisionTrace{Video: &TraceVideo{Width: 1080, Height: 1920, Rotation: 90}}}, 1080},
+		{"anamorphic rotation", DeliveryPlan{VideoAction: "convert", Trace: &DecisionTrace{Video: &TraceVideo{Width: 720, Height: 576, Rotation: 90, SampleAspectRatio: "16:15"}}}, 768},
+		{"unknown source", DeliveryPlan{VideoAction: "convert", TargetWidth: 1280, TargetHeight: 720}, 0},
+		{"incomplete source", DeliveryPlan{VideoAction: "convert", TargetHeight: 720, Trace: &DecisionTrace{Video: &TraceVideo{Height: 1080}}}, 0},
+		{"copy", DeliveryPlan{VideoAction: "copy", TargetHeight: 720, Trace: &DecisionTrace{Video: &TraceVideo{Width: 1920, Height: 1080}}}, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := ActivityVideoHeight(tc.plan); got != tc.want {
+				t.Fatalf("got %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestActivityVideoHeightFollowsActualClientCappedPlan(t *testing.T) {
+	client := chromeProfile()
+	client.Video = []ClientVideoCodec{{Codec: "h264", BitDepths: []int{8}, DynamicRanges: []string{"sdr"}, MaxWidth: 1280, MaxHeight: 720}}
+	for _, known := range []bool{true, false} {
+		detail := assets.StreamDetail{BitDepth: 8, DynamicRange: "sdr", FrameRate: 24}
+		if known {
+			detail.Width, detail.Height = 1920, 1080
+		}
+		p := decide(t, videoSource("mkv", "vc1", detail, SourceAudio{Index: 1, Codec: "aac", Channels: 2}), client, func(in *DeliveryInput) {
+			in.Server = plannerToolchain()
+			in.Target = QualityTarget{RungID: "1080p", MaxVideoHeight: 1080, AllowHDR: true}
+		})
+		if p.VideoAction != "convert" || p.TargetHeight > 720 {
+			t.Fatalf("client ceiling was not committed: %+v", p)
+		}
+		want := 0
+		if known {
+			want = 720
+		}
+		if got := ActivityVideoHeight(p); got != want {
+			t.Fatalf("known=%v: committed height %d, want %d", known, got, want)
+		}
 	}
 }
