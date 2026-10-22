@@ -83,3 +83,11 @@ test('row and overflow navigation use the existing genuine Dashboard callbacks',
   view.streams[0].onOpen(); view.onDashboard('streams'); view.scans[0].onOpen(); view.tasks[0].onOpen();
   assert.deepEqual(calls, ['streams', 'streams', 'activity', 'activity']);
 });
+
+test('a stored buffering problem uses its actual state while other problems remain general', () => {
+  const buffering = activityView(summary({...stream(), state: 'buffering', problem: true}), environment, actions).streams[0];
+  assert.equal(buffering.problem?.text, defaultI18n.t('web.together.loading'));
+  const error = activityView(summary({...stream(), state: 'error', problem: true}), environment, actions).streams[0];
+  assert.equal(error.problem?.text, defaultI18n.t('next.shell.activityProblem'));
+  assert.equal(activityView(summary({...stream(), state: 'playing', problem: false}), environment, actions).streams[0].problem, undefined);
+});
