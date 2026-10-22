@@ -23,7 +23,7 @@ export const dockMessages = {
   'next.dock.open': 'Open the player',
   'next.dock.openNowPlaying': 'Open now playing',
   'next.dock.playOn': 'Play on…',
-  'next.dock.playOnDevice': 'Play on another device',
+  'next.dock.playOnDevice': 'Play on',
   'next.dock.subtitlesAudio': 'Subtitles and audio',
   'next.dock.options': 'Playback options',
   'next.dock.lyrics': 'Lyrics',
