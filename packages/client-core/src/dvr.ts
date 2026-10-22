@@ -44,7 +44,7 @@ function programme(v: unknown): GuideProgramme {
  const lineage=oneOfOr('dvr','programme.lineage',v.lineage,['provider-id','interval-only','generated'] as const,'interval-only');
  const seriesId=v.seriesId??'',episodeId=v.episodeId??'',description=text(v.description??'',8192)?v.description??'':'',newEvidence=oneOfOr('dvr','programme.newEvidence',v.newEvidence||undefined,['new','repeat','unknown'] as const,'unknown');
  if(!text(seriesId,512)||!text(episodeId,512))invalid();
- const facts=parseGuideProgramme(v,v.channelId);
+ const facts=parseGuideProgramme({...v,seriesId:'',episodeId:''},v.channelId);
  const image=typeof v.image==='string'&&/^\/v1\/dvr\/recordings\/[a-f0-9]{64}\/image$/.test(v.image)?v.image:facts.image;
  return {...facts,lineage,seriesId,episodeId,description,newEvidence,...(image?{image}:{})};
 }

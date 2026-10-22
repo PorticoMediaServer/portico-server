@@ -209,7 +209,8 @@ test('FEAT-08: a recording carries the server\'s seriesId and seriesTitle; an un
 
 test('recordings retain programme facts, image, position and duration without copying private fields',()=>{
  const raw:any=recording();Object.assign(raw.programme,{subtitle:'Episode name',episode:{season:2,number:5},categories:['News'],rating:{system:'VCHIP',value:'TV-G'},year:2026,starRating:'4/5',flags:{live:false,new:true,premiere:true,repeat:false},image:'/v1/dvr/recordings/'+raw.id+'/image',providerURL:'private'});raw.positionMs=15000;raw.durationMs=3600000;
- const r=parseRecording(raw);assert.equal(r.programme.subtitle,'Episode name');assert.deepEqual(r.programme.episode,{season:2,number:5});assert.equal(r.programme.flags?.live,false);assert.equal(r.programme.flags?.premiere,true);assert.equal(r.programme.image,raw.programme.image);assert.equal(r.positionMs,15000);assert.equal(r.durationMs,3600000);assert.ok(!JSON.stringify(r).includes('private'));
+ raw.programme.seriesId='s'.repeat(512);raw.programme.episodeId='e'.repeat(512);
+ const r=parseRecording(raw);assert.equal(r.programme.seriesId,raw.programme.seriesId);assert.equal(r.programme.episodeId,raw.programme.episodeId);assert.equal(r.programme.subtitle,'Episode name');assert.deepEqual(r.programme.episode,{season:2,number:5});assert.equal(r.programme.flags?.live,false);assert.equal(r.programme.flags?.premiere,true);assert.equal(r.programme.image,raw.programme.image);assert.equal(r.positionMs,15000);assert.equal(r.durationMs,3600000);assert.ok(!JSON.stringify(r).includes('private'));
  raw.durationMs=-1;assert.throws(()=>parseRecording(raw));
 });
 
