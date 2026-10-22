@@ -228,9 +228,13 @@ func (s *Service) applyBulkCommand(ctx context.Context, tx *sql.Tx, p identity.P
 			return e
 		}
 		result, e := tx.Exec(`INSERT INTO catalog_playlist_entries(token,playlist_id,item_id,position,order_key) SELECT ?,p.id,i.id,?,? FROM catalog_playlists p,catalog_entities i WHERE p.token=? AND i.public_id=pid_blob(?) AND NOT EXISTS(SELECT 1 FROM catalog_playlist_entries existing WHERE existing.playlist_id=p.id AND existing.item_id=i.id)`, identity.Token(), pos, prefix+key, target, item)
-		if e != nil { return e }
+		if e != nil {
+			return e
+		}
 		inserted, e := result.RowsAffected()
-		if e != nil { return e }
+		if e != nil {
+			return e
+		}
 		return recordBulkMembershipOutcome(tx, job, item, inserted == 1)
 	case "collection-add":
 		var target string
@@ -239,8 +243,12 @@ func (s *Service) applyBulkCommand(ctx context.Context, tx *sql.Tx, p identity.P
 			return e
 		}
 		var present bool
-		if e := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM saved_resource_entries WHERE resource_id=? AND item_id=?)`, target, entity).Scan(&present); e != nil { return e }
-		if e := appendSavedEntry(tx, target, identity.Token(), entity); e != nil { return e }
+		if e := tx.QueryRow(`SELECT EXISTS(SELECT 1 FROM saved_resource_entries WHERE resource_id=? AND item_id=?)`, target, entity).Scan(&present); e != nil {
+			return e
+		}
+		if e := appendSavedEntry(tx, target, identity.Token(), entity); e != nil {
+			return e
+		}
 		return recordBulkMembershipOutcome(tx, job, item, !present)
 	default:
 		if s.BulkCommands.Apply == nil {
@@ -258,11 +266,19 @@ func (s *Service) applyBulkCommand(ctx context.Context, tx *sql.Tx, p identity.P
 // Captured membership is purged after completion; outcomes live with the job.
 func recordBulkMembershipOutcome(tx *sql.Tx, job, item string, added bool) error {
 	outcome := "already_present"
-	if added { outcome = "added" }
+	if added {
+		outcome = "added"
+	}
 	result, err := tx.Exec(`UPDATE personal_job_membership_outcomes SET outcome=?,code='' WHERE job_id=? AND item_public_id=pid_blob(?) AND outcome='pending'`, outcome, job, item)
-	if err != nil { return err }
+	if err != nil {
+		return err
+	}
 	n, err := result.RowsAffected()
-	if err != nil { return err }
-	if n != 1 { return errors.New("membership outcome did not match captured member") }
+	if err != nil {
+		return err
+	}
+	if n != 1 {
+		return errors.New("membership outcome did not match captured member")
+	}
 	return nil
 }

@@ -10474,6 +10474,48 @@ export const routes = [
     "admission": "default"
   },
   {
+    "id": "post_home_destination_picker",
+    "method": "POST",
+    "path": "/v1/home/destination-picker",
+    "summary": "Search one authorized playlist or collection destination window",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "unauthorized",
+      "not_found",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_home_destination_receipt",
+    "method": "POST",
+    "path": "/v1/home/destination-receipt",
+    "summary": "Read distinct durable membership outcomes for one authorized destination job set",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "invalid_cursor",
+      "unauthorized",
+      "not_found",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
     "id": "post_home_layout_reset",
     "method": "POST",
     "path": "/v1/home/layout/reset",
@@ -11027,6 +11069,27 @@ export const routes = [
     ],
     "status": 200,
     "http": true,
+    "admission": "browsing"
+  },
+  {
+    "id": "post_metadata_bulk_preview",
+    "method": "POST",
+    "path": "/v1/metadata/bulk/preview",
+    "summary": "Read shared and mixed metadata for an authorized selection",
+    "access": "owner",
+    "requires": "library",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 524288,
+    "errors": [
+      "invalid_request",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "revision_mismatch",
+      "internal"
+    ],
+    "status": 200,
     "admission": "browsing"
   },
   {
@@ -16771,6 +16834,8 @@ export const routePaths = {
   "post_dvr_rules_preview": "/v1/dvr/rules/preview",
   "post_feedback": "/v1/feedback",
   "post_feedback_reports": "/v1/feedback/reports",
+  "post_home_destination_picker": "/v1/home/destination-picker",
+  "post_home_destination_receipt": "/v1/home/destination-receipt",
   "post_home_layout_reset": "/v1/home/layout/reset",
   "post_hosted_wake": "/v1/hosted/wake",
   "post_items_id_analysis_jobs": "/v1/items/{id}/analysis/jobs",
@@ -16797,6 +16862,7 @@ export const routePaths = {
   "post_me_recommendations_reset": "/v1/me/recommendations:reset",
   "post_metadata_attention": "/v1/libraries/{id}/metadata/attention",
   "post_metadata_bulk": "/v1/metadata/bulk",
+  "post_metadata_bulk_preview": "/v1/metadata/bulk/preview",
   "post_metadata_kind_id": "/v1/metadata/{kind}/{id}",
   "post_metadata_kind_id_art_role_upload": "/v1/metadata/{kind}/{id}/art/{role}/upload",
   "post_networking_certificate_config": "/v1/networking/certificate/config",
