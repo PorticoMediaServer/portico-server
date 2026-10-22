@@ -25,6 +25,7 @@ export const playbackIcon = (view: DockView): IconName => view.presentation.fini
 export const playbackAction = (view: DockView) => view.presentation.finished ? 'replay' as const : view.playback.playing ? 'pause' as const : 'play' as const;
 export function ArtSlot({view, artSlotRef, videoSurface = false, phone = false}: Pick<DockRendererProps, 'view' | 'artSlotRef' | 'videoSurface'> & {phone?: boolean}) {
   const video = ['video', 'live', 'cast', 'play-on'].includes(view.mode);
+  if (video && !view.remote && !videoSurface) throw new TypeError('Local video dock requires its persistent media surface.');
   return <span ref={artSlotRef} data-dock-art-slot className={[styles.artSlot, video && styles.videoArt].filter(Boolean).join(' ')}>
     {!(videoSurface && !view.remote && video) && <Artwork source={view.presentation.artwork} alt="" className={styles.cover} brightness={view.remote && (!phone && !remoteTerminal(view.remote) || phone && remoteTerminal(view.remote)) ? phone ? .55 : .62 : undefined} saturation={view.remote && (!phone && !remoteTerminal(view.remote) || phone && remoteTerminal(view.remote)) ? phone ? .4 : .8 : undefined} />}
     {view.remote ? (phone || !remoteTerminal(view.remote)) && <span className={styles.castMark} data-pending={!remoteReady(view.remote) && !remoteTerminal(view.remote) || undefined}>{remoteReady(view.remote) || remoteTerminal(view.remote) ? <Icon name={phone ? 'i-tvdev' : 'i-cast'} size={phone ? 18 : 24} /> : <span className={styles.ring} />}</span>

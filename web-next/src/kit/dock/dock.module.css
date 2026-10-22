@@ -61,7 +61,7 @@ button.identity:hover .expandTip, button.identity:focus-visible .expandTip { dis
 .phoneBar .identityText small { font-size: 12.5px; color: var(--color-text-secondary); margin-top: 0; }
 .phoneBar .identityText small[data-status="playing"] { color: var(--color-text-secondary); font-weight: 400; }
 .phoneBar .identity { gap: 12px; }
-.phoneBar .identity:has(.videoArt) { gap: 11px; }
+.phoneBar[data-mode="video"] .identity, .phoneBar[data-mode="live"] .identity, .phoneBar[data-mode="cast"] .identity, .phoneBar[data-mode="play-on"] .identity { gap: 11px; }
 .phoneBar .artSlot { width: 44px; height: 44px; border-radius: 7px; box-shadow: none; }
 .phoneBar .videoArt { width: 80px; height: 45px; }
 .phoneBar .castMark { background: rgba(3,8,12,.55); }
