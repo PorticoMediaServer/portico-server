@@ -104,6 +104,15 @@ test('music and audiobook title facts follow their own metadata order with real 
   assert.deepEqual(titleFactParts({author: '', narrator: ' ', durationSeconds: NaN, chapterCount: 0}, env, 'audiobook'), []);
 });
 
+// desktop-listen#8, :697 caption and :707 facts: author, narrator, length, chapters only.
+test('book-page facts omit supplied year and genres without changing music or video metadata', () => {
+  const facts = {author: 'J.K. Rowling', narrator: 'Stephen Fry', year: 1997, genres: ['Fantasy', 'Adventure'], durationSeconds: 29580, chapterCount: 17};
+  assert.deepEqual(parts(titleFactParts(facts, env, 'audiobook')), [['author', 'J.K. Rowling', 'identity'], ['narrator', 'Read by Stephen Fry', 'context'], ['duration', '8 h 13 min', 'value'], ['chapter-count', '17 chapters', 'supplement']]);
+  assert.deepEqual(titleFactParts({year: facts.year, genres: facts.genres}, env, 'audiobook'), []);
+  assert.deepEqual(parts(titleFactParts(facts, env)), [['year', '1997', 'value'], ['duration', '8 h 13 min', 'value'], ['genre-0', 'Fantasy', 'supplement'], ['genre-1', 'Adventure', 'supplement']]);
+  assert.deepEqual(parts(titleFactParts({artist: 'Artist', year: facts.year, genres: facts.genres}, env, 'music')), [['artist', 'Artist', 'identity'], ['year', '1997', 'value'], ['genre-0', 'Fantasy', 'supplement'], ['genre-1', 'Adventure', 'supplement']]);
+});
+
 test('song counts never become album counts; unknown counts and metadata disappear', () => {
   assert.deepEqual(parts(cardText({id: 'a', kind: 'artist', title: 'The Weeknd', songCount: 8}, 'ordinary', env).caption), [['song-count', '8 songs', 'supplement']]);
   assert.deepEqual(parts(cardText({id: 'a', kind: 'artist', title: 'The Weeknd', albumCount: 1, songCount: 4}, 'ordinary', env).caption), [['album-count', '1 album', 'supplement'], ['song-count', '4 songs', 'supplement']]);
