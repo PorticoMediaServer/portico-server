@@ -262,7 +262,7 @@ func TestPicksForYouRows(t *testing.T) {
 		w.watch("p", f)
 	}
 	w.c.Drain()
-	r := HomeRequest{Viewer: Viewer{Profile: "p", Fence: "p", Libraries: []string{"m"}}, ServerID: "s", Profile: "p", ViewerFence: "p", Libraries: []string{"m"}, Now: time.Now()}
+	r := HomeRequest{Viewer: Viewer{Profile: "p", Fence: "p", Libraries: []string{"m"}}, ServerID: "s", Profile: "p", ViewerFence: "p", Libraries: []string{"m"}, Now: time.Now(), RowOrder: []string{"recommended", "for_you"}}
 	doc, err := w.s.HomeRows(r)
 	if err != nil {
 		t.Fatal(err)
@@ -529,7 +529,7 @@ func TestMoodRowFromTheTitleDataset(t *testing.T) {
 		w.watch("p", f)
 	}
 	w.c.Drain()
-	r := HomeRequest{Viewer: Viewer{Profile: "p", Fence: "p", Libraries: []string{"m"}}, ServerID: "s", Profile: "p", ViewerFence: "p", Libraries: []string{"m"}, Now: time.Now()}
+	r := HomeRequest{Viewer: Viewer{Profile: "p", Fence: "p", Libraries: []string{"m"}}, ServerID: "s", Profile: "p", ViewerFence: "p", Libraries: []string{"m"}, Now: time.Now(), RowOrder: []string{"recommended", "for_you"}}
 	doc, err := w.s.HomeRows(r)
 	if err != nil {
 		t.Fatal(err)

@@ -14,7 +14,7 @@ function row(id: string, ids: string[], changes: Record<string, unknown> = {}): 
   };
 }
 function document(rows: any[], changes: Record<string, unknown> = {}): any {
-  return {serverId: 'server', viewerFence: 'fence', rows, layout: {revision: 2, rowOrder: rows.map(r => r.id), hiddenRowIds: []}, revision: {catalog: 3, viewer: 1}, generatedAt: '2026-09-16T12:00:00.000Z', ...changes};
+  return {serverId: 'server', viewerFence: 'fence', rows, spotlight: [], layout: {revision: 2, rowOrder: rows.map(r => r.id), hiddenRowIds: []}, revision: {catalog: 3, viewer: 1}, generatedAt: '2026-09-16T12:00:00.000Z', ...changes};
 }
 const api = (handler: (path: string, method?: string, body?: any) => unknown): HomeApi => ({request: async <T>(path: string, method?: string, body?: unknown) => handler(path, method, body) as T});
 const ids = (service: HomeService, rowId: string) => service.getSnapshot().document!.rows.find(r => r.id === rowId)!.entries.map(e => e.id).join(',');
@@ -127,7 +127,7 @@ test('removing a card is immediate and can be put back', async () => {
 
 test('another viewer or server is never merged into what is shown', () => {
   const shown = validateHomeDocument(document([row('recent', ['m1'])]));
-  const other = validateHomeDocument(document([row('recent', ['x'])], {viewerFence: 'someone-else'}));
+  const other = validateHomeDocument(document([row('recent', ['x'], {viewerFence:'someone-else'})], {viewerFence: 'someone-else'}));
   assert.equal(mergeHomeDocument(shown, other), other);
 });
 
@@ -197,19 +197,21 @@ test('a row timeout releases its queue slot even if its API ignores cancellation
   service.dispose();
 });
 
-test('independent Continue previews choose the server-ranked hero regardless of arrival order', async () => {
+test('deferred row arrival cannot select or replace the server spotlight', async () => {
   let finishListening!: (value: unknown) => void;
+  const spotlight=[{entry:entry('selected'),reason:{kind:'recommended',text:{code:'next.home.reason.recommended',fallback:'Recommended for you'}}}];
   const service = new HomeService(api(path => {
-    if (path === '/v1/home') return document([row('continue', [], {deferred: true}), row('continue_listening', [], {deferred: true})]);
-    if (path.includes('/rows/continue_listening')) return new Promise(resolve => { finishListening = resolve; });
-    return row('continue', ['video'], {hero: {rowId: 'continue', entryId: 'video', selectionKey: '2026-10-13!999'}});
+    if (path === '/v1/home') return document([row('continue', [], {deferred: true}), row('listen_next', [], {deferred: true})],{spotlight,hero:{rowId:'continue',entryId:'video'}});
+    if (path.includes('/rows/listen_next')) return new Promise(resolve => { finishListening = resolve; });
+    return row('continue', ['video'], {hero: {rowId: 'continue', entryId: 'video'}});
   }));
   await service.load();
   await new Promise(resolve => setTimeout(resolve, 0));
-  assert.equal(service.getSnapshot().document!.hero!.entryId, 'video');
-  finishListening(row('continue_listening', ['audio'], {hero: {rowId: 'continue_listening', entryId: 'audio', selectionKey: '2026-10-12!998'}}));
+  assert.equal(service.getSnapshot().document!.spotlight[0].entry.id,'selected');
+  finishListening(row('listen_next', ['audio'], {hero: {rowId: 'listen_next', entryId: 'audio'}}));
   await new Promise(resolve => setTimeout(resolve, 0));
-  assert.equal(service.getSnapshot().document!.hero!.entryId, 'video', 'a later answer cannot replace a more recent hero');
+  assert.equal(service.getSnapshot().document!.spotlight[0].entry.id,'selected');
+  assert.equal(JSON.stringify(service.getSnapshot().document).includes('"hero"'),false);
   service.dispose();
 });
 

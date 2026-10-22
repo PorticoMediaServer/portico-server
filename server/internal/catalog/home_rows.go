@@ -691,6 +691,7 @@ func (s *Service) homeRowFor(r HomeRequest, spec homeRowSpec, revision ContentRe
 			return row, err
 		}
 		row.Live = live.Live
+		row.SeeAll = &HomeSeeAll{Type: "guide", Group: page.Group, SourceID: page.SourceID}
 		row.Total = live.Total
 		row.Start = live.Start
 		row.NextCursor = live.NextCursor

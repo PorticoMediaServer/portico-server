@@ -57,6 +57,9 @@ func (d Dependencies) encodeHomeLiveCursor(value homeLiveCursor) string {
 // LIMIT; programme reads name only the selected <=50 channels, for one second.
 func (d Dependencies) homeOnNow(r *http.Request, p identity.Principal, page catalog.HomeRowPage) (catalog.HomeRow, error) {
 	out := catalog.HomeRow{}
+	if page.AnchorID != "" {
+		return out, catalog.ErrCursor
+	}
 	if d.LiveChannels == nil {
 		return out, catalog.ErrHomeRowUnknown
 	}
@@ -156,6 +159,23 @@ func (d Dependencies) homeOnNow(r *http.Request, p identity.Principal, page cata
 		}
 		live.Channels = append(live.Channels, catalog.HomeChannel{Channel: channel, Source: sources[string(channel.Provenance)+":"+channel.SourceID]})
 	}
+
+	summary, err := d.LiveChannels.ChannelSourceSummary(r.Context(), d.guideDirectoryAuthority(p, fence), false, now)
+	if err != nil {
+		return out, err
+	}
+	groups := map[string]int{}
+	for _, source := range summary.Sources {
+		if page.SourceID == "" || source.ID == page.SourceID {
+			for _, group := range source.GroupCounts {
+				groups[group.Name] += group.Count
+			}
+		}
+	}
+	for name, count := range groups {
+		live.Groups = append(live.Groups, livechannels.GuideGroupCount{Name: name, Count: count})
+	}
+	sort.Slice(live.Groups, func(i, j int) bool { return live.Groups[i].Name < live.Groups[j].Name })
 	// Fence guide generations/preferences/source policy changed during guide reads.
 	query.Limit = 1
 	query.Offset = 0
@@ -173,22 +193,6 @@ func (d Dependencies) homeOnNow(r *http.Request, p identity.Principal, page cata
 	if fence != after || time.Now().Unix() >= cursor.Until {
 		return out, catalog.ErrStaleContinuation
 	}
-	summary, err := d.LiveChannels.ChannelSourceSummary(r.Context(), d.guideDirectoryAuthority(p, fence), false, now)
-	if err != nil {
-		return out, err
-	}
-	groups := map[string]int{}
-	for _, source := range summary.Sources {
-		if page.SourceID == "" || source.ID == page.SourceID {
-			for _, group := range source.GroupCounts {
-				groups[group.Name] += group.Count
-			}
-		}
-	}
-	for name, count := range groups {
-		live.Groups = append(live.Groups, livechannels.GuideGroupCount{Name: name, Count: count})
-	}
-	sort.Slice(live.Groups, func(i, j int) bool { return live.Groups[i].Name < live.Groups[j].Name })
 	live.ExpiresAt = time.Unix(cursor.Until, 0).UTC().Format(time.RFC3339)
 	out.Live = live
 	out.Total = directory.Total

@@ -18,7 +18,7 @@ function row(changes: Record<string, unknown> = {}): any {
 }
 function document(changes: Record<string, unknown> = {}): any {
   return {
-    serverId: 'server', viewerFence: 'fence', rows: [row()], layout: {revision: 2, rowOrder: ['recent_movies'], hiddenRowIds: []},
+    serverId: 'server', viewerFence: 'fence', rows: [row()], spotlight: [], layout: {revision: 2, rowOrder: ['recent_movies'], hiddenRowIds: []},
     revision: {catalog: 3, viewer: 1}, generatedAt: '2026-09-16T12:00:00.000Z', ...changes,
   };
 }
@@ -82,7 +82,7 @@ test('one Home row that cannot be read is left out and the others are kept', () 
   assert.deepEqual([...validateHomeLayout({revision: 2, rowOrder: ['a', 'a', 7, '', 'b'], hiddenRowIds: ['c', 'c']}).rowOrder], ['a', 'b']);
   // A hero that cannot be read is absent; Home is still shown.
   assert.equal(validateHomeDocument(document({hero: {rowId: 7}})).hero, undefined);
-  assert.deepEqual(validateHomeDocument(document({hero: {rowId: 'recent_movies', entryId: 'm2'}})).hero, {rowId: 'recent_movies', entryId: 'm2'});
+  assert.equal(validateHomeDocument(document({hero: {rowId: 'recent_movies', entryId: 'm2'}})).hero, undefined);
 });
 
 test('a Home row reads neutrally where it is only drawn, and ignores fields this app does not know', () => {

@@ -264,3 +264,23 @@ func TestHomeCommunityUsesThirtyDaysAndPreservesPrivacyThreshold(t *testing.T) {
 		t.Fatal("paused viewer contributed", empty, err)
 	}
 }
+
+func TestHomeBooksContinuationFiltersMusicBeforeItsPageLimit(t *testing.T) {
+	db := homeFixture(t)
+	c := catalogtest.New(t, db)
+	s := New(db)
+	r := homeRequestFixture("music", "books")
+	part := homeItem(t, db, "p2")
+	c.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,playback_id)VALUES('p',?,120000,0,'book')`, part.ID)
+	c.Exec(`INSERT INTO progress_activity VALUES('p','books',?,?,'paused')`, part.ID, r.Now.Add(-2*time.Hour).Format(time.RFC3339))
+	for i := 0; i < 45; i++ {
+		song := c.Song(homeItem(t, db, "album"), i+10, fmt.Sprintf("/music/busy-%02d.flac", i), fmt.Sprintf("Busy %02d", i))
+		c.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,playback_id)VALUES('p',?,120000,0,'music')`, song.ID)
+		c.Exec(`INSERT INTO progress_activity VALUES('p','music',?,?,'paused')`, song.ID, r.Now.Add(-time.Duration(i)*time.Minute).Format(time.RFC3339))
+	}
+	c.Drain()
+	row, err := s.HomeSingleRow(r, "continue_books", HomeRowPage{Limit: 12})
+	if err != nil || row.Total != 1 || len(row.Entries) != 1 || row.Entries[0].Kind != "book" || len(row.Resumes) != 1 || row.Resumes[0].Target.ID != part.Public {
+		t.Fatalf("music consumed book candidate budget: %+v %v", row, err)
+	}
+}

@@ -296,10 +296,7 @@ func (d Dependencies) serveHomeDocument(w http.ResponseWriter, r *http.Request) 
 			return scopeErr
 		}
 		request.Limit = limit
-		// Personal/catalog revisions cover mutations; the minute bucket also
-		// expires provider feeds and daily rotation. Community composition
-		// must recheck other profiles' membership and privacy on every read.
-
+		// Spotlight and current permission facts are recomposed on every read.
 		var composeErr error
 		out, composeErr = cat.HomeManifest(request)
 		return composeErr
@@ -348,8 +345,8 @@ func (d Dependencies) serveHomeRow(w http.ResponseWriter, r *http.Request) {
 		homeFailure(w, e)
 		return
 	}
-	// The minute bucket expires provider feeds and daily rotation, as the
-	// Home document's validator does; community rows recheck other
+	// The minute bucket expires provider feeds and daily rotation;
+	// community rows recheck other
 	// profiles' privacy on every read, so they carry no validator.
 	tag := ""
 	if !request.CommunityActivity && r.PathValue("id") != "on_now" {

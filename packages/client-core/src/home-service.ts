@@ -15,7 +15,7 @@
  *
  * No React and no timers of its own beyond the read deadline: tested under Node.
  */
-import {appendHomeRowPage, fetchHome, fetchHomeLayout, fetchHomeRow, resetHomeLayout, saveHomeLayout, type HomeApi, type HomeDocument, type HomeLayout, type HomeLayoutView, type HomeRow} from './home.ts';
+import {appendHomeRowPage, fetchHome, fetchHomeLayout, fetchHomeRow, hasHomeRowContent, resetHomeLayout, saveHomeLayout, type HomeApi, type HomeDocument, type HomeLayout, type HomeLayoutView, type HomeRow} from './home.ts';
 import {ALREADY_DONE, isStaleAnswer, mergeRevalidatedList, retryWhenStale} from './freshness-actions.ts';
 
 export type HomeSnapshot = Readonly<{
@@ -29,6 +29,7 @@ export type HomeSnapshot = Readonly<{
 
 const none: ReadonlySet<string> = Object.freeze(new Set<string>());
 const sameJson = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
+const permissionDenied=(error:unknown):boolean=>typeof error==='object'&&error!==null&&('status' in error&&[401,403,404].includes(Number(error.status))||'code' in error&&['unauthorized','forbidden','not_found'].includes(String(error.code)));
 
 /** `fresh` merged into `shown`: unchanged rows keep their identity, paged rows keep their tail. Returns `shown` when nothing changed. */
 export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): HomeDocument {
@@ -43,6 +44,10 @@ export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): Hom
     const old = before.get(row.id);
     if (!old) { changed = true; return [row]; }
     if (row.deferred) { if (shown.rows[index] !== old) changed = true; return [old]; }
+    if(row.live||old.live){
+      if(sameJson(old,row)){if(shown.rows[index]!==old)changed=true;return [old];}
+      changed=true;return [row];
+    }
     const entries = mergeRevalidatedList(old.entries, row.entries, e => e.id, {same: sameJson, complete: !row.nextCursor});
     const keptTail = entries.length > row.entries.length;
     const {entries: _a, revision: _b, nextCursor: _c, hasMore: _d, ...oldRest} = old;
@@ -55,9 +60,8 @@ export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): Hom
     changed = true;
     return [Object.freeze({...row, entries, nextCursor, hasMore: keptTail ? old.hasMore : row.hasMore})];
   });
-  const hero = fresh.hero ?? (fresh.rows.some(row => row.deferred && (row.id === 'continue' || row.id === 'continue_listening')) ? shown.hero : undefined);
-  if (!changed && sameJson(shown.layout, fresh.layout) && sameJson(shown.hero, hero)) return shown;
-  return Object.freeze({...fresh, rows: Object.freeze(rows), hero});
+  if (!changed && sameJson(shown.layout, fresh.layout) && sameJson(shown.spotlight, fresh.spotlight)) return shown;
+  return Object.freeze({...fresh, rows: Object.freeze(rows)});
 }
 
 export class HomeService {
@@ -113,13 +117,10 @@ export class HomeService {
           const replacements = row.children ?? [row];
           const rows = shown.rows.flatMap(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you' ? [] : [old]);
           const at = shown.rows.findIndex(old => old.id === descriptor.id || descriptor.id === 'for_you' && old.family === 'for_you');
-          rows.splice(Math.max(0, at), 0, ...replacements.filter(next => next.entries.length > 0 || next.critical));
-          const validHero = rows.flatMap(next => {
-            const candidate = next.hero ?? (shown.hero?.rowId === next.id ? shown.hero : undefined);
-            return candidate && next.entries.some(entry => entry.id === candidate.entryId) ? [candidate] : [];
-          }).reduce<typeof shown.hero>((best, candidate) => !best || (candidate.selectionKey ?? '') > (best.selectionKey ?? '') ? candidate : best, undefined);
-          this.publish({document: mergeHomeDocument(shown, Object.freeze({...shown, rows: Object.freeze(rows), hero: validHero})), error: undefined});
-        } catch {
+          rows.splice(Math.max(0, at), 0, ...replacements.filter(next => hasHomeRowContent(next) || next.critical));
+          this.publish({document: mergeHomeDocument(shown, Object.freeze({...shown, rows: Object.freeze(rows)})), error: undefined});
+        } catch (error) {
+          if(permissionDenied(error)&&epoch===this.hydrationGeneration&&mine===this.generation)this.removeRow(descriptor.id);
           // A failed shelf keeps its previous cards. Other shelves continue;
           // the next quiet Home refresh retries the deferred endpoint.
         } finally { if (timer) clearTimeout(timer); controller.signal.removeEventListener('abort', abort); this.hydrations.delete(controller); }
@@ -127,6 +128,11 @@ export class HomeService {
     };
     void consume();
     void consume();
+  }
+
+  private removeRow(id:string):void {
+    const document=this.state.document;
+    if(document)this.publish({document:Object.freeze({...document,rows:Object.freeze(document.rows.filter(row=>row.id!==id))})});
   }
 
   private async read(signal: AbortSignal): Promise<HomeDocument> {
@@ -210,7 +216,7 @@ export class HomeService {
       this.publish({paging: paging.size ? paging : none});
     };
     try {
-      const page = await fetchHomeRow(this.api(), rowId, {cursor}, controller.signal);
+      const page = await fetchHomeRow(this.api(), rowId, {cursor,limit:row.limit||undefined,group:row.live?.group||undefined,sourceId:row.seeAll?.type==='guide'?row.seeAll.sourceId:undefined}, controller.signal);
       if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
       const document = this.state.document;
       // The row moved on while this page was read (a quiet read replaced it): this page belongs to the older row.
@@ -219,6 +225,7 @@ export class HomeService {
     } catch (error) {
       if (this.disposed || mine !== this.generation || controller.signal.aborted) return;
       done();
+      if(permissionDenied(error)){this.removeRow(rowId);return;}
       // Out of date, not broken: bring the whole of Home up to date in place and let the row continue from there.
       if (isStaleAnswer(error)) { await this.revalidate().catch(() => {}); return; }
       // Any other failed page leaves the row as it is; reaching its end again asks again.

@@ -73,6 +73,9 @@ func (s *Service) homeMergedRecent(r HomeRequest, audio bool) ([][2]string, erro
 	all := [][2]string{}
 	for _, library := range libraries {
 		isAudio := library.Kind == "music" || library.Kind == "audiobook"
+		if !audio && library.Kind != "movie" && library.Kind != "tv" && library.Kind != "anime" {
+			continue
+		}
 		if isAudio != audio {
 			continue
 		}
@@ -106,11 +109,11 @@ func (s *Service) homeMergedRecent(r HomeRequest, audio bool) ([][2]string, erro
 // events is the causal anchor. A watched mark alone never claims a viewing.
 func (s *Service) homeBecause(r HomeRequest) (*ContentEntityRef, []recCandidate, error) {
 	restriction, args := r.Viewer.itemVisibilitySQL("i.id")
-	bind := append([]any{r.Profile, idsJSON(r.Libraries)}, args...)
+	bind := append([]any{r.Profile, idsJSON(r.Libraries), r.now().UTC().Format(time.RFC3339Nano)}, args...)
 	rows, err := s.read().Query(`SELECT pid(i.public_id),i.title FROM
  (SELECT item_id,completed,updated_at,id FROM personal_history INDEXED BY personal_history_page WHERE profile_id=? ORDER BY updated_at DESC,id DESC LIMIT 64) h
  CROSS JOIN catalog_entities i ON i.id=h.item_id JOIN catalog_libraries l ON l.id=i.library_id
- WHERE h.completed=1 AND i.kind IN(1,4) AND l.library_id IN(SELECT value FROM json_each(?)) AND `+homeVisible("i.id")+` AND `+restriction+` ORDER BY h.updated_at DESC,h.id DESC LIMIT 1`, bind...)
+ WHERE h.completed=1 AND i.kind IN(1,4) AND l.library_id IN(SELECT value FROM json_each(?)) AND julianday(h.updated_at)<=julianday(?) AND `+homeVisible("i.id")+` AND `+restriction+` ORDER BY h.updated_at DESC,h.id DESC LIMIT 1`, bind...)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -149,6 +152,9 @@ func (s *Service) homeAudioSource(r HomeRequest, booksOnly bool) (homeSource, er
 	// its files into the real album/book containers before selecting additions.
 	base := homeContinueBase("continue_listening")
 	restriction, args := r.Viewer.itemVisibilitySQL("candidate.entity")
+	if booksOnly {
+		restriction = "(" + restriction + ") AND i.kind=9"
+	}
 	bind := append([]any{r.Profile, r.Profile, idsJSON(r.Libraries)}, args...)
 	rows, err := s.read().Query(`SELECT candidate.id,candidate.ord,CASE i.kind WHEN 9 THEN pid(book.public_id) WHEN 7 THEN pid(album.public_id) END,i.kind
  FROM (`+base+`) candidate CROSS JOIN catalog_entities i ON i.public_id=pid_blob(candidate.id)
@@ -390,6 +396,16 @@ func (s *Service) homeSpotlight(r HomeRequest) ([]HomeSpotlight, error) {
 			entry.BackdropURL = artwork.BackdropURL
 		}
 		p := HomeSpotlight{Entry: entry, Reason: picks[i].reason}
+		if p.Reason.Kind == "new" {
+			unwatched, e := s.homeEntryUnwatched(r, entry)
+			if e != nil {
+				return nil, e
+			}
+			if !unwatched {
+				p.Reason.Kind = "recent"
+				p.Reason.Text = ServerText{Code: "next.home.reason.recentIn", Fallback: "Recently added in {library}"}
+			}
+		}
 		if p.Reason.Kind == "new" || p.Reason.Kind == "recent" {
 			p.Reason.LibraryID = entry.LibraryID
 			p.Reason.Text.Params = map[string]string{"library": library}
@@ -440,16 +456,22 @@ func (s *Service) homeNewBadges(r HomeRequest, entries []ContentEntry, src homeS
 		if e != nil || at.After(r.now()) || r.now().Sub(at) > homeNewWindow {
 			continue
 		}
-		var unwatched bool
-		restriction, args := r.Viewer.itemVisibilitySQL("m.item_id")
-		bind := append([]any{r.Profile, entry.ID}, args...)
-		err = s.read().QueryRow(`WITH scope AS(SELECT ? AS profile),target AS(SELECT * FROM catalog_entities WHERE public_id=pid_blob(?)) SELECT CASE WHEN e.kind IN(2,3) THEN EXISTS(SELECT 1 FROM catalog_browse_memberships m WHERE m.entity_id=e.id AND `+restriction+` AND `+personalstate.CompactSQL("scope.profile", "m.item_id")+`=0) ELSE `+personalstate.CompactSQL("scope.profile", "e.id")+`=0 END FROM scope CROSS JOIN target e`, bind...).Scan(&unwatched)
-		if err != nil {
-			return err
+		unwatched, e := s.homeEntryUnwatched(r, *entry)
+		if e != nil {
+			return e
 		}
 		entry.New = unwatched
 	}
 	return nil
+}
+
+// New eligibility is shared by the row badge and the spotlight's truthful reason.
+func (s *Service) homeEntryUnwatched(r HomeRequest, entry ContentEntry) (bool, error) {
+	var unwatched bool
+	restriction, args := r.Viewer.itemVisibilitySQL("m.item_id")
+	bind := append([]any{r.Profile, entry.ID}, args...)
+	err := s.read().QueryRow(`WITH scope AS(SELECT ? AS profile),target AS(SELECT * FROM catalog_entities WHERE public_id=pid_blob(?)) SELECT CASE WHEN e.kind IN(2,3) THEN EXISTS(SELECT 1 FROM catalog_browse_memberships m WHERE m.entity_id=e.id AND `+restriction+` AND `+personalstate.CompactSQL("scope.profile", "m.item_id")+`=0) ELSE `+personalstate.CompactSQL("scope.profile", "e.id")+`=0 END FROM scope CROSS JOIN target e`, bind...).Scan(&unwatched)
+	return unwatched, err
 }
 
 // Selected-page audiobook resumes retain the real playable part position.
