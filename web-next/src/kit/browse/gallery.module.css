@@ -24,3 +24,6 @@
 .scrollStage { height: 100%; overflow: auto; }
 .scrollLead { height: 180px; }
 .scrollRows { padding: 12px 0; }
+
+.musicHeaderTabs { margin-top: 26px; }
+.headerAction[data-size=small] { height: 44px; font-size: 15px; border-radius: 10px; }

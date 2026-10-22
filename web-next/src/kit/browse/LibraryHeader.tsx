@@ -13,7 +13,7 @@ export type LibraryHeaderProps = Readonly<{
   ambient?: ReactNode; children?: ReactNode; platform?: BrowsePlatform; className?: string;
 }>;
 export function LibraryHeader({name, counts, switcher, menu, ambient, children, platform = 'desktop', className}: LibraryHeaderProps) {
-  return <header className={[styles.libraryHeader, className].filter(Boolean).join(' ')} data-platform={platform}>
+  return <header className={[styles.libraryHeader, className].filter(Boolean).join(' ')} data-platform={platform} data-summary={!!counts?.length || undefined}>
     {ambient && <div className={styles.headerAmbient} aria-hidden="true">{ambient}</div>}
     <div className={styles.libraryIdentity}><div><div className={styles.libraryName}><h1>{name}</h1>{switcher}</div>
       {!!counts?.length && <p className={styles.libraryCounts}>{counts.map(part => <span key={part.id}>{part.text}</span>)}</p>}</div>

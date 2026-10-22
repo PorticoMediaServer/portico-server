@@ -71,7 +71,7 @@ function headerCase(mode: 'desktop' | 'music' | 'phone' | 'switcher' | 'owner' |
   return function HeaderCase() {
     const [library, setLibrary] = useState(mode === 'music' ? 'music' : mode === 'read' ? 'books' : 'movies');
     const [switcherOpen, setSwitcherOpen] = useState(mode === 'switcher'), [menuOpen, setMenuOpen] = useState(mode === 'owner' || mode === 'member' || mode === 'read');
-    const [outcome, setOutcome] = useState(''), [pivot, setPivot] = useState(mode === 'music' ? 'discover' : mode === 'read' ? '1' : 'browse');
+    const [outcome, setOutcome] = useState(''), [pivot, setPivot] = useState(['music', 'phone', 'switcher', 'long'].includes(mode) ? 'discover' : mode === 'read' ? '1' : 'browse');
     const choices: {id: string; name: string; count?: string}[] = (['movies', 'tv', 'anime', 'music', 'audiobooks', 'books', 'comics'] as const).map(id => ({id, name: fixture(`next.browse.example.${id}`)}));
     if (mode === 'switcher') {
       const reference = new DOMParser().parseFromString(drawnPhone, 'text/html');
@@ -88,10 +88,10 @@ function headerCase(mode: 'desktop' | 'music' | 'phone' | 'switcher' | 'owner' |
     const menu = mode === 'member' ? <LibraryMenu {...menuProps} owner={false}/> : <LibraryMenu {...menuProps} owner onLibrarySettings={() => setOutcome(t('next.browse.librarySettings'))} onScan={() => setOutcome(t('next.browse.scan'))}/>;
     const kind: Readonly<Record<string, string>> = {movies: 'movie', tv: 'tv', anime: 'anime', music: 'music', audiobooks: 'audiobook'};
     const tabItems = mode === 'read' ? Array.from(new DOMParser().parseFromString(drawnRead, 'text/html').querySelectorAll('#grid-s .tabs .tab')).map((item, index) => ({value: String(index), label: item.textContent!})) : libraryTabs(kind[library] ?? 'movie').map(tab => ({value: tab.id, label: t(tab.label)}));
-    const tabs = <Tabs phone={phone} value={pivot} onValueChange={setPivot} className={phone ? styles.phoneTabs : styles.headerTabs}
+    const tabs = <Tabs phone={phone} value={pivot} onValueChange={setPivot} className={phone ? styles.phoneTabs : [styles.headerTabs, mode === 'music' && styles.musicHeaderTabs].filter(Boolean).join(' ')}
       items={tabItems}/>;
     return <Stage outcome={outcome}>{phone ? <StickyBrowseHeader name={current.name} switcher={switcher} menu={menu} topInset={0} onLibraries={() => setOutcome(t('next.browse.libraries'))}>{tabs}</StickyBrowseHeader> :
-      <LibraryHeader name={current.name} switcher={switcher} menu={menu} counts={mode === 'music' ? [
+      <LibraryHeader name={current.name} switcher={switcher} menu={mode === 'music' ? <><Button size="small" icon="i-shuffle" className={styles.headerAction} onClick={() => setOutcome(new DOMParser().parseFromString(drawnListen, 'text/html').querySelector('#music .lib-head .right button')!.textContent!)}>{new DOMParser().parseFromString(drawnListen, 'text/html').querySelector('#music .lib-head .right button')!.textContent}</Button>{menu}</> : menu} counts={mode === 'music' ? [
         {id: 'artists', text: fixture('next.browse.example.musicCounts'), role: 'value'}, {id: 'albums', text: fixture('next.browse.example.albumCounts'), role: 'value'},
         {id: 'songs', text: fixture('next.browse.example.songCount', {count: 40}), role: 'value'},
       ] : undefined}>{tabs}</LibraryHeader>}</Stage>;
@@ -264,7 +264,7 @@ function tableCase(variant: 'album' | 'top-songs' | 'songs' | 'chapters' | 'comp
 
 export default defineGalleryFamily({id: 'browse', labelKey: 'next.browse.family', cases: [
   {id: 'library-header', labelKey: 'next.browse.libraryHeader', width: 1440, height: 244, render: headerCase('desktop')},
-  {id: 'library-music', labelKey: 'next.browse.libraryHeader', width: 1440, height: 270, render: headerCase('music')},
+  {id: 'library-music', labelKey: 'next.browse.libraryHeader', width: 1440, height: 294, render: headerCase('music')},
   {id: 'library-long', labelKey: 'next.browse.phoneHeader', width: 390, height: 94, render: headerCase('long')},
   {id: 'library-phone', labelKey: 'next.browse.phoneHeader', width: 390, height: 94, render: headerCase('phone')},
   {id: 'library-switcher', labelKey: 'next.browse.switchLibrary', width: 390, height: 450, render: headerCase('switcher')},

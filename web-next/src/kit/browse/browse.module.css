@@ -286,3 +286,9 @@
 .songRow:hover .songSelection, .songRow:focus-within .songSelection, .songSelection:has([aria-pressed=true]) { opacity: 1; pointer-events: auto; }
 .songRow[data-context=search][data-selectable]:not([data-artwork]) .songMain { padding-left: 44px; }
 .toolbar[data-platform=tv] .toolbarMain { padding-top: 0; }
+
+.libraryHeader[data-summary] .libraryIdentity { align-items: flex-end; gap: 20px; padding-top: 124px; }
+.libraryHeader[data-summary] .libraryEnd { padding-bottom: 4px; }
+.libraryHeader[data-summary] .roundSwitcher { width: 36px; height: 36px; background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--browse-secondary); }
+.libraryHeader[data-summary] .roundSwitcher svg { width: 20px; height: 20px; }
+.libraryHeader .libraryMenuTrigger { border-radius: 12px; }
