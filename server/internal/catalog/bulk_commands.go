@@ -227,7 +227,14 @@ func (s *Service) applyBulkCommand(ctx context.Context, tx *sql.Tx, p identity.P
 		if e := tx.QueryRow(`SELECT COALESCE(max(e.position),0)+1 FROM catalog_playlists p JOIN catalog_playlist_entries e ON e.playlist_id=p.id WHERE p.token=?`, target).Scan(&pos); e != nil {
 			return e
 		}
-		result, e := tx.Exec(`INSERT INTO catalog_playlist_entries(token,playlist_id,item_id,position,order_key) SELECT ?,p.id,i.id,?,? FROM catalog_playlists p,catalog_entities i WHERE p.token=? AND i.public_id=pid_blob(?) AND NOT EXISTS(SELECT 1 FROM catalog_playlist_entries existing WHERE existing.playlist_id=p.id AND existing.item_id=i.id)`, identity.Token(), pos, prefix+key, target, item)
+		mode, _, e := bulkPlacement(a.Placement)
+		if e != nil {
+			return e
+		}
+		// Home's destination picker appends membership with "end", skipping
+		// existing titles. Explicit next/after placement inserts occurrences in
+		// the captured order, including titles already elsewhere in the playlist.
+		result, e := tx.Exec(`INSERT INTO catalog_playlist_entries(token,playlist_id,item_id,position,order_key) SELECT ?,p.id,i.id,?,? FROM catalog_playlists p,catalog_entities i WHERE p.token=? AND i.public_id=pid_blob(?) AND (?<>'end' OR NOT EXISTS(SELECT 1 FROM catalog_playlist_entries existing WHERE existing.playlist_id=p.id AND existing.item_id=i.id))`, identity.Token(), pos, prefix+key, target, item, mode)
 		if e != nil {
 			return e
 		}
