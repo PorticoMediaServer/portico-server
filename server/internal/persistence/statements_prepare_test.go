@@ -31,6 +31,11 @@ func productionStatements(t *testing.T) ([]productionStatement, map[string]bool)
 	if err != nil {
 		t.Fatal(err)
 	}
+	return productionStatementsIn(t, root)
+}
+
+func productionStatementsIn(t *testing.T, root string) ([]productionStatement, map[string]bool) {
+	t.Helper()
 	start := regexp.MustCompile(`(?is)^\s*(SELECT|INSERT|UPDATE|DELETE|WITH|REPLACE)\b`)
 	// Tables a statement creates at run time (temporary work tables) and
 	// functions another package registers with the driver.
@@ -38,7 +43,11 @@ func productionStatements(t *testing.T) ([]productionStatement, map[string]bool)
 	registered := regexp.MustCompile(`Register\w*Function\("(\w+)"`)
 	var statements []productionStatement
 	transient := map[string]bool{"table:sqlite_stat1": true}
-	err = filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
+	fset := token.NewFileSet()
+	files := map[string]*ast.File{}
+	var paths []string
+	packages := map[string][]*ast.File{}
+	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -58,15 +67,62 @@ func productionStatements(t *testing.T) ([]productionStatement, map[string]bool)
 		for _, m := range registered.FindAllStringSubmatch(string(source), -1) {
 			transient["function:"+strings.ToLower(m[1])] = true
 		}
-		fset := token.NewFileSet()
 		file, err := parser.ParseFile(fset, path, source, 0)
 		if err != nil {
 			return err
 		}
 		rel, _ := filepath.Rel(root, path)
+		files[rel] = file
+		paths = append(paths, rel)
+		dir := filepath.Dir(rel)
+		packages[dir] = append(packages[dir], file)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fragments := map[ast.Expr]bool{}
+	for _, group := range packages {
+		// Resolve package constants across files too. Local/shadowed names
+		// already have an Object from the parser; only unresolved names can
+		// refer to a sibling declaration. Ambiguous build-specific declarations
+		// remain unresolved rather than guessing which file supplies them.
+		constants := map[string]*ast.Object{}
+		for _, file := range group {
+			for name, object := range file.Scope.Objects {
+				if object.Kind == ast.Con {
+					if _, exists := constants[name]; exists {
+						constants[name] = nil
+					} else {
+						constants[name] = object
+					}
+				}
+			}
+		}
+		for _, file := range group {
+			for _, id := range file.Unresolved {
+				if object := constants[id.Name]; object != nil {
+					id.Obj = object
+				}
+			}
+		}
+		for expression := range concatenatedConstants(group) {
+			fragments[expression] = true
+		}
+	}
+	for _, rel := range paths {
+		file := files[rel]
 		ast.Inspect(file, func(n ast.Node) bool {
 			expr, ok := n.(ast.Expr)
 			if !ok {
+				return true
+			}
+			if fragments[expr] {
+				return false
+			}
+			// Constants are folded at their declaration or in a surrounding
+			// concatenation, not once for every identifier (including its name).
+			if _, ok := expr.(*ast.Ident); ok {
 				return true
 			}
 			text, ok := literal(expr)
@@ -87,10 +143,6 @@ func productionStatements(t *testing.T) ([]productionStatement, map[string]bool)
 			// A folded expression's parts are not statements of their own.
 			return false
 		})
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
 	return statements, transient
 }
@@ -166,35 +218,19 @@ func TestProductionStatementsPrepareAgainstTheBaseline(t *testing.T) {
 	if spoolStatements == 0 {
 		t.Fatalf("%s no longer says what its spool holds", spoolFile)
 	}
-	missing := regexp.MustCompile(`no such (table|column|function)`)
-	name := regexp.MustCompile(`no such (table|column|function): (?:\w+\.)?(\w+)`)
 	checked := 0
 	for _, s := range statements {
 		target := db
 		if strings.HasPrefix(filepath.ToSlash(s.where), "internal/livechannels/programme_spool.go:") {
 			target = spool
 		}
-		stmt, err := target.Prepare(s.text)
-		if err == nil {
-			stmt.Close()
+		prepared, err := prepareProductionStatement(target, dataset, s, transient)
+		if prepared {
 			checked++
-			continue
 		}
-		if !missing.MatchString(err.Error()) {
-			continue
+		if err != nil {
+			t.Errorf("%s: %v\n\t%s", s.where, err, strings.Join(strings.Fields(s.text), " "))
 		}
-		if strings.Contains(filepath.ToSlash(s.where), "internal/enrichment/") {
-			if other, e := dataset.Prepare(s.text); e == nil {
-				other.Close()
-				checked++
-				continue
-			}
-		}
-
-		if m := name.FindStringSubmatch(err.Error()); m != nil && m[1] != "column" && transient[m[1]+":"+strings.ToLower(m[2])] {
-			continue
-		}
-		t.Errorf("%s: %v\n\t%s", s.where, err, strings.Join(strings.Fields(s.text), " "))
 	}
 	if checked < 1000 {
 		t.Fatalf("only %d statements prepared; the scan is broken", checked)
@@ -202,8 +238,112 @@ func TestProductionStatementsPrepareAgainstTheBaseline(t *testing.T) {
 	t.Logf("%d statements prepared", checked)
 }
 
-// literal folds a string literal, or literals joined with +, into its text.
+var missingSQLReference = regexp.MustCompile(`no such (table|column|function)`)
+var missingSQLName = regexp.MustCompile(`no such (table|column|function): (?:\w+\.)?(\w+)`)
+
+func prepareProductionStatement(db, dataset *sql.DB, s productionStatement, transient map[string]bool) (bool, error) {
+	stmt, err := db.Prepare(s.text)
+	if err == nil {
+		stmt.Close()
+		return true, nil
+	}
+	if !missingSQLReference.MatchString(err.Error()) {
+		return false, nil // incomplete runtime SQL remains covered by its owner
+	}
+	if dataset != nil && strings.Contains(filepath.ToSlash(s.where), "internal/enrichment/") {
+		if other, e := dataset.Prepare(s.text); e == nil {
+			other.Close()
+			return true, nil
+		}
+	}
+	if m := missingSQLName.FindStringSubmatch(err.Error()); m != nil && m[1] != "column" && transient[m[1]+":"+strings.ToLower(m[2])] {
+		return false, nil
+	}
+	return false, err
+}
+
+// A constant used exclusively as an operand of string concatenation is a
+// fragment, not a separate statement. Fold it into its consumers instead. If
+// it is also passed directly to a query, retain its own schema check. This is
+// source evidence, not a SQL heuristic: SELECT without FROM can be valid SQL,
+// and SELECT v.id passed to a query must still fail for the missing column.
+func concatenatedConstants(files []*ast.File) map[ast.Expr]bool {
+	parents := map[ast.Node]ast.Node{}
+	var stack []ast.Node
+	for _, file := range files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			if n == nil {
+				stack = stack[:len(stack)-1]
+				return false
+			}
+			if len(stack) != 0 {
+				parents[n] = stack[len(stack)-1]
+			}
+			stack = append(stack, n)
+			return true
+		})
+	}
+	type uses struct {
+		expression ast.Expr
+		count      int
+		onlyAdd    bool
+	}
+	constants := map[*ast.Object]*uses{}
+	for _, file := range files {
+		ast.Inspect(file, func(n ast.Node) bool {
+			id, ok := n.(*ast.Ident)
+			if !ok || id.Obj == nil || id.Obj.Kind != ast.Con {
+				return true
+			}
+			spec, ok := id.Obj.Decl.(*ast.ValueSpec)
+			if !ok || len(spec.Names) != len(spec.Values) {
+				return true
+			}
+			var value ast.Expr
+			for i, name := range spec.Names {
+				if name == id {
+					return true // declaration, not a use
+				}
+				if name.Obj == id.Obj {
+					value = spec.Values[i]
+				}
+			}
+			if value == nil {
+				return true
+			}
+			u := constants[id.Obj]
+			if u == nil {
+				u = &uses{expression: value, onlyAdd: true}
+				constants[id.Obj] = u
+			}
+			u.count++
+			parent := parents[id]
+			for {
+				if _, ok := parent.(*ast.ParenExpr); !ok {
+					break
+				}
+				parent = parents[parent]
+			}
+			add, ok := parent.(*ast.BinaryExpr)
+			u.onlyAdd = u.onlyAdd && ok && add.Op == token.ADD
+			return true
+		})
+	}
+	fragments := map[ast.Expr]bool{}
+	for _, u := range constants {
+		if u.count > 0 && u.onlyAdd {
+			fragments[u.expression] = true
+		}
+	}
+	return fragments
+}
+
+// literal folds literals and resolved string constants joined with +.
 func literal(e ast.Expr) (string, bool) {
+	return constantLiteral(e, map[*ast.Object]bool{})
+}
+
+func constantLiteral(e ast.Expr, seen map[*ast.Object]bool) (string, bool) {
 	switch v := e.(type) {
 	case *ast.BasicLit:
 		if v.Kind != token.STRING {
@@ -211,17 +351,32 @@ func literal(e ast.Expr) (string, bool) {
 		}
 		s, err := strconv.Unquote(v.Value)
 		return s, err == nil
+	case *ast.Ident:
+		if v.Obj == nil || v.Obj.Kind != ast.Con || seen[v.Obj] {
+			return "", false
+		}
+		spec, ok := v.Obj.Decl.(*ast.ValueSpec)
+		if !ok || len(spec.Names) != len(spec.Values) {
+			return "", false
+		}
+		seen[v.Obj] = true
+		defer delete(seen, v.Obj)
+		for i, name := range spec.Names {
+			if name.Obj == v.Obj {
+				return constantLiteral(spec.Values[i], seen)
+			}
+		}
 	case *ast.ParenExpr:
-		return literal(v.X)
+		return constantLiteral(v.X, seen)
 	case *ast.BinaryExpr:
 		if v.Op != token.ADD {
 			return "", false
 		}
-		a, ok := literal(v.X)
+		a, ok := constantLiteral(v.X, seen)
 		if !ok {
 			return "", false
 		}
-		b, ok := literal(v.Y)
+		b, ok := constantLiteral(v.Y, seen)
 		return a + b, ok
 	}
 	return "", false
