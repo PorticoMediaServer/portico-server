@@ -38,7 +38,7 @@ function ActivityReference({load = 'three', initialOpen = false, role = 'owner',
     {specimen ? <div className={styles.specimen}>{top}</div> : <div className={styles.tools}>
       <button type="button" aria-label={t('next.home.shell.search')}><Icon name="i-search" size={22} /></button>
       <button type="button" aria-label={t('next.home.shell.saved')}><Icon name="i-bookmark" size={22} /></button>
-      <button type="button" aria-label={t('next.shell.notifications')}><Icon name="i-bell" size={22} /></button>
+      <button type="button" aria-label={t('next.shell.notifications')}><Icon name="i-bell" size={22} />{load !== 'update' && <span className={styles.notificationDot} aria-hidden="true" />}</button>
       {top}<span className={styles.avatar}><ProfileAvatarFace initial={role === 'member' ? f.streams[0].initial : f.current.initial} art={role === 'member' ? 'mint' : 'blue'} /></span>
     </div>}
     <output className={styles.output} hidden={!destination}>{destination}</output>
