@@ -101,7 +101,7 @@ test('merged live pages keep the earliest programme expiry in either page order'
     assert.equal(merged.live!.observedAt,first.live!.observedAt);
     assert.equal(merged.live!.revision,first.live!.revision);
     assert.deepEqual(merged.live!.channels.map(v=>v.channel.id),['one','two']);
-    assert.deepEqual(merged.live!.channels[1].channel.programmes[0].flags,{live:false,repeat:true});
+    assert.deepEqual(merged.live!.channels[1].channel.programmes[0].flags,{live:false,premiere:false,new:false,repeat:true});
     const last=validateHomeRow(row('on_now',{live:live([channel('three')]),start:2,total:3}));
     assert.equal(appendHomeRowPage(merged,last).live!.expiresAt,early,'later pages cannot extend the retained expiry');
     assert.equal(appendHomeRowPage(first,page,1).live!.channels.length,1,'the retention cap remains in force');
