@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {DeletePreview} from '../../../packages/client-core/src/administration.ts';
 import type {RepairFieldSpec} from '../../../packages/client-core/src/metadata-repair.ts';
-import {selectionKinds} from '../../../packages/client-core/src/selection-model/index.ts';
+import {selectionKinds} from '../../../packages/client-core/src/selection-model/capabilities.ts';
 import {addListValue, bulkDraftValid, bulkEditorSchema, bulkSummary, bulkReceiptView, pickerResultSucceeded, deletePermission, missingPickerIds, selectionCountText, toggleListRemoval} from '../../src/kit/selection/presentation.ts';
 import type {BulkEditorDraft, BulkFieldValues, SelectionMediaKind} from '../../src/kit/selection/types.ts';
 
