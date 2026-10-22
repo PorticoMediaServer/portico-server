@@ -10,5 +10,9 @@ export const controlsNativeMessages = {
   'next.controls.native.fieldsTitle': 'Search',
   'next.controls.native.selectTitle': 'Playback',
   'next.controls.native.richSelectTitle': 'Quality & data',
-  'next.controls.native.longTitle': 'The Lord of the Rings: The Fellowship of the Ring',
 } as const satisfies Record<`next.controls.native.${string}`, string>;
+
+/** Sample facts imported only by the native development gallery, never registered. */
+export const nativeControlsFixtureMessages = {
+  'next.controls.native.fixture.longTitle': 'The Lord of the Rings: The Fellowship of the Ring',
+} as const satisfies Record<`next.controls.native.fixture.${string}`, string>;
