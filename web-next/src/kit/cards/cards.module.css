@@ -384,9 +384,14 @@
 .specimenInset { padding:32px; }
 .notInterestedSpecimen { display:flex; justify-content:flex-end; align-items:flex-start; padding:24px; }
 .actionOutput { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); white-space:nowrap; }
-@media (hover:none) {
+@media (hover:none), (pointer:coarse) {
   .play, .more, .notInterestedPosition, .sessionActions { opacity:1; transform:none; }
   .card:has(.more) .watched { right:46px; }
+}
+@media (pointer:coarse) {
+  .play, .more, .notInterested { min-width:44px; min-height:44px; }
+  .notInterestedPosition { right:60px; }
+  .card:has(.more) .watched { right:60px; }
 }
 @media (prefers-reduced-motion:reduce) {
   .primary, .artAligned, .art, .artAuxiliary, .play, .more, .selection, .live, .videoGenre, .musicGenre, .series, .resume, .readResume, .collectionTile, .collectionBackdrop, .sessionActions { transition:opacity 160ms cubic-bezier(.2,.7,.2,1); }

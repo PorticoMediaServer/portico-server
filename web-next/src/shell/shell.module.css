@@ -2,6 +2,20 @@
 .shell[data-desktop='true'] { --shell-gutter: clamp(32px, calc(32px + (100vw - 1024px) / 13), 64px); padding-bottom: 0; }
 .shell[data-has-dock='true'] { padding-bottom: calc(var(--shell-tab-height) + 78px); }
 .shell[data-desktop='true'][data-has-dock='true'] { padding-bottom: 92px; }
+.shell[data-navigation='rail'], .shell[data-navigation='sidebar'] { --shell-tab-height: 0px; --shell-gutter: 24px; --shell-nav-width: 88px; padding-left: var(--shell-nav-width); padding-bottom: 0; }
+.shell[data-navigation='sidebar'] { --shell-nav-width: 224px; --shell-gutter: 32px; }
+.shell[data-navigation='rail'][data-has-dock='true'], .shell[data-navigation='sidebar'][data-has-dock='true'] { padding-bottom: 92px; }
+.rail { position: fixed; inset: 0 auto 0 0; width: var(--shell-nav-width); z-index: var(--layer-navigation); display: flex; flex-direction: column; padding: max(16px, env(safe-area-inset-top, 0px)) 8px max(16px, env(safe-area-inset-bottom, 0px)); background: var(--color-ink); border-right: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
+.railDestinations { min-height: 0; overflow-y: auto; flex: 1; }
+.rail a, .railBottom > button, .collapse { min-height: 56px; min-width: 44px; width: 100%; border: 0; background: none; border-radius: 12px; color: var(--color-text-secondary); display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 4px; padding: 8px; text-decoration: none; cursor: pointer; font-size: var(--type-tab-bar-size); font-weight: var(--type-tab-bar-weight); line-height: var(--type-tab-bar-line); }
+.rail a span, .railBottom > button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rail a:hover, .rail a[aria-current='page'], .railBottom > button:hover, .collapse:hover { background: var(--color-raised); color: var(--color-text); }
+.rail a:focus-visible, .rail button:focus-visible { outline: 3px solid var(--color-focus); outline-offset: -3px; }
+.railBottom { display: flex; flex-direction: column; align-items: center; padding-top: 8px; }
+.railBottom .avatar { margin: 8px 0 0; min-width: 44px; min-height: 44px; display: grid; place-items: center; }
+.shell[data-navigation='sidebar'] .rail a, .shell[data-navigation='sidebar'] .railBottom > button { flex-direction: row; justify-content: flex-start; gap: 16px; padding: 12px 16px; font-size: var(--type-nav-size); line-height: var(--type-nav-line); }
+.collapse { flex: none; width: 44px; min-height: 44px; align-self: flex-end; }
+.shell[data-pointer='coarse'] button, .shell[data-pointer='coarse'] a { min-height: 44px; min-width: 44px; }
 .navigation { position: relative; z-index: var(--layer-navigation); view-transition-name: nav; }
 .topnav { position: fixed; z-index: var(--layer-navigation); inset: 0 0 auto; height: 76px; display: flex; align-items: center; gap: 40px; padding: 0 var(--shell-gutter); background: linear-gradient(180deg, color-mix(in srgb, var(--color-ink) 78%, transparent), transparent); }
 .topnav[data-solid='true'] { background: color-mix(in srgb, var(--color-ink) 88%, transparent); backdrop-filter: blur(24px); }
@@ -23,7 +37,7 @@
 .phoneHeader { position: absolute; z-index: var(--layer-hero-navigation); inset: 0 0 auto; height: 56px; padding: 0 12px 0 20px; display: flex; align-items: center; justify-content: space-between; background: linear-gradient(180deg, color-mix(in srgb, var(--color-ink) 75%, transparent), transparent); }
 .phoneHeader .dot { width: 10px; height: 10px; top: -1px; right: -2px; }
 .tabbar { position: fixed; z-index: var(--layer-navigation); inset: auto 0 0; height: var(--shell-tab-height); padding: 9px 14px env(safe-area-inset-bottom, 0px); display: flex; justify-content: space-around; background: color-mix(in srgb, var(--color-raised) 82%, transparent); backdrop-filter: blur(24px); border-top: 1px solid color-mix(in srgb, var(--color-text) 8%, transparent); }
-.tabbar a, .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--color-text-tertiary); font-size: var(--type-tab-bar-size); font-weight: var(--type-tab-bar-weight); line-height: var(--type-tab-bar-line); text-decoration: none; padding: 0; border: 0; background: none; cursor: pointer; min-width: 44px; }
+.tabbar a, .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 3px; color: var(--color-text-tertiary); font-size: var(--type-tab-bar-size); font-weight: var(--type-tab-bar-weight); line-height: var(--type-tab-bar-line); text-decoration: none; padding: 0; border: 0; background: none; cursor: pointer; min-width: 44px; min-height: 44px; }
 .tabbar [aria-current='page'] { color: var(--color-text); }
 .skip { position: fixed; z-index: var(--layer-notice); top: 8px; left: 8px; transform: translateY(-200%); background: var(--color-raised); color: var(--color-text); padding: 12px; }
 .skip:focus { transform: none; }
