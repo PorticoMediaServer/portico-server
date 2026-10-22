@@ -23,7 +23,7 @@ function editorController(request: HomeSelectionOptions['api']['request']) {
   const offers: HomeActions = {play: false, queue: false, playlist: false, collection: false, myList: false, favorite: false, watched: false, played: false,
     rating: false, editMetadata: true, refreshMetadata: false, delete: false, download: false, details: true,
     selection: {play: false, queue: false, playlist: false, collection: false, myList: false, favorite: false, watched: false, download: false, edit: true, refresh: false, delete: false},
-    state: {watchlisted: false, favorite: false, watched: false, personalRevision: 0, containerRevision: 0}};
+    state: {watchlisted: false, favorite: false, watched: false, rating: null, personalRevision: 0, containerRevision: 0}};
   const entries: HomeEntry[] = ['one', 'two', 'three'].map(id => ({id, libraryId: 'library', kind: 'movie', title: f.movie, homeActions: offers}));
   const row: HomeRow = {id: 'recent', viewerFence: fence, title: f.libraryPrefix, kind: 'media', artworkShape: 'poster', endpoint: '', privacySensitivity: '', policyState: '', priority: 0,
     required: false, hideable: true, reorderable: true, critical: false, cursorCapable: true, entries, total: 3, start: 0, limit: 3, hasMore: false, nextCursor: '', revision: {catalog: 1, viewer: 1}};
