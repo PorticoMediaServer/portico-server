@@ -4,6 +4,7 @@ import {readFileSync} from 'node:fs';
 import {registerHooks} from 'node:module';
 import {createElement} from 'react';
 import {renderToStaticMarkup} from 'react-dom/server';
+import type {ReactElement} from 'react';
 import ts from 'typescript';
 
 // Exercise the actual renderer under Node, including its real Icon and CSS-module imports.
@@ -46,4 +47,19 @@ test('active feedback paints only the supplied fraction and uses the exact catal
   assert.match(html, /stroke-dashoffset="0.75"/);
   assert.match(html, /Keep holding to select/);
   assert.doesNotMatch(html, /animate|duration/);
+});
+
+test('actual circle activation respects cancellation, stops parent activation and reports current controlled state', () => {
+  const calls: unknown[] = [];
+  const render = (SelectionCircle as unknown as {render: (props: object, ref: null) => ReactElement<{onClick: (event: object) => void}>}).render;
+  const button = render({selected: true, selecting: true, accessibilityLabel: 'Select', onSelectedChange: (...args: unknown[]) => calls.push(args)}, null);
+  let stopped = false;
+  button.props.onClick({defaultPrevented: false, shiftKey: false, stopPropagation() { stopped = true; }});
+  assert.equal(stopped, true);
+  assert.deepEqual(calls, [[false, {intent: 'toggle', shiftKey: false}]]);
+  calls.length = 0;
+  button.props.onClick({defaultPrevented: true, shiftKey: false, stopPropagation() { throw new Error('Cancelled click propagated into semantic activation.'); }});
+  assert.deepEqual(calls, []);
+  button.props.onClick({defaultPrevented: false, shiftKey: true, stopPropagation() {}});
+  assert.deepEqual(calls, [[true, {intent: 'range', shiftKey: true}]]);
 });
