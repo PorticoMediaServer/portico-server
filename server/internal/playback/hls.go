@@ -1163,7 +1163,17 @@ func (h *HLS) observeConversion(ctx context.Context, id string, generation int) 
 	finish := func() {
 		write, cancel := context.WithTimeout(context.WithoutCancel(ctx), 250*time.Millisecond)
 		defer cancel()
-		_, _ = dbwork.ExecWrite(write, h.db, dbwork.ClassEstablishedPlayback, `DELETE FROM playback_conversion_observations WHERE session_id=? AND producer=?`, id, producer)
+		_ = dbwork.WithWriteTx(write, h.db, dbwork.ClassEstablishedPlayback, func(tx *sql.Tx) error {
+			result, err := tx.ExecContext(write, `DELETE FROM playback_conversion_observations WHERE session_id=? AND producer=?`, id, producer)
+			if err != nil {
+				return err
+			}
+			removed, err := result.RowsAffected()
+			if err != nil || removed == 0 {
+				return err
+			}
+			return apievents.Append(tx, apievents.AdminAudience, "admin.sessions", "session", id, "", nil)
+		})
 	}
 	return observe, finish
 }

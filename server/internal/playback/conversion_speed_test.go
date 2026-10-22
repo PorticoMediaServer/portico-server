@@ -98,7 +98,7 @@ func TestActivityRealConverterProducesFreshSpeedAndCleansObservation(t *testing.
 	if err = db.QueryRow(`SELECT count(*) FROM playback_conversion_observations WHERE session_id=?`, session.ID).Scan(&remaining); err != nil || remaining != 0 {
 		t.Fatal("stopped producer retained speed", remaining, err)
 	}
-	if err = db.QueryRow(`SELECT count(*) FROM api_events WHERE audience='admin' AND type='admin.sessions' AND resource_id=? AND data=''`, session.ID).Scan(&hints); err != nil || hints < 1 {
-		t.Fatal("missing safe existing-feed hint", hints, err)
+	if err = db.QueryRow(`SELECT count(*) FROM api_events WHERE audience='admin' AND type='admin.sessions' AND resource_id=? AND data=''`, session.ID).Scan(&hints); err != nil || hints < 2 {
+		t.Fatal("missing safe progress/removal existing-feed hints", hints, err)
 	}
 }
