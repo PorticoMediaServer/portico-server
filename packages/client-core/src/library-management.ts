@@ -92,3 +92,16 @@ export class LibraryManagementService{
 
 export {LibraryInventoryService,fetchInventoryStatus,inventoryStatusMessage,scanProgress} from './library-inventory.ts';
 export type {ScanProgress,ViewerInventoryStatus} from './library-inventory.ts';
+
+/** Read-only, folders-only server explorer. A writable check touches only the
+ * selected directory and is requested explicitly by single-folder callers. */
+export async function browseServerFilesystem(api:LibraryContentApi, options:Readonly<{path?:string;cursor?:string;showHidden?:boolean;prefix?:string;checkWritable?:boolean;includeFiles?:boolean;limit?:number}>={}, signal?:AbortSignal):Promise<import('./administration.ts').FilesystemPage>{
+ const limit=options.limit??200;
+ if(!Number.isInteger(limit)||limit<1||limit>200||options.prefix!==undefined&&(!text(options.prefix,255)||/[\\/]/.test(options.prefix)))throw new Error('Invalid folder explorer query.');
+ const q=new URLSearchParams({limit:String(limit)});
+ for(const key of ['path','cursor','prefix'] as const){const value=options[key];if(value!==undefined){if(!text(value,8192))throw new Error('Invalid folder explorer path.');q.set(key,value);}}
+ for(const key of ['showHidden','checkWritable','includeFiles'] as const)if(options[key]!==undefined)q.set(key,options[key]?'1':'0');
+ const {parseFilesystemPage}=await import('./administration.ts');
+ const raw=await api.request<RouteResponse<'get_admin_filesystem'>>(routePath('get_admin_filesystem')+'?'+q,'GET',undefined,signal);
+ if(!object(raw))invalid();return parseFilesystemPage(raw.result);
+}

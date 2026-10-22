@@ -18288,6 +18288,9 @@ export const schemas = {
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "hidden": {
+                  "type": "boolean"
+                },
                 "kind": {
                   "type": "string"
                 },
@@ -18300,12 +18303,16 @@ export const schemas = {
                 "readable": {
                   "type": "boolean"
                 },
+                "reason": {
+                  "type": "string"
+                },
                 "symlink": {
                   "type": "boolean"
                 }
               },
               "required": [
                 "name",
+                "hidden",
                 "path",
                 "kind",
                 "readable",
@@ -18327,16 +18334,25 @@ export const schemas = {
           "platform": {
             "type": "string"
           },
+          "reason": {
+            "type": "string"
+          },
           "roots": {
             "items": {
               "properties": {
                 "description": {
                   "type": "string"
                 },
+                "driveType": {
+                  "type": "string"
+                },
                 "kind": {
                   "type": "string"
                 },
                 "name": {
+                  "type": "string"
+                },
+                "networkTarget": {
                   "type": "string"
                 },
                 "path": {
@@ -18354,13 +18370,25 @@ export const schemas = {
             "maxItems": 64,
             "type": "array"
           },
+          "runsAs": {
+            "type": "string"
+          },
           "separator": {
             "type": "string"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "truncated": {
             "type": "boolean"
           },
           "writable": {
+            "type": "boolean"
+          },
+          "writableChecked": {
             "type": "boolean"
           }
         },
@@ -18373,6 +18401,8 @@ export const schemas = {
           "entries",
           "nextCursor",
           "writable",
+          "writableChecked",
+          "suggestions",
           "truncated"
         ],
         "type": "object"

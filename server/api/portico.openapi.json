@@ -14398,6 +14398,9 @@
                   "minimum": -9007199254740991,
                   "type": "integer"
                 },
+                "hidden": {
+                  "type": "boolean"
+                },
                 "kind": {
                   "type": "string"
                 },
@@ -14410,12 +14413,16 @@
                 "readable": {
                   "type": "boolean"
                 },
+                "reason": {
+                  "type": "string"
+                },
                 "symlink": {
                   "type": "boolean"
                 }
               },
               "required": [
                 "name",
+                "hidden",
                 "path",
                 "kind",
                 "readable",
@@ -14437,16 +14444,25 @@
           "platform": {
             "type": "string"
           },
+          "reason": {
+            "type": "string"
+          },
           "roots": {
             "items": {
               "properties": {
                 "description": {
                   "type": "string"
                 },
+                "driveType": {
+                  "type": "string"
+                },
                 "kind": {
                   "type": "string"
                 },
                 "name": {
+                  "type": "string"
+                },
+                "networkTarget": {
                   "type": "string"
                 },
                 "path": {
@@ -14464,13 +14480,25 @@
             "maxItems": 64,
             "type": "array"
           },
+          "runsAs": {
+            "type": "string"
+          },
           "separator": {
             "type": "string"
+          },
+          "suggestions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
           },
           "truncated": {
             "type": "boolean"
           },
           "writable": {
+            "type": "boolean"
+          },
+          "writableChecked": {
             "type": "boolean"
           }
         },
@@ -14483,6 +14511,8 @@
           "entries",
           "nextCursor",
           "writable",
+          "writableChecked",
+          "suggestions",
           "truncated"
         ],
         "type": "object"
@@ -19901,6 +19931,9 @@
                       "minimum": -9007199254740991,
                       "type": "integer"
                     },
+                    "hidden": {
+                      "type": "boolean"
+                    },
                     "kind": {
                       "type": "string"
                     },
@@ -19913,12 +19946,16 @@
                     "readable": {
                       "type": "boolean"
                     },
+                    "reason": {
+                      "type": "string"
+                    },
                     "symlink": {
                       "type": "boolean"
                     }
                   },
                   "required": [
                     "name",
+                    "hidden",
                     "path",
                     "kind",
                     "readable",
@@ -19940,16 +19977,25 @@
               "platform": {
                 "type": "string"
               },
+              "reason": {
+                "type": "string"
+              },
               "roots": {
                 "items": {
                   "properties": {
                     "description": {
                       "type": "string"
                     },
+                    "driveType": {
+                      "type": "string"
+                    },
                     "kind": {
                       "type": "string"
                     },
                     "name": {
+                      "type": "string"
+                    },
+                    "networkTarget": {
                       "type": "string"
                     },
                     "path": {
@@ -19967,13 +20013,25 @@
                 "maxItems": 64,
                 "type": "array"
               },
+              "runsAs": {
+                "type": "string"
+              },
               "separator": {
                 "type": "string"
+              },
+              "suggestions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
               },
               "truncated": {
                 "type": "boolean"
               },
               "writable": {
+                "type": "boolean"
+              },
+              "writableChecked": {
                 "type": "boolean"
               }
             },
@@ -19986,6 +20044,8 @@
               "entries",
               "nextCursor",
               "writable",
+              "writableChecked",
+              "suggestions",
               "truncated"
             ],
             "type": "object"
@@ -186725,6 +186785,64 @@
     "/v1/admin/filesystem": {
       "get": {
         "operationId": "get_admin_filesystem",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "path",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "includeFiles",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "showHidden",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "prefix",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "checkWritable",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -186744,6 +186862,9 @@
                                 "minimum": -9007199254740991,
                                 "type": "integer"
                               },
+                              "hidden": {
+                                "type": "boolean"
+                              },
                               "kind": {
                                 "type": "string"
                               },
@@ -186756,12 +186877,16 @@
                               "readable": {
                                 "type": "boolean"
                               },
+                              "reason": {
+                                "type": "string"
+                              },
                               "symlink": {
                                 "type": "boolean"
                               }
                             },
                             "required": [
                               "name",
+                              "hidden",
                               "path",
                               "kind",
                               "readable",
@@ -186783,16 +186908,25 @@
                         "platform": {
                           "type": "string"
                         },
+                        "reason": {
+                          "type": "string"
+                        },
                         "roots": {
                           "items": {
                             "properties": {
                               "description": {
                                 "type": "string"
                               },
+                              "driveType": {
+                                "type": "string"
+                              },
                               "kind": {
                                 "type": "string"
                               },
                               "name": {
+                                "type": "string"
+                              },
+                              "networkTarget": {
                                 "type": "string"
                               },
                               "path": {
@@ -186810,13 +186944,25 @@
                           "maxItems": 64,
                           "type": "array"
                         },
+                        "runsAs": {
+                          "type": "string"
+                        },
                         "separator": {
                           "type": "string"
+                        },
+                        "suggestions": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
                         },
                         "truncated": {
                           "type": "boolean"
                         },
                         "writable": {
+                          "type": "boolean"
+                        },
+                        "writableChecked": {
                           "type": "boolean"
                         }
                       },
@@ -186829,6 +186975,8 @@
                         "entries",
                         "nextCursor",
                         "writable",
+                        "writableChecked",
+                        "suggestions",
                         "truncated"
                       ],
                       "type": "object"

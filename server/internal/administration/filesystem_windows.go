@@ -2,7 +2,12 @@
 
 package administration
 
-import "os"
+import (
+	"golang.org/x/sys/windows"
+	"os"
+	"syscall"
+	"unsafe"
+)
 
 func platformName() string { return "windows" }
 
@@ -15,7 +20,19 @@ func FilesystemRoots() []FilesystemRoot {
 	for letter := 'A'; letter <= 'Z'; letter++ {
 		path := string(letter) + `:\`
 		if info, err := os.Stat(path); err == nil && info.IsDir() {
-			out = append(out, FilesystemRoot{Path: path, Name: string(letter) + ":", Kind: "drive", Description: "Drive " + string(letter) + ":"})
+			root := FilesystemRoot{Path: path, Name: string(letter) + ":", Kind: "drive", Description: "Drive " + string(letter) + ":"}
+			wide, _ := windows.UTF16PtrFromString(path)
+			kinds := map[uint32]string{2: "removable", 3: "fixed", 4: "network", 5: "optical", 6: "ram"}
+			root.DriveType = kinds[windows.GetDriveType(wide)]
+			local, _ := windows.UTF16PtrFromString(string(letter) + ":")
+			target := make([]uint16, 32768)
+			size := uint32(len(target))
+			result, _, _ := windows.NewLazySystemDLL("mpr.dll").NewProc("WNetGetConnectionW").Call(uintptr(unsafe.Pointer(local)), uintptr(unsafe.Pointer(&target[0])), uintptr(unsafe.Pointer(&size)))
+			if result == 0 {
+				root.NetworkTarget = syscall.UTF16ToString(target)
+				root.Description = "Network drive, " + root.NetworkTarget
+			}
+			out = append(out, root)
 		}
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
@@ -23,4 +40,25 @@ func FilesystemRoots() []FilesystemRoot {
 	}
 	out = append(out, FilesystemRoot{Path: `\\`, Name: "Network share", Kind: "unc", Description: `Type a UNC path such as \\server\share`})
 	return out
+}
+
+func platformHidden(path string) bool {
+	p, e := windows.UTF16PtrFromString(path)
+	if e != nil {
+		return false
+	}
+	a, e := windows.GetFileAttributes(p)
+	return e == nil && a&windows.FILE_ATTRIBUTE_HIDDEN != 0
+}
+func filesystemWritable(path string) bool {
+	p, e := windows.UTF16PtrFromString(path)
+	if e != nil {
+		return false
+	}
+	h, e := windows.CreateFile(p, windows.FILE_ADD_FILE, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_FLAG_BACKUP_SEMANTICS, 0)
+	if e != nil {
+		return false
+	}
+	windows.CloseHandle(h)
+	return true
 }

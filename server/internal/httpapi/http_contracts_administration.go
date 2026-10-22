@@ -133,7 +133,7 @@ func registerAdministrationHTTPContracts(registry *apikit.Registry) error {
 		return err
 	}
 	// internal/httpapi/administration.go:218
-	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.FilesystemPage]](registry, apikit.Metadata{ID: "get_admin_filesystem", Method: "GET", Path: "/v1/admin/filesystem", Summary: "Read server filesystem", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+	if err := apikit.RegisterHTTP[struct{}, LiveOwnerResult[administration.FilesystemPage]](registry, apikit.Metadata{ID: "get_admin_filesystem", Method: "GET", Path: "/v1/admin/filesystem", Summary: "Read server filesystem", Query: []string{"path", "cursor", "limit", "includeFiles", "showHidden", "prefix", "checkWritable"}, Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.PageSized, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err
 	}
 	// internal/httpapi/administration.go:232

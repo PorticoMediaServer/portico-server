@@ -3,6 +3,7 @@
 package administration
 
 import (
+	"golang.org/x/sys/unix"
 	"os"
 	"runtime"
 	"sort"
@@ -116,4 +117,9 @@ func FilesystemRoots() []FilesystemRoot {
 		out = append(out, FilesystemRoot{Path: home, Name: "Home", Kind: "home", Description: "This account's home folder"})
 	}
 	return out
+}
+
+func platformHidden(string) bool { return false }
+func filesystemWritable(path string) bool {
+	return unix.Faccessat(unix.AT_FDCWD, path, unix.W_OK|unix.X_OK, unix.AT_EACCESS) == nil
 }
