@@ -72,6 +72,7 @@
 .rowHead h2 { margin: 0; }
 .rowSubtitle { color: var(--color-text-tertiary); }
 .rowActions { margin-left: auto; display: flex; align-self: center; gap: 12px; }
+.rowActions[data-placement='inline'] { margin-left: 18px; }
 .seeAll { border: 0; padding: 0; background: none; margin-left: auto; color: var(--color-text-tertiary); text-decoration: none; display: inline-flex; align-items: center; gap: 2px; opacity: 0; cursor: pointer; transition: opacity 200ms var(--ease-out); white-space: nowrap; }
 .row:hover .seeAll, .row:focus-within .seeAll { opacity: 1; }
 .track { display: flex; position: relative; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 var(--layout-gutter); padding: 10px var(--layout-gutter) 14px; scrollbar-width: none; overscroll-behavior-x: contain; }
