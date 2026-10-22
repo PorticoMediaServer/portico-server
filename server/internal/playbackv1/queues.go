@@ -100,12 +100,15 @@ type EntryPage struct {
 // CreateQueueRequest is POST /v1/queues. The segment form is ARCH-MEDIA-03's;
 // selector/shuffle/repeat is spec §17.10's single-selector shorthand.
 type CreateQueueRequest struct {
-	Owner         string         `json:"owner,omitempty"`
-	Segments      []SegmentInput `json:"segments,omitempty"`
-	Selector      *Selector      `json:"selector,omitempty"`
-	Shuffle       *QueueSeed     `json:"shuffle,omitempty"`
-	Repeat        string         `json:"repeat,omitempty"`
-	StartPlayback *StartPlayback `json:"startPlayback,omitempty"`
+	Owner string `json:"owner,omitempty"`
+	// RetainQueueIDs keeps at most three previously committed queues on this
+	// exact device and viewer. Only queue data is retained, never a session.
+	RetainQueueIDs []string       `json:"retainQueueIds,omitempty"`
+	Segments       []SegmentInput `json:"segments,omitempty"`
+	Selector       *Selector      `json:"selector,omitempty"`
+	Shuffle        *QueueSeed     `json:"shuffle,omitempty"`
+	Repeat         string         `json:"repeat,omitempty"`
+	StartPlayback  *StartPlayback `json:"startPlayback,omitempty"`
 }
 type QueueSeed struct {
 	Seed string `json:"seed,omitempty"`

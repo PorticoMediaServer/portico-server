@@ -12,7 +12,7 @@ import type {MediaPlayer, PlayerObservation, PlayerSource} from '../src/playback
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
 type Intercept = (request: V1Request, response: V1Response) => Promise<V1Response> | V1Response;
-function setup(t: TestContext, quality?: () => QualityRequest | undefined) {
+function setup(t: TestContext, quality?: () => QualityRequest | undefined, retainQueueIds?: () => readonly string[], beforeFreshPlayback?: () => Promise<void>) {
   const server = new FakePlaybackServer(), inner = fakeHttp(server);
   const log: V1Request[] = [], sessions = new Set<string>();
   let intercept: Intercept = (_request, response) => response, serial = 0, resets = 0, pending = 0;
@@ -26,8 +26,8 @@ function setup(t: TestContext, quality?: () => QualityRequest | undefined) {
     } finally { pending--; }
   }};
   const api = new V1PlaybackApi(http, {timers: {setTimer: () => 0, clearTimer: () => {}}, key: () => `session-${++serial}-key`});
-  const playback = new PlaybackService(api, () => `intent-${++serial}`, {deferRecovery: true, beforeFreshPlayback: async () => { resets++; }});
-  const player = new V1QueuePlayer({http, api, playback, viewer, quality, key: () => `queue-${++serial}-key`});
+  const playback = new PlaybackService(api, () => `intent-${++serial}`, {deferRecovery: true, beforeFreshPlayback: async () => { resets++; if (beforeFreshPlayback) await beforeFreshPlayback(); }});
+  const player = new V1QueuePlayer({http, api, playback, viewer, quality, retainQueueIds, key: () => `queue-${++serial}-key`});
   player.connect();
   t.after(() => { playback.leave(); player.dispose(); for (const id of sessions) api.forget(id); });
   const seed = async () => {
@@ -57,6 +57,83 @@ function gate() {
   const started = new Promise<void>(resolve => { entered = resolve; });
   return {started, release, hold: async () => { entered(); await waiting; }};
 }
+
+test('retention callback is sampled once before the intent waits and genuine replacement then restores the original queue paused', async t => {
+  let candidates: string[] = [], samples = 0, hold = false;
+  const delayed = gate();
+  const f = setup(t, undefined, () => { samples++; return candidates; }, async () => { if (hold) await delayed.hold(); });
+  const saved = await f.seed(), firstSession = f.player.currentSession()!.id;
+  candidates = [saved.queueId]; hold = true;
+  const replacing = f.player.playSegments([{source: {items: {ids: ['other-video']}}}]);
+  await delayed.started;
+  candidates[0] = 'changed-after-intent';
+  delayed.release(); await replacing; hold = false;
+  assert.equal(samples, 2);
+  const create = f.log.filter(r => r.method === 'POST' && r.path === '/v1/queues').at(-1)!;
+  assert.deepEqual((create.body as {retainQueueIds: readonly string[]}).retainQueueIds, [saved.queueId]);
+  assert.ok(f.server.queue(saved.queueId));
+  const replacementSession = f.player.currentSession()!.id;
+  await f.player.restorePaused(saved.queueId, saved.entryId, 37.25);
+  assert.equal(samples, 2, 'restoration reads the real queue without another create or callback');
+  const restored = f.player.currentSession()!, queue = f.player.getSnapshot().view!.queue;
+  assert.notEqual(restored.id, firstSession); assert.notEqual(restored.id, replacementSession);
+  assert.equal(restored.state, 'paused'); assert.equal(restored.presentation.startPositionMs, 37250);
+  assert.equal(queue.id, saved.queueId); assert.equal(queue.currentEntryId, saved.entryId); assert.deepEqual(queue.entries, saved.entries);
+  const before = f.log.length;
+  await f.player.enqueue(queueItemInput('last-song'));
+  await f.player.playItem('first', 0);
+  assert.equal(f.player.currentSession()!.queue!.queueId, saved.queueId);
+  assert.equal(f.log.slice(before).some(r => r.method === 'POST' && r.path === '/v1/queues'), false);
+  assert.equal(samples, 2);
+});
+
+for (const start of ['item', 'entries', 'selector', 'segments'] as const) {
+  test(`retention data reaches the genuine ${start} start without changing its public result`, async t => {
+    let savedId: string | undefined, samples = 0;
+    const f = setup(t, undefined, () => { samples++; return savedId ? [savedId] : []; });
+    const saved = await f.seed(); savedId = saved.queueId;
+    if (start === 'item') assert.equal(await f.player.playItem('replacement', 9), undefined);
+    else if (start === 'entries') assert.equal(await f.player.playEntries([queueItemInput('replacement')]), undefined);
+    else if (start === 'selector') assert.equal(await f.player.playSelector({items: {ids: ['replacement']}}), undefined);
+    else assert.equal((await f.player.playSegments([{source: {items: {ids: ['replacement']}}}])).id, f.player.currentSession()!.queue!.queueId);
+    const create = f.log.filter(r => r.method === 'POST' && r.path === '/v1/queues').at(-1)!;
+    assert.deepEqual((create.body as {retainQueueIds: readonly string[]}).retainQueueIds, [saved.queueId]);
+    assert.equal(samples, 2); assert.ok(f.server.queue(saved.queueId));
+  });
+}
+
+test('idle enqueue forwards retention data once without starting playback', async t => {
+  let samples = 0;
+  const f = setup(t, undefined, () => { samples++; return []; });
+  await f.player.enqueueMany([queueItemInput('song-a'), queueItemInput('song-b')]);
+  assert.equal(samples, 1);
+  const create = f.log.find(r => r.method === 'POST' && r.path === '/v1/queues')!;
+  assert.deepEqual((create.body as {retainQueueIds: readonly string[]}).retainQueueIds, []);
+  assert.equal(f.player.currentSession(), undefined);
+});
+
+test('retained create still abandons a late session when a newer intent has replaced it', async t => {
+  let candidates: string[] = [];
+  const f = setup(t, undefined, () => candidates), saved = await f.seed(); candidates = [saved.queueId];
+  const delayed = gate(); let lateSession = '';
+  f.intercept(async (request, response) => {
+    if (request.method === 'POST' && request.path === '/v1/queues' && (request.body as {segments: {source: {items?: {ids: string[]}}}[]}).segments[0]!.source.items?.ids[0] === 'late-video') {
+      lateSession = (response.body as {session: {id: string}}).session.id;
+      await delayed.hold();
+    }
+    return response;
+  });
+  const late = f.player.playSegments([{source: {items: {ids: ['late-video']}}}]);
+  const rejected = assert.rejects(late, {name: 'AbortError'});
+  await delayed.started;
+  await f.player.playSegments([{source: {items: {ids: ['current-video']}}}]);
+  const currentSession = f.player.currentSession()!.id;
+  delayed.release(); await rejected;
+  assert.equal(f.player.currentSession()!.id, currentSession);
+  assert.equal(f.playback.getSnapshot().session!.id, currentSession);
+  assert.equal(f.server.session(lateSession)!.ended, true);
+  assert.ok(f.server.queue(saved.queueId));
+});
 
 test('restorePaused keeps the original queue and position, with paused intent at every media adoption', async t => {
   const f = setup(t), saved = await f.seed(), run = f.playback.getSnapshot().playbackRun, resets = f.resets();
