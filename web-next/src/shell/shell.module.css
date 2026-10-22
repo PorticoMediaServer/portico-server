@@ -2,7 +2,7 @@
 .shell[data-desktop='true'] { --shell-gutter: clamp(32px, calc(32px + (100vw - 1024px) / 13), 64px); padding-bottom: 0; }
 .shell[data-has-dock='true'] { padding-bottom: calc(var(--shell-tab-height) + 78px); }
 .shell[data-desktop='true'][data-has-dock='true'] { padding-bottom: 92px; }
-.navigation { view-transition-name: nav; }
+.navigation { position: relative; z-index: var(--layer-navigation); view-transition-name: nav; }
 .topnav { position: fixed; z-index: var(--layer-navigation); inset: 0 0 auto; height: 76px; display: flex; align-items: center; gap: 40px; padding: 0 var(--shell-gutter); background: linear-gradient(180deg, color-mix(in srgb, var(--color-ink) 78%, transparent), transparent); }
 .topnav[data-solid='true'] { background: color-mix(in srgb, var(--color-ink) 88%, transparent); backdrop-filter: blur(24px); }
 .brand { color: var(--color-text); font-size: var(--type-nav-size); font-weight: var(--type-lockup-weight); line-height: var(--type-nav-line); letter-spacing: var(--type-nav-tracking); text-decoration: none; flex: none; }
