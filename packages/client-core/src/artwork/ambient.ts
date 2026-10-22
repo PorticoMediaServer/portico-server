@@ -10,7 +10,7 @@ export type AmbientArtworkIdentity = Readonly<{
 export type AmbientArtworkSource = Readonly<{
   url: string;
   cacheKey: string;
-  version: string | null;
+  version: string;
   variant: 'ambient-v1';
   maxEdge: 64;
 }>;
@@ -24,7 +24,7 @@ const artworkPatterns = [
 
 /**
  * Derives only the implemented ambient representation of a server-provided
- * selected-art URL. The foreground URL stays untouched. Pass the result to the
+ * versioned selected-art URL. The foreground URL stays untouched. Pass it to the
  * ordinary artwork scheduler/transport, including its real Retry-After policy.
  * No renderer, fetch, title selection, palette or colour is supplied here.
  */
@@ -43,7 +43,7 @@ export function ambientArtworkSource(artworkUrl: string | null | undefined, iden
   const allowed = new Set(['v', 'subject', 'w', 'size']);
   for (const key of params.keys()) if (!allowed.has(key) || params.getAll(key).length !== 1) return null;
   const version = params.get('v');
-  if (version !== null && !/^[a-f0-9]{64}$/.test(version)) return null;
+  if (version === null || !/^[a-f0-9]{64}$/.test(version)) return null;
   const subject = params.get('subject');
   if (subject !== null && (subject.length > 160 || /[\x00-\x1f\x7f]/.test(subject))) return null;
   params.delete('w');

@@ -34,15 +34,14 @@ test('cache identity is separated by source revision, variant and current author
     assert.notEqual(ambientArtworkSource(item + '?v=' + version, next)!.cacheKey, a.cacheKey);
   }
   assert.notEqual(ambientArtworkSource(item + '?v=' + 'b'.repeat(64), identity)!.cacheKey, a.cacheKey);
-  assert.equal(ambientArtworkSource(item, identity)!.version, null);
-  assert.notEqual(ambientArtworkSource(item, identity)!.cacheKey, a.cacheKey);
+  assert.equal(ambientArtworkSource(item, identity), null, 'a mutable URL cannot identify an indefinitely cached source');
 });
 
 test('ambient source refuses external, malformed, non-artwork and candidate identities', () => {
   for (const value of [null, undefined, '', '//foreign/image', 'https://foreign/image', '/assets/poster.png', item + '#fragment', item + '?v=bad', item + '?v=' + version + '&v=' + version, item + '?candidate=' + version, item + '?unknown=1', item + '?subject=' + 'x'.repeat(161), item + '?subject=%00', item + '?w=1?size=thumbnail', item.replace('title', '%2fsecret'), item.replace('title', '%2e%2e'), item.replace('title', '%zz'), item + ' ', 'x'.repeat(4097)]) {
     assert.equal(ambientArtworkSource(value, identity), null, String(value));
   }
-  assert.equal(ambientArtworkSource(item, {...identity, authorityKey: ''}), null);
+  assert.equal(ambientArtworkSource(item + '?v=' + version, {...identity, authorityKey: ''}), null);
 });
 
 test('foreground width policy retains all existing buckets and never selects ambient', () => {
