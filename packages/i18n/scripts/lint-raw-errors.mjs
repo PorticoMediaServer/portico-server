@@ -20,6 +20,7 @@ import {readdirSync, readFileSync, statSync} from 'node:fs';
 import {join, relative, resolve} from 'node:path';
 
 /** Hits another lane owns (or dev-only diagnostics): warn, don't fail. */
+const strict = process.argv.includes('--strict');
 const PENDING = [
   {file: 'screens/server/Libraries.tsx', pattern: 'error', reason: 'screens/server/** owned by the server-console lane (M21 Questions)'},
   {file: 'screens/server/Storage.tsx', pattern: 'error', reason: 'screens/server/** owned by the server-console lane (M21 Questions)'},
@@ -62,7 +63,7 @@ for (const dir of dirs) {
     const short = relative(root, file);
     const text = readFileSync(file, 'utf8');
     text.split('\n').forEach((line, i) => {
-      if (line.includes('lint-raw-errors-allow')) return;
+      if (!strict && line.includes('lint-raw-errors-allow')) return;
       const at = `${rel}:${i + 1}`;
       const checks = [];
       // P1 is JSX text: the line renders a tag. Logic lines that mention
@@ -71,7 +72,7 @@ for (const dir of dirs) {
       if (STRING_ERR.test(line)) checks.push(`String(err) in render path (${line.trim().slice(0, 100)})`);
       if (SETTER_MESSAGE.test(line)) checks.push(`setError(….message) passes raw text (${line.trim().slice(0, 100)})`);
       for (const c of checks) {
-        const pend = PENDING.find(p => short === p.file || short.endsWith('/' + p.file));
+        const pend = !strict && PENDING.find(p => short === p.file || short.endsWith('/' + p.file));
         if (pend && line.includes(pend.pattern)) {
           pendingSeen.add(pend.file);
           warnings.push(`pending ${at}: ${c} [${pend.reason}]`);
@@ -83,7 +84,7 @@ for (const dir of dirs) {
   }
 }
 
-for (const p of PENDING) {
+for (const p of strict ? [] : PENDING) {
   if (!pendingSeen.has(p.file)) console.log(`info: pending entry stale (fixed?): ${p.file} [${p.reason}]`);
 }
 for (const w of warnings) console.warn(`warning ${w}`);

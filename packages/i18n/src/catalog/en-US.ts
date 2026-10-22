@@ -9,6 +9,7 @@
  * Messages are ICU MessageFormat. IDs are stable: change a message's meaning
  * by adding a new ID, not by editing the old one (A11Y-12.10).
  */
+import {nextMessages} from './en-US/next/index.ts';
 import {webMessages} from './en-US/web.ts';
 import {channelMessages} from './en-US/channels.ts';
 import {preferenceMessages} from './en-US/preferences.ts';
@@ -2099,6 +2100,7 @@ export const enUS = {
   // ── Owner certificates and Apple's local plain HTTP (catalog/en-US/connection-trust.ts) ──
   ...connectionTrustMessages,
   ...secureConnectionMessages,
+  ...nextMessages,
 } as const satisfies Record<string, string>;
 
 export type MessageId = keyof typeof enUS;
