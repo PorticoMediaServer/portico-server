@@ -154,7 +154,7 @@ func (s *Service) CleanupBulkJobs(ctx context.Context, budget time.Duration) err
 			return e
 		}
 		more := false
-		for _, table := range []string{"personal_job_items", "personal_job_failures"} {
+		for _, table := range []string{"personal_job_items", "personal_job_failures", "personal_job_membership_outcomes"} {
 			if more, e = s.deleteBulkRows(ctx, table, id); e != nil {
 				return e
 			}
@@ -509,7 +509,12 @@ func (s *Service) AdvanceBulkJob(ctx context.Context, id string, access BulkAcce
 		args := append(append([]any{}, bound...), id, cursor, bulkBatchSize)
 		// Limit membership first, then check live visibility. Revoked members cannot
 		// disappear from the cursor and make the job loop indefinitely.
-		rows, e := tx.QueryContext(ctx, `SELECT m.ordinal,m.item_id,i.id IS NOT NULL AND i.retired=0 AND (`+visible+`),COALESCE(pid(i.public_id),'') FROM (SELECT ordinal,item_id FROM personal_job_items WHERE job_id=? AND ordinal>? ORDER BY ordinal LIMIT ?) m LEFT JOIN catalog_entities i ON i.id=m.item_id`, args...)
+		memberSQL := `SELECT m.ordinal,m.item_id,i.id IS NOT NULL AND i.retired=0 AND (`+visible+`),COALESCE(pid(i.public_id),'') FROM (SELECT ordinal,item_id FROM personal_job_items WHERE job_id=? AND ordinal>? ORDER BY ordinal LIMIT ?) m LEFT JOIN catalog_entities i ON i.id=m.item_id`
+		membership := j.Command == "playlist-add" || j.Command == "collection-add"
+		if membership {
+			memberSQL = `SELECT m.ordinal,m.item_id,i.id IS NOT NULL AND i.retired=0 AND i.public_id=outcome.item_public_id AND (`+visible+`),pid(outcome.item_public_id) FROM (SELECT ordinal,item_id,job_id FROM personal_job_items WHERE job_id=? AND ordinal>? ORDER BY ordinal LIMIT ?) m JOIN personal_job_details detail ON detail.job_id=m.job_id AND detail.item_id=m.item_id JOIN personal_job_membership_outcomes outcome ON outcome.job_id=m.job_id AND outcome.item_public_id=pid_blob(detail.expected) LEFT JOIN catalog_entities i ON i.id=m.item_id`
+		}
+		rows, e := tx.QueryContext(ctx, memberSQL, args...)
 		if e != nil {
 			return e
 		}
@@ -565,6 +570,11 @@ func (s *Service) AdvanceBulkJob(ctx context.Context, id string, access BulkAcce
 					return e
 				}
 				j.Failed++
+				if membership {
+					result, err := tx.ExecContext(ctx, `UPDATE personal_job_membership_outcomes SET outcome='failed',code=? WHERE job_id=? AND item_public_id=pid_blob(?) AND outcome='pending'`, code, id, m.publicID)
+					if err != nil { return err }
+					count, err := result.RowsAffected(); if err != nil { return err }; if count != 1 { return errors.New("membership failure did not match captured identity") }
+				}
 			} else {
 				j.Done++
 			}

@@ -108,6 +108,12 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, 
 	}
 	expected, sortKeys := map[int64]string{}, map[int64]string{}
 	for _, key := range keys {
+		if command == "playlist-add" || command == "collection-add" {
+			// This stable identity also fences apply against integer row-id reuse.
+			var publicID string
+			if e = snap.Tx().QueryRowContext(ctx, `SELECT pid(public_id) FROM catalog_entities WHERE id=?`, key).Scan(&publicID); e != nil { return out, e }
+			expected[key] = publicID
+		}
 		if command == "playlist-add" {
 			sortKeys[key], e = s.bulkSortKey(ctx, snap.Tx(), v, selector, key)
 			if e != nil {
@@ -162,6 +168,9 @@ func (s *Service) bulkCaptureStep(ctx context.Context, id string) (out BulkJob, 
 					if _, e = tx.ExecContext(ctx, `INSERT INTO personal_job_details(job_id,item_id,expected,sort_key) VALUES(?,?,?,?)`, id, key, expected[key], sortKeys[key]); e != nil {
 						return e
 					}
+				}
+				if command == "playlist-add" || command == "collection-add" {
+					if _, e = tx.ExecContext(ctx, `INSERT INTO personal_job_membership_outcomes(job_id,item_public_id,outcome) VALUES(?,pid_blob(?),'pending')`, id, expected[key]); e != nil { return e }
 				}
 				liveCursor = strconv.FormatInt(key, 10)
 			}
