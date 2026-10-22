@@ -94,8 +94,9 @@ export type SongRowProps = Omit<HTMLAttributes<HTMLDivElement>, 'onPlay'> & Read
 export function SongRow({row, onPlay, onMore, selection, context = 'list', className, ...props}: SongRowProps) {
   return <div {...props} className={[styles.songRow, className].filter(Boolean).join(' ')} data-playing={row.playing || undefined} data-context={context}>
     {context !== 'search' && <span className={styles.songNumber}>{selection ?? (row.playing ? <Levels/> : row.number === undefined ? undefined : defaultI18n.number(row.number))}</span>}
-    <button type="button" className={styles.songMain} onClick={() => onPlay(row.id)}>{row.artwork && <span className={styles.songArtwork}>{row.artwork}{context === 'search' && <Icon name="i-play" size={22} className={styles.songArtworkPlay} />}{context === 'search' && selection && <span className={styles.songSelection}>{selection}</span>}</span>}
+    <button type="button" className={styles.songMain} onClick={() => onPlay(row.id)}>{row.artwork && <span className={styles.songArtwork}>{row.artwork}{context === 'search' && <Icon name="i-play" size={22} className={styles.songArtworkPlay} />}</span>}
       <span className={styles.songText}><b>{row.text.title}</b>{row.text.caption.length > 0 && <small><Parts parts={row.text.caption}/></small>}</span><span className={styles.songDuration}>{rowDuration(row)}</span></button>
+    {context === 'search' && selection && <span className={styles.songSelection}>{selection}</span>}
     {onMore && <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={() => onMore(row.id)}/>}
   </div>;
 }

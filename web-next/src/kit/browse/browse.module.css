@@ -189,7 +189,7 @@
 .levels > i:nth-child(2) { height: 14px; }
 .levels > i:nth-child(3) { height: 6px; }
 .levels > i:nth-child(4) { height: 11px; }
-.songRow { display: flex; align-items: center; gap: 14px; height: 62px; padding: 0 14px 0 6px; border-radius: 10px; transition: background 140ms var(--ease-out); }
+.songRow { position: relative; display: flex; align-items: center; gap: 14px; height: 62px; padding: 0 14px 0 6px; border-radius: 10px; transition: background 140ms var(--ease-out); }
 .songRow:hover, .songRow:focus-within { background: color-mix(in srgb, var(--color-text) 6%, transparent); }
 .songNumber { flex: none; width: 22px; display: grid; place-items: center; font-size: 15px; font-weight: 700; color: var(--browse-muted); font-variant-numeric: tabular-nums; }
 .songMain { display: flex; align-items: center; gap: 14px; min-width: 0; flex: 1; height: 100%; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
@@ -204,7 +204,7 @@
 .songRow[data-context="search"] .songArtwork::after { content: ''; position: absolute; inset: 0; background: color-mix(in srgb, var(--color-ink) 55%, transparent); opacity: 0; transition: opacity 160ms var(--ease-out); }
 .songArtworkPlay { position: absolute; inset: 11px; color: var(--color-white); z-index: 1; opacity: 0; transition: opacity 160ms var(--ease-out); }
 .songRow:hover .songArtworkPlay, .songRow:focus-within .songArtworkPlay, .songRow:hover .songArtwork::after, .songRow:focus-within .songArtwork::after { opacity: 1; }
-.songSelection { position: absolute; inset: 0; display: grid; place-items: center; z-index: 2; }
+.songSelection { position: absolute; left: 6px; top: 7px; width: 44px; height: 44px; display: grid; place-items: center; z-index: 2; }
 .songRow[data-playing] b { color: var(--color-accent-strong); }
 .trackTable[data-platform=phone] .trackRow { height: 56px; }
 .trackTable[data-platform=phone] .trackHeading { display: none; }
@@ -213,4 +213,39 @@
 @media (hover: none) { .trackActions, .trackRow[data-favorite] .trackActions > button:not(.favoriteAction) { opacity: 1; } .trackSelection { display: grid; } }
 @media (max-width: 599px) { .filteredEmpty { padding-inline: 20px; } .filteredEmpty h2 { font-size: 28px; } }
 @media (prefers-reduced-motion: reduce) { .appliedChip, .fieldTile, .trackRow, .trackActions, .songRow, .songArtworkPlay { transition: none; } }
-[data-reduce-motion=true] .appliedChip, [data-reduce-motion=true] .fieldTile, [data-reduce-motion=true] .trackRow, [data-reduce-motion=true] .trackActions, [data-reduce-motion=true] .songRow, .songArtworkPlay { transition: none; }
+[data-reduce-motion=true] .appliedChip, [data-reduce-motion=true] .fieldTile, [data-reduce-motion=true] .trackRow, [data-reduce-motion=true] .trackActions, [data-reduce-motion=true] .songRow, [data-reduce-motion=true] .songArtworkPlay { transition: none; }
+
+/* Browse owns the geometry around shared control content, including its label wrappers. */
+.libraryIdentity > div:first-child { min-width: 0; }
+.roundSwitcher { display: grid; place-items: center; border: 0; color: var(--browse-text); cursor: pointer; flex: none; padding: 0; }
+.compactSwitcher { border: 0; background: none; color: var(--browse-text); cursor: pointer; font-family: inherit; height: 44px; }
+.compactSwitcher > span { overflow: hidden; text-overflow: ellipsis; }
+.roundSwitcher:focus-visible, .compactSwitcher:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+.libraryHeader .libraryMenuTrigger { width: 44px; height: 44px; background: var(--glass-fill); color: var(--browse-text); }
+.phoneHeaderRow > button[data-variant=text] { font-size: 15px; }
+.librarySwitcherMenu.librarySwitcherMenu, .libraryMenu.libraryMenu { padding: 6px 0; background: color-mix(in srgb, var(--color-raised-bright) 96%, transparent); backdrop-filter: blur(30px); }
+.libraryChoice[role=menuitemradio] { position: relative; padding-left: 40px; }
+.libraryChoice > svg:last-child { position: absolute; left: 12px; }
+.libraryChoice[data-selected=true] { background: none; }
+.librarySwitcherMenu [data-menu-item], .libraryMenu [data-menu-item] { height: 42px; border-radius: 0; }
+.libraryMenu .ownerGroup { margin: 6px 0 -6px; padding: 0 0 6px; }
+.libraryMenu .ownerGroup > div:first-child { padding: 0; border-top: 1px solid color-mix(in srgb, var(--color-accent-strong) 22%, transparent); background: linear-gradient(120deg, color-mix(in srgb, var(--color-accent) 26%, transparent), color-mix(in srgb, var(--color-accent) 6%, transparent) 70%); }
+.libraryMenu .ownerLabel { padding: 0 12px 0 14px; }
+.filtersLabel, .sortLabel { display: inline-flex; align-items: center; gap: 8px; }
+.filtersButton[data-size=small] { font-size: 14.5px; }
+.sortLabel { gap: 8px; }
+.sortMenu button { height: 36px; }
+.sortOrder button { height: 32px; }
+.viewToggle button[data-variant=icon] { border-radius: 8px; width: 38px; height: 34px; }
+.saveView[data-variant=text] { height: 40px; font-size: 14.5px; padding: 0 12px; }
+.facetChip { display: inline-flex; align-items: center; font: inherit; color: var(--browse-secondary); border: 0; cursor: pointer; background: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 16%, transparent); }
+.facetChip:hover { background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--browse-text); }
+.facetChip[data-selected] { background: color-mix(in srgb, var(--color-accent) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-strong) 62%, transparent); color: var(--browse-text); }
+.facetChip[data-selected] > svg { color: var(--color-accent-strong); }
+.facetChip small { font-size: 13px; font-weight: 600; color: var(--browse-muted); }
+.facetChip:focus-visible { outline: 3px solid var(--color-focus); outline-offset: 3px; }
+.filterBuilder[data-platform=phone] .facetChip[data-selected] { background: color-mix(in srgb, var(--color-accent) 28%, transparent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+.filterBuilder[data-platform=phone] .facetChip small { font-size: 12px; }
+.filterBuilder[data-platform=phone] .fieldTile[data-active] { box-shadow: none; }
+.trackActions > button[data-size=xs] { width: 36px; height: 36px; --control-icon: 20px; }
+@media (prefers-reduced-motion: reduce) { .songArtwork::after, .facetChip { transition: none; } }

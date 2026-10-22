@@ -24,10 +24,10 @@ export function FacetChips({values, included, excluded, onValueChange, cycleExcl
   return <div className={styles.facetChips}>{values.map(value => {
     const inside = included.includes(value.value), outside = excluded.includes(value.value);
     const next = nextFacetSelection(inside, outside, cycleExclusion);
-    return <Chip key={value.value} variant="facet" selected={inside} count={value.count} icon={inside ? 'i-check' : undefined}
-      className={outside ? styles.excludedFacet : undefined} aria-pressed={outside ? 'mixed' : inside}
+    return <button type="button" key={value.value} role="checkbox" aria-checked={outside ? 'mixed' : inside} data-selected={inside || undefined}
+      className={[styles.facetChip, outside && styles.excludedFacet].filter(Boolean).join(' ')}
       aria-label={t(next === 'exclude' ? 'next.browse.exclude' : next === 'clear' ? 'next.browse.clearValue' : 'next.browse.include', {value: value.label})}
-      onClick={() => onValueChange(value.value, next)}>{value.label}</Chip>;
+      onClick={() => onValueChange(value.value, next)}>{inside && <Icon name="i-check" size={16}/>}<span>{value.label}</span>{value.count !== undefined && <small>{defaultI18n.number(value.count)}</small>}</button>;
   })}</div>;
 }
 export type MatchModeProps = Readonly<{value: FilterMatch; allowAll: boolean; allowNone?: boolean; onValueChange: (value: FilterMatch) => void}>;
@@ -80,7 +80,7 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
               {state.status !== 'loading' && state.values.length === 0 && <span className={styles.fieldNotice}>{t('next.browse.noValues')}</span>}
               {state.total !== undefined && state.total > state.values.length && onShowAll && <Button variant="text" size="xs" className={styles.showAll} onClick={() => onShowAll(field.id)}>
                 {t('next.browse.showAll', {count: state.total, field: label.toLocaleLowerCase()})}<Icon name="i-down" size={14}/></Button>}</>}
-          {platform === 'phone' && <p className={styles.facetHelp}>{t('next.browse.facetHelp')}</p>}
+          {platform === 'phone' && canExclude && <p className={styles.facetHelp}>{t('next.browse.facetHelp')}</p>}
         </>}
         {state.kind === 'toggle' && <Segmented variant={platform === 'phone' ? 'phone' : 'browse'} value={state.value === undefined ? 'any' : state.value ? 'yes' : 'no'}
           items={[{value: 'any', label: t('next.browse.any')}, {value: 'yes', label: t('next.browse.yes')}, {value: 'no', label: t('next.browse.no')}]}

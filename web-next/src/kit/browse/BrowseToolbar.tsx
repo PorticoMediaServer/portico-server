@@ -17,7 +17,7 @@ export function sortDirectionLabel(field: string, direction: 'asc' | 'desc'): st
 export type FiltersButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & Readonly<{count?: number; open?: boolean}>;
 export function FiltersButton({count = 0, open = false, className, ...props}: FiltersButtonProps) {
   return <Button {...props} variant="glass" size="small" icon="i-filter" className={[styles.filtersButton, className].filter(Boolean).join(' ')} aria-expanded={open}>
-    {t('next.browse.filters')}{count > 0 && <span className={styles.filterBadge} aria-label={t('next.browse.filterCount', {count})}>{defaultI18n.number(count)}</span>}
+    <span className={styles.filtersLabel}>{t('next.browse.filters')}{count > 0 && <span className={styles.filterBadge} aria-label={t('next.browse.filterCount', {count})}>{defaultI18n.number(count)}</span>}</span>
   </Button>;
 }
 export type QuickToggleProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onChange'> & Readonly<{
@@ -41,7 +41,7 @@ export function SortMenu({sorts, value, onValueChange, label, open: controlledOp
     setOpen(false);
   };
   return <Popover open={open} onOpenChange={setOpen} title={t('next.browse.sortBy')} accessibilityLabel={t('next.browse.sortBy')} placement="bottom-end" width={300} className={styles.sortMenu}
-    trigger={<Chip variant="default" icon="i-sort" className={styles.sortTrigger} aria-expanded={open}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span>}<Icon name="i-down" size={14}/></Chip>}>
+    trigger={<Chip variant="default" icon="i-sort" trailingIcon="i-down" className={styles.sortTrigger} aria-expanded={open}><span className={styles.sortLabel}>{selected ? label(selected) : t('next.browse.sort')}{showOrder && <span className={styles.direction}>{sortDirectionLabel(value.field, value.direction)}</span>}</span></Chip>}>
     <div className={styles.menuHeading}>{t('next.browse.sortBy')}</div>
     {sorts.map(sort => <MenuRow key={sort.id} selected={sort.id === value.field} onClick={() => pick(sort)} description={sort.expensive ? t('next.browse.expensive') : undefined}>{label(sort)}</MenuRow>)}
     {showOrder && <div className={styles.sortOrder}><div className={styles.menuHeading}>{t('next.browse.order')}</div>
@@ -84,7 +84,6 @@ export type BrowseToolbarProps = Readonly<{
   save?: SaveViewControl; applied?: readonly AppliedChip[]; onRemoveFilter?: (id: string) => void; onClearFilters?: () => void;
   onJump?: () => void; selection?: ReactNode; actions?: ReactNode; className?: string;
 }>;
-const quickIcons: Readonly<Record<string, IconName>> = {favorites: 'i-heart', watchlist: 'i-bookmark'};
 export function BrowseToolbar({model, labels, resultCount, platform = 'desktop', sticky = false, topInset = 76, onQuickChange, onFilters, filtersOpen,
   onSortChange, onReshuffle, view, cardSize, save, applied = [], onRemoveFilter, onClearFilters, onJump, selection, actions, className}: BrowseToolbarProps) {
   const sort = <SortMenu sorts={model.sorts} value={model.sort} onValueChange={onSortChange} label={labels.sort} onReshuffle={onReshuffle}/>;
@@ -93,7 +92,7 @@ export function BrowseToolbar({model, labels, resultCount, platform = 'desktop',
     {selection ?? <><div className={styles.toolbarMain}>
       {platform === 'tv' ? <>{sort}{filters}{onJump && <Chip onClick={onJump}>{t('next.browse.jump')}<Icon name="i-down" size={16}/></Chip>}</> : filters}
       {platform === 'phone' && sort}<span className={styles.separator} aria-hidden="true"/>
-      {actions}{model.quick.map(quick => <QuickToggle key={quick.id} selected={quick.active} onCheckedChange={checked => onQuickChange(quick.id, checked)} icon={quickIcons[quick.id]}>{quick.label?.text ?? labels.quick(quick)}</QuickToggle>)}
+      {actions}{model.quick.map(quick => <QuickToggle key={quick.id} selected={quick.active} onCheckedChange={checked => onQuickChange(quick.id, checked)}>{quick.label?.text ?? labels.quick(quick)}</QuickToggle>)}
       {platform !== 'phone' && <div className={styles.toolbarEnd}><span className={styles.resultCount}>{resultCount}</span>{platform === 'desktop' && sort}
         {view && <ViewToggle {...view}/>} {cardSize && <CardSizeButton {...cardSize}/>} {save && <SaveViewButton {...save}/>}</div>}
     </div>{platform === 'phone' && <div className={styles.phoneCount}><span>{resultCount}</span>{save && <SaveViewButton {...save}/>}<span className={styles.phoneView}>{view && <ViewToggle {...view}/>}</span></div>}

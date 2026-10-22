@@ -8,6 +8,7 @@ import {defineGalleryFamily} from '../gallery-registry';
 import {Button, Tabs} from '../../kit/controls';
 import {Artwork, createArtworkRuntime, type ArtworkSource} from '../../kit/artwork';
 import {Popover} from '../../kit/overlays';
+import {OwnerTag} from '../../kit/shell';
 import {BrowseToolbar, FilterBuilder, FilteredEmpty, LibraryHeader, LibraryMenu, LibrarySwitcher, SongRow, SortMenu, StickyBrowseHeader, TrackTable,
   type BrowseLabels, type BrowsePlatform, type FilterFieldChange, type FilterFieldState, type TrackRowData} from '../../kit/browse';
 import styles from '../../kit/browse/gallery.module.css';
@@ -71,7 +72,7 @@ function headerCase(mode: 'desktop' | 'music' | 'phone' | 'switcher' | 'owner' |
     const switcher = <LibrarySwitcher libraries={choices} value={library} onValueChange={setLibrary} compact={phone} open={switcherOpen} onOpenChange={setSwitcherOpen}/>;
     const menuProps = {onSaveView: () => setOutcome(t('next.browse.saveThisView')), onMarkAll: () => setOutcome(t(mode === 'read' ? 'next.browse.markAllRead' : 'next.browse.markAllWatched')),
       onEditPins: () => setOutcome(t('next.browse.editPins')), read: mode === 'read', open: menuOpen, onOpenChange: setMenuOpen,
-      viewSummary: `${t('next.browse.title')} ${t('next.browse.asc.alpha')}`, countSummary: fixture('next.browse.example.movieCount', {count: 80})};
+      ownerMark: <OwnerTag size="phone"/>, viewSummary: `${t('next.browse.title')} ${t('next.browse.asc.alpha')}`, countSummary: fixture('next.browse.example.movieCount', {count: 80})};
     const menu = mode === 'member' ? <LibraryMenu {...menuProps} owner={false}/> : <LibraryMenu {...menuProps} owner onLibrarySettings={() => setOutcome(t('next.browse.librarySettings'))} onScan={() => setOutcome(t('next.browse.scan'))}/>;
     const tabs = <Tabs phone={phone} value={pivot} onValueChange={setPivot} className={phone ? styles.phoneTabs : styles.headerTabs}
       items={(['discover', 'movies', 'collections'] as const).map(value => ({value, label: fixture(`next.browse.example.${value}`)}))}/>;

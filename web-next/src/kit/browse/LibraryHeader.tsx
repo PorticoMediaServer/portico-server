@@ -2,7 +2,7 @@ import {useState, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {FactPart} from '@core/presentation/kit-model';
 import {Button} from '../controls';
-import {MenuGroup, MenuRow, Popover} from '../overlays';
+import {Menu, MenuGroup, MenuItem} from '../overlays';
 import {Icon} from '../Icon';
 import type {BrowsePlatform} from './types';
 import styles from './browse.module.css';
@@ -37,12 +37,12 @@ export function LibrarySwitcher({libraries, value, onValueChange, open: controll
   const [localOpen, setLocalOpen] = useState(false), open = controlledOpen ?? localOpen;
   const setOpen = (next: boolean) => { setLocalOpen(next); onOpenChange?.(next); };
   const name = libraries.find(library => library.id === value)?.name;
-  return <Popover open={open} onOpenChange={setOpen} title={t('next.browse.switchLibrary')} accessibilityLabel={t('next.browse.switchLibrary')}
+  return <Menu presentation="anchored" open={open} onOpenChange={setOpen} title={t('next.browse.switchLibrary')} accessibilityLabel={t('next.browse.switchLibrary')}
     placement="bottom-start" width={252} className={styles.librarySwitcherMenu}
-    trigger={<Button variant={compact ? 'text' : 'icon'} size="compact" className={[compact ? styles.compactSwitcher : styles.roundSwitcher, className].filter(Boolean).join(' ')}
-      aria-label={t('next.browse.switchLibrary')} aria-expanded={open}>{compact && name}<Icon name="i-down" size={compact ? 16 : 20}/></Button>}>
-    {libraries.map(library => <MenuRow key={library.id} selected={library.id === value} description={library.count} onClick={() => { onValueChange(library.id); setOpen(false); }}>{library.name}</MenuRow>)}
-  </Popover>;
+    trigger={<button type="button" className={[compact ? styles.compactSwitcher : styles.roundSwitcher, className].filter(Boolean).join(' ')}
+      aria-label={t('next.browse.switchLibrary')} aria-expanded={open}>{compact && <span>{name}</span>}<Icon name="i-down" size={compact ? 16 : 22}/></button>}>
+    {libraries.map(library => <MenuItem key={library.id} className={styles.libraryChoice} selected={library.id === value} description={library.count} onSelect={() => onValueChange(library.id)}>{library.name}</MenuItem>)}
+  </Menu>;
 }
 export type LibraryMenuProps = Readonly<{
   read?: boolean; onSaveView: () => void; onMarkAll: () => void; onEditPins: () => void;
@@ -52,15 +52,15 @@ export function LibraryMenu({owner, read = false, onSaveView, onMarkAll, onEditP
   const [localOpen, setLocalOpen] = useState(false), open = controlledOpen ?? localOpen;
   const setOpen = (next: boolean) => { setLocalOpen(next); onOpenChange?.(next); };
   const act = (callback: () => void) => () => { setOpen(false); callback(); };
-  return <Popover open={open} onOpenChange={setOpen} title={t('next.browse.libraryOptions')} accessibilityLabel={t('next.browse.libraryOptions')}
+  return <Menu presentation="anchored" open={open} onOpenChange={setOpen} title={t('next.browse.libraryOptions')} accessibilityLabel={t('next.browse.libraryOptions')}
     placement="bottom-end" width={282} className={styles.libraryMenu}
-    trigger={<Button variant="icon" size="compact" icon="i-more" iconOnly aria-label={t('next.browse.libraryOptions')}/>}>
-    <MenuRow icon="i-filter" description={viewSummary} onClick={act(onSaveView)}>{t('next.browse.saveThisView')}</MenuRow>
-    <MenuRow icon="i-check" description={countSummary} onClick={act(onMarkAll)}>{t(read ? 'next.browse.markAllRead' : 'next.browse.markAllWatched')}</MenuRow>
-    <MenuRow icon="i-updown" onClick={act(onEditPins)}>{t('next.browse.editPins')}</MenuRow>
+    trigger={<Button variant="icon" size="compact" icon="i-more" iconOnly className={styles.libraryMenuTrigger} aria-expanded={open} aria-label={t('next.browse.libraryOptions')}/>}>
+    <MenuItem icon="i-filter" description={viewSummary} onSelect={act(onSaveView)}>{t('next.browse.saveThisView')}</MenuItem>
+    <MenuItem icon="i-check" description={countSummary} onSelect={act(onMarkAll)}>{t(read ? 'next.browse.markAllRead' : 'next.browse.markAllWatched')}</MenuItem>
+    <MenuItem icon="i-updown" onSelect={act(onEditPins)}>{t('next.browse.editPins')}</MenuItem>
     {owner && <MenuGroup ownerOnly className={styles.ownerGroup} label={<span className={styles.ownerLabel}>{t('next.browse.server')}{ownerMark}</span>}>
-      {onLibrarySettings && <MenuRow icon="i-cog" onClick={act(onLibrarySettings)}>{t('next.browse.librarySettings')}</MenuRow>}
-      {onScan && <MenuRow icon="i-reload" onClick={act(onScan)}>{t('next.browse.scan')}</MenuRow>}
+      {onLibrarySettings && <MenuItem icon="i-cog" onSelect={act(onLibrarySettings)}>{t('next.browse.librarySettings')}</MenuItem>}
+      {onScan && <MenuItem icon="i-reload" onSelect={act(onScan)}>{t('next.browse.scan')}</MenuItem>}
     </MenuGroup>}
-  </Popover>;
+  </Menu>;
 }
