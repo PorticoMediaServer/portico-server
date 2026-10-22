@@ -71465,6 +71465,9 @@
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -71601,6 +71604,9 @@
                         "name": {
                           "type": "string"
                         },
+                        "origin": {
+                          "type": "string"
+                        },
                         "revision": {
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
@@ -71612,7 +71618,8 @@
                         "libraryId",
                         "name",
                         "itemCount",
-                        "revision"
+                        "revision",
+                        "origin"
                       ],
                       "type": "object"
                     },
@@ -71791,6 +71798,9 @@
                                 "type": "boolean"
                               },
                               "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "removeFromContinue": {
                                 "type": "boolean"
                               },
                               "selection": {
@@ -72135,6 +72145,9 @@
                                   "refreshMetadata": {
                                     "type": "boolean"
                                   },
+                                  "removeFromContinue": {
+                                    "type": "boolean"
+                                  },
                                   "selection": {
                                     "properties": {
                                       "collection": {
@@ -72346,6 +72359,9 @@
                               "new": {
                                 "type": "boolean"
                               },
+                              "origin": {
+                                "type": "string"
+                              },
                               "overview": {
                                 "type": "string"
                               },
@@ -72386,6 +72402,9 @@
                               },
                               "rating": {
                                 "type": "number"
+                              },
+                              "removed": {
+                                "type": "boolean"
                               },
                               "resolution": {
                                 "type": "string"
@@ -72475,6 +72494,16 @@
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
                                 "type": "integer"
+                              },
+                              "yearMax": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "yearMin": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
                               }
                             },
                             "required": [
@@ -72508,6 +72537,9 @@
                           },
                           "new": {
                             "type": "boolean"
+                          },
+                          "origin": {
+                            "type": "string"
                           },
                           "overview": {
                             "type": "string"
@@ -72549,6 +72581,9 @@
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -72638,6 +72673,16 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -72668,6 +72713,25 @@
                     false
                   ],
                   "type": "boolean"
+                },
+                "displayTargets": {
+                  "items": {
+                    "properties": {
+                      "entryId": {
+                        "type": "string"
+                      },
+                      "membershipId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "membershipId",
+                      "entryId"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 60,
+                  "type": "array"
                 },
                 "endpoint": {
                   "type": "string"
@@ -72836,6 +72900,9 @@
                             "type": "boolean"
                           },
                           "refreshMetadata": {
+                            "type": "boolean"
+                          },
+                          "removeFromContinue": {
                             "type": "boolean"
                           },
                           "selection": {
@@ -73180,6 +73247,9 @@
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -73391,6 +73461,9 @@
                           "new": {
                             "type": "boolean"
                           },
+                          "origin": {
+                            "type": "string"
+                          },
                           "overview": {
                             "type": "string"
                           },
@@ -73431,6 +73504,9 @@
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -73520,6 +73596,16 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
                           }
                         },
                         "required": [
@@ -73553,6 +73639,9 @@
                       },
                       "new": {
                         "type": "boolean"
+                      },
+                      "origin": {
+                        "type": "string"
                       },
                       "overview": {
                         "type": "string"
@@ -73594,6 +73683,9 @@
                       },
                       "rating": {
                         "type": "number"
+                      },
+                      "removed": {
+                        "type": "boolean"
                       },
                       "resolution": {
                         "type": "string"
@@ -73680,6 +73772,16 @@
                         "type": "boolean"
                       },
                       "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMax": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "yearMin": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
                         "type": "integer"
@@ -74360,6 +74462,9 @@
                               "refreshMetadata": {
                                 "type": "boolean"
                               },
+                              "removeFromContinue": {
+                                "type": "boolean"
+                              },
                               "selection": {
                                 "properties": {
                                   "collection": {
@@ -74702,6 +74807,9 @@
                                   "refreshMetadata": {
                                     "type": "boolean"
                                   },
+                                  "removeFromContinue": {
+                                    "type": "boolean"
+                                  },
                                   "selection": {
                                     "properties": {
                                       "collection": {
@@ -74913,6 +75021,9 @@
                               "new": {
                                 "type": "boolean"
                               },
+                              "origin": {
+                                "type": "string"
+                              },
                               "overview": {
                                 "type": "string"
                               },
@@ -74953,6 +75064,9 @@
                               },
                               "rating": {
                                 "type": "number"
+                              },
+                              "removed": {
+                                "type": "boolean"
                               },
                               "resolution": {
                                 "type": "string"
@@ -75042,6 +75156,16 @@
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
                                 "type": "integer"
+                              },
+                              "yearMax": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "yearMin": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
                               }
                             },
                             "required": [
@@ -75075,6 +75199,9 @@
                           },
                           "new": {
                             "type": "boolean"
+                          },
+                          "origin": {
+                            "type": "string"
                           },
                           "overview": {
                             "type": "string"
@@ -75116,6 +75243,9 @@
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -75202,6 +75332,16 @@
                             "type": "boolean"
                           },
                           "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
@@ -75533,6 +75673,46 @@
                 },
                 "viewerFence": {
                   "type": "string"
+                },
+                "why": {
+                  "properties": {
+                    "code": {
+                      "type": "string"
+                    },
+                    "fallback": {
+                      "type": "string"
+                    },
+                    "params": {
+                      "additionalProperties": {
+                        "type": "string"
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "code",
+                    "fallback"
+                  ],
+                  "type": "object"
+                },
+                "whyTitles": {
+                  "items": {
+                    "properties": {
+                      "id": {
+                        "type": "string"
+                      },
+                      "name": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "id",
+                      "name"
+                    ],
+                    "type": "object"
+                  },
+                  "maxItems": 3,
+                  "type": "array"
                 }
               },
               "required": [
@@ -75606,6 +75786,9 @@
                     "type": "boolean"
                   },
                   "refreshMetadata": {
+                    "type": "boolean"
+                  },
+                  "removeFromContinue": {
                     "type": "boolean"
                   },
                   "selection": {
@@ -75744,6 +75927,9 @@
                   "name": {
                     "type": "string"
                   },
+                  "origin": {
+                    "type": "string"
+                  },
                   "revision": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -75755,7 +75941,8 @@
                   "libraryId",
                   "name",
                   "itemCount",
-                  "revision"
+                  "revision",
+                  "origin"
                 ],
                 "type": "object"
               },
@@ -75934,6 +76121,9 @@
                           "type": "boolean"
                         },
                         "refreshMetadata": {
+                          "type": "boolean"
+                        },
+                        "removeFromContinue": {
                           "type": "boolean"
                         },
                         "selection": {
@@ -76278,6 +76468,9 @@
                             "refreshMetadata": {
                               "type": "boolean"
                             },
+                            "removeFromContinue": {
+                              "type": "boolean"
+                            },
                             "selection": {
                               "properties": {
                                 "collection": {
@@ -76489,6 +76682,9 @@
                         "new": {
                           "type": "boolean"
                         },
+                        "origin": {
+                          "type": "string"
+                        },
                         "overview": {
                           "type": "string"
                         },
@@ -76529,6 +76725,9 @@
                         },
                         "rating": {
                           "type": "number"
+                        },
+                        "removed": {
+                          "type": "boolean"
                         },
                         "resolution": {
                           "type": "string"
@@ -76618,6 +76817,16 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "yearMax": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "yearMin": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         }
                       },
                       "required": [
@@ -76651,6 +76860,9 @@
                     },
                     "new": {
                       "type": "boolean"
+                    },
+                    "origin": {
+                      "type": "string"
                     },
                     "overview": {
                       "type": "string"
@@ -76692,6 +76904,9 @@
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -76781,6 +76996,16 @@
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -76808,6 +77033,25 @@
           },
           "deferred": {
             "type": "boolean"
+          },
+          "displayTargets": {
+            "items": {
+              "properties": {
+                "entryId": {
+                  "type": "string"
+                },
+                "membershipId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "membershipId",
+                "entryId"
+              ],
+              "type": "object"
+            },
+            "maxItems": 60,
+            "type": "array"
           },
           "endpoint": {
             "type": "string"
@@ -76976,6 +77220,9 @@
                       "type": "boolean"
                     },
                     "refreshMetadata": {
+                      "type": "boolean"
+                    },
+                    "removeFromContinue": {
                       "type": "boolean"
                     },
                     "selection": {
@@ -77320,6 +77567,9 @@
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -77531,6 +77781,9 @@
                     "new": {
                       "type": "boolean"
                     },
+                    "origin": {
+                      "type": "string"
+                    },
                     "overview": {
                       "type": "string"
                     },
@@ -77571,6 +77824,9 @@
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -77660,6 +77916,16 @@
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
                     }
                   },
                   "required": [
@@ -77693,6 +77959,9 @@
                 },
                 "new": {
                   "type": "boolean"
+                },
+                "origin": {
+                  "type": "string"
                 },
                 "overview": {
                   "type": "string"
@@ -77734,6 +78003,9 @@
                 },
                 "rating": {
                   "type": "number"
+                },
+                "removed": {
+                  "type": "boolean"
                 },
                 "resolution": {
                   "type": "string"
@@ -77820,6 +78092,16 @@
                   "type": "boolean"
                 },
                 "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMax": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "yearMin": {
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
@@ -78500,6 +78782,9 @@
                         "refreshMetadata": {
                           "type": "boolean"
                         },
+                        "removeFromContinue": {
+                          "type": "boolean"
+                        },
                         "selection": {
                           "properties": {
                             "collection": {
@@ -78842,6 +79127,9 @@
                             "refreshMetadata": {
                               "type": "boolean"
                             },
+                            "removeFromContinue": {
+                              "type": "boolean"
+                            },
                             "selection": {
                               "properties": {
                                 "collection": {
@@ -79053,6 +79341,9 @@
                         "new": {
                           "type": "boolean"
                         },
+                        "origin": {
+                          "type": "string"
+                        },
                         "overview": {
                           "type": "string"
                         },
@@ -79093,6 +79384,9 @@
                         },
                         "rating": {
                           "type": "number"
+                        },
+                        "removed": {
+                          "type": "boolean"
                         },
                         "resolution": {
                           "type": "string"
@@ -79182,6 +79476,16 @@
                           "maximum": 9007199254740991,
                           "minimum": -9007199254740991,
                           "type": "integer"
+                        },
+                        "yearMax": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "yearMin": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
                         }
                       },
                       "required": [
@@ -79215,6 +79519,9 @@
                     },
                     "new": {
                       "type": "boolean"
+                    },
+                    "origin": {
+                      "type": "string"
                     },
                     "overview": {
                       "type": "string"
@@ -79256,6 +79563,9 @@
                     },
                     "rating": {
                       "type": "number"
+                    },
+                    "removed": {
+                      "type": "boolean"
                     },
                     "resolution": {
                       "type": "string"
@@ -79342,6 +79652,16 @@
                       "type": "boolean"
                     },
                     "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMax": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "yearMin": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
@@ -79673,6 +79993,46 @@
           },
           "viewerFence": {
             "type": "string"
+          },
+          "why": {
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "fallback": {
+                "type": "string"
+              },
+              "params": {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "code",
+              "fallback"
+            ],
+            "type": "object"
+          },
+          "whyTitles": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "name"
+              ],
+              "type": "object"
+            },
+            "maxItems": 3,
+            "type": "array"
           }
         },
         "required": [
@@ -108555,6 +108915,9 @@
                       "country": {
                         "type": "string"
                       },
+                      "dateBased": {
+                        "type": "boolean"
+                      },
                       "discNumber": {
                         "maximum": 9007199254740991,
                         "minimum": -9007199254740991,
@@ -108906,6 +109269,9 @@
                           },
                           "country": {
                             "type": "string"
+                          },
+                          "dateBased": {
+                            "type": "boolean"
                           },
                           "discNumber": {
                             "maximum": 9007199254740991,
@@ -109264,6 +109630,9 @@
                           "sortLetter": {
                             "type": "string"
                           },
+                          "special": {
+                            "type": "boolean"
+                          },
                           "stillUrl": {
                             "type": "string"
                           },
@@ -109439,6 +109808,9 @@
                       },
                       "sortLetter": {
                         "type": "string"
+                      },
+                      "special": {
+                        "type": "boolean"
                       },
                       "stillUrl": {
                         "type": "string"
@@ -311194,6 +311566,9 @@
                                   "refreshMetadata": {
                                     "type": "boolean"
                                   },
+                                  "removeFromContinue": {
+                                    "type": "boolean"
+                                  },
                                   "selection": {
                                     "properties": {
                                       "collection": {
@@ -311330,6 +311705,9 @@
                                   "name": {
                                     "type": "string"
                                   },
+                                  "origin": {
+                                    "type": "string"
+                                  },
                                   "revision": {
                                     "maximum": 9007199254740991,
                                     "minimum": -9007199254740991,
@@ -311341,7 +311719,8 @@
                                   "libraryId",
                                   "name",
                                   "itemCount",
-                                  "revision"
+                                  "revision",
+                                  "origin"
                                 ],
                                 "type": "object"
                               },
@@ -311520,6 +311899,9 @@
                                           "type": "boolean"
                                         },
                                         "refreshMetadata": {
+                                          "type": "boolean"
+                                        },
+                                        "removeFromContinue": {
                                           "type": "boolean"
                                         },
                                         "selection": {
@@ -311864,6 +312246,9 @@
                                             "refreshMetadata": {
                                               "type": "boolean"
                                             },
+                                            "removeFromContinue": {
+                                              "type": "boolean"
+                                            },
                                             "selection": {
                                               "properties": {
                                                 "collection": {
@@ -312075,6 +312460,9 @@
                                         "new": {
                                           "type": "boolean"
                                         },
+                                        "origin": {
+                                          "type": "string"
+                                        },
                                         "overview": {
                                           "type": "string"
                                         },
@@ -312115,6 +312503,9 @@
                                         },
                                         "rating": {
                                           "type": "number"
+                                        },
+                                        "removed": {
+                                          "type": "boolean"
                                         },
                                         "resolution": {
                                           "type": "string"
@@ -312204,6 +312595,16 @@
                                           "maximum": 9007199254740991,
                                           "minimum": -9007199254740991,
                                           "type": "integer"
+                                        },
+                                        "yearMax": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "yearMin": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
                                         }
                                       },
                                       "required": [
@@ -312237,6 +312638,9 @@
                                     },
                                     "new": {
                                       "type": "boolean"
+                                    },
+                                    "origin": {
+                                      "type": "string"
                                     },
                                     "overview": {
                                       "type": "string"
@@ -312278,6 +312682,9 @@
                                     },
                                     "rating": {
                                       "type": "number"
+                                    },
+                                    "removed": {
+                                      "type": "boolean"
                                     },
                                     "resolution": {
                                       "type": "string"
@@ -312367,6 +312774,16 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "yearMax": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "yearMin": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
                                     }
                                   },
                                   "required": [
@@ -312397,6 +312814,25 @@
                               false
                             ],
                             "type": "boolean"
+                          },
+                          "displayTargets": {
+                            "items": {
+                              "properties": {
+                                "entryId": {
+                                  "type": "string"
+                                },
+                                "membershipId": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "membershipId",
+                                "entryId"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 60,
+                            "type": "array"
                           },
                           "endpoint": {
                             "type": "string"
@@ -312565,6 +313001,9 @@
                                       "type": "boolean"
                                     },
                                     "refreshMetadata": {
+                                      "type": "boolean"
+                                    },
+                                    "removeFromContinue": {
                                       "type": "boolean"
                                     },
                                     "selection": {
@@ -312909,6 +313348,9 @@
                                         "refreshMetadata": {
                                           "type": "boolean"
                                         },
+                                        "removeFromContinue": {
+                                          "type": "boolean"
+                                        },
                                         "selection": {
                                           "properties": {
                                             "collection": {
@@ -313120,6 +313562,9 @@
                                     "new": {
                                       "type": "boolean"
                                     },
+                                    "origin": {
+                                      "type": "string"
+                                    },
                                     "overview": {
                                       "type": "string"
                                     },
@@ -313160,6 +313605,9 @@
                                     },
                                     "rating": {
                                       "type": "number"
+                                    },
+                                    "removed": {
+                                      "type": "boolean"
                                     },
                                     "resolution": {
                                       "type": "string"
@@ -313249,6 +313697,16 @@
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
+                                    },
+                                    "yearMax": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "yearMin": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
                                     }
                                   },
                                   "required": [
@@ -313282,6 +313740,9 @@
                                 },
                                 "new": {
                                   "type": "boolean"
+                                },
+                                "origin": {
+                                  "type": "string"
                                 },
                                 "overview": {
                                   "type": "string"
@@ -313323,6 +313784,9 @@
                                 },
                                 "rating": {
                                   "type": "number"
+                                },
+                                "removed": {
+                                  "type": "boolean"
                                 },
                                 "resolution": {
                                   "type": "string"
@@ -313409,6 +313873,16 @@
                                   "type": "boolean"
                                 },
                                 "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "yearMax": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "yearMin": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
                                   "type": "integer"
@@ -314089,6 +314563,9 @@
                                         "refreshMetadata": {
                                           "type": "boolean"
                                         },
+                                        "removeFromContinue": {
+                                          "type": "boolean"
+                                        },
                                         "selection": {
                                           "properties": {
                                             "collection": {
@@ -314431,6 +314908,9 @@
                                             "refreshMetadata": {
                                               "type": "boolean"
                                             },
+                                            "removeFromContinue": {
+                                              "type": "boolean"
+                                            },
                                             "selection": {
                                               "properties": {
                                                 "collection": {
@@ -314642,6 +315122,9 @@
                                         "new": {
                                           "type": "boolean"
                                         },
+                                        "origin": {
+                                          "type": "string"
+                                        },
                                         "overview": {
                                           "type": "string"
                                         },
@@ -314682,6 +315165,9 @@
                                         },
                                         "rating": {
                                           "type": "number"
+                                        },
+                                        "removed": {
+                                          "type": "boolean"
                                         },
                                         "resolution": {
                                           "type": "string"
@@ -314771,6 +315257,16 @@
                                           "maximum": 9007199254740991,
                                           "minimum": -9007199254740991,
                                           "type": "integer"
+                                        },
+                                        "yearMax": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
+                                        },
+                                        "yearMin": {
+                                          "maximum": 9007199254740991,
+                                          "minimum": -9007199254740991,
+                                          "type": "integer"
                                         }
                                       },
                                       "required": [
@@ -314804,6 +315300,9 @@
                                     },
                                     "new": {
                                       "type": "boolean"
+                                    },
+                                    "origin": {
+                                      "type": "string"
                                     },
                                     "overview": {
                                       "type": "string"
@@ -314845,6 +315344,9 @@
                                     },
                                     "rating": {
                                       "type": "number"
+                                    },
+                                    "removed": {
+                                      "type": "boolean"
                                     },
                                     "resolution": {
                                       "type": "string"
@@ -314931,6 +315433,16 @@
                                       "type": "boolean"
                                     },
                                     "year": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "yearMax": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "yearMin": {
                                       "maximum": 9007199254740991,
                                       "minimum": -9007199254740991,
                                       "type": "integer"
@@ -315262,6 +315774,46 @@
                           },
                           "viewerFence": {
                             "type": "string"
+                          },
+                          "why": {
+                            "properties": {
+                              "code": {
+                                "type": "string"
+                              },
+                              "fallback": {
+                                "type": "string"
+                              },
+                              "params": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "type": "object"
+                              }
+                            },
+                            "required": [
+                              "code",
+                              "fallback"
+                            ],
+                            "type": "object"
+                          },
+                          "whyTitles": {
+                            "items": {
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "name": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "name"
+                              ],
+                              "type": "object"
+                            },
+                            "maxItems": 3,
+                            "type": "array"
                           }
                         },
                         "required": [
@@ -315335,6 +315887,9 @@
                               "type": "boolean"
                             },
                             "refreshMetadata": {
+                              "type": "boolean"
+                            },
+                            "removeFromContinue": {
                               "type": "boolean"
                             },
                             "selection": {
@@ -315473,6 +316028,9 @@
                             "name": {
                               "type": "string"
                             },
+                            "origin": {
+                              "type": "string"
+                            },
                             "revision": {
                               "maximum": 9007199254740991,
                               "minimum": -9007199254740991,
@@ -315484,7 +316042,8 @@
                             "libraryId",
                             "name",
                             "itemCount",
-                            "revision"
+                            "revision",
+                            "origin"
                           ],
                           "type": "object"
                         },
@@ -315663,6 +316222,9 @@
                                     "type": "boolean"
                                   },
                                   "refreshMetadata": {
+                                    "type": "boolean"
+                                  },
+                                  "removeFromContinue": {
                                     "type": "boolean"
                                   },
                                   "selection": {
@@ -316007,6 +316569,9 @@
                                       "refreshMetadata": {
                                         "type": "boolean"
                                       },
+                                      "removeFromContinue": {
+                                        "type": "boolean"
+                                      },
                                       "selection": {
                                         "properties": {
                                           "collection": {
@@ -316218,6 +316783,9 @@
                                   "new": {
                                     "type": "boolean"
                                   },
+                                  "origin": {
+                                    "type": "string"
+                                  },
                                   "overview": {
                                     "type": "string"
                                   },
@@ -316258,6 +316826,9 @@
                                   },
                                   "rating": {
                                     "type": "number"
+                                  },
+                                  "removed": {
+                                    "type": "boolean"
                                   },
                                   "resolution": {
                                     "type": "string"
@@ -316347,6 +316918,16 @@
                                     "maximum": 9007199254740991,
                                     "minimum": -9007199254740991,
                                     "type": "integer"
+                                  },
+                                  "yearMax": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "yearMin": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
                                   }
                                 },
                                 "required": [
@@ -316380,6 +316961,9 @@
                               },
                               "new": {
                                 "type": "boolean"
+                              },
+                              "origin": {
+                                "type": "string"
                               },
                               "overview": {
                                 "type": "string"
@@ -316421,6 +317005,9 @@
                               },
                               "rating": {
                                 "type": "number"
+                              },
+                              "removed": {
+                                "type": "boolean"
                               },
                               "resolution": {
                                 "type": "string"
@@ -316510,6 +317097,16 @@
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
                                 "type": "integer"
+                              },
+                              "yearMax": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "yearMin": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
                               }
                             },
                             "required": [
@@ -316537,6 +317134,25 @@
                     },
                     "deferred": {
                       "type": "boolean"
+                    },
+                    "displayTargets": {
+                      "items": {
+                        "properties": {
+                          "entryId": {
+                            "type": "string"
+                          },
+                          "membershipId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "membershipId",
+                          "entryId"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 60,
+                      "type": "array"
                     },
                     "endpoint": {
                       "type": "string"
@@ -316705,6 +317321,9 @@
                                 "type": "boolean"
                               },
                               "refreshMetadata": {
+                                "type": "boolean"
+                              },
+                              "removeFromContinue": {
                                 "type": "boolean"
                               },
                               "selection": {
@@ -317049,6 +317668,9 @@
                                   "refreshMetadata": {
                                     "type": "boolean"
                                   },
+                                  "removeFromContinue": {
+                                    "type": "boolean"
+                                  },
                                   "selection": {
                                     "properties": {
                                       "collection": {
@@ -317260,6 +317882,9 @@
                               "new": {
                                 "type": "boolean"
                               },
+                              "origin": {
+                                "type": "string"
+                              },
                               "overview": {
                                 "type": "string"
                               },
@@ -317300,6 +317925,9 @@
                               },
                               "rating": {
                                 "type": "number"
+                              },
+                              "removed": {
+                                "type": "boolean"
                               },
                               "resolution": {
                                 "type": "string"
@@ -317389,6 +318017,16 @@
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
                                 "type": "integer"
+                              },
+                              "yearMax": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "yearMin": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
                               }
                             },
                             "required": [
@@ -317422,6 +318060,9 @@
                           },
                           "new": {
                             "type": "boolean"
+                          },
+                          "origin": {
+                            "type": "string"
                           },
                           "overview": {
                             "type": "string"
@@ -317463,6 +318104,9 @@
                           },
                           "rating": {
                             "type": "number"
+                          },
+                          "removed": {
+                            "type": "boolean"
                           },
                           "resolution": {
                             "type": "string"
@@ -317549,6 +318193,16 @@
                             "type": "boolean"
                           },
                           "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMax": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "yearMin": {
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
@@ -318229,6 +318883,9 @@
                                   "refreshMetadata": {
                                     "type": "boolean"
                                   },
+                                  "removeFromContinue": {
+                                    "type": "boolean"
+                                  },
                                   "selection": {
                                     "properties": {
                                       "collection": {
@@ -318571,6 +319228,9 @@
                                       "refreshMetadata": {
                                         "type": "boolean"
                                       },
+                                      "removeFromContinue": {
+                                        "type": "boolean"
+                                      },
                                       "selection": {
                                         "properties": {
                                           "collection": {
@@ -318782,6 +319442,9 @@
                                   "new": {
                                     "type": "boolean"
                                   },
+                                  "origin": {
+                                    "type": "string"
+                                  },
                                   "overview": {
                                     "type": "string"
                                   },
@@ -318822,6 +319485,9 @@
                                   },
                                   "rating": {
                                     "type": "number"
+                                  },
+                                  "removed": {
+                                    "type": "boolean"
                                   },
                                   "resolution": {
                                     "type": "string"
@@ -318911,6 +319577,16 @@
                                     "maximum": 9007199254740991,
                                     "minimum": -9007199254740991,
                                     "type": "integer"
+                                  },
+                                  "yearMax": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
+                                  },
+                                  "yearMin": {
+                                    "maximum": 9007199254740991,
+                                    "minimum": -9007199254740991,
+                                    "type": "integer"
                                   }
                                 },
                                 "required": [
@@ -318944,6 +319620,9 @@
                               },
                               "new": {
                                 "type": "boolean"
+                              },
+                              "origin": {
+                                "type": "string"
                               },
                               "overview": {
                                 "type": "string"
@@ -318985,6 +319664,9 @@
                               },
                               "rating": {
                                 "type": "number"
+                              },
+                              "removed": {
+                                "type": "boolean"
                               },
                               "resolution": {
                                 "type": "string"
@@ -319071,6 +319753,16 @@
                                 "type": "boolean"
                               },
                               "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "yearMax": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "yearMin": {
                                 "maximum": 9007199254740991,
                                 "minimum": -9007199254740991,
                                 "type": "integer"
@@ -319402,6 +320094,46 @@
                     },
                     "viewerFence": {
                       "type": "string"
+                    },
+                    "why": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "fallback": {
+                          "type": "string"
+                        },
+                        "params": {
+                          "additionalProperties": {
+                            "type": "string"
+                          },
+                          "type": "object"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "fallback"
+                      ],
+                      "type": "object"
+                    },
+                    "whyTitles": {
+                      "items": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "name": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "name"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 3,
+                      "type": "array"
                     }
                   },
                   "required": [
@@ -377549,6 +378281,9 @@
                                 "country": {
                                   "type": "string"
                                 },
+                                "dateBased": {
+                                  "type": "boolean"
+                                },
                                 "discNumber": {
                                   "maximum": 9007199254740991,
                                   "minimum": -9007199254740991,
@@ -377900,6 +378635,9 @@
                                     },
                                     "country": {
                                       "type": "string"
+                                    },
+                                    "dateBased": {
+                                      "type": "boolean"
                                     },
                                     "discNumber": {
                                       "maximum": 9007199254740991,
@@ -378258,6 +378996,9 @@
                                     "sortLetter": {
                                       "type": "string"
                                     },
+                                    "special": {
+                                      "type": "boolean"
+                                    },
                                     "stillUrl": {
                                       "type": "string"
                                     },
@@ -378433,6 +379174,9 @@
                                 },
                                 "sortLetter": {
                                   "type": "string"
+                                },
+                                "special": {
+                                  "type": "boolean"
                                 },
                                 "stillUrl": {
                                   "type": "string"
