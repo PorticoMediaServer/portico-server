@@ -16,7 +16,7 @@ import styles from '../../kit/selection/gallery.module.css';
 
 const fixture = (key: keyof typeof selectionFixtures, values?: Record<string, string | number>) => formatMessage(selectionFixtures[key], values);
 const titleKeys = ['movie1', 'movie2', 'movie3', 'movie4'] as const;
-const files = ['movies/toy-story.jpg', 'movies/toy-story-2.jpg', 'movies/toy-story-3.jpg', 'movies/toy-story-5.jpg', 'movies/inside-out.jpg', 'movies/moana.jpg', 'movies/the-incredibles.jpg', 'movies/dune.jpg', 'tv/the-last-of-us--bd.jpg', 'albums/after-hours.jpg'] as const;
+const files = ['movies/toy-story.jpg', 'movies/toy-story-2.jpg', 'movies/toy-story-3.jpg', 'movies/toy-story-5.jpg', 'movies/inside-out.jpg', 'movies/moana.jpg', 'movies/the-incredibles.jpg', 'movies/dune.jpg', 'tv/the-last-of-us--bd.jpg', 'albums/after-hours.jpg', ...['interstellar','oppenheimer','inception','back-to-the-future','jurassic-park','raiders-of-the-lost-ark','jaws','spirited-away','wall-e','monsters-inc','how-to-train-your-dragon','aliens','the-terminator','blade-runner','your-name','grave-of-the-fireflies','hope'].map(file => `movies/${file}.jpg`), 'bd-tlou.jpg'] as const;
 const names = () => titleKeys.map(key => fixture(`next.selection.fixture.${key}`));
 
 function useReferenceArt() {
@@ -29,7 +29,7 @@ function useReferenceArt() {
     finally { signal.removeEventListener('abort', cancel); }
   }, classify: () => ({retryable: false})}), []);
   useEffect(() => () => runtime.dispose(), [runtime]);
-  return useMemo(() => files.map(file => runtime.source({url: `http://100.120.50.24:8787/assets/pool/${file}`, cacheKey: `selection-reference:${file}`})), [runtime]);
+  return useMemo(() => files.map(file => runtime.source({url: `http://100.120.50.24:8787/assets/${file === 'bd-tlou.jpg' ? file : `pool/${file}`}`, cacheKey: `selection-reference:${file}`})), [runtime]);
 }
 function Stage({children}: {children: ReactNode}) { return <div className={styles.stage}>{children}</div>; }
 function useTargets(): readonly SelectionItemDisplay[] {
@@ -69,7 +69,7 @@ function schemaField(field: string, label: string, type: RepairFieldSpec['type']
     ...(type === 'list' ? {max: 64} : {})};
 }
 function Editor({kind = 'movie', partial = false, error = false, busy = false}: {kind?: 'movie' | 'episode' | 'song'; partial?: boolean; error?: boolean; busy?: boolean}) {
-  const allTargets = useTargets(), art = useReferenceArt(), targets = kind === 'episode' ? allTargets.slice(0, 3).map((target, index) => ({...target, title: fixture(`next.selection.fixture.episode${index + 1}` as keyof typeof selectionFixtures), artwork: <Artwork source={art[8]} alt="" width="100%" height="100%" zoom={2.4} saturation={.55} brightness={.42} />})) : kind === 'song' ? allTargets.map((target, index) => ({...target, title: fixture(`next.selection.fixture.track${index + 1}` as keyof typeof selectionFixtures), artwork: <Artwork source={art[9]} alt="" width="100%" height="100%" />})) : allTargets;
+  const allTargets = useTargets(), art = useReferenceArt(), targets = kind === 'episode' ? allTargets.slice(0, 3).map((target, index) => ({...target, title: fixture(`next.selection.fixture.episode${index + 1}` as keyof typeof selectionFixtures), artwork: <Artwork source={art[27]} alt="" width="100%" height="100%" position={["80% 15%", "55% 75%", "95% 60%"][index]} />})) : kind === 'song' ? allTargets.map((target, index) => ({...target, title: fixture(`next.selection.fixture.track${index + 1}` as keyof typeof selectionFixtures), artwork: <Artwork source={art[9]} alt="" width="100%" height="100%" />})) : allTargets;
   const count = targets.length, [open, setOpen] = useState(true), owner = useEditorOwnerTag();
   const label = (key: string) => fixture(`next.selection.fixture.${key}` as keyof typeof selectionFixtures);
   // Explicit DEV registry/aggregate examples. Production receives the actual preview registry.
@@ -125,11 +125,12 @@ function Editor({kind = 'movie', partial = false, error = false, busy = false}: 
 
 type PickerState = 'ready' | 'loading' | 'busy' | 'unknown' | 'error' | 'uncertain' | 'paging' | 'denied';
 function Picker({mode: initialMode = 'choose', partial = false, collection = false, failed = false, state: initialState = 'ready'}: {mode?: 'choose' | 'new'; partial?: boolean; collection?: boolean; failed?: boolean; state?: PickerState}) {
-  const art = useReferenceArt(), anchor = useRef<HTMLButtonElement | null>(null), [open, setOpen] = useState(true), [mode, setMode] = useState(initialMode), [name, setName] = useState(initialMode === 'new' ? fixture('next.selection.fixture.newName') : ''), [query, setQuery] = useState(''), [toast, setToast] = useState(false);
+  const phone = usePhone(), art = useReferenceArt(), anchor = useRef<HTMLButtonElement | null>(null), [open, setOpen] = useState(true), [mode, setMode] = useState(initialMode), [name, setName] = useState(initialMode === 'new' ? fixture('next.selection.fixture.newName') : ''), [query, setQuery] = useState(''), [toast, setToast] = useState(false);
   const [state, setState] = useState<PickerState>(failed ? 'error' : initialState), [page, setPage] = useState(0), [events, setEvents] = useState<readonly unknown[]>([]);
   const record = (action: string, value?: unknown) => setEvents(current => [...current, {action, value}]);
   const labels = collection ? ['collection', 'collection2', 'collection3'] : ['playlist', 'playlist2', 'playlist3', 'playlist4'];
-  const entries: PickerEntry[] = labels.map((label, index) => ({id: `selection-destination-${index}`, name: fixture(`next.selection.fixture.${label}` as keyof typeof selectionFixtures), size: (collection ? [9, 11, 7] : [12, 6, 9, 15])[index], canAdd: true, ...(!collection && index === 0 ? {alreadyIn: 2} : {}), artwork: <CoverMosaic covers={index === 0 ? [art[4], art[5], art[0], art[6]] : art.slice(index, index + 4)} alt="" width="100%" height="100%" />}));
+  const covers = collection ? [[art[0],art[1],art[2],art[4]],[art[21],art[13],art[22],art[23]],[art[17],art[24],art[25],art[26]]] : [[art[4],art[5],art[0],art[6]],[art[7],art[10],art[11],art[12]],[art[13],art[14],art[15],art[16]],[art[17],art[18],art[19],art[20]]];
+  const entries: PickerEntry[] = labels.map((label, index) => ({id: `selection-destination-${index}`, name: fixture(`next.selection.fixture.${label}` as keyof typeof selectionFixtures), size: (collection ? [9, 11, 7] : [12, 6, 9, 15])[index], canAdd: true, ...(!collection && index === 0 ? {alreadyIn: 2} : {}), artwork: <CoverMosaic covers={covers[index]} alt="" width="100%" height="100%" />}));
   // Directory intersections can be unknown. These complete DEV write observations are explicit.
   const outcomes: Readonly<Record<string, {inserted: number; alreadyIn: number}>> = collection ? {
     'selection-destination-0': {inserted: 4, alreadyIn: 0}, 'selection-destination-1': {inserted: 4, alreadyIn: 0}, 'selection-destination-2': {inserted: 4, alreadyIn: 0},
@@ -144,9 +145,9 @@ function Picker({mode: initialMode = 'choose', partial = false, collection = fal
   };
   const Component = collection ? CollectionPicker : PlaylistPicker;
   const filtered = entries.filter(entry => entry.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()));
-  const window = state === 'paging' ? filtered.slice(page * 2, page * 2 + 2) : filtered;
+  const window = state === 'paging' ? filtered.slice(page * 2, page * 2 + 2) : phone && state === 'ready' ? filtered.slice(0, 3) : filtered;
   const recover = (action: string) => {record(action); setState('ready'); setResult(undefined);};
-  return <Stage><Button ref={anchor} className={styles.anchor} onClick={() => setOpen(true)}>{text(collection ? 'next.selection.addToCollection' : 'next.selection.addToPlaylist')}</Button><Component open={open} onOpenChange={setOpen} selection={{kind: 'movie', count: 4}} anchorRef={anchor} entries={window.map((entry, index) => state === 'denied' && index === 0 ? {...entry, canAdd: false} : entry)} query={query} onQueryChange={collection ? undefined : value => {record('query', value); setQuery(value); setPage(0);}} mode={mode} onModeChange={setMode} name={name} onNameChange={setName}
+  return <Stage><Button ref={anchor} className={styles.anchor} onClick={() => setOpen(true)}>{text(collection ? 'next.selection.addToCollection' : 'next.selection.addToPlaylist')}</Button><Component open={open} onOpenChange={setOpen} selection={{kind: 'movie', count: 4}} anchorRef={anchor} entries={window.map((entry, index) => state === 'denied' && index === 0 ? {...entry, canAdd: false} : entry)} query={query} onQueryChange={collection || phone && state === 'ready' ? undefined : value => {record('query', value); setQuery(value); setPage(0);}} mode={mode} onModeChange={setMode} name={name} onNameChange={setName}
     hasNext={state === 'paging' && page === 0} hasPrevious={state === 'paging' && page > 0} onNext={state === 'paging' ? () => {record('next'); setPage(value => value + 1);} : undefined} onPrevious={state === 'paging' ? () => {record('previous'); setPage(value => value - 1);} : undefined}
     loading={state === 'loading'} busy={state === 'busy'} onRetryError={state === 'error' ? () => recover('retry-error') : undefined} onRetryOperation={state === 'uncertain' ? () => recover('retry-operation') : undefined}
     onAdd={id => {record('add', id); const entry = entries.find(item => item.id === id), outcome = outcomes[id]; if (entry && outcome) complete(entry, outcome); }}

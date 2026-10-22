@@ -78,9 +78,10 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .stickyBar .desktopBar { margin: 0; }
 .stickyBar::after { content: ''; position: absolute; inset: 100% 0 auto; height: 28px; background: linear-gradient(180deg,rgba(7,16,24,.7),transparent); pointer-events: none; }
 .allNote { margin: 12px var(--selection-gutter) 0; display: flex; align-items: center; gap: 12px; padding: 0 6px; font-size: 14.5px; color: var(--color-text-secondary); }
-.allNote button { color: var(--color-accent-strong); }
+.allNote.allNote button { color: var(--color-accent-strong); }
 .stickyBar .allNote { margin: 12px 0 0; }
-.allNote button { height: auto; min-height: 0; padding: 0; font-size: 14.5px; font-weight: 800; }
+.allNote b { color: var(--color-text); font-weight: 700; }
+.allNote.allNote button { height: auto; min-height: 0; padding: 0; font-size: 14.5px; font-weight: 800; }
 .ownerMenuLabel > span:last-child { padding: 3px 7px; border-radius: 5px; background: rgba(47,134,187,.22); color: var(--color-accent-strong); font-size: 11px; font-weight: 800; }
 .ownerMenuLabel { display: flex; align-items: center; gap: 8px; }
 .selectionMenu [data-owner-only="true"] { margin: 6px -2px 0; padding: 6px 6px 4px; border: 0; border-radius: 10px; background: radial-gradient(120% 140% at 100% 0%,rgba(47,134,187,.2),transparent 62%),#0b1822; box-shadow: inset 0 0 0 1px rgba(92,179,226,.16); }
@@ -100,6 +101,7 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .mixedClose.mixedClose { width: 100%; }
 .editor.editor { padding: 0; }
 .editorHeader { padding: 26px 32px 18px; background: radial-gradient(120% 120% at 100% 0%,rgba(47,134,187,.26),transparent 62%),radial-gradient(100% 100% at 0% 100%,rgba(30,91,82,.2),transparent 66%); }
+.editorHeader h2 { width: 100%; }
 .editorHeader > h2 { margin: 0; }
 .editorHeading { display: flex; flex-direction: column; gap: 0; line-height: normal; }
 .editorOwner { min-height: 40px; display: flex; align-items: center; }
@@ -156,7 +158,7 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .lockRow input, .removeFilesRow input { --switch-width: 44px; --switch-height: 26px; --switch-thumb: 20px; --switch-distance: 18px; }
 .editorFooter.editorFooter { position: relative; inset: auto; display: block; flex: none; margin: 0; padding: 0; background: var(--color-raised); }
 .editorButtons { display: flex; gap: 12px; padding: 16px 32px 24px; box-shadow: 0 -1px 0 var(--color-line); }
-.editorButtons button { height: 50px; font-size: 16px; padding: 0 24px; }
+.editorButtons.editorButtons button { height: 50px; font-size: 16px; padding: 0 24px; }
 .editorButtons button:last-child:not(:first-child) { flex: 1; justify-content: center; }
 .summary { margin: 0 32px 16px; padding: 14px 16px; border-radius: 12px; color: var(--color-text-secondary); background: rgba(64,159,212,.1); box-shadow: inset 0 0 0 1px rgba(92,179,226,.3); }
 .summary h5 { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; font-weight: 800; color: var(--color-text); }
@@ -166,6 +168,7 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .summary li::before { content: ''; position: absolute; top: .65em; left: 0; width: 6px; height: 6px; border-radius: 50%; background: var(--color-accent-strong); }
 .summary p { margin: 8px 0 0; padding-top: 8px; border-top: 1px solid rgba(92,179,226,.2); font-size: 12.5px; line-height: 1.5; color: var(--color-text-tertiary); }
 .resultBanner { display: flex; gap: 12px; margin-top: 14px; padding: 14px 16px; border-radius: 12px; font-size: 14px; line-height: 1.5; color: var(--color-text-secondary); background: rgba(241,121,121,.08); box-shadow: inset 0 0 0 1px rgba(241,121,121,.35); }
+.resultBanner p { margin: 0; }
 .resultBanner > svg { flex: none; margin-top: 2px; color: var(--color-record); }
 .resultBanner b { display: block; font-size: 15px; color: var(--color-text); }
 .resultRow { display: flex; gap: 14px; align-items: center; padding: 12px 0; border-top: 1px solid rgba(40,64,79,.7); }
@@ -182,9 +185,9 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .resultStatus[data-ok="true"] { background: rgba(134,207,179,.16); color: var(--color-healthy); }
 .picker.picker { padding: 8px; border-radius: 14px; background: var(--color-raised-high); }
 .pickerContent { min-width: 0; display: flow-root; }
-.pickerHeading { padding: 10px 12px 8px; font-size: 13px; font-weight: 700; color: var(--color-text-tertiary); }
+.pickerHeading { line-height: normal; padding: 10px 12px 8px; font-size: 13px; font-weight: 700; color: var(--color-text-tertiary); }
 .pickerSearch { margin: 0 4px 6px; }
-.pickerSearch.pickerSearch > div { height: 38px; }
+.picker .pickerSearch.pickerSearch > div { height: 38px; }
 .pickerSearch input { height: 38px; font-size: 14px; }
 .pickerRow.pickerRow { display: flex; width: 100%; height: auto; min-height: 52px; padding: 6px 10px 6px 8px; border-radius: 10px; text-align: left; color: var(--color-text-secondary); }
 .pickerRow > span { display: flex; align-items: center; gap: 12px; width: 100%; }
@@ -212,8 +215,9 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
 .deleteDialog.deleteDialog { padding: 26px 28px 22px; border-radius: 18px; background: var(--color-raised-high); }
 .deleteHeading { font-size: 22px; line-height: 1.2; display: flex; flex-direction: column; gap: 14px; }
 .deleteOwner { display: flex; align-items: center; gap: 10px; min-height: 24px; }
-.deleteBody { display: flex; flex-direction: column; gap: 14px; padding-top: 6px; font-size: 15px; line-height: 1.5; color: var(--color-text-secondary); }
+.deleteBody.deleteBody { display: flex; flex-direction: column; gap: 14px; padding-top: 6px; font-size: 15px; line-height: 1.5; color: var(--color-text-secondary); }
 .deleteBody p { margin: 0; }
+.deleteConfirmation > label { margin-bottom: 7px; color: var(--color-text-tertiary); }
 .deleteConfirmation > div { background: var(--color-ink); border-radius: 10px; }
 .deleteBody b { color: var(--color-text); }
 .deleteSmall.deleteSmall { font-size: 13px; line-height: 1.45; color: var(--color-text-tertiary); }
@@ -267,11 +271,11 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
   .selectionMenu [role="group"][data-owner-only="true"] > div:first-child { margin: 8px 0 4px; }
   .mixedSheet .mixedBody { padding: 4px 20px 0; }
   .keepTypes { display: block; }
-  .keepType.keepType { display: flex; min-height: 56px; width: 100%; height: auto; padding: 8px 0; background: transparent; text-align: left; font-size: 16px; }
+  .keepType.keepType { display: flex; justify-content: flex-start; min-height: 56px; width: 100%; height: auto; padding: 8px 0; background: transparent; text-align: left; font-size: 16px; }
   .keepType > span { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
   .keepType small { font-size: 12.5px; font-weight: 500; color: var(--color-text-tertiary); }
   .mixedClose.mixedClose { margin-top: 12px; }
-  .editor.editor { inset: auto 0 0; height: var(--overlay-sheet-height); border-radius: 26px 26px 0 0; padding: 0 0 34px; }
+  .editor.editor { inset: auto 0 0; height: var(--overlay-sheet-height); border-radius: 26px 26px 0 0; padding: 0; }
   .editorHeader { padding: 0; }
   .editorHeader > div { padding: 0; }
   .editorHeader > div:last-child { padding: 4px 20px 12px; }
@@ -298,9 +302,9 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
   .singleItemNote { margin-top: 12px; padding: 10px 12px; font-size: 12.5px; }
   .lockRow { margin-top: 12px; font-size: 13.5px; }
   .lockRow small { font-size: 11.5px; }
-  .lockRow input, .removeFilesRow input { --switch-width: 48px; --switch-height: 29px; --switch-thumb: 23px; --switch-distance: 19px; }
+  .lockRow input { --switch-width: 48px; --switch-height: 29px; --switch-thumb: 23px; --switch-distance: 19px; }
   .editorButtons { gap: 10px; padding: 10px 16px 30px; }
-  .editorButtons button { height: 48px; font-size: 15.5px; padding: 0 20px; }
+  .editorButtons.editorButtons button { height: 48px; font-size: 15.5px; padding: 0 20px; }
   .summary { margin: 0 16px 10px; padding: 10px 12px; }
   .summary h5 { font-size: 13px; margin-bottom: 4px; }
   .summary ul { font-size: 12.5px; gap: 3px; }
@@ -328,9 +332,9 @@ button.circle:focus-visible { outline: 3px solid var(--color-focus); outline-off
   .pickerToast.pickerToast { font-size: 14px; }
   .deleteDialog.deleteDialog { padding: 0 0 max(34px,env(safe-area-inset-bottom)); border-radius: 24px 24px 0 0; background: var(--color-raised); }
   .deleteDialog.deleteDialog .deleteBody { padding: 6px 20px 0; gap: 12px; font-size: 14px; }
-  .deleteDialog .deleteBody > div { display: flex; flex-direction: column; gap: 12px; }
+  .deleteDialog .deleteBody > div { display: flex; flex-direction: column; gap: 12px; padding-bottom: 16px; }
   .deleteHeading { gap: 12px; font-size: 21px; }
-  .deleteFooter { position: relative; inset: auto; margin: 16px 0 0; padding: 0 20px; }
+  .deleteFooter { position: relative; inset: auto; margin: 0; padding: 0 20px; }
   .deleteFooter.deleteFooter button { flex: 1; height: 48px; font-size: 15.5px; padding: 0 20px; }
   .removeFilesRow { font-size: 14.5px; }
   .deleteNotice { padding: 11px 12px; font-size: 13.5px; }

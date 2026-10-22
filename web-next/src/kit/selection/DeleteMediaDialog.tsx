@@ -10,7 +10,7 @@ import {deletePermission} from './presentation';
 import type {DeleteMediaDialogProps} from './types';
 import styles from './selection.module.css';
 
-function PreviewDependents({preview}: {preview: DeletePreview}) {
+function PreviewDependents({preview, concise = false}: {preview: DeletePreview; concise?: boolean}) {
   const target = preview.targets[0];
   if (!target) return null;
   if (preview.targets.length !== 1) {
@@ -28,7 +28,7 @@ function PreviewDependents({preview}: {preview: DeletePreview}) {
     else other.push(text('next.selection.dependent', {count: dependent.count, description: dependent.description}));
   }
   return <>
-    {places.length > 0 && profiles > 0 ? <>{text('next.selection.dependentsOne', {places: defaultI18n.list(places), profiles: text('next.selection.profilesCount', {count: profiles})})} {text('next.selection.entriesGo')}</> : <>
+    {places.length > 0 && profiles > 0 ? <>{text('next.selection.dependentsOne', {places: defaultI18n.list(places), profiles: text('next.selection.profilesCount', {count: profiles})})} {!concise && text('next.selection.entriesGo')}</> : <>
       {places.length > 0 && <>{text('next.selection.alsoIn', {places: defaultI18n.list(places)})} </>}
       {profiles > 0 && <>{text('next.selection.savedPlaces', {profiles: text('next.selection.profilesCount', {count: profiles})})} </>}
     </>}
@@ -62,7 +62,7 @@ export function DeleteMediaDialog(props: DeleteMediaDialogProps) {
     </> : blocked.length > 0 || preview?.blocked.length || acrossLibraries ? <div className={styles.deleteNotice} data-tone="warning"><Icon name="i-warn" size={20} /><p>{acrossLibraries ? text('next.selection.oneLibrary') : text('next.selection.blockedLibrary', {library: defaultI18n.list(blocked.map(entry => entry.libraryName))})}</p></div> : preview ? <>
       {target && target.titles > 1 && <p><b>{text('next.selection.titlesRemoved', {count: target.titles})}</b></p>}
       {selectionCount > 1 && removeFiles && !phone && <div className={styles.deleteTargets}>{preview.targets.slice(0, 5).map(entry => <div key={entry.itemId}><span className={styles.deleteArtwork}>{artwork?.[entry.itemId]}</span><span><b>{entry.title}</b><small>{targetFacts?.[entry.itemId] ?? text('next.selection.files', {count: entry.files.length, size: defaultI18n.bytes(entry.bytes)})}</small></span></div>)}{preview.targets.length > 5 && <p>{text('next.selection.andMore', {count: preview.targets.length - 5})}</p>}</div>}
-      <p><b>{text('next.selection.files', {count: preview.totalFiles, size: preview.totalBytesText})}</b> {target?.kind === 'show' && target.titles > 1 && text('next.selection.showContents')} {selectionCount > 1 && (phone || !removeFiles) ? preview.targets.some(entry => entry.dependents.some(dependent => dependent.count > 0)) && text('next.selection.dependentsMany') : <PreviewDependents preview={preview} />}</p>
+      <p><b>{text('next.selection.files', {count: preview.totalFiles, size: preview.totalBytesText})}</b> {target?.kind === 'show' && target.titles > 1 && text('next.selection.showContents')} {selectionCount > 1 && (phone || !removeFiles) ? preview.targets.some(entry => entry.dependents.some(dependent => dependent.count > 0)) && text('next.selection.dependentsMany') : <PreviewDependents preview={preview} concise={phone} />}</p>
       <label className={styles.removeFilesRow}><span>{text('next.selection.removeFiles')}</span><Switch checked={removeFiles} disabled={busy} onCheckedChange={onRemoveFilesChange} aria-label={text('next.selection.removeFiles')} /></label>
       {!removeFiles ? <p className={styles.deleteSmall}>{text('next.selection.recordOnly')}</p> : target?.titles === 1 && (!phone || selectionCount === 1) && <p className={styles.deleteSmall}>{text('next.selection.filesDeleted')}</p>}
       {preview.targets.some(entry => entry.files.some(file => file.shared)) && <p className={styles.deleteSmall}>{text('next.selection.sharedFiles')}</p>}
