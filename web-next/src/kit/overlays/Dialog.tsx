@@ -1,0 +1,50 @@
+import {useId} from 'react';
+import {Dialog as RadixDialog} from 'radix-ui';
+import {defaultI18n} from '@i18n';
+import {Button} from '../controls/Button';
+import {BottomSheet} from './BottomSheet';
+import {classes, useDismissReason, useOverlayKeys, usePhone, usePresence, useSurfaceFocus, useSurfaceMotion} from './shared';
+import type {OverlayContentSlots, OverlayStyle, OverlaySurfaceProps} from './types';
+import styles from './overlays.module.css';
+
+export type DialogProps = OverlaySurfaceProps & OverlayContentSlots & {
+  size?: 'sm' | 'md' | 'lg';
+  width?: number;
+  dismissOnOutsidePress?: boolean;
+  dismissOnBack?: boolean;
+  showCloseButton?: boolean;
+  role?: 'dialog' | 'alertdialog';
+  /** Phone widths use the real sheet, including gestures, focus and scroll containment. */
+  responsive?: boolean;
+};
+
+export function Dialog({responsive = true, ...props}: DialogProps) {
+  const phone = usePhone();
+  if (responsive && phone) return <BottomSheet {...props} fitContent />;
+  return <DesktopDialog {...props} />;
+}
+
+function DesktopDialog({open, onOpenChange, title, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, size = 'md', width, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: DialogProps) {
+  const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef);
+  const present = usePresence(open, 160), contentRef = useSurfaceMotion(open, 'dialog'), scrimRef = useSurfaceMotion(open, 'fade');
+  useOverlayKeys(open, onOpenChange, false, dismissOnBack);
+  const change = (value: boolean) => { onOpenChange(value, reason.current); reason.current = 'action'; };
+  return <RadixDialog.Root open={open} onOpenChange={change} modal>
+    {present && <RadixDialog.Portal forceMount>
+      <RadixDialog.Overlay forceMount ref={scrimRef} className={styles.scrim} data-state={open ? 'open' : 'closed'} />
+      <RadixDialog.Content forceMount ref={contentRef} className={classes(styles.dialog, className)} data-size={size} data-testid={testID}
+        data-state={open ? 'open' : 'closed'} role={role} aria-label={accessibilityLabel} aria-describedby={description === undefined ? undefined : `${id}-description`}
+        style={width === undefined ? undefined : {'--overlay-width': `${width}px`} as OverlayStyle}
+        onOpenAutoFocus={focus.onOpenAutoFocus} onCloseAutoFocus={focus.onCloseAutoFocus}
+        onEscapeKeyDown={event => { if (!dismissOnBack) event.preventDefault(); else reason.current = 'escape'; }}
+        onPointerDownOutside={event => { if (!dismissOnOutsidePress) event.preventDefault(); else reason.current = 'outside'; }}
+        onInteractOutside={event => { if (!dismissOnOutsidePress) event.preventDefault(); }}>
+        <header className={headerClassName}><RadixDialog.Title className={styles.dialogTitle}>{title}</RadixDialog.Title>
+        {showCloseButton && <Button variant="icon" size="small" iconOnly icon="i-x" iconSize={20} aria-label={defaultI18n.t('next.overlays.close')} className={styles.dialogClose} onClick={() => onOpenChange(false, 'close-button')} />}</header>
+        {description !== undefined && <RadixDialog.Description id={`${id}-description`} className={styles.dialogDescription}>{description}</RadixDialog.Description>}
+        <div className={classes(styles.dialogBody, bodyClassName)}>{children}</div>
+        {footer !== undefined && <footer className={classes(styles.dialogFooter, footerClassName)}>{footer}</footer>}
+      </RadixDialog.Content>
+    </RadixDialog.Portal>}
+  </RadixDialog.Root>;
+}
