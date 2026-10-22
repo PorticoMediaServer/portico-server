@@ -3,6 +3,7 @@ export const cardsMessages = {
   'next.cards.playAll': 'Play all',
   'next.cards.openCollection': 'Open collection',
   'next.cards.read': 'Continue reading',
+  'next.cards.download': 'Download',
   'next.cards.pause': 'Pause',
   'next.cards.paused': 'Paused',
   'next.cards.stop': 'Stop',
