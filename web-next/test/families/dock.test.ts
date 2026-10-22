@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {PlaybackDock, type DockPlayback, type PlaybackFence} from '../../../packages/player-core/src/index.ts';
+import {PlaybackDock, type DockPlayback, type PlaybackFence, type QueuePlaybackFence, type ChannelPlaybackFence} from '../../../packages/player-core/src/index.ts';
 import {dockView, commandFor, dispatchDockAction, actionCurrent, seekTarget, progressOf} from '../../src/kit/dock/model.ts';
 import {PlayerMorph, GestureRelease} from '../../src/kit/dock/motion.ts';
 import type {DockAction, DockPresentation} from '../../src/kit/dock/types.ts';
 
 const scope = {serverId: 'server', authority: 'local' as const, accountId: 'viewer', profileId: 'profile', controllerId: 'controller', controllerEpoch: 'epoch', commandLaneId: 'lane'};
-const fence: PlaybackFence = {playback: {scope, run: 1}, sessionId: 'session', itemId: 'item', sourceId: 'source', entryId: 'entry', generation: 1};
-const playback = (kind: DockPlayback['kind'] = 'video', over: Partial<DockPlayback> = {}): DockPlayback => ({kind, fence, queue: null, positionSeconds: 14, playing: true, expanded: false, ...over});
-const presentation = (source = fence): DockPresentation => ({fence: source, identity: {id: 'item', kind: 'video', title: 'Title', subtitle: []}, durationSeconds: 100, controls: ['play', 'pause', 'seek'], skipBackSeconds: 10, skipForwardSeconds: 30});
+const fence: QueuePlaybackFence = {kind: 'queue', playback: {scope, run: 1}, sessionId: 'session', itemId: 'item', sourceId: 'source', entryId: 'entry', generation: 1};
+const channelFence: ChannelPlaybackFence = {kind: 'channel', channelKind: 'live-source', playback: {scope, run: 2}, sessionId: 'live-session', sourceId: 'guide-source', channelId: 'channel', channelGeneration: 'guide-1', generation: 1};
+type QueueFixture = Extract<DockPlayback, {kind: 'video' | 'music' | 'audiobook'}>;
+const playback = (kind: QueueFixture['kind'] = 'video', over: Partial<Omit<QueueFixture, 'kind'>> = {}): QueueFixture => ({kind, fence, queue: null, positionSeconds: 14, playing: true, expanded: false, ...over});
+const presentation = (source: PlaybackFence = fence): DockPresentation => ({fence: source, identity: source.kind === 'channel' ? {id: source.channelId, sourceId: source.sourceId, kind: 'channel', title: 'Channel programme', subtitle: []} : {id: source.itemId, kind: 'video', title: 'Title', subtitle: []}, durationSeconds: 100, controls: ['play', 'pause', 'seek'], skipBackSeconds: 10, skipForwardSeconds: 30});
 
 test('a presentation from a retired source cannot expose a current dock', () => {
   const dock = new PlaybackDock(scope); dock.start(playback());
@@ -40,12 +42,27 @@ test('bookmark actions target only the retained bookmark and never a different v
   dock.reset({...scope, profileId: 'other'}); assert.equal(actionCurrent(dock.getSnapshot(), {kind: 'restore-audio', fence: audioFence}), false);
 });
 test('live dock seeking stays within the actual rewind window and rejects nonfinite commands', () => {
-  const dock = new PlaybackDock(scope); dock.start(playback('live', {positionSeconds: 950}));
-  const view = dockView(dock.getSnapshot(), [{...presentation(), durationSeconds: 1200, seekWindow: {startSeconds: 900, endSeconds: 1000}}])!;
+  const dock = new PlaybackDock(scope); dock.start({kind: 'live', fence: channelFence, queue: null, positionSeconds: 950, playing: true, expanded: false});
+  const view = dockView(dock.getSnapshot(), [{...presentation(channelFence), durationSeconds: 1200, seekWindow: {startSeconds: 900, endSeconds: 1000}}])!;
   assert.equal(seekTarget(view, 0), 900); assert.equal(seekTarget(view, 1200), 1000); assert.equal(progressOf(view), .5); assert.equal(seekTarget(view, NaN), null);
   let calls = 0; const binding = {getSnapshot: dock.getSnapshot, onAction: () => { calls++; }};
   assert.equal(dispatchDockAction(binding, commandFor(view, {kind: 'seek', seconds: NaN})), false);
   assert.equal(dispatchDockAction(binding, commandFor(view, {kind: 'volume', volume: Infinity})), false); assert.equal(calls, 0);
+});
+test('live commands keep channel identity and reject a new guide generation or source', () => {
+  const dock = new PlaybackDock(scope), active: DockPlayback = {kind: 'live', fence: channelFence, queue: null, positionSeconds: 950, playing: true, expanded: false};
+  dock.start(active);
+  const view = dockView(dock.getSnapshot(), [presentation(channelFence)]);
+  assert.ok(view);
+  const command = commandFor(view, {kind: 'pause'});
+  assert.equal(command.fence.kind, 'channel');
+  assert.equal('itemId' in command.fence, false);
+  assert.equal('entryId' in command.fence, false);
+  assert.equal(actionCurrent(dock.getSnapshot(), command), true);
+  dock.start({...active, fence: {...channelFence, channelGeneration: 'guide-2'}});
+  assert.equal(actionCurrent(dock.getSnapshot(), command), false);
+  dock.start({...active, fence: {...channelFence, sourceId: 'other-guide-source'}});
+  assert.equal(actionCurrent(dock.getSnapshot(), command), false);
 });
 test('the player spring retargets without dropping its current position or velocity', () => {
   const spring = new PlayerMorph(0); spring.retarget(1, 0); const before = spring.sample(140);

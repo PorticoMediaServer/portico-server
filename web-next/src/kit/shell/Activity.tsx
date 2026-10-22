@@ -20,9 +20,9 @@ export type ActivityWorkView = Readonly<{
   discovered?: number; progressText?: string; onOpen: () => void;
 }>;
 export type ActivityPanelView = Readonly<{
-  serverName: string; health: 'normal' | 'attention'; streamCount: number; taskCount: number;
+  serverName: string; health?: 'normal' | 'attention'; streamCount?: number; taskCount?: number;
   streams: readonly ActivityStreamView[]; scans: readonly ActivityWorkView[]; tasks: readonly ActivityWorkView[];
-  update: Readonly<{available: boolean; latest?: string; current?: string; onOpen: () => void}>;
+  update?: Readonly<{available: boolean; latest?: string; current?: string; onOpen: () => void}>;
   lastScan?: string; phase: 'ready' | 'loading' | 'error'; onRetry: () => void; onDashboard: (section?: 'streams' | 'activity') => void;
 }>;
 
@@ -32,31 +32,34 @@ export function TopBarActivity({viewerRole, view, open, onOpenChange, t = tDefau
   return <OwnerActivity view={view} open={open} onOpenChange={onOpenChange} t={t} />;
 }
 function OwnerActivity({view, open, onOpenChange, t}: {view: ActivityPanelView; open: boolean; onOpenChange: OverlayChange; t: ShellTranslate}) {
-  const tip = useId(), busy = view.streamCount > 0 || view.scans.length > 0 || view.taskCount > 0;
-  const label = t(view.update.available ? 'next.shell.activityLabelUpdate' : 'next.shell.activityLabel', {count: view.streamCount});
-  const trigger = <button type="button" className={styles.trigger} data-busy={busy || undefined} data-open={open || undefined} data-streams={view.streamCount > 0 || undefined} aria-label={label} aria-haspopup="dialog" aria-expanded={open} aria-describedby={view.update.available && !open ? tip : undefined}>
-    <Icon name="i-act" size={22} />{view.streamCount > 0 && <span className={styles.streamCount}>{view.streamCount}</span>}{view.update.available && <span className={styles.updateDot} aria-hidden="true" />}
+  const tip = useId(), known = view.phase === 'ready';
+  const streamCount = known ? view.streamCount : undefined, update = known && view.update?.available;
+  const busy = known && ((streamCount ?? 0) > 0 || view.scans.length > 0 || (view.taskCount ?? 0) > 0);
+  const label = streamCount === undefined ? t('next.shell.activity') : t(update ? 'next.shell.activityLabelUpdate' : 'next.shell.activityLabel', {count: streamCount});
+  const trigger = <button type="button" className={styles.trigger} data-busy={busy || undefined} data-open={open || undefined} data-streams={(streamCount ?? 0) > 0 || undefined} aria-label={label} aria-haspopup="dialog" aria-expanded={open} aria-describedby={update && !open ? tip : undefined}>
+    <Icon name="i-act" size={22} />{(streamCount ?? 0) > 0 && <span className={styles.streamCount}>{streamCount}</span>}{update && <span className={styles.updateDot} aria-hidden="true" />}
   </button>;
   return <span className={styles.triggerWrap}><ShellScrim open={open} context="activity" /><Popover open={open} onOpenChange={onOpenChange} trigger={trigger} title={t('next.shell.activity')} width={420} sideOffset={14} alignOffset={-72} className={styles.popover} modal>
     <ActivityPanel viewerRole="owner" view={view} t={t} />
-  </Popover>{view.update.available && !open && <span id={tip} role="tooltip" className={styles.tooltip}>{t('next.shell.updateAvailable')}</span>}</span>;
+  </Popover>{update && !open && <span id={tip} role="tooltip" className={styles.tooltip}>{t('next.shell.updateAvailable')}</span>}</span>;
 }
 
 export function ActivityPanel({viewerRole, view, t = tDefault}: {viewerRole: ServerRole; view: ActivityPanelView; t?: ShellTranslate}) {
   if (viewerRole !== 'owner') return null;
   const streams = view.streams.slice(0, 4), tasks = view.tasks.slice(0, 3);
-  const quiet = view.streamCount === 0 && view.scans.length === 0 && view.taskCount === 0;
+  const known = view.phase === 'ready';
+  const quiet = known && view.streamCount === 0 && view.scans.length === 0 && view.taskCount === 0;
   return <div className={styles.panel}>
-    <header className={styles.header}><ServerMark size={38} /><div><b>{view.serverName}</b><span className={styles.health} data-health={view.health}>{t(view.health === 'normal' ? 'next.shell.health.normal' : 'next.shell.health.attention')}</span></div></header>
-    <button type="button" className={styles.dashboard} onClick={() => view.onDashboard()}><Icon name="i-pulse" size={20} />{t('next.shell.dashboard')}<span>{t('next.shell.streams', {count: view.streamCount})}</span><Icon name="i-right" size={16} /></button>
+    <header className={styles.header}><ServerMark size={38} /><div><b>{view.serverName}</b>{known && view.health !== undefined && <span className={styles.health} data-health={view.health}>{t(view.health === 'normal' ? 'next.shell.health.normal' : 'next.shell.health.attention')}</span>}</div></header>
+    <button type="button" className={styles.dashboard} onClick={() => view.onDashboard()}><Icon name="i-pulse" size={20} />{t('next.shell.dashboard')}{known && view.streamCount !== undefined && <span>{t('next.shell.streams', {count: view.streamCount})}</span>}<Icon name="i-right" size={16} /></button>
     <div className={styles.divider} />
     {view.phase === 'loading' ? <div className={styles.loading} role="status" aria-label={t('next.shell.loadingActivity')}><i /><i /><i /></div> : view.phase === 'error' ? <div className={styles.error}><p>{t('next.shell.activityError')}</p><button type="button" onClick={view.onRetry}>{t('next.shell.tryAgain')}</button></div> : <>
       {quiet ? <div className={styles.quiet}><span className={styles.quietLead}><Icon name="i-act" size={18} /></span><div><b>{t('next.shell.activityQuiet')}</b>{view.lastScan && <p>{t('next.shell.lastScan', {when: view.lastScan})}</p>}</div></div> : <>
-        {view.streamCount > 0 && <section className={styles.group}><h4>{t('next.shell.nowPlaying')}</h4>{streams.map(stream => <ActivityStream key={stream.id} stream={stream} />)}{view.streamCount > streams.length && <More count={view.streamCount - streams.length} onClick={() => view.onDashboard('streams')} t={t} />}</section>}
+        {(view.streamCount ?? 0) > 0 && <section className={styles.group}><h4>{t('next.shell.nowPlaying')}</h4>{streams.map(stream => <ActivityStream key={stream.id} stream={stream} />)}{view.streamCount !== undefined && view.streamCount > streams.length && <More count={view.streamCount - streams.length} onClick={() => view.onDashboard('streams')} t={t} />}</section>}
         {view.scans.length > 0 && <section className={styles.group}><h4>{t('next.shell.libraryScans')}</h4>{view.scans.map(scan => <ActivityWork key={scan.id} work={scan} scan t={t} />)}</section>}
-        {view.taskCount > 0 && <section className={styles.group}><h4>{t('next.shell.backgroundTasks')}</h4>{tasks.map(task => <ActivityWork key={task.id} work={task} t={t} />)}{view.taskCount > tasks.length && <More count={view.taskCount - tasks.length} onClick={() => view.onDashboard('activity')} t={t} />}</section>}
+        {(view.taskCount ?? 0) > 0 && <section className={styles.group}><h4>{t('next.shell.backgroundTasks')}</h4>{tasks.map(task => <ActivityWork key={task.id} work={task} t={t} />)}{view.taskCount !== undefined && view.taskCount > tasks.length && <More count={view.taskCount - tasks.length} onClick={() => view.onDashboard('activity')} t={t} />}</section>}
       </>}
-      {view.update.available && <><div className={styles.divider} /><button type="button" className={styles.work} data-update="true" onClick={view.update.onOpen}><span className={styles.updateLead}><Icon name="i-arrow-up" size={18} /></span><span className={styles.workText}><span className={styles.line1}><b>{t('next.shell.updateAvailable')}</b></span><span className={styles.line2}>{view.update.latest && <span>{t('next.shell.version', {version: view.update.latest})}</span>}{view.update.current && <span>{t('next.shell.youHaveVersion', {version: view.update.current})}</span>}</span></span><Icon name="i-right" size={16} className={styles.chevron} /></button></>}
+      {view.update?.available && <><div className={styles.divider} /><button type="button" className={styles.work} data-update="true" onClick={view.update.onOpen}><span className={styles.updateLead}><Icon name="i-arrow-up" size={18} /></span><span className={styles.workText}><span className={styles.line1}><b>{t('next.shell.updateAvailable')}</b></span><span className={styles.line2}>{view.update.latest && <span>{t('next.shell.version', {version: view.update.latest})}</span>}{view.update.current && <span>{t('next.shell.youHaveVersion', {version: view.update.current})}</span>}</span></span><Icon name="i-right" size={16} className={styles.chevron} /></button></>}
     </>}
   </div>;
 }

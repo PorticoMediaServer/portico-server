@@ -9,6 +9,8 @@ import styles from './overlays.module.css';
 
 export type DialogProps = OverlaySurfaceProps & OverlayContentSlots & {
   size?: 'sm' | 'md' | 'lg';
+  /** A modal edge surface retains the same scrim, focus trap and return-focus lifecycle. */
+  placement?: 'center' | 'right';
   width?: number;
   dismissOnOutsidePress?: boolean;
   dismissOnBack?: boolean;
@@ -24,15 +26,15 @@ export function Dialog({responsive = true, ...props}: DialogProps) {
   return <DesktopDialog {...props} />;
 }
 
-function DesktopDialog({open, onOpenChange, title, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, size = 'md', width, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: DialogProps) {
+function DesktopDialog({open, onOpenChange, title, children, description, footer, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, headerClassName, bodyClassName, footerClassName, size = 'md', placement = 'center', width, dismissOnOutsidePress = true, dismissOnBack = true, showCloseButton = true, role = 'dialog'}: DialogProps) {
   const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef);
-  const present = usePresence(open, 160), contentRef = useSurfaceMotion(open, 'dialog'), scrimRef = useSurfaceMotion(open, 'fade');
+  const present = usePresence(open, 160), contentRef = useSurfaceMotion(open, placement === 'right' ? 'panel' : 'dialog'), scrimRef = useSurfaceMotion(open, 'fade');
   useOverlayKeys(open, onOpenChange, false, dismissOnBack);
   const change = (value: boolean) => { onOpenChange(value, reason.current); reason.current = 'action'; };
   return <RadixDialog.Root open={open} onOpenChange={change} modal>
     {present && <RadixDialog.Portal forceMount>
       <RadixDialog.Overlay forceMount ref={scrimRef} className={styles.scrim} data-state={open ? 'open' : 'closed'} />
-      <RadixDialog.Content forceMount ref={contentRef} className={classes(styles.dialog, className)} data-size={size} data-testid={testID}
+      <RadixDialog.Content forceMount ref={contentRef} className={classes(styles.dialog, className)} data-size={size} data-placement={placement} data-testid={testID}
         data-state={open ? 'open' : 'closed'} role={role} aria-label={accessibilityLabel} aria-describedby={description === undefined ? undefined : `${id}-description`}
         style={width === undefined ? undefined : {'--overlay-width': `${width}px`} as OverlayStyle}
         onOpenAutoFocus={focus.onOpenAutoFocus} onCloseAutoFocus={focus.onCloseAutoFocus}

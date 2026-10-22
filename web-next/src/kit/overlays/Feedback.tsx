@@ -59,9 +59,9 @@ export function Toast({open, onOpenChange, message, action, icon, artwork, tone 
   </div>;
 }
 
-export type ToastHostProps = {toast: ToastData | null; onDismiss: (id: string, reason: OverlayDismissReason) => void; bottomInset?: number; className?: string; testID?: string};
+export type ToastHostProps = {toast: ToastData | null; onDismiss: (id: string, reason: OverlayDismissReason) => void; bottomInset?: number; className?: string; toastClassName?: string; testID?: string};
 /** Controlled single occupant: callers replace `toast`; no global queue or business state. */
-export function ToastHost({toast, onDismiss, bottomInset, className, testID}: ToastHostProps) {
+export function ToastHost({toast, onDismiss, bottomInset, className, toastClassName, testID}: ToastHostProps) {
   const current = useRef(toast), last = useRef(toast), dismiss = useRef(onDismiss), host = useRef<HTMLDivElement | null>(null);
   const clock = useRef<{pause: (source: string) => void; resume: (source: string) => void} | null>(null);
   current.current = toast; dismiss.current = onDismiss; if (toast) last.current = toast;
@@ -89,7 +89,7 @@ export function ToastHost({toast, onDismiss, bottomInset, className, testID}: To
   return createPortal(<div ref={host} className={classes(styles.toastHost, className)} data-testid={testID} style={bottomInset === undefined ? undefined : {'--overlay-toast-bottom': `${bottomInset}px`} as OverlayStyle}
     onPointerEnter={() => clock.current?.pause('hover')} onPointerLeave={() => clock.current?.resume('hover')} onPointerDown={() => clock.current?.pause('touch')} onPointerUp={() => clock.current?.resume('touch')} onPointerCancel={() => clock.current?.resume('touch')}
     onFocusCapture={() => clock.current?.pause('focus')} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node)) clock.current?.resume('focus'); }}>
-    <Toast {...value} open={toast !== null} onOpenChange={(open, reason) => { if (!open && current.current?.id === value.id) dismiss.current(value.id, reason); }} />
+    <Toast {...value} className={toastClassName} open={toast !== null} onOpenChange={(open, reason) => { if (!open && current.current?.id === value.id) dismiss.current(value.id, reason); }} />
   </div>, document.body);
 }
 

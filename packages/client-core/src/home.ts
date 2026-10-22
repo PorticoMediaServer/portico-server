@@ -10,6 +10,23 @@ import {parseGuideChannels, parseGuideSources, type GuideChannel, type GuideSour
 
 export type HomeArtworkShape = 'poster' | 'square' | 'landscape';
 export type HomeRevision = Readonly<{catalog: number; viewer: number}>;
+export type HomeActionState = Readonly<{watchlisted:boolean;favorite:boolean;watched:boolean;rating:number|null;personalRevision:number;containerRevision:number}>;
+/** Selection commands may expand a container to its permitted playable members.
+ * They do not imply a saved flag on the displayed aggregate itself. */
+export type HomeSelectionActions = Readonly<{
+ play:boolean;queue:boolean;playlist:boolean;collection:boolean;myList:boolean;favorite:boolean;watched:boolean;
+ download:boolean;edit:boolean;refresh:boolean;delete:boolean;
+}>;
+/** Server grants for implemented commands. Platform support is applied separately. */
+export type HomeActions = Readonly<{
+ play:boolean;queue:boolean;playlist:boolean;collection:boolean;myList:boolean;favorite:boolean;watched:boolean;played:boolean;rating:boolean;
+ editMetadata:boolean;refreshMetadata:boolean;delete:boolean;download:boolean;details:boolean;state:HomeActionState;selection:HomeSelectionActions;
+}>;
+/** Genuine parent-show facts for a returned Home episode, independent of the
+ * episode's own year/genres and of its selection or playback identity. */
+export type HomeTitleContext = Readonly<{kind:'show';year?:number;genres:readonly string[];seasonCount?:number}>;
+export type HomeEntry = ContentEntry & Readonly<{homeActions?:HomeActions;homeTitleContext?:HomeTitleContext}>;
+export type HomeChannelActions = Readonly<{play:boolean;favorite:boolean}>;
 /** A server-authored label (CON-19): a catalogue message id, its parameters, and the US English
  * fallback for a code this client doesn't know. Name rows with `serverTextLabel`. */
 export type ServerText = Readonly<{code: string; params?: Readonly<Record<string, string>>; fallback: string}>;
@@ -19,13 +36,13 @@ export type HomeSeeAll = Readonly<
  {type:'collection';resourceId:string;libraryId:string} | {type:'guide';group?:string;sourceId?:string}
 >;
 export type HomeReason = Readonly<{kind:string;text:ServerText;source?:Readonly<{id:string;name:string}>;libraryId?:string}>;
-export type HomeSpotlight = Readonly<{entry:ContentEntry;reason:HomeReason;resumeTarget?:ContentEntry}>;
-export type HomeResume = Readonly<{entryId:string;target:ContentEntry}>;
+export type HomeSpotlight = Readonly<{entry:HomeEntry;reason:HomeReason;resumeTarget?:HomeEntry}>;
+export type HomeResume = Readonly<{entryId:string;target:HomeEntry}>;
 export type HomePeriod = Readonly<{days:number;start:string;end:string;metric:string;text:ServerText}>;
-export type HomeCollection = Readonly<{collection:Readonly<{id:string;libraryId:string;name:string;itemCount:number;revision:number}>;members:readonly ContentEntry[];backdropUrl?:string;firstYear?:number;lastTitle?:string}>;
+export type HomeCollection = Readonly<{collection:Readonly<{id:string;libraryId:string;name:string;itemCount:number;revision:number}>;mediaKind:'movie';actions?:HomeActions;members:readonly HomeEntry[];backdropUrl?:string;firstYear?:number;lastTitle?:string}>;
 /** The server resolves marks over the entire authorized source, before filtering or paging. */
 export type HomeChannelMark = Readonly<{text:string;seed:string}>;
-export type HomeChannel = Readonly<{channel:GuideChannel & Readonly<{mark:HomeChannelMark}>;source:GuideSource}>;
+export type HomeChannel = Readonly<{channel:GuideChannel & Readonly<{mark:HomeChannelMark}>;source:GuideSource;actions:HomeChannelActions}>;
 export type HomeLive = Readonly<{revision:string;observedAt:string;expiresAt:string;sort:'favorites';group:string;groups:readonly Readonly<{name:string;count:number}>[];channels:readonly HomeChannel[]}>;
 export type HomeRow = Readonly<{
   id: string; viewerFence: string; title: string; titleText?: ServerText; kind: string; artworkShape: HomeArtworkShape; explanation?: string; endpoint: string;
@@ -41,7 +58,7 @@ export type HomeRow = Readonly<{
   /** How long the server would let the row be reused. No client reads it; absent when the server does not send it. */
   cacheTtlMs?: number;
   required: boolean; hideable: boolean; reorderable: boolean; critical: boolean; cursorCapable: boolean;
-  entries: readonly ContentEntry[]; total: number; start: number; limit: number; hasMore: boolean;
+  entries: readonly HomeEntry[]; total: number; start: number; limit: number; hasMore: boolean;
   nextCursor: string; anchorId?: string; revision: HomeRevision;
 }>;
 export type HomeLayout = Readonly<{revision: number; rowOrder: readonly string[]; hiddenRowIds: readonly string[]}>;
@@ -64,6 +81,37 @@ const whole = (v: unknown): v is number => typeof v === 'number' && Number.isSaf
 
 function invalid(): never {
   throw Object.assign(new Error(unreadableServerResponse), {code: 'invalid_home', retryable: false});
+}
+
+/** An absent or unreadable offer grants nothing. Personal state never implies a grant. */
+export function parseHomeActions(value:unknown):HomeActions|undefined {
+  if(value===undefined||value===null)return undefined;
+  if(!object(value)||!object(value.state)){noteSkipped('home','actions');return undefined;}
+  const s=value.state;
+  if(typeof s.watchlisted!=='boolean'||typeof s.favorite!=='boolean'||typeof s.watched!=='boolean'||!whole(s.personalRevision)||!whole(s.containerRevision)||(s.rating!==null&&(typeof s.rating!=='number'||!Number.isFinite(s.rating)||s.rating<0||s.rating>10))){noteSkipped('home','actions.state');return undefined;}
+  const flags=['play','queue','playlist','collection','myList','favorite','watched','played','rating','editMetadata','refreshMetadata','delete','download','details'] as const;
+  const offers=Object.fromEntries(flags.map(flag=>[flag,value[flag]===true])) as Omit<HomeActions,'state'|'selection'>;
+  const selectionFlags=['play','queue','playlist','collection','myList','favorite','watched','download','edit','refresh','delete'] as const;
+  const suppliedSelection:Record<string,unknown>=object(value.selection)?value.selection:{};
+  const selection=Object.freeze(Object.fromEntries(selectionFlags.map(flag=>[flag,suppliedSelection[flag]===true])) as HomeSelectionActions);
+  return Object.freeze({...offers,selection,state:Object.freeze({watchlisted:s.watchlisted,favorite:s.favorite,watched:s.watched,rating:s.rating as number|null,personalRevision:s.personalRevision,containerRevision:s.containerRevision})});
+}
+
+function parseHomeTitleContext(value:unknown):HomeTitleContext|undefined {
+  if(value===undefined||value===null)return undefined;
+  if(!object(value)||value.kind!=='show'||!Array.isArray(value.genres)||value.genres.length>2||value.genres.some(genre=>!id(genre))||
+    value.year!==undefined&&(!whole(value.year)||value.year<1)||value.seasonCount!==undefined&&!whole(value.seasonCount)){
+    noteSkipped('home','titleContext');return undefined;
+  }
+  return Object.freeze({kind:'show',genres:Object.freeze([...value.genres] as string[]),
+    ...(value.year===undefined?{}:{year:value.year as number}),...(value.seasonCount===undefined?{}:{seasonCount:value.seasonCount as number})});
+}
+
+export function validateHomeEntry(value:unknown):HomeEntry {
+  const entry=validateContentEntry(value);
+  const actions=object(value)?parseHomeActions(value.homeActions):undefined;
+  const context=entry.kind==='episode'&&object(value)?parseHomeTitleContext(value.homeTitleContext):undefined;
+  return Object.freeze({...entry,...(actions?{homeActions:actions}:{}),...(context?{homeTitleContext:context}:{})});
 }
 
 /**
@@ -114,22 +162,23 @@ export function parseHomeReason(value:unknown):HomeReason {
 }
 export function parseHomeSpotlight(value:unknown):HomeSpotlight {
   if(!object(value))invalid();
-  const entry=validateContentEntry(value.entry);
+  const entry=validateHomeEntry(value.entry);
   if(!['movie','show'].includes(entry.kind)||[...(entry.overview??'')].length>300)invalid();
   const reason=parseHomeReason(value.reason);
-  const resumeTarget=value.resumeTarget===undefined?undefined:validateContentEntry(value.resumeTarget);
+  const resumeTarget=value.resumeTarget===undefined?undefined:validateHomeEntry(value.resumeTarget);
   if(resumeTarget&&(entry.kind!=='show'||resumeTarget.kind!=='episode'||resumeTarget.show?.id!==entry.id||!resumeTarget.playback))invalid();
   return Object.freeze({entry,reason,...(resumeTarget?{resumeTarget}:{})});
 }
 function parseHomeCollection(value:unknown):HomeCollection {
-  if(!object(value)||!object(value.collection)||!Array.isArray(value.members)||value.members.length>4)invalid();
+  if(!object(value)||!object(value.collection)||value.mediaKind!=='movie'||!Array.isArray(value.members)||value.members.length>4)invalid();
   const c=value.collection;
   if(!id(c.id)||!id(c.libraryId)||!text(c.name,1024)||!whole(c.itemCount)||!whole(c.revision)||c.itemCount<value.members.length)invalid();
-  const members=Object.freeze(value.members.map(v=>validateContentEntry(v)));
-  if(members.some(e=>e.libraryId!==c.libraryId))invalid();
+  const members=Object.freeze(value.members.map(v=>validateHomeEntry(v)));
+  if(members.some(e=>e.libraryId!==c.libraryId||e.kind!=='movie'))invalid();
   if(value.firstYear!==undefined&&(!whole(value.firstYear)||value.firstYear<1))invalid();
   if(value.backdropUrl!==undefined&&!text(value.backdropUrl,4096)||value.lastTitle!==undefined&&!text(value.lastTitle,2048))invalid();
-  return Object.freeze({collection:Object.freeze({id:c.id,libraryId:c.libraryId,name:c.name,itemCount:c.itemCount,revision:c.revision}),members,
+  const actions=parseHomeActions(value.actions);
+  return Object.freeze({collection:Object.freeze({id:c.id,libraryId:c.libraryId,name:c.name,itemCount:c.itemCount,revision:c.revision}),mediaKind:'movie',members,...(actions?{actions}:{}),
     ...(value.backdropUrl===undefined?{}:{backdropUrl:value.backdropUrl as string}),...(value.firstYear===undefined?{}:{firstYear:value.firstYear as number}),...(value.lastTitle===undefined?{}:{lastTitle:value.lastTitle as string})});
 }
 function parseHomeLive(value:unknown):HomeLive {
@@ -145,7 +194,8 @@ function parseHomeLive(value:unknown):HomeLive {
     if(!source)invalid();
     const channel=parseGuideChannels([v.channel],[source],{kind:source.provenance,start:observedAt,end:new Date(Date.parse(observedAt)+1000).toISOString(),timezone:'UTC',search:'',sourceId:source.id})[0];
     if(!channel||channel.hidden||channel.programmes.length!==v.channel.programmes.length||channel.programmes.some(p=>Date.parse(p.start)>Date.parse(observedAt)||Date.parse(p.end)<=Date.parse(observedAt)))invalid();
-    return Object.freeze({source:Object.freeze(source),channel:Object.freeze({...channel,programmes:Object.freeze(channel.programmes),mark:Object.freeze({text:v.channel.mark.text,seed:v.channel.mark.seed})})});
+    const actions=Object.freeze({play:object(v.actions)&&v.actions.play===true&&channel.tuneAvailable,favorite:object(v.actions)&&v.actions.favorite===true});
+    return Object.freeze({source:Object.freeze(source),actions,channel:Object.freeze({...channel,programmes:Object.freeze(channel.programmes),mark:Object.freeze({text:v.channel.mark.text,seed:v.channel.mark.seed})})});
   }));
   const keys=channels.map(v=>v.channel.provenance+':'+v.channel.sourceId+':'+v.channel.id);
   if(new Set(keys).size!==keys.length)invalid();
@@ -179,7 +229,7 @@ export function validateHomeRow(value: unknown): HomeRow {
 function parseHomeRow(value: unknown, allowChildren: boolean): HomeRow {
   if (!object(value) || !id(value.id) || !id(value.viewerFence)) invalid();
   if (!Array.isArray(value.entries) || value.entries.length > 200 || !text(value.nextCursor ?? '', 4096)) invalid();
-  const entries = firstOfEach('home', 'entries', keepReadable('home', 'entries', value.entries, entry => validateContentEntry(entry)), entry => entry.id);
+  const entries = firstOfEach('home', 'entries', keepReadable('home', 'entries', value.entries, entry => validateHomeEntry(entry)), entry => entry.id);
   const flag = (name: string) => value[name] === true;
   const amount = (name: string) => (whole(value[name]) ? value[name] as number : 0);
   const required = flag('required');
@@ -215,7 +265,7 @@ function parseHomeRow(value: unknown, allowChildren: boolean): HomeRow {
     if(!Array.isArray(value.resumes)||value.resumes.length>100)invalid();
     row.resumes=Object.freeze(value.resumes.map(v=>{
       if(!object(v)||!id(v.entryId)||!entries.some(e=>e.id===v.entryId))invalid();
-      const target=validateContentEntry(v.target);
+      const target=validateHomeEntry(v.target);
       if(!target.playback)invalid();
       return Object.freeze({entryId:v.entryId,target});
     }));

@@ -990,6 +990,9 @@ func (s *Service) HomeRows(r HomeRequest) (HomeDocument, error) {
 	if e = s.homeEnrichRows(r.Profile, out.Rows); e != nil {
 		return out, e
 	}
+	if e = s.homeTitleContextRows(r.Viewer, out.Rows); e != nil {
+		return out, e
+	}
 	after, e := s.homeRevision(r.Libraries, r.Profile)
 	if e != nil {
 		return out, e
@@ -1050,6 +1053,9 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 		if err = s.homeEnrichRows(r.Profile, children); err != nil {
 			return HomeRow{}, err
 		}
+		if err = s.homeTitleContextRows(r.Viewer, children); err != nil {
+			return HomeRow{}, err
+		}
 		for _, spec := range specs {
 			if spec.ID == recFamily {
 				row := spec.descriptor()
@@ -1086,6 +1092,9 @@ func (s *Service) HomeSingleRow(r HomeRequest, id string, page HomeRowPage) (Hom
 
 	row, e := s.homeRowFor(r, *found, before, page, true)
 	if e != nil {
+		return row, e
+	}
+	if e = s.homeTitleContextRows(r.Viewer, []HomeRow{row}); e != nil {
 		return row, e
 	}
 

@@ -2,14 +2,139 @@ package catalog
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"sort"
 	"strings"
 	"time"
 
+	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/livechannels"
 	"portico.local/server/internal/personalstate"
 )
+
+// HomeTitleContext is the displayed episode's actual, currently visible show.
+// It is populated only on Home, never by generic browse/detail enrichment.
+type HomeTitleContext struct {
+	Kind        string   `json:"kind"`
+	Year        *int     `json:"year,omitempty"`
+	Genres      []string `json:"genres"`
+	SeasonCount *int     `json:"seasonCount,omitempty"`
+}
+
+func (s *Service) homeTitleContextRows(v Viewer, rows []HomeRow) error {
+	entries := []*ContentEntry{}
+	var collect func([]HomeRow)
+	collect = func(rows []HomeRow) {
+		for i := range rows {
+			row := &rows[i]
+			for j := range row.Entries {
+				entries = append(entries, &row.Entries[j])
+			}
+			for j := range row.Resumes {
+				entries = append(entries, &row.Resumes[j].Target)
+			}
+			if row.Collection != nil {
+				for j := range row.Collection.Members {
+					entries = append(entries, &row.Collection.Members[j])
+				}
+			}
+			collect(row.Children)
+		}
+	}
+	collect(rows)
+	return s.homeTitleContexts(v, entries)
+}
+
+// One returned-ID batch resolves real parent links and policy in Home's WAL
+// snapshot. Parent facts are materialized once per distinct parent, not once
+// per episode. Indexed season/member EXISTS visits only those parents' ranges;
+// no descendant list or global season count is retained or sent to the client.
+func (s *Service) homeTitleContexts(v Viewer, entries []*ContentEntry) error {
+	if dbwork.Snapshot(s.Context()) == nil {
+		return sql.ErrTxDone
+	}
+	ids, seen := []string{}, map[string]bool{}
+	for _, entry := range entries {
+		entry.HomeTitleContext = nil
+		if entry.Kind == "episode" && !seen[entry.ID] {
+			ids = append(ids, entry.ID)
+			seen[entry.ID] = true
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	episodeVisible, episodeArgs := v.itemVisibilitySQL("episode.id")
+	parentVisible, parentArgs := v.entityVisibilitySQL("show_entity.id", "show_library.library_id")
+	seasonVisible, seasonArgs := v.itemVisibilitySQL("season_member.id")
+	args := append([]any{idsJSON(ids)}, episodeArgs...)
+	args = append(args, parentArgs...)
+	args = append(args, seasonArgs...)
+	rows, err := s.read().Query(`WITH home_context_requested AS MATERIALIZED (
+	 SELECT pid(episode.public_id) AS entry_id,ep.show_id,episode.library_id
+	 FROM json_each(?) requested CROSS JOIN catalog_entities episode ON episode.public_id=pid_blob(requested.value)
+	 CROSS JOIN catalog_episodes ep ON ep.entity_id=episode.id
+	 WHERE episode.kind=4 AND `+episodeVisible+recordingsClause("episode.id", v.EffectiveRestrictions())+`
+	 AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=episode.id)),
+	 home_context_parents AS MATERIALIZED (
+	 SELECT show_entity.id,show_entity.year,show_entity.library_id AS library_entity,show_library.library_id
+	 FROM (SELECT DISTINCT show_id,library_id FROM home_context_requested) requested
+	 CROSS JOIN catalog_entities show_entity ON show_entity.id=requested.show_id AND show_entity.library_id=requested.library_id
+	 CROSS JOIN catalog_libraries show_library ON show_library.id=show_entity.library_id
+	 WHERE show_entity.kind=2 AND show_entity.retired=0 AND show_library.retired=0 AND `+parentVisible+`),
+	 home_context_facts AS MATERIALIZED (
+	 SELECT parent.id,parent.year,parent.library_id,
+	 (SELECT json_group_array(label) FROM (
+	  SELECT COALESCE(min(src.label_override),term.label) AS label
+	  FROM catalog_term_sources src CROSS JOIN catalog_terms term ON term.id=src.term_id AND term.vocab=1
+	  WHERE src.entity_id=parent.id GROUP BY term.id ORDER BY min(src.ordinal),term.label LIMIT 2)) AS genres,
+	 (SELECT count(*) FROM catalog_seasons sn CROSS JOIN catalog_entities season_entity ON season_entity.id=sn.entity_id
+	  WHERE sn.show_id=parent.id AND sn.number>0 AND season_entity.kind=3 AND season_entity.retired=0 AND season_entity.library_id=parent.library_entity
+	  AND EXISTS(SELECT 1 FROM catalog_episodes season_episode
+	   CROSS JOIN catalog_entities season_member ON season_member.id=season_episode.entity_id
+	   WHERE season_episode.season_id=sn.entity_id AND season_episode.show_id=parent.id
+	   AND season_member.library_id=parent.library_entity AND `+seasonVisible+recordingsClause("season_member.id", v.EffectiveRestrictions())+`
+	   AND NOT EXISTS(SELECT 1 FROM dvr_catalog_retirements gone WHERE gone.item_id=season_member.id))) AS seasons
+	 FROM home_context_parents parent)
+	 SELECT requested.entry_id,facts.library_id,facts.year,facts.genres,facts.seasons
+	 FROM home_context_requested requested JOIN home_context_facts facts ON facts.id=requested.show_id`, args...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	type contextFact struct {
+		library string
+		context HomeTitleContext
+	}
+	facts := map[string]contextFact{}
+	for rows.Next() {
+		var id, genres string
+		var year, seasons int
+		var fact contextFact
+		if err := rows.Scan(&id, &fact.library, &year, &genres, &seasons); err != nil {
+			return err
+		}
+		fact.context = HomeTitleContext{Kind: "show", Genres: []string{}, SeasonCount: &seasons}
+		if year > 0 {
+			fact.context.Year = &year
+		}
+		if err := json.Unmarshal([]byte(genres), &fact.context.Genres); err != nil {
+			return err
+		}
+		facts[id] = fact
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, entry := range entries {
+		if fact, ok := facts[entry.ID]; ok && entry.Kind == "episode" && entry.LibraryID == fact.library {
+			context := fact.context
+			entry.HomeTitleContext = &context
+		}
+	}
+	return nil
+}
 
 // HomeReason records the actual source of a selection, separately from its
 // localized wording. Source is absent for non-causal recommendations.
@@ -37,6 +162,9 @@ type HomePeriod struct {
 	Text   ServerText `json:"text"`
 }
 type HomeCollection struct {
+	Actions *HomeActions `json:"actions,omitempty"`
+	// Featured Home collections are selected only from movie libraries.
+	MediaKind   string         `json:"mediaKind"`
 	Collection  Collection     `json:"collection"`
 	Members     []ContentEntry `json:"members"`
 	BackdropURL string         `json:"backdropUrl,omitempty"`
@@ -46,6 +174,7 @@ type HomeCollection struct {
 	LastTitle string `json:"lastTitle,omitempty"`
 }
 type HomeChannel struct {
+	Actions HomeChannelActions       `json:"actions"`
 	Channel livechannels.Channel     `json:"channel"`
 	Source  livechannels.GuideSource `json:"source"`
 }
@@ -270,7 +399,7 @@ func (s *Service) homeCollection(r HomeRequest) (*HomeCollection, error) {
 			if err = s.homeEnrich(r.Profile, members); err != nil {
 				return nil, err
 			}
-			out := &HomeCollection{Collection: collection, Members: members}
+			out := &HomeCollection{Collection: collection, MediaKind: "movie", Members: members}
 			for _, member := range members {
 				if out.BackdropURL == "" {
 					out.BackdropURL = member.BackdropURL
@@ -441,6 +570,16 @@ func (s *Service) homeSpotlight(r HomeRequest) ([]HomeSpotlight, error) {
 			p.Entry = one[0]
 		}
 		out = append(out, p)
+	}
+	contexts := []*ContentEntry{}
+	for i := range out {
+		contexts = append(contexts, &out[i].Entry)
+		if out[i].ResumeTarget != nil {
+			contexts = append(contexts, out[i].ResumeTarget)
+		}
+	}
+	if err := s.homeTitleContexts(r.Viewer, contexts); err != nil {
+		return nil, err
 	}
 	return out, nil
 }

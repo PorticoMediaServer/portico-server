@@ -17,7 +17,7 @@ export type CardProps = Readonly<{
   onNavigate: () => void;
   onPlay?: () => void;
   playLabel?: string;
-  onMore?: () => void;
+  onMore?: (anchor: HTMLButtonElement) => void;
   moreExpanded?: boolean;
   onNotInterested?: () => void;
   selection?: CardSelection;

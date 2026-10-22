@@ -27,6 +27,7 @@ export const selectionFixtures = {
   'next.selection.fixture.studio': 'Studio',
   'next.selection.fixture.country': 'Country',
   'next.selection.fixture.year': 'Year',
+  'next.selection.fixture.airDate': 'Air date',
   'next.selection.fixture.edition': 'Edition',
   'next.selection.fixture.language': 'Metadata language',
   'next.selection.fixture.genres': 'Genres',
