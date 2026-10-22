@@ -32,7 +32,8 @@ export * from './delivery.ts';
 export * from './client-profile.ts';
 import {readConsoleJson,consoleUTF8Size} from './console-transport.ts';
 import {channelSeconds,channelMessage,type ChannelProjection,type ChannelReference} from './playback/linear-protocol.ts';
-import type {ChannelPlayback,ChannelView} from './playback-v1/channel-control.ts';
+import type {ChannelPlayback,ChannelView,ChannelStartOptions} from './playback-v1/channel-control.ts';
+export type {ChannelStartOptions} from './playback-v1/channel-control.ts';
 export type {ChannelReference,ChannelProjection} from './playback/linear-protocol.ts';
 import type {QueueController} from './queue-controller.ts';
 import {readLyricsResponse} from "./lyrics-http.ts";
@@ -1078,12 +1079,14 @@ export class PlaybackService {
   }
   /** Channel selection uses this same service/adapter owner, but never a VOD
    * create, persisted catalog placeholder, resume checkpoint or chapter query. */
-  async playChannel(reference:ChannelReference):Promise<void> {
+  async playChannel(reference:ChannelReference,options:ChannelStartOptions={}):Promise<void> {
+    const state=options.state??'playing';
+    if(state!=='playing'&&state!=='paused')throw new Error('invalid_channel_start_state');
     const oldVOD=this.snapshot.channel?undefined:this.snapshot.session?.id;
-    this.leave();this.channelReference=reference;this.channelWantedState='playing';
+    this.leave();this.channelReference=reference;this.channelWantedState=state;
     const intentId=this.snapshot.intentId;
     this.channelSeekId=undefined;this.channelObservedSeek=undefined;this.channelSubmittedSeek=undefined;
-    this.update({channel:reference,phase:'starting',intent:'playing',itemId:reference.channelId});
+    this.update({channel:reference,phase:'starting',intent:state,itemId:reference.channelId,playbackRun:this.snapshot.playbackRun+1});
     if(!this.channels){this.update({phase:'error',error:'Channel playback is not configured on this client.'});return;}
     // Release the exact prior VOD before live admission. This is resource
     // cleanup, not a predicted capacity check or a profile-wide singleton.
@@ -1094,7 +1097,7 @@ export class PlaybackService {
     await this.channels.open(reference,{
       state:value=>{if(this.snapshot.intentId===intentId&&this.snapshot.channel)this.applyChannel(value);},
       error:(message,terminal)=>{if(this.snapshot.intentId!==intentId||!this.snapshot.channel)return;this.update({error:message,...(terminal?{phase:'error' as const,session:undefined,pendingSeek:undefined}:{} )});}
-    });
+    },{state});
   }
   /** Channels on v1 sessions (spec §18.6): the apps switch to this when the server offers them. */
   useChannelPlayback(control:ChannelPlayback){if(this.snapshot.channel)this.leave();this.channels=control;}
