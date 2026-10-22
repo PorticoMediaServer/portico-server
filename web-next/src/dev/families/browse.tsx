@@ -1,6 +1,7 @@
 import {useEffect, useMemo, useState, type ComponentType, type ReactNode} from 'react';
 import {defaultI18n, formatMessage, type MessageValues} from '@i18n';
 import {parseBrowseCapabilities, parseBrowseResult, type BrowseCapabilities, type BrowseNode, type BrowseSortSelection} from '@core/browse';
+import {libraryTabs} from '@core/presentation/library-tabs';
 import {browseNameId, filterControlOf, rangePresets} from '@core/presentation/browse-toolbar';
 import {appliedFilterParts, browseToolbarModel, cardText, titleFactParts} from '@portico/client-core/kit-model';
 import {browseFixtures} from '../../../../packages/i18n/src/catalog/en-US/next/dev/browse-fixtures';
@@ -70,7 +71,7 @@ function headerCase(mode: 'desktop' | 'music' | 'phone' | 'switcher' | 'owner' |
   return function HeaderCase() {
     const [library, setLibrary] = useState(mode === 'music' ? 'music' : mode === 'read' ? 'books' : 'movies');
     const [switcherOpen, setSwitcherOpen] = useState(mode === 'switcher'), [menuOpen, setMenuOpen] = useState(mode === 'owner' || mode === 'member' || mode === 'read');
-    const [outcome, setOutcome] = useState(''), [pivot, setPivot] = useState('movies');
+    const [outcome, setOutcome] = useState(''), [pivot, setPivot] = useState(mode === 'music' ? 'discover' : mode === 'read' ? '1' : 'browse');
     const choices: {id: string; name: string; count?: string}[] = (['movies', 'tv', 'anime', 'music', 'audiobooks', 'books', 'comics'] as const).map(id => ({id, name: fixture(`next.browse.example.${id}`)}));
     if (mode === 'switcher') {
       const reference = new DOMParser().parseFromString(drawnPhone, 'text/html');
@@ -83,10 +84,12 @@ function headerCase(mode: 'desktop' | 'music' | 'phone' | 'switcher' | 'owner' |
     const switcher = <LibrarySwitcher libraries={choices} value={library} onValueChange={setLibrary} compact={phone} open={switcherOpen} onOpenChange={setSwitcherOpen}/>;
     const menuProps = {onSaveView: () => setOutcome(t('next.browse.saveThisView')), onMarkAll: () => setOutcome(t(mode === 'read' ? 'next.browse.markAllRead' : 'next.browse.markAllWatched')),
       onEditPins: () => setOutcome(t('next.browse.editPins')), read: mode === 'read', open: menuOpen, onOpenChange: setMenuOpen,
-      ownerMark: <OwnerTag size="phone"/>, viewSummary: `${t('next.browse.title')} ${t('next.browse.asc.alpha')}`, countSummary: fixture('next.browse.example.movieCount', {count: 80})};
+      ownerMark: <OwnerTag size="phone"/>, viewSummary: `${t('next.browse.title')} ${t('next.browse.asc.alpha')}`, countSummary: mode === 'read' ? t('next.kit.books', {count: 342}) : fixture('next.browse.example.movieCount', {count: 80})};
     const menu = mode === 'member' ? <LibraryMenu {...menuProps} owner={false}/> : <LibraryMenu {...menuProps} owner onLibrarySettings={() => setOutcome(t('next.browse.librarySettings'))} onScan={() => setOutcome(t('next.browse.scan'))}/>;
+    const kind: Readonly<Record<string, string>> = {movies: 'movie', tv: 'tv', anime: 'anime', music: 'music', audiobooks: 'audiobook'};
+    const tabItems = mode === 'read' ? Array.from(new DOMParser().parseFromString(drawnRead, 'text/html').querySelectorAll('#grid-s .tabs .tab')).map((item, index) => ({value: String(index), label: item.textContent!})) : libraryTabs(kind[library] ?? 'movie').map(tab => ({value: tab.id, label: t(tab.label)}));
     const tabs = <Tabs phone={phone} value={pivot} onValueChange={setPivot} className={phone ? styles.phoneTabs : styles.headerTabs}
-      items={(['discover', 'movies', 'collections'] as const).map(value => ({value, label: fixture(`next.browse.example.${value}`)}))}/>;
+      items={tabItems}/>;
     return <Stage outcome={outcome}>{phone ? <StickyBrowseHeader name={current.name} switcher={switcher} menu={menu} topInset={0} onLibraries={() => setOutcome(t('next.browse.libraries'))}>{tabs}</StickyBrowseHeader> :
       <LibraryHeader name={current.name} switcher={switcher} menu={menu} counts={mode === 'music' ? [
         {id: 'artists', text: fixture('next.browse.example.musicCounts'), role: 'value'}, {id: 'albums', text: fixture('next.browse.example.albumCounts'), role: 'value'},
@@ -248,7 +251,7 @@ function tableCase(variant: 'album' | 'top-songs' | 'songs' | 'chapters' | 'comp
     const actions = {onPlay: (id: string) => {setPlaying(id); setOutcome(id);}, onMore: setMore, onFavorite: (id: string, favorite: boolean) => setFavorites(current => favorite ? [...current, id] : current.filter(value => value !== id))};
     const selected = rows.find(row => row.id === more);
     const selection = (row: TrackRowData) => <SelectionCircle selected={selectedIds.includes(row.id)} accessibilityLabel={row.text.title} variant="row" onSelectedChange={() => setSelectedIds(current => current.includes(row.id) ? current.filter(id => id !== row.id) : [...current, row.id])}/>;
-    return <Stage outcome={outcome}><div data-fixture-kind={drawn ? 'drawn-synthetic' : 'parsed-reference'}>{variant === 'compact' || variant === 'search' ? rows.slice(0, 4).map(row => <SongRow key={row.id} row={row} context={variant === 'search' ? 'search' : 'list'} selection={variant === 'search' ? selection(row) : undefined} onPlay={actions.onPlay} onMore={actions.onMore}/>) :
+    return <Stage outcome={outcome}><div data-fixture-kind={drawn ? 'drawn-synthetic' : 'parsed-reference'}>{variant === 'compact' || variant === 'search' ? rows.slice(0, 4).map(row => <SongRow key={row.id} row={row} context={variant === 'search' ? 'search' : 'list'} selection={variant === 'search' ? selection(row) : undefined} onPlay={actions.onPlay} onMore={variant === 'compact' ? undefined : actions.onMore}/>) :
       <TrackTable rows={variant === 'songs' ? rows.slice(range.start, range.end) : rows} variant={variant === 'sparse' || variant === 'disc' ? 'album' : variant} label={t(variant === 'chapters' ? 'next.browse.chapters' : 'next.browse.songs')}
         {...actions} platform={platform} renderSelection={variant === 'songs' ? selection : undefined} discNumber={variant === 'disc' ? 2 : undefined} sort={sort} onSort={field => setSort(current => ({field, direction: field === current.field && current.direction === 'asc' ? 'desc' : 'asc'}))}
         height={variant === 'songs' ? 560 : undefined} startIndex={variant === 'songs' ? range.start : undefined} totalCount={rows.length} onWindowChange={variant === 'songs' ? setRange : undefined}/>}</div>
@@ -297,5 +300,5 @@ export default defineGalleryFamily({id: 'browse', labelKey: 'next.browse.family'
   {id: 'tracks-chapters', labelKey: 'next.browse.tracksCase', width: 880, height: 676, render: tableCase('chapters')},
   {id: 'tracks-sparse', labelKey: 'next.browse.tracksCase', width: 880, height: 288, render: tableCase('sparse')},
   {id: 'tracks-disc', labelKey: 'next.browse.tracksCase', width: 880, height: 340, render: tableCase('disc')},
-  {id: 'song-row', labelKey: 'next.browse.songCase', width: 625, height: 248, render: tableCase('compact')},
+  {id: 'song-row', labelKey: 'next.browse.songCase', width: 416, height: 248, render: tableCase('compact')},
 ]});
