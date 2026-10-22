@@ -18,9 +18,9 @@ export function FieldTile({label, summary, active = false, expanded = false, con
 }
 export type FacetChipsProps = Readonly<{
   values: readonly FacetValue[]; included: readonly string[]; excluded: readonly string[];
-  onValueChange: (value: string, selection: FacetSelection) => void; cycleExclusion?: boolean;
+  onValueChange: (value: string, selection: FacetSelection) => void; cycleExclusion?: boolean; trailing?: ReactNode;
 }>;
-export function FacetChips({values, included, excluded, onValueChange, cycleExclusion = false}: FacetChipsProps) {
+export function FacetChips({values, included, excluded, onValueChange, cycleExclusion = false, trailing}: FacetChipsProps) {
   return <div className={styles.facetChips}>{values.map(value => {
     const inside = included.includes(value.value), outside = excluded.includes(value.value);
     const next = nextFacetSelection(inside, outside, cycleExclusion);
@@ -28,7 +28,7 @@ export function FacetChips({values, included, excluded, onValueChange, cycleExcl
       className={[styles.facetChip, outside && styles.excludedFacet].filter(Boolean).join(' ')}
       aria-label={t(next === 'exclude' ? 'next.browse.exclude' : next === 'clear' ? 'next.browse.clearValue' : 'next.browse.include', {value: value.label})}
       onClick={() => onValueChange(value.value, next)}>{inside && <Icon name="i-check" size={16}/>}<span>{value.label}</span>{value.count !== undefined && <small>{defaultI18n.number(value.count)}</small>}</button>;
-  })}</div>;
+  })}{trailing}</div>;
 }
 export type MatchModeProps = Readonly<{value: FilterMatch; allowAll: boolean; allowNone?: boolean; onValueChange: (value: FilterMatch) => void}>;
 export function MatchMode({value, allowAll, allowNone = true, onValueChange}: MatchModeProps) {
@@ -65,7 +65,7 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
     return <div className={open ? styles.expandedField : styles.collapsedField} key={field.id} data-active={active(state) || undefined}>
       {open ? <div className={styles.expandedHeading}><button type="button" className={styles.expandedName} aria-expanded aria-controls={contentId} onClick={() => onFieldOpenChange(field.id, false)}>
         {label}{state.summary && <span>{state.summary}</span>}<Icon name="i-up" size={16}/></button>
-        {platform !== 'phone' && active(state) && <Button variant="text" size="xs" onClick={() => change({kind: 'clear'})}>{t('next.browse.clear')}</Button>}</div> :
+        {platform === 'desktop' && active(state) && <Button variant="text" size="xs" onClick={() => change({kind: 'clear'})}>{t('next.browse.clear')}</Button>}</div> :
         <FieldTile label={label} summary={state.summary} active={active(state)} expanded={false} controls={contentId} onClick={() => onFieldOpenChange(field.id, true)}/>}
       {open && <div className={styles.fieldContent} id={contentId}>
         {state.kind === 'values' && <>
@@ -75,10 +75,11 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
             onChange={event => onSearchChange(field.id, event.target.value)}/>}
           {state.status === 'loading' && <div role="status" className={styles.fieldNotice}>{t('next.browse.loadingValues')}</div>}
           {state.status === 'error' ? <div className={styles.fieldNotice} role="alert">{state.error}{onRetry && <Button variant="text" size="small" onClick={() => onRetry(field.id)}>{t('next.browse.retry')}</Button>}</div> :
-            <><FacetChips values={state.values} included={state.included} excluded={state.excluded} cycleExclusion={platform === 'phone' && canExclude}
+            <>{platform === 'tv' && state.hint && <p className={styles.facetHelp}>{state.hint}</p>}<FacetChips values={state.values} included={state.included} excluded={state.excluded} cycleExclusion={platform === 'phone' && canExclude}
+              trailing={platform === 'phone' && state.total !== undefined && state.total > state.values.length && onShowAll ? <Button variant="text" size="xs" className={styles.inlineMore} onClick={() => onShowAll(field.id)}>{state.moreLabel ?? t('next.browse.showAll', {count: state.total, field: label.toLocaleLowerCase()})}</Button> : undefined}
               onValueChange={(value, selection) => change({kind: 'facet', value, selection: state.match === 'none' && selection === 'include' ? 'exclude' : selection})}/>
               {state.status !== 'loading' && state.values.length === 0 && <span className={styles.fieldNotice}>{t('next.browse.noValues')}</span>}
-              {state.total !== undefined && state.total > state.values.length && onShowAll && <Button variant="text" size="xs" className={styles.showAll} onClick={() => onShowAll(field.id)}>
+              {platform !== 'phone' && state.total !== undefined && state.total > state.values.length && onShowAll && <Button variant="text" size="xs" className={styles.showAll} onClick={() => onShowAll(field.id)}>
                 {state.moreLabel ?? t('next.browse.showAll', {count: state.total, field: label.toLocaleLowerCase()})}<Icon name="i-down" size={14}/></Button>}</>}
           {platform === 'phone' && canExclude && <p className={styles.facetHelp}>{t('next.browse.facetHelp')}</p>}
         </>}

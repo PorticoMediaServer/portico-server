@@ -292,3 +292,15 @@
 .libraryHeader[data-summary] .roundSwitcher { width: 36px; height: 36px; background: color-mix(in srgb, var(--color-text) 10%, transparent); color: var(--browse-secondary); }
 .libraryHeader[data-summary] .roundSwitcher svg { width: 20px; height: 20px; }
 .libraryHeader .libraryMenuTrigger { border-radius: 12px; }
+
+.facetChips .inlineMore[data-variant=text] { height: 34px; padding: 0 4px; color: var(--color-accent-strong); font-size: 13.5px; font-weight: 600; box-shadow: none; }
+.filterBuilder[data-platform=tv] .filterGroup:first-child > h3 { margin-top: 0; }
+.filterBuilder[data-platform=tv] .expandedField { padding: 0 20px 22px; }
+.filterBuilder[data-platform=tv] .expandedHeading { height: 64px; margin: 0; }
+.filterBuilder[data-platform=tv] .expandedName { width: 100%; font-size: 24px; font-weight: 600; }
+.filterBuilder[data-platform=tv] .expandedName > span { margin-left: auto; font-size: 24px; font-weight: 700; }
+.filterBuilder[data-platform=tv] .fieldTile[data-active] { box-shadow: none; }
+.filterBuilder[data-platform=tv] .facetHelp { font-size: 20px; }
+.filterBuilder[data-platform=tv] .facetChip { font-size: 22px; font-weight: 700; background: color-mix(in srgb, var(--color-text) 8%, transparent); box-shadow: none; }
+.filterBuilder[data-platform=tv] .facetChip small { font-size: 19px; font-weight: 600; }
+.filterBuilder[data-platform=tv] .facetChip[data-selected] { background: color-mix(in srgb, var(--color-accent) 24%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-accent-strong) 70%, transparent); }

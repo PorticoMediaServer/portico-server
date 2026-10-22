@@ -18,6 +18,7 @@ import movieCapabilities from '../../../../../../design-ui-v1/design/ui-v1/raw/c
 import musicCapabilities from '../../../../../../design-ui-v1/design/ui-v1/raw/caps_music.json?raw';
 import songResponse from '../../../../../../design-ui-v1/design/ui-v1/raw/browse_songs.json?raw';
 import drawnListen from '../../../../../../design-ui-v1/design/ui-v1/desktop-listen.html?raw';
+import drawnTv from '../../../../../../design-ui-v1/design/ui-v1/tv.html?raw';
 import drawnBrowse from '../../../../../../design-ui-v1/design/ui-v1/desktop-browse.html?raw';
 import drawnRead from '../../../../../../design-ui-v1/design/ui-v1/desktop-read.html?raw';
 import drawnPhone from '../../../../../../design-ui-v1/design/ui-v1/phone-app.html?raw';
@@ -137,7 +138,7 @@ function makeFields(model: ReturnType<typeof browseToolbarModel>, phone: boolean
 }
 function FilterSpecimen({platform, state = 'ready', field = 'genre', literalPhone = false}: Readonly<{platform: BrowsePlatform; state?: 'ready' | 'loading' | 'error' | 'empty'; field?: string; literalPhone?: boolean}>) {
   const fullModel = browseToolbarModel(movies, 'movie', initialPredicates, {field: 'title', direction: 'asc'}, {...env, textEntry: platform !== 'tv'});
-  const model = literalPhone ? {...fullModel, groups: fullModel.groups.map(group => ({...group, fields: group.fields.filter(item => (group.id === 'title' ? ['genre', 'year', 'contentRating', 'studio'] : group.id === 'activity' ? ['favorite', 'watchlisted'] : ['resolution', 'audioLanguage']).includes(item.id))}))} : fullModel;
+  const model = literalPhone ? {...fullModel, groups: fullModel.groups.map(group => ({...group, fields: group.fields.filter(item => (group.id === 'title' ? ['genre', 'year', 'contentRating'] : group.id === 'activity' ? ['favorite', 'watchlisted'] : ['resolution', 'audioLanguage']).includes(item.id))}))} : fullModel;
   const [initialFields] = useState(() => {
     const initial = makeFields(model, platform === 'phone'), genre = initial.genre;
     if (literalPhone && genre?.kind === 'values') {
@@ -147,7 +148,14 @@ function FilterSpecimen({platform, state = 'ready', field = 'genre', literalPhon
       if (initial.year?.kind === 'values') initial.year = {...initial.year, included: [], excluded: [], summary: undefined};
       initial.genre = {...genre, values, included: chips.flatMap((el,index) => el.classList.contains('on') ? [String(index)] : []), excluded: chips.flatMap((el,index) => el.classList.contains('no') ? [String(index)] : []), summary: group.querySelector('.v')?.textContent?.trim(), total: 18, moreLabel: group.querySelector('.pill.more')?.textContent?.trim()};
     }
-    if (!literalPhone && genre?.kind === 'values') initial.genre = {...genre, status: state === 'empty' ? 'ready' : state, values: state === 'empty' ? [] : genre.values,
+    if (platform === 'tv' && field === 'year' && initial.year?.kind === 'values') {
+      const doc = new DOMParser().parseFromString(drawnTv, 'text/html'), list = doc.querySelector('#f4 .flist')!;
+      const chips = Array.from(list.querySelectorAll('.fchips .fchip'));
+      const values = chips.map((el, index) => ({value: String(index), label: Array.from(el.childNodes).filter(node => node.nodeType === Node.TEXT_NODE).map(node => node.textContent).join('').trim(), count: Number(el.querySelector('em')?.textContent)}));
+      initial.year = {...initial.year, values, included: chips.flatMap((el,index) => el.classList.contains('sel') ? [String(index)] : []), excluded: [], summary: list.querySelector('.frow.open .v')?.textContent?.trim(), hint: list.querySelector('.fopen .find')?.textContent?.trim(), total: values.length};
+      if (genre?.kind === 'values') initial.genre = {...genre, included: [], excluded: [], summary: undefined};
+    }
+    if (!literalPhone && !(platform === 'tv' && field === 'year') && genre?.kind === 'values') initial.genre = {...genre, status: state === 'empty' ? 'ready' : state, values: state === 'empty' ? [] : genre.values,
       query: state === 'empty' ? fixture('next.browse.example.documentary') : '', error: state === 'error' ? fixture('next.browse.example.facetError') : undefined};
     return initial;
   });
