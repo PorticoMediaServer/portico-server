@@ -14,23 +14,23 @@ type FieldProps = Readonly<{spec: RepairFieldSpec; aggregate: BulkFieldValues; c
 function BulkField({spec, aggregate, count, draft, onChange, busy, phone, initial}: FieldProps) {
   const id = useId(), [adding, setAdding] = useState('');
   const edited = Object.hasOwn(draft.fields, spec.field), list = draft.lists[spec.field];
-  const scalar = aggregate.kind === 'scalar' ? aggregate.values : [], mixed = scalar.length > 1;
-  const value = edited ? draft.fields[spec.field]! : scalar.length === 1 ? scalar[0]!.value : '';
+  const mixed = aggregate.state === 'mixed', known = aggregate.state === 'shared' && aggregate.value !== undefined;
+  const value = edited ? draft.fields[spec.field]! : known ? aggregate.value! : '';
   const changed = edited || !!(list?.add.length || list?.remove.length);
   const addLabel = text(spec.field === 'genres' ? 'next.selection.addGenre' : spec.field === 'tags' ? 'next.selection.addTag' : spec.field === 'labels' ? 'next.selection.addLabel' : 'next.selection.addValue', {field: spec.label});
-  const emptyList = aggregate.kind === 'list' && aggregate.entries.length === 0 && !list?.add.length;
+  const emptyList = spec.type === 'list' && aggregate.entries.length === 0 && !list?.add.length;
   const scalarChange = (next: string) => {
     const fields = {...draft.fields};
-    if (scalar.length === 1 && scalar[0]!.value === next) delete fields[spec.field]; else fields[spec.field] = next;
+    if (known && aggregate.value === next) delete fields[spec.field]; else fields[spec.field] = next;
     onChange({...draft, fields});
   };
   const append = () => {
     const next = addListValue(list, adding);
     if (next) { onChange({...draft, lists: {...draft.lists, [spec.field]: next}}); setAdding(''); }
   };
-  return <div className={[styles.bulkField, aggregate.kind === 'list' && styles.fullField].filter(Boolean).join(' ')} data-changed={changed}>
+  return <div className={[styles.bulkField, spec.type === 'list' && styles.fullField].filter(Boolean).join(' ')} data-changed={changed}>
     <div className={styles.fieldLabel}><label htmlFor={id}>{spec.label}</label>{changed && <span className={styles.changed}>{text('next.selection.changed')}</span>}</div>
-    {aggregate.kind === 'list' ? <>
+    {spec.type === 'list' ? <>
       <div className={styles.listValues}>
         {aggregate.entries.map(entry => <Button key={entry.value} variant="text" size="xs" disabled={busy} className={styles.listChip} data-partial={entry.count !== count} data-removed={list?.remove.includes(entry.value)} aria-label={text(list?.remove.includes(entry.value) ? 'next.selection.undoRemoveValue' : 'next.selection.removeValue', {value: entry.value})}
           onClick={() => onChange({...draft, lists: {...draft.lists, [spec.field]: toggleListRemoval(list, entry.value)}})}>{entry.value}<i><span className={styles.desktopChipCount}>{text('next.selection.countOf', {count: entry.count, total: count})}</span><span className={styles.phoneChipCount}>{defaultI18n.number(entry.count)}</span></i><Icon name={list?.remove.includes(entry.value) ? 'i-restart' : 'i-x'} size={12} /></Button>)}
@@ -40,10 +40,10 @@ function BulkField({spec, aggregate, count, draft, onChange, busy, phone, initia
       </div>
       {spec.field === 'genres' && <p className={styles.fieldHelp}>{text('next.selection.listHelp', {count})}</p>}
     </> : <div className={styles.scalarShell} data-changed={edited} data-mixed={mixed && !edited}>
-      {spec.type === 'enum' && spec.allowed?.length ? <Select id={id} options={spec.allowed.filter(Boolean).map(option => ({value: option, label: option}))} value={value || undefined} onValueChange={scalarChange} disabled={busy} aria-label={spec.label} placeholder={text(mixed && !edited ? 'next.selection.mixed' : 'next.selection.notSet')} containerClassName={styles.scalarControl} /> : <TextField id={id} value={value} autoFocus={initial} onChange={event => scalarChange(event.currentTarget.value)} disabled={busy} aria-label={spec.label}
-        type={spec.type === 'integer' || spec.type === 'number' ? 'number' : spec.type === 'date' ? 'date' : 'text'} min={spec.min} max={spec.max} maxLength={spec.maxLength} step={spec.type === 'integer' ? 1 : spec.type === 'number' ? 'any' : undefined} containerClassName={styles.scalarControl} placeholder={mixed && !edited ? undefined : text('next.selection.notSet')} />}
+      {spec.type === 'enum' && spec.allowed?.length ? <Select id={id} options={spec.allowed.filter(Boolean).map(option => ({value: option, label: option}))} value={value || undefined} onValueChange={scalarChange} disabled={busy} aria-label={spec.label} placeholder={mixed && !edited ? text('next.selection.mixed') : known || edited ? text('next.selection.notSet') : undefined} containerClassName={styles.scalarControl} /> : <TextField id={id} value={value} autoFocus={initial} onChange={event => scalarChange(event.currentTarget.value)} disabled={busy} aria-label={spec.label}
+        type={spec.type === 'integer' || spec.type === 'number' ? 'number' : spec.type === 'date' ? 'date' : 'text'} min={spec.min} max={spec.max} maxLength={spec.maxLength} step={spec.type === 'integer' ? 1 : spec.type === 'number' ? 'any' : undefined} containerClassName={styles.scalarControl} placeholder={known || edited ? text('next.selection.notSet') : undefined} />}
       {mixed && !edited && spec.type !== 'enum' && <span className={styles.mixedValue}>{text('next.selection.mixed')}</span>}
-      <span className={styles.valueHint}>{edited ? mixed ? text('next.selection.wasMixed') : undefined : mixed ? text('next.selection.valueCount', {count: scalar.length}) : text(phone ? 'next.selection.allCount' : 'next.selection.sameForAll', {count})}</span>
+      <span className={styles.valueHint}>{edited ? mixed ? text('next.selection.wasMixed') : undefined : mixed ? text('next.selection.valueCount', {count: aggregate.distinctCount}) : known ? text(phone ? 'next.selection.allCount' : 'next.selection.sameForAll', {count}) : undefined}</span>
     </div>}
   </div>;
 }
@@ -55,7 +55,7 @@ function BulkResults({result, targets, resultDescriptions, onRetry, draft, busy}
     <div className={styles.resultBanner} role="status"><Icon name={result.failed ? 'i-warn' : 'i-check'} size={22} /><div><b>{text('next.selection.bulkResult', {updated: result.updated, failed: result.failed})}</b>{result.failed > 0 && <p>{text('next.selection.bulkResultHelp', {count: result.updated, titles: defaultI18n.list(result.results.filter(row => !row.ok).map(row => byId.get(row.id)?.title ?? text('next.selection.title')))})}</p>}</div></div>
     {result.results.map(row => {
       const entry = byId.get(row.id), reason = row.code === 'metadata_conflict' ? 'next.selection.metadataConflict' : row.code === 'invalid_metadata_repair' ? 'next.selection.invalidMetadata' : row.code === 'unsupported_item_kind' ? 'next.selection.unsupportedMetadata' : row.code === 'not_found' ? 'next.selection.notFound' : 'next.selection.metadataFailed';
-      return <div key={`${row.kind}-${row.id}`} className={styles.resultRow}><span className={styles.resultArtwork}>{entry?.artwork}</span><div><b>{entry?.title ?? text('next.selection.title')}</b><small>{resultDescriptions?.[row.id] ?? text(row.ok ? 'next.selection.saved' : reason)}</small></div>{!row.ok && <Button size="xs" disabled={busy} onClick={() => onRetry([row], draft)}>{text('next.selection.retry')}</Button>}<span className={styles.resultStatus} data-ok={row.ok}><Icon name={row.ok ? 'i-check' : 'i-warn'} size={16} /></span></div>;
+      return <div key={`${row.kind}-${row.id}`} className={styles.resultRow}><span className={styles.resultArtwork}>{entry?.artwork}</span><div><b>{entry?.title ?? text('next.selection.title')}</b><small>{resultDescriptions?.[row.id] ?? text(row.ok ? 'next.selection.saved' : reason)}</small></div>{!row.ok && <Button size="xs" disabled={busy} onClick={() => onRetry([row.id], draft)}>{text('next.selection.retry')}</Button>}<span className={styles.resultStatus} data-ok={row.ok}><Icon name={row.ok ? 'i-check' : 'i-warn'} size={16} /></span></div>;
     })}
     {result.failed > 0 && <div className={styles.singleItemNote}><Icon name="i-info" size={18} /><p>{text('next.selection.bulkRetryHelp')}</p></div>}
   </div>;
@@ -63,12 +63,11 @@ function BulkResults({result, targets, resultDescriptions, onRetry, draft, busy}
 
 /** Controlled metadata fields and receipts; the caller supplies the real schema and aggregate read. */
 export function BulkEditor(props: BulkEditorProps) {
-  const {selection, schema, values: suppliedValues, genres, draft, onDraftChange, onSave, onRetry, targets, resultDescriptions, result, busy = false, error, ownerTag, description, ...surface} = props;
+  const {selection, schema, values, draft, onDraftChange, onSave, onRetry, targets, resultDescriptions, result, busy = false, error, ownerTag, description, ...surface} = props;
   const phone = usePhone(), [viewport, setViewport] = useState(() => typeof window === 'undefined' ? 844 : window.visualViewport?.height ?? window.innerHeight);
   const focus = useRef<HTMLElement | null>(null);
   useEffect(() => { const update = () => setViewport(window.visualViewport?.height ?? window.innerHeight); window.visualViewport?.addEventListener('resize', update); window.addEventListener('resize', update); return () => { window.visualViewport?.removeEventListener('resize', update); window.removeEventListener('resize', update); }; }, []);
-  const allowedSchema = bulkEditorSchema(schema, selection.kind, genres);
-  const values = genres?.allowed ? {...suppliedValues, genres: genres.values} : suppliedValues;
+  const allowedSchema = bulkEditorSchema(schema, selection.kind);
   const fields = allowedSchema.filter(spec => values[spec.field]);
   const summary = bulkSummary(fields, values, draft, selection.count);
   const untouched = fields.filter(spec => !Object.hasOwn(draft.fields, spec.field) && !draft.lists[spec.field]?.add.length && !draft.lists[spec.field]?.remove.length).map(spec => spec.label);
@@ -91,9 +90,9 @@ export function BulkEditor(props: BulkEditorProps) {
   const footer = <>
     {!result && summary.length > 0 && <div className={styles.summary}><h5><Icon name="i-check" size={16} />{text('next.selection.summary')}<small>{text('next.selection.changes', {count: summary.length})}</small></h5><ul>{summary.map(row => <li key={row.id}>{row.text}{row.changedCount !== undefined && row.changedCount !== selection.count && <span> {text(selection.kind === 'episode' ? row.changedTitles?.length ? 'next.selection.episodeChangesNamed' : 'next.selection.episodeChangeCount' : selection.kind === 'song' ? row.changedTitles?.length ? 'next.selection.trackChangesNamed' : 'next.selection.trackChangeCount' : 'next.selection.changeCount', {count: row.changedCount, titles: defaultI18n.list(row.changedTitles ?? [])})}</span>}</li>)}</ul>{untouched.length > 0 && <p>{text('next.selection.leftAlone', {fields: defaultI18n.list(untouched)})}{selection.kind === 'movie' && <> {text('next.selection.onlyChangedSaved')}</>}</p>}</div>}
     <div className={styles.editorButtons}><Button size="compact" disabled={busy} onClick={() => surface.onOpenChange(false, 'action')}>{text(result ? 'next.selection.close' : 'next.selection.cancel')}</Button>
-      {result ? failed.length > 0 && <Button variant="primary" size="compact" loading={busy} onClick={() => onRetry(failed, draft)}>{retryLabel(failed.map(row => ({title: names.get(row.id) ?? text('next.selection.title')})))}</Button> : <Button variant="primary" size="compact" loading={busy} disabled={!bulkDraftValid(allowedSchema, values, draft)} onClick={() => { if (bulkDraftValid(allowedSchema, values, draft)) onSave(draft); }}>{text('next.selection.save', {items})}</Button>}
+      {result ? failed.length > 0 && <Button variant="primary" size="compact" loading={busy} onClick={() => onRetry(failed.map(row => row.id), draft)}>{retryLabel(failed.map(row => ({title: names.get(row.id) ?? text('next.selection.title')})))}</Button> : <Button variant="primary" size="compact" loading={busy} disabled={!bulkDraftValid(allowedSchema, values, draft)} onClick={() => { if (bulkDraftValid(allowedSchema, values, draft)) onSave(draft); }}>{text('next.selection.save', {items})}</Button>}
     </div>
   </>;
   const common = {...surface, title: heading, accessibilityLabel: title, children: body, footer, initialFocusRef: focus, className: styles.editor, headerClassName: styles.editorHeader, bodyClassName: styles.editorBody, footerClassName: styles.editorFooter, dismissOnOutsidePress: !busy, dismissOnBack: !busy};
-  return phone ? <BottomSheet {...common} detents={[viewport - 44]} detent={0} /> : <Dialog {...common} responsive={false} width={600} />;
+  return phone ? <BottomSheet {...common} detents={[viewport - 44]} detent={0} /> : <Dialog {...common} responsive={false} placement="right" width={600} />;
 }

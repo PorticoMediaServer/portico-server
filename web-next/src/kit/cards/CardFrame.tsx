@@ -56,7 +56,7 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
       {children}
     </button>
     {onPlay && !selection?.active && <button type="button" className={styles.play} aria-label={props.playLabel ?? defaultI18n.t(playIcon === 'i-book' ? 'next.cards.read' : playIcon === 'i-pause' ? 'next.cards.pause' : 'next.cards.play')} onClick={onPlay}><Icon name={playIcon} size={22} /></button>}
-    {onMore && <button type="button" className={styles.more} aria-label={defaultI18n.t('next.cards.more')} aria-haspopup="menu" aria-expanded={props.moreExpanded} onClick={onMore}><Icon name="i-more" size={18} /></button>}
+    {onMore && <button type="button" className={styles.more} aria-label={defaultI18n.t('next.cards.more')} aria-haspopup="menu" aria-expanded={props.moreExpanded} onClick={event => onMore(event.currentTarget)}><Icon name="i-more" size={18} /></button>}
     {onNotInterested && <NotInterestedButton onClick={onNotInterested} className={styles.notInterestedPosition} />}
     {selection && <span className={styles.selection}>{selection.control}</span>}
     {overlay}{footer}

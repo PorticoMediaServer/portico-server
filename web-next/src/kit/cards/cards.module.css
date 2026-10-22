@@ -32,13 +32,13 @@
 .tooltip { display:none; position:absolute; z-index:4; top:39px; right:-4px; padding:7px 11px; border-radius:8px; font-size:12.5px; font-weight:700; white-space:nowrap; background:var(--color-raised-bright); color:var(--color-text); box-shadow:0 10px 24px -6px rgba(0,0,0,.75),0 0 0 1px rgba(237,245,250,.12); }
 .tooltip::before { content:''; position:absolute; top:-5px; right:15px; width:10px; height:10px; transform:rotate(45deg); background:var(--color-raised-bright); border-radius:2px; }
 .notInterestedWrap:hover .tooltip, .notInterestedWrap:focus-within .tooltip { display:block; }
-.selection { position:absolute; z-index:4; top:12px; left:12px; display:inline-flex; opacity:0; transition:opacity 200ms cubic-bezier(.2,.7,.2,1); }
+.selection { --selection-circle-size:26px; position:absolute; z-index:4; top:10px; left:10px; display:inline-flex; opacity:0; transition:opacity 200ms cubic-bezier(.2,.7,.2,1); }
 .selecting .selection, .selected .selection, .selection:focus-within, .card:hover .selection, .card:focus-within .selection { opacity:1; }
 .card:hover > .play, .card:focus-within > .play { opacity:1; transform:none; }
 .card:hover > .more, .card:focus-within > .more, .card:hover > .notInterestedPosition, .card:focus-within > .notInterestedPosition { opacity:1; }
-.selected .art, .expanded .art, .next .art { outline:2px solid var(--color-accent-strong); outline-offset:3px; }
+.selected .art, .expanded .art, .next .art { outline:3px solid var(--color-accent-strong); outline-offset:3px; }
 .selecting > .more, .selecting > .notInterestedPosition, .selecting .watched { display:none; }
-.next .title { color:var(--color-accent-strong); }
+.selected .title, .selected .wideTitle, .selected .episodeTitle, .next .title { color:var(--color-accent-strong); }
 .next > .play { opacity:1; transform:none; }
 .square .art, .circle .art { aspect-ratio:1; }
 .square .play, .circle .play, .cover.periodical .play { top:calc(100cqw - 50px); }
@@ -245,6 +245,8 @@
 .session:hover .sessionTitle, .session:focus-within .sessionTitle { padding-right:124px; }
 .session .edge { height:3px; background:rgba(237,245,250,.08); }
 @media (max-width:599px) {
+  .selection { --selection-circle-size:24px; top:7px; left:7px; }
+  .episode .selection { top:6px; left:6px; }
   .poster, .square, .cover { --cards-width:118px; }
   .caption { margin-top:8px; }
   .title { font-size:13px; }
