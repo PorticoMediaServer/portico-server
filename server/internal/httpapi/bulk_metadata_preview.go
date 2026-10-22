@@ -33,6 +33,9 @@ func registerBulkMetadataPreview(registry *apikit.Registry, d Dependencies) {
 			if r.URL.RawQuery != "" {
 				return out, metadataAttentionError(metadata.ErrRepairInput)
 			}
+			if err := in.ValidateSelection(); err != nil {
+				return out, err
+			}
 			if d.Metadata == nil || d.Catalog == nil || d.Identity == nil {
 				return out, errMetadataUnavailable()
 			}

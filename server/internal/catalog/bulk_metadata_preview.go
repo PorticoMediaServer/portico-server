@@ -34,23 +34,38 @@ type BulkMetadataSelection struct {
 
 const BulkMetadataPreviewTargetLimit = 2048
 
-func (s *Service) BulkMetadataSelectionTx(ctx context.Context, tx *sql.Tx, v Viewer, in BulkMetadataPreviewRequest) (BulkMetadataSelection, error) {
-	clone := *s.WithContext(ctx)
-	clone.readTx = tx
-	s = &clone
-	out := BulkMetadataSelection{Targets: in.Targets}
+// ValidateSelection checks only request shape, before a service or database is
+// required. Authority and live target/revision checks remain in the transaction.
+func (in BulkMetadataPreviewRequest) ValidateSelection() error {
 	if len(in.Targets) > 0 {
 		if in.Selector != nil || in.Expected != nil || len(in.Targets) > BulkMetadataPreviewTargetLimit {
-			return out, jobInvalid("preview needs bounded targets or one query selector")
+			return jobInvalid("preview needs bounded targets or one query selector")
 		}
 		seen := map[string]bool{}
 		for _, target := range in.Targets {
 			kind, err := compactcatalog.ParseKind(target.ContentKind)
 			if err != nil || compactcatalog.OwnerNamespace(kind) != target.Kind || target.ID == "" || len(target.ID) > 256 || target.LibraryID == "" || len(target.LibraryID) > 256 || seen[target.ID] {
-				return out, jobInvalid("invalid metadata target")
+				return jobInvalid("invalid metadata target")
 			}
 			seen[target.ID] = true
 		}
+		return nil
+	}
+	if in.Selector == nil || in.Selector.Query == nil || in.Selector.Items != nil || in.Selector.Container != nil || in.Expected == nil || in.Expected.CatalogRevision == "" {
+		return jobInvalid("preview query requires its exact revision")
+	}
+	return nil
+}
+
+func (s *Service) BulkMetadataSelectionTx(ctx context.Context, tx *sql.Tx, v Viewer, in BulkMetadataPreviewRequest) (BulkMetadataSelection, error) {
+	clone := *s.WithContext(ctx)
+	clone.readTx = tx
+	s = &clone
+	out := BulkMetadataSelection{Targets: in.Targets}
+	if err := in.ValidateSelection(); err != nil {
+		return out, err
+	}
+	if len(in.Targets) > 0 {
 		raw, err := json.Marshal(in.Targets)
 		if err != nil {
 			return out, err
@@ -69,9 +84,6 @@ func (s *Service) BulkMetadataSelectionTx(ctx context.Context, tx *sql.Tx, v Vie
 			return out, sql.ErrNoRows
 		}
 		return out, nil
-	}
-	if in.Selector == nil || in.Selector.Query == nil || in.Selector.Items != nil || in.Selector.Container != nil || in.Expected == nil || in.Expected.CatalogRevision == "" {
-		return out, jobInvalid("preview query requires its exact revision")
 	}
 	q := in.Selector.Query
 	if !v.AllowsLibrary(q.LibraryID) {

@@ -74,7 +74,7 @@ func TestMetadataMalformedRequestsAreClientErrors(t *testing.T) {
 func TestBulkMetadataPreviewHostileQueryAndAbsentService(t *testing.T) {
 	h, owner, _ := hostileFixture(t)
 	for _, query := range hostileQueries {
-		response := editorRequest(t, h, "POST", "/v1/metadata/bulk/preview"+query, owner, "application/json", []byte(`{}`))
+		response := editorRequest(t, h, "POST", "/v1/metadata/bulk/preview"+query, owner, "application/json", []byte(`{"targets":[{"kind":"item","contentKind":"movie","id":"absent","libraryId":"private-library"}]}`))
 		want := 400
 		if query == "" {
 			want = 503 // The fixture deliberately has no metadata subsystem.
