@@ -1,4 +1,4 @@
-import {useCallback, useState, type ReactNode} from 'react';
+import {useCallback, useState, type ReactNode, type CSSProperties} from 'react';
 import {defaultI18n} from '@i18n';
 import {Icon} from '../Icon';
 import type {FactPart} from '@portico/client-core/kit-model';
@@ -28,10 +28,10 @@ export function SquareCard({variant = 'music', progressPlacement = 'edge', ...pr
   return <CardFrame {...props} className={cx(progressPlacement === 'below' && styles.belowProgress, progressPlacement === 'inset' && styles.insetProgress, props.className)} kind="square"><CardAmbient {...props} /><span className={styles.art}><CardArtwork {...props} /><CardBadges watched={props.watched} completionLabel={variant === 'audiobook' ? defaultI18n.t('next.cards.finished') : undefined} isNew={props.isNew} progress={progressPlacement === 'below' ? undefined : props.model.progress} /></span>{progressPlacement === 'below' && <Progress value={props.model.progress} />}<CardCaption model={props.model} extraCaption={props.extraCaption} /></CardFrame>;
 }
 
-export type CircleCardProps = Omit<MediaCardProps, 'artwork' | 'fallback' | 'ambient' | 'palette' | 'position' | 'arrivalDurationMs'> & {covers: readonly ArtworkSource[]; initials?: string; variant?: 'artist' | 'person'};
-export function CircleCard({covers, initials, variant = initials ? 'person' : 'artist', ...props}: CircleCardProps) {
+export type CircleCardProps = Omit<MediaCardProps, 'artwork' | 'fallback' | 'ambient' | 'palette' | 'position' | 'arrivalDurationMs'> & {covers: readonly ArtworkSource[]; initials?: string; variant?: 'artist' | 'person'; coverZoom?: number; coverTransformOrigin?: CSSProperties['transformOrigin']};
+export function CircleCard({covers, initials, variant = initials ? 'person' : 'artist', coverZoom, coverTransformOrigin, ...props}: CircleCardProps) {
   const initialsSize = props.context === 'search' ? 34 : props.context === 'detail' ? 30 : undefined;
-  return <CardFrame {...props} kind="circle"><span className={styles.art}>{variant === 'person' ? <PersonCircle covers={covers} initials={initials ?? ''} alt="" initialsSize={initialsSize} visible={props.visible} /> : <CircleArt covers={covers} initials={initials} alt="" treatment={props.context === 'search' ? 'search' : 'artist'} initialsSize={initialsSize} visible={props.visible} />}</span><CardCaption model={props.model} extraCaption={props.extraCaption} /></CardFrame>;
+  return <CardFrame {...props} kind="circle"><span className={styles.art}>{variant === 'person' ? <PersonCircle covers={covers} initials={initials ?? ''} alt="" initialsSize={initialsSize} visible={props.visible} /> : <CircleArt covers={covers} coverZoom={coverZoom} coverTransformOrigin={coverTransformOrigin} initials={initials} alt="" treatment={props.context === 'search' ? 'search' : 'artist'} initialsSize={initialsSize} visible={props.visible} />}</span><CardCaption model={props.model} extraCaption={props.extraCaption} /></CardFrame>;
 }
 
 export type EpisodeTileProps = MediaCardProps & Readonly<{
@@ -59,7 +59,7 @@ export type CoverCardProps = MediaCardProps & Readonly<{
 export function CoverCard({kind = 'book', generated, titleLines, ...props}: CoverCardProps) {
   const book = kind === 'book' || kind === 'comic';
   return <CardFrame {...props} kind="cover" playIcon="i-book" className={cx(book && !generated && styles.spine, !book && styles.periodical, kind === 'newspaper' && styles.newspaper, props.className)}>
-    <span className={styles.art}><CardArtwork {...props} position={kind === 'newspaper' ? 'top' : props.position} fallback={generated ? <GeneratedCover {...generated} /> : props.fallback} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} titleLines={titleLines} />
+    <span className={styles.art}><CardArtwork {...props} position={kind === 'newspaper' ? 'top' : props.position} fallback={generated ? <GeneratedCover {...generated} selectionClearance={props.selection?.active || props.selection?.checked} /> : props.fallback} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} titleLines={titleLines} />
   </CardFrame>;
 }
 

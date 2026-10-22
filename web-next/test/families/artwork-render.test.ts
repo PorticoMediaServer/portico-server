@@ -12,7 +12,7 @@ registerHooks({load(url, context, next) {
   if (url.endsWith('.tsx')) return {format: 'module', source: transformTsx(url), shortCircuit: true};
   return next(url, context);
 }});
-const {CoverMosaic} = await import('../../src/kit/artwork/CircleArt.tsx');
+const {CircleArt, CoverMosaic} = await import('../../src/kit/artwork/CircleArt.tsx');
 const {ProfileFace, ProfilePicker} = await import('../../src/kit/artwork/ProfilePicker.tsx');
 
 test('the actual mosaic bounds cover count and preserves fallback, shape and caller clipping geometry', () => {
@@ -58,4 +58,49 @@ test('picker tint mapping receives original profiles and leaves unmapped semanti
   assert.match(html, /disabled=""/);
   assert.match(html, /Not shared/);
   assert.deepEqual(profiles.map(profile => profile.art), ['blue', 'gold']);
+});
+
+
+test('single-cover presentation inputs pass through CircleCard without changing omitted defaults or person art', async () => {
+  const {CircleCard} = await import('../../src/kit/cards/MediaCards.tsx');
+  const runtime = createArtworkRuntime({scopeKey: 'circle-presentation', load: async () => { throw new Error('SSR must not request images'); }, classify: () => ({retryable: false})});
+  const covers = [runtime.source({url: '/real-cover', cacheKey: 'cover'})];
+  const props = {covers, model: {title: 'Supplied artist', caption: []}, context: 'search' as const};
+  const html = renderToStaticMarkup(createElement(CircleCard, {...props, coverZoom: 1.75, coverTransformOrigin: '52% 62%'}));
+  assert.match(html, /--circle-cover-zoom:1.75/);
+  assert.match(html, /--circle-cover-origin:52% 62%/);
+  assert.doesNotMatch(html, /coverTransformOrigin=|coverZoom=|object-position:/);
+  for (const element of [createElement(CircleArt, {covers, alt: ''}), createElement(CircleCard, props), createElement(CircleCard, {...props, variant: 'person', initials: 'SA', coverTransformOrigin: '52% 62%'})]) {
+    assert.doesNotMatch(renderToStaticMarkup(element), /--circle-cover-origin|--circle-cover-zoom/);
+  }
+  runtime.dispose();
+});
+
+test('explicit ProfileFace palettes preserve supplied semantic/tint and identity inputs while selecting only the two-stop presentation', () => {
+  const palette = Object.freeze({first: '#3f8f6e', second: '#153749'});
+  const html = renderToStaticMarkup(createElement(ProfileFace, {initial: 'S', alt: 'Supplied viewer', size: 22, art: 'gold', tint: '#123456', palette, locked: true, selected: true}));
+  assert.match(html, /profileFace profilePalette currentFace/);
+  assert.match(html, /--profile-colour:#123456;--profile-first:#3f8f6e;--profile-second:#153749/);
+  assert.match(html, /aria-label="Supplied viewer"/);
+  assert.match(html, />S<span class="lockBadge"/);
+  for (const props of [{}, {tint: '#3f8f6e'}]) {
+    const standard = renderToStaticMarkup(createElement(ProfileFace, {initial: 'S', ...props}));
+    assert.doesNotMatch(standard, /profilePalette|--profile-first|--profile-second/);
+  }
+  assert.deepEqual(palette, {first: '#3f8f6e', second: '#153749'});
+});
+
+
+test('CoverCard reserves generated copy only while the card selection overlay is visible', async () => {
+  const {CoverCard} = await import('../../src/kit/cards/MediaCards.tsx');
+  const {GeneratedCover} = await import('../../src/kit/artwork/GeneratedArt.tsx');
+  const generated = {title: 'Supplied title', glyph: 'S', tint: {first: '#3f8f6e', second: '#153749'}};
+  const model = {title: generated.title, caption: []};
+  for (const selection of [undefined, {active: false, checked: false, onToggle() {}}, {active: true, checked: false, onToggle() {}}, {active: true, checked: true, onToggle() {}}, {active: false, checked: true, onToggle() {}}]) {
+    const html = renderToStaticMarkup(createElement(CoverCard, {model, generated, selection}));
+    assert.equal(html.includes('generatedCover selectionClearance'), !!(selection?.active || selection?.checked));
+    assert.match(html, /aria-label="Supplied title"/);
+  }
+  const standalone = renderToStaticMarkup(createElement(GeneratedCover, generated));
+  assert.doesNotMatch(standalone, /selectionClearance/);
 });
