@@ -5,7 +5,7 @@ export type {GridSkeletonProps, HomeSkeletonProps, PressedTitle, SkeletonArtwork
 export {KeyboardShortcuts} from './KeyboardShortcuts';
 export type {KeyboardShortcutsProps} from './KeyboardShortcuts';
 export {knownProgress, loadingPhase, skeletonGridWindow} from './model';
-export type {SkeletonCell, SkeletonGridGeometry, SkeletonWindow} from './model';
+export type {SkeletonCaptionLines, SkeletonCell, SkeletonGridGeometry, SkeletonWindow} from './model';
 export {keyboardShortcutSections} from './shortcuts';
 export type {ShortcutKey, ShortcutRow, ShortcutSection, ShortcutSectionId} from './shortcuts';
 export {StateSentence} from './StateSentence';

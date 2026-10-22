@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {hostedShellProfile, ShellBootstrap, sameShellAuthority, type ShellAssembler} from '../src/shell/bootstrap.ts';
+import {currentShellProfile, hostedShellProfile, ShellBootstrap, sameShellAuthority, type ShellAssembler} from '../src/shell/bootstrap.ts';
 import {CredentialSessionService, type CredentialRecord, type HostedSession, type HttpLocalApi, type LocalSession} from '@core/index.ts';
 import type {SelectedViewerRecord} from '@core/viewer-selection.ts';
 import {homeFixtures as f} from '../../packages/i18n/src/catalog/en-US/next/dev/home-fixtures.ts';
@@ -73,14 +73,52 @@ test('hosted profile restore waits for public synchronization and projects the c
   // A different tab replaced the initial metadata before the coordinator reload.
   opening.resolve(hostedRecord('old-account'));
   const restored = await profile;
-  assert.equal(reads, 2); assert.equal(restored.profileName, f.profile);
+  assert.equal(reads, 2); assert.equal(restored.profileName, f.profile); assert.equal(restored.username, f.account);
   assert.deepEqual(restored.profiles, [{id: 'profile', name: f.profile, initial: Array.from(f.profile)[0]}]);
-  assert.deepEqual(restored.accountFacts, [{id: 'account', text: f.account, role: 'identity'}]);
+  assert.deepEqual(restored.accountFacts, []);
   assert.equal(restored.canManageProfiles, false);
   synchronized = hostedRecord('replacement-account');
   await assert.rejects(hostedShellProfile(service, {accountId: 'account', profileId: 'profile'}), /profile is unavailable/);
   synchronized = hostedRecord('account', 'replacement-profile');
   await assert.rejects(hostedShellProfile(service, {accountId: 'account', profileId: 'profile'}), /profile is unavailable/);
+});
+
+test('hosted account handover reads the newly synchronized username and keeps the actual profile name', async () => {
+  let record = hostedRecord();
+  const service = new CredentialSessionService(unexpectedAccountApi, {load: async () => record, save: async () => { throw new Error('Unexpected account write.'); }});
+  const first = await hostedShellProfile(service, {accountId: 'account', profileId: 'profile'});
+  const next = hostedRecord('next-account', 'next-profile');
+  record = {...next, active: {...next.active!, session: {...next.active!.session, account: {...next.active!.session.account, username: 'next-user', displayName: 'Account display label'}, profiles: [{id: 'next-profile', name: f.profile}]}}};
+  const second = await hostedShellProfile(service, {accountId: 'next-account', profileId: 'next-profile'});
+  assert.equal(first.username, f.account); assert.equal(second.username, 'next-user');
+  assert.equal(second.profileName, f.profile); assert.deepEqual(second.accountFacts, []);
+  await assert.rejects(hostedShellProfile(service, {accountId: 'account', profileId: 'profile'}), /profile is unavailable/);
+});
+
+function directRecord(username: string | undefined = 'local-user', profileName = 'Evening profile') {
+  return {authority: 'local', serverId: 'server-a', canManage: true,
+    account: {id: 'account-a', username, primaryProfileId: 'profile-a', role: 'owner', revision: 1, disabled: false, allowedLibraries: []},
+    profiles: [{id: 'profile-a', name: profileName, primary: true, position: 0, art: 'mint', revision: 1, pinRevision: 1, pinRequired: false}]};
+}
+const directSession = {sessionFamilyId: 'family-a', viewer: {serverId: 'server-a', accountId: 'account-a', profileId: 'profile-a', authority: 'local', role: 'owner'}} as LocalSession;
+test('local account facts supply genuine username separately from differing or matching profile names', async () => {
+  for (const name of ['Evening profile', 'local-user']) {
+    const calls: unknown[][] = [], controller = new AbortController();
+    const api = {request: async (...args: unknown[]) => { calls.push(args); return directRecord('local-user', name); }} as unknown as HttpLocalApi;
+    const restored = await currentShellProfile(api, directSession, controller.signal);
+    assert.equal(restored.username, 'local-user'); assert.equal(restored.profileName, name);
+    assert.equal(restored.primaryProfile, true); assert.equal(restored.profileArt, 'mint'); assert.equal(restored.canManageProfiles, true);
+    assert.deepEqual(restored.accountFacts, []);
+    assert.deepEqual(restored.profiles, [{id: 'profile-a', name, initial: Array.from(name)[0], art: 'mint', pinRequired: false}]);
+    assert.deepEqual(calls, [['/v1/direct', 'GET', undefined, controller.signal]]);
+  }
+});
+test('local missing username or mismatched account/server/profile fails without promoting another display field', async () => {
+  const raw = directRecord();
+  for (const response of [{...raw, account: {...raw.account, username: undefined}}, {...raw, account: {...raw.account, id: 'other-account'}}, {...raw, serverId: 'other-server'}, {...raw, profiles: [{...raw.profiles[0], id: 'other-profile'}], account: {...raw.account, primaryProfileId: 'other-profile'}}]) {
+    const api = {request: async () => response} as unknown as HttpLocalApi;
+    await assert.rejects(currentShellProfile(api, directSession, new AbortController().signal));
+  }
 });
 test('hosted synchronization failure or a signed-out snapshot cannot supply profile display authority', async () => {
   const failure = new Error('protected account state unavailable');

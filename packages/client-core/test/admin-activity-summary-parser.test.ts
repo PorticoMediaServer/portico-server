@@ -5,14 +5,14 @@ import {parseActivitySummary, ActivitySummaryContractError} from '../src/admin/a
 const stamp = '2026-10-22T07:00:00.000000001Z';
 const fence = 'a'.repeat(64);
 const session = (id = 'session') => ({
-  id, user: {id: 'account', name: 'account name'}, profile: {id: 'profile', name: 'profile name'}, device: {id: 'device', name: 'device name'},
-  kind: 'vod', state: 'playing', positionMs: 1234, durationMs: 5000,
+  id, user: {id: 'account', username: 'account name'}, profile: {id: 'profile', name: 'profile name'}, device: {id: 'device', name: 'device name'},
+  kind: 'vod', state: 'playing', startedAt: stamp, problem: false, converting: true, positionMs: 1234, durationMs: 5000,
   item: {id: 'episode', title: 'Episode title', kind: 'episode', showId: 'show', showTitle: 'Show title', seasonNumber: 1, episodeNumber: 3, episodeNumbering: 'aired', airDate: '2023-01-29', year: 2023, art: [{kind: 'show', id: 'show', role: 'poster', revision: 'digest'}]},
   decision: {video: {action: 'transcode', reasons: ['quality_requested'], to: 'h264'}}, quality: {mode: 'limit', maxHeight: 1080}, videoHeight: 720,
 });
 const scan = () => ({libraryId: 'movies', libraryName: 'Movies', kind: 'movie', discovered: 80, analyzed: 51, total: 80, current: 'Film (2001)/Film.mkv', phase: 'analysis'});
 const task = (id = 'task') => ({id, kind: 'checksum', state: 'running', phase: 'checksum', libraryId: 'movies', libraryName: 'Movies', processed: 128, total: 1024, unit: 'bytes'});
-const document = (): any => ({scope: {serverId: 'server', viewerFence: fence}, observedAt: stamp, serverName: 'Home server', streams: {count: 1, items: [session()]}, scans: [scan()], tasks: {count: 1, items: [task()]}, update: {available: true, state: 'available', current: '0.1.0-dev', latest: '0.2.0'}, health: {degraded: false}, lastScanFinishedAt: '2026-10-21T07:00:00Z'});
+const document = (): any => ({scope: {serverId: 'server', viewerFence: fence}, observedAt: stamp, serverName: 'Home server', streams: {count: 1, convertingCount: 1, overflow: {count: 0, convertingCount: 0}, items: [session()]}, scans: [scan()], tasks: {count: 1, items: [task()]}, update: {available: true, state: 'available', current: '0.1.0-dev', latest: '0.2.0'}, health: {degraded: false}, lastScanFinishedAt: '2026-10-21T07:00:00Z'});
 function rejects(change: (raw: any) => void): void { const raw = document(); change(raw); assert.throws(() => parseActivitySummary(raw), ActivitySummaryContractError); }
 
 test('busy summary retains independent source identities, episode facts, actual height and all owner facts', () => {
@@ -28,17 +28,17 @@ test('busy summary retains independent source identities, episode facts, actual 
   assert.equal(parsed.streams.items[0].profile.name, 'profile name');
 });
 test('quiet, update-only and degraded documents retain real cached update and last scan facts', () => {
-  const raw = document(); raw.streams = {count: 0, items: []}; raw.scans = []; raw.tasks = {count: 0, items: []};
+  const raw = document(); raw.streams = {count: 0, convertingCount: 0, overflow: {count: 0, convertingCount: 0}, items: []}; raw.scans = []; raw.tasks = {count: 0, items: []};
   for (const [state, available] of [['unconfigured', false], ['unavailable', false], ['current', false], ['available', true]] as const) {
     raw.update = {state, available, current: '0.1.0-dev', ...(available ? {latest: '0.2.0'} : {})}; raw.health.degraded = true;
     assert.deepEqual(parseActivitySummary(raw), raw);
   }
 });
-test('exact totals survive four visible sessions and three visible tasks without client pagination', () => {
-  const raw = document(); raw.streams = {count: 23, items: Array.from({length: 4}, (_, n) => session('s' + n))}; raw.tasks = {count: 11, items: Array.from({length: 3}, (_, n) => task('t' + n))};
+test('exact totals survive three visible sessions and three visible tasks without client pagination', () => {
+  const raw = document(); raw.streams = {count: 23, convertingCount: 7, overflow: {count: 20, convertingCount: 4}, items: Array.from({length: 3}, (_, n) => session('s' + n))}; raw.tasks = {count: 11, items: Array.from({length: 3}, (_, n) => task('t' + n))};
   const parsed = parseActivitySummary(raw);
   assert.equal(parsed.streams.count, 23); assert.equal(parsed.tasks.count, 11);
-  assert.equal(parsed.streams.items.length, 4); assert.equal(parsed.tasks.items.length, 3);
+  assert.equal(parsed.streams.items.length, 3); assert.equal(parsed.tasks.items.length, 3);
 });
 test('unknown denominators remain absent, including STRM bytes larger than its descriptor', () => {
   const raw = document(); delete raw.scans[0].total; delete raw.scans[0].current;
@@ -60,7 +60,7 @@ test('known zero denominator remains zero and unmeasured tasks remain absent, wi
 test('music facts are independent and channel identity needs no synthetic item or duration', () => {
   const raw = document(); raw.streams.items[0].item = {id: 'song', kind: 'song', title: 'Song name', artist: 'Artist name', album: 'Album name', art: []}; raw.streams.items[0].kind = 'audio';
   const parsed = parseActivitySummary(raw); assert.equal(parsed.streams.items[0].item?.artist, 'Artist name'); assert.equal(parsed.streams.items[0].item?.album, 'Album name');
-  raw.streams.items[0] = {id: 'channel-session', user: {id: 'a', name: ''}, profile: {id: 'p', name: ''}, device: {id: 'd', name: ''}, kind: 'channel', state: 'starting', positionMs: 0, decision: {}};
+  raw.streams.convertingCount = 0; raw.streams.items[0] = {id: 'channel-session', user: {id: 'a'}, startedAt: stamp, problem: false, converting: false, profile: {id: 'p', name: ''}, device: {id: 'd', name: ''}, kind: 'channel', state: 'starting', positionMs: 0, decision: {}};
   assert.equal(parseActivitySummary(raw).streams.items[0].item, undefined);
 });
 test('nonfinite, negative, fractional and unsafe counters never become clamped rings', () => {
@@ -73,7 +73,7 @@ test('nonfinite, negative, fractional and unsafe counters never become clamped r
 });
 test('contradictory totals, counts, caps and duplicate identities fail closed', () => {
   for (const change of [
-    (raw: any) => {raw.streams.items = Array.from({length: 5}, (_, n) => session('s' + n)); raw.streams.count = 5;},
+    (raw: any) => {raw.streams.items = Array.from({length: 4}, (_, n) => session('s' + n)); raw.streams.count = 4;},
     (raw: any) => {raw.tasks.items = Array.from({length: 4}, (_, n) => task('t' + n)); raw.tasks.count = 4;},
     (raw: any) => {raw.streams.count = 0;}, (raw: any) => {raw.tasks.count = 0;},
     (raw: any) => {raw.streams.items = [session(), session()]; raw.streams.count = 2;},
@@ -108,4 +108,47 @@ test('quality request is validated independently of committed conversion height'
     (raw: any) => {raw.streams.items[0].videoHeight = NaN;},
     (raw: any) => {raw.update.available = false;}, (raw: any) => {delete raw.update.latest;},
   ]) rejects(change);
+});
+
+test('username provenance, actual start and complete overflow facts survive without invented identity', () => {
+  const raw = document(); delete raw.streams.items[0].user.username;
+  const parsed = parseActivitySummary(raw);
+  assert.deepEqual(parsed.streams.items[0].user, {id: 'account'});
+  assert.equal(parsed.streams.items[0].startedAt, stamp);
+  assert.equal(parsed.streams.convertingCount, 1);
+  assert.deepEqual(parsed.streams.overflow, {count: 0, convertingCount: 0});
+  for (const change of [
+    (raw: any) => {raw.streams.items[0].user.name = 'profile substitute';},
+    (raw: any) => {raw.streams.items[0].user.username = '';},
+    (raw: any) => {raw.streams.items[0].user.username = '   ';},
+    (raw: any) => {delete raw.streams.items[0].startedAt;},
+    (raw: any) => {raw.streams.items[0].startedAt = 'yesterday';},
+    (raw: any) => {raw.streams.items[0].problem = true;},
+    (raw: any) => {raw.streams.items[0].converting = false;},
+    (raw: any) => {raw.streams.convertingCount = 0;},
+    (raw: any) => {raw.streams.convertingCount = 2;},
+    (raw: any) => {raw.streams.overflow.count = 1;},
+    (raw: any) => {raw.streams.overflow.convertingCount = 1;},
+    (raw: any) => {delete raw.streams.overflow;},
+  ]) rejects(change);
+});
+test('global priority then nanosecond recency and stable id order are validated without client reslicing', () => {
+  const raw = document();
+  const problem = {...session('problem'), state: 'buffering', problem: true, converting: false, decision: {}, startedAt: '2026-10-20T00:00:00Z'};
+  const converter = {...session('converter'), startedAt: '2026-10-21T00:00:00.000000001Z'};
+  const recent = {...session('recent'), converting: false, decision: {video: {action: 'copy', reasons: []}}, quality: {mode: 'limit', maxHeight: 2160}};
+  raw.streams = {count: 7, convertingCount: 3, overflow: {count: 4, convertingCount: 2}, items: [problem, converter, recent]};
+  const parsed = parseActivitySummary(raw);
+  assert.deepEqual(parsed.streams.items.map(item => item.id), ['problem', 'converter', 'recent']);
+  assert.equal(parsed.streams.items[2].converting, false);
+  assert.equal(parsed.streams.overflow.convertingCount, 2);
+  for (const items of [[recent, converter, problem], [converter, problem, recent]]) {
+    assert.throws(() => parseActivitySummary({...raw, streams: {...raw.streams, items}}), ActivitySummaryContractError);
+  }
+  const a = {...session('a'), startedAt: '2026-10-22T07:00:00.000000002Z'}, b = {...session('b'), startedAt: stamp};
+  raw.streams = {count: 2, convertingCount: 2, overflow: {count: 0, convertingCount: 0}, items: [a, b]};
+  assert.equal(parseActivitySummary(raw).streams.items[0].id, 'a');
+  raw.streams.items = [b, a]; assert.throws(() => parseActivitySummary(raw), ActivitySummaryContractError);
+  b.startedAt = a.startedAt; raw.streams.items = [a, b]; assert.equal(parseActivitySummary(raw).streams.items[0].id, 'a');
+  raw.streams.items = [b, a]; assert.throws(() => parseActivitySummary(raw), ActivitySummaryContractError);
 });

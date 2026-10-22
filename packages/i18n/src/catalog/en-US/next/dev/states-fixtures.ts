@@ -10,6 +10,7 @@ export const statesFixtureMessages = {
   'next.states.fixture.query': 'casablanca',
   'next.states.fixture.programme': 'World Tonight',
   'next.states.fixture.movie': 'Inside Out',
+  'next.states.fixture.remaining': '1 h 4 min left',
   'next.states.fixture.episode': "When You're Lost in the Darkness",
   'next.states.fixture.firstMovie': '12 Angry Men',
   'next.states.fixture.secondMovie': 'Alien',

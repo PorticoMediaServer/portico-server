@@ -1,4 +1,4 @@
-.settingsNav { width: 296px; color: var(--color-text); line-height: normal; }
+.settingsNav { display: flow-root; width: 296px; color: var(--color-text); line-height: normal; }
 .settingsNav h1 { font-size: 30px; font-weight: 800; letter-spacing: -.035em; margin: 6px 0 18px; }
 .find, .sheetFind { height: 46px; border-radius: 12px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); display: flex; align-items: center; gap: 10px; padding: 0 12px 0 14px; color: var(--color-text-tertiary); }
 .find input, .sheetFind input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; font: inherit; font-size: 15px; font-weight: 600; color: var(--color-text); }
@@ -145,3 +145,8 @@ input:focus-visible + .radio { outline: 3px solid var(--color-focus); outline-of
 .settingsNav[data-layout='phone'] .serverNavHeader b { font-size: 16.5px; letter-spacing: -.015em; }
 .settingsNav[data-layout='phone'] .navLabel { flex: 1; }
 .settingsNav[data-layout='phone'] .navIcon svg { color: inherit; }
+
+@media (max-width: 599px) {
+  .matrixLabel { min-width: 0; flex-wrap: wrap; gap: 6px; }
+  .matrixLabel .defaultHint { flex-basis: 100%; }
+}

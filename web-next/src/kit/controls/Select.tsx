@@ -91,7 +91,7 @@ const ChoiceSelect = forwardRef<HTMLButtonElement, ChoiceSelectProps>(function C
       : <SelectPrimitive.Root value={currentValue} onValueChange={changeValue} open={currentOpen} onOpenChange={changeOpen} disabled={disabled} required={required} name={name} form={form}>
       <SelectPrimitive.Trigger {...triggerProps} ref={bindTrigger}>
         <span className={styles.selectValue}><SelectPrimitive.Value placeholder={placeholder} /></span>
-        <SelectPrimitive.Icon><Icon name="i-down" size={16} /></SelectPrimitive.Icon>
+        <SelectPrimitive.Icon><Icon name="i-down" size={18} /></SelectPrimitive.Icon>
       </SelectPrimitive.Trigger>
       <SelectPrimitive.Portal><div className={styles.selectPortal}>
         <SelectPrimitive.Content position="popper" align="end" sideOffset={6} collisionPadding={8} className={styles.selectMenu} data-rich={rich || undefined}
@@ -180,7 +180,7 @@ function PhoneSelect({options, value, onValueChange, open, onOpenChange, onReset
     <button {...triggerProps} ref={bindTrigger} type="button" role="combobox" aria-haspopup="listbox" aria-expanded={open} aria-controls={listId} aria-required={required || undefined} disabled={disabled}
       data-state={open ? 'open' : 'closed'} onClick={() => open ? onOpenChange(false) : begin()}
       onKeyDown={event => {if (['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {event.preventDefault(); begin(event.key === 'ArrowUp' ? -1 : 1);}}}>
-      <span className={styles.selectValue}>{options.find(option => option.value === value)?.label ?? placeholder}</span><span><Icon name="i-down" size={16} /></span>
+      <span className={styles.selectValue}>{options.find(option => option.value === value)?.label ?? placeholder}</span><span><Icon name="i-down" size={18} /></span>
     </button>
     <select ref={element => {nativeSelect.current = element; if (element) {for (const option of element.options) option.defaultSelected = option.value === resetValue; element.value = value;}}}
       className={styles.formSelect} tabIndex={-1} aria-hidden="true" name={name} form={form} required={required} disabled={disabled} value={value}
