@@ -63,16 +63,19 @@ const adminActiveV1 = `v.ended_ms=0 AND v.lease_expires_ms>?`
 // The branch yields the same columns: protocol, id, created, user id and
 // name, profile id and name, device id and name, item id and title, kind,
 // state, position, presentation, bandwidth, location, catalogue item and version.
-const adminV1Branch = `SELECT 'v1' AS protocol,v.id AS id,v.created_ms AS created,v.account_id,COALESCE(a.username,''),v.profile_id,COALESCE(p.name,''),v.device_id,COALESCE(d.name,''),
+const adminV1Projection = `SELECT 'v1' AS protocol,v.id AS id,v.created_ms AS created,v.account_id,COALESCE(a.username,''),v.profile_id,COALESCE(p.name,''),v.device_id,COALESCE(d.name,''),
  CASE WHEN v.kind IN ('live','channel') THEN v.channel_id ELSE COALESCE(pid(i.public_id),'') END,CASE WHEN v.kind IN ('live','channel') THEN COALESCE(json_extract(cs.selection_json,'$.name'),'') ELSE COALESCE(i.title,'') END,
- CASE WHEN v.kind IN ('live','channel') THEN 'channel' ELSE v.kind END,v.state,CASE WHEN v.kind IN ('live','channel') THEN COALESCE(cs.confirmed_position_us/1000,0) ELSE v.position_ms END,v.presentation,v.bandwidth_kbps,v.location,CASE WHEN v.kind IN ('live','channel') THEN 0 ELSE v.item_id END,v.version_id
- FROM playback_v1_sessions v INDEXED BY playback_v1_sessions_active
- LEFT JOIN playback_channel_sessions cs ON cs.session_id=v.id
+ CASE WHEN v.kind IN ('live','channel') THEN 'channel' ELSE v.kind END,v.state,CASE WHEN v.kind IN ('live','channel') THEN COALESCE(cs.confirmed_position_us/1000,0) ELSE v.position_ms END,v.presentation,v.bandwidth_kbps,v.location,CASE WHEN v.kind IN ('live','channel') THEN 0 ELSE v.item_id END,v.version_id`
+
+const adminV1Joins = ` LEFT JOIN playback_channel_sessions cs ON cs.session_id=v.id
  LEFT JOIN accounts a ON a.id=v.account_id AND v.authority='local'
  LEFT JOIN direct_profiles p ON p.id=v.profile_id AND v.authority='local'
  LEFT JOIN identity_devices d ON d.id=v.device_id
- LEFT JOIN catalog_entities i ON i.id=v.item_id
- WHERE ` + adminActiveV1 + ` AND (v.created_ms<? OR v.created_ms=? AND v.id>?)
+ LEFT JOIN catalog_entities i ON i.id=v.item_id`
+
+const adminV1Source = ` FROM playback_v1_sessions v INDEXED BY playback_v1_sessions_active` + adminV1Joins
+
+const adminV1Branch = adminV1Projection + adminV1Source + ` WHERE ` + adminActiveV1 + ` AND (v.created_ms<? OR v.created_ms=? AND v.id>?)
  ORDER BY v.created_ms DESC,v.id LIMIT ?`
 
 // AdminSessions lists active playbacks, newest first, a page at a time.
@@ -115,41 +118,17 @@ func (s *Service) AdminSessions(ctx context.Context, limit int, cursor string) (
 	lastMs := int64(0)
 	var lengths []durationKey
 	for rows.Next() {
-		var a AdminSession
-		var item, title, presentation, version string
-		var created, entity int64
-		if err = rows.Scan(&a.Protocol, &a.ID, &created, &a.User.ID, &a.User.Name, &a.Profile.ID, &a.Profile.Name, &a.Device.ID, &a.Device.Name, &item, &title, &a.Kind, &a.State, &a.PositionMs, &presentation, &a.BandwidthKbps, &a.Location, &entity, &version); err != nil {
-			return out, err
+		a, length, created, e := readAdminSession(rows, true)
+		if e != nil {
+			return out, e
 		}
 		if len(out.Items) == limit {
 			out.Page.NextCursor = "t:" + strconv.FormatInt(lastMs, 10) + ":" + out.Items[len(out.Items)-1].ID
 			break
 		}
 		lastMs = created
-		for _, n := range []*AdminName{&a.User, &a.Profile, &a.Device} {
-			if n.Name == "" {
-				n.Name = n.ID
-			}
-		}
-		if item != "" {
-			a.Item = &AdminItem{ID: item, Title: title}
-		}
-		// Only the decision and bitrate: the presentation's URL is a capability.
-		var p struct {
-			Decision    Decisions `json:"decision"`
-			BitrateKbps int       `json:"bitrateKbps"`
-			Engine      string    `json:"engine"`
-			Quality     *Quality  `json:"quality"`
-			VideoHeight int       `json:"videoHeight"`
-		}
-		if presentation != "" && json.Unmarshal([]byte(presentation), &p) == nil {
-			a.Decision, a.BitrateKbps = p.Decision, p.BitrateKbps
-			a.Engine, a.Quality = p.Engine, p.Quality
-			a.VideoHeight = p.VideoHeight
-		}
-		a.StartedAt = time.UnixMilli(created).UTC().Format(time.RFC3339Nano)
 		out.Items = append(out.Items, a)
-		lengths = append(lengths, durationKey{entity, version})
+		lengths = append(lengths, length)
 	}
 	if err = rows.Err(); err != nil {
 		return out, err
@@ -166,6 +145,41 @@ func (s *Service) AdminSessions(ctx context.Context, limit int, cursor string) (
 		}
 	}
 	return out, nil
+}
+
+// readAdminSession shares the committed display projection, not capability URLs.
+// The Activity projection keeps missing names absent; the existing admin page
+// retains its legacy fallback behavior.
+func readAdminSession(rows interface{ Scan(...any) error }, fallbackNames bool) (AdminSession, durationKey, int64, error) {
+	var a AdminSession
+	var item, title, presentation, version string
+	var created, entity int64
+	if err := rows.Scan(&a.Protocol, &a.ID, &created, &a.User.ID, &a.User.Name, &a.Profile.ID, &a.Profile.Name, &a.Device.ID, &a.Device.Name, &item, &title, &a.Kind, &a.State, &a.PositionMs, &presentation, &a.BandwidthKbps, &a.Location, &entity, &version); err != nil {
+		return a, durationKey{}, 0, err
+	}
+	if fallbackNames {
+		for _, n := range []*AdminName{&a.User, &a.Profile, &a.Device} {
+			if n.Name == "" {
+				n.Name = n.ID
+			}
+		}
+	}
+	if item != "" {
+		a.Item = &AdminItem{ID: item, Title: title}
+	}
+	var p struct {
+		Decision    Decisions `json:"decision"`
+		BitrateKbps int       `json:"bitrateKbps"`
+		Engine      string    `json:"engine"`
+		Quality     *Quality  `json:"quality"`
+		VideoHeight int       `json:"videoHeight"`
+	}
+	if presentation != "" && json.Unmarshal([]byte(presentation), &p) == nil {
+		a.Decision, a.BitrateKbps = p.Decision, p.BitrateKbps
+		a.Engine, a.Quality, a.VideoHeight = p.Engine, p.Quality, p.VideoHeight
+	}
+	a.StartedAt = time.UnixMilli(created).UTC().Format(time.RFC3339Nano)
+	return a, durationKey{entity, version}, created, nil
 }
 
 // AdminTerminateMessageMax bounds what an administrator can show the viewer.
