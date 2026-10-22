@@ -32,10 +32,12 @@ type AdminSession struct {
 	BandwidthKbps int64     `json:"bandwidthKbps,omitempty"`
 	// Engine is the player engine the device is playing with (native or mpv);
 	// Quality is the quality in force. Both are absent for a channel.
-	Engine    string   `json:"engine,omitempty"`
-	Quality   *Quality `json:"quality,omitempty"`
-	Location  string   `json:"location"`
-	StartedAt string   `json:"startedAt"`
+	Engine  string   `json:"engine,omitempty"`
+	Quality *Quality `json:"quality,omitempty"`
+	// VideoHeight is the committed converted height, absent when unknown.
+	VideoHeight int    `json:"videoHeight,omitempty"`
+	Location    string `json:"location"`
+	StartedAt   string `json:"startedAt"`
 }
 type AdminName struct {
 	ID   string `json:"id"`
@@ -138,10 +140,12 @@ func (s *Service) AdminSessions(ctx context.Context, limit int, cursor string) (
 			BitrateKbps int       `json:"bitrateKbps"`
 			Engine      string    `json:"engine"`
 			Quality     *Quality  `json:"quality"`
+			VideoHeight int       `json:"videoHeight"`
 		}
 		if presentation != "" && json.Unmarshal([]byte(presentation), &p) == nil {
 			a.Decision, a.BitrateKbps = p.Decision, p.BitrateKbps
 			a.Engine, a.Quality = p.Engine, p.Quality
+			a.VideoHeight = p.VideoHeight
 		}
 		a.StartedAt = time.UnixMilli(created).UTC().Format(time.RFC3339Nano)
 		out.Items = append(out.Items, a)
