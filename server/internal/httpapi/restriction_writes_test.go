@@ -570,8 +570,18 @@ func restrictionWriteRoutes() map[string]writeRoute {
 			}
 			return out
 		}),
-		"POST /v1/downloads/preparations":             perHidden("POST", "/v1/downloads/preparations", `{"operationId":"OP","mediaId":"ID","quality":"original"}`, "item"),
-		"POST /v1/playback/sessions":                  perHidden("POST", "/v1/playback/sessions", `{"itemId":"ID","startFrom":"beginning"}`, "item"),
+		"POST /v1/downloads/preparations":      perHidden("POST", "/v1/downloads/preparations", `{"operationId":"OP","mediaId":"ID","quality":"original"}`, "item"),
+		"POST /v1/playback/sessions":           perHidden("POST", "/v1/playback/sessions", `{"itemId":"ID","startFrom":"beginning"}`, "item"),
+		"POST /v1/playback/controls/{id}:stop": writeExempt("account-scoped opaque playback session stop; no catalogue ID or title response (TestPlaybackV1AccountPlaybackListHidesRestrictedTitlesAndStopsOwnSlots)"),
+		"POST /v1/downloads/options": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for _, kind := range []string{"show", "season", "album", "artist", "book"} {
+				body := fmt.Sprintf(`{"target":{"kind":%q,"id":"ID"},"deviceId":"matrix-device","policy":{"episodes":"all"}}`, kind)
+				out = append(out, perHidden("POST", "/v1/downloads/options", body, kind).probes(m)...)
+			}
+			return out
+		}),
+		"POST /v1/queues/{id}/batch":                  perHidden("POST", "/v1/queues/matrix-unknown/batch", `{"placement":"end","source":{"items":{"ids":["ID"]}}}`, "item"),
 		"POST /v1/queues":                             perHidden("POST", "/v1/queues", `{"segments":[{"source":{"items":{"ids":["ID"]}}}],"startPlayback":{"state":"playing"}}`, "item"),
 		"PATCH /v1/dvr/recordings/{id}":               perHidden("PATCH", "/v1/dvr/recordings/ID", `{"expectedRevision":0}`, "item"),
 		"DELETE /v1/dvr/recordings/{id}":              perHidden("DELETE", "/v1/dvr/recordings/ID", "", "item"),

@@ -475,18 +475,25 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/downloads/preparations/{id}": probe(func(m *restrictionEnv) []string {
 			return prefixed("/v1/downloads/preparations/", m.preparations)
 		}),
-		"GET /v1/groups/{id}":                                           exempt(reasonGrant),
-		"GET /v1/groups/{id}/queue":                                     exempt(reasonGrant),
-		"GET /v1/handoffs/{id}":                                         exempt(reasonGrant),
-		"GET /v1/media/{grant}":                                         exempt(reasonGrant),
-		"GET /v1/media/{grant}/audio":                                   exempt(reasonGrant),
-		"GET /v1/media/{grant}/audio-converted":                         exempt(reasonGrant),
-		"GET /v1/media/{grant}/audio-index":                             exempt(reasonGrant),
-		"GET /v1/media/subtitles/{grant}/{resource}/{revision}":         exempt(reasonGrant),
-		"GET /v1/media/{grant}/{file}":                                  exempt(reasonGrant),
-		"GET /v1/playback/sessions/{id}":                                exempt(reasonGrant),
-		"GET /v1/playback/sessions/{id}/chapters":                       exempt(reasonGrant),
-		"GET /v1/queues/{id}":                                           exempt(reasonGrant),
+		"GET /v1/groups/{id}":                                   exempt(reasonGrant),
+		"GET /v1/groups/{id}/queue":                             exempt(reasonGrant),
+		"GET /v1/handoffs/{id}":                                 exempt(reasonGrant),
+		"GET /v1/media/{grant}":                                 exempt(reasonGrant),
+		"GET /v1/media/{grant}/audio":                           exempt(reasonGrant),
+		"GET /v1/media/{grant}/audio-converted":                 exempt(reasonGrant),
+		"GET /v1/media/{grant}/audio-index":                     exempt(reasonGrant),
+		"GET /v1/media/subtitles/{grant}/{resource}/{revision}": exempt(reasonGrant),
+		"GET /v1/media/{grant}/{file}":                          exempt(reasonGrant),
+		"GET /v1/playback/sessions/{id}":                        exempt(reasonGrant),
+		"GET /v1/playback/sessions/{id}/chapters":               exempt(reasonGrant),
+		"GET /v1/queues/{id}":                                   exempt(reasonGrant),
+		"GET /v1/queues/{id}/entry": probe(func(m *restrictionEnv) []string {
+			out := []string{}
+			for _, id := range m.hiddenItemSamples() {
+				out = append(out, "/v1/queues/matrix-unknown/entry?itemId="+url.QueryEscape(id))
+			}
+			return out
+		}),
 		"GET /v1/queues/{id}/entries":                                   exempt(reasonGrant),
 		"GET /v1/queues/{id}/window":                                    exempt(reasonGrant),
 		"GET /v1/receivers/{id}/grants":                                 exempt(reasonGrant),
