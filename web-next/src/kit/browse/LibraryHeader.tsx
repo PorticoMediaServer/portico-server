@@ -57,7 +57,7 @@ export function LibraryMenu({owner, read = false, onSaveView, onMarkAll, onEditP
   return <Menu returnFocusRef={triggerRef} presentation="anchored" open={open} onOpenChange={setOpen} title={t('next.browse.libraryOptions')} accessibilityLabel={t('next.browse.libraryOptions')}
     placement="bottom-end" width={282} className={styles.libraryMenu}
     trigger={<Button ref={triggerRef} variant="icon" size="compact" icon="i-more" iconOnly className={styles.libraryMenuTrigger} aria-expanded={open} aria-label={t('next.browse.libraryOptions')}/>}>
-    <MenuItem icon="i-filter" description={viewSummary} onSelect={act(onSaveView)}>{t('next.browse.saveThisView')}</MenuItem>
+    <MenuItem icon={read ? 'i-save' : 'i-filter'} description={viewSummary} onSelect={act(onSaveView)}>{t('next.browse.saveThisView')}</MenuItem>
     <MenuItem icon="i-check" description={countSummary} onSelect={act(onMarkAll)}>{t(read ? 'next.browse.markAllRead' : 'next.browse.markAllWatched')}</MenuItem>
     <MenuItem icon="i-updown" onSelect={act(onEditPins)}>{t('next.browse.editPins')}</MenuItem>
     {owner && <MenuGroup ownerOnly className={styles.ownerGroup} label={<span className={styles.ownerLabel}>{t('next.browse.server')}{ownerMark}</span>}>

@@ -7,7 +7,7 @@ import {appliedFilterParts, browseToolbarModel, cardText, titleFactParts} from '
 import {browseFixtures} from '../../../../packages/i18n/src/catalog/en-US/next/dev/browse-fixtures';
 import {defineGalleryFamily} from '../gallery-registry';
 import {Button, Tabs} from '../../kit/controls';
-import {Artwork, createArtworkRuntime, type ArtworkSource} from '../../kit/artwork';
+import {Artwork, AmbientArt, createArtworkRuntime, type ArtworkSource, type AmbientArtSource} from '../../kit/artwork';
 import {Popover} from '../../kit/overlays';
 import {OwnerTag} from '../../kit/shell';
 import {SelectionCircle} from '../../kit/selection';
@@ -68,8 +68,25 @@ function useReferenceArt() {
   }, [runtime]);
 }
 
+let ambientEvidenceSource: AmbientArtSource | undefined;
+/** DEV evidence binds an actual platform runtime and genuine authenticated handle. */
+export function bindBrowseAmbientEvidence(source?: AmbientArtSource) {
+  ambientEvidenceSource = source;
+  window.dispatchEvent(new Event('browse-ambient-evidence'));
+}
+function useBrowseAmbientEvidence() {
+  const [source, setSource] = useState(ambientEvidenceSource);
+  useEffect(() => {
+    const update = () => setSource(ambientEvidenceSource);
+    window.addEventListener('browse-ambient-evidence', update);
+    return () => window.removeEventListener('browse-ambient-evidence', update);
+  }, []);
+  return source;
+}
+
 function headerCase(mode: 'desktop' | 'music' | 'phone' | 'switcher' | 'owner' | 'member' | 'read' | 'long'): ComponentType {
   return function HeaderCase() {
+    const ambient = useBrowseAmbientEvidence();
     const [library, setLibrary] = useState(mode === 'music' ? 'music' : mode === 'read' ? 'books' : 'movies');
     const [switcherOpen, setSwitcherOpen] = useState(mode === 'switcher'), [menuOpen, setMenuOpen] = useState(mode === 'owner' || mode === 'member' || mode === 'read');
     const [outcome, setOutcome] = useState(''), [pivot, setPivot] = useState(['music', 'phone', 'switcher', 'long'].includes(mode) ? 'discover' : mode === 'read' ? '1' : 'browse');
@@ -92,7 +109,7 @@ function headerCase(mode: 'desktop' | 'music' | 'phone' | 'switcher' | 'owner' |
     const tabs = <Tabs phone={phone} value={pivot} onValueChange={setPivot} className={phone ? styles.phoneTabs : [styles.headerTabs, mode === 'music' && styles.musicHeaderTabs].filter(Boolean).join(' ')}
       items={tabItems}/>;
     return <Stage outcome={outcome}>{phone ? <StickyBrowseHeader name={current.name} switcher={switcher} menu={menu} topInset={0} onLibraries={() => setOutcome(t('next.browse.libraries'))}>{tabs}</StickyBrowseHeader> :
-      <LibraryHeader name={current.name} switcher={switcher} menu={mode === 'music' ? <><Button size="small" icon="i-shuffle" className={styles.headerAction} onClick={() => setOutcome(new DOMParser().parseFromString(drawnListen, 'text/html').querySelector('#music .lib-head .right button')!.textContent!)}>{new DOMParser().parseFromString(drawnListen, 'text/html').querySelector('#music .lib-head .right button')!.textContent}</Button>{menu}</> : menu} counts={mode === 'music' ? [
+      <LibraryHeader ambient={mode === 'desktop' && ambient ? <AmbientArt source={ambient} treatment="library" width="100%" height={560}/> : undefined} name={current.name} switcher={switcher} menu={mode === 'music' ? <><Button size="small" icon="i-shuffle" className={styles.headerAction} onClick={() => setOutcome(new DOMParser().parseFromString(drawnListen, 'text/html').querySelector('#music .lib-head .right button')!.textContent!)}>{new DOMParser().parseFromString(drawnListen, 'text/html').querySelector('#music .lib-head .right button')!.textContent}</Button>{menu}</> : menu} counts={mode === 'music' ? [
         {id: 'artists', text: fixture('next.browse.example.musicCounts'), role: 'value'}, {id: 'albums', text: fixture('next.browse.example.albumCounts'), role: 'value'},
         {id: 'songs', text: fixture('next.browse.example.songCount', {count: 40}), role: 'value'},
       ] : undefined}>{tabs}</LibraryHeader>}</Stage>;
