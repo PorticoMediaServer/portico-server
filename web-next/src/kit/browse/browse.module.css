@@ -4,6 +4,7 @@
   --browse-muted: var(--color-text-tertiary);
   --browse-line: var(--color-line);
   color: var(--browse-text);
+  line-height: normal;
 }
 .libraryHeader { position: relative; isolation: isolate; }
 .headerAmbient { position: absolute; inset: 0 0 auto; height: 560px; pointer-events: none; z-index: -1; }
@@ -228,7 +229,7 @@
 .libraryChoice > svg:last-child { position: absolute; left: 12px; }
 .libraryChoice[data-selected=true] { background: none; }
 .librarySwitcherMenu [data-menu-item], .libraryMenu [data-menu-item] { height: 42px; border-radius: 0; }
-.libraryMenu .ownerGroup { margin: 6px 0 -6px; padding: 0 0 6px; }
+.libraryMenu .ownerGroup { margin: 6px 0 -6px; padding: 0; }
 .libraryMenu .ownerGroup > div:first-child { padding: 0; border-top: 1px solid color-mix(in srgb, var(--color-accent-strong) 22%, transparent); background: linear-gradient(120deg, color-mix(in srgb, var(--color-accent) 26%, transparent), color-mix(in srgb, var(--color-accent) 6%, transparent) 70%); }
 .libraryMenu .ownerLabel { padding: 0 12px 0 14px; }
 .filtersLabel, .sortLabel { display: inline-flex; align-items: center; gap: 8px; }
@@ -249,3 +250,39 @@
 .filterBuilder[data-platform=phone] .fieldTile[data-active] { box-shadow: none; }
 .trackActions > button[data-size=xs] { width: 36px; height: 36px; --control-icon: 20px; }
 @media (prefers-reduced-motion: reduce) { .songArtwork::after, .facetChip { transition: none; } }
+
+.expandedField { margin-bottom: 2px; }
+.expandedHeading button[data-variant=text], .showAll[data-variant=text] { height: 30px; padding: 0 8px; font-size: 13.5px; }
+.facetFind[data-variant=search] > div { height: 40px; border-radius: 10px; padding: 0 12px; background: var(--color-ink); }
+.facetFind input { font-size: 14.5px; }
+.facetFind svg { width: 18px; height: 18px; }
+.moreFields > small { max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.filterGroup[data-group=file] .moreFields { grid-column: auto; }
+.filterBuilder[data-platform=phone] .expandedName { width: 100%; font-size: 15px; font-weight: 600; }
+.filterBuilder[data-platform=phone] .expandedName > span { margin-left: auto; }
+.filterBuilder[data-platform=phone] .facetFind[data-variant=search] > div { height: 38px; background: var(--color-raised-bright); box-shadow: none; padding: 0 10px; }
+.filterBuilder[data-platform=phone] .facetFind input { font-size: 14px; }
+.filterBuilder[data-platform=phone] .facetHelp { margin-top: -2px; }
+.toolbar[data-platform=phone] .toolbarMain > button, .toolbar[data-platform=phone] .sortTrigger { height: 34px; border-radius: 9px; font-size: 13.5px; padding-inline: 13px; gap: 6px; }
+.toolbar[data-platform=phone] .phoneCount .viewToggle button[data-variant=icon] { width: 32px; height: 30px; }
+.toolbar[data-platform=phone] .phoneCount .saveView[data-variant=text] { height: 30px; font-size: 13px; padding: 0; }
+.trackTable[data-platform=phone] .trackRow { column-gap: 12px; padding: 0 16px; }
+.trackTable[data-platform=phone] .trackText b { font-size: 15px; }
+.trackTable[data-platform=phone] [data-column=duration] { font-size: 12px; }
+.trackTable[data-platform=phone][data-variant=chapters] .trackRow[data-current] { height: 76px; }
+
+.toolbar[data-platform=tv] .saveView[data-variant=text] { height: 64px; font-size: 24px; }
+.tvAppliedRow { display: flex; align-items: center; gap: 30px; padding-top: 24px; }
+.toolbar[data-platform=tv] .tvAppliedRow .applied { padding-top: 0; }
+.tvAppliedRow .resultCount { font-size: 22px; color: var(--browse-muted); }
+.toolbar[data-platform=tv] .appliedChip { background: color-mix(in srgb, var(--color-accent) 18%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-accent) 50%, transparent); }
+
+.filterBuilder .fieldContent .facetFind[data-variant=search] > div { height: 40px; border-radius: 10px; padding: 0 12px; background: var(--color-ink); }
+.filterBuilder .fieldContent .facetFind input { font-size: 14.5px; }
+.filterBuilder[data-platform=phone] .fieldContent .facetFind[data-variant=search] > div { height: 38px; background: var(--color-raised-bright); padding: 0 10px; }
+.filterBuilder[data-platform=phone] .fieldContent .facetFind input { font-size: 14px; }
+
+.songSelection { opacity: 0; pointer-events: none; }
+.songRow:hover .songSelection, .songRow:focus-within .songSelection, .songSelection:has([aria-pressed=true]) { opacity: 1; pointer-events: auto; }
+.songRow[data-context=search][data-selectable]:not([data-artwork]) .songMain { padding-left: 44px; }
+.toolbar[data-platform=tv] .toolbarMain { padding-top: 0; }

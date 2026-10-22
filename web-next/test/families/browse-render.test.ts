@@ -34,3 +34,13 @@ test('unsupported match modes are omitted and sparse facts stay absent', () => {
   assert.match(html, /aria-rowcount="2"/);
   assert.throws(() => renderToStaticMarkup(createElement(TrackTable, {rows: [row], variant: 'songs', label: 'Actual songs', onPlay() {}, onMore() {}})), /Invalid controlled track window/);
 });
+
+test('range presets are exclusive controlled toggles rather than independent checkboxes', async () => {
+  const {FilterBuilder} = await import('../../src/kit/browse/FilterBuilder.tsx');
+  const html = renderToStaticMarkup(createElement(FilterBuilder, {
+    model: {groups: [{id: 'file', fields: [{id: 'durationMs', labelKey: 'browse.field.durationSeconds', type: 'number', operators: ['at-most'], controlHint: 'number-range', complexity: 'standard', cost: 'indexed-join', applicableKinds: ['movie']}]}]},
+    labels: {field: () => 'Duration'}, fields: {durationMs: {kind: 'range', value: 'short', options: [{value: 'short', label: 'Under 30 min'}]}}, openFields: ['durationMs'], onFieldOpenChange() {}, onFieldChange() {}, onSearchChange() {},
+  }));
+  assert.match(html, /aria-pressed="true"[^>]*>Under 30 min/);
+  assert.doesNotMatch(html, /role="checkbox"/);
+});

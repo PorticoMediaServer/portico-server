@@ -45,7 +45,8 @@ function RowActions({row, onMore, onFavorite, onAddPlaylist}: Pick<TrackActions,
     <Button variant="icon" size="xs" icon="i-more" iconOnly aria-label={t('next.browse.moreFor', {title: row.text.title})} onClick={() => onMore(row.id)}/>
   </div>;
 }
-export function TrackTable({rows, variant, label, platform = 'desktop', columns = defaultColumns[variant], sort, onSort, startIndex = 0, totalCount = rows.length, height, onWindowChange, className, discNumber, ...actions}: TrackTableProps) {
+export function TrackTable({rows, variant, label, platform = 'desktop', columns: suppliedColumns, sort, onSort, startIndex = 0, totalCount = rows.length, height, onWindowChange, className, discNumber, ...actions}: TrackTableProps) {
+  const columns = suppliedColumns ?? (platform === 'phone' ? [{id: 'number', width: '22px'}, {id: 'title', width: 'minmax(0,1fr)'}, {id: 'duration', width: '52px'}, {id: 'actions', width: '32px'}] as const : defaultColumns[variant]);
   const viewport = useRef<HTMLDivElement>(null), lastWindow = useRef<TrackWindow | null>(null);
   const rowHeight = platform === 'phone' ? 56 : variant === 'songs' ? 56 : 60;
   const windowed = height !== undefined;
@@ -92,7 +93,7 @@ export function TrackTable({rows, variant, label, platform = 'desktop', columns 
 }
 export type SongRowProps = Omit<HTMLAttributes<HTMLDivElement>, 'onPlay'> & Readonly<{row: TrackRowData; onPlay: (id: string) => void; onMore?: (id: string) => void; selection?: ReactNode; context?: 'list' | 'search'}>;
 export function SongRow({row, onPlay, onMore, selection, context = 'list', className, ...props}: SongRowProps) {
-  return <div {...props} className={[styles.songRow, className].filter(Boolean).join(' ')} data-playing={row.playing || undefined} data-context={context}>
+  return <div {...props} className={[styles.songRow, className].filter(Boolean).join(' ')} data-playing={row.playing || undefined} data-context={context} data-selectable={!!selection || undefined} data-artwork={!!row.artwork || undefined}>
     {context !== 'search' && <span className={styles.songNumber}>{selection ?? (row.playing ? <Levels/> : row.number === undefined ? undefined : defaultI18n.number(row.number))}</span>}
     <button type="button" className={styles.songMain} onClick={() => onPlay(row.id)}>{row.artwork && <span className={styles.songArtwork}>{row.artwork}{context === 'search' && <Icon name="i-play" size={22} className={styles.songArtworkPlay} />}</span>}
       <span className={styles.songText}><b>{row.text.title}</b>{row.text.caption.length > 0 && <small><Parts parts={row.text.caption}/></small>}</span><span className={styles.songDuration}>{rowDuration(row)}</span></button>

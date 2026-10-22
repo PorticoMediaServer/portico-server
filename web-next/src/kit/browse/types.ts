@@ -18,7 +18,7 @@ export type FacetSelection = 'include' | 'exclude' | 'clear';
 export type FilterMatch = 'any' | 'all' | 'none';
 export type FilterValueState = Readonly<{
   kind: 'values'; values: readonly FacetValue[]; included: readonly string[]; excluded: readonly string[];
-  match: FilterMatch; query: string; total?: number; status?: 'loading' | 'error' | 'ready'; error?: ReactNode;
+  match: FilterMatch; query: string; moreLabel?: string; total?: number; status?: 'loading' | 'error' | 'ready'; error?: ReactNode;
 }>;
 export type FilterChoiceState = Readonly<{kind: 'choice' | 'range'; options: readonly Readonly<{value: string; label: string}>[]; value: string | undefined}>;
 export type FilterToggleState = Readonly<{kind: 'toggle'; value: boolean | undefined}>;

@@ -2,7 +2,7 @@ import {useId, useState, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {BrowseFieldCapability} from '@core/browse';
 import type {BrowseToolbarModel} from '@core/presentation/kit-model';
-import {Button, Chip, Segmented, TextField} from '../controls';
+import {Button, Segmented, TextField} from '../controls';
 import {Icon} from '../Icon';
 import type {BrowseLabels, BrowsePlatform, FacetSelection, FacetValue, FilterFieldChange, FilterFieldState, FilterMatch} from './types';
 import styles from './browse.module.css';
@@ -65,12 +65,12 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
     return <div className={open ? styles.expandedField : styles.collapsedField} key={field.id} data-active={active(state) || undefined}>
       {open ? <div className={styles.expandedHeading}><button type="button" className={styles.expandedName} aria-expanded aria-controls={contentId} onClick={() => onFieldOpenChange(field.id, false)}>
         {label}{state.summary && <span>{state.summary}</span>}<Icon name="i-up" size={16}/></button>
-        {active(state) && <Button variant="text" size="xs" onClick={() => change({kind: 'clear'})}>{t('next.browse.clear')}</Button>}</div> :
+        {platform !== 'phone' && active(state) && <Button variant="text" size="xs" onClick={() => change({kind: 'clear'})}>{t('next.browse.clear')}</Button>}</div> :
         <FieldTile label={label} summary={state.summary} active={active(state)} expanded={false} controls={contentId} onClick={() => onFieldOpenChange(field.id, true)}/>}
       {open && <div className={styles.fieldContent} id={contentId}>
         {state.kind === 'values' && <>
-          {platform !== 'phone' && <MatchMode value={state.match} allowAll={field.operators.includes('contains-all')} allowNone={canExclude} onValueChange={value => change({kind: 'match', value})}/>}
-          {(state.total === undefined || state.total > 10 || state.query) && platform !== 'tv' && <TextField variant="search" leadingIcon="i-search" value={state.query}
+          {platform === 'desktop' && <MatchMode value={state.match} allowAll={field.operators.includes('contains-all')} allowNone={canExclude} onValueChange={value => change({kind: 'match', value})}/>}
+          {(state.total === undefined || state.total > 10 || state.query) && platform !== 'tv' && <TextField variant="search" containerClassName={styles.facetFind} leadingIcon="i-search" value={state.query}
             aria-label={t('next.browse.find', {field: label.toLocaleLowerCase()})} placeholder={t('next.browse.find', {field: label.toLocaleLowerCase()})}
             onChange={event => onSearchChange(field.id, event.target.value)}/>}
           {state.status === 'loading' && <div role="status" className={styles.fieldNotice}>{t('next.browse.loadingValues')}</div>}
@@ -79,16 +79,16 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
               onValueChange={(value, selection) => change({kind: 'facet', value, selection: state.match === 'none' && selection === 'include' ? 'exclude' : selection})}/>
               {state.status !== 'loading' && state.values.length === 0 && <span className={styles.fieldNotice}>{t('next.browse.noValues')}</span>}
               {state.total !== undefined && state.total > state.values.length && onShowAll && <Button variant="text" size="xs" className={styles.showAll} onClick={() => onShowAll(field.id)}>
-                {t('next.browse.showAll', {count: state.total, field: label.toLocaleLowerCase()})}<Icon name="i-down" size={14}/></Button>}</>}
+                {state.moreLabel ?? t('next.browse.showAll', {count: state.total, field: label.toLocaleLowerCase()})}<Icon name="i-down" size={14}/></Button>}</>}
           {platform === 'phone' && canExclude && <p className={styles.facetHelp}>{t('next.browse.facetHelp')}</p>}
         </>}
         {state.kind === 'toggle' && <Segmented variant={platform === 'phone' ? 'phone' : 'browse'} value={state.value === undefined ? 'any' : state.value ? 'yes' : 'no'}
           items={[{value: 'any', label: t('next.browse.any')}, {value: 'yes', label: t('next.browse.yes')}, {value: 'no', label: t('next.browse.no')}]}
           onValueChange={value => change({kind: 'toggle', value: value === 'any' ? undefined : value === 'yes'})}/>}
         {(state.kind === 'choice' || state.kind === 'range') && <div className={styles.facetChips}>
-          <Chip variant="facet" selected={state.value === undefined} onClick={() => change({kind: 'choice', value: undefined})}>{t('next.browse.any')}</Chip>
-          {state.options.map(option => <Chip variant="facet" selected={state.value === option.value} key={option.value}
-            onClick={() => change({kind: 'choice', value: option.value === state.value ? undefined : option.value})}>{option.label}</Chip>)}
+          <button type="button" className={styles.facetChip} data-selected={state.value === undefined || undefined} aria-pressed={state.value === undefined} onClick={() => change({kind: 'choice', value: undefined})}>{t('next.browse.any')}</button>
+          {state.options.map(option => <button type="button" className={styles.facetChip} data-selected={state.value === option.value || undefined} aria-pressed={state.value === option.value} key={option.value}
+            onClick={() => change({kind: 'choice', value: option.value === state.value ? undefined : option.value})}>{option.label}</button>)}
         </div>}
         {state.kind === 'text' && <TextField variant="field" value={state.value} label={label} placeholder={state.placeholder} onChange={event => change({kind: 'text', value: event.target.value})}/>}
       </div>}
@@ -97,10 +97,10 @@ export function FilterBuilder({model, labels, platform = 'desktop', fields, open
   return <div className={[styles.filterBuilder, className].filter(Boolean).join(' ')} data-platform={platform}>
     {model.groups.map(group => {
       const count = group.fields.filter(field => fields[field.id] && active(fields[field.id]!)).length;
-      const limit = visibleFieldCount?.[group.id] ?? (platform === 'desktop' ? group.id === 'title' ? 7 : group.id === 'file' ? 6 : Infinity : Infinity);
+      const limit = visibleFieldCount?.[group.id] ?? (platform === 'desktop' ? group.id === 'title' ? 7 : group.id === 'file' ? 5 : Infinity : Infinity);
       const more = group.fields.slice(limit), expanded = expandedGroups.includes(group.id), visible = expanded ? group.fields : group.fields.slice(0, limit);
-      return <section key={group.id} className={styles.filterGroup} aria-labelledby={`${id}-${group.id}-heading`}>
-        <h3 id={`${id}-${group.id}-heading`}>{t(`filter.group.${group.id}`)}{count > 0 && <span>{t('next.browse.activeCount', {count})}</span>}</h3>
+      return <section key={group.id} className={styles.filterGroup} data-group={group.id} aria-labelledby={`${id}-${group.id}-heading`}>
+        <h3 id={`${id}-${group.id}-heading`}>{t(`filter.group.${group.id}`)}{platform === 'desktop' && count > 0 && <span>{t('next.browse.activeCount', {count})}</span>}</h3>
         <div className={styles.fieldGrid}>{visible.map(renderField)}
           {more.length > 0 && <button type="button" className={styles.moreFields} aria-expanded={expanded} onClick={() => setExpandedGroups(current => expanded ? current.filter(key => key !== group.id) : [...current, group.id])}>
             <span>{t('next.browse.more')}</span><small>{moreSummary?.[group.id] ?? defaultI18n.list(more.map(labels.field))}</small><Icon name={expanded ? 'i-up' : 'i-down'} size={18}/>

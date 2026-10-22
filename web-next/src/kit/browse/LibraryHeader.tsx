@@ -1,4 +1,4 @@
-import {useState, type ReactNode} from 'react';
+import {useRef, useState, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import type {FactPart} from '@core/presentation/kit-model';
 import {Button} from '../controls';
@@ -34,12 +34,13 @@ export type LibrarySwitcherProps = Readonly<{
   open?: boolean; onOpenChange?: (open: boolean) => void; compact?: boolean; className?: string;
 }>;
 export function LibrarySwitcher({libraries, value, onValueChange, open: controlledOpen, onOpenChange, compact = false, className}: LibrarySwitcherProps) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [localOpen, setLocalOpen] = useState(false), open = controlledOpen ?? localOpen;
   const setOpen = (next: boolean) => { setLocalOpen(next); onOpenChange?.(next); };
   const name = libraries.find(library => library.id === value)?.name;
-  return <Menu presentation="anchored" open={open} onOpenChange={setOpen} title={t('next.browse.switchLibrary')} accessibilityLabel={t('next.browse.switchLibrary')}
+  return <Menu returnFocusRef={triggerRef} presentation="anchored" open={open} onOpenChange={setOpen} title={t('next.browse.switchLibrary')} accessibilityLabel={t('next.browse.switchLibrary')}
     placement="bottom-start" width={252} className={styles.librarySwitcherMenu}
-    trigger={<button type="button" className={[compact ? styles.compactSwitcher : styles.roundSwitcher, className].filter(Boolean).join(' ')}
+    trigger={<button ref={triggerRef} type="button" className={[compact ? styles.compactSwitcher : styles.roundSwitcher, className].filter(Boolean).join(' ')}
       aria-label={t('next.browse.switchLibrary')} aria-expanded={open}>{compact && <span>{name}</span>}<Icon name="i-down" size={compact ? 16 : 22}/></button>}>
     {libraries.map(library => <MenuItem key={library.id} className={styles.libraryChoice} selected={library.id === value} description={library.count} onSelect={() => onValueChange(library.id)}>{library.name}</MenuItem>)}
   </Menu>;
@@ -49,12 +50,13 @@ export type LibraryMenuProps = Readonly<{
   viewSummary?: ReactNode; countSummary?: ReactNode; ownerMark?: ReactNode; open?: boolean; onOpenChange?: (open: boolean) => void;
 }> & (Readonly<{owner: true; onLibrarySettings: () => void; onScan: () => void}> | Readonly<{owner: false; onLibrarySettings?: never; onScan?: never}>);
 export function LibraryMenu({owner, read = false, onSaveView, onMarkAll, onEditPins, onLibrarySettings, onScan, viewSummary, countSummary, ownerMark, open: controlledOpen, onOpenChange}: LibraryMenuProps) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const [localOpen, setLocalOpen] = useState(false), open = controlledOpen ?? localOpen;
   const setOpen = (next: boolean) => { setLocalOpen(next); onOpenChange?.(next); };
   const act = (callback: () => void) => () => { setOpen(false); callback(); };
-  return <Menu presentation="anchored" open={open} onOpenChange={setOpen} title={t('next.browse.libraryOptions')} accessibilityLabel={t('next.browse.libraryOptions')}
+  return <Menu returnFocusRef={triggerRef} presentation="anchored" open={open} onOpenChange={setOpen} title={t('next.browse.libraryOptions')} accessibilityLabel={t('next.browse.libraryOptions')}
     placement="bottom-end" width={282} className={styles.libraryMenu}
-    trigger={<Button variant="icon" size="compact" icon="i-more" iconOnly className={styles.libraryMenuTrigger} aria-expanded={open} aria-label={t('next.browse.libraryOptions')}/>}>
+    trigger={<Button ref={triggerRef} variant="icon" size="compact" icon="i-more" iconOnly className={styles.libraryMenuTrigger} aria-expanded={open} aria-label={t('next.browse.libraryOptions')}/>}>
     <MenuItem icon="i-filter" description={viewSummary} onSelect={act(onSaveView)}>{t('next.browse.saveThisView')}</MenuItem>
     <MenuItem icon="i-check" description={countSummary} onSelect={act(onMarkAll)}>{t(read ? 'next.browse.markAllRead' : 'next.browse.markAllWatched')}</MenuItem>
     <MenuItem icon="i-updown" onSelect={act(onEditPins)}>{t('next.browse.editPins')}</MenuItem>
