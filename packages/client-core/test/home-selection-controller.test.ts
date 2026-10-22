@@ -5,6 +5,7 @@ import type {HomeDocument, HomeEntry, HomeRow, HomeActions} from '../src/home.ts
 import type {HomeService} from '../src/home-service.ts';
 import type {HomeSelectionOptions, HomeSelectionPlaybackRequest} from '../src/home-selection/index.ts';
 import {routePath} from '../../contracts/src/routes.ts';
+import {homeEntrySelection} from '../src/home-selection.ts';
 
 const fence = 'a'.repeat(64), revision = 'b'.repeat(64);
 let sequence = 0;
@@ -186,4 +187,130 @@ test('confirmed partial personal retry submits only real failed leaves and retai
   assert.equal(h.controller.getSnapshot().action.phase, 'partial'); await h.controller.retryAction();
   assert.deepEqual(bodies[1].selector, {items: {ids: ['b']}}); assert.equal(h.controller.getSnapshot().action.phase, 'complete');
   assert.deepEqual(h.controller.getSnapshot().action.jobIds, ['first-job', 'retry-job']); h.controller.dispose();
+});
+
+function ratingDetail(itemId = 'a', rating: number | null = 8) {
+  return {scope: {serverId: 'server', libraryId: 'library', itemId, viewerFence: fence}, revision: {catalog: 1, viewer: 1}, item: {id: itemId, libraryId: 'library', kind: 'movie', title: `Title ${itemId}`, available: true}, personal: {watchlisted: false, favorite: false, watched: false, rating, revision: 1}, actions: [{id: 'rating', labelKey: 'action.rating', enabled: true, min: 0, max: 10, step: 1}]};
+}
+function openRating(h: ReturnType<typeof harness>, id = 'a', supplied?: number | null) {
+  h.controller.openMenu('window', h.controller.key({kind: 'movie', id, libraryId: 'library'}));
+  return h.controller.executeMenu('rate', supplied);
+}
+
+test('rating read error retries the retained GET and opens only the genuine value without writing', async () => {
+  for (const value of [8, null]) {
+    const calls: {path: string; method: string | undefined; body: unknown}[] = [];
+    const h = harness(undefined, async (path, method, body) => {
+      calls.push({path, method, body});
+      if (calls.length === 1) throw new TypeError('Connection interrupted');
+      return ratingDetail('a', value) as never;
+    });
+    pickAll(h); await openRating(h);
+    assert.equal(h.controller.getSnapshot().rating?.phase, 'error');
+    assert.equal(h.controller.getSnapshot().rating?.value, undefined);
+    // A different current pick does not redirect recovery of this retained More target.
+    h.controller.toggle('window', h.controller.key({kind: 'movie', id: 'a', libraryId: 'library'}));
+    await h.controller.retryRating();
+    assert.deepEqual(calls, [0, 1].map(() => ({path: routePath('get_items_id_detail', {id: 'a'}) + '?related=all', method: 'GET', body: undefined})));
+    assert.deepEqual(h.controller.getSnapshot().rating, {phase: 'ready', currentValue: value, value, error: null});
+    h.controller.dispose();
+  }
+});
+
+test('rating read retry preserves denial, unavailable actions and stale detail scope/revisions', async () => {
+  const valid = ratingDetail();
+  const denied = Object.assign(new Error('No longer allowed'), {code: 'forbidden', status: 403});
+  const replies = [denied, {...valid, actions: []}, {...valid, actions: [{...valid.actions[0], enabled: false}]}, {...valid, scope: {...valid.scope, viewerFence: 'new-fence'}}, {...valid, revision: {catalog: 2, viewer: 1}}, {...valid, revision: {catalog: 1, viewer: 2}}, ratingDetail('b')];
+  for (const reply of replies) {
+    const methods: (string | undefined)[] = [];
+    const h = harness(undefined, async (_path, method) => {
+      methods.push(method);
+      if (methods.length === 1) throw new TypeError('Read interrupted');
+      if (reply instanceof Error) throw reply;
+      return reply as never;
+    });
+    pickAll(h); await openRating(h); await h.controller.retryRating();
+    assert.equal(h.controller.getSnapshot().rating?.phase, 'error');
+    assert.equal(h.controller.getSnapshot().rating?.currentValue, undefined);
+    assert.deepEqual(methods, ['GET', 'GET']); h.controller.dispose();
+  }
+});
+
+test('rating read retry requires the actual retained Home rate offer even when detail still offers it', async () => {
+  let reads = 0;
+  const a = {...entry('a')};
+  const h = harness([a], async () => {if (++reads === 1) throw new TypeError('Read interrupted'); return ratingDetail() as never;});
+  pickAll(h); await openRating(h);
+  a.homeActions = offers({rating: false});
+  await h.controller.retryRating();
+  assert.equal(h.controller.getSnapshot().rating?.phase, 'error');
+  assert.equal(h.controller.getSnapshot().rating?.error?.code, 'rating-not-offered'); h.controller.dispose();
+});
+
+test('late rating read recovery cannot publish after close, context replacement or a newer rating target', async () => {
+  for (const stop of ['close', 'context', 'new-target'] as const) {
+    let reads = 0, release!: (value: ReturnType<typeof ratingDetail>) => void, signal: AbortSignal | undefined;
+    const late = new Promise<ReturnType<typeof ratingDetail>>(resolve => {release = resolve;});
+    const h = harness(undefined, async (_path, _method, _body, abort) => {
+      if (++reads === 1) throw new TypeError('Read interrupted');
+      if (reads === 2) {signal = abort; return await late as never;}
+      return ratingDetail('b', 3) as never;
+    });
+    pickAll(h); await openRating(h);
+    const retry = h.controller.retryRating();
+    assert.equal(h.controller.getSnapshot().rating?.phase, 'loading');
+    if (stop === 'close') h.controller.closeRating();
+    else if (stop === 'context') h.replace({...h.document, viewerFence: 'new-fence'});
+    else await openRating(h, 'b');
+    const expected = h.controller.getSnapshot().rating;
+    assert.equal(signal?.aborted, true);
+    release(ratingDetail('a', 9)); await retry;
+    assert.deepEqual(h.controller.getSnapshot().rating, expected);
+    if (stop === 'new-target') assert.equal(expected?.value, 3);
+    else assert.equal(expected, null);
+    h.controller.dispose();
+  }
+});
+
+test('uncertain rating retry keeps the exact original mutation operation and body', async () => {
+  const writes: unknown[] = [], methods: (string | undefined)[] = [];
+  const h = harness(undefined, async (_path, method, input) => {
+    methods.push(method);
+    if (method === 'GET') return ratingDetail() as never;
+    writes.push(input);
+    if (writes.length === 1) throw new TypeError('Response lost');
+    const body = input as {operationId: string; rating: number};
+    return {operationId: body.operationId, serverId: 'server', libraryId: 'library', itemId: 'a', viewerFence: fence, personal: {...ratingDetail().personal, rating: body.rating, revision: 2}} as never;
+  });
+  pickAll(h); await openRating(h); h.controller.setRatingValue(4); await h.controller.submitRating();
+  assert.equal(h.controller.getSnapshot().rating?.phase, 'uncertain'); await h.controller.retryRating();
+  assert.equal(writes.length, 2); assert.deepEqual(writes[1], writes[0]);
+  assert.equal(h.controller.getSnapshot().rating?.phase, 'result'); assert.equal(h.controller.getSnapshot().rating?.value, 4);
+  assert.equal(methods.filter(method => method === 'PUT').length, 2); h.controller.dispose();
+});
+
+test('genuine model clones and reordered context/capability properties retain the same semantic offers', async () => {
+  let reads = 0;
+  const h = harness(undefined, async () => {reads++; return {serverId: 'server', viewerFence: fence, kind: 'playlist', query: '', revision: {catalog: 1, viewer: 1}, rows: [], nextCursor: ''} as never;});
+  pickAll(h); const target = h.controller.getSnapshot().selection.target!;
+  assert.equal(target.mode, 'explicit'); if (target.mode !== 'explicit') throw new Error('Explicit target required');
+  const reorder = <T extends object>(value: T): T => Object.fromEntries(Object.entries(value).reverse()) as T;
+  const items = target.items.map(pick => ({...pick, item: {...reorder(pick.item), capabilities: reorder(pick.item.capabilities)}}));
+  await h.controller.openPicker('playlist', {...target, context: {revision: reorder(target.context.revision), scope: reorder(target.context.scope)}, items, displayItems: items});
+  assert.equal(reads, 1); assert.equal(h.controller.getSnapshot().picker?.phase, 'ready'); h.controller.dispose();
+});
+
+test('changed genuine descendant offers in either direction still deny a mismatched retained target', async () => {
+  for (const newlyGranted of [false, true]) {
+    const a = {...entry('a')}; a.homeActions = offers({selection: {...offers().selection!, favorite: !newlyGranted}});
+    const h = harness([a]); pickAll(h);
+    const target = h.controller.getSnapshot().selection.target!;
+    if (target.mode !== 'explicit') throw new Error('Explicit target required');
+    a.homeActions = offers({selection: {...offers().selection!, favorite: newlyGranted}});
+    await assert.rejects(h.controller.openPicker('playlist', target), /home-offers-changed/);
+    const item = homeEntrySelection(a, {platform: 'web', playbackAvailable: true, queueAvailable: true})!;
+    const items = [{key: h.controller.key(item), item}];
+    await assert.rejects(h.controller.openPicker('playlist', {...target, items, displayItems: items}), /home-offers-changed/);
+    h.controller.dispose();
+  }
 });
