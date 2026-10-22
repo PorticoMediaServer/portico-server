@@ -1,6 +1,6 @@
 import {useLayoutEffect, useRef, useState, type ImgHTMLAttributes, type ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
-import {fileInfoModel, type FileFacts} from '@portico/client-core/kit-model';
+import {fileInfoModel, type FileFacts} from '@core/presentation/kit-model';
 import {overlaysFixtures} from '../../../../packages/i18n/src/catalog/en-US/next/dev/overlays-fixtures';
 import {defineGalleryFamily} from '../gallery-registry';
 import {Button, Segmented} from '../../kit/controls';
