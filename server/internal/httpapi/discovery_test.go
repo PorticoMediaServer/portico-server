@@ -183,7 +183,7 @@ func TestLibraryDiscoveryAndCollectionPermissions(t *testing.T) {
 			continue
 		}
 		filled++
-		if !strings.HasPrefix(row.ID, "recent") || len(row.Entries) != 1 || row.Entries[0].ID != itemA.Public {
+		if row.ID != "new_on_server" || len(row.Entries) != 1 || row.Entries[0].ID != itemA.Public {
 			t.Fatal("Home without personalized activity", row.ID, emptyResponse.Body.String())
 		}
 	}

@@ -152,11 +152,11 @@ func validDirectoryQuery(q DirectoryQuery) bool {
 	} else if q.AnchorChannelID != "" || q.AnchorSourceID != "" || q.AnchorProvenance != "" {
 		return false
 	}
-	return (q.Kind == "all" || q.Kind == string(LiveSource) || q.Kind == string(LibraryChannel)) && (q.Sort == "server" || q.Sort == "number" || q.Sort == "name") && q.Offset >= 0 && q.Offset <= MaxSources*MaxChannels+64 && q.Limit >= 1 && q.Limit <= 50 && len(q.SourceID) <= 256 && len(q.Search) <= 120 && len(q.Group) <= 120 && len(q.Revision) <= 64
+	return (q.Kind == "all" || q.Kind == string(LiveSource) || q.Kind == string(LibraryChannel)) && (q.Sort == "server" || q.Sort == "number" || q.Sort == "name" || q.Sort == "favorites") && q.Offset >= 0 && q.Offset <= MaxSources*MaxChannels+64 && q.Limit >= 1 && q.Limit <= 50 && len(q.SourceID) <= 256 && len(q.Search) <= 120 && len(q.Group) <= 120 && len(q.Revision) <= 64
 }
 
 // The revision binds the entire filtered directory, not its current page. A
-// changed source, preference or policy cannot mix channel positions across pages.
+// changed source, owner channel map, preference or policy cannot mix channel positions across pages.
 func (s *Store) directoryRevision(ctx context.Context, tx *sql.Tx, scope DirectoryScope, q DirectoryQuery) (string, error) {
 	h := sha256.New()
 	q.Offset = 0
@@ -166,18 +166,21 @@ func (s *Store) directoryRevision(ctx context.Context, tx *sql.Tx, scope Directo
 	fmt.Fprintf(h, "%d:%s%d:%s", len(scope.Fence), scope.Fence, len(raw), raw)
 	library, _ := json.Marshal(scope.LibraryRows)
 	h.Write(library)
-	rows, err := tx.QueryContext(ctx, `SELECT id,revision,state,active_generation,name FROM live_sources WHERE id IN (SELECT value FROM json_each(?)) ORDER BY id`, mustJSON(scope.AllowedLiveSources))
+	// SaveChannelMap advances this document atomically for every override write,
+	// including deletion. A max(updated_ms) over remaining overrides misses clears
+	// and same-millisecond changes. Read one revision per authorized source instead.
+	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.revision,s.state,s.active_generation,s.name,COALESCE(a.revision,0) FROM live_sources s LEFT JOIN admin_documents a ON a.scope='live-source:'||s.id WHERE s.id IN (SELECT value FROM json_each(?)) ORDER BY s.id`, mustJSON(scope.AllowedLiveSources))
 	if err != nil {
 		return "", err
 	}
 	for rows.Next() {
 		var id, state, generation, name string
-		var revision int64
-		if err = rows.Scan(&id, &revision, &state, &generation, &name); err != nil {
+		var revision, ownerRevision int64
+		if err = rows.Scan(&id, &revision, &state, &generation, &name, &ownerRevision); err != nil {
 			rows.Close()
 			return "", err
 		}
-		fmt.Fprintf(h, "%d:%s:%d:%d:%s:%d:%s:%d:%s", len(id), id, revision, len(state), state, len(generation), generation, len(name), name)
+		fmt.Fprintf(h, "%d:%s:%d:%d:%s:%d:%s:%d:%s:%d", len(id), id, revision, len(state), state, len(generation), generation, len(name), name, ownerRevision)
 	}
 	err = rows.Err()
 	rows.Close()
@@ -310,6 +313,9 @@ func (s *Store) ChannelDirectory(ctx context.Context, a DirectoryAuthority, q Di
 		}
 		err = rows.Err()
 		rows.Close()
+		if err == nil {
+			err = directoryMarks(ctx, tx, scope, q, out.Channels)
+		}
 		return err
 	})
 	return out, err
@@ -380,6 +386,9 @@ func sortSummaryGroups(groups []GuideGroupCount) {
 func directoryOrder(sort string) string {
 	order := `CASE provenance WHEN 'live-source' THEN 0 ELSE 1 END,source_name,source_id,channel_position,channel_id`
 	numeric := `(portico_channel_number(number) IS NULL),portico_channel_number(number),name COLLATE portico_guide_name,channel_id`
+	if sort == "favorites" {
+		return `favorite DESC,` + numeric + `,source_id,provenance`
+	}
 	if sort == "number" {
 		return `CASE provenance WHEN 'live-source' THEN 0 ELSE 1 END,CASE WHEN provenance='live-source' THEN source_name ELSE '' END,CASE WHEN provenance='live-source' THEN source_id ELSE '' END,` + numeric
 	}

@@ -38,7 +38,7 @@ func TestRestrictedRecentlyAddedIsCompleteBehindHiddenTitles(t *testing.T) {
 		t.Fatal(err)
 	}
 	viewer := Viewer{Profile: "p", Fence: "kid", Libraries: []string{"m"}, Restrictions: r}
-	row, err := s.HomeSingleRow(HomeRequest{Viewer: viewer, ServerID: "server", Profile: "p", ViewerFence: "kid", Libraries: []string{"m"}, Restrictions: r}, "recent_m", HomeRowPage{Limit: 12})
+	row, err := s.HomeSingleRow(HomeRequest{Viewer: viewer, ServerID: "server", Profile: "p", ViewerFence: "kid", Libraries: []string{"m"}, Restrictions: r}, "new_on_server", HomeRowPage{Limit: 12})
 	if err != nil {
 		t.Fatal(err)
 	}

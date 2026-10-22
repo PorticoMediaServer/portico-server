@@ -37,6 +37,7 @@ func PublishedSchemas() (map[string]reflect.Type, map[reflect.Type]map[string]an
 		switch name {
 		case "HomeDocument":
 			field("rows")["maxItems"] = 64
+			field("spotlight")["maxItems"] = 5
 		case "HomeLayout":
 			for _, key := range []string{"rowOrder", "hiddenRowIds"} {
 				v := field(key)

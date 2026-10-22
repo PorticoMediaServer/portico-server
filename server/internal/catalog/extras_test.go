@@ -113,7 +113,7 @@ func TestDetailExtrasGroupedAndPlayable(t *testing.T) {
 		t.Fatal("extras recursed", child.Extras, err)
 	}
 	request := HomeRequest{Viewer: viewer, ServerID: "server", Profile: viewer.Profile, ViewerFence: viewer.Fence, Libraries: viewer.Libraries}
-	row, err := service.HomeSingleRow(request, "recent_movies", HomeRowPage{Limit: 20})
+	row, err := service.HomeSingleRow(request, "new_on_server", HomeRowPage{Limit: 20})
 	if err != nil {
 		t.Fatal(err)
 	}
