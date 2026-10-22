@@ -19,8 +19,9 @@ export function NowPlayingCard(props: NowPlayingCardProps) {
   }, []);
   useLayoutEffect(() => {
     if (!expanded) return;
+    const element = returnFocusRef?.current ?? restore.current;
     play.current?.focus({preventScroll: true});
-    return () => { const element = returnFocusRef?.current ?? restore.current; if (element?.isConnected) element.focus({preventScroll: true}); };
+    return () => { if (element?.isConnected) element.focus({preventScroll: true}); };
   }, [expanded, returnFocusRef]);
   if (view.remote || (view.mode !== 'music' && view.mode !== 'audiobook')) return null;
   const fold = () => { onExpandedChange(false); };

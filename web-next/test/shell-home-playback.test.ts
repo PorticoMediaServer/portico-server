@@ -41,6 +41,16 @@ test('a source generation replacement cannot reuse the old display identity', ()
   const current = values.update(snapshot(dock), presentation(replaced));
   assert.equal(current.length, 1); assert.equal(current[0].fence.generation, 2);
 });
+test('an authority-bound cache rejects an obsolete snapshot even with identical playback fences', () => {
+  const dock = new PlaybackDock(scope); dock.start(audio); dock.start(video);
+  const old = snapshot(dock); let current = old;
+  const values = new PlaybackPresentations({getSnapshot: () => current});
+  assert.equal(values.update(old, presentation(audio)).length, 1);
+  current = snapshot(dock);
+  assert.deepEqual(values.update(old, presentation(video)), []);
+  assert.deepEqual(values.update(current, undefined), [], 'stale private facts were retired');
+  assert.deepEqual(values.update(current, presentation(video)), [presentation(video)]);
+});
 test('empty playback and authority gaps cannot read or retain a nullable notice', () => {
   const dock = new PlaybackDock(scope), runtime = {};
   assert.equal(retainedPlaybackNotice(null, undefined, undefined, [presentation(audio)]), null);

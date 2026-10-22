@@ -28,7 +28,10 @@ export function playbackPresentation(snapshot: WebPlaybackRuntimeSnapshot, envir
 /** Keep only actual active/bookmarked identities. A private presentation cannot survive a source teardown. */
 export class PlaybackPresentations {
   private readonly values = new Map<string, DockPresentation>();
+  /** Bind private display facts to the runtime whose teardown clears them. */
+  constructor(private readonly authority?: Readonly<{getSnapshot: () => WebPlaybackRuntimeSnapshot}>) {}
   update(snapshot: WebPlaybackRuntimeSnapshot, current: DockPresentation | undefined): readonly DockPresentation[] {
+    if (this.authority && this.authority.getSnapshot() !== snapshot) { this.clear(); return Object.freeze([]); }
     if (current) this.values.set(fenceKey(current.fence), current);
     const state = snapshot.dock;
     const retained = new Set([state.local?.fence, state.parkedAudio?.fence, state.resumeVideo?.fence, state.remote?.playback.fence].flatMap(fence => fence ? [fenceKey(fence)] : []));
