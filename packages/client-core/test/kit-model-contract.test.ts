@@ -61,8 +61,13 @@ test('new models have a strict renderer/endpoint/state-free import boundary', as
     const source = await readFile(new URL(name, directory), 'utf8');
     assert.doesNotMatch(source, /(?:from\s*|import\s*\()\s*['"][^'"]*(?:\.tsx|\.css|react|web\/|native\/|contracts\/)/, name);
     assert.doesNotMatch(source, /\b(?:fetch|XMLHttpRequest|WebSocket|setTimeout|setInterval|require)\s*\(|\b(?:document|window|process|localStorage|sessionStorage)\s*\.|Date\.now\s*\(|\/v[12]\//, name);
-    assert.doesNotMatch(source, /\.join\(['"]\s*·\s*['"]\)|\.split\(['"]\s*·\s*['"]\)|\b(?:cardCaption|continueCaption|homeHero|titleFileLines|versionNames|mediaVersionNames|subtitleTrackNames|playbackInfoRows|appliedFilterLabel|sessionFacts|audioTrackLabel|trackName)\s*\(/, name);
+    assert.doesNotMatch(source, /\.join\(['"]\s*·\s*['"]\)|\.split\(['"]\s*·\s*['"]\)|\b(?:cardCaption|continueCaption|homeHero|titleFileLines|versionNames|mediaVersionNames|subtitleTrackNames|playbackInfoRows|appliedFilterLabel|toolbarModel|sessionFacts|audioTrackLabel|trackName)\s*\(/, name);
     for (const [, dependency] of source.matchAll(/(?:from\s+|import\s*\()\s*['"]([^'"]+)['"]/g)) {
+      if ((name === 'filters.ts' || name === 'browse.ts') && dependency === '../../browse.ts') {
+        assert.match(source, /^import type \{[^}]+\} from '\.\.\/\.\.\/browse\.ts';/m, `${name}: canonical browse data types only`);
+        assert.equal([...source.matchAll(/['"]\.\.\/\.\.\/browse\.ts['"]/g)].length, 1, `${name}: no additional runtime import/reexport of browse`);
+        continue;
+      }
       assert.ok(/^\.\/[a-z-]+\.ts$/.test(dependency!) || name === 'tracks.ts' && dependency === '../language.ts' || name === 'text.ts' && dependency === '../../../../i18n/src/catalog/en-US/next/shared.ts', `${name}: ${dependency}`);
     }
   }
