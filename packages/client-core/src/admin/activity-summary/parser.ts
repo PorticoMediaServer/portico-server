@@ -7,7 +7,7 @@ export class ActivitySummaryContractError extends Error {
   readonly code = 'invalid_activity_summary';
   constructor() { super('invalid_activity_summary'); this.name = 'ActivitySummaryContractError'; }
 }
-const invalid = (): never => { throw new ActivitySummaryContractError(); };
+function invalid(): never { throw new ActivitySummaryContractError(); }
 const object = (v: unknown): v is ObjectValue => v !== null && typeof v === 'object' && !Array.isArray(v);
 const text = (max: number, nonempty = false): Reader => v => typeof v === 'string' && v.length <= max && (!nonempty || v.length > 0) && !/[\x00-\x1f\x7f]/.test(v) ? v : invalid();
 const id = text(512, true), label = text(256, true), words = text(4096);
