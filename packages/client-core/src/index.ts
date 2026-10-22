@@ -1153,8 +1153,8 @@ export class PlaybackService {
     // Live uses another lane and never becomes a queue replacement predecessor.
     if(this.snapshot.channel)this.leave(false);
     const run=fresh?{playbackRun:this.snapshot.playbackRun+1}:{};
-    // A parked restore is a fresh playback; retry must not resurrect its old track choices.
-    if(fresh&&state==='paused'){this.lastPlay=undefined;this.escalations=0;}
+    // A parked restore or server-selected start has no new per-title choices to retain.
+    if(fresh&&(state==='paused'||itemId===undefined)){this.lastPlay=undefined;this.escalations=0;}
     if(fresh&&this.options.beforeFreshPlayback)this.freshReady=this.options.beforeFreshPlayback().catch(()=>{});
     if(!this.snapshot.session){this.clearStartup();this.update({phase:'starting',intent:state,itemId,error:undefined,...run});}
     else this.update({intent:state,error:undefined,...run});

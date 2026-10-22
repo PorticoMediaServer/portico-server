@@ -332,7 +332,7 @@ export class V1QueuePlayer implements QueueController {
     // in place. The rest of the queue is untouched.
     const current = this.currentEntry();
     if (current && current.itemId === itemId && this.session?.itemId === itemId && !this.nativeOwns()) return this.restartCurrent(startSeconds, chosen);
-    return this.play(segments([itemId], false), itemId, {startSeconds}, chosen);
+    return this.play(segments([itemId], false), itemId, {startSeconds}, chosen).then(() => {});
   }
 
   // ── Changing what is playing ────────────────────────────────────────
@@ -457,7 +457,7 @@ export class V1QueuePlayer implements QueueController {
     // A music container played (not shuffled) starts with the viewer's music defaults.
     const defaults = !options.shuffle && 'container' in selector && MUSIC_CONTAINERS.includes(selector.container.kind) ? this.musicDefaults?.() : undefined;
     const shuffle = !!options.shuffle || !!defaults?.shuffle;
-    return this.play([{source: selector, ...(shuffle ? {order: {mode: 'shuffle', ...(options.shuffleSeed ? {seed: options.shuffleSeed} : {})}} : {}), ...(options.anchor ? {anchor: options.anchor} : {})}], '', {...options, repeat: defaults?.repeat});
+    return this.play([{source: selector, ...(shuffle ? {order: {mode: 'shuffle', ...(options.shuffleSeed ? {seed: options.shuffleSeed} : {})}} : {}), ...(options.anchor ? {anchor: options.anchor} : {})}], '', {...options, repeat: defaults?.repeat}).then(() => {});
   }
 
   /** Whether the next track follows the current one on its album, so the audio engine joins them
@@ -522,14 +522,27 @@ export class V1QueuePlayer implements QueueController {
     }
   }
 
-  /** Play (or Shuffle): a new queue for this device, playing its first entry (or the shuffle's). */
-  private playIds(ids: readonly string[], options: {shuffle?: boolean; startSeconds?: number}) {
-    return this.play(segments(ids, !!options.shuffle), ids[0]!, options);
+  /** Play an exact ordered mixture of existing server selectors and playable item segments.
+   * The owner supplies its current document guard; no aggregate is flattened by this player. */
+  async playSegments(input: readonly SegmentInput[], options: {startSeconds?: number; signal?: AbortSignal; isCurrent?: () => boolean} = {}): Promise<QueueHeader> {
+    if (!input.length || options.startSeconds !== undefined && (!Number.isFinite(options.startSeconds) || options.startSeconds < 0 || options.startSeconds > 1e9)) throw new ContractError('queue playback selection');
+    if (options.signal?.aborted || options.isCurrent?.() === false || this.disposed) throw Object.assign(new Error('cancelled'), {name: 'AbortError'});
+    const queue = await this.play(input, '', {...options, propagateError: true});
+    if (!queue) throw Object.assign(new Error('cancelled'), {name: 'AbortError'});
+    return queue;
   }
 
-  private async play(input: readonly SegmentInput[], first: string, options: {startSeconds?: number; repeat?: 'off' | 'one' | 'all'}, choices: PlaybackChoices = {}) {
+  /** Play (or Shuffle): a new queue for this device, playing its first entry (or the shuffle's). */
+  private playIds(ids: readonly string[], options: {shuffle?: boolean; startSeconds?: number}) {
+    return this.play(segments(ids, !!options.shuffle), ids[0]!, options).then(() => {});
+  }
+
+  private async play(input: readonly SegmentInput[], first: string, options: {startSeconds?: number; repeat?: 'off' | 'one' | 'all'; signal?: AbortSignal; isCurrent?: () => boolean; propagateError?: boolean}, choices: PlaybackChoices = {}): Promise<QueueHeader | undefined> {
     const generation = ++this.generation;
     ++this.epoch;
+    const current = () => !this.disposed && generation === this.generation && !options.signal?.aborted && options.isCurrent?.() !== false;
+    const cancel = () => { if (generation === this.generation && !this.disposed) this.playback.leave(); };
+    options.signal?.addEventListener('abort', cancel, {once: true});
     // A new play starts from the viewer's saved default again, unless it names a quality itself.
     this.qualityOverride = choices.quality;
     const asked = this.startChoices(choices);
@@ -538,62 +551,80 @@ export class V1QueuePlayer implements QueueController {
     const intent = this.playback.beginQueueIntent(first || undefined, true);
     this.publish({phase: 'preparing', error: null, completion: null});
     try {
-      if (!await this.playback.prepareQueueIntent(intent) || generation !== this.generation) return;
+      if (!await this.playback.prepareQueueIntent(intent) || !current()) return;
       const at = options.startSeconds;
       // One request when the server may choose the start (resume or the beginning); an explicit
       // position, version or audio track starts the session separately, with those.
       const together = at === undefined && !asked.versionId && !asked.audio;
-      const created: CreateResult = await this.client.create(input, together ? {startPlayback: {state: 'playing', ...(asked.quality ? {quality: asked.quality} : {})}} : {});
-      if (generation !== this.generation) { this.abandon(created.session); return; }
+      const created: CreateResult = await this.client.create(input, {...(together ? {startPlayback: {state: 'playing' as const, ...(asked.quality ? {quality: asked.quality} : {})}} : {}), ...(options.signal ? {signal: options.signal} : {})});
+      if (!current()) { this.abandon(created.session); return; }
       this.accept(created.queue, created.window);
       let header = created.queue;
       if (options.repeat && options.repeat !== 'off') {
+        if (!current()) { this.abandon(created.session); return; }
         header = (await this.client.update(header.id, header.revision, {repeat: options.repeat})).queue;
-        if (generation !== this.generation) return;
+        if (!current()) { this.abandon(created.session); return; }
         this.accept(header);
       }
       if (QueueClient.startPending(created)) {
-        const waiting = this.client.awaitCurrent(header.id, {intervalMs: this.pendingPollMs});
+        if (!current()) return;
+        const waiting = this.client.awaitCurrent(header.id, {intervalMs: this.pendingPollMs, signal: options.signal});
         this.wakePending = waiting.wake;
         try { header = await waiting.done; } finally { this.wakePending = undefined; }
-        if (generation !== this.generation) return;
-        await this.refresh();
+        if (!current()) return;
+        const window = await this.client.window(header.id, WINDOW_BEFORE, WINDOW_AFTER, options.signal);
+        if (!current()) return;
+        this.accept(header, window);
       }
-      if (created.session && together) await this.adopt(created.session, intent, generation);
-      else if (header.current) await this.startEntry(header.id, header.current.entryId, intent, at, generation, choices);
-      if (generation === this.generation) this.publish({phase: 'ready'});
+      if (!current()) { this.abandon(created.session); return; }
+      if (created.session && together) await this.adopt(created.session, intent, generation, current, options.signal);
+      else if (header.current) await this.startEntry(header.id, header.current.entryId, intent, at, generation, choices, 'playing', options.signal, current);
+      if (!current()) return;
+      if (options.propagateError && (!this.session || this.session.queue?.queueId !== header.id || this.playback.getSnapshot().phase === 'error')) throw new ContractError('queue playback adoption');
+      this.publish({phase: 'ready'});
+      return current() ? this.header : undefined;
     } catch (e) {
-      if (generation !== this.generation) return;
+      if (!current()) { if (options.propagateError) throw e; return; }
       this.fail(first, e, serviceText('queuePlayer.startFailed'));
-    }
+      if (options.propagateError) throw e;
+    } finally { options.signal?.removeEventListener('abort', cancel); }
   }
 
   /** Starts the session for one entry (a start that wasn't made with the create or advance). */
-  private async startEntry(queueId: string, entryId: string, intent: number, startSeconds?: number, generation: number = this.generation, choices?: PlaybackChoices, state: 'playing' | 'paused' = 'playing', signal?: AbortSignal) {
+  private async startEntry(queueId: string, entryId: string, intent: number, startSeconds?: number, generation: number = this.generation, choices?: PlaybackChoices, state: 'playing' | 'paused' = 'playing', signal?: AbortSignal, isCurrent?: () => boolean) {
+    const current = () => !this.disposed && generation === this.generation && !signal?.aborted && isCurrent?.() !== false;
     const entry = this.window.find(e => e.entryId === entryId);
     const r = await this.whileBuilding(() => {
-      if (signal?.aborted) throw Object.assign(new Error('aborted'), {name: 'AbortError'});
+      if (!current()) throw Object.assign(new Error('aborted'), {name: 'AbortError'});
       return this.api.start({queue: {queueId, entryId}}, {state, ...this.startChoices(choices), ...(startSeconds === undefined ? {startFrom: 'resume'} : {startPositionMs: Math.round(startSeconds * 1000)}), ...(this.session ? {replacesSessionId: this.session.id} : {})}, this.key(), entry?.durationMs !== undefined ? entry.durationMs / 1000 : undefined, signal);
     });
-    if (generation !== this.generation) { this.api.forget(r.session.id); this.abandon(r.session); return; }
+    if (!current()) { this.api.forget(r.session.id); this.abandon(r.session); return; }
+    if (isCurrent && (r.session.queue?.queueId !== queueId || r.session.queue.entryId !== entryId || !entry?.available || r.session.itemId !== entry.itemId)) {
+      this.api.forget(r.session.id); this.abandon(r.session); throw new ContractError('queue playback session');
+    }
     const pending = this.playback.getSnapshot();
-    if (signal && (signal.aborted || pending.intentId !== intent || pending.intent !== 'paused' || this.header?.id !== queueId || this.header.current?.entryId !== entryId || r.session.state !== 'paused' || r.session.queue?.queueId !== queueId || r.session.queue.entryId !== entryId || r.session.itemId !== entry?.itemId || r.session.presentation.startPositionMs !== Math.round(startSeconds! * 1000))) {
+    if (signal && state === 'paused' && (pending.intentId !== intent || pending.intent !== 'paused' || this.header?.id !== queueId || this.header.current?.entryId !== entryId || r.session.state !== 'paused' || r.session.queue?.queueId !== queueId || r.session.queue.entryId !== entryId || r.session.itemId !== entry?.itemId || r.session.presentation.startPositionMs !== Math.round(startSeconds! * 1000))) {
       this.api.forget(r.session.id); this.abandon(r.session);
       throw new ContractError('paused restore session');
     }
     // The presentation's timeline is the whole title: the engine starts at the chosen position.
-    await this.adoptPlayback(r.session, startSeconds === undefined ? r.playback : {...r.playback, resumeSeconds: startSeconds}, intent);
+    await this.adoptPlayback(r.session, startSeconds === undefined ? r.playback : {...r.playback, resumeSeconds: startSeconds}, intent, current);
   }
 
   /** Adopts a session a queue request started (create with startPlayback, or advance). */
-  private async adopt(session: Session, intent: number, generation: number = this.generation) {
+  private async adopt(session: Session, intent: number, generation: number = this.generation, isCurrent?: () => boolean, signal?: AbortSignal) {
+    const current = () => !this.disposed && generation === this.generation && !signal?.aborted && isCurrent?.() !== false;
+    if (!current()) { this.abandon(session); return; }
     const entry = this.window.find(e => e.entryId === session.queue?.entryId);
-    const duration = entry?.durationMs !== undefined ? entry.durationMs / 1000 : await this.api.duration(session.itemId ?? '', session.versionId);
-    if (generation !== this.generation) { this.abandon(session); return; }
-    await this.adoptPlayback(session, this.api.adopt(session, duration), intent);
+    if (isCurrent && (session.queue?.queueId !== this.header?.id || session.queue?.entryId !== this.header?.current?.entryId || !entry?.available || session.itemId !== entry.itemId)) {
+      this.abandon(session); throw new ContractError('queue playback session');
+    }
+    const duration = entry?.durationMs !== undefined ? entry.durationMs / 1000 : await this.api.duration(session.itemId ?? '', session.versionId, signal);
+    if (!current()) { this.abandon(session); return; }
+    await this.adoptPlayback(session, this.api.adopt(session, duration), intent, current);
   }
 
-  private async adoptPlayback(session: Session, playback: PlaybackSession, intent: number) {
+  private async adoptPlayback(session: Session, playback: PlaybackSession, intent: number, isCurrent?: () => boolean) {
     const previous = this.session;
     this.session = session;
     this.sessionStartedAt = Date.now();
@@ -602,6 +633,7 @@ export class V1QueuePlayer implements QueueController {
     this.endedId = undefined;
     this.nativeSession = undefined;
     if (this.header) this.accept(this.header);
+    if (isCurrent?.() === false) { this.api.forget(session.id); this.abandon(session); return; }
     const itemKind = this.window.find(e => e.entryId === session.queue?.entryId)?.kind ?? '';
     if (this.native && session.kind === 'audio' && this.nativeFor(itemKind)) { await this.adoptNative(session, playback, intent); return; }
     if (!await this.playback.adoptQueueSession(session.itemId ?? '', playback, intent)) {
