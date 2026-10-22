@@ -65,7 +65,7 @@ func TestFilesystemFlagsReasonsAndCursorScope(t *testing.T) {
 		t.Fatalf("cross-filter cursor accepted: %v", err)
 	}
 	missing, err := s.Browse(context.Background(), filepath.Join(root, "ALPHA"), "", 200, false)
-	if !errors.Is(err, ErrNotFound) || missing.Reason != "missing" || len(missing.Suggestions) != 2 {
+	if !errors.Is(err, ErrNotFound) || missing.Reason != "missing" || missing.Path != filepath.Join(root, "ALPHA") || len(missing.Suggestions) != 2 {
 		t.Fatalf("case suggestions %+v %v", missing, err)
 	}
 	raw, _ := json.Marshal(page)

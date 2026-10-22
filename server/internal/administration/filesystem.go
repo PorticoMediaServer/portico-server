@@ -178,6 +178,7 @@ func (s *Service) Browse(ctx context.Context, path, token string, limit int, inc
 	if systemPath(clean) || policy.CheckBrowse(clean) != nil {
 		return out, ErrDenied
 	}
+	out.Path = clean
 	requested := clean
 	clean, err = filepath.EvalSymlinks(clean)
 	if err != nil {
