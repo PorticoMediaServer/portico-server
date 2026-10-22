@@ -10,6 +10,68 @@ function canonical(path) {
   const parent = dirname(path);
   return parent === path ? path : resolve(canonical(parent), path.slice(parent.length + 1));
 }
+// Read CSS tokens rather than matching quotes: url() may be unquoted, and
+// identifiers/paths may contain escapes. Comments and string contents are inert.
+function cssImports(text) {
+  const source = text.replace(/\r\n?|\f/g, '\n').replace(/\0/g, '\uFFFD'), imports = [];
+  let i = 0;
+  const space = c => c !== undefined && /[\t\n ]/.test(c);
+  function trivia() {
+    while (i < source.length) {
+      if (space(source[i])) { i++; continue; }
+      if (!source.startsWith('/*', i)) break;
+      const end = source.indexOf('*/', i + 2);
+      i = end < 0 ? source.length : end + 2;
+    }
+  }
+  function escape(quoted = false) {
+    i++;
+    if (i === source.length || source[i] === '\n' && !quoted) throw new Error('invalid escape');
+    if (source[i] === '\n') { i++; return ''; }
+    const hex = source.slice(i).match(/^[\da-f]{1,6}/i)?.[0];
+    if (!hex) return source[i++];
+    i += hex.length;
+    if (space(source[i])) i++;
+    const code = Number.parseInt(hex, 16);
+    return String.fromCodePoint(code === 0 || code > 0x10ffff || code >= 0xd800 && code <= 0xdfff ? 0xfffd : code);
+  }
+  function string() {
+    const quote = source[i++]; let value = '';
+    while (i < source.length && source[i] !== quote) {
+      if (source[i] === '\n') throw new Error('invalid string');
+      value += source[i] === '\\' ? escape(true) : source[i++];
+    }
+    if (source[i++] !== quote) throw new Error('unterminated string');
+    return value;
+  }
+  function name() {
+    let value = '';
+    while (i < source.length && /[\w\-\u0080-\uffff\\]/.test(source[i])) value += source[i] === '\\' ? escape() : source[i++];
+    return value;
+  }
+  while (i < source.length) {
+    trivia();
+    if (source[i] === '"' || source[i] === "'") { string(); continue; }
+    if (source[i] === '\\') { escape(); continue; }
+    if (source[i++] !== '@' || name().toLowerCase() !== 'import') continue;
+    trivia();
+    if (source[i] === '"' || source[i] === "'") { imports.push(string()); continue; }
+    if (name().toLowerCase() !== 'url' || source[i++] !== '(') throw new Error('expected import URL');
+    // A quoted URL is a function containing a CSS string; an unquoted URL is
+    // one token, where escaped spaces/parentheses belong to the path.
+    while (space(source[i])) i++;
+    let value = '';
+    if (source[i] === '"' || source[i] === "'") { value = string(); trivia(); }
+    else while (i < source.length && source[i] !== ')') {
+      if (space(source[i])) { while (space(source[i])) i++; break; }
+      if (/["'(\u0000-\u0008\u000b\u000e-\u001f\u007f]/.test(source[i])) throw new Error('invalid URL');
+      value += source[i] === '\\' ? escape() : source[i++];
+    }
+    if (source[i++] !== ')') throw new Error('unterminated URL');
+    imports.push(value);
+  }
+  return imports;
+}
 export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, paths} = {}) {
   repo = resolve(repo); app = resolve(app);
   const old = resolve(repo, 'web'), oldReal = canonical(old), failures = [], visited = new Set();
@@ -30,6 +92,10 @@ export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, pa
     if (spec.startsWith('/src/')) return resolve(app, '.' + spec);
     if (isAbsolute(spec)) return spec;
     if (spec === 'virtual:portico-kit-families' || isBuiltin(spec)) return;
+    // CSS URLs are relative even without "./"; keep package resolution when
+    // no neighbouring stylesheet exists, as Vite supports package imports too.
+    const neighbour = resolve(dirname(from), spec);
+    if (extname(from) === '.css' && extensions.some(extension => existsSync(neighbour + extension))) return neighbour;
     // Resolve installed packages too: a symlink must not disguise an old UI module.
     try { return createRequire(pathToFileURL(from)).resolve(spec); }
     catch { failures.push(`${relative(repo, from)}: unresolved import ${specifier}`); }
@@ -52,7 +118,8 @@ export function lintBoundary({repo, app = resolve(repo, 'web-next'), entries, pa
     if (!/\.(?:[cm]?[jt]sx?|css)$/.test(file) || file.endsWith('.d.ts')) return;
     const source = readFileSync(file, 'utf8');
     if (extname(file) === '.css') {
-      for (const match of source.matchAll(/@import\s+(?:url\(\s*)?['"]([^'"]+)['"]/g)) follow(match[1], file);
+      try { for (const spec of cssImports(source)) follow(spec, file); }
+      catch { failures.push(`${relative(repo, file)}: CSS import cannot be parsed`); }
       return;
     }
     const parsed = parseSync(file, source);
