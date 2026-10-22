@@ -16,7 +16,7 @@ const symbol = '<symbol id="i-test" viewBox="0 0 24 24"><path fill="currentColor
 
 test('every canonical symbol has the same faithful ID and geometry in both outputs', () => {
   const web = renderShared(icons), native = renderNative(icons);
-  assert.equal(icons.length, 249);
+  assert.equal(icons.length, 250);
   assert.equal(new Set(icons.map(i => i.attrs.id)).size, icons.length);
   assert.equal((native.match(/case "/g) || []).length, icons.length);
   for (const icon of icons) {
@@ -35,6 +35,20 @@ test('every canonical symbol has the same faithful ID and geometry in both outpu
   assert.equal(icons.find(i => i.attrs.id === 'i-wifi').attrs.viewBox, '0 0 16 12');
   assert.equal(icons.find(i => i.attrs.id === 'i-bat').attrs.viewBox, '0 0 27 13');
   assert.equal(icons.find(i => i.attrs.id === 'i-sig').attrs.viewBox, '0 0 18 12');
+});
+
+test('reading navigation headphones preserve the exact source geometry and the existing headphones glyph', () => {
+  // tablet-read.html and foldable.html at design/ui-v1 33519933ca5afdd035e14060b881c830defb090c.
+  const source = '<symbol id="i-headphones" viewBox="0 0 24 24"><g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15v-3a8 8 0 0 1 16 0v3"/><rect x="3.5" y="14" width="4.5" height="6.5" rx="1.6"/><rect x="16" y="14" width="4.5" height="6.5" rx="1.6"/></g></symbol>';
+  assert.deepEqual(icons.find(icon => icon.attrs.id === 'i-headphones'), parseSprite(document(source))[0]);
+  const body = '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15v-3a8 8 0 0 1 16 0v3"></path><rect x="3.5" y="14" width="4.5" height="6.5" rx="1.6"></rect><rect x="16" y="14" width="4.5" height="6.5" rx="1.6"></rect></g>';
+  assert.deepEqual(nextIcons['i-headphones'], {viewBox: '0 0 24 24', body});
+  assert.ok(renderNative(icons).includes('case "i-headphones": return <G><G fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><Path d="M4 15v-3a8 8 0 0 1 16 0v3" /><Rect x="3.5" y="14" width="4.5" height="6.5" rx="1.6" /><Rect x="16" y="14" width="4.5" height="6.5" rx="1.6" /></G></G>;'));
+  const original = icons.find(icon => icon.attrs.id === 'i-headph');
+  assert.deepEqual(original.children[0].children.slice(1).map(rect => rect.attrs), [
+    {height: '7', rx: '1.5', width: '5', x: '3', y: '14'},
+    {height: '7', rx: '1.5', width: '5', x: '16', y: '14'},
+  ]);
 });
 
 test('activity Levels preserves the approved ring and three bars', () => {
@@ -171,6 +185,6 @@ test('generation is deterministic and check detects stale or missing native outp
     writeFileSync(target, renderNative(icons) + '\n');
     assert.notEqual(run([]).status, 0);
     assert.match(run([]).stderr, /Stale icon output/);
-    assert.equal(execFileSync(process.execPath, [path.join(here, 'next-icons.mjs'), '--check'], {encoding: 'utf8'}).trim(), 'next-icons: 249 symbols; 1 output(s) verified');
+    assert.equal(execFileSync(process.execPath, [path.join(here, 'next-icons.mjs'), '--check'], {encoding: 'utf8'}).trim(), 'next-icons: 250 symbols; 1 output(s) verified');
   } finally { rmSync(temp, {recursive: true, force: true}); }
 });

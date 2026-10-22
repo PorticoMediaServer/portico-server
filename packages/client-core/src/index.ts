@@ -2041,3 +2041,4 @@ export {readLibrarySummaries,parseLibrarySummary} from './library-summary.ts';
 export type {LibrarySummary} from './library-summary.ts';
 
 export {browseServerFilesystem} from './library-management.ts';
+export {libraryNavigationIcon} from './presentation/library-navigation.ts';

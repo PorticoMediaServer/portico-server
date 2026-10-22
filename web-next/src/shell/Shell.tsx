@@ -7,7 +7,8 @@ import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon} from '../kit/Icon';
 import {Menu, MenuItem} from '../kit/overlays';
 import {desktopLibraries, isLibraryLocation, rememberLibrary, rememberedLibrary, showOwnerActivity} from './model';
-import {useShellScrolled, useShellWidth} from './viewport';
+import {useShellScrolled} from './viewport';
+import {useSizeClass, useCoarsePointer, useWindowScrollAnchor} from '../kit/theme';
 import styles from './shell.module.css';
 import wordmark from './wordmark.svg';
 
@@ -30,7 +31,11 @@ const t = defaultI18n.t;
 function libraryMemory() { try { return window.localStorage; } catch { return undefined; } }
 
 export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSelection, overlays, children}: ShellProps) {
-  const width = useShellWidth(), desktop = width >= 1024, scrolled = useShellScrolled();
+  useWindowScrollAnchor();
+  const sizeClass = useSizeClass(), coarsePointer = useCoarsePointer();
+  const desktop = sizeClass === 'expanded' && !coarsePointer, compact = sizeClass === 'compact', scrolled = useShellScrolled();
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const navigation = compact ? 'tabs' : desktop ? 'topbar' : sizeClass === 'medium' || sidebarCollapsed ? 'rail' : 'sidebar';
   const pathname = useRouterState({select: state => state.location.pathname});
   const query = useRouterState({select: state => state.location.search});
   const lastSearch = useRef('');
@@ -71,7 +76,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
       help: () => { void navigate({to: '/help'}); }, signOut: onSignOut,
     }} trigger={<ProfileAvatar className={styles.avatar} name={identity.profileName} initial={current.initial} art={identity.profileArt} size={desktop ? 34 : 30}
       notificationDot={!desktop && identity.showNotificationDot && identity.unread > 0} aria-label={t('next.home.shell.profileMenu', {name: identity.profileName})} />} />;
-  return <div className={styles.shell} data-desktop={desktop} data-has-dock={dockVisible}>
+  return <div className={styles.shell} data-desktop={desktop} data-size-class={sizeClass} data-pointer={coarsePointer ? 'coarse' : 'fine'} data-navigation={navigation} data-has-dock={dockVisible}>
     <a className={styles.skip} href="#portico-content">{t('next.home.shell.skip')}</a>
     <div className={styles.navigation} data-shell-navigation>
       {desktop ? <nav className={styles.topnav} data-solid={scrolled || !home} aria-label={t('next.home.shell.main')}>
@@ -89,6 +94,20 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
           <Link className={styles.icon} to="/saved" aria-label={t('next.home.shell.saved')} activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /></Link>
           <Link className={styles.icon} to="/notifications" aria-label={identity.unread > 0 ? t('next.home.shell.unread', {count: identity.unread}) : t('next.home.shell.notifications')} activeProps={{'aria-current': 'page'}}><Icon name="i-bell" size={22} />{identity.showNotificationDot && identity.unread > 0 && <span className={styles.dot} />}</Link>
           {showOwnerActivity(viewer.role, desktop) && <OwnerActivity />}
+          {account}
+        </div>
+      </nav> : !compact ? <nav className={styles.rail} aria-label={t('next.home.shell.main')}>
+        {sizeClass === 'expanded' && <button type="button" className={styles.collapse} aria-label={t(sidebarCollapsed ? 'sheet.expand' : 'sheet.collapse')} aria-expanded={!sidebarCollapsed} onClick={() => setSidebarCollapsed(value => !value)}><Icon name="i-panels" size={22} /></button>}
+        <div className={styles.railDestinations}>
+          <Link to="/search" search={{q: lastSearch.current}} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /><span>{t('next.home.shell.search')}</span></Link>
+          <Link to="/" activeOptions={{exact: true}} activeProps={{'aria-current': 'page'}}><Icon name="i-home" size={22} /><span>{t('next.home.shell.home')}</span></Link>
+          {identity.libraries.map(library => <Link key={library.id} to="/library/$libraryId" params={{libraryId: library.id}} activeProps={{'aria-current': 'page'}}><Icon name="i-grid" size={22} /><span>{library.name}</span></Link>)}
+          {identity.liveAvailable && <Link to="/live" activeProps={{'aria-current': 'page'}}><Icon name="i-tv" size={22} /><span>{t('next.home.shell.live')}</span></Link>}
+          <Link to="/saved" activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /><span>{t('next.home.shell.saved')}</span></Link>
+        </div>
+        <div className={styles.railBottom}>
+          {viewer.role === 'owner' && <button type="button" onClick={dashboard}><Icon name="i-activity" size={22} /><span>{t('next.shell.activity')}</span></button>}
+          <Link to="/settings" activeProps={{'aria-current': 'page'}}><Icon name="i-settings" size={22} /><span>{t('next.shell.settings')}</span></Link>
           {account}
         </div>
       </nav> : <>
