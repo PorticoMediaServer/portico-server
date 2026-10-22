@@ -10,6 +10,7 @@ import type {WebPlaybackSettings, WebPlaybackSource} from '../src/platform/playb
 import type {SelectionContext} from '@core/selection-model/types.ts';
 import type {HomeSelectionPlaybackItem} from '@core/home-selection/types.ts';
 import type {HomeChannel} from '@core/home.ts';
+import type {PlayerOffersService} from '@core/player-offers.ts';
 
 /**
  * A media element and an hls.js that do only what a test tells them to, for the web media
@@ -166,7 +167,8 @@ export const settle = async () => { for (let i = 0; i < 12; i++) await new Promi
 
 
 const viewer = {serverId: 'server', authority: 'local' as const, accountId: 'account', profileId: 'profile'};
-const selectionContext: SelectionContext = {scope: {...viewer, viewId: 'home', privacyFence: 'viewer_fence'}, revision: {catalogRevision: '1', viewerRevision: '1'}};
+const homeViewerFence = 'home_viewer_fence', detailViewerFence = 'detail_viewer_fence';
+const selectionContext: SelectionContext = {scope: {...viewer, viewId: 'home', privacyFence: homeViewerFence}, revision: {catalogRevision: '1', viewerRevision: '1'}};
 const selectionLeaf = (id: string): HomeSelectionPlaybackItem => ({identity: {id, kind: 'movie', libraryId: 'library'}, entry: {id, kind: 'movie', title: id, libraryId: 'library', playback: {itemId: id}}, target: {itemId: id}});
 const selectionAlbum: HomeSelectionPlaybackItem = {identity: {id: 'song_release', kind: 'album', libraryId: 'library'}, entry: {id: 'song_release', kind: 'album', title: 'song_release', libraryId: 'library', playback: {itemId: 'song_release-0'}}, target: {itemId: 'song_release-0'}};
 const homeChannel: HomeChannel = {source: {id: 'source', name: 'source', provenance: 'live-source', generation: 'g1', publishedAt: '', availableStart: '', availableEnd: '', refreshState: ''}, channel: {id: 'channel', sourceId: 'source', provenance: 'live-source', generation: 'g1', name: 'channel', number: '', group: '', programmes: [], tuneAvailable: true, recordAvailable: false, tuneUnavailableReason: '', recordUnavailableReason: 'not-recordable', favorite: false, hidden: false, preferenceRevision: 1, mark: {text: 'channel', seed: 'channel'}}};
@@ -206,7 +208,7 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}) {
   const log: V1Request[] = [], callbacks = new Map<string, Set<(event: ServerEvent) => void>>();
   const hls = fakeHls(), video = new FakeVideo();
   const channels = new ChannelPort();
-  let current = true, serial = 0, viewerFence = 'viewer_fence';
+  let current = true, serial = 0, viewerFence = detailViewerFence;
   let intercept = async (_request: V1Request, response: V1Response): Promise<V1Response> => response;
   const fetcher = async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
@@ -233,7 +235,7 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}) {
   };
   const api = new HttpLocalApi('https://portico.test', '', fetcher as typeof fetch);
   const source: WebPlaybackSource = {
-    api, authority: {...viewer, epoch: 1, viewerFence: 'viewer_fence'}, contentScope: {serverId: 'server', viewerId: 'local_account_profile'}, isCurrent: () => current,
+    api, authority: {...viewer, epoch: 1, viewerFence: homeViewerFence}, contentScope: {serverId: 'server', viewerId: 'local_account_profile'}, isCurrent: () => current,
     events: {on: (type, callback) => { let list = callbacks.get(type); if (!list) callbacks.set(type, list = new Set()); list.add(callback); return () => { list!.delete(callback); }; }},
     settings: {videoSpeed: () => 1, audiobookSpeed: () => 1.25, skipModes: () => ({intro: 'off', recap: 'off', credits: 'off'}), audioEffects: () => ({gapless: false, crossfadeSeconds: 0, normalization: 'off'}), webVolume: () => true, ...preferences},
   };
@@ -246,7 +248,10 @@ function setup(t: TestContext, preferences: Partial<WebPlaybackSettings> = {}) {
     instance.engine.levels = [{details: {fragments: [{start: seconds - 2, duration: 8, programDateTime: 1000 + (seconds - 2) * 1000} as never]}}];
     instance.engine.playingDate = new Date(1000 + seconds * 1000); video.ready(seconds, 12, 120); await settle(); video.land(seconds); await settle(); return instance;
   };
-  return {runtime, source, api, server, log, video, hls, clock, arrive, arriveLive, expireLiveBookmark: () => { channels.windowStartMs = 50000; }, invalidate: () => { current = false; }, callbacks: () => [...callbacks.values()].reduce((n, v) => n + v.size, 0), intercept: (fn: typeof intercept) => { intercept = fn; }, changeViewerFence: () => { viewerFence = 'other_viewer'; }};
+  // Exercise the real owned service's refresh/denial boundary without adding a public
+  // renderer command or replacing its validated responses with snapshot doubles.
+  const offers = () => (runtime as unknown as {stack: {offers: PlayerOffersService}}).stack.offers;
+  return {runtime, source, api, server, log, video, hls, clock, arrive, arriveLive, offers, expireLiveBookmark: () => { channels.windowStartMs = 50000; }, invalidate: () => { current = false; }, callbacks: () => [...callbacks.values()].reduce((n, v) => n + v.size, 0), intercept: (fn: typeof intercept) => { intercept = fn; }, changeViewerFence: () => { viewerFence = 'other_detail_viewer'; }};
 }
 function deferred() { let resolve!: () => void, enter!: () => void; const promise = new Promise<void>(r => { resolve = r; }), started = new Promise<void>(r => { enter = r; }); return {started, resolve, hold: async () => { enter(); await promise; }}; }
 
@@ -480,10 +485,22 @@ test('runtime ignores late playback offers after another source starts', async t
   assert.equal(f.runtime.getSnapshot().playback.positionSeconds, 15);
 });
 
-test('runtime requires the actual viewer fence before exposing source commands', async t => {
-  const f = setup(t); f.changeViewerFence(); await f.runtime.play('movie', 5); await f.arrive();
+test('runtime requires the bound detail viewer fence before exposing source commands', async t => {
+  const f = setup(t); await f.runtime.play('movie', 5); const engine = await f.arrive();
+  const fence = f.runtime.getSnapshot().fence;
+  assert.ok(fence);
+  assert.equal(f.runtime.getSnapshot().offers?.scope.viewerFence, detailViewerFence);
+  f.changeViewerFence(); await f.offers().refresh({quiet: true}); await settle();
   assert.equal(f.runtime.getSnapshot().fence, undefined);
   assert.equal(f.runtime.getSnapshot().presentation, undefined);
+  assert.equal(f.offers().getSnapshot().error?.code, 'permission_changed');
+  assert.equal(f.offers().getSnapshot().data, null);
+  assert.equal(f.runtime.getSnapshot().offers, null);
+  assert.equal(f.runtime.getSnapshot().disposed, true);
+  assert.deepEqual(f.runtime.getSnapshot().presentations, []);
+  assert.equal(f.runtime.getSnapshot().dock.local, null);
+  assert.equal(engine.destroyed, true); assert.equal(f.video.listenerCount(), 0);
+  await assert.rejects(f.runtime.resume(fence), /stale_playback_command/);
 });
 
 test('runtime source disappearance drops media, event listeners and all pending completion effects', async t => {
@@ -785,4 +802,185 @@ test('runtime quality changes require current options and an enabled rung on the
   assert.equal(f.runtime.getSnapshot().playback.session?.id, fence.sessionId);
   assert.ok((f.runtime.getSnapshot().playback.session?.generation ?? 0) > fence.generation);
   await assert.rejects(f.runtime.setQuality(fence, '720'), /stale_playback_command/);
+});
+
+test('runtime Home selection binds distinct Home and detail fences to the actual queue and persistent media', async t => {
+  const f = setup(t), picked = selectionLeaf('movie');
+  assert.ok('target' in picked);
+  const receipt = await f.runtime.selectionPlayback(context => context === selectionContext).play({context: selectionContext, items: [{...picked, target: {...picked.target, startSeconds: 1040}}], signal: new AbortController().signal});
+  const engine = await f.arrive(), state = f.runtime.getSnapshot(), fence = state.fence;
+  assert.ok(fence); assert.equal(fence.kind, 'queue');
+  assert.equal(state.authority.viewerFence, homeViewerFence);
+  assert.equal(state.offers?.scope.viewerFence, detailViewerFence);
+  assert.notEqual(state.offers?.scope.viewerFence, state.authority.viewerFence);
+  assert.equal(state.offers, f.offers().getSnapshot().data, 'the actual detail response is preserved, including its own fence');
+  assert.equal(state.session?.queue?.queueId, receipt.queue.id);
+  assert.equal(fence.sessionId, state.session?.id); assert.equal(fence.generation, state.playback.session?.generation);
+  assert.equal(state.dock.local?.fence.sessionId, fence.sessionId);
+  assert.ok(state.presentation); assert.equal(state.presentation.expanded, true); assert.equal(state.presentation.positionSeconds, 1040);
+  const loads = f.video.loads, listeners = f.video.listenerCount();
+  f.runtime.collapse(fence); f.video.advance(1042); await settle();
+  assert.equal(f.runtime.getSnapshot().presentation?.expanded, false);
+  assert.equal(f.runtime.getSnapshot().dock.local?.positionSeconds, 1042);
+  f.runtime.open(fence);
+  assert.equal(f.runtime.getSnapshot().presentation?.expanded, true);
+  assert.equal(f.runtime.getSnapshot().presentation?.positionSeconds, 1042);
+  assert.equal(f.video.loads, loads); assert.equal(f.video.listenerCount(), listeners);
+  assert.equal(engine.destroyed, false); assert.equal(f.hls.instances.length, 1);
+});
+
+test('runtime accepts the same actual detail fence after refresh and a new media generation', async t => {
+  const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+  const first = f.runtime.getSnapshot(), fence = first.fence;
+  assert.ok(fence); assert.notEqual(first.offers?.scope.viewerFence, first.authority.viewerFence);
+  await f.offers().refresh({quiet: true}); await settle();
+  assert.deepEqual(f.runtime.getSnapshot().fence, fence);
+  assert.equal(f.runtime.getSnapshot().offers?.scope.viewerFence, detailViewerFence);
+  await f.runtime.setQuality(fence, '720'); await f.arrive();
+  const changed = f.runtime.getSnapshot(), next = changed.fence;
+  assert.ok(next); assert.equal(next.sessionId, fence.sessionId); assert.ok(next.generation > fence.generation);
+  assert.equal(changed.offers?.current?.generation, next.generation);
+  assert.equal(changed.offers?.scope.viewerFence, detailViewerFence);
+  assert.equal(changed.presentation?.fence.generation, next.generation);
+  assert.equal(changed.dock.local?.fence.generation, next.generation);
+  await assert.rejects(f.runtime.pause(fence), /stale_playback_command/);
+  await f.runtime.pause(next); assert.equal(f.video.paused, true);
+});
+
+test('runtime cannot rebind a changed detail fence when the media generation changes', async t => {
+  const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+  const first = f.runtime.getSnapshot().fence;
+  assert.ok(first);
+  f.changeViewerFence(); await f.runtime.setQuality(first, '720'); await settle();
+  assert.equal(f.offers().getSnapshot().error?.code, 'permission_changed');
+  assert.equal(f.offers().getSnapshot().data, null);
+  assert.equal(f.runtime.getSnapshot().offers, null);
+  assert.equal(f.runtime.getSnapshot().fence, undefined);
+  assert.equal(f.runtime.getSnapshot().presentation, undefined);
+  assert.deepEqual(f.runtime.getSnapshot().presentations, []);
+  assert.equal(f.runtime.getSnapshot().disposed, true);
+  assert.equal(f.runtime.getSnapshot().dock.local, null);
+  await assert.rejects(f.runtime.resume(first), /stale_playback_command/);
+});
+
+test('runtime rejects cross-server, library, item, session and media-generation offer responses', async t => {
+  type OfferWire = {scope: {serverId: string; libraryId: string; itemId: string}; current: {sessionId: string; generation: number}};
+  const changes: readonly ((wire: OfferWire) => void)[] = [
+    wire => { wire.scope.serverId = 'foreign_server'; },
+    wire => { wire.scope.libraryId = 'foreign_library'; },
+    wire => { wire.scope.itemId = 'foreign_item'; },
+    wire => { wire.current.sessionId = 'foreign_session'; },
+    wire => { wire.current.generation += 1; },
+  ];
+  for (const [index, change] of changes.entries()) {
+    const f = setup(t);
+    f.intercept(async (request, response) => { if (request.path.includes('/playback-offers')) change(response.body as OfferWire); return response; });
+    await f.runtime.play('movie', 20); await f.arrive();
+    assert.equal(f.runtime.getSnapshot().offers, null);
+    assert.equal(f.runtime.getSnapshot().fence, undefined);
+    assert.equal(f.runtime.getSnapshot().presentation, undefined);
+    assert.equal(f.runtime.getSnapshot().dock.local, null);
+    if (index === changes.length - 1) assert.equal(f.offers().getSnapshot().phase, 'ready', 'future media generation is rejected by the runtime after response parsing');
+    f.runtime.dispose();
+  }
+});
+
+test('runtime rejects an older media-generation offer even when the real offers parser accepts it', async t => {
+  const f = setup(t); await f.runtime.play('movie', 20); await f.arrive();
+  const first = f.runtime.getSnapshot().fence;
+  assert.ok(first);
+  f.intercept(async (request, response) => {
+    if (request.path.includes('/playback-offers')) (response.body as {current: {generation: number}}).current.generation = first.generation;
+    return response;
+  });
+  await f.runtime.setQuality(first, '720'); await f.arrive();
+  assert.ok(f.runtime.getSnapshot().playback.session!.generation > first.generation);
+  assert.equal(f.offers().getSnapshot().phase, 'ready');
+  assert.equal(f.offers().getSnapshot().data?.current?.generation, first.generation);
+  assert.equal(f.runtime.getSnapshot().offers, null);
+  assert.equal(f.runtime.getSnapshot().fence, undefined);
+  assert.equal(f.runtime.getSnapshot().presentation, undefined);
+  await assert.rejects(f.runtime.resume(first), /stale_playback_command/);
+});
+
+test('runtime drops late same-item offers from a replaced session even when transport ignores abort', async t => {
+  const f = setup(t), gate = deferred(); let once = true;
+  f.intercept(async (request, response) => {
+    if (once && request.path.includes('/movie/playback-offers')) { once = false; await gate.hold(); }
+    return response;
+  });
+  await f.runtime.play('movie', 5); await gate.started;
+  const first = f.runtime.getSnapshot().playback.session;
+  assert.ok(first);
+  await f.runtime.play('movie', 30); const engine = await f.arrive();
+  const second = f.runtime.getSnapshot(), fence = second.fence;
+  assert.ok(fence); assert.notEqual(fence.sessionId, first.id);
+  gate.resolve(); await settle();
+  assert.deepEqual(f.runtime.getSnapshot().fence, fence);
+  assert.equal(f.runtime.getSnapshot().offers?.current?.sessionId, fence.sessionId);
+  assert.equal(f.runtime.getSnapshot().presentation?.positionSeconds, 30);
+  assert.equal(f.server.session(first.id)?.ended, true); assert.equal(engine.destroyed, false);
+});
+
+test('runtime privacy denials purge current and parked metadata, media and command authority', async t => {
+  for (const status of [401, 403]) {
+    const f = setup(t); await f.runtime.play('song_one', 10); await f.arrive();
+    await f.runtime.play('movie', 20); const engine = await f.arrive();
+    const first = f.runtime.getSnapshot(), fence = first.fence;
+    assert.ok(fence); assert.ok(first.dock.parkedAudio); assert.ok(first.presentations.length > 1);
+    const offers = f.offers();
+    f.intercept(async (request, response) => request.path.includes('/playback-offers') ? {status, headers: {}, body: {message: 'private denial payload'}} : response);
+    await offers.refresh({quiet: true}); await settle();
+    const denied = f.runtime.getSnapshot();
+    assert.equal(offers.getSnapshot().error?.code, status === 401 ? 'unauthorized' : 'forbidden');
+    assert.equal(offers.getSnapshot().data, null);
+    assert.equal(denied.disposed, true); assert.equal(denied.fence, undefined);
+    assert.equal(denied.subject, undefined); assert.equal(denied.presentation, undefined);
+    assert.equal(denied.offers, null); assert.equal(denied.options, null); assert.equal(denied.queueView, null);
+    assert.deepEqual(denied.presentations, []);
+    assert.equal(denied.dock.local, null); assert.equal(denied.dock.parkedAudio, null); assert.equal(denied.dock.resumeVideo, null);
+    assert.equal(engine.destroyed, true); assert.equal(f.video.listenerCount(), 0); assert.equal(f.callbacks(), 0);
+    assert.equal(f.server.session(fence.sessionId)?.ended, true);
+    assert.equal(JSON.stringify([offers.getSnapshot(), denied]).includes('private denial payload'), false);
+    await assert.rejects(f.runtime.resume(fence), /stale_playback_command/);
+    const before = f.log.length;
+    await assert.rejects(f.runtime.play('other'), /playback_authority_retired/);
+    assert.equal(f.log.length, before);
+  }
+});
+
+test('runtime Home authority retirement prevents an outstanding detail response from publishing', async t => {
+  const f = setup(t), gate = deferred();
+  f.intercept(async (request, response) => { if (request.path.includes('/playback-offers')) await gate.hold(); return response; });
+  await f.runtime.play('movie', 20); await gate.started;
+  assert.equal(f.runtime.getSnapshot().fence, undefined);
+  // bootstrap restarts assembly/runtime when Home's library-set fence changes. Its epoch
+  // closure retires this source before the new Home authority can become current.
+  f.invalidate(); f.video.advance(21); await settle();
+  gate.resolve(); await settle();
+  const retired = f.runtime.getSnapshot();
+  assert.equal(retired.disposed, true); assert.equal(retired.offers, null);
+  assert.equal(retired.fence, undefined); assert.equal(retired.subject, undefined); assert.equal(retired.presentation, undefined);
+  assert.deepEqual(retired.presentations, []); assert.equal(retired.dock.local, null);
+  assert.equal(f.video.listenerCount(), 0); assert.equal(f.callbacks(), 0);
+  assert.equal(f.log.some(request => request.path.includes('/playback-options')), false);
+  await assert.rejects(f.runtime.play('other'), /playback_authority_retired/);
+  const video = new FakeVideo(), hls = fakeHls(), clock = manualClock(); let serial = 0;
+  const next = new WebShellPlaybackRuntime({...f.source, authority: {...f.source.authority, epoch: 2, viewerFence: 'home_after_library_change'}, isCurrent: () => true}, {timers: clock, playerTimers: clock, loadHls: async () => hls.Hls, nativeHls: 'never', key: () => `next-home-key-${++serial}`});
+  next.mount(video); t.after(() => next.dispose());
+  await next.play('movie', 30); await settle();
+  video.ready(Number(hls.instances.at(-1)!.config.startPosition)); await settle();
+  assert.ok(next.getSnapshot().fence);
+  assert.equal(next.getSnapshot().authority.viewerFence, 'home_after_library_change');
+  assert.equal(next.getSnapshot().authority.epoch, 2);
+  assert.equal(next.getSnapshot().offers?.scope.viewerFence, detailViewerFence);
+  assert.equal(next.getSnapshot().presentation?.positionSeconds, 30);
+  assert.equal(f.runtime.getSnapshot().disposed, true);
+});
+
+test('runtime selection still requires the Home authority fence rather than the bound detail fence', async t => {
+  const f = setup(t), wrong = {...selectionContext, scope: {...selectionContext.scope, privacyFence: detailViewerFence}};
+  await assert.rejects(f.runtime.selectionPlayback(() => true).play({context: wrong, items: [selectionLeaf('movie')], signal: new AbortController().signal}), /stale_selection_context/);
+  assert.equal(f.log.length, 0); assert.equal(f.hls.instances.length, 0);
+  assert.equal(f.runtime.getSnapshot().fence, undefined); assert.equal(f.runtime.getSnapshot().offers, null);
 });
