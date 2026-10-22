@@ -8,12 +8,12 @@
 .hero[data-paused='true'] .heroArtwork [data-foreground-art] { animation-play-state: paused; }
 @keyframes drift { from { transform: scale(1.07); } to { transform: scale(1); } }
 .copy { position: absolute; left: var(--layout-gutter); bottom: 150px; width: 600px; z-index: 1; }
-.copy > * { opacity: 0; transform: translateY(6px); transition: opacity 600ms var(--ease-out), transform 600ms var(--ease-out); }
+.copy > * { opacity: 0; transform: translateY(10px); transition: opacity 600ms var(--ease-out), transform 600ms var(--ease-out); }
 .copy[data-active='true'] > * { opacity: 1; transform: none; }
-.copy[data-active='true'] > :nth-child(2) { transition-delay: 60ms; }
-.copy[data-active='true'] > :nth-child(3) { transition-delay: 120ms; }
-.copy[data-active='true'] > :nth-child(4) { transition-delay: 180ms; }
-.copy[data-active='true'] > :nth-child(5) { transition-delay: 240ms; }
+.copy[data-active='true'] > :nth-child(2) { transition-delay: 80ms; }
+.copy[data-active='true'] > :nth-child(3) { transition-delay: 140ms; }
+.copy[data-active='true'] > :nth-child(4) { transition-delay: 200ms; }
+.copy[data-active='true'] > :nth-child(5) { transition-delay: 260ms; }
 .reason { color: var(--color-accent-strong); margin: 0 0 14px; display: flex; gap: 16px; }
 .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; color: var(--color-text-secondary); margin: 0 0 16px; }
 .facts > :first-child { font-weight: 700; color: var(--color-text); }
@@ -46,6 +46,9 @@
 .dot { border: 0; padding: 0; height: 6px; width: 6px; border-radius: 3px; background: rgba(237,245,250,.3); cursor: pointer; position: relative; }
 .dot::before { content: ''; position: absolute; inset: -16px -3px; }
 .dot[data-active='true'] { width: 18px; background: var(--color-text); }
+.tvDots { display: flex; gap: 10px; margin-top: 34px; }
+.tvDots i { width: 10px; height: 10px; border-radius: 5px; background: rgba(237,245,250,.28); }
+.tvDots i[data-active='true'] { width: 34px; background: var(--color-text); }
 .hero[data-platform='tv'] { --layout-gutter: 200px; height: 1080px; }
 .hero[data-platform='tv'] .copy { top: var(--layout-preview-top, 220px); bottom: auto; width: 960px; }
 .hero[data-platform='tv'] .reason { margin-bottom: 16px; }
@@ -68,6 +71,8 @@
 .rowHead { display: flex; align-items: baseline; gap: 14px; padding: 0 var(--layout-gutter); margin-bottom: 14px; }
 .rowHead h2 { margin: 0; }
 .rowSubtitle { color: var(--color-text-tertiary); }
+.rowActions { margin-left: auto; display: flex; align-self: center; gap: 12px; }
+.rowActions[data-placement='inline'] { margin-left: 18px; }
 .seeAll { border: 0; padding: 0; background: none; margin-left: auto; color: var(--color-text-tertiary); text-decoration: none; display: inline-flex; align-items: center; gap: 2px; opacity: 0; cursor: pointer; transition: opacity 200ms var(--ease-out); white-space: nowrap; }
 .row:hover .seeAll, .row:focus-within .seeAll { opacity: 1; }
 .track { display: flex; position: relative; gap: 16px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding: 0 var(--layout-gutter); padding: 10px var(--layout-gutter) 14px; scrollbar-width: none; overscroll-behavior-x: contain; }
@@ -83,10 +88,11 @@
 .row[data-platform^='phone'] { --layout-gutter: 20px; margin-top: 28px; }
 .row[data-platform^='phone'] .rowHead { margin-bottom: 4px; }
 .row[data-platform^='phone'] .track { padding: 8px 20px 10px; gap: 12px; }
-.row[data-platform^='phone'] .rowHead h2 { display: flex; align-items: center; }
+.row[data-platform^='phone'] .rowHead h2 { display: flex; align-items: center; gap: 1px; }
+.row[data-platform^='phone'] .rowHead h2 svg { color: var(--color-text-tertiary); }
 .row[data-platform='tv'] { --layout-gutter: 200px; }
 .row[data-platform='tv'] .rowHead { gap: 18px; margin-bottom: 22px; padding-right: 96px; }
-.row[data-platform='tv'] .track { gap: 28px; padding-right: 96px; }
+.row[data-platform='tv'] .track { gap: 28px; padding-top: 0; padding-bottom: 0; padding-right: 96px; }
 .grid { position: relative; overflow: auto; overscroll-behavior: contain; overflow-anchor: none; scrollbar-width: thin; }
 .gridExtent { position: relative; width: 100%; }
 .gridItem { position: absolute; min-width: 0; overflow: visible; }

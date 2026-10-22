@@ -7,14 +7,15 @@ import {cancelLayoutScroll, scrollLayout, useLayoutMotion} from './motion';
 import {useLayoutPresence} from './presence';
 import styles from './layout.module.css';
 
-export type RowProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {heading: ReactNode; subtitle?: ReactNode; onSeeAll?: () => void; seeAllHref?: string; platform?: LayoutPlatform};
-export function Row({heading, subtitle, onSeeAll, seeAllHref, platform = 'desktop', children, className, ...props}: RowProps) {
+export type RowProps = Omit<HTMLAttributes<HTMLElement>, 'title'> & {heading: ReactNode; subtitle?: ReactNode; actions?: ReactNode; actionsPlacement?: 'trailing' | 'inline'; onSeeAll?: () => void; seeAllHref?: string; seeAllLabel?: string; platform?: LayoutPlatform};
+export function Row({heading, subtitle, actions, actionsPlacement = 'trailing', onSeeAll, seeAllHref, seeAllLabel = defaultI18n.t('next.layout.seeAll'), platform = 'desktop', children, className, ...props}: RowProps) {
   const id = useId(), type = platformType(platform);
   return <section {...props} className={[styles.row, className].filter(Boolean).join(' ')} data-platform={platform} aria-labelledby={id}>
     <header className={styles.rowHead}><h2 id={id} style={layoutType(type.rowHeading)}>{heading}</h2>
       {subtitle && <span className={styles.rowSubtitle} style={layoutType(type.rowSubtitle)}>{subtitle}</span>}
-      {seeAllHref ? <a className={styles.seeAll} href={seeAllHref} onClick={onSeeAll} style={layoutType(type.seeAll)}>{defaultI18n.t('next.layout.seeAll')}<Icon name="i-right" size={16} /></a>
-        : onSeeAll && <button type="button" className={styles.seeAll} onClick={onSeeAll} style={layoutType(type.seeAll)}>{defaultI18n.t('next.layout.seeAll')}<Icon name="i-right" size={16} /></button>}
+      {actions && <div className={styles.rowActions} data-placement={actionsPlacement}>{actions}</div>}
+      {seeAllHref ? <a className={styles.seeAll} href={seeAllHref} onClick={onSeeAll} style={layoutType(type.seeAll)}>{seeAllLabel}<Icon name="i-right" size={16} /></a>
+        : onSeeAll && <button type="button" className={styles.seeAll} onClick={onSeeAll} style={layoutType(type.seeAll)}>{seeAllLabel}<Icon name="i-right" size={16} /></button>}
     </header>{children}
   </section>;
 }

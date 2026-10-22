@@ -16,7 +16,7 @@ export function AlphabetRail({anchors, visibleRange, onJump, platform = 'desktop
     onPointerUp={event => { dragging.current = false; event.currentTarget.releasePointerCapture(event.pointerId); setBubble(null); }}
     onPointerCancel={() => { dragging.current = false; setBubble(null); }} onPointerLeave={() => { if (!dragging.current) setBubble(null); }}>
     {band && <span className={styles.band} style={{top: band.first * itemHeight, height: (band.last - band.first + 1) * itemHeight}} />}
-    {keys.map((key, index) => <button type="button" key={key} ref={element => { buttons.current[index] = element; }} disabled={!available.has(key)} style={{height: itemHeight}} data-current={band && index >= band.first && index <= (platform === 'phone' ? band.first : band.last) || undefined}
+    {keys.map((key, index) => <button type="button" key={key} ref={element => { buttons.current[index] = element; }} disabled={!available.has(key)} style={{height: itemHeight}} data-current={band && index === band.first || undefined}
       aria-label={defaultI18n.t('next.layout.jumpTo', {letter: key})} onClick={event => { if (event.detail === 0) jump(key); }}
       onFocus={() => setBubble(key)} onBlur={() => setBubble(null)} onKeyDown={event => {
         if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
