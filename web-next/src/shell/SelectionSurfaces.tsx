@@ -9,10 +9,10 @@ import {Artwork} from '../kit/artwork';
 import {Button, Select} from '../kit/controls';
 import {Banner, Dialog, Menu, type MenuEntry} from '../kit/overlays';
 import {BulkEditor, DeleteMediaDialog, MixedEditExplainer, PhoneActionBar, SelectionBar} from '../kit/selection';
-import {OwnerTag, ServerAudienceTag, ServerMark} from '../kit/shell';
+import {OwnerTag, ServerAudienceTag, ServerMark, type EditorAudience} from '../kit/shell';
 import type {IconName} from '../kit/Icon';
 import type {ShellArtwork} from './artwork';
-import {runSelectionCommand, selectionCallbacks} from './selection-actions';
+import {retryEditorRead, runSelectionCommand, selectionCallbacks} from './selection-actions';
 import {editorCoreDraft, editorResultView, editorUiDraft, editorValues, selectionMemberDisplay} from './selection-presentation';
 import {SelectionPickerSurface} from './SelectionPickerSurface';
 import {useShellWidth} from './viewport';
@@ -23,6 +23,8 @@ export type SelectionRendererSource = Readonly<{
   anchor: RefObject<HTMLElement | null>;
   artwork: ShellArtwork;
   owner: boolean;
+  editorAudience: EditorAudience;
+  dockVisible: () => boolean;
   reportError: (error: unknown) => void;
 }>;
 const t = defaultI18n.t;
@@ -79,6 +81,7 @@ export function SelectionSurfaces({source}: {source: SelectionRendererSource}) {
   ]) ?? [];
   const dialogSummary = summarizeSelection(snapshot.displayMembers.map(member => member.item));
   const editor = snapshot.editor, deletion = snapshot.deletion;
+  const editorResult = editor && editorResultView(editor.receipts);
   const targets = snapshot.displayMembers.map(member => {
     const display = selectionMemberDisplay(member);
     return {...display, artwork: <Artwork alt="" source={source.artwork.foreground(display.posterUrl, 100 * (globalThis.devicePixelRatio || 1), 2 / 3, {group: 'home-selection', priority: 'high'})} />};
@@ -93,16 +96,18 @@ export function SelectionSurfaces({source}: {source: SelectionRendererSource}) {
       anchorRef={source.anchor} items={entries} width={300} />
     {snapshot.mixedEdit && <MixedEditExplainer open onOpenChange={open => { if (!open) controller.closeEditor(); }} anchorRef={source.anchor}
       types={dialogSummary.types} reason={snapshot.editExplanation === 'no-bulk-fields' ? 'no-bulk-fields' : 'mixed-types'} onKeepOnly={kind => { controller.keepOnly(kind); }} />}
-    {editor?.preview && editor.phase !== 'uncertain' && dialogSummary.types.length === 1 ? <BulkEditor open onOpenChange={open => { if (!open && !editorBusy) controller.closeEditor(); }} returnFocusRef={source.anchor}
-      selection={{count: dialogSummary.count, kind: dialogSummary.types[0].kind}} schema={editor.preview.schema} values={editorValues(editor.preview)} draft={editorUiDraft(editor.draft)}
+    {editor?.preview && editor.phase !== 'uncertain' && editor.phase !== 'error' && dialogSummary.types.length === 1 ? <BulkEditor open onOpenChange={open => { if (!open && !editorBusy) controller.closeEditor(); }} returnFocusRef={source.anchor}
+      selection={{count: dialogSummary.count, kind: dialogSummary.types[0].kind}} schema={editor.preview.schema} singleItemFields={editor.preview.singleItemFields} values={editorValues(editor.preview)} draft={editorUiDraft(editor.draft)}
       onDraftChange={draft => controller.setEditorDraft(editorCoreDraft(draft))}
       onSave={draft => run(source, async () => { controller.setEditorDraft(editorCoreDraft(draft)); await controller.saveEditor(); })}
       onRetry={(failedIds, draft) => run(source, () => controller.retryEditor(editorCoreDraft(draft), failedIds))}
-      targets={targets} result={editorResultView(editor.receipts)} busy={editorBusy} error={errorText(editor.error)}
-      ownerTag={<ServerAudienceTag audience={source.owner ? {authority: 'owner'} : {authority: 'editor', label: t('next.home.allowedEditors')}} layout={width < 600 ? 'phone' : 'desktop'} />} /> : editor && <Dialog open
-        onOpenChange={open => { if (!open) controller.closeEditor(); }} title={t('next.home.editSelection')} returnFocusRef={source.anchor}
-        footer={editor.error && <Button onClick={() => run(source, () => editor.phase === 'uncertain' ? controller.saveEditor() : controller.reloadEditor())}>{t('next.states.tryAgain')}</Button>}>
+      targets={targets} result={editorResult ?? undefined} busy={editorBusy} error={errorText(editor.error)}
+      ownerTag={<ServerAudienceTag audience={source.editorAudience} layout={width < 600 ? 'phone' : 'desktop'} />} /> : editor && <Dialog open
+        onOpenChange={open => { if (!open && !editorBusy) controller.closeEditor(); }} title={t('next.home.editSelection')} returnFocusRef={source.anchor} placement="right" width={600}
+        dismissOnOutsidePress={!editorBusy} dismissOnBack={!editorBusy}
+        footer={editor.error && <Button onClick={() => run(source, () => retryEditorRead(controller, editor.phase))}>{t('next.states.tryAgain')}</Button>}>
         <p role={editor.error ? 'alert' : 'status'}>{errorText(editor.error) ?? t('next.selection.checking')}</p>
+        {editorResult && <p role="status">{t('next.selection.bulkResult', {updated: editorResult.updated, failed: editorResult.failed})}</p>}
       </Dialog>}
     {deletion && deletion.phase !== 'uncertain' && <DeleteMediaDialog open onOpenChange={open => { if (!open && deletion.phase !== 'deleting') controller.closeDelete(); }} returnFocusRef={source.anchor}
       owner={source.owner} selectionCount={dialogSummary.count} preview={deletion.preview} confirmation={deletion.confirmation}
@@ -128,7 +133,7 @@ function RatingSurface({source, snapshot}: {source: SelectionRendererSource; sna
     returnFocusRef={source.anchor} dismissOnOutsidePress={!busy} dismissOnBack={!busy} footer={<>
       <Button onClick={() => source.controller.closeRating()} disabled={busy}>{t('action.close')}</Button>
       {ready && <Button variant="primary" onClick={() => run(source, () => source.controller.submitRating())}>{t('action.save')}</Button>}
-      {rating.phase === 'uncertain' && <Button variant="primary" onClick={() => run(source, () => source.controller.retryRating())}>{t('next.states.tryAgain')}</Button>}
+      {(rating.phase === 'uncertain' || rating.phase === 'error') && <Button variant="primary" onClick={() => run(source, () => source.controller.retryRating())}>{t('next.states.tryAgain')}</Button>}
     </>}>
     {rating.value !== undefined && <Select label={t('next.home.yourRating')} aria-label={t('next.home.yourRating')} value={rating.value === null ? 'none' : String(rating.value)}
       options={[{value: 'none', label: t('next.home.noRating')}, ...Array.from({length: 11}, (_, value) => ({value: String(value), label: t('next.home.ratingValue', {value})}))]}

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {defaultI18n} from '../../packages/i18n/src/index.ts';
 import type {ActivitySummarySession, OwnerActivitySummary} from '@core/admin/activity-summary/index.ts';
-import {activitySubject, activityView} from '../src/shell/activity-model.ts';
+import {activityPanelView, activitySubject, activityView} from '../src/shell/activity-model.ts';
 import {homeFixtures as f} from '../../packages/i18n/src/catalog/en-US/next/dev/home-fixtures.ts';
 
 const environment = {t: defaultI18n.t, locale: 'en-US', timeZone: 'UTC'};
@@ -40,4 +40,14 @@ test('unknown totals stay unknown and server work counts and identifiers survive
 test('an absent or unrecognized media projection never becomes an invented title', () => {
   assert.equal(activitySubject({...stream(), item: undefined}), undefined);
   assert.equal(activitySubject({...stream(), item: {...stream().item!, kind: 'unrecognized'}}), undefined);
+});
+test('cold loading, refreshing and errors assert no health, counts or update facts, while a ready zero is real', () => {
+  for (const phase of ['idle', 'loading', 'error', 'unavailable'] as const) {
+    const view = activityPanelView({phase, document: summary()}, f.server, environment, actions);
+    for (const field of ['health', 'streamCount', 'taskCount', 'update']) assert.equal(Object.hasOwn(view, field), false);
+    assert.deepEqual(view.streams, []); assert.deepEqual(view.scans, []); assert.deepEqual(view.tasks, []);
+  }
+  const document = {...summary(), streams: {count: 0, items: []}, tasks: {count: 0, items: []}, scans: []};
+  const ready = activityPanelView({phase: 'ready', document}, f.server, environment, actions);
+  assert.equal(ready.streamCount, 0); assert.equal(ready.taskCount, 0); assert.equal(ready.health, 'normal');
 });

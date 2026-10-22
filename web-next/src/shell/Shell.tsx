@@ -53,11 +53,13 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
   };
   const current = {id: viewer.profileId, name: identity.profileName, initial: Array.from(identity.profileName.trim())[0] ?? '', art: identity.profileArt};
   const account = <AccountMenu open={accountOpen} onOpenChange={setAccountOpen} current={current} primary={identity.primaryProfile === true}
+    notificationCount={desktop ? undefined : identity.unread} notificationDot={!desktop && identity.showNotificationDot && identity.unread > 0}
     profiles={identity.profiles} accountFacts={identity.accountFacts} actions={{
       manageProfiles: () => { void navigate({to: '/profiles'}); },
       ...(identity.canManageProfiles ? {addProfile: () => { void navigate({to: '/profiles', search: {add: true}}); }} : {}),
       switchProfile: profile => { void navigate({to: '/profiles', search: {profileId: profile.id}}); },
       switchServer: () => { void navigate({to: '/servers'}); }, settings: () => { void navigate({to: '/settings'}); },
+      ...(!desktop ? {notifications: () => { void navigate({to: '/notifications'}); }} : {}),
       watchTogether: () => { void navigate({to: '/watch-together'}); }, feedback: () => { void navigate({to: '/feedback'}); },
       help: () => { void navigate({to: '/help'}); }, signOut: onSignOut,
     }} trigger={<ProfileAvatar className={styles.avatar} name={identity.profileName} initial={current.initial} art={identity.profileArt} size={desktop ? 34 : 30}

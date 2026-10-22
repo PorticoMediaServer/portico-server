@@ -13,8 +13,9 @@ import type {HomeSelection} from '../screens/home/Home';
 import type {ShellAssemblyContext} from './bootstrap';
 import {entryDestination, seeAllDestination} from './navigation';
 import {SelectionSurfaces, SelectionPhoneBar, type SelectionRendererSource} from './SelectionSurfaces';
+import {selectionEditorAudience} from './selection-presentation';
 
-export function createShellSelection(context: ShellAssemblyContext, playback: HomeSelectionPlaybackPort, reportError: (error: unknown) => void) {
+export function createShellSelection(context: ShellAssemblyContext, playback: HomeSelectionPlaybackPort, reportError: (error: unknown) => void, dockVisible: () => boolean) {
   const listeners = new Set<() => void>();
   const platform: HomeActionPlatform = {platform: 'web', playbackAvailable: true, queueAvailable: true};
   const viewer = context.session().viewer;
@@ -35,7 +36,7 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
     routes: {openEntry: entry => router.navigate(entryDestination(entry)), openCollection: collection => router.navigate(seeAllDestination({type: 'collection', resourceId: collection.collection.id, libraryId: collection.collection.libraryId})),
       openDestination: destination => router.navigate({to: '/saved', search: {resourceId: destination.id}})}, reportError});
   const anchor: {current: HTMLElement | null} = {current: null};
-  const source: SelectionRendererSource = {controller, anchor, artwork: context.artwork, reportError, owner: viewer.role === 'owner'};
+  const source: SelectionRendererSource = {controller, anchor, artwork: context.artwork, reportError, owner: viewer.role === 'owner', editorAudience: selectionEditorAudience(viewer.role), dockVisible};
   let acceptedContext = JSON.stringify(currentContext()), acceptedEnvironment = JSON.stringify(environment());
   const sync = () => {
     if (retired || !context.isCurrent()) return;
@@ -61,7 +62,7 @@ export function createShellSelection(context: ShellAssemblyContext, playback: Ho
     });
     return {active: snapshot.active, checked: selected(key), onToggle: intent => toggle(intent.range), onExit: () => controller.clear(),
       control: <SelectionCircle selected={selected(key)} selecting={snapshot.active} accessibilityLabel={defaultI18n.t('next.home.select', {title})}
-        onSelectedChange={(_next, intent) => toggle(intent.intent === 'range' || intent.shiftKey === true)} />};
+        interactive={false} />};
   }
   const selection: HomeSelection = {
     toolbar: <SelectionSurfaces source={source} />,

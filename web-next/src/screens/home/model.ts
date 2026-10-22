@@ -1,12 +1,22 @@
 import type {ContentEntry} from '@core/library-content.ts';
 import type {HomeDocument, HomeLive, HomeRow} from '@core/home.ts';
-import {homeSpotlightModels, homeRowPresentation} from '@core/presentation/home-spotlight.ts';
-import {cardText, titleFactParts, type CardSubject, type TextEnvironment} from '@portico/client-core/kit-model';
-import {homeEntryCapabilities} from '@core/home-selection.ts';
+import {homeSpotlightModels, homeRowPresentation, homeTitleFactParts} from '@core/presentation/home-spotlight.ts';
+import {cardText, type CardSubject, type TextEnvironment} from '@portico/client-core/kit-model';
+import {homeEntryCapabilities, homeEntrySelection} from '@core/home-selection.ts';
+import type {HomeSelectionPlaybackItem} from '@core/home-selection/index.ts';
 
 /** A playback DTO alone is not a grant; resume keeps the actual separately selected child. */
 export function homePlaybackTarget(entry: ContentEntry, target: ContentEntry = entry) {
   return homeEntryCapabilities(entry, {platform: 'web', playbackAvailable: true, queueAvailable: true}).playable && target.available !== false && !target.missing ? target.playback : undefined;
+}
+
+/** A stale render cannot dispatch an entry/target pair absent from the current bounded Home document. */
+export function homePlaybackItem(document: HomeDocument, entry: ContentEntry, target: ContentEntry): HomeSelectionPlaybackItem | undefined {
+  const offered = document.spotlight.some(slide => slide.entry === entry && (slide.resumeTarget ?? slide.entry) === target);
+  const inRows = (rows: readonly HomeRow[]): boolean => rows.some(row => row.entries.includes(entry) && (row.resumes?.find(resume => resume.entryId === entry.id)?.target ?? entry) === target || inRows(row.children ?? []));
+  if (!offered && !inRows(document.rows)) return undefined;
+  const playback = homePlaybackTarget(entry, target), identity = homeEntrySelection(entry, {platform: 'web', playbackAvailable: true, queueAvailable: true});
+  return playback && identity ? {identity, entry, target: playback} : undefined;
 }
 
 /** Fields stay semantic. In particular, the old joined subtitle is never parsed. */
@@ -27,7 +37,7 @@ export function homeCardModel(entry: ContentEntry, continuing: boolean, env: Tex
 }
 export function homeSpotlights(document: HomeDocument, env: TextEnvironment) {
   return homeSpotlightModels(document).map(slide => ({...slide, id: slide.entry.id, title: slide.entry.title,
-    facts: titleFactParts({...slide.facts, durationSeconds: slide.facts.runtimeSeconds, contentRating: slide.entry.contentRating}, env)}));
+    facts: homeTitleFactParts(slide.entry, env)}));
 }
 /** Expired live facts are withdrawn, never presented as current while refreshing. */
 export function currentHomeLive(live: HomeLive | undefined, nowMs: number): HomeLive | undefined {

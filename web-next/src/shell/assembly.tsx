@@ -12,6 +12,7 @@ import {entryDestination, seeAllDestination} from './navigation';
 import {hasDock} from './playback-model';
 import {createShellSelection} from './selection';
 import {shellLanguage, shellPlaybackSettings} from './settings';
+import {homePlaybackItem} from '../screens/home/model';
 
 /** Concrete protected-session assembly. Every command uses the actual current service/engine. */
 export const assembleShellBindings: ShellAssembler = async context => {
@@ -36,7 +37,7 @@ export const assembleShellBindings: ShellAssembler = async context => {
   };
   const homeCurrent = (value: SelectionContext) => current() && !!context.home.getSnapshot().document && router.state.location.pathname === '/' && JSON.stringify(value) === JSON.stringify(currentHomeContext());
   const playback = runtime.selectionPlayback(homeCurrent);
-  const selection = createShellSelection(context, playback, feedback.reportError);
+  const selection = createShellSelection(context, playback, feedback.reportError, () => hasDock(runtime.getSnapshot()));
   resources.push(selection.dispose);
   const activity = createOwnerActivity(context, time,
     section => { void router.navigate({to: '/dashboard', search: section ? {section} : {}}).catch(feedback.reportError); },
@@ -54,7 +55,12 @@ export const assembleShellBindings: ShellAssembler = async context => {
       shell: {identity: context.facts.identity, OwnerActivity: activity.OwnerActivity, dockVisible, onSignOut: context.signOut,
         phoneSelection: selection.phoneSelection(), overlays: <ShellFeedbackHost source={feedback} dockVisible={dockVisible} />},
       home: {service: context.home, artwork: context.artwork, time, reducedMotion: preferenceValue<boolean>(context.facts.preferences, 'appearance.reduceMotion'), selection: selection.selection,
-        effects: {playback: runtime, openEntry: entry => { void router.navigate(entryDestination(entry)).catch(feedback.reportError); }, openSeeAll: target => { void router.navigate(seeAllDestination(target)).catch(feedback.reportError); },
+        effects: {play: async (entry, target) => {
+          const document = context.home.getSnapshot().document;
+          const item = document && homePlaybackItem(document, entry, target);
+          if (!item) throw new Error('stale-home-playback-target');
+          await playback.play({context: currentHomeContext(), items: [item], signal: life.signal});
+        }, openEntry: entry => { void router.navigate(entryDestination(entry)).catch(feedback.reportError); }, openSeeAll: target => { void router.navigate(seeAllDestination(target)).catch(feedback.reportError); },
           openMore: selection.openMore, reportError: feedback.reportError,
           playChannel: async channel => {
             const document = context.home.getSnapshot().document;

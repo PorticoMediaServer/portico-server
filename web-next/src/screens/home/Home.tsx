@@ -4,10 +4,10 @@ import {HomeService, type HomeSnapshot} from '@core/home-service.ts';
 import type {HomeChannel, HomeDocument, HomeReason, HomeRow, HomeSeeAll, HomeSpotlight} from '@core/home.ts';
 import type {ContentEntry} from '@core/library-content.ts';
 import type {GuideChannel} from '@core/channel-guide.ts';
-import type {PlaybackService} from '@core/index.ts';
 import {dependsOn} from '@core/freshness-hub.ts';
 import {serverTextLabel} from '@core/presentation/server-text.ts';
 import {homeChannelSelection, homeEntryCapabilities} from '@core/home-selection.ts';
+import {homeCollectionCaption} from '@core/presentation/home-spotlight.ts';
 import {channelMonograms, programmeFactParts, type TimeEnvironment} from '@portico/client-core/kit-model';
 import {useFreshness, usePooledService, useQuietRefresh} from '../../platform/freshness';
 import {Artwork, AmbientArt, GeneratedArt} from '../../kit/artwork';
@@ -32,7 +32,7 @@ export type HomeSelection = Readonly<{
   moreExpanded: (row: HomeRow, entry: ContentEntry) => boolean;
 }>;
 export type HomeEffects = Readonly<{
-  playback: Pick<PlaybackService, 'play'>;
+  play: (entry: ContentEntry, target: ContentEntry) => Promise<void>;
   playChannel: (channel: GuideChannel) => Promise<void>;
   openEntry: (entry: ContentEntry) => void;
   openSeeAll: (target: HomeSeeAll) => void;
@@ -102,7 +102,7 @@ export function HomeView({document, nowMs, onMore, artwork, effects, selection, 
   const rows = document.rows.filter(row => !row.platforms || row.platforms.includes('web'));
   const play = (entry: ContentEntry, resume: ContentEntry) => {
     const target = homePlaybackTarget(entry, resume);
-    if (target) void effects.playback.play(target.itemId, target.startSeconds).catch(effects.reportError);
+    if (target) void effects.play(entry, resume).catch(effects.reportError);
   };
   return <div className={styles.home} data-home-document={document.viewerFence}>
     {candidates.length > 0 && <div ref={hero.ref}><Hero<Spotlight> candidates={candidates} platform={platform} visible={hero.visible} reducedMotion={reducedMotion}
@@ -156,10 +156,10 @@ function HomeRowContents({row, rowIndex, platform, nowMs, onMore, onRange, ...bi
     renderItem={(entry, context) => <VisibleCard entry={entry} row={row} rowIndex={rowIndex} index={context.index} platform={platform} {...bindings} />} />;
 }
 
-function VisibleCollection({row, rowIndex, artwork, effects, selection}: HomePresentation & {row: HomeRow; rowIndex: number}) {
+function VisibleCollection({row, rowIndex, artwork, effects, selection, time}: HomePresentation & {row: HomeRow; rowIndex: number}) {
   const interest = useVisible(), collection = row.collection!;
   const open = () => effects.openSeeAll({type: 'collection', resourceId: collection.collection.id, libraryId: collection.collection.libraryId});
-  return <div ref={interest.ref} className={styles.collection}><CollectionBanner model={{title: collection.collection.name, caption: []}} kindLabel={t('next.home.collection')}
+  return <div ref={interest.ref} className={styles.collection}><CollectionBanner model={{title: collection.collection.name, caption: homeCollectionCaption(collection, {t, locale: time.locale})}} kindLabel={t('next.home.collection')}
     visible={interest.visible}
     selection={selection.collection(row)}
     artwork={artwork.foreground(collection.backdropUrl, 1312 * devicePixelRatio, 16 / 9, {order: rowIndex * 1000, group: row.id})}
@@ -170,7 +170,6 @@ function VisibleCollection({row, rowIndex, artwork, effects, selection}: HomePre
 
 function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, selection, time}: HomePresentation & {entry: ContentEntry; row: HomeRow; rowIndex: number; index: number; platform: LayoutPlatform}) {
   const interest = useVisible(), wide = row.artworkShape === 'landscape', square = row.artworkShape === 'square';
-  const primary = useRef<HTMLButtonElement>(null);
   const width = wide ? platform === 'desktop' ? 316 : 262 : square ? platform === 'desktop' ? 190 : 132 : platform === 'desktop' ? 190 : 118;
   const resume = row.resumes?.find(value => value.entryId === entry.id)?.target ?? entry;
   const target = homePlaybackTarget(entry, resume);
@@ -181,9 +180,9 @@ function VisibleCard({entry, row, rowIndex, index, platform, artwork, effects, s
     ambient: square ? artwork.ambient(source, {order: rowIndex * 1000 + index, group: row.id}) : undefined,
     fallback: <GeneratedArt glyph={Array.from(entry.title.trim())[0] ?? ''} />,
     onNavigate: () => effects.openEntry(entry),
-    onPlay: target ? () => { void effects.playback.play(target.itemId, target.startSeconds).catch(effects.reportError); } : undefined,
-    primaryRef: primary, selection: selection.card(row, entry),
-    onMore: selection.moreAvailable(entry) ? () => { if (primary.current) effects.openMore(row, entry, primary.current); } : undefined,
+    onPlay: target ? () => { void effects.play(entry, resume).catch(effects.reportError); } : undefined,
+    selection: selection.card(row, entry),
+    onMore: selection.moreAvailable(entry) ? (anchor: HTMLButtonElement) => effects.openMore(row, entry, anchor) : undefined,
     moreExpanded: selection.moreExpanded(row, entry)};
   return <div ref={interest.ref}>{row.id === 'community_watching' && row.period ? <RankedCard {...props} rank={row.start + index + 1} /> : wide ? <WideCard {...props} /> : square ? <SquareCard {...props} variant={entry.kind === 'book' || entry.kind === 'audiobook_file' ? 'audiobook' : 'music'} /> : <PosterCard {...props} />}</div>;
 }

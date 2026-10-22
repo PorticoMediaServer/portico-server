@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {BulkReceipt} from '@core/metadata-bulk.ts';
-import type {BulkMetadataPreview, HomeSelectionMember} from '@core/home-selection/index.ts';
-import {editorCoreDraft, editorResultView, editorUiDraft, editorValues, selectionMemberDisplay} from '../src/shell/selection-presentation.ts';
+import type {BulkMetadataPreview, HomeSelectionMember, HomeSelectionPicker, HomeSelectionSnapshot} from '@core/home-selection/index.ts';
+import {editorCoreDraft, editorResultView, editorUiDraft, editorValues, pickerResultView, selectionEditorAudience, selectionMemberDisplay} from '../src/shell/selection-presentation.ts';
 import {homeFixtures as f} from '../../packages/i18n/src/catalog/en-US/next/dev/home-fixtures.ts';
-import {runSelectionCommand} from '../src/shell/selection-actions.ts';
+import {retryPickerError, retryPickerOperation, retryPickerWindow, runSelectionCommand} from '../src/shell/selection-actions.ts';
+import {pickerResultSucceeded} from '../src/kit/selection/presentation.ts';
 
 test('a menu command consumes its current canonical target before the overlay close callback', async () => {
   let menuOpen = true, called = 0;
@@ -64,4 +65,65 @@ test('actual retry receipts replace the prior failed status without counting a s
   assert.equal('operationId' in result, false);
   assert.equal(receipts[0].results[1].ok, false);
   assert.equal(editorResultView([]), undefined);
+});
+
+function destinationPicker(): HomeSelectionPicker {
+  const jobs: HomeSelectionPicker['jobs'] = [{jobId: 'original-job', command: 'playlist-add', state: 'partial', done: 20, failed: 4, total: 24, totalKnown: true}];
+  return {kind: 'playlist', phase: 'error', rows: [], query: '', next: false, previous: false, error: null, results: [], jobs,
+    destination: {kind: 'playlist', id: 'new-resource-outside-page', name: f.collection, artwork: [], count: 26, revision: 4, canAdd: true},
+    receipt: {kind: 'playlist', destinationId: 'new-resource-outside-page', jobIds: ['original-job'], jobs, added: 2, alreadyPresent: 18, failed: 3, unknown: 1,
+      complete: false, pending: false, unresolvedJobIds: [], failures: ['actual-leaf', 'second-leaf', 'third-leaf'].map(itemId => ({itemId, code: 'not_found'})),
+      failureEntries: ['actual-leaf', 'second-leaf', 'third-leaf'].map(id => ({id, title: f.episode, kind: 'episode' as const, posterUrl: 'selected-art'})), nextCursor: ''}};
+}
+test('picker uses stable distinct outcomes and retained destination display, never processed jobs or selected parent counts', () => {
+  const picker = destinationPicker(), result = pickerResultView(picker, code => `localized:${code}`)!;
+  assert.equal(result.destination.id, picker.destination!.id); assert.equal(result.destination.name, f.collection);
+  assert.equal(result.destination.size, 26);
+  assert.equal(picker.rows.length, 0);
+  assert.equal(result.inserted, 2); assert.equal(result.alreadyIn, 18); assert.equal(result.failed, 3); assert.equal(result.unknown, 1);
+  assert.equal(result.complete, false); assert.equal(result.pending, false);
+  assert.equal(Object.hasOwn(result, 'processed'), false); assert.equal(Object.hasOwn(result, 'total'), false);
+  assert.deepEqual(result.failures[0], {id: 'actual-leaf', title: f.episode, reason: 'localized:not_found'});
+  assert.equal(pickerResultSucceeded(result), false);
+});
+test('unknown or absent outcomes cannot become a success toast and failure identities must match actual leaves', () => {
+  const picker = destinationPicker(), result = pickerResultView(picker, code => code)!;
+  assert.equal(pickerResultView({...picker, receipt: null}, code => code), undefined);
+  assert.equal(pickerResultView({...picker, destination: null}, code => code), undefined);
+  assert.equal(pickerResultSucceeded({...result, complete: true, failed: 0, failures: []}), false);
+  assert.equal(pickerResultSucceeded({...result, complete: true, failed: undefined, unknown: 0, failures: []}), false);
+  assert.equal(pickerResultSucceeded({...result, complete: true, failed: 0, unknown: 0, failures: []}), true);
+  assert.throws(() => pickerResultView({...picker, receipt: {...picker.receipt!, failureEntries: picker.receipt!.failureEntries.map((entry, index) => index === 0 ? {...entry, id: 'parent', title: f.show} : entry)}}, code => code), /failure-display/);
+});
+test('a bounded failure window never replaces the durable distinct failed count', () => {
+  const picker = destinationPicker(), ids = Array.from({length: 100}, (_, index) => `leaf-${index}`);
+  const receipt = {...picker.receipt!, failed: 103, failures: ids.map(itemId => ({itemId, code: 'not_found'})),
+    failureEntries: ids.map(id => ({id, title: f.episode, kind: 'episode' as const})), nextCursor: 'actual-next-window'};
+  const result = pickerResultView({...picker, receipt}, code => code)!;
+  assert.equal(result.failed, 103); assert.equal(result.failures.length, 100);
+  assert.deepEqual(result.failures.map(row => row.id), ids);
+});
+test('failed-only picker retry consumes the current bounded leaf window and refuses stale, successful or parent IDs', async () => {
+  const initial = destinationPicker();
+  let picker: HomeSelectionPicker = {...initial, phase: 'partial', receipt: {...initial.receipt!, unknown: 0, complete: true}}, retries = 0;
+  const controller = {getSnapshot: () => ({picker}) as HomeSelectionSnapshot, retryPicker: async () => { retries++; }};
+  const ids = picker.receipt!.failures.map(row => row.itemId);
+  await retryPickerWindow(controller, ids); assert.equal(retries, 1);
+  for (const ids of [[], ['parent'], ['actual-leaf', 'actual-leaf']]) assert.throws(() => retryPickerWindow(controller, ids), /invalid-picker-retry-window/);
+  picker = {...picker, phase: 'uncertain'};
+  assert.throws(() => retryPickerWindow(controller, ids), /invalid-picker-retry-window/);
+  await retryPickerOperation(controller); assert.equal(retries, 2);
+  picker = {...picker, phase: 'ready'};
+  assert.throws(() => retryPickerOperation(controller), /not-uncertain/);
+  assert.throws(() => retryPickerError(controller), /not-in-error/);
+  assert.equal(retries, 2);
+  picker = {...picker, phase: 'error'};
+  await retryPickerError(controller); assert.equal(retries, 3);
+});
+test('an admitted editor audience reflects the actual viewer role without granting commands', () => {
+  assert.deepEqual(selectionEditorAudience('owner'), {authority: 'owner'});
+  assert.equal(selectionEditorAudience('admin').authority, 'administrator');
+  assert.equal(selectionEditorAudience('administrator').authority, 'administrator');
+  assert.equal(selectionEditorAudience('member').authority, 'editor');
+  assert.notEqual(selectionEditorAudience('member').label, selectionEditorAudience('admin').label);
 });

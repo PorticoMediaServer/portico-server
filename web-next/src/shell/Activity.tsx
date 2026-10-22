@@ -4,7 +4,7 @@ import {localV1Http} from '@core/playback-v1/local-http.ts';
 import type {TimeEnvironment} from '@core/presentation/kit-model/index.ts';
 import {TopBarActivity, type ActivityPanelView} from '../kit/shell';
 import type {ShellAssemblyContext} from './bootstrap';
-import {activityView} from './activity-model';
+import {activityPanelView} from './activity-model';
 
 /** The component itself is mounted only for the desktop owner. No other role constructs a client. */
 export function createOwnerActivity(context: ShellAssemblyContext, time: TimeEnvironment, onDashboard: ActivityPanelView['onDashboard'], openUpdate: () => void) {
@@ -27,9 +27,7 @@ export function createOwnerActivity(context: ShellAssemblyContext, time: TimeEnv
       return () => { mounted.delete(service); service.setActive(false); service.dispose(); };
     }, [service]);
     const retry = () => { void service.retry(); };
-    const view: ActivityPanelView = snapshot.document ? {...activityView(snapshot.document, time, {onDashboard, onRetry: retry, openUpdate}), phase: snapshot.phase === 'error' ? 'error' : 'ready'}
-      : {serverName: context.facts.serverName, health: 'normal', streamCount: 0, taskCount: 0, streams: [], scans: [], tasks: [],
-        update: {available: false, onOpen: openUpdate}, phase: snapshot.phase === 'error' || snapshot.phase === 'unavailable' ? 'error' : 'loading', onRetry: retry, onDashboard};
+    const view = activityPanelView(snapshot, context.facts.serverName, time, {onDashboard, onRetry: retry, openUpdate});
     return <TopBarActivity viewerRole="owner" view={view} open={open} onOpenChange={setOpen} />;
   }
   return {OwnerActivity, dispose: () => {

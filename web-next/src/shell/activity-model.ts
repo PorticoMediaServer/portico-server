@@ -1,11 +1,17 @@
 import {playbackIdentity, type CardSubject, type PlaybackSubject, type TimeEnvironment} from '@core/presentation/kit-model/index.ts';
-import type {ActivitySummarySession, OwnerActivitySummary} from '@core/admin/activity-summary/index.ts';
+import type {ActivitySummarySession, ActivitySummarySnapshot, OwnerActivitySummary} from '@core/admin/activity-summary/index.ts';
 import {jobName, jobStateName, scanStepName} from '@core/server-admin/console-catalogue.ts';
 import {deliveryId} from '@core/server-admin/now-playing.ts';
 import {heightText} from '@core/presentation/kit-model/technical.ts';
 import type {MessageId} from '@i18n';
 import {defaultI18n} from '@i18n';
 import type {ActivityPanelView} from '../kit/shell';
+
+/** Cold, refreshing and failed reads do not establish normal health or zero work. */
+export function activityPanelView(snapshot: ActivitySummarySnapshot, serverName: string, time: TimeEnvironment, actions: Pick<ActivityPanelView, 'onDashboard' | 'onRetry'> & {openUpdate: () => void}): ActivityPanelView {
+  if (snapshot.phase === 'ready' && snapshot.document) return activityView(snapshot.document, time, actions);
+  return {serverName, streams: [], scans: [], tasks: [], phase: snapshot.phase === 'error' || snapshot.phase === 'unavailable' ? 'error' : 'loading', onRetry: actions.onRetry, onDashboard: actions.onDashboard};
+}
 
 /** Semantic facts only. The canonical formatter owns episode identity and fact order. */
 export function activitySubject(stream: ActivitySummarySession): PlaybackSubject | undefined {

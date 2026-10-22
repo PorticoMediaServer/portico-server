@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import {createI18n} from '../../packages/i18n/src/index.ts';
 import type {HomeDocument, HomeEntry, HomeLive, HomeRow} from '../../packages/client-core/src/home.ts';
 import {homeFixtures as f} from '../../packages/i18n/src/catalog/en-US/next/dev/home-fixtures.ts';
+import {homeCollectionCaption, homeTitleFactParts} from '../../packages/client-core/src/presentation/home-spotlight.ts';
 import {desktopLibraries, rememberedLibrary, rememberLibrary, libraryMemoryKey, shellGutter, showOwnerActivity, browserOwnsBackTransition} from '../src/shell/model.ts';
-import {currentHomeLive, homeLiveDeadline, homeCardModel, homePlaybackTarget, homeRows, homeSpotlights} from '../src/screens/home/model.ts';
+import {currentHomeLive, homeLiveDeadline, homeCardModel, homePlaybackItem, homePlaybackTarget, homeRows, homeSpotlights} from '../src/screens/home/model.ts';
 
 const scope = {serverId: 'server-one', accountId: 'account-one', profileId: 'profile-one', authority: 'local'};
 const libraries = Array.from({length: 8}, (_, index) => ({id: String(index), name: `${f.libraryPrefix} ${index}`, kind: 'movies'}));
@@ -101,6 +102,17 @@ test('Home Play requires an actual offer and keeps the displayed identity separa
   assert.equal(homePlaybackTarget(displayed, {...resume, available: false}), undefined);
   assert.equal(homePlaybackTarget(displayed, {...resume, missing: true}), undefined);
 });
+test('single Home Play rejects stale rendered pairs before the real fenced queue runtime is called', () => {
+  const entry: HomeEntry = {id: 'show', kind: 'show', title: f.show, libraryId: 'library', homeActions: {play: true} as HomeEntry['homeActions']};
+  const target: HomeEntry = {id: 'episode', kind: 'episode', title: f.episode, playback: {itemId: 'real-file', startSeconds: 40}};
+  const document = {spotlight: [{entry, resumeTarget: target}], rows: []} as unknown as HomeDocument;
+  const item = homePlaybackItem(document, entry, target)!;
+  assert.equal(item.identity.kind, 'show'); assert.equal('id' in item.identity && item.identity.id, 'show');
+  assert.ok('target' in item); assert.equal(item.target, target.playback);
+  assert.equal(homePlaybackItem(document, {...entry}, target), undefined);
+  assert.equal(homePlaybackItem(document, entry, {...target}), undefined);
+  assert.equal(homePlaybackItem({...document, spotlight: []}, entry, target), undefined);
+});
 test('row order, geometry, causal facts and rank offsets remain server-authored', () => {
   const rows = [
     {id: 'community_watching', start: 4, kind: 'rail', artworkShape: 'poster', title: f.rankHeading, entries: [{id: 'one', kind: 'movie', title: f.movie}], period: {days: 30}, platforms: ['web']},
@@ -111,4 +123,28 @@ test('row order, geometry, causal facts and rank offsets remain server-authored'
   assert.deepEqual(shown.map(row => row.id), ['community_watching', 'listening']);
   assert.deepEqual(shown.map(row => row.artworkShape), ['poster', 'square']);
   assert.equal(shown[0].cards[0].rank, 5);
+});
+test('Home hero facts format the displayed parent with canonical order and preserve the separate playback target', () => {
+  const entry = {id: 'show', kind: 'show' as const, title: f.show, year: 2022, genres: [f.genre, f.secondGenre], seasonCount: 3, contentRating: 'TV-14'};
+  const target = {id: 'episode', kind: 'episode' as const, title: f.episode, duration: 1200, playback: {itemId: 'file', startSeconds: 120}};
+  const document = {spotlight: [{entry, resumeTarget: target, reason: {kind: 'featured', text: {code: 'featured', fallback: f.reason}}}]} as HomeDocument;
+  const slide = homeSpotlights(document, env)[0];
+  assert.deepEqual(slide.facts.map(part => [part.id, part.role]), [['year', 'value'], ['genres', 'supplement'], ['season-count', 'supplement']]);
+  assert.equal(slide.facts[1].text, `${f.genre}, ${f.secondGenre}`);
+  assert.equal(slide.primary?.entry, target); assert.equal(slide.entry, entry);
+  assert.ok(!slide.facts.some(part => part.text.includes('TV-14') || part.id === 'duration'));
+  const focusedEpisode = {...target, show: {id: 'show', name: f.show}};
+  assert.deepEqual(homeTitleFactParts(focusedEpisode, env), []);
+  const parentFacts = homeTitleFactParts({...focusedEpisode, year: 2026, genres: [f.secondGenre], homeTitleContext: {kind: 'show', year: 2022, genres: [f.genre], seasonCount: 3}}, env);
+  assert.deepEqual(parentFacts.map(part => part.id), ['year', 'genres', 'season-count']);
+  assert.equal(parentFacts[0].text, '2022'); assert.equal(parentFacts[1].text, f.genre);
+  assert.ok(!parentFacts.some(part => part.id === 'duration' || part.text === '2026'));
+});
+test('Home collection caption consumes authoritative collection facts and never sweeps decorative members', () => {
+  const collection = {collection: {itemCount: 4}, mediaKind: 'movie', firstYear: 1995, lastTitle: f.lastFilm};
+  const caption = homeCollectionCaption(collection, env);
+  assert.equal(caption.length, 1); assert.equal(caption[0].id, 'collection-summary');
+  assert.ok(caption[0].text.includes('Four films')); assert.ok(caption[0].text.includes('1995')); assert.ok(caption[0].text.includes(f.lastFilm));
+  assert.ok(!homeCollectionCaption({...collection, firstYear: undefined}, env)[0].text.includes(f.lastFilm));
+  assert.deepEqual(homeCollectionCaption({...collection, mediaKind: undefined}, env), []);
 });

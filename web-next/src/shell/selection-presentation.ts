@@ -1,7 +1,16 @@
 import type {BulkEdit, BulkReceipt} from '@core/metadata-bulk.ts';
-import type {BulkMetadataPreview, HomeSelectionMember} from '@core/home-selection/index.ts';
-import type {BulkEditorDraft, BulkFieldValues, BulkResultView} from '../kit/selection';
+import type {BulkMetadataPreview, HomeSelectionMember, HomeSelectionPicker} from '@core/home-selection/index.ts';
+import type {BulkEditorDraft, BulkFieldValues, BulkResultView, PickerResult} from '../kit/selection';
 import {bulkReceiptView} from '../kit/selection/presentation';
+import {defaultI18n} from '@i18n';
+import type {EditorAudience} from '../kit/shell';
+
+/** Describes an already-admitted editor; this never grants an edit command. */
+export function selectionEditorAudience(role: string): EditorAudience {
+  return role === 'owner' ? {authority: 'owner'} : role === 'admin' || role === 'administrator'
+    ? {authority: 'administrator', label: defaultI18n.t('next.home.allowedAdministrators')}
+    : {authority: 'editor', label: defaultI18n.t('next.home.allowedEditors')};
+}
 
 /** A display projection of actual receipts. It is deliberately not a transport receipt. */
 export function editorResultView(receipts: readonly BulkReceipt[]): BulkResultView | undefined {
@@ -26,4 +35,18 @@ export function editorCoreDraft(draft: BulkEditorDraft): Pick<BulkEdit, 'fields'
   const {genres, ...lists} = draft.lists;
   return {fields: Object.fromEntries(Object.entries(draft.fields).map(([key, value]) => [key, {value}])), lists,
     ...(genres ? {genres} : {}), lockEdited: draft.lockEdited};
+}
+
+/** Expanded failure leaves are returned by the authorized receipt read, independently of selected parents. */
+export function pickerResultView(picker: HomeSelectionPicker, reason: (code: string) => string, jobFacts: PickerResult['jobFacts'] = []): PickerResult | undefined {
+  const {destination, receipt} = picker;
+  if (!destination || !receipt) return undefined;
+  if (receipt.kind !== destination.kind || receipt.destinationId !== destination.id || receipt.failureEntries.length !== receipt.failures.length) throw new Error('invalid-picker-receipt-display');
+  return {destination: {id: destination.id, name: destination.name, size: destination.count}, inserted: receipt.added, alreadyIn: receipt.alreadyPresent,
+    failed: receipt.failed, unknown: receipt.unknown, pending: receipt.pending, complete: receipt.complete, jobFacts,
+    failures: receipt.failures.map((failure, index) => {
+      const entry = receipt.failureEntries[index];
+      if (entry.id !== failure.itemId) throw new Error('invalid-picker-failure-display');
+      return {id: entry.id, title: entry.title, reason: reason(failure.code)};
+    })};
 }

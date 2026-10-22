@@ -7,6 +7,7 @@ import {Button} from '../kit/controls';
 import {router} from '../router';
 import type {ShellArtwork} from './artwork';
 import {fenceKey, playbackPresentation, PlaybackPresentations} from './playback-model';
+import {PlaybackMediaOwner} from './playback-media-owner';
 import {useShellWidth} from './viewport';
 import styles from './playback.module.css';
 
@@ -23,6 +24,7 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
   const snapshot = useSyncExternalStore<WebPlaybackRuntimeSnapshot | undefined>(runtime?.subscribe ?? noSubscription, runtime?.getSnapshot ?? noSnapshot, runtime?.getSnapshot ?? noSnapshot);
   const width = useShellWidth(), phone = width < 1024;
   const video = useRef<HTMLVideoElement>(null), dockSlot = useRef<HTMLSpanElement>(null), expandedSlot = useRef<HTMLDivElement>(null);
+  const media = useMemo(() => new PlaybackMediaOwner<HTMLVideoElement>(), []);
   const cache = useMemo(() => new PlaybackPresentations(), [runtime]);
   const presentations = snapshot && binding ? cache.update(snapshot, playbackPresentation(snapshot, binding.environment, binding.artwork, binding.skips)) : [];
   const dockBinding: DockBinding | undefined = useMemo(() => runtime && binding ? {
@@ -35,10 +37,9 @@ export function PlaybackHost({binding}: {binding: ShellPlaybackBinding | undefin
   const leaving = useRef<string | undefined>(undefined);
   useLayoutEffect(() => { setNotice(null); previous.current = {}; }, [runtime]);
   useLayoutEffect(() => {
-    if (!runtime) return;
-    const unmount = runtime.mount(video.current!);
-    return () => { unmount(); cache.clear(); };
-  }, [runtime, cache]);
+    const unmount = media.adopt(runtime, video.current!);
+    return () => { unmount?.(); cache.clear(); };
+  }, [runtime, cache, media]);
   useEffect(() => {
     if (!runtime || !snapshot) { previous.current = {}; return; }
     const parked = snapshot.dock.parkedAudio, resume = snapshot.dock.resumeVideo;
