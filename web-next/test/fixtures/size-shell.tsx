@@ -37,7 +37,11 @@ const api = {requestRaw: async () => {
 const service = new HomeService(api as any);
 await service.load();
 const activity = createOwnerActivity({api, events, epoch: 1, facts:{serverName:'Synthetic test server'}, session:()=>({viewer,sessionFamilyId:'synthetic-family'}),isCurrent:()=>true} as any, {t:()=>'',locale:'en-US',timeZone:'UTC'} as any, ()=>{void router.navigate({to:'/dashboard'});},()=>{});
-const libraries = [{id:'movies',name:'Movies',kind:'movie'},{id:'tv',name:'TV Shows',kind:'tv'},{id:'anime',name:'Anime',kind:'anime'},{id:'music',name:'Music',kind:'music'},{id:'audio',name:'Audiobooks',kind:'audiobook'},...Array.from({length:10},(_,i)=>({id:'library-'+i,name:'Test library '+i,kind:'movie'}))];
+const defaultLibraries = [{id:'movies',name:'Movies',kind:'movie'},{id:'tv',name:'TV Shows',kind:'tv'},{id:'anime',name:'Anime',kind:'anime'},{id:'music',name:'Music',kind:'music'},{id:'audio',name:'Audiobooks',kind:'audiobook'},...Array.from({length:10},(_,i)=>({id:'library-'+i,name:'Test library '+i,kind:'movie'}))];
+const titleCase = new URLSearchParams(window.location.search).get('libraryTitles');
+const libraries = titleCase === 'short' ? defaultLibraries.slice(0, 2).map((library, i) => ({...library, name: ['A', 'B'][i]}))
+  : titleCase === 'long' ? defaultLibraries.slice(0, 3).map(library => ({...library, name: `Test ${library.name} library with an intentionally long complete title for the desktop navigation overflow regression`}))
+  : defaultLibraries;
 const bindings = {api, events, scopeKey: 'synthetic-viewer', shell: {
   identity: {viewer, username: 'test-user', serverName: 'Synthetic test server', profileName: 'Test profile', profiles: [], canManageProfiles: false, accountFacts: [],
     libraries, liveAvailable: true, unread: 3, showNotificationDot: true},

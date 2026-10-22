@@ -25,7 +25,7 @@ const account = `
 `;
 registerHooks({
   resolve(specifier, context, next) {
-    if (specifier === '@tanstack/react-router' && context.parentURL?.endsWith('/src/shell/Shell.tsx')) return {url: 'shell-account:router', shortCircuit: true};
+    if (specifier === '@tanstack/react-router' && ['/src/shell/Shell.tsx', '/src/shell/DesktopNavigation.tsx'].some(path => context.parentURL?.endsWith(path))) return {url: 'shell-account:router', shortCircuit: true};
     if (specifier === '../kit/shell' && context.parentURL?.endsWith('/src/shell/Shell.tsx')) return {url: 'shell-account:account', shortCircuit: true};
     return next(specifier, context);
   },

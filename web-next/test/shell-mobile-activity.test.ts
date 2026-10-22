@@ -12,6 +12,7 @@ Object.assign(globalThis, {__mobileActivityTest: state});
 const actualAccount = new URL('../src/kit/shell/AccountSurfaces.tsx', import.meta.url).href;
 registerHooks({
   resolve(specifier, context, next) {
+    if (specifier === '@tanstack/react-router' && context.parentURL?.endsWith('/src/shell/DesktopNavigation.tsx')) return {url: 'mobile-activity:router', shortCircuit: true};
     if (context.parentURL?.endsWith('/src/shell/Shell.tsx')) {
       if (specifier === './viewport') return {url: 'mobile-activity:viewport', shortCircuit: true};
       if (specifier === '../kit/theme') return {url: 'mobile-activity:theme', shortCircuit: true};

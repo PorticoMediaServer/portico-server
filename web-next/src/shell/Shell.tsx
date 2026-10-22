@@ -5,14 +5,15 @@ import type {Library, Viewer} from '@core/index.ts';
 import {AccountMenu, ProfileAvatar, ProfileAvatarFace, type ProfileIdentity, type ProfileTone} from '../kit/shell';
 import type {FactPart} from '@core/presentation/kit-model/index.ts';
 import {Icon} from '../kit/Icon';
-import {Menu, MenuItem} from '../kit/overlays';
-import {desktopLibraries, isLibraryLocation, rememberLibrary, rememberedLibrary, showOwnerActivity} from './model';
+import {MenuItem} from '../kit/overlays';
+import {isLibraryLocation, rememberLibrary, rememberedLibrary, showOwnerActivity} from './model';
 import {useShellScrolled} from './viewport';
 import {useSizeClass, useCoarsePointer, useWindowScrollAnchor} from '../kit/theme';
 import styles from './shell.module.css';
 import wordmark from './wordmark.svg';
 import type {OwnerActivityProps} from './Activity';
 import {LibraryNavigation} from './LibraryNavigation';
+import {DesktopNavigation} from './DesktopNavigation';
 
 export type ShellIdentity = Readonly<{
   viewer: Viewer; username?: string; profileName: string; profileArt?: ProfileTone; serverName: string;
@@ -51,7 +52,6 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
   if (pathname === '/search' && typeof query.q === 'string') lastSearch.current = query.q;
   const navigate = useNavigate();
   const home = pathname === '/', [accountOpen, setAccountOpen] = useState(false), [moreOpen, setMoreOpen] = useState(false);
-  const {visible, overflow} = desktopLibraries(identity.libraries);
   const {viewer} = identity;
   useEffect(() => {
     if (!pathname.startsWith('/library/')) return;
@@ -93,14 +93,7 @@ export function Shell({identity, OwnerActivity, dockVisible, onSignOut, phoneSel
     <div className={styles.navigation} data-shell-navigation>
       {desktop ? <nav className={styles.topnav} data-solid={scrolled || !home} aria-label={t('next.home.shell.main')}>
         <Link className={styles.brand} to="/" aria-label={t('next.platform.appName')}><img src={wordmark} alt="" /></Link>
-        <ul className={styles.destinations}>
-          <li><Link to="/" activeProps={{'aria-current': 'page'}} activeOptions={{exact: true}}>{t('next.home.shell.home')}</Link></li>
-          {visible.map(library => <li key={library.id}><Link to="/library/$libraryId" params={{libraryId: library.id}} activeProps={{'aria-current': 'page'}}>{library.name}</Link></li>)}
-          {overflow.length > 0 && <li><Menu title={t('next.home.shell.libraries')} open={moreOpen} onOpenChange={setMoreOpen}
-            trigger={<button type="button" className={styles.more} data-active={overflow.some(library => pathname === '/library/' + encodeURIComponent(library.id))}>{t('next.home.shell.more')}<Icon name="i-down" size={14} /></button>}
-            items={overflow.map(library => ({id: library.id, label: library.name, selected: pathname === '/library/' + encodeURIComponent(library.id), onSelect: () => { void navigate({to: '/library/$libraryId', params: {libraryId: library.id}}); }}))} /></li>}
-          {identity.liveAvailable && <li><Link to="/live" activeProps={{'aria-current': 'page'}}>{t('next.home.shell.live')}</Link></li>}
-        </ul>
+        <DesktopNavigation libraries={identity.libraries} liveAvailable={identity.liveAvailable} pathname={pathname} moreOpen={moreOpen} onMoreOpenChange={setMoreOpen} />
         <div className={styles.tools}>
           <Link className={styles.icon} to="/search" search={{q: lastSearch.current}} aria-label={t('next.home.shell.search')} activeProps={{'aria-current': 'page'}}><Icon name="i-search" size={22} /></Link>
           <Link className={styles.icon} to="/saved" aria-label={t('next.home.shell.saved')} activeProps={{'aria-current': 'page'}}><Icon name="i-bookmark" size={22} /></Link>
