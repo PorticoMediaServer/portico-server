@@ -167,8 +167,9 @@ func TestActivitySummaryActualScanProgressAndTaskCaps(t *testing.T) {
 	}
 }
 func TestActivitySummaryRegistrationIsOwnerScoped(t *testing.T) {
-	r := apikit.New(nil, policyCatalogue())
-	if e := registerActivitySummary(r, Dependencies{}); e != nil {
+	d, _, _ := activitySummaryFixture(t)
+	r := apikit.NewContextual(d.v1Authorize, policyCatalogue())
+	if e := registerActivitySummary(r, d); e != nil {
 		t.Fatal(e)
 	}
 	d := r.Definitions()[0]
@@ -253,7 +254,7 @@ func TestActivitySummaryAuthorityChangesDuringOutstandingRead(t *testing.T) {
 		"revoked family":                  `UPDATE authorization_session_families SET revoked=1 WHERE account_id='owner'`,
 		"owner demoted":                   `UPDATE direct_memberships SET role='admin' WHERE account_id='owner'`,
 		"profile loses primary authority": `UPDATE direct_profiles SET is_primary=0 WHERE id='owner-profile'`,
-		"family authority changes":        `UPDATE authorization_session_families SET authority='hosted' WHERE account_id='owner'`,
+		"family role changes":             `UPDATE authorization_session_families SET role='admin' WHERE account_id='owner'`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			d, tokens, _ := activitySummaryFixture(t)
