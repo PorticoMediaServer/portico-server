@@ -231,8 +231,8 @@ func TestShowDetailKeepsDismissedExpiredAndUnmarkedAnchor(t *testing.T) {
 func TestHomePublishesExplicitDestinations(t *testing.T) {
 	db := homeFixture(t)
 	s := New(db)
-	row, e := s.HomeSingleRow(homeRequestFixture("movies"), "recent_movies", HomeRowPage{})
-	if e != nil || row.SeeAll == nil || row.SeeAll.Type != "library" || row.SeeAll.LibraryID != "movies" || row.SeeAll.Pivot != "movies" || len(row.SeeAll.Sort) != 1 || row.SeeAll.Sort[0].Field != "added" {
+	row, e := s.HomeSingleRow(homeRequestFixture("movies"), "new_on_server", HomeRowPage{})
+	if e != nil || row.SeeAll == nil || row.SeeAll.Type != "row" || row.SeeAll.RowID != "new_on_server" {
 		t.Fatal(row.SeeAll, e)
 	}
 	row, e = s.HomeSingleRow(homeRequestFixture("movies"), "continue", HomeRowPage{})

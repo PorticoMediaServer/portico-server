@@ -1,0 +1,18 @@
+.stateStage, .detailStage, .compactStage, .headerStage { position: relative; width: 100%; height: 100%; background: var(--color-ink); color: var(--color-text); }
+.stateIdentity { position: relative; padding-top: 44px; display: flex; justify-content: center; }
+.detailStage { padding: 14px 0 0; }
+.detailHeading { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 800; line-height: normal; margin-bottom: 8px; }
+.detailHeading > :last-child, .compactHeading > :last-child { margin-left: auto; }
+.compactStage { padding: 10px 12px 12px; }
+.compactHeading { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 800; line-height: normal; margin-bottom: 6px; }
+.headerPosition { position: relative; padding: 112px 64px 0 424px; }
+.componentStage { position: relative; width: 100%; height: 100%; color: var(--color-text); background: var(--color-ink); line-height: normal; }
+.overlayStage { position: relative; width: 100%; height: 100%; background: var(--color-ink); }
+.accountTrigger { position: absolute; top: 21px; right: 64px; }
+.phoneStage { width: 390px; height: 844px; position: relative; background: #02070b; }
+.box { background: var(--color-raised); color: var(--color-text); border-radius: 14px; overflow: hidden; line-height: normal; }
+.actionOutput { position: absolute; left: 8px; bottom: 8px; font-size: 12px; line-height: normal; color: var(--color-text-secondary); background: var(--color-raised); padding: 4px 8px; border-radius: 6px; }
+.actionOutput[hidden] { display: none; }
+
+.activityTrigger { position: absolute; top: 18px; right: 112px; }
+.avatarStage { display: grid; place-items: center; width: 100%; height: 100%; }

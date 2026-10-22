@@ -181,6 +181,9 @@ type Presentation struct {
 	// Quality is the quality in force: what was asked for, or the viewer's
 	// saved default for this network, with automatic's current step in id.
 	Quality *Quality `json:"quality,omitempty"`
+	// VideoHeight is the effective converted display height from the committed
+	// delivery plan and its source geometry; absent for copy or unknown geometry.
+	VideoHeight int `json:"videoHeight,omitempty"`
 	// AudioTrackID is the audio track being played ("a1").
 	AudioTrackID string `json:"audioTrackId,omitempty"`
 	// Subtitle is the subtitle track in force and how it reaches the screen;
@@ -782,6 +785,7 @@ func (s *Service) describe(view *Presentation, plan playback.DeliveryPlan, choic
 	view.Decision = decisions(plan, choice, plan.SourceVideoCodec != "")
 	view.BitrateKbps = planKbps(plan)
 	view.Container = plan.OutputContainer
+	view.VideoHeight = playback.ActivityVideoHeight(plan)
 	if plan.AudioStream >= 0 {
 		view.AudioTrackID = streamID("a", plan.AudioStream)
 	}

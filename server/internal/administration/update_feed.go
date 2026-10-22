@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -160,8 +161,20 @@ func (s *Service) CachedUpdates(ctx context.Context, current UpdateBuild, channe
 			var fresh []byte
 			err := errors.New("release feed check interrupted")
 			defer func() {
+				checkedAt := s.now()
+				previous := s.cachedUpdateReport(fetchCtx, current, channel, feedURL, data, priorErr, checked)
+				next := s.cachedUpdateReport(fetchCtx, current, channel, feedURL, fresh, err, checkedAt)
 				s.updateMu.Lock()
-				entry.data, entry.err, entry.checked, entry.inFlight = fresh, err, s.now(), false
+				entry.data, entry.err, entry.checked = fresh, err, checkedAt
+				s.updateMu.Unlock()
+				// Keep the feed in flight until its transition hint commits.
+				eventCtx, eventCancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer eventCancel()
+				if eventErr := s.publishUpdateTransition(eventCtx, previous, next); eventErr != nil {
+					log.Printf("Cached release transition event could not be published: %v", eventErr)
+				}
+				s.updateMu.Lock()
+				entry.inFlight = false
 				s.updateMu.Unlock()
 			}()
 			fresh, err = fetch(fetchCtx, feedURL)

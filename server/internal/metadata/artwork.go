@@ -120,7 +120,7 @@ func (s *Service) EntityArtworkVariant(ctx context.Context, t RepairTarget, role
 }
 
 func (s *Service) entityArtworkVariant(ctx context.Context, t RepairTarget, role, subject string, width int, version string, build bool) (*os.File, string, error) {
-	if width != 400 && width != 800 && width != 1920 {
+	if width != ArtworkAmbientEdge && width != 400 && width != 800 && width != 1920 {
 		return nil, "", ErrRepairInput
 	}
 
@@ -140,6 +140,38 @@ func (s *Service) entityArtworkVariant(ctx context.Context, t RepairTarget, role
 	sourceDigest := digest
 	if err == nil && version != "" && version != sourceDigest {
 		return nil, "", ErrArtworkVersion
+	}
+	if err == nil && width == ArtworkAmbientEdge {
+		// A cached ambient image never substitutes for opening the exact selected
+		// source. In particular, missing/revoked selections cannot extend a 304.
+		source, e := s.openArtworkObject(sourceDigest)
+		if e != nil {
+			s.queueMissingArtwork(selectedTarget, selectedRole, subject)
+			return nil, "", ErrArtworkPending
+		}
+		defer source.Close()
+		if f, e := s.openAmbientArtwork(ctx, sourceDigest); e == nil {
+			if e = gated.Commit(); e != nil {
+				f.Close()
+				return nil, "", e
+			}
+			return f, "image/png", nil
+		}
+		if e := ctx.Err(); e != nil {
+			return nil, "", e
+		}
+		if !build {
+			return nil, "", ErrArtworkPending
+		}
+		if e := gated.Commit(); e != nil {
+			return nil, "", e
+		}
+		if e := s.ensureAmbientArtwork(ctx, sourceDigest, source); e != nil {
+			return nil, "", e
+		}
+		// Selection and physical source availability are checked again after
+		// decoding, outside the snapshot, just like a missing foreground width.
+		return s.entityArtworkVariant(ctx, t, role, subject, width, version, false)
 	}
 	if err == nil {
 		var variantDigest, variantMime string
@@ -194,6 +226,9 @@ func (s *Service) entityArtworkVariant(ctx context.Context, t RepairTarget, role
 	}
 	if !errors.Is(err, sql.ErrNoRows) {
 		return nil, "", err
+	}
+	if width == ArtworkAmbientEdge {
+		return nil, "", ErrArtworkPending
 	}
 	// Already installed local evidence remains available during initial migration.
 	// Remote URLs are never followed, including when the worker is not configured.

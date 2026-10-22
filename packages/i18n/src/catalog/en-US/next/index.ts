@@ -18,6 +18,11 @@ import {layoutNativeMessages} from './layout-native.ts';
 import {statesNativeMessages} from './states-native.ts';
 import {shellNativeMessages} from './shell-native.ts';
 import {dockNativeMessages} from './dock-native.ts';
+import {shared} from './shared.ts';
+import {homeContractsMessages} from './home-contracts.ts';
+import {selectionMessages} from './selection.ts';
+import {selectionNativeMessages} from './selection-native.ts';
+import {homeNativeMessages} from './home-native.ts';
 
 export const nextMessages = {
   ...platformMessages,
@@ -40,6 +45,11 @@ export const nextMessages = {
   ...statesNativeMessages,
   ...shellNativeMessages,
   ...dockNativeMessages,
+  ...shared,
+  ...homeContractsMessages,
+  ...selectionMessages,
+  ...selectionNativeMessages,
+  ...homeNativeMessages,
 } as const satisfies Record<`next.${string}`, string>;
 
 export type NextMessageId = keyof typeof nextMessages;

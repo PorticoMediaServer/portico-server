@@ -385,6 +385,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 	if err = registerResourceUsage(registry, d); err != nil {
 		return nil, err
 	}
+	if err = registerActivitySummary(registry, d); err != nil {
+		return nil, err
+	}
 	if err = registerBackgroundPause(registry, d); err != nil {
 		return nil, err
 	}
@@ -642,6 +645,9 @@ func FoundationRegistry(d Dependencies) (*apikit.Registry, error) {
 		return nil, err
 	}
 	registerBulkJobs(registry, d)
+	registerBulkMetadataPreview(registry, d)
+	registerHomeDestinationPicker(registry, d)
+	registerHomeDestinationReceipt(registry, d)
 	if err := registerPersonalReads(registry, d); err != nil {
 		return nil, err
 	}

@@ -1,6 +1,6 @@
 import {fileURLToPath, pathToFileURL} from 'node:url';
 import path from 'node:path';
-import {existsSync} from 'node:fs';
+import {existsSync, statSync} from 'node:fs';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const aliases = {'@core/': path.join(root, '..', 'packages', 'client-core', 'src') + '/', '@design/': path.join(root, '..', 'packages', 'design') + '/', '@/': path.join(root, 'src') + '/'};
 // Vite resolves extensionless relative imports; Node's ESM resolver does not.
@@ -13,19 +13,19 @@ export async function resolve(specifier, context, next) {
   for (const [prefix, target] of Object.entries(aliases)) {
     if (specifier.startsWith(prefix)) {
       const raw = target + specifier.slice(prefix.length);
-      const found = [raw, ...candidates.map(suffix => raw + suffix)].find(existsSync);
+      const found = [raw, ...candidates.map(suffix => raw + suffix)].find(file => existsSync(file) && statSync(file).isFile());
       return next(pathToFileURL(found ?? raw).href, context);
     }
   }
   try {
     return await next(specifier, context);
   } catch (error) {
-    if (error?.code !== 'ERR_MODULE_NOT_FOUND' || !specifier.startsWith('.')) throw error;
+    if (!['ERR_MODULE_NOT_FOUND', 'ERR_UNSUPPORTED_DIR_IMPORT'].includes(error?.code) || !specifier.startsWith('.')) throw error;
     for (const suffix of candidates) {
       try {
         return await next(specifier + suffix, context);
       } catch (retry) {
-        if (retry?.code !== 'ERR_MODULE_NOT_FOUND') throw retry;
+        if (!['ERR_MODULE_NOT_FOUND', 'ERR_UNSUPPORTED_DIR_IMPORT'].includes(retry?.code)) throw retry;
       }
     }
     throw error;

@@ -8,7 +8,6 @@ import (
 	"portico.local/server/internal/identity"
 	"portico.local/server/internal/operations"
 	"strconv"
-	"time"
 )
 
 // Home is composed by the server: rows, their order, their policy and their
@@ -51,6 +50,12 @@ func (d Dependencies) homeRequestFor(r *http.Request, p identity.Principal, rest
 	}
 	viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: fence, Libraries: libraries, Restrictions: restrictions}
 	request := catalog.HomeRequest{Viewer: viewer, ServerID: d.Identity.ID(), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Libraries: libraries, Restrictions: restrictions}
+	if d.LiveChannels != nil {
+		if err := d.featureAllowed(r.Context(), p, "live_tv"); err == nil {
+			request.LiveAvailable = true
+			request.OnNow = func(page catalog.HomeRowPage) (catalog.HomeRow, error) { return d.homeOnNow(r, p, page) }
+		}
+	}
 	if d.Console == nil {
 		return request, nil
 	}
@@ -284,35 +289,25 @@ func (d Dependencies) serveHomeDocument(w http.ResponseWriter, r *http.Request) 
 	}
 	var out catalog.HomeDocument
 	var request catalog.HomeRequest
-	notModified := false
 	e = d.composeScope(r, restrictions, func(ctx context.Context, cat *catalog.Service) error {
 		var scopeErr error
 		if request, scopeErr = d.homeRequestFor(r.WithContext(ctx), p, restrictions); scopeErr != nil {
 			return scopeErr
 		}
 		request.Limit = limit
-		// Personal/catalog revisions cover mutations; the minute bucket also
-		// expires provider feeds and daily rotation. Community composition
-		// must recheck other profiles' membership and privacy on every read.
-		if revision, revisionErr := cat.HomeRevision(request.Libraries, request.Profile); revisionErr == nil && !request.CommunityActivity {
-			tag := responseTag("home", request.ViewerFence, number(revision.Catalog), number(revision.Viewer), number(request.LayoutRevision), number(int64(limit)), number(time.Now().UTC().Unix()/60))
-			if conditional(w, r, tag) {
-				notModified = true
-				return nil
-			}
-		}
+		// Spotlight and current permission facts are recomposed on every read.
 		var composeErr error
 		out, composeErr = cat.HomeManifest(request)
-		return composeErr
+		if composeErr != nil {
+			return composeErr
+		}
+		return d.projectHomeActions(ctx, p, request.Viewer, cat, out.Rows, out.Spotlight)
 	})
 	if e != nil {
 		homeFailure(w, e)
 		return
 	}
-	if notModified {
-		return
-	}
-	after, e := d.homeFenceAfter(r, p)
+	after, e := d.homeActionFenceAfter(r, p)
 	if e != nil {
 		homeFailure(w, e)
 		return
@@ -321,11 +316,12 @@ func (d Dependencies) serveHomeDocument(w http.ResponseWriter, r *http.Request) 
 		homeFailure(w, catalog.ErrStaleContinuation)
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	write(w, 200, out)
 }
 
 func (d Dependencies) serveHomeRow(w http.ResponseWriter, r *http.Request) {
-	if e := homeAllowedQuery(r, "limit", "cursor", "start", "revision", "anchorId"); e != nil {
+	if e := homeAllowedQuery(r, "limit", "cursor", "start", "revision", "anchorId", "group", "sourceId"); e != nil {
 		homeFailure(w, e)
 		return
 	}
@@ -334,7 +330,11 @@ func (d Dependencies) serveHomeRow(w http.ResponseWriter, r *http.Request) {
 		homeFailure(w, e)
 		return
 	}
-	page := catalog.HomeRowPage{Limit: limit, Cursor: r.URL.Query().Get("cursor"), Revision: r.URL.Query().Get("revision"), AnchorID: r.URL.Query().Get("anchorId")}
+	if r.PathValue("id") != "on_now" && (r.URL.Query().Has("group") || r.URL.Query().Has("sourceId")) {
+		homeFailure(w, catalog.ErrCursor)
+		return
+	}
+	page := catalog.HomeRowPage{Group: r.URL.Query().Get("group"), SourceID: r.URL.Query().Get("sourceId"), Limit: limit, Cursor: r.URL.Query().Get("cursor"), Revision: r.URL.Query().Get("revision"), AnchorID: r.URL.Query().Get("anchorId")}
 	if raw := r.URL.Query().Get("start"); raw != "" {
 		start, err := strconv.Atoi(raw)
 		if err != nil || start < 0 || start > 100000 {
@@ -343,32 +343,44 @@ func (d Dependencies) serveHomeRow(w http.ResponseWriter, r *http.Request) {
 		}
 		page.Start = start
 	}
-	p, request, e := d.homeRequest(r)
+	p, e := d.principal(r)
 	if e != nil {
 		homeFailure(w, e)
 		return
 	}
-	// The minute bucket expires provider feeds and daily rotation, as the
-	// Home document's validator does; community rows recheck other
-	// profiles' privacy on every read, so they carry no validator.
-	tag := ""
-	if !request.CommunityActivity {
-		tag = d.gridTag(r, p, time.Minute, request.ViewerFence)
-		if gridNotModified(w, r, tag) {
-			return
-		}
+	restrictions, _, e := d.viewerRestrictions(r, p)
+	if e != nil {
+		homeFailure(w, e)
+		return
 	}
+	var request catalog.HomeRequest
 	var out catalog.HomeRow
-	e = d.compose(r, request.Restrictions, func(cat *catalog.Service) error {
+	// Offers depend on live command services and library settings as well as
+	// catalogue revisions. Recompose them rather than returning a cached grant.
+	e = d.composeScope(r, restrictions, func(ctx context.Context, cat *catalog.Service) error {
+		var scopeErr error
+		request, scopeErr = d.homeRequestFor(r.WithContext(ctx), p, restrictions)
+		if scopeErr != nil {
+			return scopeErr
+		}
+		// Live TV owns its directory/guide revision and final live reread.
+		// Keep that reread off the catalogue WAL snapshot so source-policy
+		// changes during guide composition still invalidate the response.
+		if request.OnNow != nil {
+			request.OnNow = func(page catalog.HomeRowPage) (catalog.HomeRow, error) { return d.homeOnNow(r, p, page) }
+		}
 		var composeErr error
 		out, composeErr = cat.HomeSingleRow(request, r.PathValue("id"), page)
-		return composeErr
+		if composeErr != nil {
+			return composeErr
+		}
+		return d.projectHomeActions(ctx, p, request.Viewer, cat, []catalog.HomeRow{out}, nil)
 	})
 	if e != nil {
 		homeFailure(w, e)
 		return
 	}
-	after, e := d.homeFenceAfter(r, p)
+	after, e := d.homeActionFenceAfter(r, p)
 	if e != nil {
 		homeFailure(w, e)
 		return
@@ -377,8 +389,6 @@ func (d Dependencies) serveHomeRow(w http.ResponseWriter, r *http.Request) {
 		homeFailure(w, catalog.ErrStaleContinuation)
 		return
 	}
-	if tag != "" {
-		setGridTag(w, tag)
-	}
+	w.Header().Set("Cache-Control", "no-store")
 	write(w, 200, out)
 }

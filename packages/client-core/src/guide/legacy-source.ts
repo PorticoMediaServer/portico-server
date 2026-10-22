@@ -24,7 +24,7 @@ export type LegacyGuideOptions = Readonly<{
    * `server` keeps the server's order. `number`: sources in the owner's order, each by channel
    * number; `name` interleaves sources by name (§2.2).
    */
-  sort?: 'server' | 'number' | 'name';
+  sort?: 'server' | 'number' | 'name' | 'favorites';
   now?: () => number;
 }>;
 

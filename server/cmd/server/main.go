@@ -1117,7 +1117,7 @@ func run() (runErr error) {
 	measurements.Pattern = httpapi.RoutePattern
 	doneRouter(nil)
 	supervise.Supervise(ctx, "cmd.api-events", events.Run)
-	supervise.Supervise(ctx, "cmd.scan-events", func(ctx context.Context) { scanevents.Run(ctx, db, cat.InventoryStatus) })
+	supervise.Supervise(ctx, "cmd.scan-events", func(ctx context.Context) { scanevents.Run(ctx, db, cat.InventoryStatus, scanner) })
 	// The outermost wrapper: a handler panic is counted and attributed here, and
 	// answered with an honest 500 when nothing has reached the client yet.
 	handlerSwitch.set(supervise.HandlerMiddleware(measurements.Wrap(handler)))

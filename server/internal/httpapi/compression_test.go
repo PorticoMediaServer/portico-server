@@ -109,12 +109,20 @@ func TestCompositeResponsesCompressAndMediaDoesNot(t *testing.T) {
 		t.Fatal("the compressed body decoded to something other than the plain one")
 	}
 
-	// A 304 has no body, and its headers must not describe one.
-	tag := plain.Header().Get("ETag")
-	if tag == "" {
-		t.Fatal("home carried no ETag")
+	// Home contains current live/spotlight facts and is always recomposed.
+	if plain.Header().Get("ETag") != "" {
+		t.Fatal("time-dependent Home advertised a reusable validator")
 	}
-	r := httptest.NewRequest("GET", "/v1/home", bytes.NewReader(nil))
+	// A stable continuation row still honors validators. A 304 has no body.
+	stable := ask("/v1/home/rows/continue", "")
+	if stable.Code != 200 {
+		t.Fatal(stable.Code, stable.Body.String())
+	}
+	tag := stable.Header().Get("ETag")
+	if tag == "" {
+		t.Fatal("stable row carried no ETag")
+	}
+	r := httptest.NewRequest("GET", "/v1/home/rows/continue", bytes.NewReader(nil))
 	r.Header.Set("Authorization", "Bearer "+token)
 	r.Header.Set("Accept-Encoding", "gzip")
 	r.Header.Set("If-None-Match", tag)
