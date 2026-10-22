@@ -1,6 +1,6 @@
 import {useEffect, useRef, type ReactNode} from 'react';
 import {Button, TextField} from '../controls';
-import {BottomSheet, Popover, ToastHost, type OverlayChange} from '../overlays';
+import {BottomSheet, Popover, ToastHost, type OverlayChange, type ToastData} from '../overlays';
 import {focusable, usePhone} from '../overlays/shared';
 import {Icon} from '../Icon';
 import {selectionPickerTitleParts, selectionText as text} from './copy';
@@ -92,10 +92,10 @@ export function CollectionPicker(props: SelectionPickerProps) { return <Selectio
 export type PickerAddedToastProps = Readonly<{open: boolean; onOpenChange: OverlayChange; selection: SelectionCount; destination: Destination; result: PickerResult; onView: (id: string) => void; bottomInset?: number}>;
 /** Owns the supported host, exact result copy, positioning, lifetime and dismissal. */
 export function PickerAddedToast({open, onOpenChange, selection, destination, result, onView, bottomInset}: PickerAddedToastProps) {
-  const toast = open && pickerResultSucceeded(result) ? {
+  const toast: ToastData | null = open && pickerResultSucceeded(result) ? {
     id: `picker-${destination}-${result.destination.id}`,
     message: <>{text('next.selection.addedToast', {items: selectionCountText({count: result.inserted!, kind: selection.kind}), name: result.destination.name})}{result.alreadyIn !== undefined && result.alreadyIn > 0 && <> {text('next.selection.duplicatesToast', {count: result.alreadyIn})}</>}</>,
-    action: {label: text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection'), onAction: () => onView(result.destination.id)},
+    action: {variant: 'text', label: text(destination === 'playlist' ? 'next.selection.viewPlaylist' : 'next.selection.viewCollection'), onAction: () => onView(result.destination.id)},
   } : null;
   return <ToastHost toast={toast} bottomInset={bottomInset} toastClassName={styles.pickerToast} onDismiss={(_id, reason) => onOpenChange(false, reason)} />;
 }
