@@ -1,5 +1,6 @@
 .card { --cards-width:190px; --cards-tint:var(--color-ambient); position:relative; flex:none; width:var(--cards-width); min-width:0; text-align:left; border-radius:10px; container-type:inline-size; color:var(--color-text); line-height:normal; }
 .primary { appearance:none; display:block; position:relative; width:100%; padding:0; border:0; border-radius:inherit; background:none; color:inherit; font:inherit; text-align:inherit; cursor:pointer; }
+.poster > .primary, .square > .primary, .cover > .primary { height:100%; }
 .primary:focus-visible, .play:focus-visible, .more:focus-visible, .selection:focus-visible, .notInterested:focus-visible, .remind:focus-visible { outline:3px solid var(--color-focus); outline-offset:3px; }
 .primary:active { transform:scale(.97); }
 .primary { transition:transform 160ms cubic-bezier(.2,.7,.2,1); }
