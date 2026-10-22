@@ -12,17 +12,21 @@ import {validBulkEdit, validateBulkReceipt, type BulkEdit} from '../metadata-bul
 import {fetchBulkMetadataPreview, metadataPreviewTargets, type BulkMetadataPreviewRequest} from './metadata-preview.ts';
 import {HomeSelectionDestinations} from './destinations.ts';
 import {explicitIdentities, runSelectionJobs, selectionExecutionError, selectionJobTasks, type HomeJobTask} from './execution.ts';
-import type {HomeSelectionActionState, HomeSelectionMember, HomeSelectionOptions, HomeSelectionPlaybackItem, HomeSelectionSnapshot, HomeSelectionWindowInput} from './types.ts';
+import type {HomeSelectionActionState, HomeSelectionMember, HomeSelectionMenu, HomeSelectionOptions, HomeSelectionPlaybackItem, HomeSelectionSnapshot, HomeSelectionWindowInput} from './types.ts';
 
 const idle = (): HomeSelectionActionState => ({phase: 'idle', action: null, progress: null, results: [], error: null, jobIds: []});
 const errorInfo = (error: unknown) => ({code: String((error as {code?: unknown})?.code ?? 'home-action-failed'), retryable: (error as {retryable?: unknown})?.retryable === true});
+const sameScope = (a: SelectionContext, b: SelectionContext) =>
+  a.scope.serverId === b.scope.serverId && a.scope.authority === b.scope.authority && a.scope.accountId === b.scope.accountId && a.scope.profileId === b.scope.profileId && a.scope.viewId === b.scope.viewId && a.scope.privacyFence === b.scope.privacyFence;
 const sameContext = (a: SelectionContext, b: SelectionContext) =>
-  a.scope.serverId === b.scope.serverId && a.scope.authority === b.scope.authority && a.scope.accountId === b.scope.accountId && a.scope.profileId === b.scope.profileId && a.scope.viewId === b.scope.viewId && a.scope.privacyFence === b.scope.privacyFence && a.revision.catalogRevision === b.revision.catalogRevision && a.revision.viewerRevision === b.revision.viewerRevision;
+  sameScope(a, b) && a.revision.catalogRevision === b.revision.catalogRevision && a.revision.viewerRevision === b.revision.viewerRevision;
 export function homeSelectionContext(scope: Omit<SelectionContext['scope'], 'privacyFence'>, document: HomeDocument): SelectionContext {
   if (scope.serverId !== document.serverId) throw selectionExecutionError('home-source-mismatch');
   return {scope: {...scope, privacyFence: document.viewerFence}, revision: {catalogRevision: String(document.revision.catalog), viewerRevision: String(document.revision.viewer)}};
 }
-type Ticket = {epoch: number; context: SelectionContext; target: SelectionTarget; model?: SelectionOperation; controller: AbortController};
+type WindowSource = Readonly<{kind: 'row'; id: string; slot: 'entries' | 'collection' | 'live'} | {kind: 'spotlight'}>;
+type CurrentMember = Readonly<{member: HomeSelectionMember; row?: HomeRow; spotlight?: HomeSpotlight; index: number}>;
+type Ticket = {document: HomeDocument; epoch: number; context: SelectionContext; target: SelectionTarget; model?: SelectionOperation; controller: AbortController};
 /** Shared execution only: all renderer, locale, key, gesture and haptic ownership stays in the shell. */
 export class HomeSelectionController {
   readonly selection: SelectionModel;
@@ -30,11 +34,14 @@ export class HomeSelectionController {
   private environment: SelectionEnvironment;
   private listeners = new Set<() => void>();
   private cleanups: (() => void)[] = [];
-  private windows = new Map<string, {token: object; members: Map<string, HomeSelectionMember>; unregister: () => void; order: number; start: number}>();
+  private windows = new Map<string, {token: object; members: Map<string, HomeSelectionMember>; unregister: () => void; order: number; start: number; source: WindowSource}>();
   private held = new Map<string, HomeSelectionMember>();
   private operationMembers = new Map<string, HomeSelectionMember>();
   private epoch = 0;
   private disposed = false;
+  private changing = false;
+  private document?: HomeDocument;
+  private menuWindow?: () => void;
   private ticket?: Ticket;
   private pickerSession?: HomeSelectionDestinations;
   private jobs: HomeJobTask[] = [];
@@ -77,27 +84,56 @@ export class HomeSelectionController {
     const members = this.allMembers();
     const displayMembers = this.isHomeCurrent(next.context) && target?.mode === 'explicit' ? target.displayItems.flatMap(pick => {const member = members.get(pick.key); return member ? [member] : [];}) : [];
     this.state = Object.freeze({...next, displayMembers: Object.freeze(displayMembers)});
-    for (const listener of this.listeners) listener();
+    if (!this.changing) for (const listener of this.listeners) listener();
   }
   getDisplayMembers = () => this.state.displayMembers;
   private isHomeCurrent(context: SelectionContext) {
     const document = this.options.home.getSnapshot().document;
     return !!document && this.options.isCurrent(context) && document.serverId === context.scope.serverId && document.viewerFence === context.scope.privacyFence && String(document.revision.catalog) === context.revision.catalogRevision && String(document.revision.viewer) === context.revision.viewerRevision;
   }
-  private active() {if (this.disposed || !this.isHomeCurrent(this.state.context)) throw selectionExecutionError('stale-home-context');}
+  private active() {if (this.disposed) throw selectionExecutionError('stale-home-context'); if (!this.isHomeCurrent(this.state.context)) {this.invalidate(); throw selectionExecutionError('stale-home-context');}}
   private platform(): HomeActionPlatform {return {platform: this.environment.platform === 'phone-app' ? 'phone-app' : this.environment.platform === 'tv' ? 'tv' : 'web', playbackAvailable: true, queueAvailable: true, nativeDownloadsAvailable: !!this.options.download};}
   private homeChanged() {
     const document = this.options.home.getSnapshot().document;
-    if (!document || document.serverId !== this.state.context.scope.serverId || document.viewerFence !== this.state.context.scope.privacyFence || String(document.revision.catalog) !== this.state.context.revision.catalogRevision || String(document.revision.viewer) !== this.state.context.revision.viewerRevision) this.invalidate();
+    if (!document || document.serverId !== this.state.context.scope.serverId || document.viewerFence !== this.state.context.scope.privacyFence) {this.invalidate(); return;}
+    const next = homeSelectionContext(this.state.context.scope, document);
+    if (!this.options.isCurrent(next)) {this.invalidate(); return;}
+    if (document !== this.document || !sameContext(next, this.state.context)) this.reconcile(next, this.environment);
   }
-  private invalidate() {this.cancelAction(); this.selection.clear(); for (const window of this.windows.values()) window.unregister(); this.windows.clear(); this.held.clear(); this.editorEdits = []; this.editorReceipts = []; this.editorOriginalTargets = []; this.editorRetryTargets = undefined; this.deleteBody = undefined; this.jobs = []; this.personalCommands = []; this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null, action: idle()});}
+  private invalidate() {this.cancelAction(); this.selection.clear(); for (const window of this.windows.values()) window.unregister(); this.windows.clear(); this.menuWindow = undefined; this.held.clear(); this.editorEdits = []; this.editorReceipts = []; this.editorOriginalTargets = []; this.editorRetryTargets = undefined; this.deleteBody = undefined; this.jobs = []; this.personalCommands = []; this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null, action: idle()});}
+  /** Revision changes may retain a menu's semantic opener, never its old grants or in-flight work. */
+  private reconcile(context: SelectionContext, environment: SelectionEnvironment) {
+    const previous = this.state.context, menu = this.state.menu, window = menu && this.windows.get(menu.windowId);
+    this.changing = true;
+    try {
+      this.invalidate();
+      this.environment = {...environment}; this.selection.setContext(context);
+      this.document = this.options.home.getSnapshot().document;
+      this.publish({context: this.selection.getSnapshot().context, selection: this.selection.getSnapshot(), actions: selectionActions(this.selection.getSnapshot().summary, this.environment), action: idle()});
+      if (!menu || !window || !sameScope(previous, context) || !this.isHomeCurrent(context)) return;
+      const current = this.resolveMember(window.source, menu.key);
+      if (!current || !this.retainsGrants(menu, current.member)) return;
+      // Re-register only the proven current item. The shell owns physical order and visible windows.
+      const registered = current.spotlight ? this.registerSpotlight({id: menu.windowId, spotlight: current.spotlight})
+        : current.row ? this.registerWindow({id: menu.windowId, row: current.row, sectionOrder: window.order - 1,
+          ...(window.source.kind === 'row' && window.source.slot === 'live' ? {channels: current.row.live!.channels.slice(current.index, current.index + 1)}
+            : window.source.kind === 'row' && window.source.slot === 'entries' ? {entries: [current.member.entry!]} : {})}) : undefined;
+      if (registered?.ok) {this.menuWindow = registered.unregister; this.openMenu(menu.windowId, menu.key);}
+    } finally {
+      this.changing = false;
+      for (const listener of this.listeners) listener();
+    }
+  }
   setContext(context: SelectionContext, environment = this.environment) {
     if (this.disposed) throw selectionExecutionError('disposed');
     const before = this.state.context.scope, after = context.scope;
-    this.invalidate();
-    if (['serverId', 'authority', 'accountId', 'profileId'].some(key => before[key as keyof typeof before] !== after[key as keyof typeof after])) throw selectionExecutionError('recreate-home-controller-for-source');
-    this.environment = {...environment}; this.selection.setContext(context);
-    this.publish({context: this.selection.getSnapshot().context, selection: this.selection.getSnapshot(), actions: selectionActions(this.selection.getSnapshot().summary, this.environment), action: idle()});
+    if (['serverId', 'authority', 'accountId', 'profileId'].some(key => before[key as keyof typeof before] !== after[key as keyof typeof after])) {this.invalidate(); throw selectionExecutionError('recreate-home-controller-for-source');}
+    if (!sameScope(this.state.context, context) || !this.isHomeCurrent(context)) {
+      this.invalidate(); this.environment = {...environment}; this.selection.setContext(context);
+      this.publish({context: this.selection.getSnapshot().context, selection: this.selection.getSnapshot(), actions: selectionActions(this.selection.getSnapshot().summary, this.environment), action: idle()}); return;
+    }
+    if (sameContext(this.state.context, context) && this.document === this.options.home.getSnapshot().document && this.environment.platform === environment.platform && this.environment.isOwner === environment.isOwner && this.environment.canEditMetadata === environment.canEditMetadata) return;
+    this.reconcile(context, environment);
   }
   private rows(): readonly HomeRow[] {
     const document = this.options.home.getSnapshot().document; if (!document) return [];
@@ -137,7 +173,7 @@ export class HomeSelectionController {
     const ticket = this.selection.captureContext(), token = {};
     const result = this.selection.registerWindow(ticket, {id: input.id, sectionId: row.id, sectionOrder: input.sectionOrder + 1, start, items: [...members.values()].map(member => member.item)});
     if (!result.ok) return result;
-    this.windows.set(input.id, {token, members, unregister: result.unregister, order: input.sectionOrder + 1, start});
+    this.windows.set(input.id, {token, members, unregister: result.unregister, order: input.sectionOrder + 1, start, source: {kind: 'row', id: row.id, slot: input.channels !== undefined || row.live ? 'live' : row.collection && input.entries === undefined ? 'collection' : 'entries'}});
     return {ok: true as const, unregister: () => {if (this.windows.get(input.id)?.token === token) this.windows.delete(input.id); result.unregister();}};
   }
   registerSpotlight(input: Readonly<{id: string; spotlight: HomeSpotlight}>) {
@@ -150,7 +186,7 @@ export class HomeSelectionController {
     const key = this.key(item), token = {}, members = new Map([[key, member]]);
     const result = this.selection.registerWindow(this.selection.captureContext(), {id: input.id, sectionId: 'home:spotlight', sectionOrder: 0, start: index, items: [item]});
     if (!result.ok) return result;
-    this.windows.set(input.id, {token, members, unregister: result.unregister, order: 0, start: index});
+    this.windows.set(input.id, {token, members, unregister: result.unregister, order: 0, start: index, source: {kind: 'spotlight'}});
     return {ok: true as const, unregister: () => {if (this.windows.get(input.id)?.token === token) this.windows.delete(input.id); result.unregister();}};
   }
   private allMembers() {const members = new Map<string, HomeSelectionMember>(); for (const window of [...this.windows.values()].sort((a, b) => b.order - a.order || b.start - a.start)) for (const [key, member] of window.members) members.set(key, member); for (const [key, member] of this.held) members.set(key, member); for (const [key, member] of this.operationMembers) members.set(key, member); return members;}
@@ -172,12 +208,20 @@ export class HomeSelectionController {
     const model = target ? undefined : this.selection.captureOperation();
     const selected = target ?? model?.target; if (!selected) throw selectionExecutionError('selection-required');
     explicitIdentities(selected);
-    const ticket = {epoch: ++this.epoch, context: this.state.context, target: selected, ...(model ? {model} : {}), controller: new AbortController()}; this.ticket = ticket;
+    const ticket = {document: this.options.home.getSnapshot().document!, epoch: ++this.epoch, context: this.state.context, target: selected, ...(model ? {model} : {}), controller: new AbortController()}; this.ticket = ticket;
     if (selected.mode === 'explicit') for (const pick of selected.items) {const member = bindings.get(pick.key); if (member) this.operationMembers.set(pick.key, member);}
     return ticket;
   }
-  private current(ticket: Ticket) {return !this.disposed && this.ticket === ticket && this.epoch === ticket.epoch && !ticket.controller.signal.aborted && this.isHomeCurrent(ticket.context) && (!ticket.model || this.selection.isOperationCurrent(ticket.model));}
-  private check(ticket: Ticket) {if (!this.current(ticket)) throw selectionExecutionError('cancelled');}
+  private liveCurrent(ticket: Ticket) {
+    return ticket.target.mode === 'explicit' && ticket.target.items.every(pick => {
+      if (pick.item.kind !== 'channel') return true;
+      const member = this.operationMembers.get(pick.key);
+      return !!member?.channel && this.rows().some(row => row.viewerFence === ticket.context.scope.privacyFence && row.live && Number.isFinite(Date.parse(row.live.expiresAt)) && Date.parse(row.live.expiresAt) > Date.now() && row.live.channels.includes(member.channel!))
+        && selectionCapabilityNames.every(name => homeChannelSelection(member.channel!, this.platform()).capabilities[name] === pick.item.capabilities[name]);
+    });
+  }
+  private current(ticket: Ticket) {return !this.disposed && this.ticket === ticket && this.epoch === ticket.epoch && !ticket.controller.signal.aborted && this.options.home.getSnapshot().document === ticket.document && this.isHomeCurrent(ticket.context) && this.liveCurrent(ticket) && (!ticket.model || this.selection.isOperationCurrent(ticket.model));}
+  private check(ticket: Ticket) {if (!this.current(ticket)) {if (this.ticket === ticket) this.cancelAction(); throw selectionExecutionError('cancelled');}}
   cancelAction() {
     this.epoch++; this.ticket?.controller.abort(); this.ticket = undefined; this.pickerSession?.dispose(); this.pickerSession = undefined; this.detail?.dispose(); this.detail = undefined;
     this.retry = undefined; this.operationMembers.clear();
@@ -274,15 +318,65 @@ export class HomeSelectionController {
     }
     await this.retry();
   }
-  openMenu(windowId: string, key: string) {
-    this.active(); const member = this.windows.get(windowId)?.members.get(key); if (!member) throw selectionExecutionError('unregistered-home-entry');
+  private menuGroups(member: HomeSelectionMember) {
     const platform = this.platform();
-    const capabilities = member.entry ? homeEntryCapabilities(member.entry as HomeEntry, platform) : member.collection ? homeCollectionCapabilities(member.collection, platform) : member.channel ? {playable: member.item.capabilities.play, ...(member.item.capabilities.favorite ? {favorite: member.channel.channel.favorite} : {})} : {};
-    this.publish({menu: {windowId, key, member, groups: entryActions(capabilities)}});
+    return entryActions(member.entry ? homeEntryCapabilities(member.entry, platform) : member.collection ? homeCollectionCapabilities(member.collection, platform)
+      : member.channel ? {kind: 'channel', playable: member.item.capabilities.play, ...(member.item.capabilities.favorite ? {favorite: member.channel.channel.favorite} : {})} : {});
   }
-  closeMenu() {this.publish({menu: null});}
+  private retainsGrants(menu: HomeSelectionMenu, member: HomeSelectionMember) {
+    const normalize = (action: EntryActionId) => action === 'resume' || action === 'playFromStart' ? 'play' : action;
+    const actions = new Set(this.menuGroups(member).flatMap(group => group.actions.map(action => normalize(action.id))));
+    return selectionCapabilityNames.every(name => !menu.member.item.capabilities[name] || member.item.capabilities[name])
+      && menu.groups.every(group => group.actions.every(action => actions.has(normalize(action.id))));
+  }
+  /** Resolve by full identity inside the original genuine source, never by card position. */
+  private resolveMember(source: WindowSource, key: string): CurrentMember | undefined {
+    const platform = this.platform();
+    const entryMember = (entry: HomeEntry, target = entry): HomeSelectionMember | undefined => {
+      const item = homeEntrySelection(entry, platform);
+      if (!item || this.key(item) !== key || entry.available === false) return;
+      if ((item.capabilities.play || homeEntryCapabilities(entry, platform).playable) && (target.available === false || !target.playback?.itemId || target.libraryId !== entry.libraryId)) return;
+      return {item, entry, playbackTarget: target};
+    };
+    if (source.kind === 'spotlight') {
+      const found = this.options.home.getSnapshot().document?.spotlight.flatMap((spotlight, index) => {
+        const member = entryMember(spotlight.entry, spotlight.resumeTarget ?? spotlight.entry); return member ? [{member, spotlight, index}] : [];
+      }) ?? [];
+      return found.length === 1 ? found[0] : undefined;
+    }
+    const rows = this.rows().filter(row => row.id === source.id && row.viewerFence === this.state.context.scope.privacyFence);
+    if (rows.length !== 1) return;
+    const row = rows[0];
+    if (source.slot === 'live') {
+      if (!row.live || !Number.isFinite(Date.parse(row.live.expiresAt)) || Date.parse(row.live.expiresAt) <= Date.now()) return;
+      const found = row.live.channels.flatMap((channel, index) => {const item = homeChannelSelection(channel, platform); return this.key(item) === key ? [{member: {item, channel}, row, index}] : [];});
+      return found.length === 1 ? found[0] : undefined;
+    }
+    if (source.slot === 'collection') {
+      if (!row.collection) return;
+      const item = homeCollectionSelection(row.collection, platform);
+      return this.key(item) === key ? {member: {item, collection: row.collection}, row, index: 0} : undefined;
+    }
+    const found = (row.collection?.members ?? row.entries).flatMap((entry, index) => {
+      const member = entryMember(entry, row.resumes?.find(resume => resume.entryId === entry.id)?.target ?? entry); return member ? [{member, row, index}] : [];
+    });
+    return found.length === 1 ? found[0] : undefined;
+  }
+  private currentMenu(menu: HomeSelectionMenu) {
+    const window = this.windows.get(menu.windowId);
+    if (!window?.members.has(menu.key)) {this.closeMenu(); throw selectionExecutionError('unregistered-home-entry');}
+    const current = this.resolveMember(window.source, menu.key);
+    if (!current || !this.retainsGrants(menu, current.member)) {this.closeMenu(); throw selectionExecutionError('home-offers-changed');}
+    return {...menu, member: current.member, groups: this.menuGroups(current.member)};
+  }
+  openMenu(windowId: string, key: string) {
+    this.active(); const window = this.windows.get(windowId), current = window?.members.has(key) ? this.resolveMember(window.source, key) : undefined;
+    if (!current) throw selectionExecutionError('unregistered-home-entry');
+    this.publish({menu: {windowId, key, member: current.member, groups: this.menuGroups(current.member)}});
+  }
+  closeMenu() {const cleanup = this.menuWindow; this.menuWindow = undefined; cleanup?.(); this.publish({menu: null});}
   async executeMenu(action: EntryActionId, value?: number | null) {
-    this.active(); const menu = this.state.menu;
+    this.active(); const shown = this.state.menu, menu = shown ? this.currentMenu(shown) : null;
     if (!menu || !menu.groups.some(group => group.actions.some(offered => offered.id === action))) throw selectionExecutionError('menu-action-not-offered');
     const {member, key} = menu;
     const target: SelectionTarget = {mode: 'explicit', context: this.state.context, items: [{key, item: member.item}], displayItems: [{key, item: member.item}]};
@@ -497,5 +591,5 @@ export class HomeSelectionController {
   reloadDelete() {return this.openDelete(this.ticket?.target);}
   closeDelete() {this.cancelAction(); this.deleteBody = undefined; this.publish({deletion: null});}
   private closeDialogs() {this.cancelAction(); this.publish({menu: null, picker: null, editor: null, deletion: null, rating: null, mixedEdit: false, editExplanation: null});}
-  dispose() {if (this.disposed) return; this.cancelAction(); for (const cleanup of this.cleanups) cleanup(); this.selection.dispose(); this.windows.clear(); this.held.clear(); this.operationMembers.clear(); this.disposed = true; this.state = Object.freeze({...this.state, displayMembers: [], menu: null, picker: null, editor: null, deletion: null, rating: null}); this.listeners.clear();}
+  dispose() {if (this.disposed) return; this.cancelAction(); for (const cleanup of this.cleanups) cleanup(); this.selection.dispose(); this.windows.clear(); this.menuWindow = undefined; this.held.clear(); this.operationMembers.clear(); this.disposed = true; this.state = Object.freeze({...this.state, displayMembers: [], menu: null, picker: null, editor: null, deletion: null, rating: null}); this.listeners.clear();}
 }
