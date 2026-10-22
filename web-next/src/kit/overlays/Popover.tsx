@@ -1,15 +1,17 @@
-import {Fragment, createContext, forwardRef, useContext, useId, useLayoutEffect, useMemo, useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode} from 'react';
+import {Fragment, createContext, forwardRef, useContext, useId, useEffect, useLayoutEffect, useMemo, useRef, type ButtonHTMLAttributes, type KeyboardEvent, type ReactNode} from 'react';
 import {Popover as RadixPopover} from 'radix-ui';
 import {Icon, type IconName} from '../Icon';
 import {BottomSheet} from './BottomSheet';
-import {classes, focusElement, focusable, useDismissReason, useExclusiveAnchor, useOverlayKeys, usePhone, usePresence, useSurfaceFocus, useSurfaceMotion} from './shared';
+import {classes, focusElement, focusable, useDismissReason, useExclusiveAnchor, useInDialog, useOverlayKeys, usePhone, usePresence, useSurfaceFocus, useSurfaceMotion} from './shared';
 import type {AnchoredOverlayProps, OverlayChange, OverlayStyle} from './types';
 import styles from './overlays.module.css';
 
 export type PopoverProps = AnchoredOverlayProps & {role?: 'dialog' | 'menu'; onContentKeyDown?: (event: KeyboardEvent<HTMLDivElement>) => void};
 
 export function Popover({open, onOpenChange, title, children, description, trigger, anchorRef, modal = false, placement = 'bottom-end', sideOffset = 8, alignOffset = 0, width = 300, initialFocusRef, returnFocusRef, accessibilityLabel, className, testID, role = 'dialog', onContentKeyDown}: PopoverProps) {
-  const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef ?? anchorRef);
+  const triggerElement = useRef<HTMLButtonElement | null>(null);
+  const id = useId(), reason = useDismissReason(), focus = useSurfaceFocus(open, initialFocusRef, returnFocusRef ?? anchorRef ?? triggerElement);
+  const withinDialog = useInDialog(open, anchorRef ?? triggerElement);
   const present = usePresence(open, 160), motionRef = useSurfaceMotion(open, 'menu');
   const anchor = useMemo(() => ({current: {getBoundingClientRect: () => anchorRef?.current?.getBoundingClientRect() ?? new DOMRect()}}), [anchorRef]);
   useOverlayKeys(open, onOpenChange); const superseded = useExclusiveAnchor(open, onOpenChange);
@@ -23,19 +25,20 @@ export function Popover({open, onOpenChange, title, children, description, trigg
     return () => names.forEach((name, index) => { const previous = original[index]; if (previous === null || previous === undefined) element.removeAttribute(name); else element.setAttribute(name, previous); });
   }, [trigger, anchorRef, open, role, id]);
   if (!trigger && !anchorRef) throw new TypeError('Popover requires a trigger or an anchor ref.');
-  return <RadixPopover.Root open={open} onOpenChange={value => { onOpenChange(value, reason.current); reason.current = 'action'; }} modal={modal}>
-    {trigger ? <RadixPopover.Trigger asChild>{trigger}</RadixPopover.Trigger> : <RadixPopover.Anchor virtualRef={anchor} />}
-    {present && !superseded && <RadixPopover.Portal forceMount><RadixPopover.Content forceMount ref={motionRef}
+  return <RadixPopover.Root open={open} onOpenChange={value => { if (value === open) return; onOpenChange(value, reason.current); reason.current = 'action'; }} modal={modal}>
+    {trigger ? <RadixPopover.Trigger asChild ref={triggerElement} aria-haspopup={role} aria-controls={open ? `${id}-content` : undefined}>{trigger}</RadixPopover.Trigger> : <RadixPopover.Anchor virtualRef={anchor} />}
+    {/* Exit presence must not leave the positioning wrapper as a pointer target. */}
+    {present && !superseded && <RadixPopover.Portal forceMount><div style={{pointerEvents: 'none'}}><RadixPopover.Content forceMount ref={motionRef}
       side={placement.startsWith('top') ? 'top' : 'bottom'} align={placement.endsWith('start') ? 'start' : 'end'} sideOffset={sideOffset} alignOffset={alignOffset} collisionPadding={8}
-      id={`${id}-content`} className={classes(styles.popover, className)} style={{'--overlay-width': `${width}px`} as OverlayStyle} role={role}
+      id={`${id}-content`} className={classes(styles.popover, className)} style={{'--overlay-width': `${width}px`, pointerEvents: open ? 'auto' : 'none'} as OverlayStyle} role={role} aria-modal={modal && role === 'dialog' && open || undefined}
       aria-label={accessibilityLabel} aria-labelledby={accessibilityLabel ? undefined : `${id}-title`} aria-describedby={description === undefined ? undefined : `${id}-description`}
-      data-state={open ? 'open' : 'closed'} data-testid={testID}
+      data-state={open ? 'open' : 'closed'} data-within-dialog={withinDialog || undefined} data-testid={testID}
       onOpenAutoFocus={focus.onOpenAutoFocus} onCloseAutoFocus={focus.onCloseAutoFocus}
       onEscapeKeyDown={() => { reason.current = 'escape'; }}
-      onInteractOutside={() => { reason.current = 'outside'; if (!modal) focus.suppressRestore.current = true; }}
+      onInteractOutside={event => { if (!open || focus.suppressRestore.current || event.target instanceof Node && anchorRef?.current?.contains(event.target)) { event.preventDefault(); return; } reason.current = 'outside'; if (!modal) focus.suppressRestore.current = true; }}
       onKeyDown={event => { onContentKeyDown?.(event); if (event.key === 'Tab' && role === 'menu' && !event.defaultPrevented) {
         event.preventDefault(); focus.suppressRestore.current = true;
-        const origin = returnFocusRef?.current ?? anchorRef?.current ?? document.querySelector<HTMLElement>(`[aria-controls="${event.currentTarget.id}"]`);
+        const origin = returnFocusRef?.current ?? anchorRef?.current ?? triggerElement.current;
         const candidates = focusable(document.body).filter(item => !event.currentTarget.contains(item));
         const position = origin ? candidates.indexOf(origin) : -1;
         const next = position < 0 ? candidates[0] : candidates[(position + (event.shiftKey ? -1 : 1) + candidates.length) % candidates.length];
@@ -44,7 +47,7 @@ export function Popover({open, onOpenChange, title, children, description, trigg
       <span id={`${id}-title`} className={styles.visuallyHidden}>{title}</span>
       {description !== undefined && <div id={`${id}-description`} className={styles.popoverDescription}>{description}</div>}
       {children}
-    </RadixPopover.Content></RadixPopover.Portal>}
+    </RadixPopover.Content></div></RadixPopover.Portal>}
   </RadixPopover.Root>;
 }
 
@@ -96,7 +99,12 @@ function EntryGroups({items, phone}: {items: readonly MenuEntry[]; phone: boolea
 }
 
 export function Menu({items, children, open, onOpenChange, title, presentation = 'responsive', ...props}: MenuProps) {
-  const phone = usePhone(), typeahead = useRef({text: '', time: 0}), initial = useRef<HTMLElement | null>(null);
+  const phone = usePhone(), typeahead = useRef({text: '', time: 0}), initial = useRef<HTMLElement | null>(null), input = useRef<'pointer' | 'keyboard'>('keyboard');
+  useEffect(() => {
+    const pointer = () => { input.current = 'pointer'; }, keyboard = () => { input.current = 'keyboard'; };
+    document.addEventListener('pointerdown', pointer, true); document.addEventListener('keydown', keyboard, true);
+    return () => { document.removeEventListener('pointerdown', pointer, true); document.removeEventListener('keydown', keyboard, true); };
+  }, []);
   const sheet = phone && presentation === 'responsive';
   useExclusiveAnchor(sheet && open, onOpenChange);
   const keydown = (event: KeyboardEvent<HTMLDivElement>) => {
@@ -117,7 +125,7 @@ export function Menu({items, children, open, onOpenChange, title, presentation =
     }
     if (next) { event.preventDefault(); focusElement(next); }
   };
-  const content = <MenuContext.Provider value={{change: onOpenChange}}><div ref={element => { initial.current = element?.querySelector<HTMLButtonElement>('[data-menu-item]:not(:disabled)') ?? null; }} onKeyDown={keydown} className={styles.menuItems}>
+  const content = <MenuContext.Provider value={{change: onOpenChange}}><div tabIndex={-1} ref={element => { initial.current = input.current === 'pointer' ? element : element?.querySelector<HTMLButtonElement>('[data-menu-item]:not(:disabled)') ?? null; }} onKeyDown={keydown} className={styles.menuItems}>
     {items && <EntryGroups items={items} phone={sheet} />}
     {children}
   </div></MenuContext.Provider>;

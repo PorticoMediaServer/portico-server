@@ -4,7 +4,7 @@ import {springs} from '@design';
 import {Button} from '../controls/Button';
 import {Icon, type IconName} from '../Icon';
 import {dismissToast, springFrames} from './model';
-import {classes, usePresence, useSurfaceMotion} from './shared';
+import {classes, usePresence, useReducedMotion, useSurfaceMotion} from './shared';
 import type {OverlayChange, OverlayDismissReason, OverlayStyle} from './types';
 import styles from './overlays.module.css';
 
@@ -38,11 +38,11 @@ export function Toast({open, onOpenChange, message, action, icon, artwork, tone 
     }} onPointerUp={event => {
       const current = drag.current; if (!current || current.pointer !== event.pointerId) return;
       drag.current = null;
-      const x = event.clientX - current.startX, y = Math.max(0, event.clientY - current.startY), paused = event.timeStamp - current.time > 100;
+      const x = current.baseX + event.clientX - current.startX, y = current.baseY + Math.max(0, event.clientY - current.startY), paused = event.timeStamp - current.time > 100;
       if (dismissToast(x, y, paused ? 0 : current.velocityX, paused ? 0 : current.velocityY)) {
         const horizontal = Math.abs(x) > y;
-        const exitX = current.baseX + x + (horizontal ? Math.sign(x || current.velocityX) * Math.max(80, Math.abs(current.velocityX) * .12) : 0);
-        const exitY = current.baseY + y + (horizontal ? 0 : Math.max(80, current.velocityY * .12));
+        const exitX = x + (horizontal ? Math.sign(x || current.velocityX) * Math.max(80, Math.abs(current.velocityX) * .12) : 0);
+        const exitY = y + (horizontal ? 0 : Math.max(80, current.velocityY * .12));
         exitTransform.current = `translate(${exitX}px,${exitY}px)`; onOpenChange(false, 'gesture');
       }
       else {
@@ -52,8 +52,8 @@ export function Toast({open, onOpenChange, message, action, icon, artwork, tone 
         event.currentTarget.style.transform = 'none'; event.currentTarget.style.opacity = '1';
       }
       if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-    }} onPointerCancel={event => { drag.current = null; event.currentTarget.style.transform = 'none'; }} onLostPointerCapture={event => { if (drag.current) { drag.current = null; event.currentTarget.style.transform = 'none'; } }}>
-    {artwork && <span className={styles.toastArtwork}>{artwork}</span>}{icon && <Icon name={icon} size={20} className={styles.feedbackIcon} />}
+    }} onPointerCancel={event => { drag.current = null; event.currentTarget.style.transform = 'none'; event.currentTarget.style.opacity = '1'; }} onLostPointerCapture={event => { if (drag.current) { drag.current = null; event.currentTarget.style.transform = 'none'; } }}>
+    {artwork && <span className={styles.toastArtwork}>{artwork}</span>}{icon && <Icon name={icon} size={18} className={styles.feedbackIcon} />}
     <span className={styles.toastMessage}>{message}</span>
     {action && <Button variant="glass" size="xs" icon={action.icon} iconSize={16} aria-label={action.accessibilityLabel} className={styles.toastAction} onClick={() => { action.onAction(); onOpenChange(false, 'action'); }}>{action.label}</Button>}
   </div>;
@@ -63,6 +63,7 @@ export type ToastHostProps = {toast: ToastData | null; onDismiss: (id: string, r
 /** Controlled single occupant: callers replace `toast`; no global queue or business state. */
 export function ToastHost({toast, onDismiss, bottomInset, className, toastClassName, testID}: ToastHostProps) {
   const current = useRef(toast), last = useRef(toast), dismiss = useRef(onDismiss), host = useRef<HTMLDivElement | null>(null);
+  const replacement = useRef<Animation | null>(null), reduced = useReducedMotion(host);
   const clock = useRef<{pause: (source: string) => void; resume: (source: string) => void} | null>(null);
   current.current = toast; dismiss.current = onDismiss; if (toast) last.current = toast;
   const id = toast?.id, hasAction = !!toast?.action;
@@ -83,7 +84,11 @@ export function ToastHost({toast, onDismiss, bottomInset, className, toastClassN
     document.addEventListener('pointerup', release); document.addEventListener('pointercancel', release); window.addEventListener('blur', blur); window.addEventListener('focus', focus);
     return () => { clear(); clock.current = null; document.removeEventListener('visibilitychange', visibility); document.removeEventListener('pointerup', release); document.removeEventListener('pointercancel', release); window.removeEventListener('blur', blur); window.removeEventListener('focus', focus); };
   }, [id, hasAction]);
-  useLayoutEffect(() => { if (id && host.current) host.current.animate([{opacity: 0}, {opacity: 1}], {duration: 180, easing: 'linear'}); }, [id]);
+  useLayoutEffect(() => {
+    replacement.current?.cancel();
+    if (id && host.current) replacement.current = host.current.animate([{opacity: 0}, {opacity: 1}], {duration: reduced ? 160 : 180, easing: 'linear'});
+    return () => replacement.current?.cancel();
+  }, [id, reduced]);
   const value = toast ?? last.current;
   if (!value || typeof document === 'undefined') return null;
   return createPortal(<div ref={host} className={classes(styles.toastHost, className)} data-testid={testID} style={bottomInset === undefined ? undefined : {'--overlay-toast-bottom': `${bottomInset}px`} as OverlayStyle}

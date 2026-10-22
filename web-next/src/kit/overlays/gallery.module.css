@@ -4,15 +4,15 @@
 .toolbar { display: flex; align-items: center; gap: 16px; height: 52px; }
 .output { position: absolute; left: 24px; bottom: 24px; }
 .sortRows > button { height: 36px; }
-.sortOrder { padding: 2px 4px 6px; }
-.sortHeading { margin: 10px 12px 6px; font-size: 13px; font-weight: 700; line-height: normal; color: var(--color-text-tertiary); }
+.sortOrder { margin: 2px 4px 6px; background: var(--color-raised); }
+.sortHeading { margin: 0; padding: 10px 12px 6px; font-size: 13px; font-weight: 700; line-height: normal; color: var(--color-text-tertiary); }
 .surfaceCopy { margin: 0; }
 .destructive.destructive { color: var(--color-record); background: rgba(241,121,121,.14); }
 .recordingDialog { --overlay-width: 436px; }
 .historyDialog { padding: 28px 28px 24px; border-radius: 18px; background: var(--color-raised-high); }
 .historyDialog h2 { margin: 0 0 10px; font-size: 22px; letter-spacing: -.02em; line-height: normal; }
 .historyDialog footer { margin-top: 24px; }
-.bannerPosition { position: absolute; top: 92px; left: 50%; translate: -50% 0; }
+.bannerPosition { width: max-content; max-width: calc(100% - 24px); position: absolute; top: 92px; left: 50%; translate: -50% 0; }
 .noticePosition { position: absolute; inset: 60px 12px auto; }
 .toastPosition { position: absolute; bottom: 28px; left: 50%; translate: -50% 0; white-space: nowrap; }
 .toastBackplate, .bannerBackplate { position: absolute; left: 50%; top: 50%; translate: -50% -50%; width: 480px; height: 200px; overflow: hidden; border-radius: 12px; }
@@ -25,21 +25,24 @@
 .phoneBannerBackplate { position: absolute; inset: 0; width: 390px; height: 200px; overflow: hidden; border-radius: 12px; }
 .phoneBannerBackplate .bannerBackdrop { object-position: 62% 20%; }
 .phoneBannerBackplate .bannerPosition { top: 106px; }
-.version { margin-top: 14px; padding: 18px 20px 20px; border-radius: 14px; background: var(--color-raised-high); }
-.version h3 { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 0; font-size: 17px; line-height: normal; font-weight: 800; }
-.versionBadge { padding: 3px 8px; border-radius: 6px; background: rgba(237,245,250,.1); color: var(--color-text-secondary); font-size: 12px; font-weight: 700; }
-.version dl { display: grid; grid-template-columns: 92px 1fr; gap: 9px 14px; margin: 14px 0 0; font-size: 14px; line-height: 1.4; }
-.version dt { color: var(--color-text-tertiary); }
-.version dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 3px 12px; margin: 0; color: var(--color-text); font-weight: 600; }
-.track { display: flex; flex-wrap: wrap; gap: 6px 12px; width: 100%; }
-.track > span:not(:first-child) { color: var(--color-text-secondary); font-weight: 500; }
-.note { margin: 16px 2px 0; font-size: 13.5px; line-height: 1.55; color: var(--color-text-tertiary); }
-.owner { margin-top: 20px; padding: 18px 20px 14px; border-radius: 14px; background: var(--color-raised-high); box-shadow: inset 0 0 0 1px rgba(92,179,226,.28); }
-.owner h3 { margin: 0 0 10px; font-size: 17px; line-height: normal; font-weight: 800; }
-.location { margin-top: 12px; overflow-wrap: anywhere; color: var(--color-text-secondary); font-size: 13px; line-height: 1.4; }
-.ownerActions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
-.sheetFiles { padding: 0 16px 34px; }
-.sheetFiles .version { margin-top: 8px; padding: 14px; }
-.sheetFiles .version h3 { gap: 8px; font-size: 15.5px; }
-.sheetFiles .version dl { grid-template-columns: 76px 1fr; gap: 6px 10px; font-size: 13px; }
-.sheetFiles .note { font-size: 12.5px; }
+
+.historyDialog.historyDialog footer > button { height: 44px; padding: 0 20px; font-size: 15.5px; }
+.harnessControls { display: flex; flex-wrap: wrap; gap: 12px; }
+.anchoredTrigger { position: absolute; left: 20px; bottom: 80px; }
+.harnessBody { display: grid; gap: 12px; }
+
+.recordingDialog footer > button { font-size: 15px; gap: 8px; }
+
+.versionChoice > span:first-child { color: var(--color-accent-strong); background: rgba(64,159,212,.18); }
+
+.sortOrder.sortOrder { display: flex; box-shadow: none; }
+.sortOrder [role="radio"] { flex: 1; padding: 0 12px; }
+.sortOrder [role="radio"][aria-checked="true"] { background: var(--color-raised-bright); box-shadow: 0 1px 2px rgba(0,0,0,.3); }
+
+.phoneRecordingSheet { padding-bottom: 22px; }
+.phoneRecordingHeader > div:nth-child(2) { padding: 4px 20px 2px; }
+.phoneRecordingBody > div { display: flow-root; }
+.phoneRecordingBody p { margin: 6px 20px 0; font-size: 14px; line-height: 1.5; color: var(--color-text-secondary); }
+.phoneRecordingBody p b { color: var(--color-text); }
+.phoneRecordingActions { display: flex; flex-direction: column; gap: 10px; margin: 20px 16px 0; }
+.phoneRecordingActions.phoneRecordingActions > button { width: 100%; height: 50px; border-radius: 10px; font-size: 15px; }

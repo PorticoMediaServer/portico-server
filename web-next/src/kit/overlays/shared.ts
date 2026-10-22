@@ -9,6 +9,13 @@ export function focusable(root: ParentNode): HTMLElement[] {
 }
 export function focusElement(element: HTMLElement | null | undefined) { if (element?.isConnected) element.focus({preventScroll: true}); }
 
+/** Portalled child surfaces must paint above the dialog that contains their trigger. */
+export function useInDialog(open: boolean, anchor: RefObject<HTMLElement | null>) {
+  const [inside, setInside] = useState(false);
+  useLayoutEffect(() => { setInside(!!anchor.current?.closest('[role="dialog"],[role="alertdialog"]')); }, [open, anchor]);
+  return inside;
+}
+
 export function usePhone() {
   const [phone, setPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia('(max-width: 599px)').matches);
   useEffect(() => {
@@ -100,12 +107,14 @@ export function usePresence(open: boolean, milliseconds: number) {
 export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel' | 'fade' | 'toast' | 'banner', exitTransform?: RefObject<string | null>) {
   const [element, setElement] = useState<HTMLElement | null>(null);
   const animation = useRef<Animation | null>(null);
+  const motionElement = useRef<HTMLElement | null>(null); motionElement.current = element;
+  const prefersReduced = useReducedMotion(motionElement);
   const first = useRef(true);
   const previousElement = useRef<HTMLElement | null>(null);
   useLayoutEffect(() => {
     if (!element) return;
     if (previousElement.current !== element) { first.current = true; previousElement.current = element; }
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches || !!element.closest('[data-reduce-motion="true"]') || document.documentElement.dataset.reduceMotion === 'true';
+    const reduced = prefersReduced || window.matchMedia('(prefers-reduced-motion: reduce)').matches || !!element.closest('[data-reduce-motion="true"]') || document.documentElement.dataset.reduceMotion === 'true';
     const style = getComputedStyle(element), entering = open;
     const initialTransform = kind === 'dialog' ? 'scale(.98)' : kind === 'menu' ? 'translateY(-4px) scale(.98)' : kind === 'panel' ? 'translateX(24px)' : kind === 'toast' ? 'translateY(24px)' : kind === 'banner' ? 'translateY(-100%)' : 'none';
     const from = {opacity: first.current && entering ? 0 : Number(style.opacity), transform: reduced ? 'none' : first.current && entering ? initialTransform : style.transform};
@@ -119,7 +128,7 @@ export function useSurfaceMotion(open: boolean, kind: 'dialog' | 'menu' | 'panel
       current.cancel(); animation.current = null;
     };
     return () => { /* The next run reads the painted value before cancelling. */ };
-  }, [element, open, kind, exitTransform]);
+  }, [element, open, kind, exitTransform, prefersReduced]);
   useEffect(() => () => animation.current?.cancel(), []);
   return setElement;
 }
