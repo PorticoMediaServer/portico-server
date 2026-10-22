@@ -2455,6 +2455,34 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "homeTitleContext": {
+              "properties": {
+                "genres": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "genres"
+              ],
+              "type": "object"
+            },
             "id": {
               "type": "string"
             },
@@ -2751,6 +2779,34 @@ export const schemas = {
                     "details",
                     "state",
                     "selection"
+                  ],
+                  "type": "object"
+                },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
                   ],
                   "type": "object"
                 },
@@ -3604,6 +3660,34 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "homeTitleContext": {
+              "properties": {
+                "genres": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "genres"
+              ],
+              "type": "object"
+            },
             "id": {
               "type": "string"
             },
@@ -3900,6 +3984,34 @@ export const schemas = {
                     "details",
                     "state",
                     "selection"
+                  ],
+                  "type": "object"
+                },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
                   ],
                   "type": "object"
                 },
@@ -33798,6 +33910,34 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "homeTitleContext": {
+                              "properties": {
+                                "genres": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "seasonCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "genres"
+                              ],
+                              "type": "object"
+                            },
                             "id": {
                               "type": "string"
                             },
@@ -34094,6 +34234,34 @@ export const schemas = {
                                     "details",
                                     "state",
                                     "selection"
+                                  ],
+                                  "type": "object"
+                                },
+                                "homeTitleContext": {
+                                  "properties": {
+                                    "genres": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    },
+                                    "seasonCount": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "year": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "genres"
                                   ],
                                   "type": "object"
                                 },
@@ -34733,6 +34901,34 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "homeTitleContext": {
+                          "properties": {
+                            "genres": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "seasonCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "year": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "genres"
+                          ],
+                          "type": "object"
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -35029,6 +35225,34 @@ export const schemas = {
                                 "details",
                                 "state",
                                 "selection"
+                              ],
+                              "type": "object"
+                            },
+                            "homeTitleContext": {
+                              "properties": {
+                                "genres": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "seasonCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "genres"
                               ],
                               "type": "object"
                             },
@@ -36145,6 +36369,34 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "homeTitleContext": {
+                              "properties": {
+                                "genres": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "seasonCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "genres"
+                              ],
+                              "type": "object"
+                            },
                             "id": {
                               "type": "string"
                             },
@@ -36441,6 +36693,34 @@ export const schemas = {
                                     "details",
                                     "state",
                                     "selection"
+                                  ],
+                                  "type": "object"
+                                },
+                                "homeTitleContext": {
+                                  "properties": {
+                                    "genres": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    },
+                                    "seasonCount": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "year": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "genres"
                                   ],
                                   "type": "object"
                                 },
@@ -37605,6 +37885,34 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -37901,6 +38209,34 @@ export const schemas = {
                               "details",
                               "state",
                               "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
                             ],
                             "type": "object"
                           },
@@ -38537,6 +38873,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -38833,6 +39197,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
@@ -39949,6 +40341,34 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -40245,6 +40665,34 @@ export const schemas = {
                               "details",
                               "state",
                               "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
                             ],
                             "type": "object"
                           },
@@ -41215,6 +41663,34 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -41511,6 +41987,34 @@ export const schemas = {
                         "details",
                         "state",
                         "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
                       ],
                       "type": "object"
                     },
@@ -42174,6 +42678,34 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -42470,6 +43002,34 @@ export const schemas = {
                         "details",
                         "state",
                         "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
                       ],
                       "type": "object"
                     },
@@ -43339,6 +43899,34 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -43635,6 +44223,34 @@ export const schemas = {
                               "details",
                               "state",
                               "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
                             ],
                             "type": "object"
                           },
@@ -44274,6 +44890,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -44570,6 +45214,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
@@ -45686,6 +46358,34 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -45982,6 +46682,34 @@ export const schemas = {
                               "details",
                               "state",
                               "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
                             ],
                             "type": "object"
                           },
@@ -47146,6 +47874,34 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -47442,6 +48198,34 @@ export const schemas = {
                         "details",
                         "state",
                         "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
                       ],
                       "type": "object"
                     },
@@ -48078,6 +48862,34 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "homeTitleContext": {
+              "properties": {
+                "genres": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "genres"
+              ],
+              "type": "object"
+            },
             "id": {
               "type": "string"
             },
@@ -48374,6 +49186,34 @@ export const schemas = {
                     "details",
                     "state",
                     "selection"
+                  ],
+                  "type": "object"
+                },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
                   ],
                   "type": "object"
                 },
@@ -49490,6 +50330,34 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -49786,6 +50654,34 @@ export const schemas = {
                         "details",
                         "state",
                         "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
                       ],
                       "type": "object"
                     },
@@ -51375,6 +52271,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -51671,6 +52595,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
@@ -53181,6 +54133,34 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -53477,6 +54457,34 @@ export const schemas = {
                               "details",
                               "state",
                               "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
                             ],
                             "type": "object"
                           },
@@ -57579,6 +58587,34 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "homeTitleContext": {
+                              "properties": {
+                                "genres": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "seasonCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "genres"
+                              ],
+                              "type": "object"
+                            },
                             "id": {
                               "type": "string"
                             },
@@ -57875,6 +58911,34 @@ export const schemas = {
                                     "details",
                                     "state",
                                     "selection"
+                                  ],
+                                  "type": "object"
+                                },
+                                "homeTitleContext": {
+                                  "properties": {
+                                    "genres": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    },
+                                    "seasonCount": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "year": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "genres"
                                   ],
                                   "type": "object"
                                 },
@@ -58514,6 +59578,34 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "homeTitleContext": {
+                          "properties": {
+                            "genres": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "seasonCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "year": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "genres"
+                          ],
+                          "type": "object"
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -58810,6 +59902,34 @@ export const schemas = {
                                 "details",
                                 "state",
                                 "selection"
+                              ],
+                              "type": "object"
+                            },
+                            "homeTitleContext": {
+                              "properties": {
+                                "genres": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "seasonCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "genres"
                               ],
                               "type": "object"
                             },
@@ -59926,6 +61046,34 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "homeTitleContext": {
+                              "properties": {
+                                "genres": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "seasonCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "genres"
+                              ],
+                              "type": "object"
+                            },
                             "id": {
                               "type": "string"
                             },
@@ -60222,6 +61370,34 @@ export const schemas = {
                                     "details",
                                     "state",
                                     "selection"
+                                  ],
+                                  "type": "object"
+                                },
+                                "homeTitleContext": {
+                                  "properties": {
+                                    "genres": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    },
+                                    "seasonCount": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "year": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "genres"
                                   ],
                                   "type": "object"
                                 },
@@ -61386,6 +62562,34 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -61682,6 +62886,34 @@ export const schemas = {
                               "details",
                               "state",
                               "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
                             ],
                             "type": "object"
                           },
@@ -62318,6 +63550,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -62614,6 +63874,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
@@ -63730,6 +65018,34 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -64026,6 +65342,34 @@ export const schemas = {
                               "details",
                               "state",
                               "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
                             ],
                             "type": "object"
                           },
@@ -67825,6 +69169,34 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "homeTitleContext": {
+            "properties": {
+              "genres": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "year": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "genres"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -68121,6 +69493,34 @@ export const schemas = {
                   "details",
                   "state",
                   "selection"
+                ],
+                "type": "object"
+              },
+              "homeTitleContext": {
+                "properties": {
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "genres"
                 ],
                 "type": "object"
               },
@@ -68966,6 +70366,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -69262,6 +70690,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
@@ -70050,6 +71506,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -70346,6 +71830,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
@@ -71589,6 +73101,34 @@ export const schemas = {
                 ],
                 "type": "object"
               },
+              "homeTitleContext": {
+                "properties": {
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "genres"
+                ],
+                "type": "object"
+              },
               "id": {
                 "type": "string"
               },
@@ -71885,6 +73425,34 @@ export const schemas = {
                       "details",
                       "state",
                       "selection"
+                    ],
+                    "type": "object"
+                  },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
                     ],
                     "type": "object"
                   },
@@ -72730,6 +74298,34 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -73026,6 +74622,34 @@ export const schemas = {
                               "details",
                               "state",
                               "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
                             ],
                             "type": "object"
                           },
@@ -73800,6 +75424,34 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "homeTitleContext": {
+            "properties": {
+              "genres": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "year": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "genres"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -74096,6 +75748,34 @@ export const schemas = {
                   "details",
                   "state",
                   "selection"
+                ],
+                "type": "object"
+              },
+              "homeTitleContext": {
+                "properties": {
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "genres"
                 ],
                 "type": "object"
               },
@@ -78495,6 +80175,34 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -78791,6 +80499,34 @@ export const schemas = {
                         "details",
                         "state",
                         "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
                       ],
                       "type": "object"
                     },
@@ -79450,6 +81186,34 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -79746,6 +81510,34 @@ export const schemas = {
                         "details",
                         "state",
                         "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
                       ],
                       "type": "object"
                     },
@@ -80537,6 +82329,34 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -80833,6 +82653,34 @@ export const schemas = {
                         "details",
                         "state",
                         "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
                       ],
                       "type": "object"
                     },
@@ -83006,6 +84854,34 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "homeTitleContext": {
+            "properties": {
+              "genres": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "year": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "genres"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -83302,6 +85178,34 @@ export const schemas = {
                   "details",
                   "state",
                   "selection"
+                ],
+                "type": "object"
+              },
+              "homeTitleContext": {
+                "properties": {
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "genres"
                 ],
                 "type": "object"
               },
@@ -84147,6 +86051,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -84443,6 +86375,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
@@ -86052,6 +88012,34 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "homeTitleContext": {
+            "properties": {
+              "genres": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "kind": {
+                "type": "string"
+              },
+              "seasonCount": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
+              "year": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "genres"
+            ],
+            "type": "object"
+          },
           "id": {
             "type": "string"
           },
@@ -86348,6 +88336,34 @@ export const schemas = {
                   "details",
                   "state",
                   "selection"
+                ],
+                "type": "object"
+              },
+              "homeTitleContext": {
+                "properties": {
+                  "genres": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "kind": {
+                    "type": "string"
+                  },
+                  "seasonCount": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
+                  "year": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "genres"
                 ],
                 "type": "object"
               },
@@ -87193,6 +89209,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -87489,6 +89533,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
@@ -88388,6 +90460,34 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -88684,6 +90784,34 @@ export const schemas = {
                         "details",
                         "state",
                         "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
                       ],
                       "type": "object"
                     },
@@ -89375,6 +91503,34 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -89671,6 +91827,34 @@ export const schemas = {
                         "details",
                         "state",
                         "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
                       ],
                       "type": "object"
                     },
@@ -92476,6 +94660,34 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "homeTitleContext": {
+                              "properties": {
+                                "genres": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "seasonCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "genres"
+                              ],
+                              "type": "object"
+                            },
                             "id": {
                               "type": "string"
                             },
@@ -92772,6 +94984,34 @@ export const schemas = {
                                     "details",
                                     "state",
                                     "selection"
+                                  ],
+                                  "type": "object"
+                                },
+                                "homeTitleContext": {
+                                  "properties": {
+                                    "genres": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    },
+                                    "seasonCount": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "year": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "genres"
                                   ],
                                   "type": "object"
                                 },
@@ -93411,6 +95651,34 @@ export const schemas = {
                           ],
                           "type": "object"
                         },
+                        "homeTitleContext": {
+                          "properties": {
+                            "genres": {
+                              "items": {
+                                "type": "string"
+                              },
+                              "type": "array"
+                            },
+                            "kind": {
+                              "type": "string"
+                            },
+                            "seasonCount": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
+                            "year": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "kind",
+                            "genres"
+                          ],
+                          "type": "object"
+                        },
                         "id": {
                           "type": "string"
                         },
@@ -93707,6 +95975,34 @@ export const schemas = {
                                 "details",
                                 "state",
                                 "selection"
+                              ],
+                              "type": "object"
+                            },
+                            "homeTitleContext": {
+                              "properties": {
+                                "genres": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "seasonCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "genres"
                               ],
                               "type": "object"
                             },
@@ -94823,6 +97119,34 @@ export const schemas = {
                               ],
                               "type": "object"
                             },
+                            "homeTitleContext": {
+                              "properties": {
+                                "genres": {
+                                  "items": {
+                                    "type": "string"
+                                  },
+                                  "type": "array"
+                                },
+                                "kind": {
+                                  "type": "string"
+                                },
+                                "seasonCount": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                },
+                                "year": {
+                                  "maximum": 9007199254740991,
+                                  "minimum": -9007199254740991,
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "kind",
+                                "genres"
+                              ],
+                              "type": "object"
+                            },
                             "id": {
                               "type": "string"
                             },
@@ -95119,6 +97443,34 @@ export const schemas = {
                                     "details",
                                     "state",
                                     "selection"
+                                  ],
+                                  "type": "object"
+                                },
+                                "homeTitleContext": {
+                                  "properties": {
+                                    "genres": {
+                                      "items": {
+                                        "type": "string"
+                                      },
+                                      "type": "array"
+                                    },
+                                    "kind": {
+                                      "type": "string"
+                                    },
+                                    "seasonCount": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    },
+                                    "year": {
+                                      "maximum": 9007199254740991,
+                                      "minimum": -9007199254740991,
+                                      "type": "integer"
+                                    }
+                                  },
+                                  "required": [
+                                    "kind",
+                                    "genres"
                                   ],
                                   "type": "object"
                                 },
@@ -96283,6 +98635,34 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -96579,6 +98959,34 @@ export const schemas = {
                               "details",
                               "state",
                               "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
                             ],
                             "type": "object"
                           },
@@ -97215,6 +99623,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -97511,6 +99947,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
@@ -98627,6 +101091,34 @@ export const schemas = {
                         ],
                         "type": "object"
                       },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
+                        ],
+                        "type": "object"
+                      },
                       "id": {
                         "type": "string"
                       },
@@ -98923,6 +101415,34 @@ export const schemas = {
                               "details",
                               "state",
                               "selection"
+                            ],
+                            "type": "object"
+                          },
+                          "homeTitleContext": {
+                            "properties": {
+                              "genres": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "seasonCount": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              },
+                              "year": {
+                                "maximum": 9007199254740991,
+                                "minimum": -9007199254740991,
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "kind",
+                              "genres"
                             ],
                             "type": "object"
                           },
@@ -101231,6 +103751,34 @@ export const schemas = {
                   ],
                   "type": "object"
                 },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
+                  ],
+                  "type": "object"
+                },
                 "id": {
                   "type": "string"
                 },
@@ -101527,6 +104075,34 @@ export const schemas = {
                         "details",
                         "state",
                         "selection"
+                      ],
+                      "type": "object"
+                    },
+                    "homeTitleContext": {
+                      "properties": {
+                        "genres": {
+                          "items": {
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "kind": {
+                          "type": "string"
+                        },
+                        "seasonCount": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
+                        "year": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "kind",
+                        "genres"
                       ],
                       "type": "object"
                     },
@@ -118866,6 +121442,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -119162,6 +121766,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
@@ -119876,6 +122508,34 @@ export const schemas = {
               ],
               "type": "object"
             },
+            "homeTitleContext": {
+              "properties": {
+                "genres": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "seasonCount": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "year": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "kind",
+                "genres"
+              ],
+              "type": "object"
+            },
             "id": {
               "type": "string"
             },
@@ -120172,6 +122832,34 @@ export const schemas = {
                     "details",
                     "state",
                     "selection"
+                  ],
+                  "type": "object"
+                },
+                "homeTitleContext": {
+                  "properties": {
+                    "genres": {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "kind": {
+                      "type": "string"
+                    },
+                    "seasonCount": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    },
+                    "year": {
+                      "maximum": 9007199254740991,
+                      "minimum": -9007199254740991,
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "genres"
                   ],
                   "type": "object"
                 },
@@ -140143,6 +142831,34 @@ export const schemas = {
                     ],
                     "type": "object"
                   },
+                  "homeTitleContext": {
+                    "properties": {
+                      "genres": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "seasonCount": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      },
+                      "year": {
+                        "maximum": 9007199254740991,
+                        "minimum": -9007199254740991,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "genres"
+                    ],
+                    "type": "object"
+                  },
                   "id": {
                     "type": "string"
                   },
@@ -140439,6 +143155,34 @@ export const schemas = {
                           "details",
                           "state",
                           "selection"
+                        ],
+                        "type": "object"
+                      },
+                      "homeTitleContext": {
+                        "properties": {
+                          "genres": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          },
+                          "kind": {
+                            "type": "string"
+                          },
+                          "seasonCount": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "year": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          }
+                        },
+                        "required": [
+                          "kind",
+                          "genres"
                         ],
                         "type": "object"
                       },
