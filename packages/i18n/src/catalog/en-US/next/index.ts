@@ -9,6 +9,15 @@ import {statesMessages} from './states.ts';
 import {shellMessages} from './shell.ts';
 import {dockMessages} from './dock.ts';
 import {homeMessages} from './home.ts';
+import {controlsNativeMessages} from './controls-native.ts';
+import {overlaysNativeMessages} from './overlays-native.ts';
+import {artworkNativeMessages} from './artwork-native.ts';
+import {cardsNativeMessages} from './cards-native.ts';
+import {browseNativeMessages} from './browse-native.ts';
+import {layoutNativeMessages} from './layout-native.ts';
+import {statesNativeMessages} from './states-native.ts';
+import {shellNativeMessages} from './shell-native.ts';
+import {dockNativeMessages} from './dock-native.ts';
 
 export const nextMessages = {
   ...platformMessages,
@@ -22,6 +31,15 @@ export const nextMessages = {
   ...shellMessages,
   ...dockMessages,
   ...homeMessages,
+  ...controlsNativeMessages,
+  ...overlaysNativeMessages,
+  ...artworkNativeMessages,
+  ...cardsNativeMessages,
+  ...browseNativeMessages,
+  ...layoutNativeMessages,
+  ...statesNativeMessages,
+  ...shellNativeMessages,
+  ...dockNativeMessages,
 } as const satisfies Record<`next.${string}`, string>;
 
 export type NextMessageId = keyof typeof nextMessages;

@@ -1,0 +1,14 @@
+import {defineConfig} from 'vite';
+import react from '@vitejs/plugin-react';
+import {enUS} from '../packages/i18n/src/catalog/en-US.ts';
+import {aliases, assetNames, browserCheck, browserFloor, kitFamilies} from './scripts/config.mjs';
+export default defineConfig({
+  plugins: [react(), browserCheck(enUS), kitFamilies()],
+  resolve: {alias: aliases, dedupe: ['react', 'react-dom']},
+  server: {
+    host: '127.0.0.1', port: 5174, strictPort: true,
+    fs: {allow: ['..']},
+    proxy: {'/v1': {target: process.env.PORTICO_DEV_SERVER_URL ?? 'http://127.0.0.1:32500', changeOrigin: false}},
+  },
+  build: {sourcemap: false, target: browserFloor, cssTarget: browserFloor, assetsInlineLimit: 0, rolldownOptions: {output: assetNames}},
+});
