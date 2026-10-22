@@ -17,7 +17,7 @@ export function CardArtwork({artwork, fallback, position, visible, arrivalDurati
 
 export function PosterCard({titleLines, progressPlacement = 'edge', ...props}: MediaCardProps & {titleLines?: 1 | 2; progressPlacement?: 'edge' | 'inset'}) {
   titleLines ??= props.context === 'grid' || props.density === 'grid' ? 2 : 1;
-  return <CardFrame {...props} className={cx(progressPlacement === 'inset' && styles.insetProgress, props.className)} kind="poster"><span className={styles.art}><CardArtwork {...props} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} titleLines={titleLines} /></CardFrame>;
+  return <CardFrame {...props} className={cx(progressPlacement === 'inset' && styles.insetProgress, props.className)} kind="poster"><span className={styles.art}><CardArtwork {...props} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} titleLines={titleLines} /></CardFrame>;
 }
 
 export function WideCard(props: MediaCardProps) {
@@ -25,13 +25,13 @@ export function WideCard(props: MediaCardProps) {
 }
 
 export function SquareCard({variant = 'music', progressPlacement = 'edge', ...props}: MediaCardProps & {variant?: 'music' | 'audiobook'; progressPlacement?: 'edge' | 'below' | 'inset'}) {
-  return <CardFrame {...props} className={cx(progressPlacement === 'below' && styles.belowProgress, progressPlacement === 'inset' && styles.insetProgress, props.className)} kind="square"><CardAmbient {...props} /><span className={styles.art}><CardArtwork {...props} /><CardBadges watched={props.watched} completionLabel={variant === 'audiobook' ? defaultI18n.t('next.cards.finished') : undefined} isNew={props.isNew} progress={progressPlacement === 'below' ? undefined : props.model.progress} /></span>{progressPlacement === 'below' && <Progress value={props.model.progress} />}<CardCaption model={props.model} extraCaption={props.extraCaption} /></CardFrame>;
+  return <CardFrame {...props} className={cx(progressPlacement === 'below' && styles.belowProgress, progressPlacement === 'inset' && styles.insetProgress, props.className)} kind="square"><CardAmbient {...props} /><span className={styles.art}><CardArtwork {...props} /><CardBadges watched={props.watched} completionLabel={variant === 'audiobook' ? defaultI18n.t('next.cards.finished') : undefined} isNew={props.isNew} progress={progressPlacement === 'below' ? undefined : props.model.progress} /></span>{progressPlacement === 'below' && <Progress value={props.model.progress} />}<CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} /></CardFrame>;
 }
 
 export type CircleCardProps = Omit<MediaCardProps, 'artwork' | 'fallback' | 'ambient' | 'palette' | 'position' | 'arrivalDurationMs'> & {covers: readonly ArtworkSource[]; initials?: string; variant?: 'artist' | 'person'};
 export function CircleCard({covers, initials, variant = initials ? 'person' : 'artist', ...props}: CircleCardProps) {
   const initialsSize = props.context === 'search' ? 34 : props.context === 'detail' ? 30 : undefined;
-  return <CardFrame {...props} kind="circle"><span className={styles.art}>{variant === 'person' ? <PersonCircle covers={covers} initials={initials ?? ''} alt="" initialsSize={initialsSize} visible={props.visible} /> : <CircleArt covers={covers} initials={initials} alt="" treatment={props.context === 'search' ? 'search' : 'artist'} initialsSize={initialsSize} visible={props.visible} />}</span><CardCaption model={props.model} extraCaption={props.extraCaption} /></CardFrame>;
+  return <CardFrame {...props} kind="circle"><span className={styles.art}>{variant === 'person' ? <PersonCircle covers={covers} initials={initials ?? ''} alt="" initialsSize={initialsSize} visible={props.visible} /> : <CircleArt covers={covers} initials={initials} alt="" treatment={props.context === 'search' ? 'search' : 'artist'} initialsSize={initialsSize} visible={props.visible} />}</span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} /></CardFrame>;
 }
 
 export type EpisodeTileProps = MediaCardProps & Readonly<{
@@ -59,7 +59,7 @@ export type CoverCardProps = MediaCardProps & Readonly<{
 export function CoverCard({kind = 'book', generated, titleLines, ...props}: CoverCardProps) {
   const book = kind === 'book' || kind === 'comic';
   return <CardFrame {...props} kind="cover" playIcon="i-book" className={cx(book && !generated && styles.spine, !book && styles.periodical, kind === 'newspaper' && styles.newspaper, props.className)}>
-    <span className={styles.art}><CardArtwork {...props} position={kind === 'newspaper' ? 'top' : props.position} fallback={generated ? <GeneratedCover {...generated} /> : props.fallback} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} titleLines={titleLines} />
+    <span className={styles.art}><CardArtwork {...props} position={kind === 'newspaper' ? 'top' : props.position} fallback={generated ? <GeneratedCover {...generated} /> : props.fallback} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} textPresentation={props.textPresentation} titleLines={titleLines} />
   </CardFrame>;
 }
 

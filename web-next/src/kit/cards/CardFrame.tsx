@@ -4,13 +4,19 @@ import type {FactPart} from '@portico/client-core/kit-model';
 import {Icon} from '../Icon';
 import {SelectionCircle, SelectionHoldFeedback} from '../selection';
 import {activateCard, boundedProgress} from './interaction';
-import type {CardProps} from './types';
+import type {CardFactPresentation, CardProps, CardTextRun} from './types';
 import styles from './cards.module.css';
 
 export const cx = (...names: (string | false | undefined)[]) => names.filter(Boolean).join(' ');
 
-export function Facts({parts = [], className}: {parts?: readonly FactPart[]; className?: string}) {
-  return parts.length ? <span className={cx(styles.facts, className)}>{parts.map(part => <span key={part.id} data-fact={part.id} data-role={part.role}>{part.text}</span>)}</span> : null;
+/** Presentation can decorate canonical text, never replace it or introduce arbitrary markup. */
+function CardText({text, runs}: {text: string; runs?: readonly CardTextRun[]}) {
+  if (!Array.isArray(runs) || !runs.every(run => run && typeof run.text === 'string' && (run.emphasis === undefined || run.emphasis === 'match' || run.emphasis === 'secondary')) || runs.map(run => run.text).join('') !== text) return text;
+  return runs.map((run, index) => run.emphasis === 'match' ? <mark key={index} className={styles.textMatch}>{run.text}</mark> : run.emphasis === 'secondary' ? <b key={index} className={styles.textSecondary}>{run.text}</b> : run.text);
+}
+
+export function Facts({parts = [], className, presentation}: {parts?: readonly FactPart[]; className?: string; presentation?: CardFactPresentation}) {
+  return parts.length ? <span className={cx(styles.facts, className)}>{parts.map(part => <span key={part.id} data-fact={part.id} data-role={part.role}><CardText text={part.text} runs={presentation?.[part.id]} /></span>)}</span> : null;
 }
 
 export function Progress({value, edge = false, className}: {value?: number; edge?: boolean; className?: string}) {
@@ -92,8 +98,8 @@ export function CardFrame({children, kind, primaryClassName, playIcon = 'i-play'
   </article>;
 }
 
-export function CardCaption({model, titleLines = 1, extraCaption}: {model: CardProps['model']; titleLines?: 1 | 2; extraCaption?: CardProps['extraCaption']}) {
-  return <span className={styles.caption}><span className={cx(styles.title, titleLines === 2 && styles.twoLines)}>{model.title}</span><Facts parts={model.caption} className={styles.subtitle} />{extraCaption?.map((parts, index) => <Facts key={index} parts={parts} className={parts.some(part => part.role === 'reason') ? styles.reason : styles.subtitle} />)}</span>;
+export function CardCaption({model, titleLines = 1, extraCaption, textPresentation}: {model: CardProps['model']; titleLines?: 1 | 2; extraCaption?: CardProps['extraCaption']; textPresentation?: CardProps['textPresentation']}) {
+  return <span className={styles.caption}><span className={cx(styles.title, titleLines === 2 && styles.twoLines)}><CardText text={model.title} runs={textPresentation?.title} /></span><Facts parts={model.caption} className={styles.subtitle} presentation={textPresentation?.caption} />{extraCaption?.map((parts, index) => <Facts key={index} parts={parts} className={parts.some(part => part.role === 'reason') ? styles.reason : styles.subtitle} presentation={textPresentation?.extraCaption?.[index]} />)}</span>;
 }
 
 export function CardBadges({watched, completionLabel, isNew, progress}: {watched?: boolean; completionLabel?: string; isNew?: boolean; progress?: number}) {
