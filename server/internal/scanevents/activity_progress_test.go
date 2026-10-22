@@ -97,7 +97,7 @@ func TestActivityTaskHintsNeverReachMembers(t *testing.T) {
 		t.Fatal(e)
 	}
 	h := eventfeed.New(db)
-	for _, role := range []string{"member", "administrator", "owner"} {
+	for _, role := range []string{"member", "admin", "owner"} {
 		principal := identity.Principal{Viewer: identity.Viewer{Authority: "local", AccountID: role, ProfileID: role, Role: role}}
 		out, e := h.Read(context.Background(), principal, role != "member", 0, true)
 		if e != nil {

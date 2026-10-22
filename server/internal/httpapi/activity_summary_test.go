@@ -30,7 +30,7 @@ func activitySummaryFixture(t *testing.T) (Dependencies, map[string]identity.Env
 		t.Fatal(e)
 	}
 	tokens := map[string]identity.Envelope{}
-	for _, role := range []string{"owner", "administrator", "member"} {
+	for _, role := range []string{"owner", "admin", "member"} {
 		if _, e = db.Exec(`INSERT INTO accounts VALUES(?,?,x'00',?,1)`, role, role, role+"-profile"); e != nil {
 			t.Fatal(e)
 		}
@@ -61,7 +61,7 @@ func activitySummaryRequest(h http.Handler, token string) *httptest.ResponseReco
 }
 func TestActivitySummaryAuthorityQuietAndRevocation(t *testing.T) {
 	d, tokens, h := activitySummaryFixture(t)
-	for _, role := range []string{"", "member", "administrator"} {
+	for _, role := range []string{"", "member", "admin"} {
 		w := activitySummaryRequest(h, tokens[role].AccessToken)
 		want := 403
 		if role == "" {
