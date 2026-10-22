@@ -85,6 +85,8 @@ export type V1QueuePlayerOptions = Readonly<{
   /** The quality a new playback starts with (the viewer's saved default for this network), when
    * the viewer has not chosen one in the player. Undefined leaves it to the server. */
   quality?: () => QualityRequest | undefined;
+  /** Actual current/bookmarked queue IDs for this viewer, sampled once before a create intent awaits. */
+  retainQueueIds?: () => readonly string[];
   playback: PlaybackService;
   viewer: V1Viewer;
   key?: () => string;
@@ -143,6 +145,7 @@ export class V1QueuePlayer implements QueueController {
   private readonly client: QueueClient;
   private readonly api: QueueSessionTransport;
   private readonly defaultQuality?: () => QualityRequest | undefined;
+  private readonly retainQueueIds?: () => readonly string[];
   /** The quality chosen in the player for this viewing: it stays while the queue plays on. */
   private qualityOverride?: QualityRequest;
   /** Queue moves run one at a time: a second Next waits for the first and moves on from there. */
@@ -202,6 +205,7 @@ export class V1QueuePlayer implements QueueController {
     // same session with a new presentation: keep the copy the queue commands read in step.
     this.unlistenChanged = this.api.onSessionChanged?.(session => { if (this.session?.id === session.id) this.session = session; });
     this.defaultQuality = options.quality;
+    this.retainQueueIds = options.retainQueueIds;
     this.playback = options.playback;
     this.key = options.key ?? (() => idempotencyKey());
     this.client = new QueueClient(options.http, this.key);
@@ -551,12 +555,13 @@ export class V1QueuePlayer implements QueueController {
     const intent = this.playback.beginQueueIntent(first || undefined, true);
     this.publish({phase: 'preparing', error: null, completion: null});
     try {
+      const retainQueueIds = this.retainQueueIds ? [...this.retainQueueIds()] : undefined;
       if (!await this.playback.prepareQueueIntent(intent) || !current()) return;
       const at = options.startSeconds;
       // One request when the server may choose the start (resume or the beginning); an explicit
       // position, version or audio track starts the session separately, with those.
       const together = at === undefined && !asked.versionId && !asked.audio;
-      const created: CreateResult = await this.client.create(input, {...(together ? {startPlayback: {state: 'playing' as const, ...(asked.quality ? {quality: asked.quality} : {})}} : {}), ...(options.signal ? {signal: options.signal} : {})});
+      const created: CreateResult = await this.client.create(input, {retainQueueIds, ...(together ? {startPlayback: {state: 'playing' as const, ...(asked.quality ? {quality: asked.quality} : {})}} : {}), ...(options.signal ? {signal: options.signal} : {})});
       if (!current()) { this.abandon(created.session); return; }
       this.accept(created.queue, created.window);
       let header = created.queue;
@@ -785,7 +790,8 @@ export class V1QueuePlayer implements QueueController {
     if (!entries.length) throw new Error('No available items were selected.');
     const ids = entries.map(e => e.itemId);
     if (!this.header) {
-      const created = await this.client.create(segments(ids, false));
+      const retainQueueIds = this.retainQueueIds ? [...this.retainQueueIds()] : undefined;
+      const created = await this.client.create(segments(ids, false), {retainQueueIds});
       this.accept(created.queue, created.window);
       return;
     }

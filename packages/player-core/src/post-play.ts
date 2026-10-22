@@ -1,4 +1,4 @@
-import {invalidState} from './validation.ts';
+import {invalidState, queueOccurrenceId} from './validation.ts';
 /** Video post-play: the server's finish policy for a queue playback. Countdown, autoplay and
  * passout protection are server preferences; the client renders them and never substitutes its
  * own. */
@@ -8,14 +8,13 @@ export type QueuePostPlay=Readonly<{nextEntryId:string|null;available:boolean;re
  startDuringCredits:boolean}>;
 export type QueueAdvanceMode='automatic'|'manual'|'still-watching';
 const obj=(v:unknown):v is Record<string,unknown>=>!!v&&typeof v==='object'&&!Array.isArray(v);
-const wireID=(v:unknown):v is string=>typeof v==='string'&&/^[A-Za-z0-9_-]{1,128}$/.test(v);
 const only=(v:Record<string,unknown>,keys:readonly string[]):void=>{if(Object.keys(v).some(k=>!keys.includes(k)))fail();};
 function fail():never{return invalidState();}
 /** The next entry in postPlay is the queue's own next entry; a projection that
  * disagrees with itself is refused rather than reconciled here. */
 export function parseQueuePostPlay(raw:unknown,next?:Readonly<{entryId:string|null;available:boolean;reason:string}>):QueuePostPlay{
  if(!obj(raw))fail();only(raw,['nextEntryId','available','reason','countdownMs','autoplay','passoutCheckDue','automaticAdvances','startDuringCredits']);
- if(raw.nextEntryId!==null&&!wireID(raw.nextEntryId))fail();
+ if(raw.nextEntryId!==null&&!queueOccurrenceId(raw.nextEntryId))fail();
  if(typeof raw.available!=='boolean'||!['ready','end','unavailable'].includes(String(raw.reason)))fail();
  if(![0,5000,10000,15000].includes(Number(raw.countdownMs))||typeof raw.autoplay!=='boolean'||typeof raw.passoutCheckDue!=='boolean')fail();
  if(raw.startDuringCredits!==undefined&&typeof raw.startDuringCredits!=='boolean')fail();
