@@ -207,10 +207,11 @@ func TestDeliveryPolicyResolutionMatrix(t *testing.T) {
 			t.Fatal(fallback.QualityMode)
 		}
 		// The owner's ceilings are the policy's. The video bitrate ceiling is a
-		// limit on connections from outside the home networks only.
+		// limit on connections from outside the home networks only. The canonical
+		// 4 Mbit/s preset also narrows a remote viewer to its 720p height.
 		cfg.MaxVideoBitrateBPS, cfg.MaxVideoHeight, cfg.AllowHDR = 4_000_000, 1080, false
 		clamped := ResolveDeliveryPolicy(values, NetworkRemote, LocalityRemote, "cellular", cfg)
-		if clamped.MaxVideoBitrateBPS != 4_000_000 || clamped.MaxVideoHeight != 1080 || clamped.AllowHDR {
+		if clamped.MaxVideoBitrateBPS != 4_000_000 || clamped.MaxVideoHeight != 720 || clamped.AllowHDR {
 			t.Fatal("owner ceilings not applied", clamped)
 		}
 		if len(clamped.Clamps) != 1 || clamped.Clamps[0].Field != "allowHDR" {
