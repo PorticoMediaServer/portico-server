@@ -449,6 +449,49 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 			t.Errorf("%s is not in the golden file", actual.Name)
 			continue
 		}
+		// GP-08 adds library summaries. Spell out the deterministic Tiny fixture
+		// facts independently; keep the recorded library membership/order and
+		// all pre-existing fields exact, including the narrowed viewer scope.
+		if strings.HasPrefix(actual.Name, "libraries/") {
+			var rewritten map[string]any
+			if err := json.Unmarshal([]byte(want.Response), &rewritten); err != nil {
+				t.Fatal(err)
+			}
+			for _, raw := range rewritten["items"].([]any) {
+				library := raw.(map[string]any)
+				summary := catalog.LibrarySummary{CoverURLs: []string{}, EmptyKnown: true}
+				switch library["kind"] {
+				case "movie":
+					count, covers := 40, []int{39, 38, 37}
+					if actual.Viewer == "restricted" {
+						count, covers = 13, []int{38, 37, 35}
+					}
+					summary.Counts = []catalog.LibraryKindCount{{Kind: "movie", Count: count}}
+					for _, index := range covers {
+						summary.CoverURLs = append(summary.CoverURLs, fmt.Sprintf("/v1/items/movie-%07d/art/poster", index))
+					}
+					summary.LatestArtwork = fmt.Sprintf("/v1/items/movie-%07d/art/backdrop", covers[0])
+				case "tv":
+					shows, episodes := 2, 6
+					if actual.Viewer == "restricted" {
+						shows, episodes = 1, 1
+					}
+					summary.Counts = []catalog.LibraryKindCount{{Kind: "show", Count: shows}, {Kind: "episode", Count: episodes}}
+				case "music":
+					summary.Counts = []catalog.LibraryKindCount{{Kind: "artist", Count: 2}, {Kind: "album", Count: 2}, {Kind: "song", Count: 6}}
+				case "audiobook":
+					summary.Counts = []catalog.LibraryKindCount{{Kind: "book", Count: 2}, {Kind: "author", Count: 2}}
+				default:
+					t.Fatalf("%s: specify the summary for golden library kind %v", actual.Name, library["kind"])
+				}
+				library["summary"] = summary
+			}
+			encoded, err := json.Marshal(rewritten)
+			if err != nil {
+				t.Fatal(err)
+			}
+			want.Response = canonical(string(encoded))
+		}
 		// DP-2/DP-11 intentionally replace on-page files with language and
 		// visible collection summaries. Keep the rest of the recorded detail
 		// exact, including membership, actions and all personal state.
