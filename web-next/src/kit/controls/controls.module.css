@@ -48,9 +48,8 @@
 .chip {height: 40px; padding: 0 16px; border-radius: 10px; display: inline-flex; align-items: center; gap: 8px; flex: none; min-width: 0; max-width: 100%; white-space: nowrap; background: var(--color-raised-high); font-size: var(--type-chip-size); font-weight: var(--type-chip-weight); line-height: var(--type-chip-line); transition: background 160ms var(--ease-out), color 160ms var(--ease-out);}
 .chipLabel {min-width: 0; overflow: hidden; text-overflow: ellipsis;}
 .chip[data-variant="toolbar"] {padding: 0 14px; font-size: 14.5px;}
-.chip:hover:not(:disabled) {background: var(--color-raised-bright);}
+.chip:where(:hover):not(:disabled) {background: var(--color-raised-bright);}
 .chip[data-selected] {background: color-mix(in srgb, var(--color-accent) 28%, transparent); box-shadow: inset 0 0 0 1px var(--color-accent);}
-.chip[data-selected]:hover:not(:disabled) {background: color-mix(in srgb, var(--color-accent) 35%, transparent);}
 .dim, .count, .trailing {color: var(--color-text-tertiary);}
 .chip[data-dim] {background: transparent; color: var(--color-text-tertiary); box-shadow: inset 0 0 0 1px var(--color-line); opacity: .5;}
 .chip[data-dim]:hover:not(:disabled) {background: transparent;}
@@ -59,10 +58,10 @@
 .countBadge {min-width: 21px; height: 21px; padding: 0 6px; border-radius: 11px; display: inline-grid; place-items: center; background: var(--color-accent-strong); color: var(--color-action-ink); font-size: 12px; font-weight: 800; flex: none;}
 .chip[data-selected] .count {color: var(--color-text-secondary);}
 .chip[data-variant="quick"] {border-radius: 20px; padding: 0 15px; gap: 7px; font-size: 14.5px; font-weight: 600; color: var(--color-text-secondary); background: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 16%, transparent);}
-.chip[data-variant="quick"]:hover:not(:disabled) {background: color-mix(in srgb, var(--color-text) 7%, transparent); color: var(--color-text);}
+.chip[data-variant="quick"]:where(:hover):not(:disabled) {background: color-mix(in srgb, var(--color-text) 7%, transparent); color: var(--color-text);}
 .chip[data-variant="quick"][data-selected] {background: color-mix(in srgb, var(--color-accent) 18%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-strong) 62%, transparent); color: var(--color-text);}
 .chip[data-variant="facet"] {height: 34px; padding: 0 12px; border-radius: 17px; gap: 7px; font-size: 14px; font-weight: 600; color: var(--color-text-secondary); background: none; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-text) 16%, transparent);}
-.chip[data-variant="facet"]:hover:not(:disabled) {background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--color-text);}
+.chip[data-variant="facet"]:where(:hover):not(:disabled) {background: color-mix(in srgb, var(--color-text) 6%, transparent); color: var(--color-text);}
 .chip[data-variant="facet"][data-selected] {background: color-mix(in srgb, var(--color-accent) 20%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent-strong) 62%, transparent); color: var(--color-text);}
 .chip:is([data-variant="quick"], [data-variant="facet"])[data-selected] > svg:first-child {color: var(--color-accent-strong);}
 .chip[data-variant="facet"] .count {color: var(--color-text-tertiary);}
@@ -98,8 +97,9 @@
 .segment:hover:not(:disabled) {color: var(--color-text);}
 .segment[data-state="checked"] {background: color-mix(in srgb, var(--color-text) 16%, transparent); color: var(--color-text);}
 .segment:focus-visible {outline-offset: -2px;}
-.segmented[data-variant="browse"] {background: var(--color-raised-high); box-shadow: none;}
-.segmented[data-variant="browse"] .segment {height: 32px; padding: 0 8px; font-size: 13px;}
+.segmented[data-variant="browse"] {display: flex; flex: 1; background: var(--color-raised); box-shadow: none;}
+.segmented[data-variant="browse"] .segment {flex: 1; min-width: 38px; height: 32px; padding: 0 8px; font-size: 13px;}
+.segmented[data-variant="browse"] .segment[data-state="checked"] {background: var(--color-raised-bright); box-shadow: 0 1px 2px color-mix(in srgb, var(--color-shadow) 30%, transparent);}
 .segmented[data-variant="phone"] {border-radius: 9px; background: var(--color-raised-bright); box-shadow: none;}
 .segmented[data-variant="phone"] .segment {height: auto; min-height: 28px; padding: 5px 11px; border-radius: 7px; font-size: 13px;}
 
@@ -180,6 +180,7 @@
 
 .slider {position: relative; display: inline-flex; align-items: center; width: 84px; height: 24px; flex: none; touch-action: none; user-select: none; cursor: pointer;}
 .sliderTrack {position: relative; height: 4px; border-radius: 4px; flex: 1; background: color-mix(in srgb, var(--color-text) 20%, transparent);}
+.slider[data-variant="player"] .sliderTrack {border-radius: 2px;}
 .sliderFill {position: absolute; height: 100%; border-radius: inherit; background: var(--color-text);}
 .sliderThumb {display: block; width: 14px; height: 14px; border-radius: 50%; background: var(--color-text); box-shadow: 0 2px 8px color-mix(in srgb, var(--color-shadow) 50%, transparent); opacity: 0; transition: opacity 140ms var(--ease-out);}
 .slider:hover .sliderThumb, .slider:focus-within .sliderThumb {opacity: 1;}
@@ -207,7 +208,7 @@
   .selectMenu[data-state="closed"] {animation: reducedMenuOut var(--motion-reduced) linear;}
   .tabPanel[data-state="active"] {animation-duration: var(--motion-reduced);}
 }
-[data-reduce-motion="true"] :is(.button, .chip, .segment, .switch, .switch::after) {transition: none;}
+[data-reduce-motion="true"] :is(.button, .chip, .segment, .switch), [data-reduce-motion="true"] .switch::after {transition: none;}
 [data-reduce-motion="true"] .button:active:not(:disabled) {transform: none;}
 [data-reduce-motion="true"] .spinner {animation: none;}
 [data-reduce-motion="true"] .selectMenu {animation: reducedMenu var(--motion-reduced) linear;}
