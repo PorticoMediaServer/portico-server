@@ -25,12 +25,15 @@ function languageText(code: string | undefined, locale?: string): string | undef
   } catch { return undefined; }
 }
 
-function layoutText(track: TrackFacts, env: TextEnvironment): string | undefined {
+function layoutText(track: TrackFacts, env: TextEnvironment, context: 'generic' | 'file-info'): string | undefined {
   const layout = track.channelLayout?.toLowerCase(), named = /^(\d+\.\d+)(?:\([^)]*\))?$/.exec(layout ?? '')?.[1];
-  if (named) return env.t('next.kit.surround', {layout: named});
+  if (named) return context === 'file-info' ? named : env.t('next.kit.surround', {layout: named});
   if (layout === 'stereo' || track.channels === 2) return env.t('next.kit.stereo');
   if (layout === 'mono' || track.channels === 1) return env.t('next.kit.mono');
-  if (track.channels === 6 || track.channels === 8) return env.t('next.kit.surround', {layout: track.channels === 6 ? '5.1' : '7.1'});
+  if (track.channels === 6 || track.channels === 8) {
+    const channels = track.channels === 6 ? '5.1' : '7.1';
+    return context === 'file-info' ? channels : env.t('next.kit.surround', {layout: channels});
+  }
   return integer(track.channels) ? env.t('next.kit.channels', {count: track.channels}) : undefined;
 }
 
@@ -50,7 +53,7 @@ function stockFlagTitle(title: string | undefined, languages: readonly (string |
   return undefined;
 }
 
-function trackModels(tracks: readonly TrackFacts[], kind: 'audio' | 'subtitle', env: TextEnvironment): readonly TrackModel[] {
+function trackModels(tracks: readonly TrackFacts[], kind: 'audio' | 'subtitle', env: TextEnvironment, context: 'generic' | 'file-info' = 'generic'): readonly TrackModel[] {
   const {t} = env;
   if (new Set(tracks.map(x => x.id)).size !== tracks.length) throw new Error('duplicate_track_identity');
   const models = tracks.map((track, index): TrackModel => {
@@ -63,7 +66,7 @@ function trackModels(tracks: readonly TrackFacts[], kind: 'audio' | 'subtitle', 
     const titleCommentary = /\bcommentary\b/i.test(title ?? '');
     const extra = !repeated && !stock && !titleSDH && !titleForced ? title : undefined;
     const name = language || (!stock && !titleSDH && !titleForced && supplied(title) ? title : t('next.kit.track', {number: index + 1}));
-    const codec = codecText(kind === 'subtitle' ? track.format ?? track.codec : track.codec, t), layout = kind === 'audio' ? layoutText(track, env) : undefined;
+    const codec = codecText(kind === 'subtitle' ? track.format ?? track.codec : track.codec, t), layout = kind === 'audio' ? layoutText(track, env, context) : undefined;
     return Object.freeze({id: track.id,
       ...(track.resourceId === undefined ? {} : {resourceId: track.resourceId}),
       ...(track.streamIndex === undefined ? {} : {streamIndex: track.streamIndex}),
@@ -73,7 +76,7 @@ function trackModels(tracks: readonly TrackFacts[], kind: 'audio' | 'subtitle', 
         extra && extra !== name ? part('track-title', extra, 'context') : undefined,
         layout ? part('layout', layout, 'context') : undefined,
         track.forced || titleForced ? part('forced', t('next.kit.forced'), 'context') : undefined,
-        track.hearingImpaired || titleSDH ? part('sdh', t('next.kit.sdh'), 'context') : undefined,
+        track.hearingImpaired || titleSDH ? part('sdh', t(context === 'file-info' ? 'next.kit.fileInfo.sdh' : 'next.kit.sdh'), 'context') : undefined,
         track.commentary && !titleCommentary ? part('commentary', t('next.kit.commentary'), 'context') : undefined,
       ]),
       technical: compact([
@@ -84,6 +87,8 @@ function trackModels(tracks: readonly TrackFacts[], kind: 'audio' | 'subtitle', 
       ]),
     });
   });
+  // An informational list already carries each track's facts; menu disambiguators are unrelated.
+  if (context === 'file-info') return Object.freeze(models);
   // Only colliding display choices gain disambiguators. Codecs never become audio menu names.
   const signature = (m: TrackModel): string => JSON.stringify([m.name.text, m.detail.map(p => p.text)]);
   const groups = new Map<string, number[]>();
@@ -102,6 +107,9 @@ function trackModels(tracks: readonly TrackFacts[], kind: 'audio' | 'subtitle', 
 
 export const audioTrackModels = (tracks: readonly TrackFacts[], env: TextEnvironment): readonly TrackModel[] => trackModels(tracks, 'audio', env);
 export const subtitleTrackModels = (tracks: readonly TrackFacts[], env: TextEnvironment): readonly TrackModel[] => trackModels(tracks, 'subtitle', env);
+
+/** Internal File info projection; ordinary menu names/details retain their existing wording. */
+export const fileInfoTrackModels = (tracks: readonly TrackFacts[], kind: 'audio' | 'subtitle', env: TextEnvironment): readonly TrackModel[] => trackModels(tracks, kind, env, 'file-info');
 
 export type VersionInput = Readonly<{
   id: string; name?: string; edition?: string; container?: string; height?: number; videoCodec?: string;

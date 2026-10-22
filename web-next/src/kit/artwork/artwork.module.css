@@ -102,6 +102,7 @@
 .personCovers::after { background: radial-gradient(circle at 50% 50%, rgba(7,16,24,.34), rgba(7,16,24,.12) 70%); }
 .personCovers .initials { font-size: var(--circle-initials-size, 50px); letter-spacing: -.05em; color: rgba(237,245,250,.94); }
 .mosaic { position: relative; display: grid; width: 100%; height: 100%; overflow: hidden; border-radius: inherit; grid-template: 1fr 1fr / 1fr 1fr; background: var(--color-raised); }
+.mosaic > .artwork { border-radius: 0; }
 .mosaic0, .mosaic1 { grid-template: 1fr / 1fr; }
 .mosaic2 { grid-template: 1fr / 1fr 1fr; }
 .mosaic3 > :first-child { grid-row: span 2; }
