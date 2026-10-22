@@ -9,11 +9,11 @@
 @keyframes drift { from { transform: scale(1.07); } to { transform: scale(1); } }
 .copy { position: absolute; left: var(--layout-gutter); bottom: 150px; width: 600px; z-index: 1; }
 .copy > * { opacity: 0; transform: translateY(6px); transition: opacity 600ms var(--ease-out), transform 600ms var(--ease-out); }
-.slide[data-active='true'] .copy > * { opacity: 1; transform: none; }
-.slide[data-active='true'] .copy > :nth-child(2) { transition-delay: 60ms; }
-.slide[data-active='true'] .copy > :nth-child(3) { transition-delay: 120ms; }
-.slide[data-active='true'] .copy > :nth-child(4) { transition-delay: 180ms; }
-.slide[data-active='true'] .copy > :nth-child(5) { transition-delay: 240ms; }
+.copy[data-active='true'] > * { opacity: 1; transform: none; }
+.copy[data-active='true'] > :nth-child(2) { transition-delay: 60ms; }
+.copy[data-active='true'] > :nth-child(3) { transition-delay: 120ms; }
+.copy[data-active='true'] > :nth-child(4) { transition-delay: 180ms; }
+.copy[data-active='true'] > :nth-child(5) { transition-delay: 240ms; }
 .reason { color: var(--color-accent-strong); margin: 0 0 14px; display: flex; gap: 16px; }
 .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; color: var(--color-text-secondary); margin: 0 0 16px; }
 .facts > :first-child { font-weight: 700; color: var(--color-text); }
@@ -58,6 +58,7 @@
 .preview { position: relative; }
 .preview .slide { transition-duration: var(--motion-slow); }
 .preview .copy > * { transition-duration: var(--motion-standard); transform: none; }
+.preview .copy[data-active='true'] > * { transition-delay: 0ms; }
 .preview .hero[data-platform='tv'] .copy { top: 150px; }
 .heroProgress { display: inline-flex; align-items: center; gap: 14px; color: var(--color-text); font-weight: 700; }
 .progressTrack { display: inline-block; width: 160px; height: 6px; border-radius: 6px; background: rgba(237,245,250,.22); overflow: hidden; }
@@ -122,3 +123,4 @@
   .heroArtwork [data-foreground-art] { animation: none; transform: none; }
   .timer i { animation: none; transform: scaleX(1); }
 }
+.hero .copy[data-active='false'] > * { transition: none; }
