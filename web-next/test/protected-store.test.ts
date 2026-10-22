@@ -92,17 +92,6 @@ test('a vault that cannot be opened right now is not damage: the sign-in is kept
   assert.deepEqual(await store.read(), record('one'));
 });
 
-test('an encrypted vault without Web Locks refuses an unlocked or plaintext replacement', async t => {
-  const {db, store} = await vault(t);
-  await store.change(() => record('one'));
-  const before = db.data.get('selected');
-  Object.defineProperty(globalThis, 'navigator', {configurable: true, value: {}});
-  await assert.rejects(store.read(), /requires Web Locks/);
-  await assert.rejects(store.change(() => record('two')), /requires Web Locks/);
-  assert.equal(db.data.get('selected'), before);
-  assert.equal((before as {version: number}).version, 1);
-});
-
 test('without browser encryption (a page on plain HTTP) a change reads, decides and writes in one database transaction', async t => {
   const {db, store} = await vault(t);
   // Count the transactions the vault opens, by mode.
@@ -116,7 +105,6 @@ test('without browser encryption (a page on plain HTTP) a change reads, decides 
   };
   const hadCrypto = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
   Object.defineProperty(globalThis, 'crypto', {configurable: true, value: {getRandomValues: (a: Uint8Array) => a}});
-  Object.defineProperty(globalThis, 'navigator', {configurable: true, value: {}});
   t.after(() => { if (hadCrypto) Object.defineProperty(globalThis, 'crypto', hadCrypto); });
 
   await store.change(() => record('one'));

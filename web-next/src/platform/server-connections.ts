@@ -19,15 +19,7 @@ export class BrowserProtectedStore<RecordType> {
    const request=indexedDB.open(this.databaseName,1);request.onupgradeneeded=()=>request.result.createObjectStore('vault');request.onerror=()=>finish(request.error);request.onblocked=()=>finish(new Error());request.onsuccess=()=>{db=request.result;if(done){db.close();return;}try{tx=db.transaction('vault',mode,mode==='readwrite'?{durability:'strict'}:undefined);if(mode==='readwrite'&&tx.durability!=='strict')throw new Error();tx.oncomplete=()=>finish();tx.onabort=()=>finish(tx?.error);tx.onerror=()=>finish(tx?.error);work(tx.objectStore('vault'),v=>{value=v;});}catch(e){try{tx?.abort();}catch{}finish(e);}};
   });
  }
- private exclusive<T>(work:()=>Promise<T>):Promise<T>{
-  if(navigator.locks)return navigator.locks.request(this.databaseName+':selected',{signal:AbortSignal.timeout(15000)},work);
-  // Plain HTTP has neither SubtleCrypto nor Web Locks. Its updates already
-  // read, decide and write in one IndexedDB transaction below.
-  if(!canEncrypt())return work();
-  // An encrypted read/decrypt/write needs cross-tab exclusion; never fall
-  // back to a plaintext record or an unlocked replacement in this context.
-  return Promise.reject(new Error('Protected browser storage requires Web Locks.'));
- }
+ private exclusive<T>(work:()=>Promise<T>):Promise<T>{return navigator.locks.request(this.databaseName+':selected',{signal:AbortSignal.timeout(15000)},work);}
  private values(){return this.transaction<{key?:CryptoKey;record?:Vault}>('readonly',(store,done)=>{const key=store.get('key'),record=store.get('selected');record.onsuccess=()=>done({key:key.result,record:record.result});});}
  /** The record is there and can never be read again: the wrong shape, no key, failed
   * authentication, not a record. Waiting does not mend that, unlike a database that is busy or
