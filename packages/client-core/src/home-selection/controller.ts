@@ -1,4 +1,5 @@
 import {SelectionModel, selectionActions, selectionKey, summarizeSelection, type SelectionAction, type SelectionContext, type SelectionEnvironment, type SelectionIdentity, type SelectionKind, type SelectionOperation, type SelectionTarget} from '../selection-model/index.ts';
+import {selectionCapabilityNames} from '../selection-model/capabilities.ts';
 import {homeChannelSelection, homeCollectionCapabilities, homeCollectionSelection, homeEntryCapabilities, homeEntrySelection, type HomeActionPlatform} from '../home-selection.ts';
 import {entryActions, type EntryActionId} from '../presentation/entry-actions.ts';
 import type {HomeDocument, HomeEntry, HomeRow, HomeSpotlight} from '../home.ts';
@@ -15,7 +16,8 @@ import type {HomeSelectionActionState, HomeSelectionMember, HomeSelectionOptions
 
 const idle = (): HomeSelectionActionState => ({phase: 'idle', action: null, progress: null, results: [], error: null, jobIds: []});
 const errorInfo = (error: unknown) => ({code: String((error as {code?: unknown})?.code ?? 'home-action-failed'), retryable: (error as {retryable?: unknown})?.retryable === true});
-const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const sameContext = (a: SelectionContext, b: SelectionContext) =>
+  a.scope.serverId === b.scope.serverId && a.scope.authority === b.scope.authority && a.scope.accountId === b.scope.accountId && a.scope.profileId === b.scope.profileId && a.scope.viewId === b.scope.viewId && a.scope.privacyFence === b.scope.privacyFence && a.revision.catalogRevision === b.revision.catalogRevision && a.revision.viewerRevision === b.revision.viewerRevision;
 export function homeSelectionContext(scope: Omit<SelectionContext['scope'], 'privacyFence'>, document: HomeDocument): SelectionContext {
   if (scope.serverId !== document.serverId) throw selectionExecutionError('home-source-mismatch');
   return {scope: {...scope, privacyFence: document.viewerFence}, revision: {catalogRevision: String(document.revision.catalog), viewerRevision: String(document.revision.viewer)}};
@@ -166,7 +168,7 @@ export class HomeSelectionController {
   private begin(target?: SelectionTarget): Ticket {
     this.active(); const bindings = this.allMembers(); this.cancelAction();
     this.jobHistory.clear();
-    if (target && !same(target.context, this.state.context)) throw selectionExecutionError('stale-home-context');
+    if (target && !sameContext(target.context, this.state.context)) throw selectionExecutionError('stale-home-context');
     const model = target ? undefined : this.selection.captureOperation();
     const selected = target ?? model?.target; if (!selected) throw selectionExecutionError('selection-required');
     explicitIdentities(selected);
@@ -194,7 +196,13 @@ export class HomeSelectionController {
   private members(target: SelectionTarget, display = false) {
     if (target.mode !== 'explicit') {explicitIdentities(target); throw selectionExecutionError('home-explicit-selection-required');}
     const members = this.allMembers();
-    return (display ? target.displayItems : target.items).map(pick => {const member = members.get(pick.key); if (!member || !same(member.item, pick.item)) throw selectionExecutionError('home-offers-changed'); return member;});
+    return (display ? target.displayItems : target.items).map(pick => {
+      const member = members.get(pick.key);
+      const offered = member?.entry ? homeEntrySelection(member.entry as HomeEntry, this.platform()) : member?.collection ? homeCollectionSelection(member.collection, this.platform()) : member?.channel ? homeChannelSelection(member.channel, this.platform()) : undefined;
+      const matches = (item: HomeSelectionMember['item']) => this.key(item) === pick.key && selectionCapabilityNames.every(name => item.capabilities[name] === pick.item.capabilities[name]);
+      if (!member || this.key(pick.item) !== pick.key || !matches(member.item) || !offered || !matches(offered)) throw selectionExecutionError('home-offers-changed');
+      return member;
+    });
   }
   async execute(action: SelectionAction) {
     this.active(); const rule = this.state.actions[action];
@@ -326,12 +334,19 @@ export class HomeSelectionController {
     const scope = ticket.context.scope;
     this.detail = new DetailService({api: this.options.api, scope: {serverId: scope.serverId, viewerId: JSON.stringify([scope.authority, scope.accountId, scope.profileId])}, requestId: this.options.requestId});
     try {
-      await this.detail.select({libraryId: entry.libraryId, itemId: entry.id}); this.check(ticket);
-      const state = this.detail.getSnapshot(), data = state.data;
-      if (state.phase !== 'ready' || !data?.actions.some(action => action.id === 'rating' && action.enabled)) throw selectionExecutionError(state.error?.code ?? 'rating-not-offered');
-      this.publish({rating: {phase: 'ready', currentValue: data.personal.rating, value: data.personal.rating, error: null}});
-      if (supplied !== undefined) {this.setRatingValue(supplied); await this.submitRating();}
+      const detail = this.detail;
+      await detail.select({libraryId: entry.libraryId, itemId: entry.id});
+      this.ratingReadReady(ticket, detail);
+      if (supplied !== undefined) {this.check(ticket); this.setRatingValue(supplied); this.check(ticket); await this.submitRating();}
     } catch (error) {if (this.current(ticket)) this.publish({rating: {...this.state.rating!, phase: 'error', error: errorInfo(error)}});}
+  }
+  private ratingReadReady(ticket: Ticket, detail: DetailService) {
+    this.check(ticket);
+    const members = this.members(ticket.target), entry = members.length === 1 ? members[0].entry as HomeEntry | undefined : undefined;
+    const state = detail.getSnapshot(), data = state.data;
+    if (this.detail !== detail || !entry?.libraryId || !entryActions(homeEntryCapabilities(entry, this.platform())).some(group => group.actions.some(action => action.id === 'rate')) || state.phase !== 'ready' || !data?.actions.some(action => action.id === 'rating' && action.enabled)) throw selectionExecutionError(state.error?.code ?? 'rating-not-offered');
+    if (data.scope.serverId !== ticket.context.scope.serverId || data.scope.viewerFence !== ticket.context.scope.privacyFence || data.scope.libraryId !== entry.libraryId || data.scope.itemId !== entry.id || data.item.kind !== entry.kind || String(data.revision.catalog) !== ticket.context.revision.catalogRevision || String(data.revision.viewer) !== ticket.context.revision.viewerRevision) throw selectionExecutionError('stale-rating-context');
+    this.publish({rating: {phase: 'ready', currentValue: data.personal.rating, value: data.personal.rating, error: null}});
   }
   setRatingValue(value: number | null) {
     this.active(); const rating = this.state.rating;
@@ -350,9 +365,15 @@ export class HomeSelectionController {
     else this.publish({rating: {...this.state.rating!, phase: 'result', currentValue: snapshot.data?.personal.rating, value: snapshot.data?.personal.rating, error: null}});
   }
   async retryRating() {
-    const ticket = this.ticket, detail = this.detail;
-    if (!ticket || !detail || this.state.rating?.phase !== 'uncertain') throw selectionExecutionError('rating-retry-unavailable'); this.check(ticket);
-    this.publish({rating: {...this.state.rating, phase: 'saving', error: null}});
+    const ticket = this.ticket, detail = this.detail, rating = this.state.rating;
+    if (!ticket || !detail || !rating || rating.phase !== 'uncertain' && rating.phase !== 'error') throw selectionExecutionError('rating-retry-unavailable'); this.check(ticket);
+    if (rating.phase === 'error') {
+      this.publish({rating: {...rating, phase: 'loading', error: null}});
+      try {await detail.retryRead(); this.ratingReadReady(ticket, detail);}
+      catch (error) {if (this.current(ticket) && this.detail === detail) this.publish({rating: {...this.state.rating!, phase: 'error', error: errorInfo(error)}});}
+      return;
+    }
+    this.publish({rating: {...rating, phase: 'saving', error: null}});
     await detail.retryMutation(); this.check(ticket); this.ratingOutcome(detail);
   }
   closeRating() {this.cancelAction(); this.publish({rating: null});}
