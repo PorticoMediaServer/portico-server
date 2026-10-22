@@ -300,6 +300,7 @@
 .viewer { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:13px; color:var(--color-text-secondary); }
 .sessionFace { font-size:10.5px; letter-spacing:0; }
 .viewer strong { color:var(--color-text); font-weight:700; }
+.viewer .sessionProfile { color:var(--color-text-tertiary); }
 .sessionFacts { flex-wrap:wrap; gap:6px; margin-top:10px; }
 .sessionFacts > span { font-size:12px; font-weight:700; padding:3px 8px; border-radius:6px; background:rgba(237,245,250,.07); color:var(--color-text-secondary); }
 .sessionFacts > span[data-role='status'] { color:var(--color-accent-strong); background:rgba(64,159,212,.16); }
