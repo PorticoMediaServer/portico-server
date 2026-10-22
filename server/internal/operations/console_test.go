@@ -577,3 +577,50 @@ func TestConsoleBackupAlertUsesExistingEmptyAdminHints(t *testing.T) {
 		t.Fatal(count, err)
 	}
 }
+
+func TestActivityTaskTotalFollowsProducerAndInvalidObservationRollsBack(t *testing.T) {
+	store, owner, auth := consoleFixture(t)
+	scheduler := NewScheduler(store)
+	processed, total := int64(2), int64(8)
+	observation := JobObservation{State: "running", Phase: "analysis", Processed: &processed}
+	if err := scheduler.Register(Adapter{Kind: "total-test", Lane: "maintenance", ValidateTx: func(context.Context, *sql.Tx, string) error { return nil }, Step: func(context.Context, string) (JobObservation, error) { return observation, nil }}); err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	job, err := scheduler.Enqueue(ctx, owner, auth, RunJob{Kind: "total-test", IdempotencyKey: "known-total"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	read := func() Job {
+		t.Helper()
+		page, err := scheduler.Jobs(ctx, auth, "")
+		if err != nil || len(page.Items) != 1 {
+			t.Fatal(page, err)
+		}
+		return page.Items[0]
+	}
+	scheduler.advance(ctx, job)
+	job = read()
+	if job.Total != nil || job.Processed == nil || *job.Processed != 2 {
+		t.Fatal("unknown total was invented", job)
+	}
+	observation.Total = &total
+	scheduler.advance(ctx, job)
+	job = read()
+	if job.Total == nil || *job.Total != 8 || *job.Processed != 2 {
+		t.Fatal("known producer total lost", job)
+	}
+	revision := job.Revision
+	tooSmall := int64(1)
+	observation.Total = &tooSmall
+	scheduler.advance(ctx, job)
+	job = read()
+	if job.Revision != revision || job.Total == nil || *job.Total != 8 {
+		t.Fatal("invalid producer count partially committed", job)
+	}
+	observation.Total = nil
+	scheduler.advance(ctx, job)
+	if job = read(); job.Total != nil {
+		t.Fatal("unknown producer total retained a stale value", job)
+	}
+}
