@@ -5,7 +5,8 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./admin": "./src/admin/index.ts"
+    "./admin": "./src/admin/index.ts",
+    "./kit-model": "./src/presentation/kit-model/index.ts"
   },
   "scripts": {
     "test": "node --experimental-strip-types --test test/*.test.ts",
