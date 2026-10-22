@@ -89,6 +89,14 @@ test('lockups, row headings and controls carry exact sizes, weights and tracking
   assert.equal(typography.extraBold, 'Manrope-ExtraBold');
 });
 
+test('row subtitles preserve regular normal text with the drawn ten-foot size', () => {
+  // tv-detail.html:82, f9 (5 titles) and f10 (2 of 4 watched).
+  // Native Row's string subtitle consumes this role through createTheme.
+  for (const [platform, size] of [['handheld', 14], ['desktop', 14], ['tenFoot', 20]] as const) {
+    assert.deepEqual(typeScale[platform].rowSubtitle, {size, lineHeight: 'normal', weight: 400, tracking: 0}, platform);
+  }
+});
+
 test('the binding motion table supplies all six durations, four curves and reduced-motion rules', () => {
   assert.deepEqual(motion, {quick: 120, standard: 180, hover: 260, slow: 320, morph: 420, hero: 900});
   assert.deepEqual(easings, {out: 'cubic-bezier(.2, .8, .2, 1)', in: 'cubic-bezier(.4, 0, 1, 1)', inOut: 'cubic-bezier(.4, 0, .2, 1)', linear: 'linear'});
@@ -145,6 +153,21 @@ import {join} from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {spawnSync} from 'node:child_process';
 import {renderTokens, tokenCssPath} from '../../design/scripts/tokens.mjs';
+
+test('row subtitle CSS projects the TV size without changing desktop or phone text', () => {
+  const css = renderTokens();
+  const blocks = [...css.matchAll(/(?:^|\n)(:root|\[data-platform="tv"\]) \{\n([\s\S]*?)\n\}/g)]
+    .filter(match => match[2]!.includes('--type-row-subtitle-size:'));
+  assert.equal(blocks.length, 3, 'phone, desktop and explicit TV token blocks');
+  for (const [index, size] of ['0.875rem', '0.875rem', '1.25rem'].entries()) {
+    const body = blocks[index]![2]!;
+    assert.ok(body.includes(`--type-row-subtitle-size: ${size};`), blocks[index]![1]);
+    assert.ok(body.includes('--type-row-subtitle-line: normal;'));
+    assert.ok(body.includes('--type-row-subtitle-weight: 400;'));
+    assert.ok(body.includes('--type-row-subtitle-tracking: 0em;'));
+    assert.ok(body.includes('--type-row-subtitle-transform: none;'));
+  }
+});
 
 test('web-next CSS is deterministic, complete and byte-identical to the canonical projection', () => {
   const css = renderTokens();
