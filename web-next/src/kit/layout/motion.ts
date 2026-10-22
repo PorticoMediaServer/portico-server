@@ -36,14 +36,30 @@ export function scrollLayout(element: HTMLElement, left: number, top: number, re
   if (reduced) { element.scrollTo({left, top, behavior: 'instant'}); return () => {}; }
   const fromX = element.scrollLeft, fromY = element.scrollTop, started = performance.now();
   const snap = element.style.scrollSnapType; element.style.scrollSnapType = 'none';
-  let frame = 0, cancelled = false;
+  let frame = 0, cancelled = false, wheelTimer: ReturnType<typeof setTimeout> | undefined;
   const cancel = () => {
     cancelled = true; cancelAnimationFrame(frame); element.style.scrollSnapType = snap;
-    element.removeEventListener('pointerdown', cancel); element.removeEventListener('wheel', cancel);
+    if (wheelTimer !== undefined) clearTimeout(wheelTimer);
+    element.removeEventListener('pointerdown', interrupt); element.removeEventListener('wheel', interrupt);
+    element.ownerDocument.removeEventListener('pointerup', cancel); element.ownerDocument.removeEventListener('pointercancel', cancel);
     if (scrolling.get(element) === cancel) scrolling.delete(element);
   };
+  const interrupt = (event: Event) => {
+    cancelled = true; cancelAnimationFrame(frame);
+    // Restoring mandatory snapping on pointer-down would continue moving the row
+    // underneath the held pointer. Let the user's gesture finish first.
+    if (event.type === 'pointerdown') {
+      if (wheelTimer !== undefined) clearTimeout(wheelTimer);
+      element.removeEventListener('wheel', interrupt);
+      element.ownerDocument.addEventListener('pointerup', cancel, {once: true});
+      element.ownerDocument.addEventListener('pointercancel', cancel, {once: true});
+    } else {
+      if (wheelTimer !== undefined) clearTimeout(wheelTimer);
+      wheelTimer = setTimeout(cancel, motion.quick);
+    }
+  };
   scrolling.set(element, cancel);
-  element.addEventListener('pointerdown', cancel, {once: true, passive: true}); element.addEventListener('wheel', cancel, {once: true, passive: true});
+  element.addEventListener('pointerdown', interrupt, {once: true, passive: true}); element.addEventListener('wheel', interrupt, {passive: true});
   const tick = (now: number) => {
     if (cancelled) return;
     const p = Math.min(1, (now - started) / (repeat ? motion.quick : motion.slow)), eased = repeat ? p : rowEase(p);

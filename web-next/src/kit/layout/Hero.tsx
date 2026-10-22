@@ -7,7 +7,7 @@ import {boundedIndex} from './geometry';
 import {useLayoutMotion} from './motion';
 import styles from './layout.module.css';
 
-export type HeroCandidate = Readonly<{id: string; title: string; long?: boolean; reason?: string; overview?: string; facts?: readonly FactPart[]; thumbnail?: string}>;
+export type HeroCandidate = Readonly<{id: string; title: string; navigationLabel?: string; long?: boolean; reason?: string; overview?: string; facts?: readonly FactPart[]; thumbnail?: string}>;
 export type HeroRenderContext = Readonly<{index: number; active: boolean; visible: boolean; paused: boolean; reducedMotion: boolean; platform: LayoutPlatform; onReady?: () => void; onError?: () => void}>;
 export type HeroProps<T extends HeroCandidate> = Omit<HTMLAttributes<HTMLElement>, 'children' | 'onChange'> & {
   /** A bounded, server-authored spotlight set. This primitive never chooses library entries. */
@@ -88,15 +88,16 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
       </div>;
     })}
     {entry && context && <div id={`${id}-panel`} className={styles.copy} data-active={contentVisible && copyId === currentId} inert={!contentVisible} aria-hidden={!contentVisible || undefined}
-      role={showNavigation && candidates.length > 1 ? 'tabpanel' : undefined} aria-labelledby={showNavigation && candidates.length > 1 ? `${id}-tab-${index}` : undefined}>
+      role={platform !== 'tv' && showNavigation && candidates.length > 1 ? 'tabpanel' : undefined} aria-labelledby={platform !== 'tv' && showNavigation && candidates.length > 1 ? `${id}-tab-${index}` : undefined}>
       {reason && <p className={styles.reason} style={layoutType(type.eyebrow)}>{reason}</p>}
       <Lockup title={entry.title} long={entry.long} platform={platform} />
       {renderMetadata ? renderMetadata(entry, context) : entry.facts?.length ? <HeroFacts parts={entry.facts} platform={platform} /> : null}
       {entry.overview && <p className={styles.overview} style={layoutType(type.synopsis)}>{entry.overview}</p>}
       {renderActions && <div className={styles.actions}>{renderActions(entry, context)}</div>}
       {renderSupplement?.(entry, context)}
+      {platform === 'tv' && showNavigation && candidates.length > 1 && <div className={styles.tvDots} aria-hidden="true">{candidates.map((candidate, candidateIndex) => <i key={candidate.id} data-active={candidateIndex === index} />)}</div>}
     </div>}
-    {showNavigation && candidates.length > 1 && <div className={phone ? styles.dots : styles.thumbnails} role="tablist" aria-label={defaultI18n.t('next.layout.featuredTitles')}>
+    {platform !== 'tv' && showNavigation && candidates.length > 1 && <div className={phone ? styles.dots : styles.thumbnails} role="tablist" aria-label={defaultI18n.t('next.layout.featuredTitles')}>
       {candidates.map((candidate, candidateIndex) => <button type="button" key={candidate.id} ref={element => { thumbRefs.current[candidateIndex] = element; }}
         id={`${id}-tab-${candidateIndex}`} className={phone ? styles.dot : styles.thumbnail} role="tab" tabIndex={candidateIndex === index ? 0 : -1}
         aria-label={candidate.title} aria-controls={`${id}-panel`} aria-selected={candidateIndex === index} data-active={candidateIndex === index}
@@ -109,7 +110,7 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
           else return;
           event.preventDefault(); choose(next); thumbRefs.current[next]?.focus();
         }}>
-        {!phone && <>{renderThumbnail && <span className={styles.thumbnailImage}>{renderThumbnail(candidate, {index: candidateIndex, active: candidateIndex === index, visible: visible && motion.visible, paused, reducedMotion: motion.reduced, platform})}</span>}<span className={styles.timer}><i key={currentId} /></span><span className={styles.thumbnailTitle}>{candidate.title}</span></>}
+        {!phone && <>{renderThumbnail && <span className={styles.thumbnailImage}>{renderThumbnail(candidate, {index: candidateIndex, active: candidateIndex === index, visible: visible && motion.visible, paused, reducedMotion: motion.reduced, platform})}</span>}<span className={styles.timer}><i key={currentId} /></span><span className={styles.thumbnailTitle}>{candidate.navigationLabel ?? candidate.title}</span></>}
       </button>)}
     </div>}
   </section>;

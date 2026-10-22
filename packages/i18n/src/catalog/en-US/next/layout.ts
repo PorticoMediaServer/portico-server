@@ -17,6 +17,7 @@ export const layoutMessages = {
   'next.layout.gallery.heroPhoneApp': 'Phone app spotlight',
   'next.layout.gallery.heroPhoneWeb': 'Mobile web spotlight',
   'next.layout.gallery.heroReduced': 'Spotlight with reduced motion',
+  'next.layout.gallery.heroTv': 'TV spotlight',
   'next.layout.gallery.focusPreview': 'Focus preview',
   'next.layout.gallery.shelfDesktop': 'Desktop shelf',
   'next.layout.gallery.shelfPhone': 'Phone shelf',

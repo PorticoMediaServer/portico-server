@@ -1,6 +1,6 @@
 .remoteHint { display: flex; align-items: center; gap: 12px; font-size: 20px; font-weight: 600; color: var(--color-text-tertiary); }
 .remoteHint span { display: inline-grid; place-items: center; min-width: 44px; height: 36px; padding: 0 10px; border-radius: 9px; border: 1.5px solid rgba(237,245,250,.3); color: var(--color-text-secondary); font-size: 17px; font-weight: 800; }
-.remoteHint span:nth-of-type(2) { margin-left: 36px; }
+.remoteGap { display: inline-block; width: 16px; }
 .previewControls { position: absolute; top: 588px; left: 0; right: 0; }
 .previewFixture { position: relative; }
 .railFixture { padding-left: 72px; padding-top: 20px; }
