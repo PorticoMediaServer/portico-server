@@ -418,7 +418,14 @@ func restrictionWriteRoutes() map[string]writeRoute {
 			}
 			return out
 		}),
-		"POST /v1/metadata/bulk/preview":                                      perHidden("POST", "/v1/metadata/bulk/preview", `{"targets":[{"kind":"item","contentKind":"movie","id":"ID","libraryId":"private-library"}]}`, "item"),
+		"POST /v1/metadata/bulk/preview": writeProbes(func(m *restrictionEnv) []idProbe {
+			var out []idProbe
+			for _, library := range []string{"private-library", "matrix-movies"} {
+				body := fmt.Sprintf(`{"targets":[{"kind":"item","contentKind":"movie","id":"ID","libraryId":%q}]}`, library)
+				out = append(out, perHidden("POST", "/v1/metadata/bulk/preview", body, "item").probes(m)...)
+			}
+			return out
+		}),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/fonts/{font}": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.mks": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
 		"HEAD /v1/media/subtitles/{grant}/{resource}/{revision}/original.sub": writeExempt("read-only asset headers; originalSubtitleRoute rechecks grant and subtitle visibility"),
@@ -550,7 +557,6 @@ func restrictionWriteRoutes() map[string]writeRoute {
 		"POST /v1/metadata/{kind}/{id}/art/{role}/upload":                 perHidden("POST", "/v1/metadata/item/ID/art/poster/upload", `{}`, "item"),
 		"DELETE /v1/metadata/{kind}/{id}/art/{role}/upload/{candidateId}": perHidden("DELETE", "/v1/metadata/item/ID/art/poster/upload/matrix-candidate", "", "item"),
 		"POST /v1/metadata/bulk":                                          perHidden("POST", "/v1/metadata/bulk", `{"operationId":"OP","itemIds":["ID"]}`, "item"),
-		"POST /v1/metadata/bulk/preview":                                  perHidden("POST", "/v1/metadata/bulk/preview", `{"targets":[{"kind":"item","contentKind":"movie","id":"ID","libraryId":"matrix-movies"}]}`, "item"),
 		"PUT /v1/shows/{id}/metadata/screen/season":                       perHidden("PUT", "/v1/shows/ID/metadata/screen/season", `{}`, "show"),
 		"PUT /v1/shows/{id}/metadata/tvdb":                                perHidden("PUT", "/v1/shows/ID/metadata/tvdb", `{}`, "show"),
 		"POST /v1/shows/{id}/metadata/tvdb/retry":                         perHidden("POST", "/v1/shows/ID/metadata/tvdb/retry", `{}`, "show"),
