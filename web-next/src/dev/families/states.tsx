@@ -80,7 +80,7 @@ function Updating() {
   const {action, output} = useActions();
   return <StateLayout title={t('next.states.updating', {server: server()})} body={t('next.states.updatingBody', {version: '1.4.0'})} icon="i-update" tone="accent" contentStyle={{top: 470}}
     secondary={action('switch', t('next.states.switchServer'), 'i-server')} links={[action('changes', t('next.states.whatsNew', {version: '1.4.0'}), 'i-right')]} after={output}>
-    <StateSteps steps={[{id: 'backup', label: t('next.states.backedUp'), status: 'done', detail: '4:10 PM'}, {id: 'database', label: t('next.states.updatingDatabase'), status: 'current', detail: t('next.states.secondsLeft', {seconds: 30}), progress: 1 - 24 / 56.55}, {id: 'starting', label: t('next.states.starting'), status: 'pending'}]}/>
+    <StateSteps steps={[{id: 'backup', label: t('next.states.backedUp'), status: 'done', detail: fixture('next.states.fixture.backupTime')}, {id: 'database', label: t('next.states.updatingDatabase'), status: 'current', detail: t('next.states.secondsLeft', {seconds: 30}), progress: 1 - 24 / 56.55}, {id: 'starting', label: t('next.states.starting'), status: 'pending'}]}/>
   </StateLayout>;
 }
 function PlayerFailure() {
