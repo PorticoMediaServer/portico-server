@@ -95,9 +95,10 @@ func homeActionAvailableSQL(v Viewer) (string, []any) {
 }
 
 // ProjectHomeActions decorates only the already-authorized returned Home items.
-// It requires the composition snapshot, batches exact entity lookups, and never
-// enumerates a whole container or fetches a library. The Home caller retains its
-// normal post-read revocation/fence proof before returning these offers.
+// It requires the composition snapshot and batches exact returned-entity keys.
+// Availability may visit that target's full indexed membership range, but no
+// descendant list is retained or returned and no library is fetched. The Home
+// caller retains its normal post-read revocation/fence proof for these offers.
 func (s *Service) ProjectHomeActions(v Viewer, authority HomeActionAuthority, rows []HomeRow, spotlight []HomeSpotlight) error {
 	if dbwork.Snapshot(s.Context()) == nil {
 		return sql.ErrTxDone

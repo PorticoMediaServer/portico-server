@@ -22,6 +22,40 @@ import (
 	"portico.local/server/internal/operations"
 )
 
+func revokeHomeActionOwnerSession(t *testing.T, f *searchPrivacyFixture, p identity.Principal) {
+	t.Helper()
+	ctx := context.Background()
+	var family identity.FamilyState
+	if err := dbwork.WithReadSnapshot(ctx, f.db, func(ctx context.Context) error {
+		var err error
+		family, err = f.d.Identity.SessionFamilyTx(ctx, dbwork.Snapshot(ctx), p)
+		return err
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// Use the genuine sign-out transaction and its family-retirement hooks.
+	// authorization_access is a read projection, never a mutation surface.
+	if err := f.d.Identity.LogoutToken(ctx, f.token); err != nil {
+		t.Fatal(err)
+	}
+	var revoked, projected bool
+	var reason, at string
+	if err := f.db.QueryRow(`SELECT f.revoked,f.revoked_reason,f.revoked_at,a.revoked
+	 FROM authorization_session_families f JOIN authorization_family_tokens token ON token.family_id=f.id
+	 JOIN authorization_access a ON a.hash=token.token_hash WHERE f.id=? AND token.token_hash=?`, family.ID, p.Hash).Scan(&revoked, &reason, &at, &projected); err != nil {
+		t.Fatal(err)
+	}
+	if !revoked || !projected || reason != string(identity.RevokedExplicitSignout) || at == "" {
+		t.Fatalf("sign-out did not revoke the actual family/view: revoked=%v projected=%v reason=%q at=%q", revoked, projected, reason, at)
+	}
+	if _, err := f.d.Identity.Authenticate(f.token); !errors.Is(err, identity.ErrUnauthorized) {
+		t.Fatalf("signed-out owner still authenticates: %v", err)
+	}
+	if _, err := f.d.Identity.Authenticate(f.kids.AccessToken); err != nil {
+		t.Fatalf("owner sign-out incorrectly revoked the independent member family: %v", err)
+	}
+}
+
 func TestHomeActionAuthorityUsesLiveOwnerAndUnavailableServices(t *testing.T) {
 	f := newSearchPrivacyFixture(t)
 	d := f.d
@@ -86,7 +120,7 @@ func TestHomeActionAuthorityUsesLiveOwnerAndUnavailableServices(t *testing.T) {
 	if a := read(owner); a.Metadata || a.Refresh || a.Playback || a.Queue {
 		t.Fatalf("unavailable services advertised: %+v", a)
 	}
-	f.c.Exec(`UPDATE authorization_access SET revoked=1 WHERE hash=?`, owner.Hash)
+	revokeHomeActionOwnerSession(t, f, owner)
 	if _, err := d.homeActionFenceAfter(httptest.NewRequest("GET", "/v1/home", nil), owner); !errors.Is(err, identity.ErrUnauthorized) {
 		t.Fatalf("post-composition family proof accepted revocation: %v", err)
 	}
@@ -183,11 +217,9 @@ func TestHomeActionHTTPRecomposesLibraryPolicyAndWithholdsPrivateOffers(t *testi
 			t.Fatalf("private Home data leaked: %s", secret)
 		}
 	}
-	if _, err = f.db.Exec(`UPDATE authorization_access SET revoked=1 WHERE hash=?`, p.Hash); err != nil {
-		t.Fatal(err)
-	}
+	revokeHomeActionOwnerSession(t, f, p)
 	w := homeAPIRequest(t, f.h, f.token, "GET", "/v1/home/rows/new_on_server", "")
-	if w.Code == http.StatusOK || strings.Contains(w.Body.String(), "homeActions") {
+	if w.Code != http.StatusUnauthorized || strings.Contains(w.Body.String(), "homeActions") {
 		t.Fatalf("revoked Home returned offers: %d %s", w.Code, w.Body.String())
 	}
 }
@@ -339,12 +371,12 @@ func TestHomeActionAggregateDeleteUsesActualPreviewAndCurrentOwnerPolicy(t *test
 	if err := f.db.QueryRow(`SELECT EXISTS(SELECT 1 FROM catalog_entities WHERE public_id=pid_blob(?))`, first.Public).Scan(&present); err != nil || !present {
 		t.Fatalf("refused aggregate delete changed a child: %v %v", present, err)
 	}
-	f.c.Exec(`UPDATE authorization_access SET revoked=1 WHERE hash=?`, p.Hash)
+	revokeHomeActionOwnerSession(t, f, p)
 	if _, err := f.d.Administration.PreviewDelete(ctx, auth, []string{show.Public}); !errors.Is(err, identity.ErrUnauthorized) {
 		t.Fatalf("revoked owner retained actual preview authority: %v", err)
 	}
 	w = homeAPIRequest(t, f.h, f.token, "GET", "/v1/home/rows/new_on_server?limit=12", "")
-	if w.Code == http.StatusOK || strings.Contains(w.Body.String(), "homeActions") {
+	if w.Code != http.StatusUnauthorized || strings.Contains(w.Body.String(), "homeActions") {
 		t.Fatalf("revoked owner retained aggregate Home offers: %d %s", w.Code, w.Body.String())
 	}
 }
@@ -354,6 +386,7 @@ func TestHomeActionAggregateAvailabilityRetainsSnapshotAndCurrentRestrictionFenc
 	ctx := context.Background()
 	tv := f.c.Library("tv", "Shows", "tv", "/tv")
 	show := f.c.Show(tv, "Permitted series", 2026)
+	f.c.Genres(show.ID, "tmdb", "Drama", "Mystery", "Crime")
 	season := f.c.Season(show, 1)
 	secondSeason := f.c.Season(show, 2)
 	unavailable := f.c.Episode(show, season, 1, "/tv/permitted-unavailable.mkv")
@@ -366,10 +399,11 @@ func TestHomeActionAggregateAvailabilityRetainsSnapshotAndCurrentRestrictionFenc
 		}
 		return compactcatalog.SetAssetAvailableTx(ctx, tx, secondUnavailable.Asset, false)
 	})
-	var hidden catalogtest.Item
+	hiddenIDs := []string{}
 	for number := 2; number <= 70; number++ {
-		hidden = f.c.Episode(show, season, number, fmt.Sprintf("/tv/hidden-%d.mkv", number))
+		hidden := f.c.Episode(show, season, number, fmt.Sprintf("/tv/hidden-%d.mkv", number))
 		f.c.Attributes(hidden.ID, "contentRating", "R")
+		hiddenIDs = append(hiddenIDs, hidden.Public)
 	}
 	permitted := f.c.Episode(show, secondSeason, 71, "/tv/permitted-available.mkv")
 	f.c.Attributes(permitted.ID, "contentRating", "G")
@@ -380,33 +414,132 @@ func TestHomeActionAggregateAvailabilityRetainsSnapshotAndCurrentRestrictionFenc
 	f.c.Drain()
 	f.c.Exec(`UPDATE direct_profiles SET allowed_libraries='["movies","tv"]',revision=revision+1 WHERE id=?`, f.kids.Viewer.ProfileID)
 	f.restrictLiveTV(false)
+	personal := identity.PersonalKey(f.kids.Viewer)
+	f.c.Exec(`INSERT INTO progress(profile_id,item_id,position,unit,playback_id) VALUES(?,?,120000,0,'home-context-progress')`, personal, permitted.ID)
+	f.c.Exec(`INSERT INTO progress_activity VALUES(?,'tv',?,'2026-10-22T00:00:00.000Z','paused')`, personal, permitted.ID)
+	f.c.Drain()
 	f.h = New(f.d)
-	read := func(wantPlay bool) catalog.HomeRow {
+	var earlier int
+	if err := f.db.QueryRow(`SELECT count(DISTINCT item_id) FROM catalog_browse_memberships WHERE entity_id=? AND item_id<?`, show.ID, permitted.ID).Scan(&earlier); err != nil || earlier != 71 {
+		t.Fatalf("permitted member is not behind 71 earlier members: %d %v", earlier, err)
+	}
+	read := func(wantPresent bool) catalog.HomeRow {
 		t.Helper()
+		r := httptest.NewRequest("GET", "/v1/home", nil)
+		r.Header.Set("Authorization", "Bearer "+f.kids.AccessToken)
+		_, request, err := f.d.homeRequest(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !request.Viewer.AllowsLibrary("tv") || !request.Restrictions.BlockUnrated || request.Restrictions.MaximumAge == nil {
+			t.Fatalf("fixture did not resolve genuine restricted TV authority: %+v", request.Viewer)
+		}
+		// Visibility alone admits the unavailable G-rated children and their
+		// show. Recently Added additionally requires a permitted available
+		// addition; it does not retain a work just because it is visible.
+		for _, item := range []catalogtest.Item{unavailable, secondUnavailable} {
+			if err := f.d.Catalog.VisibleItem(ctx, request.Viewer, item.Public); err != nil {
+				t.Fatalf("permitted unavailable child lost visibility: %v", err)
+			}
+		}
+		if err := f.d.Catalog.VisibleEntity(ctx, request.Viewer, "show", show.Public); err != nil {
+			t.Fatalf("show with permitted unavailable children lost visibility: %v", err)
+		}
+		if err := f.d.Catalog.VisibleItem(ctx, request.Viewer, hiddenIDs[0]); !errors.Is(err, sql.ErrNoRows) {
+			t.Fatalf("R-rated available child is not restricted: %v", err)
+		}
 		w := homeAPIRequest(t, f.h, f.kids.AccessToken, "GET", "/v1/home/rows/new_on_server?limit=12", "")
-		if w.Code != http.StatusOK {
+		if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "no-store" {
 			t.Fatalf("restricted Home read %d: %s", w.Code, w.Body.String())
 		}
 		var row catalog.HomeRow
 		if err := json.Unmarshal(w.Body.Bytes(), &row); err != nil {
 			t.Fatal(err)
 		}
-		found := false
+		if row.ViewerFence != request.ViewerFence {
+			t.Fatal("row did not retain current authorized restriction fence")
+		}
+		found := 0
 		for _, entry := range row.Entries {
-			if entry.ID != show.Public {
+			if entry.LibraryID != "tv" {
 				continue
 			}
-			found = true
-			if entry.Kind != "show" || entry.HomeActions == nil || entry.HomeActions.Play != wantPlay || entry.HomeActions.Queue != wantPlay || entry.HomeActions.Selection.Play != wantPlay || entry.HomeActions.Delete || entry.HomeActions.Selection.Delete {
-				t.Fatalf("current permitted availability=%v: %+v", wantPlay, entry)
+			found++
+			// Exactly one permitted available addition means the real episode,
+			// not a fabricated show/season card or its unavailable sibling.
+			if entry.ID != permitted.Public || entry.Kind != "episode" || entry.Title != "Episode 71" || entry.Subtitle != "Permitted series" || entry.EpisodeNumber == nil || *entry.EpisodeNumber != 71 || entry.SeasonNumber == nil || *entry.SeasonNumber != 2 || entry.ContentRating != "G" || entry.Available == nil || !*entry.Available || entry.Playback == nil || entry.Playback.ItemID != permitted.Public {
+				t.Fatalf("recent addition is not the actual permitted episode: %+v", entry)
+			}
+			if a := entry.HomeActions; a == nil || !a.Play || !a.Queue || !a.Selection.Play || !a.MyList || a.Delete || a.Selection.Delete || a.EditMetadata {
+				t.Fatalf("permitted member offers: %+v", a)
+			}
+			parent := entry.HomeTitleContext
+			if parent == nil || parent.Kind != "show" || parent.Year == nil || *parent.Year != 2026 || len(parent.Genres) != 2 || parent.Genres[0] != "Drama" || parent.Genres[1] != "Mystery" || parent.SeasonCount == nil || *parent.SeasonCount != 2 {
+				t.Fatalf("episode did not carry authorized parent facts/visible seasons: %+v", parent)
 			}
 		}
-		if !found {
-			t.Fatal("permitted unavailable child should keep the show visible")
+		want := 0
+		if wantPresent {
+			want = 1
 		}
-		for _, secret := range []string{hidden.Public, "/tv/hidden-", "filePath", "sourcePath"} {
+		if found != want {
+			t.Fatalf("permitted available additions: got %d want %d; row=%+v", found, want, row)
+		}
+		continued := homeAPIRequest(t, f.h, f.kids.AccessToken, "GET", "/v1/home/rows/continue?limit=12", "")
+		if continued.Code != http.StatusOK {
+			t.Fatalf("actual Continue Watching read %d: %s", continued.Code, continued.Body.String())
+		}
+		var continuation catalog.HomeRow
+		if err := json.Unmarshal(continued.Body.Bytes(), &continuation); err != nil {
+			t.Fatal(err)
+		}
+		if len(continuation.Entries) != want || continuation.ViewerFence != row.ViewerFence || continuation.Revision != row.Revision {
+			t.Fatalf("Continue Watching did not follow current episode availability/policy: %+v", continuation)
+		}
+		if wantPresent {
+			entry := continuation.Entries[0]
+			parent := entry.HomeTitleContext
+			if entry.ID != permitted.Public || entry.Kind != "episode" || entry.Playback == nil || entry.Playback.ItemID != permitted.Public || parent == nil || parent.Year == nil || *parent.Year != 2026 || len(parent.Genres) != 2 || parent.Genres[0] != "Drama" || parent.Genres[1] != "Mystery" || parent.SeasonCount == nil || *parent.SeasonCount != 2 {
+				t.Fatalf("Continue Watching fabricated/inferred parent facts: %+v parent=%+v", entry, parent)
+			}
+		}
+		for _, secret := range append(append([]string{}, hiddenIDs...), unavailable.Public, secondUnavailable.Public, "/tv/hidden-", "filePath", "sourcePath") {
 			if strings.Contains(w.Body.String(), secret) {
 				t.Fatalf("restricted Home leaked hidden availability evidence: %s", secret)
+			}
+		}
+		if wantPresent {
+			// The manifest deliberately promotes this episode to its displayed
+			// show. Its resume child and visible season count must remain exact.
+			w := homeAPIRequest(t, f.h, f.kids.AccessToken, "GET", "/v1/home?limit=12", "")
+			if w.Code != http.StatusOK || w.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("restricted spotlight %d: %s", w.Code, w.Body.String())
+			}
+			var document catalog.HomeDocument
+			if err := json.Unmarshal(w.Body.Bytes(), &document); err != nil {
+				t.Fatal(err)
+			}
+			if document.ViewerFence != row.ViewerFence || document.Revision != row.Revision {
+				t.Fatal("spotlight and row disagree on the current Home fence/revision")
+			}
+			shows := 0
+			for _, candidate := range document.Spotlight {
+				if candidate.Entry.ID != show.Public {
+					continue
+				}
+				shows++
+				entry, target := candidate.Entry, candidate.ResumeTarget
+				if entry.Kind != "show" || entry.LibraryID != "tv" || entry.SeasonCount == nil || *entry.SeasonCount != 1 || entry.HomeActions == nil || !entry.HomeActions.Play || !entry.HomeActions.Selection.Play || entry.HomeActions.Delete || target == nil || target.ID != permitted.Public || target.Playback == nil || target.Playback.ItemID != permitted.Public || target.HomeActions == nil || !target.HomeActions.Play {
+					t.Fatalf("spotlight borrowed hidden seasons/availability or changed identity: %+v", candidate)
+				}
+			}
+			if shows != 1 {
+				t.Fatalf("actual recent episode did not produce one displayed show spotlight: %d", shows)
+			}
+			for _, secret := range append(append([]string{}, hiddenIDs...), "/tv/hidden-", "filePath", "sourcePath") {
+				if strings.Contains(w.Body.String(), secret) {
+					t.Fatalf("restricted spotlight leaked hidden evidence: %s", secret)
+				}
 			}
 		}
 		return row
@@ -428,7 +561,10 @@ func TestHomeActionAggregateAvailabilityRetainsSnapshotAndCurrentRestrictionFenc
 		return compactcatalog.SetAssetAvailableTx(ctx, tx, permitted.Asset, true)
 	})
 	f.c.Drain()
-	read(true)
+	afterRestored := read(true)
+	if afterRestored.ViewerFence != before.ViewerFence || afterRestored.Revision.Catalog == afterUnavailable.Revision.Catalog {
+		t.Fatal("physical availability restoration did not retain policy and advance content revision")
+	}
 	policy, err := f.d.Identity.ProfileRestrictions(ctx, f.token, p.ProfileID)
 	if err != nil {
 		t.Fatal(err)

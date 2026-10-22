@@ -14,7 +14,7 @@ export type HomeCatalogueSelection=Extract<SelectionItem,{kind:ContentEntryKind}
 export type HomeChannelSelection=Extract<SelectionItem,{kind:'channel'}>;
 
 function offered(actions:HomeSelectionActions|undefined,platform:HomeActionPlatform) {
-  const ownerActions=platform.platform!=='tv';
+  const ownerMaintenance=platform.platform!=='tv';
   return {
     play:actions?.play===true&&platform.playbackAvailable===true,
     queue:actions?.queue===true&&platform.queueAvailable===true,
@@ -24,9 +24,11 @@ function offered(actions:HomeSelectionActions|undefined,platform:HomeActionPlatf
     collection:actions?.collection===true,
     favorite:actions?.favorite===true,
     download:actions?.download===true&&platform.platform==='phone-app'&&platform.nativeDownloadsAvailable===true,
-    edit:actions?.edit===true&&ownerActions,
-    refresh:actions?.refresh===true&&ownerActions,
-    delete:actions?.delete===true&&ownerActions,
+    // DESIGN's bulk Edit rule includes TV. Its real server grant is required;
+    // the view-only Server settings rule does not remove title editing.
+    edit:actions?.edit===true,
+    refresh:actions?.refresh===true&&ownerMaintenance,
+    delete:actions?.delete===true&&ownerMaintenance,
   };
 }
 
