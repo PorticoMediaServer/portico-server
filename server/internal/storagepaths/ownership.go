@@ -1,6 +1,8 @@
 package storagepaths
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -9,30 +11,97 @@ import (
 )
 
 const ownershipMarker = ".portico-owned-v1"
+const layoutIdentityMarker = ".portico-layout-v1"
 
-func (l Layout) ownership(name string) string {
-	return "Portico disposable directory v1\n" + filepath.Clean(l.Data) + "\n" + name + "\n"
+func ownedScopeIdentity(parent *os.Root, name string) (string, error) {
+	identity, err := readOwnedFile(parent, layoutIdentityMarker)
+	if err != nil {
+		return "", err
+	}
+	if len(identity) != 64 {
+		return "", errors.New("invalid data-layout identity")
+	}
+	if _, err := hex.DecodeString(identity); err != nil {
+		return "", errors.New("invalid data-layout identity")
+	}
+	return "Portico disposable directory v1\n" + identity + "\n" + name + "\n", nil
 }
 
-func verifyOwnedRoot(root *os.Root, expected string) error {
-	info, err := root.Lstat(ownershipMarker)
-	if err != nil || !info.Mode().IsRegular() || info.Size() > 4096 {
-		return errors.New("refusing to adopt a preexisting unowned Cache or Temp directory; choose a fresh data folder")
+func (l Layout) ownership(name string) (string, error) {
+	parent, err := os.OpenRoot(l.Data)
+	if err != nil {
+		return "", err
 	}
-	f, err := root.Open(ownershipMarker)
+	defer parent.Close()
+	return ownedScopeIdentity(parent, name)
+}
+
+// A whole-folder move carries this random root identity and its scope markers.
+// A scope copied by itself cannot establish ownership in a different layout.
+func (l Layout) prepareIdentity() error {
+	if err := os.MkdirAll(l.Data, 0700); err != nil {
+		return err
+	}
+	root, err := os.OpenRoot(l.Data)
 	if err != nil {
 		return err
+	}
+	defer root.Close()
+	if _, err := root.Lstat(layoutIdentityMarker); err == nil {
+		_, err := ownedScopeIdentity(root, "Temp")
+		return err
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	for _, scope := range []string{"Temp", "Cache"} {
+		if _, err := root.Lstat(scope); err == nil {
+			return errors.New("refusing to mint layout ownership over existing disposable scopes")
+		} else if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
+	var random [32]byte
+	if _, err := rand.Read(random[:]); err != nil {
+		return err
+	}
+	marker, err := root.OpenFile(layoutIdentityMarker, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0600)
+	if err != nil {
+		return err
+	}
+	_, writeErr := io.WriteString(marker, hex.EncodeToString(random[:]))
+	if writeErr == nil {
+		writeErr = marker.Sync()
+	}
+	return errors.Join(writeErr, marker.Close())
+}
+
+func readOwnedFile(root *os.Root, name string) (string, error) {
+	info, err := root.Lstat(name)
+	if err != nil || !info.Mode().IsRegular() || info.Size() > 4096 {
+		return "", errors.New("refusing to adopt a preexisting unowned Cache or Temp directory; choose a fresh data folder")
+	}
+	f, err := root.Open(name)
+	if err != nil {
+		return "", err
 	}
 	defer f.Close()
 	opened, err := f.Stat()
 	if err != nil || !os.SameFile(info, opened) {
-		return errors.New("disposable directory ownership changed")
+		return "", errors.New("disposable directory ownership changed")
 	}
 	raw, err := io.ReadAll(io.LimitReader(f, 4097))
 	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+func verifyOwnedRoot(root *os.Root, expected string) error {
+	raw, err := readOwnedFile(root, ownershipMarker)
+	if err != nil {
 		return err
 	}
-	if string(raw) != expected {
+	if raw != expected {
 		return errors.New("disposable directory does not belong to this data layout")
 	}
 	return nil
@@ -48,10 +117,18 @@ func (l Layout) verifyOwned(name string) error {
 		return err
 	}
 	defer root.Close()
-	return verifyOwnedRoot(root, l.ownership(name))
+	expected, err := l.ownership(name)
+	if err != nil {
+		return err
+	}
+	return verifyOwnedRoot(root, expected)
 }
 
 func (l Layout) prepareOwned(name string) error {
+	expected, err := l.ownership(name)
+	if err != nil {
+		return err
+	}
 	dir := filepath.Join(l.Data, name)
 	if err := os.Mkdir(dir, 0700); errors.Is(err, os.ErrExist) {
 		return l.verifyOwned(name)
@@ -78,7 +155,7 @@ func (l Layout) prepareOwned(name string) error {
 	if err != nil {
 		return err
 	}
-	_, writeErr := io.WriteString(marker, l.ownership(name))
+	_, writeErr := io.WriteString(marker, expected)
 	if writeErr == nil {
 		writeErr = marker.Sync()
 	}

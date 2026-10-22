@@ -101,4 +101,57 @@ func TestRAMMappedTranscodeCannotBypassDiskOnlyProducer(t *testing.T) {
 	if _, err := DiskTranscodeDirectory("/transcode", "/dev/shm/spill", mounts); err == nil {
 		t.Fatal("RAM spill accepted for live FFmpeg output")
 	}
+	for _, unknown := range [][]Mount{nil, {{"/unrelated", "ext4"}}} {
+		if _, err := DiskTranscodeDirectory("/transcode", "/config/Transcode", unknown); err == nil {
+			t.Fatal("unknown filesystem accepted as disk", unknown)
+		}
+	}
+}
+
+func TestWholeDataFolderMoveAndCopyRetainScopeOwnership(t *testing.T) {
+	l := testLayout(t)
+	for _, dir := range []string{l.Temp, l.Cache, l.Metadata, l.Keys} {
+		if err := os.WriteFile(filepath.Join(dir, "original"), []byte("keep"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	moved := At(filepath.Join(filepath.Dir(l.Data), "renamed-data"))
+	if err := os.Rename(l.Data, moved.Data); err != nil {
+		t.Fatal(err)
+	}
+	if err := moved.Prepare(); err != nil {
+		t.Fatal("whole-folder rename refused", err)
+	}
+	copied := At(filepath.Join(t.TempDir(), "copied-data"))
+	if err := os.CopyFS(copied.Data, os.DirFS(moved.Data)); err != nil {
+		t.Fatal(err)
+	}
+	if err := copied.Prepare(); err != nil {
+		t.Fatal("whole-folder copy refused", err)
+	}
+	if err := copied.ResetTemp(); err != nil {
+		t.Fatal(err)
+	}
+	if err := copied.RequestCacheEmpty(); err != nil {
+		t.Fatal(err)
+	}
+	if err := copied.ApplyCacheEmpty(); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{copied.Metadata, copied.Keys, moved.Temp, moved.Cache} {
+		if raw, err := os.ReadFile(filepath.Join(dir, "original")); err != nil || string(raw) != "keep" {
+			t.Fatal("move/copy cleanup changed retained bytes or original", dir, err)
+		}
+	}
+	other := testLayout(t)
+	marker, err := os.ReadFile(filepath.Join(moved.Cache, ownershipMarker))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(other.Cache, ownershipMarker), marker, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := other.EmptyOwned("Cache"); err == nil {
+		t.Fatal("scope copied alone became owned by another layout")
+	}
 }

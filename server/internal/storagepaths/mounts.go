@@ -67,11 +67,27 @@ func SharedFilesystem(kind string) bool {
 
 func MemoryFilesystem(kind string) bool { return kind == "tmpfs" || kind == "ramfs" }
 
+// CurrentMounts returns a complete platform mount/volume list or an error.
+func CurrentMounts() ([]Mount, error) {
+	mounts, err := cleanupMounts()
+	if err != nil {
+		return nil, err
+	}
+	if len(mounts) == 0 {
+		return nil, ErrCleanupUnavailable
+	}
+	return mounts, nil
+}
+
 // DiskTranscodeDirectory keeps production FFmpeg output off RAM until the
 // producer/serve path supports aggregate bounded RAM with live disk spill.
 // The SpillFile primitive alone does not provide that integration.
 func DiskTranscodeDirectory(requested, fallback string, mounts []Mount) (string, error) {
-	if !MemoryFilesystem(Filesystem(requested, mounts)) {
+	kind := Filesystem(requested, mounts)
+	if kind == "" {
+		return "", errors.New("conversion filesystem could not be verified; conversion is unavailable until its disk backing can be identified")
+	}
+	if !MemoryFilesystem(kind) {
 		return requested, nil
 	}
 	if fallback != "" && Filesystem(fallback, mounts) != "" && !MemoryFilesystem(Filesystem(fallback, mounts)) {

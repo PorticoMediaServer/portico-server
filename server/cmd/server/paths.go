@@ -24,11 +24,8 @@ func startupLayout() (storagepaths.Layout, error) {
 }
 
 func startupMounts() []storagepaths.Mount {
-	if file, err := os.Open("/proc/self/mountinfo"); err == nil {
-		defer file.Close()
-		return storagepaths.ParseMountInfo(file)
-	}
-	return nil
+	mounts, _ := storagepaths.CurrentMounts()
+	return mounts
 }
 func startupDirectory(variable, fallback string) (string, error) {
 	directory := os.Getenv(variable)

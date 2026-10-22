@@ -135,6 +135,9 @@ func (l Layout) Prepare() error {
 			return err
 		}
 	}
+	if err := l.prepareIdentity(); err != nil {
+		return err
+	}
 	for _, dir := range []string{l.Data, l.Database, l.Metadata, l.Cache, l.Logs, l.Keys, l.Backups, l.Temp, l.Transcode} {
 		if dir == "" {
 			continue
@@ -233,7 +236,11 @@ func (l Layout) EmptyOwned(name string) error {
 	if !os.SameFile(info, current) {
 		return errors.New("owned directory changed")
 	}
-	if err := verifyOwnedRoot(root, l.ownership(name)); err != nil {
+	expected, err := ownedScopeIdentity(parent, name)
+	if err != nil {
+		return err
+	}
+	if err := verifyOwnedRoot(root, expected); err != nil {
 		return err
 	}
 	file, err := root.Open(".")
@@ -265,6 +272,9 @@ func (l Layout) ActivateTemp() error {
 		return errors.New("invalid owned Temp directory")
 	}
 	if err := canonicalParents(l.Temp); err != nil {
+		return err
+	}
+	if err := l.prepareIdentity(); err != nil {
 		return err
 	}
 	if err := l.prepareOwned("Temp"); err != nil {
