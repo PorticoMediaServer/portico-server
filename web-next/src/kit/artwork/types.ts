@@ -12,6 +12,8 @@ export type ArtStyleProps = Readonly<{className?: string; style?: CSSProperties;
 export type ArtworkProps = ArtStyleProps & Readonly<{
   source?: ArtworkSource | null; alt: string; fit?: 'cover' | 'contain'; position?: string;
   zoom?: number; saturation?: number; brightness?: number; visible?: boolean;
+  arrivalDurationMs?: number;
   fallback?: ReactNode; onStatusChange?: (status: ArtworkStatus) => void;
   onReady?: (source: ArtworkSource) => void;
+  onError?: (source: ArtworkSource) => void;
 }>;

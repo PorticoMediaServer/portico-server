@@ -26,7 +26,11 @@ test('scoped source identity deduplicates consumers while preserving real loader
   await flush();
   assert.deepEqual(requests, [{url: '/selected-art?v=digest', cacheKey: 'versioned-art', kind: 'foreground'}]);
   assert.equal(a.at(-1)?.status, 'ready'); assert.equal(b.at(-1)?.image?.src, 'blob:decoded');
-  stopA(); stopB(); runtime.dispose(); assert.equal(runtime.scheduler.peek(source.key), undefined);
+  assert.equal(a.at(-1)?.cached, false); assert.equal(b.at(-1)?.cached, false);
+  stopA(); stopB();
+  const cached: ArtworkRead[] = [], stopCached = observeArtwork(source, value => cached.push(value));
+  await flush(); assert.equal(cached[0]?.cached, true); assert.equal(cached.at(-1)?.cached, true); assert.equal(requests.length, 1);
+  stopCached(); runtime.dispose(); assert.equal(runtime.scheduler.peek(source.key), undefined);
   assert.throws(() => runtime.source({url: '/selected-art', cacheKey: 'digest'}));
 });
 
