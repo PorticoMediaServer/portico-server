@@ -97,9 +97,9 @@ function LockupTv() { const title = (JSON.parse(manifestJson) as {tv: {title: st
 
 function HeroCase({platform = 'desktop', reduced = false}: {platform?: LayoutPlatform; reduced?: boolean}) {
   const art = useReferenceArtwork(), [index, setIndex] = useState(platform.startsWith('phone') ? 1 : 0), [saved, setSaved] = useState<ReadonlySet<string>>(new Set()), [playing, setPlaying] = useState<string | null>(null);
-  const artwork = (item: Candidate, context: HeroRenderContext) => <AmbientArt foreground={art.backgrounds[candidates.indexOf(item)]} treatment={context.platform.startsWith('phone') ? 'phone' : 'hero'} visible={context.visible} />;
+  const artwork = (item: Candidate, context: HeroRenderContext) => <AmbientArt foreground={art.backgrounds[candidates.indexOf(item)]} treatment={context.platform.startsWith('phone') ? 'phone' : 'hero'} visible={context.visible} onReady={context.onReady} onError={context.onError} />;
   return <div data-gallery-playing={playing ?? undefined}><Hero candidates={candidates} activeIndex={index} onIndexChange={setIndex} platform={platform} reducedMotion={reduced} renderArtwork={artwork}
-    renderThumbnail={item => <Artwork source={art.backgrounds[candidates.indexOf(item)]} alt="" />}
+    renderThumbnail={(item, context) => <Artwork source={art.backgrounds[candidates.indexOf(item)]} visible={context.visible} alt="" />}
     renderActions={(item, context) => <><Button variant="primary" icon="i-play" phone={context.platform.startsWith('phone')} onClick={() => setPlaying(previous => previous === item.id ? null : item.id)} aria-pressed={playing === item.id}>
       {item === candidates[0] ? t('next.layout.playEpisode', {season: 1, episode: 1}) : t('next.layout.play')}</Button>
       <Button variant="glass" icon={saved.has(item.id) ? 'i-check' : 'i-plus'} phone={context.platform.startsWith('phone')} aria-pressed={saved.has(item.id)} onClick={() => setSaved(previous => { const next = new Set(previous); if (next.has(item.id)) next.delete(item.id); else next.add(item.id); return next; })}>{t('next.layout.myList')}</Button></>} /></div>;
@@ -112,7 +112,7 @@ function HeroReduced() { return <HeroCase reduced />; }
 function PreviewCase() {
   const art = useReferenceArtwork(), [index, setIndex] = useState(0);
   const source = (item: Candidate) => item.id === tvEntry.id ? art.preview : art.backgrounds[candidates.indexOf(item)];
-  return <div className={styles.previewFixture}><FocusPreviewHero entry={previewCandidates[index]} renderArtwork={(item, context) => <AmbientArt foreground={source(item)} foregroundStyle={{width: 1500, height: 900}} treatment="hero" visible={context.visible} onReady={context.onReady} onStatusChange={status => { if (status === 'error') context.onError?.(); }} />}
+  return <div className={styles.previewFixture}><FocusPreviewHero entry={previewCandidates[index]} renderArtwork={(item, context) => <AmbientArt foreground={source(item)} foregroundFrameStyle={{width: 1500, height: 900}} treatment="hero" arrivalDurationMs={0} visible={context.visible} onReady={context.onReady} onError={context.onError} />}
     renderReason={item => item.id === tvEntry.id ? tvReason.map(part => <span key={part.id}>{part.text}</span>) : item.reason}
     renderMetadata={item => <HeroFacts parts={item.facts ?? []} platform="tv">{item.id === tvEntry.id && <HeroProgress progress={tvProgress} remaining={tvRemaining} />}</HeroFacts>}
     renderSupplement={() => <div className={styles.remoteHint}><span>{t('next.layout.ok')}</span>{t('next.layout.resume')}<span>{t('next.layout.holdOk')}</span>{t('next.layout.moreOptions')}</div>} />
