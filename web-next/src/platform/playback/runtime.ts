@@ -30,12 +30,19 @@ import type {VideoLike} from './web-media-player.ts';
 import type {WebPlaybackAction, WebPlaybackAuthority, WebPlaybackEnvironment, WebPlaybackPresentation, WebPlaybackRuntimeSnapshot, WebPlaybackSource, WebPlaybackStart} from './types.ts';
 
 type Bookmark = Readonly<{playback: DockPlayback; subject: PlaybackSubject; queueId?: string; libraryId?: string; channel?: HomeChannel; posterUrl?: string; backdropUrl?: string; durationSeconds: number; rate: number}>;
+type OfferBinding = {
+  readonly api: WebPlaybackSource['api']; readonly authority: WebPlaybackAuthority;
+  readonly sessionKey: string; readonly libraryId: string; readonly itemId: string;
+  readonly sessionId: string; readonly generation: number; readonly playbackRun: number;
+  detailFence?: string;
+};
 type Stack = {
   web: WebPlayback; service: PlaybackService; queue: V1QueuePlayer; http: V1Http;
   life: AbortController; offers: PlayerOffersService; optionsClient: PlaybackOptionsClient;
   offs: (() => void)[]; unmount?: () => void; subtitles?: SubtitleService; offSubtitles?: () => void;
   subtitleKey?: string; documentKey?: string; documentAbort?: AbortController; documentTimer?: unknown;
   sessionKey?: string; metadataAbort?: AbortController; options: PlaybackOptions | null;
+  offerBinding?: OfferBinding;
   itemId?: string; metadataItemId?: string; libraryId?: string; subject?: PlaybackSubject; showId?: string; seasonId?: string;
   posterUrl?: string; backdropUrl?: string; expanded: boolean; retired: boolean;
   channel?: HomeChannel;
@@ -78,8 +85,8 @@ export class WebShellPlaybackRuntime {
 
   constructor(source: WebPlaybackSource, environment: WebPlaybackEnvironment = {}) {
     if (source.contentScope.serverId !== source.authority.serverId || !source.authority.viewerFence || !source.isCurrent()) problem('invalid_playback_authority');
-    this.source = source;
     this.authority = Object.freeze({...source.authority});
+    this.source = Object.freeze({...source, authority: this.authority, contentScope: Object.freeze({...source.contentScope})});
     this.env = environment;
     this.capabilityPublisher = new CapabilityPublisher(localV1Http(source.api), () => JSON.stringify([this.authority.serverId, this.authority.accountId, this.authority.profileId, this.authority.epoch]));
     const inner = localV1Http(source.api);
@@ -341,8 +348,18 @@ export class WebShellPlaybackRuntime {
   }
 
   private offers(stack: Stack, playback: PlaybackSnapshot): PlayerOffersData | null {
-    const data = stack.offers.getSnapshot().data;
-    return data?.scope.viewerFence === this.authority.viewerFence && data.scope.itemId === playback.itemId && data.current?.sessionId === playback.session?.id && data.current?.generation === playback.session?.generation ? data : null;
+    const binding = stack.offerBinding, response = stack.offers.getSnapshot(), data = response.data;
+    if (!this.current(stack) || !binding || binding.api !== this.source.api || binding.authority !== this.authority || binding.sessionKey !== stack.sessionKey || binding.sessionKey !== `${playback.intentId}:${playback.session?.id}:${playback.session?.generation}` || binding.playbackRun !== playback.playbackRun) return null;
+    if (response.phase !== 'ready' || response.error || response.scope.serverId !== this.source.contentScope.serverId || response.scope.viewerId !== this.source.contentScope.viewerId || !data) return null;
+    if (response.query?.libraryId !== binding.libraryId || response.query.itemId !== binding.itemId || response.query.sessionId !== binding.sessionId || stack.libraryId !== binding.libraryId || stack.itemId !== binding.itemId) return null;
+    if (data.scope.serverId !== this.authority.serverId || data.scope.libraryId !== binding.libraryId || data.scope.itemId !== binding.itemId || playback.itemId !== binding.itemId || data.current?.sessionId !== binding.sessionId || playback.session?.id !== binding.sessionId || data.current.generation !== binding.generation || playback.session.generation !== binding.generation) return null;
+    // Home hashes its entitled library set; detail/offers hash a different namespace. Bind
+    // the actual validated response under this captured API/authority and media source,
+    // never substitute the Home fence. PlayerOffersService also retains its detail fence
+    // across refreshes and source generations, and rejects a changed fence or denial.
+    if (binding.detailFence && binding.detailFence !== data.scope.viewerFence) return null;
+    binding.detailFence = data.scope.viewerFence;
+    return data;
   }
   private presentations(current?: WebPlaybackPresentation): readonly WebPlaybackPresentation[] {
     const out = current ? [current] : [], dock = this.dock.getSnapshot();
@@ -373,6 +390,7 @@ export class WebShellPlaybackRuntime {
     try { do {
       this.again = false;
       const stack = this.stack, playback = stack.service.getSnapshot();
+      if (['unauthorized', 'forbidden', 'permission_changed'].includes(stack.offers.getSnapshot().error?.code ?? '')) { this.dispose(); return; }
       if (playback.channel && playback.linear) stack.subject = {kind: 'channel', id: playback.channel.channelId, sourceId: playback.channel.sourceId, channelName: playback.linear.name, programmeTitle: playback.linear.programme?.title};
       const heldSession = stack.web.session(playback.session?.id) ?? stack.queue.currentSession();
       const session = heldSession?.id === playback.session?.id ? heldSession : undefined;
@@ -436,7 +454,7 @@ export class WebShellPlaybackRuntime {
   };
 
   private selectSource(stack: Stack, playback: PlaybackSnapshot, session: Session | undefined): void {
-    if (playback.channel || !playback.session || !playback.itemId || !session) { if (stack.sessionKey) this.clearSourceResources(stack); return; }
+    if (playback.channel || !playback.session || !playback.itemId || !session || session.id !== playback.session.id || session.presentation.generation !== playback.session.generation || session.itemId !== playback.itemId) { if (stack.sessionKey) this.clearSourceResources(stack); return; }
     const key = `${playback.intentId}:${playback.session.id}:${playback.session.generation}`;
     if (stack.sessionKey === key) return;
     this.clearSourceResources(stack);
@@ -455,6 +473,7 @@ export class WebShellPlaybackRuntime {
         if (stack.subject.kind === 'music') stack.expanded = false;
       }
       if (!current() || !stack.libraryId) return;
+      stack.offerBinding = {api: this.source.api, authority: this.authority, sessionKey: key, libraryId: stack.libraryId, itemId, sessionId: session.id, generation: session.presentation.generation, playbackRun: playback.playbackRun};
       await stack.offers.select({libraryId: stack.libraryId, itemId, sessionId: session.id});
       if (!current()) return;
       const data = this.offers(stack, stack.service.getSnapshot());
@@ -473,7 +492,7 @@ export class WebShellPlaybackRuntime {
     stack.documentAbort?.abort(); stack.documentAbort = undefined;
     this.clearTimer(stack.documentTimer); stack.documentTimer = undefined;
     stack.offSubtitles?.(); stack.offSubtitles = undefined; stack.subtitles?.stop(); stack.subtitles = undefined;
-    stack.sessionKey = undefined; stack.subtitleKey = undefined; stack.documentKey = undefined; stack.options = null;
+    stack.sessionKey = undefined; stack.offerBinding = undefined; stack.subtitleKey = undefined; stack.documentKey = undefined; stack.options = null;
     if (!stack.retired) stack.offers.cancel();
     this.surface?.guard(false); this.surface?.clear();
   }
