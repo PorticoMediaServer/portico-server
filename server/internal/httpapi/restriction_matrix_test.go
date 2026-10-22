@@ -391,7 +391,6 @@ func restrictionRoutes() map[string]restrictionRoute {
 		"GET /v1/shows/{id}/metadata/screen":                                 perEntity("/v1/shows/", "show", "/metadata/screen"),
 		"GET /v1/admin/live/sources/{id}/groups":                             exempt("owner-only line-up choices"),
 		"GET /v1/admin/live/sources/{id}/channels":                           exempt("owner-only line-up choices"),
-		"GET /v1/admin/activity":                                             exempt(reasonAdmin),
 		"GET /v1/admin/storage/status":                                       exempt("owner-only storage status"),
 		"GET /v1/admin/metadata/attention":                                   exempt("owner-only metadata evidence"),
 		"GET /v1/admin/metadata/attention/counts":                            exempt("owner-only metadata evidence"),
