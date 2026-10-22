@@ -6,6 +6,16 @@ import {editorCoreDraft, editorResultView, editorUiDraft, editorValues, pickerRe
 import {homeFixtures as f} from '../../packages/i18n/src/catalog/en-US/next/dev/home-fixtures.ts';
 import {retryPickerError, retryPickerOperation, retryPickerWindow, runSelectionCommand} from '../src/shell/selection-actions.ts';
 import {pickerResultSucceeded} from '../src/kit/selection/presentation.ts';
+import {shellSelectionScope} from '../src/shell/selection-scope.ts';
+
+test('selection scope retains the authenticated source and rejects unsupported authority without guessing', () => {
+  const viewer = {serverId: 'server', accountId: 'account', profileId: 'profile', role: 'owner', authority: 'local'};
+  for (const authority of ['local', 'hosted']) {
+    assert.deepEqual(shellSelectionScope({...viewer, authority}, '/?row=recent'),
+      {serverId: 'server', accountId: 'account', profileId: 'profile', authority, viewId: '/?row=recent'});
+  }
+  for (const authority of ['', 'account', 'other']) assert.throws(() => shellSelectionScope({...viewer, authority}, '/'), /unsupported-home-authority/);
+});
 
 test('a menu command consumes its current canonical target before the overlay close callback', async () => {
   let menuOpen = true, called = 0;

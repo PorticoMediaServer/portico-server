@@ -2,8 +2,8 @@ import {playbackIdentity, type CardSubject, type PlaybackSubject, type TimeEnvir
 import type {ActivitySummarySession, ActivitySummarySnapshot, OwnerActivitySummary} from '@core/admin/activity-summary/index.ts';
 import {jobName, jobStateName, scanStepName} from '@core/server-admin/console-catalogue.ts';
 import {deliveryId} from '@core/server-admin/now-playing.ts';
+import {parseAdminSession} from '@core/playback-v1/types.ts';
 import {heightText} from '@core/presentation/kit-model/technical.ts';
-import type {MessageId} from '@i18n';
 import {defaultI18n} from '@i18n';
 import type {ActivityPanelView} from '../kit/shell';
 
@@ -30,12 +30,12 @@ export function activityView(document: OwnerActivitySummary, time: TimeEnvironme
   return {serverName: document.serverName, health: document.health.degraded ? 'attention' : 'normal', streamCount: document.streams.count, taskCount: document.tasks.count,
     streams: document.streams.items.flatMap(stream => {
       const subject = activitySubject(stream); if (!subject) return [];
-      const delivery = deliveryId(stream.decision);
+      const delivery = deliveryId(parseAdminSession(stream).decision);
       const height = heightText(stream.videoHeight, time.t);
       const conversion = delivery === 'web.nowPlaying.delivery.convertVideo' && height
         ? {id: 'delivery', text: t('next.home.shell.convertingTo', {quality: height}), role: 'status' as const}
         : delivery === 'web.nowPlaying.delivery.convertVideo' || delivery === 'web.nowPlaying.delivery.convertAudio'
-          ? {id: 'delivery', text: t(delivery as MessageId), role: 'status' as const} : undefined;
+          ? {id: 'delivery', text: t(delivery), role: 'status' as const} : undefined;
       return [{id: stream.id, identity: playbackIdentity(subject, 'dock', time), name: stream.profile.name, device: stream.device.name,
         initial: Array.from(stream.profile.name.trim())[0] ?? '', positionMs: stream.positionMs, durationMs: stream.durationMs, paused: stream.state === 'paused',
         conversion, onOpen: () => actions.onDashboard('streams')}];

@@ -1,10 +1,19 @@
 import {playbackIdentity, type TextEnvironment} from '@core/presentation/kit-model/index.ts';
 import type {WebPlaybackRuntimeSnapshot} from '../platform/playback';
-import type {DockPresentation} from '../kit/dock';
+import type {DockNoticeData, DockPresentation} from '../kit/dock';
 import type {ShellArtwork} from './artwork';
 import {playbackFence} from '../../../packages/player-core/src/index.ts';
 
 export const fenceKey = (fence: NonNullable<WebPlaybackRuntimeSnapshot['fence']>) => JSON.stringify(playbackFence(fence));
+/** A notice offers only the bookmark still owned by this exact runtime. */
+export function retainedPlaybackNotice<Runtime>(notice: Readonly<{runtime: Runtime; value: DockNoticeData}> | null, runtime: Runtime | undefined,
+  dock: WebPlaybackRuntimeSnapshot['dock'] | undefined, presentations: readonly DockPresentation[]): DockNoticeData | null {
+  if (!notice || runtime === undefined || notice.runtime !== runtime || !dock) return null;
+  const bookmark = notice.value.kind === 'paused-audio' ? dock.parkedAudio : dock.resumeVideo;
+  const key = fenceKey(notice.value.playback.fence);
+  return bookmark && fenceKey(bookmark.fence) === key && presentations.some(value => fenceKey(value.fence) === key) ? notice.value : null;
+}
+
 export function playbackPresentation(snapshot: WebPlaybackRuntimeSnapshot, environment: TextEnvironment, artwork: ShellArtwork, skips: {back: number; forward: number}): DockPresentation | undefined {
   const current = snapshot.presentation;
   if (!current) return undefined;

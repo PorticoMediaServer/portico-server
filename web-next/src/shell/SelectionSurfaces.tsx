@@ -29,7 +29,7 @@ export type SelectionRendererSource = Readonly<{
 }>;
 const t = defaultI18n.t;
 const menuIcons: Record<EntryActionId, IconName> = {
-  play: 'i-play', resume: 'i-play', playFromStart: 'i-restart', playNext: 'i-pnext', addToQueue: 'i-queue',
+  play: 'i-play', resume: 'i-play', playFromStart: 'i-restart', playNext: 'i-queue', addToQueue: 'i-queue',
   watchWithGroup: 'i-together', addToGroupQueue: 'i-queue', watchlist: 'i-bookmark', favorite: 'i-heart',
   watched: 'i-check', removeFromContinueWatching: 'i-x', notInterested: 'i-eyeoff', rate: 'i-star',
   addToPlaylist: 'i-listadd', addToCollection: 'i-layers', download: 'i-download', details: 'i-info',
