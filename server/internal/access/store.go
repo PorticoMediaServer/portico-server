@@ -13,9 +13,11 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"portico.local/server/internal/dbwork"
+	"portico.local/server/internal/dirsync"
 	"strconv"
 	"strings"
 	"time"
@@ -70,41 +72,98 @@ func New(db *sql.DB) *Store {
 // LoadInvitationKey is called once before HTTP starts. The database never contains
 // this key. Loss or rotation invalidates pending invitations; create new links.
 func (s *Store) LoadInvitationKey(state string) error {
+	return s.loadInvitationKey(state, invitationKeyIO{
+		write: (*os.File).Write, syncFile: (*os.File).Sync, closeFile: (*os.File).Close,
+		install: os.Link, syncDirectory: dirsync.Sync,
+	})
+}
+
+// Each initializer prepares a complete private inode before publishing its name.
+// Link is atomic and cannot replace another initializer's winner. The I/O steps
+// are passed per call so failure tests never alter process-global filesystem hooks.
+type invitationKeyIO struct {
+	write         func(*os.File, []byte) (int, error)
+	syncFile      func(*os.File) error
+	closeFile     func(*os.File) error
+	install       func(string, string) error
+	syncDirectory func(string) error
+}
+
+func (s *Store) loadInvitationKey(state string, files invitationKeyIO) error {
 	path := filepath.Join(state, "invitation-link.key")
-	key, e := os.ReadFile(path)
-	if errors.Is(e, os.ErrNotExist) {
-		key = make([]byte, 32)
-		if _, e = rand.Read(key); e != nil {
-			return e
-		}
-		f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
-		if errors.Is(err, os.ErrExist) {
-			key, e = os.ReadFile(path)
-		} else if err != nil {
+	key, err := readInvitationKey(path)
+	if errors.Is(err, os.ErrNotExist) {
+		if err = createInvitationKey(path, files); err != nil {
 			return err
-		} else {
-			_, e = f.Write(key)
-			if e == nil {
-				e = f.Sync()
-			}
-			ce := f.Close()
-			if e == nil {
-				e = ce
-			}
 		}
+		// Always read the installed inode: a concurrent creator may have won.
+		key, err = readInvitationKey(path)
 	}
-	if e != nil {
-		return e
+	if err != nil {
+		return err
 	}
-	info, e := os.Lstat(path)
-	if e != nil {
-		return e
-	}
-	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || len(key) != 32 {
-		return errors.New("invitation key must be a private 32-byte regular file")
+	// Also sync existing keys so retry after a directory-sync failure acknowledges
+	// durability only after the installed entry has actually been flushed.
+	if err = files.syncDirectory(state); err != nil {
+		return err
 	}
 	s.invitationKey = append([]byte(nil), key...)
 	return nil
+}
+
+func createInvitationKey(path string, files invitationKeyIO) (err error) {
+	key := make([]byte, 32)
+	if _, err = rand.Read(key); err != nil {
+		return err
+	}
+	directory := filepath.Dir(path)
+	f, err := os.CreateTemp(directory, ".invitation-link-key-*") // private 0600, same filesystem
+	if err != nil {
+		return err
+	}
+	defer func() {
+		f.Close() // release the handle even when write/sync/close failed
+		if cleanup := os.Remove(f.Name()); !errors.Is(cleanup, os.ErrNotExist) {
+			err = errors.Join(err, cleanup)
+		}
+	}()
+	n, err := files.write(f, key)
+	if err != nil {
+		return err
+	}
+	if n != len(key) {
+		return io.ErrShortWrite
+	}
+	if err = files.syncFile(f); err != nil {
+		return err
+	}
+	if err = files.closeFile(f); err != nil {
+		return err
+	}
+	// Link is atomic and never overwrites an established key. Rename would
+	// overwrite another creator's key and invalidate its pending invitations.
+	if err = files.install(f.Name(), path); err != nil && !errors.Is(err, os.ErrExist) {
+		return err
+	}
+	return nil
+}
+
+func readInvitationKey(path string) ([]byte, error) {
+	info, e := os.Lstat(path)
+	if e != nil {
+		return nil, e
+	}
+	if !info.Mode().IsRegular() || info.Mode().Perm()&0077 != 0 || info.Size() != 32 {
+		return nil, errors.New("invitation key must be a private 32-byte regular file")
+	}
+	key, e := os.ReadFile(path)
+	if e != nil {
+		return nil, e
+	}
+	if len(key) != 32 {
+		return nil, errors.New("invitation key must contain exactly 32 bytes")
+	}
+	return key, nil
 }
 
 func (s *Store) now() int64 { return s.Now().UTC().UnixMilli() }

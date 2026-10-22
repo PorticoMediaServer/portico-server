@@ -324,10 +324,49 @@ func (InvitationAcceptRequest) JSONSchema() map[string]any {
 
 type InvitationAcceptanceResponse json.RawMessage
 
+// A populated snapshot is a successful sign-in only with its session. The
+// challenge and pending-device producers leave snapshot slices nil; their
+// explicit shapes describe only the authentication state clients may consume.
+type invitationSignedIn struct {
+	identity.DirectSnapshot
+	Session                identity.Envelope `json:"session"`
+	PasswordChangeRequired bool              `json:"passwordChangeRequired,omitempty"`
+	DeviceID               string            `json:"deviceId,omitempty"`
+	InstallationID         string            `json:"installationId,omitempty"`
+}
+type invitationChallenge struct {
+	identity.DirectSnapshot
+	Challenge identity.SignInChallenge `json:"challenge"`
+}
+type invitationDevicePending struct {
+	identity.DirectSnapshot
+	DeviceApprovalPending bool   `json:"deviceApprovalPending"`
+	DeviceID              string `json:"deviceId"`
+	InstallationID        string `json:"installationId"`
+}
+
 func (InvitationAcceptanceResponse) JSONSchema() map[string]any {
-	local, _ := apikit.Schema(reflect.TypeFor[access.AcceptanceResult]())
-	portico, _ := apikit.Schema(reflect.TypeFor[identity.DirectSignIn]())
-	return map[string]any{"oneOf": []any{local, portico}}
+	variants := []reflect.Type{reflect.TypeFor[access.AcceptanceResult](), reflect.TypeFor[invitationSignedIn](), reflect.TypeFor[invitationChallenge](), reflect.TypeFor[invitationDevicePending]()}
+	shapes := make([]any, 0, len(variants))
+	for _, typ := range variants {
+		shape, e := apikit.Schema(typ)
+		if e != nil {
+			panic(e)
+		}
+		if typ == reflect.TypeFor[invitationChallenge]() || typ == reflect.TypeFor[invitationDevicePending]() {
+			// These producers marshal a zero snapshot, including nil slices.
+			// Keep those fields explicit without allowing null in signed-in data.
+			properties := shape["properties"].(map[string]any)
+			properties["profiles"] = map[string]any{"type": "null"}
+			account := properties["account"].(map[string]any)["properties"].(map[string]any)
+			account["allowedLibraries"] = map[string]any{"type": "null"}
+		}
+		shapes = append(shapes, shape)
+	}
+	// Presentation documents allow additive fields, so a future response can
+	// carry both a challenge and pending-device facts. Deliberate anyOf avoids
+	// rejecting that overlap while retaining each complete producer shape.
+	return map[string]any{"anyOf": shapes}
 }
 
 // Keep response redaction tied to the exact read snapshot's live authority.

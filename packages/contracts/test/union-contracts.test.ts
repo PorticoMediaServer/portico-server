@@ -48,10 +48,8 @@ test('invitation acceptance contracts describe local and Portico methods without
  assert.doesNotThrow(()=>decode('PostAccessInvitationsAcceptRequest',{code:'fixture-code',porticoIdentity:{keyId:'fixture-key',payload:'fixture-payload',signature:'fixture-signature'}}));
  const local={accountId:'fixture_account',username:'fixture_user',profileId:'fixture_profile',role:'member',allowedLibraries:[]};
  assert.doesNotThrow(()=>decode('PostAccessInvitationsAcceptResponse',local));
- const portico={authority:'local',serverId:'fixture_server',account:{id:'fixture_account',username:'fixture_user',primaryProfileId:'fixture_profile',role:'member',revision:1,disabled:false,allowedLibraries:[]},profiles:[],canManage:false};
- assert.doesNotThrow(()=>decode('PostAccessInvitationsAcceptResponse',portico));
  const {schemas}=await import('../src/schemas.ts');
- const localBranch=(schemas.PostAccessInvitationsAcceptResponse as any).oneOf[0];
+ const localBranch=(schemas.PostAccessInvitationsAcceptResponse as any).anyOf[0];
  assert.equal('notes' in localBranch.properties,false);assert.equal('email' in localBranch.properties,false);
  for(const bad of [{},null,{code:'fixture-code'},{code:'fixture-code',porticoIdentity:{}}])assert.throws(()=>decode('PostAccessInvitationsAcceptRequest',bad));
 });

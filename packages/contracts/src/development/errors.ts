@@ -567,13 +567,7 @@ export const errors = [
   {
     "code": "restore_pre_release",
     "status": 409,
-    "message": "This backup was created by an earlier pre-release Portico and can't be restored.",
-    "retry": "never"
-  },
-  {
-    "code": "restore_schema_newer",
-    "status": 409,
-    "message": "This backup was written by a newer Portico. Update this server before restoring it.",
+    "message": "This backup does not match this pre-release Portico baseline and can't be restored.",
     "retry": "never"
   },
   {
