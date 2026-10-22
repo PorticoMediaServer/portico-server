@@ -1,8 +1,9 @@
-import {useId, type CSSProperties, type ReactNode} from 'react';
+import {useId, useLayoutEffect, useRef, type CSSProperties, type ReactNode, type RefObject} from 'react';
 import {defaultI18n} from '@i18n';
 import {Icon, type IconName} from '../Icon';
 import {Button} from '../controls/Button';
 import {Artwork, ColourBackdrop, type ArtworkSource} from '../artwork';
+import {SidePanel} from '../overlays/SidePanel';
 import {knownProgress} from './model';
 import styles from './states.module.css';
 
@@ -11,6 +12,7 @@ export type StateAction = Readonly<{
   id: string;
   label: ReactNode;
   icon?: IconName;
+  iconPosition?: 'start' | 'end';
   onPress: () => void;
   accessibilityLabel?: string;
   disabled?: boolean;
@@ -105,9 +107,9 @@ export type StateContentProps = Readonly<{
 }>;
 
 function Action({action, variant, compact}: {action: StateAction; variant: 'primary' | 'glass' | 'text'; compact?: boolean}) {
-  return <Button variant={variant} size={compact ? 'small' : 'hero'} icon={action.icon} disabled={action.disabled} loading={action.loading} aria-label={action.accessibilityLabel} onClick={action.onPress}>{action.label}</Button>;
+  return <Button variant={variant} size={compact ? 'small' : 'hero'} icon={action.iconPosition === 'end' ? undefined : action.icon} disabled={action.disabled} loading={action.loading} aria-label={action.accessibilityLabel} onClick={action.onPress}>{action.iconPosition === 'end' && action.icon ? <span className={styles.trailingAction}>{action.label}<Icon name={action.icon} size={18}/></span> : action.label}</Button>;
 }
-function StateContent({title, body, icon, tone = 'neutral', eyebrow, retry, alive, primary, secondary, links, details, help, afterActions, children, compact = false}: StateContentProps & {compact?: boolean}) {
+function StateContent({title, body, icon, tone = 'neutral', eyebrow, retry, alive, primary, secondary, links, details, help, afterActions, children, compact = false, panelDetails = false, detailsTriggerRef}: StateContentProps & {compact?: boolean; panelDetails?: boolean; detailsTriggerRef?: RefObject<HTMLButtonElement | null>}) {
   const titleId = useId();
   const detailsId = useId();
   return <section className={styles.content} aria-labelledby={titleId} data-tone={tone}>
@@ -122,11 +124,11 @@ function StateContent({title, body, icon, tone = 'neutral', eyebrow, retry, aliv
       {primary && <Action action={primary} variant="primary" compact={compact}/>}
       {secondary && <Action action={secondary} variant="glass" compact={compact}/>}
       {links?.map(action => <Action key={action.id} action={action} variant="text" compact={compact}/>)}
-      {details && <button type="button" className={styles.detailsToggle} aria-controls={detailsId} aria-expanded={details.open} onClick={() => details.onOpenChange(!details.open)}>
-        {details.label ?? defaultI18n.t('next.states.details')}<Icon name={details.open ? 'i-up' : 'i-down'} size={18}/>
+      {details && <button ref={detailsTriggerRef} hidden={panelDetails && details.open} type="button" className={styles.detailsToggle} aria-controls={panelDetails ? undefined : detailsId} aria-expanded={details.open} onClick={() => details.onOpenChange(!details.open)}>
+        {details.label ?? defaultI18n.t('next.states.details')}<Icon name={panelDetails ? 'i-right' : details.open ? 'i-up' : 'i-down'} size={panelDetails ? 16 : 18}/>
       </button>}
     </div>}
-    {details?.open && <div id={detailsId}>{details.content}</div>}
+    {!panelDetails && details?.open && <div id={detailsId}>{details.content}</div>}
     {afterActions}
     {help && <div className={styles.help}>{help}</div>}
   </section>;
@@ -134,7 +136,7 @@ function StateContent({title, body, icon, tone = 'neutral', eyebrow, retry, aliv
 
 export type StateBackdrop = Readonly<{kind: 'colour'; shape?: 'side' | 'round' | 'top'; fill?: boolean}> | Readonly<{kind: 'frozen'; source: ArtworkSource}>;
 export type StateLayoutProps = StateContentProps & Readonly<{
-  backdrop?: StateBackdrop;
+  backdrop?: StateBackdrop | null;
   variant?: 'page' | 'player' | 'landscape';
   /** Screen/shell owns navigation and player controls. */
   chrome?: ReactNode;
@@ -144,10 +146,21 @@ export type StateLayoutProps = StateContentProps & Readonly<{
   style?: CSSProperties;
 }>;
 export function StateLayout({backdrop = {kind: 'colour'}, variant = 'page', chrome, after, className, contentStyle, style, ...content}: StateLayoutProps) {
-  return <div className={[styles.layout, styles[variant], className].filter(Boolean).join(' ')} style={style}>
-    {backdrop.kind === 'colour' ? <ColourBackdrop shape={backdrop.shape ?? 'side'} fill={backdrop.fill}/> : <div className={styles.frozen} aria-hidden="true"><Artwork source={backdrop.source} alt=""/><div className={styles.frozenShade}/></div>}
+  const detailsTrigger = useRef<HTMLButtonElement>(null);
+  const panel = variant === 'landscape' ? content.details : undefined;
+  const panelWasOpen = useRef(false);
+  useLayoutEffect(() => {
+    // The trigger is hidden while this compact panel is open. Restore after
+    // its DOM has become visible, rather than during the panel's cleanup.
+    if (panelWasOpen.current && !panel?.open) detailsTrigger.current?.focus({preventScroll: true});
+    panelWasOpen.current = !!panel?.open;
+  }, [panel?.open]);
+  const positionStyle = {...contentStyle, ...(typeof contentStyle?.top === 'number' ? {'--state-content-top': `${contentStyle.top}px`} : {})} as CSSProperties;
+  return <div className={[styles.layout, styles[variant], className].filter(Boolean).join(' ')} style={style} data-details-open={panel?.open || undefined}>
+    {backdrop?.kind === 'colour' ? <ColourBackdrop shape={backdrop.shape ?? 'side'} fill={backdrop.fill}/> : backdrop && <div className={styles.frozen} aria-hidden="true"><Artwork source={backdrop.source} alt=""/><div className={styles.frozenShade}/></div>}
     {chrome}
-    <div className={styles.position} style={contentStyle}><StateContent {...content}/></div>
+    <div className={styles.position} style={positionStyle}><StateContent {...content} compact={variant === 'landscape'} panelDetails={!!panel} detailsTriggerRef={detailsTrigger}/></div>
+    {panel && <SidePanel open={panel.open} onOpenChange={panel.onOpenChange} title={panel.label ?? defaultI18n.t('next.states.details')} width={352} topInset={10} className={styles.landscapeDetails} returnFocusRef={detailsTrigger}>{panel.content}</SidePanel>}
     {after}
   </div>;
 }

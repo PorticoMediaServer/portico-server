@@ -1,7 +1,7 @@
 import type {CSSProperties, ReactNode} from 'react';
 import {defaultI18n} from '@i18n';
 import {AmbientArt, type AmbientArtProps, type AmbientArtSource, type ArtworkSource} from '../artwork';
-import {loadingPhase, skeletonGridWindow, type SkeletonWindow} from './model';
+import {loadingPhase, skeletonGridWindow, type SkeletonCaptionLines, type SkeletonWindow} from './model';
 import styles from './skeletons.module.css';
 
 export type SkeletonProps = Readonly<{width?: CSSProperties['width']; height?: CSSProperties['height']; radius?: number; line?: boolean; small?: boolean; sheen?: boolean; className?: string; style?: CSSProperties}>;
@@ -20,6 +20,7 @@ export type GridSkeletonProps = Readonly<{
   rowGap?: number;
   ratio?: number;
   captions?: boolean;
+  leadingCaptionLines?: readonly SkeletonCaptionLines[];
   /** Only arrived cells in the supplied visible window are mounted. */
   arrived?: ReadonlyMap<number, ReactNode>;
   className?: string;
@@ -33,7 +34,7 @@ export function GridSkeleton(props: GridSkeletonProps) {
       const content = arrived?.get(cell.index);
       if (content == null && !visible) return null;
       return <div key={cell.index} className={content == null ? styles.cell : `${styles.cell} ${styles.arrived}`} style={{left: cell.x, top: cell.y, width: cell.width}} data-skeleton-index={cell.index}>
-        {content ?? <><Skeleton height={cell.height} sheen={cell.index === 2}/>{captions && <Skeleton line small={window.width < 1024} width={`${window.width < 1024 ? [70,60,75,50][Math.max(0,cell.index-2)%4] : [70,60,80,55,70][Math.max(0,cell.index-2)%5]}%`} className={styles.caption}/>}</>}
+        {content ?? <><Skeleton height={cell.height} sheen={cell.index === 2}/>{(props.leadingCaptionLines?.[Math.floor(cell.index / geometry.columns)] ?? (captions ? 2 : 0)) > 0 && <Skeleton line small={window.width < 1024} width={`${window.width < 1024 ? [70,60,75,50][Math.max(0,cell.index-2)%4] : [70,60,80,55,70][Math.max(0,cell.index-2)%5]}%`} className={styles.caption}/>}</>}
       </div>;
     })}
   </div>;
@@ -86,7 +87,7 @@ export function HomeSkeleton({elapsedMs, window, header, art, visible = true, he
       const top = nextRowTop;
       nextRowTop += 44 + cardHeight + (phone ? 26 : 34) + (row.shape === 'wide' ? 0 : 40);
       if (top >= window.scrollTop + window.height || top + cardHeight + 44 < window.scrollTop) return null;
-      const count = Math.max(0, Math.ceil((window.width - gutter + gap) / (cardWidth + gap)));
+      const count = Math.max(0, phone ? Math.ceil((window.width - gutter + gap) / (cardWidth + gap)) : Math.floor((window.width - gutter * 2 + gap) / (cardWidth + gap)));
       return <section key={row.id} className={styles.row} style={{top: top - window.scrollTop}}>
         <div className={styles.rowHeading} style={{paddingLeft: gutter}}>{row.heading ?? (phase !== 'waiting' && <Skeleton line width={phone ? 170 : 210} height={phone ? 18 : 20}/>)}</div>
         <div className={styles.track} style={{paddingLeft: gutter, gap}}>{Array.from({length: count}, (_, index) => {
@@ -100,7 +101,7 @@ export function HomeSkeleton({elapsedMs, window, header, art, visible = true, he
   </div>;
 }
 
-export type PressedTitle = Readonly<{title: ReactNode; artwork?: ArtworkSource; ambient?: AmbientArtSource}> & Pick<SkeletonArtwork, 'visible' | 'onReady' | 'onError'>;
+export type PressedTitle = Readonly<{title: ReactNode; artwork?: ArtworkSource; ambient?: AmbientArtSource; palette?: AmbientArtProps['palette']; position?: string}> & Pick<SkeletonArtwork, 'visible' | 'onReady' | 'onError'>;
 export type TitleSkeletonProps = Readonly<{
   elapsedMs: number;
   window: SkeletonWindow;
@@ -117,9 +118,9 @@ export type TitleSkeletonProps = Readonly<{
 export function TitleSkeleton({elapsedMs, window, pressed, visible = true, header, tabs, arrivedFacts, arrivedDescription, arrivedActions, episodes, className}: TitleSkeletonProps) {
   const phone = window.width < 1024;
   const showShapes = loadingPhase(elapsedMs) !== 'waiting';
-  const episodeCount = phone ? 1 : Math.ceil((window.width - 64) / 332);
+  const episodeCount = phone ? 1 : Math.max(0, Math.floor((window.width - 128 + 16) / 332));
   return <div className={[styles.page, styles.titlePage, phone && styles.phone, className].filter(Boolean).join(' ')} aria-busy="true" aria-label={defaultI18n.t('next.states.titleSkeleton')}>
-    <div className={styles.titleArt}><AmbientArt source={pressed.ambient} foreground={pressed.artwork} visible={visible && pressed.visible !== false} arrivalDurationMs={240} onReady={pressed.onReady} onError={pressed.onError} treatment={phone ? 'phone' : 'title'}/></div>
+    <div className={styles.titleArt}><AmbientArt className={phone ? styles.pressedArtwork : undefined} source={pressed.ambient} foreground={pressed.artwork} palette={pressed.palette} position={pressed.position ?? (phone ? '44% 20%' : '30% 25%')} visible={visible && pressed.visible !== false} arrivalDurationMs={240} onReady={pressed.onReady} onError={pressed.onError} treatment={phone ? 'phone' : 'title'}/></div>
     {header}
     <div className={styles.titleWords}><h1>{pressed.title}</h1>
       {arrivedFacts ?? (showShapes && <Skeleton line small={phone} width={phone ? 210 : 320} height={phone ? 11 : 16}/>)}
