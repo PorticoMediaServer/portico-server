@@ -1439,7 +1439,9 @@ func (c *browseCompiler) matchPredicate(node BrowseNode) (string, error) {
 	// album/song, and a season an unmatched episode. The matching member itself
 	// must be visible, so a hidden member never reveals a parent's match status.
 	unmatched := `e.entity_id IN(WITH attention AS MATERIALIZED (` + current + `)
- SELECT entity_id FROM attention UNION SELECT bm.entity_id FROM attention CROSS JOIN catalog_browse_memberships bm INDEXED BY catalog_browse_membership_item ON bm.item_id=attention.entity_id)`
+ SELECT entity_id FROM attention
+ UNION SELECT bm.entity_id FROM attention CROSS JOIN catalog_browse_memberships bm INDEXED BY catalog_browse_membership_item ON bm.item_id=attention.entity_id
+ UNION SELECT album.artist_id FROM attention JOIN catalog_albums album ON album.entity_id=attention.entity_id)`
 	c.args = append(c.args, args...)
 	value := `CASE WHEN ` + unmatched + ` THEN 'unmatched' ELSE 'matched' END`
 	result, err := c.comparison(browseField{ID: "match", Type: valueEnum}, value, node.Operator, node.Value)

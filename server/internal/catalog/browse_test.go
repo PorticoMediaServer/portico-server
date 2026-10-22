@@ -678,6 +678,21 @@ func TestBrowseMatchUsesCurrentOnlineAttentionIncludingKept(t *testing.T) {
 			t.Fatalf("member field missing on %s/%s", test.lib, test.pivot)
 		}
 	}
+	// Album repair attention can exist without any song attention. Artists'
+	// playable memberships contain songs, so retain the direct album-artist
+	// edge too, after checking the album's current visibility.
+	c.Exec(`UPDATE listening_metadata_attention SET retired=1 WHERE entity_id=?`, song.ID)
+	c.Exec(`INSERT INTO listening_metadata_attention(entity_id,kind,library_id,reason,generation,dismissed_generation)VALUES(?,'album','mu','needs_selection',1,1) ON CONFLICT(entity_id) DO UPDATE SET reason='needs_selection',retired=0,dismissed_generation=generation`, album.ID)
+	for _, pivot := range []string{"artists", "albums", "songs"} {
+		page, err := s.BrowseEntities(v, BrowseRequest{Library: "mu", Pivot: pivot, Query: q})
+		want := 1
+		if pivot == "songs" {
+			want = 0
+		}
+		if err != nil || len(page.Entries) != want {
+			t.Fatalf("album-only attention on %s: %+v %v", pivot, page, err)
+		}
+	}
 	caps, err := s.BrowseCapabilitiesFor("local", "movies")
 	if err != nil {
 		t.Fatal(err)
