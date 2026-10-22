@@ -89,3 +89,18 @@ test('explicit ProfileFace palettes preserve supplied semantic/tint and identity
   }
   assert.deepEqual(palette, {first: '#3f8f6e', second: '#153749'});
 });
+
+
+test('CoverCard reserves generated copy only while the card selection overlay is visible', async () => {
+  const {CoverCard} = await import('../../src/kit/cards/MediaCards.tsx');
+  const {GeneratedCover} = await import('../../src/kit/artwork/GeneratedArt.tsx');
+  const generated = {title: 'Supplied title', glyph: 'S', tint: {first: '#3f8f6e', second: '#153749'}};
+  const model = {title: generated.title, caption: []};
+  for (const selection of [undefined, {active: false, checked: false, onToggle() {}}, {active: true, checked: false, onToggle() {}}, {active: true, checked: true, onToggle() {}}, {active: false, checked: true, onToggle() {}}]) {
+    const html = renderToStaticMarkup(createElement(CoverCard, {model, generated, selection}));
+    assert.equal(html.includes('generatedCover selectionClearance'), !!(selection?.active || selection?.checked));
+    assert.match(html, /aria-label="Supplied title"/);
+  }
+  const standalone = renderToStaticMarkup(createElement(GeneratedCover, generated));
+  assert.doesNotMatch(standalone, /selectionClearance/);
+});

@@ -59,7 +59,7 @@ export type CoverCardProps = MediaCardProps & Readonly<{
 export function CoverCard({kind = 'book', generated, titleLines, ...props}: CoverCardProps) {
   const book = kind === 'book' || kind === 'comic';
   return <CardFrame {...props} kind="cover" playIcon="i-book" className={cx(book && !generated && styles.spine, !book && styles.periodical, kind === 'newspaper' && styles.newspaper, props.className)}>
-    <span className={styles.art}><CardArtwork {...props} position={kind === 'newspaper' ? 'top' : props.position} fallback={generated ? <GeneratedCover {...generated} /> : props.fallback} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} titleLines={titleLines} />
+    <span className={styles.art}><CardArtwork {...props} position={kind === 'newspaper' ? 'top' : props.position} fallback={generated ? <GeneratedCover {...generated} selectionClearance={props.selection?.active || props.selection?.checked} /> : props.fallback} /><CardBadges watched={props.watched} isNew={props.isNew} progress={props.model.progress} /></span><CardCaption model={props.model} extraCaption={props.extraCaption} titleLines={titleLines} />
   </CardFrame>;
 }
 
