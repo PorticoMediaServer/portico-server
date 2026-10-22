@@ -603,6 +603,8 @@ export type GetStorageMountsRequest = {  };
 export type GetStorageMountsResponse = { "limits": Record<string, number>; "mountSupported": boolean; "mounts": Array<{ "actions": Array<string>; "backendRevision": number; "cacheBytes": number; "cacheFloor": number; "controlRevision": number; "desiredState": string; "error"?: string; "executable": string; "executableDigest": string; "executableVersion": string; "id": string; "mountPath": string; "name": string; "observedState": string; "removalPending": boolean }>; "revision": number; "scope": { "serverId": string; "viewerFence": string } };
 export type GetStorageOperationsIdRequest = {  };
 export type GetStorageOperationsIdResponse = { "accepted": boolean; "controlRevision": number; "deleted": boolean; "mount"?: { "actions": Array<string>; "backendRevision": number; "cacheBytes": number; "cacheFloor": number; "controlRevision": number; "desiredState": string; "error"?: string; "executable": string; "executableDigest": string; "executableVersion": string; "id": string; "mountPath": string; "name": string; "observedState": string; "removalPending": boolean }; "mountId": string; "operationId": string; "scope": { "serverId": string; "viewerFence": string } };
+export type GetStorageRcloneBundledRequest = {  };
+export type GetStorageRcloneBundledResponse = { "available": boolean; "errorCode": string; "included": boolean; "minimumVersion": string; "version": string };
 export type GetStorageSourceOperationsIdRequest = {  };
 export type GetStorageSourceOperationsIdResponse = { "receipt": { "accepted": boolean; "operationId": string; "removed": boolean; "source": { "credentialPresent": boolean; "errorCode"?: string; "generation": number; "id": string; "insecureLocal": boolean; "kind": string; "mountId"?: string; "name": string; "origin"?: string; "rangeSupport": string; "rootPath": string; "state": string } }; "scope": { "serverId": string; "viewerFence": string } };
 export type GetStorageSourcesRequest = {  };
@@ -1596,6 +1598,7 @@ export type RouteContracts = {
 "get_shows_screen_metadata": { request: GetShowsScreenMetadataRequest; response: GetShowsScreenMetadataResponse };
 "get_storage_mounts": { request: GetStorageMountsRequest; response: GetStorageMountsResponse };
 "get_storage_operations_id": { request: GetStorageOperationsIdRequest; response: GetStorageOperationsIdResponse };
+"get_storage_rclone_bundled": { request: GetStorageRcloneBundledRequest; response: GetStorageRcloneBundledResponse };
 "get_storage_source_operations_id": { request: GetStorageSourceOperationsIdRequest; response: GetStorageSourceOperationsIdResponse };
 "get_storage_sources": { request: GetStorageSourcesRequest; response: GetStorageSourcesResponse };
 "get_storage_status": { request: GetStorageStatusRequest; response: GetStorageStatusResponse };

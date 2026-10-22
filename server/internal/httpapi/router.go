@@ -45,6 +45,7 @@ import (
 	"portico.local/server/internal/playbackruntime"
 	"portico.local/server/internal/playbackv1"
 	"portico.local/server/internal/preparedmedia"
+	"portico.local/server/internal/rcloneprogram"
 	"portico.local/server/internal/recordingaccess"
 	"portico.local/server/internal/remotemedia"
 	"portico.local/server/internal/remotesources"
@@ -55,6 +56,7 @@ import (
 )
 
 type Dependencies struct {
+	RcloneProgram     *rcloneprogram.Status
 	ConnectionUsage   func() ConnectionUsage
 	LocalArtworkUsage func() (int64, bool)
 	CacheDirectory    string
@@ -821,6 +823,7 @@ func New(d Dependencies) http.Handler {
 	authRate := &limiter{trustedProxies: d.TrustedProxies, proxies: func(r *http.Request) []netip.Prefix { return d.trustedProxyPrefixes(r.Context()) }}
 	d.linearMediaRoutes(mux)
 	d.mountRoutes(mux)
+	d.bundledRcloneRoutes(mux)
 	d.remoteSourceRoutes(mux)
 	d.episodeRoutes(mux)
 	d.playbackChapterRoutes(mux)

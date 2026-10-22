@@ -303,6 +303,7 @@ export function decodeGetShowsIdSeasonsResponse(input: unknown): types.GetShowsI
 export function decodeGetShowsScreenMetadataResponse(input: unknown): types.GetShowsScreenMetadataResponse { return decode("GetShowsScreenMetadataResponse", input) as types.GetShowsScreenMetadataResponse; }
 export function decodeGetStorageMountsResponse(input: unknown): types.GetStorageMountsResponse { return decode("GetStorageMountsResponse", input) as types.GetStorageMountsResponse; }
 export function decodeGetStorageOperationsIdResponse(input: unknown): types.GetStorageOperationsIdResponse { return decode("GetStorageOperationsIdResponse", input) as types.GetStorageOperationsIdResponse; }
+export function decodeGetStorageRcloneBundledResponse(input: unknown): types.GetStorageRcloneBundledResponse { return decode("GetStorageRcloneBundledResponse", input) as types.GetStorageRcloneBundledResponse; }
 export function decodeGetStorageSourceOperationsIdResponse(input: unknown): types.GetStorageSourceOperationsIdResponse { return decode("GetStorageSourceOperationsIdResponse", input) as types.GetStorageSourceOperationsIdResponse; }
 export function decodeGetStorageSourcesResponse(input: unknown): types.GetStorageSourcesResponse { return decode("GetStorageSourcesResponse", input) as types.GetStorageSourcesResponse; }
 export function decodeGetStorageStatusResponse(input: unknown): types.GetStorageStatusResponse { return decode("GetStorageStatusResponse", input) as types.GetStorageStatusResponse; }

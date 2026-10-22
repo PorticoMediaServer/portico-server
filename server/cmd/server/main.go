@@ -26,6 +26,7 @@ import (
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/dlna"
 	"portico.local/server/internal/enrichment"
+	"portico.local/server/internal/rcloneprogram"
 	"runtime"
 
 	"portico.local/server/internal/decoder"
@@ -264,6 +265,12 @@ func run() (runErr error) {
 			log.Printf("error: [server] Portico stopped: %v", runErr)
 		}
 	}()
+	rcloneStatus := rcloneprogram.Inspect(ctx)
+	if rcloneStatus.Available {
+		log.Printf("rclone version %s", rcloneStatus.Version)
+	} else {
+		log.Print("Can't start rclone")
+	}
 	cache, e := startupDirectory("PORTICO_CACHE_DIR", state)
 	if e != nil {
 		return e
@@ -1102,7 +1109,7 @@ func run() (runErr error) {
 		manager.SetAccessURLs(accessURLsProvider(console, manager))
 	}
 	var transport *cappedListener
-	handler := httpapi.New(httpapi.Dependencies{CacheDirectory: cache, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
+	handler := httpapi.New(httpapi.Dependencies{RcloneProgram: &rcloneStatus, CacheDirectory: cache, LocalArtworkUsage: localMeta.ArtworkUsage, ConnectionUsage: func() httpapi.ConnectionUsage {
 		held, _ := transport.Held()
 		return httpapi.ConnectionUsage{Ordinary: len(transport.ordinary), Total: held, OrdinaryLimit: cap(transport.ordinary), ConsoleReserve: consoleConnectionReserve}
 	}, Restart: requestRestart, ListeningPort: listener.Addr().(*net.TCPAddr).Port, Events: events, Administration: adminOperations, Backups: backupService, Access: administration, Webhooks: outboundWebhooks, SettingsApplied: func(ctx context.Context) {

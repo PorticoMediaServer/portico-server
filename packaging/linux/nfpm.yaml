@@ -15,9 +15,11 @@ contents:
     file_info:
       mode: 0755
   - src: ${PORTICO_PACKAGE_ROOT}/third_party/
-    dst: /usr/lib/portico-media-server/third_party/
+    dst: /usr/lib/portico-media-server/third_party
+    type: tree
   - src: ${PORTICO_PACKAGE_ROOT}/web/
-    dst: /usr/lib/portico-media-server/web/
+    dst: /usr/lib/portico-media-server/web
+    type: tree
   - src: ${PORTICO_PACKAGE_ROOT}/manifest.json
     dst: /usr/lib/portico-media-server/manifest.json
   - src: ${PORTICO_PACKAGE_ROOT}/manifest.sig
@@ -27,7 +29,8 @@ contents:
   - src: ${PORTICO_PACKAGE_ROOT}/THIRD-PARTY-NOTICES.md
     dst: /usr/share/doc/portico-media-server/THIRD-PARTY-NOTICES.md
   - src: ${PORTICO_PACKAGE_ROOT}/licenses/
-    dst: /usr/share/doc/portico-media-server/licenses/
+    dst: /usr/share/doc/portico-media-server/licenses
+    type: tree
   - src: packaging/linux/portico-media-server.service
     dst: /usr/lib/systemd/system/portico-media-server.service
 scripts:

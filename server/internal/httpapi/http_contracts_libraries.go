@@ -5,11 +5,16 @@ import (
 	catalog "portico.local/server/internal/catalog"
 	ingestion "portico.local/server/internal/ingestion"
 	mounts "portico.local/server/internal/mounts"
+	"portico.local/server/internal/rcloneprogram"
 	remotemedia "portico.local/server/internal/remotemedia"
 	remotesources "portico.local/server/internal/remotesources"
 )
 
 func registerLibrariesHTTPContracts(registry *apikit.Registry) error {
+	if err := apikit.RegisterHTTP[struct{}, rcloneprogram.Status](registry, apikit.Metadata{ID: "get_storage_rclone_bundled", Method: "GET", Path: "/v1/storage/rclone/bundled", Summary: "Read bundled rclone startup status", Access: apikit.Owner, Requires: apikit.ScopeAdmin, Lane: apikit.Default, Admission: laneDefault, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
+		return err
+	}
+
 	// internal/httpapi/admin.go:62
 	if err := apikit.RegisterHTTP[struct{}, catalog.AdminLibraries](registry, apikit.Metadata{ID: "get_admin_libraries", Method: "GET", Path: "/v1/admin/libraries", Summary: "Read server library", Access: apikit.Admin, AdminScope: "libraries", Requires: apikit.ScopeLibrary, Lane: apikit.Default, Admission: laneAdmin, Cost: apikit.Constant, BodyLimit: 0, Status: 200, Errors: []string{"invalid_request", "unauthorized", "not_permitted", "not_found", "internal"}}); err != nil {
 		return err

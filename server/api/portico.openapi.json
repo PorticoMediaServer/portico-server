@@ -107313,6 +107313,38 @@
         ],
         "type": "object"
       },
+      "GetStorageRcloneBundledRequest": {
+        "properties": {},
+        "required": [],
+        "type": "object"
+      },
+      "GetStorageRcloneBundledResponse": {
+        "properties": {
+          "available": {
+            "type": "boolean"
+          },
+          "errorCode": {
+            "type": "string"
+          },
+          "included": {
+            "type": "boolean"
+          },
+          "minimumVersion": {
+            "type": "string"
+          },
+          "version": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "included",
+          "available",
+          "version",
+          "minimumVersion",
+          "errorCode"
+        ],
+        "type": "object"
+      },
       "GetStorageSourceOperationsIdRequest": {
         "properties": {},
         "required": [],
@@ -371221,6 +371253,90 @@
         "x-access": "owner",
         "x-admission": "default",
         "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "internal"
+        ],
+        "x-lane": "default",
+        "x-scope": "admin"
+      }
+    },
+    "/v1/storage/rclone/bundled": {
+      "get": {
+        "operationId": "get_storage_rclone_bundled",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "errorCode": {
+                      "type": "string"
+                    },
+                    "included": {
+                      "type": "boolean"
+                    },
+                    "minimumVersion": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "included",
+                    "available",
+                    "version",
+                    "minimumVersion",
+                    "errorCode"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read bundled rclone startup status",
+        "x-access": "owner",
+        "x-admission": "default",
+        "x-cost": "constant",
         "x-error-codes": [
           "invalid_request",
           "unauthorized",
