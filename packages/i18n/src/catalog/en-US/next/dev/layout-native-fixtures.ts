@@ -1,5 +1,8 @@
 /** Reference-domain text. Import only from the native layout development gallery. */
 export const layoutNativeFixtureMessages = {
+  'next.layout.native.fixture.stressTitle': 'A sparse grid of 50,000 items',
+  'next.layout.native.fixture.jumpMiddle': 'Jump to item 25,001',
+  'next.layout.native.fixture.visibleRange': '{first} to {last} of {total}',
   'next.layout.native.fixture.spiritedAway': 'Spirited Away',
   'next.layout.native.fixture.becauseInsideOut': 'Because you watched Inside Out',
   'next.layout.native.fixture.lastOfUs': 'The Last of Us',
