@@ -62,6 +62,23 @@ type HomeLive struct {
 const homeNewWindow = 14 * 24 * time.Hour
 const homeCompositionMaximum = 100
 
+// The numbered Home poster row ranks only video. Scope the engine before it
+// selects works, computes totals and fingerprints them; its shared audio
+// recommendation behavior remains available to other surfaces.
+func (s *Service) homeCommunitySource(r HomeRequest, spec homeRowSpec) (homeSource, error) {
+	libraries, err := s.homeLibraries(r.Libraries)
+	if err != nil {
+		return homeSource{}, err
+	}
+	r.Libraries = []string{}
+	for _, library := range libraries {
+		if library.Kind == "movie" || library.Kind == "tv" || library.Kind == "anime" {
+			r.Libraries = append(r.Libraries, library.ID)
+		}
+	}
+	return s.homeEngineSource(r, spec)
+}
+
 // homeMergedRecent merges maintained, already restricted recent-work walks.
 // Each library costs <=4096 candidates, each contributes <=100 distinct works;
 // the Home row itself is exactly the newest 100 of that bounded union.

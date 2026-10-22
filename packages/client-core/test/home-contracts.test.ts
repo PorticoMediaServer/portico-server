@@ -91,6 +91,23 @@ test('live paging retains server order and stops at the device bound without inf
   assert.throws(()=>appendHomeRowPage(current,validateHomeRow(row('on_now',{live:live([channel('new')],{revision:'new'})}))));
 });
 
+test('merged live pages keep the earliest programme expiry in either page order',()=>{
+  const early='2026-10-22T00:30:20Z',late='2026-10-22T00:30:50Z';
+  for(const [firstExpiry,nextExpiry] of [[late,early],[early,late]]){
+    const first=validateHomeRow(row('on_now',{live:live([channel('one')],{expiresAt:firstExpiry}),total:3,nextCursor:'second',hasMore:true}));
+    const page=validateHomeRow(row('on_now',{live:live([channel('two')],{expiresAt:nextExpiry}),start:1,total:3,nextCursor:'third',hasMore:true}));
+    const merged=appendHomeRowPage(first,page);
+    assert.equal(merged.live!.expiresAt,early);
+    assert.equal(merged.live!.observedAt,first.live!.observedAt);
+    assert.equal(merged.live!.revision,first.live!.revision);
+    assert.deepEqual(merged.live!.channels.map(v=>v.channel.id),['one','two']);
+    assert.deepEqual(merged.live!.channels[1].channel.programmes[0].flags,{live:false,repeat:true});
+    const last=validateHomeRow(row('on_now',{live:live([channel('three')]),start:2,total:3}));
+    assert.equal(appendHomeRowPage(merged,last).live!.expiresAt,early,'later pages cannot extend the retained expiry');
+    assert.equal(appendHomeRowPage(first,page,1).live!.channels.length,1,'the retention cap remains in force');
+  }
+});
+
 test('deferred collection/live hydration survives empty entries and denied live refresh removes retained names',async()=>{
   let denied=false;
   const service=new HomeService(api(path=>{

@@ -666,8 +666,8 @@ func TestSuggestionsRankAndExplain(t *testing.T) {
 	}
 }
 
-// The shared engine rows list only top-level works across every library kind:
-// music and book evidence rolls up to the work that owns it.
+// The shared recommendation rows list top-level works. Home's numbered Most
+// watched row further restricts those works to video posters.
 func TestHomeEngineRowsListOnlyTopLevelWorks(t *testing.T) {
 	db := homeFixture(t)
 	service := New(db)
@@ -685,6 +685,9 @@ func TestHomeEngineRowsListOnlyTopLevelWorks(t *testing.T) {
 			t.Fatal(id, e)
 		}
 		for _, entry := range row.Entries {
+			if id == "community_watching" && entry.Kind != "movie" && entry.Kind != "show" {
+				t.Fatalf("%s published audio work %s kind %q", id, entry.ID, entry.Kind)
+			}
 			if !legal[entry.Kind] {
 				t.Fatalf("%s published %s kind %q", id, entry.ID, entry.Kind)
 			}

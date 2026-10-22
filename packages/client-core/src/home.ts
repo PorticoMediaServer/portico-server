@@ -341,6 +341,11 @@ export async function fetchHomeLayout(api: HomeApi, signal?: AbortSignal): Promi
  */
 export const HOME_ROW_MAX_ENTRIES = 100;
 
+/** These server rows reject cursors from any different selected membership. */
+export function hasFencedHomeMembership(rowId: string): boolean {
+  return ['new_on_server', 'because_you_watched', 'listen_next', 'continue_books', 'community_watching'].includes(rowId);
+}
+
 /** A row after one more page: new entries appended (duplicates dropped), capped at `max`. */
 export function appendHomeRowPage(row: HomeRow, page: HomeRow, max = HOME_ROW_MAX_ENTRIES): HomeRow {
   if(row.id!==page.id||row.viewerFence!==page.viewerFence)invalid();
@@ -349,7 +354,8 @@ export function appendHomeRowPage(row: HomeRow, page: HomeRow, max = HOME_ROW_MA
     const key=(v:HomeChannel)=>v.channel.provenance+':'+v.channel.sourceId+':'+v.channel.id;
     const seen=new Set(row.live.channels.map(key));
     const channels=Object.freeze([...row.live.channels,...page.live.channels.filter(v=>!seen.has(key(v)))] .slice(0,max));
-    return Object.freeze({...row,live:Object.freeze({...row.live,channels}),nextCursor:channels.length>=max?'':page.nextCursor,hasMore:page.hasMore,total:page.total});
+    const expiresAt=Date.parse(page.live.expiresAt)<Date.parse(row.live.expiresAt)?page.live.expiresAt:row.live.expiresAt;
+    return Object.freeze({...row,live:Object.freeze({...row.live,channels,expiresAt}),nextCursor:channels.length>=max?'':page.nextCursor,hasMore:page.hasMore,total:page.total});
   }
   const seen = new Set(row.entries.map(e => e.id));
   const entries = [...row.entries, ...page.entries.filter(e => !seen.has(e.id))].slice(0, max);

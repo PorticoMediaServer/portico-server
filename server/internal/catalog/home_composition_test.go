@@ -265,6 +265,63 @@ func TestHomeCommunityUsesThirtyDaysAndPreservesPrivacyThreshold(t *testing.T) {
 	}
 }
 
+func TestHomeCommunityRanksOnlyVideoBeforeTotalsAndPaging(t *testing.T) {
+	f := recommendationFixtureDB(t)
+	s := New(f.db)
+	r := engineRequest()
+	r.CommunityActivity = true
+	engineExec(t, f, `INSERT INTO accounts VALUES('a','a',x'00','p',1),('b','b',x'00','q',1),('c','c',x'00','r',1);UPDATE direct_memberships SET allowed_libraries='["movies","tv","music","books"]' WHERE account_id IN('b','c')`)
+	at := r.Now.Add(-time.Hour).Format("2006-01-02T15:04:05.000Z")
+	for i, key := range []string{persistence.PersonalOwnerKey("local", "a", "p"), persistence.PersonalOwnerKey("local", "b", "q"), persistence.PersonalOwnerKey("local", "c", "r")} {
+		for _, name := range []string{"m1", "e101", "t1", "p1", "m2"} {
+			if name == "m2" && i == 2 {
+				continue // Two viewers remain below the unchanged privacy threshold.
+			}
+			engineExec(t, f, `INSERT INTO personal_history(id,profile_id,item_id,started_at,updated_at,sequence,position,unit,completed)VALUES(?,?,?,?,?,1,600000,0,1)`, fmt.Sprintf("%d-%s", i, name), key, f.items[name].ID, at, at)
+		}
+	}
+	f.c.Drain()
+	first, err := s.HomeSingleRow(r, "community_watching", HomeRowPage{Limit: 1})
+	if err != nil || first.Total != 2 || len(first.Entries) != 1 || first.Start != 0 || first.NextCursor == "" || !first.HasMore || first.Period == nil || first.Period.Days != 30 {
+		t.Fatalf("first video rank: %+v %v", first, err)
+	}
+	second, err := s.HomeSingleRow(r, "community_watching", HomeRowPage{Limit: 1, Cursor: first.NextCursor})
+	if err != nil || second.Total != 2 || second.Start != 1 || len(second.Entries) != 1 || second.NextCursor != "" || second.HasMore {
+		t.Fatalf("second video rank: %+v %v", second, err)
+	}
+	seen := map[string]bool{}
+	for _, row := range []HomeRow{first, second} {
+		for _, entry := range row.Entries {
+			if entry.Kind != "movie" && entry.Kind != "show" {
+				t.Fatalf("square audio work in poster rank: %+v", entry)
+			}
+			seen[entry.ID] = true
+		}
+	}
+	if len(seen) != 2 || !seen[f.items["m1"].Public] || !seen[f.items["show"].Public] {
+		t.Fatalf("video membership: %v", seen)
+	}
+	// Home narrows its source; the shared engine still admits eligible audio.
+	shared, err := s.recommendationCandidates(r, "community_watching", "")
+	if err != nil || !recHas(shared, f.items["album"].Public) || !recHas(shared, f.items["book"].Public) {
+		t.Fatalf("shared audio recommendation behavior changed: %+v %v", shared, err)
+	}
+	// Audio changes cannot change this Home row's selected membership/fingerprint.
+	engineExec(t, f, `DELETE FROM personal_history WHERE item_id IN(?,?)`, f.items["t1"].ID, f.items["p1"].ID)
+	unchanged, err := s.HomeSingleRow(r, "community_watching", HomeRowPage{Limit: 1, Cursor: first.NextCursor})
+	if err != nil || unchanged.Total != 2 || unchanged.Start != 1 || len(unchanged.Entries) != 1 || unchanged.Entries[0].ID != second.Entries[0].ID {
+		t.Fatalf("audio altered video paging: %+v %v", unchanged, err)
+	}
+	engineExec(t, f, `DELETE FROM personal_history WHERE id='2-m1'`)
+	if _, err = s.HomeSingleRow(r, "community_watching", HomeRowPage{Limit: 1, Cursor: first.NextCursor}); !errors.Is(err, ErrStaleContinuation) {
+		t.Fatal("changed eligible video membership did not fence the cursor", err)
+	}
+	private, err := s.HomeSingleRow(r, "community_watching", HomeRowPage{})
+	if err != nil || private.Total != 1 || len(private.Entries) != 1 || private.Entries[0].ID != f.items["show"].Public {
+		t.Fatalf("subthreshold video leaked: %+v %v", private, err)
+	}
+}
+
 func TestHomeBooksContinuationFiltersMusicBeforeItsPageLimit(t *testing.T) {
 	db := homeFixture(t)
 	c := catalogtest.New(t, db)

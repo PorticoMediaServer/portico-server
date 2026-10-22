@@ -6,8 +6,9 @@
  *   it runs; an error with rows on screen keeps the rows.
  * - `revalidate()` is the quiet read the freshness hub asks for when a library, the profile's
  *   watched state or a playback position moved. The answer is merged into what is shown: a row
- *   that did not change is the same object (its cards do not re-render), a row that did keeps the
- *   pages the person had already scrolled into, and the order of rows follows the server.
+ *   that did not change is the same object (its cards do not re-render), and the order of rows
+ *   follows the server. Membership-fenced rows replace their pages and cursor together; rows
+ *   whose server supports reanchoring may retain their bounded tail.
  * - A row's next page that the server refuses as out of date is not the person's problem: the
  *   whole document is read again quietly and the row continues from there.
  * - Saving the layout carries the revision that was read; when the layout moved elsewhere first,
@@ -15,7 +16,7 @@
  *
  * No React and no timers of its own beyond the read deadline: tested under Node.
  */
-import {appendHomeRowPage, fetchHome, fetchHomeLayout, fetchHomeRow, hasHomeRowContent, resetHomeLayout, saveHomeLayout, type HomeApi, type HomeDocument, type HomeLayout, type HomeLayoutView, type HomeRow} from './home.ts';
+import {appendHomeRowPage, fetchHome, fetchHomeLayout, fetchHomeRow, hasFencedHomeMembership, hasHomeRowContent, HOME_ROW_MAX_ENTRIES, resetHomeLayout, saveHomeLayout, type HomeApi, type HomeDocument, type HomeLayout, type HomeLayoutView, type HomeRow} from './home.ts';
 import {ALREADY_DONE, isStaleAnswer, mergeRevalidatedList, retryWhenStale} from './freshness-actions.ts';
 
 export type HomeSnapshot = Readonly<{
@@ -31,7 +32,7 @@ const none: ReadonlySet<string> = Object.freeze(new Set<string>());
 const sameJson = (a: unknown, b: unknown) => a === b || JSON.stringify(a) === JSON.stringify(b);
 const permissionDenied=(error:unknown):boolean=>typeof error==='object'&&error!==null&&('status' in error&&[401,403,404].includes(Number(error.status))||'code' in error&&['unauthorized','forbidden','not_found'].includes(String(error.code)));
 
-/** `fresh` merged into `shown`: unchanged rows keep their identity, paged rows keep their tail. Returns `shown` when nothing changed. */
+/** `fresh` merged into `shown`: only reanchorable rows may keep a bounded tail. Returns `shown` when nothing changed. */
 export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): HomeDocument {
   if (shown.serverId !== fresh.serverId || shown.viewerFence !== fresh.viewerFence) return fresh;
   const before = new Map(shown.rows.map(row => [row.id, row]));
@@ -48,11 +49,14 @@ export function mergeHomeDocument(shown: HomeDocument, fresh: HomeDocument): Hom
       if(sameJson(old,row)){if(shown.rows[index]!==old)changed=true;return [old];}
       changed=true;return [row];
     }
-    const entries = mergeRevalidatedList(old.entries, row.entries, e => e.id, {same: sameJson, complete: !row.nextCursor});
+    // No membership fingerprint is exposed to the client. Even overlapping first
+    // pages cannot prove that a retained tail or its signed cursor is still valid.
+    const refreshed = mergeRevalidatedList(old.entries, row.entries, e => e.id, {same: sameJson, complete: hasFencedHomeMembership(row.id) || !row.nextCursor});
+    const entries = refreshed.length > HOME_ROW_MAX_ENTRIES ? Object.freeze(refreshed.slice(0, HOME_ROW_MAX_ENTRIES)) : refreshed;
     const keptTail = entries.length > row.entries.length;
     const {entries: _a, revision: _b, nextCursor: _c, hasMore: _d, ...oldRest} = old;
     const {entries: _e, revision: _f, nextCursor: _g, hasMore: _h, ...freshRest} = row;
-    const nextCursor = keptTail ? old.nextCursor : row.nextCursor;
+    const nextCursor = entries.length >= HOME_ROW_MAX_ENTRIES ? '' : keptTail ? old.nextCursor : row.nextCursor;
     if (entries === old.entries && nextCursor === old.nextCursor && sameJson(oldRest, freshRest)) {
       if (shown.rows[index] !== old) changed = true;
       return [old];
@@ -227,7 +231,13 @@ export class HomeService {
       done();
       if(permissionDenied(error)){this.removeRow(rowId);return;}
       // Out of date, not broken: bring the whole of Home up to date in place and let the row continue from there.
-      if (isStaleAnswer(error)) { await this.revalidate().catch(() => {}); return; }
+      if (isStaleAnswer(error)) {
+        const document = this.state.document;
+        if (hasFencedHomeMembership(rowId) && document && document.rows.find(r => r.id === rowId)?.nextCursor === cursor) {
+          this.publish({document: Object.freeze({...document, rows: Object.freeze(document.rows.map(r => r.id === rowId ? Object.freeze({...r, nextCursor: ''}) : r))})});
+        }
+        await this.revalidate().catch(() => {}); return;
+      }
       // Any other failed page leaves the row as it is; reaching its end again asks again.
     }
   }

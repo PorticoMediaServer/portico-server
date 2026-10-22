@@ -358,6 +358,8 @@ func (s *Service) homeSourceBase(r HomeRequest, spec homeRowSpec) (homeSource, e
 		return candidateSource(c), e
 	case spec.ID == "listen_next" || spec.ID == "continue_books":
 		return s.homeAudioSource(r, spec.ID == "continue_books")
+	case spec.ID == "community_watching":
+		return s.homeCommunitySource(r, spec)
 	case spec.ID == "continue":
 
 		cutoffs, premieres, maximum, err := s.continueWatchingPolicy(r.Libraries, r.now())
@@ -365,7 +367,7 @@ func (s *Service) homeSourceBase(r HomeRequest, spec homeRowSpec) (homeSource, e
 			return homeSource{}, err
 		}
 		return s.homeContinueSource(r, libraries, cutoffs, premieres, maximum)
-	case spec.ID == "recommended" || spec.ID == "trending_now" || spec.ID == "community_watching" || strings.HasPrefix(spec.ID, recFamily+":"):
+	case spec.ID == "recommended" || spec.ID == "trending_now" || strings.HasPrefix(spec.ID, recFamily+":"):
 		return s.homeEngineSource(r, spec)
 	case strings.HasPrefix(spec.ID, homeViewPrefix):
 		return s.homeViewSource(r, spec)

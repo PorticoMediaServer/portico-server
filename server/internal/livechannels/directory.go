@@ -156,7 +156,7 @@ func validDirectoryQuery(q DirectoryQuery) bool {
 }
 
 // The revision binds the entire filtered directory, not its current page. A
-// changed source, preference or policy cannot mix channel positions across pages.
+// changed source, owner channel map, preference or policy cannot mix channel positions across pages.
 func (s *Store) directoryRevision(ctx context.Context, tx *sql.Tx, scope DirectoryScope, q DirectoryQuery) (string, error) {
 	h := sha256.New()
 	q.Offset = 0
@@ -166,18 +166,21 @@ func (s *Store) directoryRevision(ctx context.Context, tx *sql.Tx, scope Directo
 	fmt.Fprintf(h, "%d:%s%d:%s", len(scope.Fence), scope.Fence, len(raw), raw)
 	library, _ := json.Marshal(scope.LibraryRows)
 	h.Write(library)
-	rows, err := tx.QueryContext(ctx, `SELECT id,revision,state,active_generation,name FROM live_sources WHERE id IN (SELECT value FROM json_each(?)) ORDER BY id`, mustJSON(scope.AllowedLiveSources))
+	// SaveChannelMap advances this document atomically for every override write,
+	// including deletion. A max(updated_ms) over remaining overrides misses clears
+	// and same-millisecond changes. Read one revision per authorized source instead.
+	rows, err := tx.QueryContext(ctx, `SELECT s.id,s.revision,s.state,s.active_generation,s.name,COALESCE(a.revision,0) FROM live_sources s LEFT JOIN admin_documents a ON a.scope='live-source:'||s.id WHERE s.id IN (SELECT value FROM json_each(?)) ORDER BY s.id`, mustJSON(scope.AllowedLiveSources))
 	if err != nil {
 		return "", err
 	}
 	for rows.Next() {
 		var id, state, generation, name string
-		var revision int64
-		if err = rows.Scan(&id, &revision, &state, &generation, &name); err != nil {
+		var revision, ownerRevision int64
+		if err = rows.Scan(&id, &revision, &state, &generation, &name, &ownerRevision); err != nil {
 			rows.Close()
 			return "", err
 		}
-		fmt.Fprintf(h, "%d:%s:%d:%d:%s:%d:%s:%d:%s", len(id), id, revision, len(state), state, len(generation), generation, len(name), name)
+		fmt.Fprintf(h, "%d:%s:%d:%d:%s:%d:%s:%d:%s:%d", len(id), id, revision, len(state), state, len(generation), generation, len(name), name, ownerRevision)
 	}
 	err = rows.Err()
 	rows.Close()
