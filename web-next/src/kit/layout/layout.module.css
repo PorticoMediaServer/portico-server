@@ -128,7 +128,7 @@
   .shelfItem, .flowSection { animation-duration: var(--motion-reduced); transition: opacity var(--motion-reduced) linear; transform: none; }
   .slide, .copy > * { transition: opacity var(--motion-reduced) linear; transform: none; transition-delay: 0ms; }
   .heroArtwork [data-foreground-art] { animation: none; transform: none; }
-  .timer i { animation: none; }
+  .hero .thumbnail .timer i { animation: none; }
   .thumbnail[data-active='true'] .timer i { transform: scaleX(1); }
 }
 .hero .copy[data-active='false'] > * { transition: none; }
