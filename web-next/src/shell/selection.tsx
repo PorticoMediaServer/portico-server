@@ -14,14 +14,13 @@ import type {ShellAssemblyContext} from './bootstrap';
 import {entryDestination, seeAllDestination} from './navigation';
 import {SelectionSurfaces, SelectionPhoneBar, type SelectionRendererSource} from './SelectionSurfaces';
 import {selectionEditorAudience} from './selection-presentation';
+import {shellSelectionScope} from './selection-scope';
 
 export function createShellSelection(context: ShellAssemblyContext, playback: HomeSelectionPlaybackPort, reportError: (error: unknown) => void, dockVisible: () => boolean) {
   const listeners = new Set<() => void>();
   const platform: HomeActionPlatform = {platform: 'web', playbackAvailable: true, queueAvailable: true};
   const viewer = context.session().viewer;
-  const authority = viewer.authority;
-  if (authority !== 'local' && authority !== 'hosted') throw new Error('unsupported-home-authority');
-  const scope = () => ({serverId: viewer.serverId, authority, accountId: viewer.accountId, profileId: viewer.profileId, viewId: router.state.location.href});
+  const scope = () => shellSelectionScope(viewer, router.state.location.href);
   const document = (): HomeDocument => { const value = context.home.getSnapshot().document; if (!value) throw new Error('home-document-required'); return value; };
   const currentContext = () => homeSelectionContext(scope(), document());
   const environment = (): SelectionEnvironment => ({platform: window.innerWidth >= 1024 ? 'desktop-web' : 'mobile-web', isOwner: viewer.role === 'owner',

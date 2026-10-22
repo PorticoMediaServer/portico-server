@@ -1,4 +1,4 @@
-import type {HttpLocalApi, LocalSession, SystemInfo} from '@core/index.ts';
+import type {CredentialSessionService, HttpLocalApi, LocalSession, SystemInfo} from '@core/index.ts';
 import {parseLibraryList} from '@core/library-list.ts';
 import {LocalSessionRefresher} from '@core/session-refresh.ts';
 import {selectedViewerRecord} from '@core/viewer-selection.ts';
@@ -44,6 +44,16 @@ export function sameShellAuthority(a: LocalSession, b: LocalSession): boolean {
 }
 
 type ShellAccount = Pick<ShellIdentity, 'profileName' | 'profileArt' | 'primaryProfile' | 'profiles' | 'canManageProfiles' | 'accountFacts'>;
+/** Synchronize through the public readiness API without renewing healthy local playback. */
+export async function hostedShellProfile(service: Pick<CredentialSessionService, 'synchronize' | 'getSnapshot'>, viewer: Pick<LocalSession['viewer'], 'accountId' | 'profileId'>): Promise<ShellAccount> {
+  await service.synchronize();
+  const current = service.getSnapshot().session;
+  if (!current || current.account.id !== viewer.accountId) throw new Error('The selected Portico Account profile is unavailable.');
+  const profile = current.profiles.find(candidate => candidate.id === viewer.profileId);
+  if (!profile) throw new Error('The selected Portico Account profile is unavailable.');
+  return {profileName: profile.name, profiles: current.profiles.map(value => ({id: value.id, name: value.name, initial: Array.from(value.name.trim())[0] ?? ''})),
+    canManageProfiles: false, accountFacts: [{id: 'account', text: current.account.username, role: 'identity'}]};
+}
 async function currentProfile(api: HttpLocalApi, session: LocalSession, signal: AbortSignal): Promise<ShellAccount> {
   const v = session.viewer;
   if (v.authority === 'local') {
@@ -55,12 +65,7 @@ async function currentProfile(api: HttpLocalApi, session: LocalSession, signal: 
       accountFacts: [{id: 'account', text: snapshot.account.username, role: 'identity'}]};
   }
   // Existing Portico Account bootstrap owns the account credential and its genuine names.
-  const account = browserAccount(); await account.service.ready;
-  const current = account.service.getSnapshot().session;
-  const profile = current?.account.id === v.accountId ? current.profiles.find(candidate => candidate.id === v.profileId) : undefined;
-  if (!profile) throw new Error('The selected Portico Account profile is unavailable.');
-  return {profileName: profile.name, profiles: current!.profiles.map(value => ({id: value.id, name: value.name, initial: Array.from(value.name.trim())[0] ?? ''})),
-    canManageProfiles: false, accountFacts: [{id: 'account', text: current!.account.username, role: 'identity'}]};
+  return hostedShellProfile(browserAccount().service, v);
 }
 async function readFacts(api: HttpLocalApi, session: LocalSession, preferences: PreferencesReader, inbox: InboxService, signal: AbortSignal): Promise<ShellFacts> {
   const [libraries, profile, settings, system, guide] = await Promise.all([

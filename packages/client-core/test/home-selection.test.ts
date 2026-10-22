@@ -65,22 +65,41 @@ test('aggregate Delete retains the displayed target and never counts or substitu
     const selected=homeEntrySelection(value,web)!;
     assert.equal(selected.id,kind);assert.equal(selected.capabilities.delete,true);
     assert.equal(homeEntryCapabilities(value,web).delete,true);
-    assert.equal(homeEntrySelection(value,{platform:'tv'})!.capabilities.delete,false);
-    assert.equal(homeEntryCapabilities(value,{platform:'tv'}).delete,false);
+    assert.equal(homeEntrySelection(value,{platform:'tv'})!.capabilities.delete,true);
+    assert.equal(homeEntryCapabilities(value,{platform:'tv'}).delete,true);
   }
 });
 
-test('device runtimes narrow grants while TV retains authorized title Edit',()=>{
+test('device runtimes narrow playback and Download while TV retains authorized catalogue commands',()=>{
   const value=entry('movie',{homeActions:actions({play:true,queue:true,download:true,editMetadata:true,refreshMetadata:true,delete:true})});
   const blocked=homeEntrySelection(value,{platform:'phone-app'})!.capabilities;
   assert.equal(blocked.play,false);assert.equal(blocked.queue,false);assert.equal(blocked.download,false);
   assert.equal(homeEntrySelection(value,phone)!.capabilities.download,true);
   assert.equal(homeEntrySelection(value,web)!.capabilities.download,false);
   const tv=homeEntrySelection(value,{platform:'tv',playbackAvailable:true,queueAvailable:true})!.capabilities;
-  assert.equal(tv.edit,true);assert.equal(tv.refresh,false);assert.equal(tv.delete,false);assert.equal(tv.play,true);
+  assert.equal(tv.edit,true);assert.equal(tv.refresh,true);assert.equal(tv.delete,true);assert.equal(tv.play,true);
   assert.equal(homeEntryCapabilities(value,{platform:'tv'}).editMetadata,true);
   assert.equal(homeEntryCapabilities(value,{...phone,nativeDownloadsAvailable:false}).download,undefined);
   assert.equal(homeEntrySelection(entry('movie',{homeActions:actions()}),phone)!.capabilities.play,false);
+});
+
+test('TV Delete and Refresh never borrow a selection grant for More or a title grant for selection',()=>{
+  const tv:HomeActionPlatform={platform:'tv'};
+  for(const kind of ['movie','show','season','episode','album','artist','book','song','audiobook_file']){
+    const selectionOnly=entry(kind,{homeActions:actions({selection:{...actions().selection,refresh:true,delete:true}})});
+    const selected=homeEntrySelection(selectionOnly,tv)!;
+    assert.equal(selected.id,'title');assert.equal(selected.capabilities.refresh,true);assert.equal(selected.capabilities.delete,true);
+    assert.equal(homeEntryCapabilities(selectionOnly,tv).refreshMetadata,false);assert.equal(homeEntryCapabilities(selectionOnly,tv).delete,false);
+    const moreOnly=entry(kind,{homeActions:actions({refreshMetadata:true,delete:true,selection:{...actions().selection}})});
+    assert.equal(homeEntrySelection(moreOnly,tv)!.capabilities.refresh,false);assert.equal(homeEntrySelection(moreOnly,tv)!.capabilities.delete,false);
+    assert.equal(homeEntryCapabilities(moreOnly,tv).refreshMetadata,true);assert.equal(homeEntryCapabilities(moreOnly,tv).delete,true);
+  }
+  const malformed=entry('movie',{role:'owner',homeActions:{...actions(),refreshMetadata:'true',delete:1,selection:{refresh:'owner',delete:'true'}}});
+  assert.equal(homeEntrySelection(malformed,tv)!.capabilities.refresh,false);assert.equal(homeEntrySelection(malformed,tv)!.capabilities.delete,false);
+  assert.equal(homeEntryCapabilities(malformed,tv).refreshMetadata,false);assert.equal(homeEntryCapabilities(malformed,tv).delete,false);
+  const collection:HomeCollection={mediaKind:'movie',collection:{id:'collection',libraryId:'movies',name:'Actual collection',itemCount:900,revision:2},members:[],actions:actions({selection:{...actions().selection,delete:true,refresh:true}})};
+  assert.equal(homeCollectionSelection(collection,tv).capabilities.delete,true);assert.equal(homeCollectionSelection(collection,tv).capabilities.refresh,true);
+  assert.equal(homeCollectionCapabilities(collection,tv).delete,false);assert.equal(homeCollectionCapabilities(collection,tv).refreshMetadata,false);
 });
 
 test('TV Edit requires its independent selection or More grant on every supported title kind',()=>{
