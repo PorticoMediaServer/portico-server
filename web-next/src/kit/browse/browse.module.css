@@ -304,3 +304,9 @@
 .filterBuilder[data-platform=tv] .facetChip { font-size: 22px; font-weight: 700; background: color-mix(in srgb, var(--color-text) 8%, transparent); box-shadow: none; }
 .filterBuilder[data-platform=tv] .facetChip small { font-size: 19px; font-weight: 600; }
 .filterBuilder[data-platform=tv] .facetChip[data-selected] { background: color-mix(in srgb, var(--color-accent) 24%, transparent); box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--color-accent-strong) 70%, transparent); }
+.menuHeading { line-height: normal; }
+.toolbar[data-platform=phone] .quickToggle { background: var(--color-raised-high); box-shadow: none; }
+.toolbar[data-platform=phone] .quickToggle[data-selected] { background: color-mix(in srgb, var(--color-accent) 28%, transparent); box-shadow: inset 0 0 0 1px var(--color-accent); }
+.toolbar[data-platform=tv] .quickToggle, .toolbar[data-platform=tv] .sortTrigger, .toolbar[data-platform=tv] .filtersButton { background: color-mix(in srgb, var(--color-text) 8%, transparent); box-shadow: none; }
+.toolbar[data-platform=tv] .quickToggle[data-selected] { background: color-mix(in srgb, var(--color-accent) 28%, transparent); box-shadow: inset 0 0 0 1.5px var(--color-accent); }
+.toolbar[data-platform=tv] .filterBadge { background: var(--color-accent); }
