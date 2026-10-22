@@ -1,7 +1,13 @@
 import test from 'node:test';import assert from 'node:assert/strict';
 import {PlaybackPolicy,parseSegmentMarkers,parseQueuePostPlay} from '../src/index.ts';
-import {fence,frame,intro,credits,post} from './fixtures.ts';
+import {fence,channelFence,frame,intro,credits,post} from './fixtures.ts';
 const player=(markers:unknown=[intro,credits])=>{const p=new PlaybackPolicy();p.begin(fence,markers,1400);return p;};
+
+test('catalogue segment and Up next policy rejects live domains without replacing its queue binding',()=>{
+ const p=player();assert.throws(()=>p.begin(channelFence as never,[intro],1400));
+ assert.equal(p.update(frame({fence:channelFence as never})),null);assert.equal(p.skip(channelFence as never),null);
+ assert.equal(p.update(frame())?.view.prompt?.kind,'skip');
+});
 test('Ask waits in the collapsed dock and appears immediately when expanded during the segment',()=>{
  const p=player();const quiet=p.update(frame({expanded:false}))!;
  assert.equal(quiet.view.prompt,null);assert.equal(quiet.view.undo,null);assert.deepEqual(quiet.view.markers,[]);assert.deepEqual(quiet.commands,[]);

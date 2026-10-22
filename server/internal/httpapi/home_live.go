@@ -157,7 +157,10 @@ func (d Dependencies) homeOnNow(r *http.Request, p identity.Principal, page cata
 				}
 			}
 		}
-		live.Channels = append(live.Channels, catalog.HomeChannel{Channel: channel, Source: sources[string(channel.Provenance)+":"+channel.SourceID]})
+		live.Channels = append(live.Channels, catalog.HomeChannel{
+			Channel: channel, Source: sources[string(channel.Provenance)+":"+channel.SourceID],
+			Actions: catalog.HomeChannelActions{Play: channel.TuneAvailable && d.v1 != nil, Favorite: channel.Provenance == livechannels.LiveSource || channel.Provenance == livechannels.LibraryChannel && d.LibraryChannels != nil},
+		})
 	}
 
 	summary, err := d.LiveChannels.ChannelSourceSummary(r.Context(), d.guideDirectoryAuthority(p, fence), false, now)

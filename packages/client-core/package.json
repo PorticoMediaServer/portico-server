@@ -6,7 +6,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./admin": "./src/admin/index.ts",
-    "./kit-model": "./src/presentation/kit-model/index.ts"
+    "./kit-model": "./src/presentation/kit-model/index.ts",
+    "./selection-model": "./src/selection-model/index.ts"
   },
   "scripts": {
     "test": "node --experimental-strip-types --test test/*.test.ts",

@@ -39,7 +39,7 @@ test('spotlight preserves server reasons and order, real show resume identity an
 });
 
 test('new badges, causal source, collection facts, ordered ranks and audio contributions survive parsing',()=>{
-  const collection={collection:{id:'collection',libraryId:'videos',name:'A collection',itemCount:4,revision:3},members:[entry('one'),entry('two'),entry('three'),entry('four')],backdropUrl:'/member/backdrop',firstYear:1984,lastTitle:'four'};
+  const collection={mediaKind:'movie',collection:{id:'collection',libraryId:'videos',name:'A collection',itemCount:4,revision:3},members:[entry('one'),entry('two'),entry('three'),entry('four')],backdropUrl:'/member/backdrop',firstYear:1984,lastTitle:'four'};
   const rows=[
     row('new_on_server',{entries:[entry('new','movie',{new:true}),entry('watched','movie',{watched:true})],total:2,seeAll:{type:'row',rowId:'new_on_server'}}),
     row('because_you_watched',{entries:[entry('related')],reason:{kind:'because_you_watched',source:{id:'actual',name:'Actual source'},text:{code:'next.home.becauseYouWatched',fallback:'Because you watched Actual source',params:{title:'Actual source'}}}}),
@@ -72,6 +72,11 @@ test('On now requires authoritative marks, real one-programme windows and keeps 
   assert.equal(parsed.live!.channels[0].channel.programmes[0].flags!.live,false);
   assert.equal(parsed.live!.channels[0].channel.programmes[0].flags!.repeat,true);
   assert.equal(parsed.live!.channels[0].source.name,'Actual source');
+  assert.deepEqual(parsed.live!.channels[0].actions,{play:false,favorite:false});
+  const offered=validateHomeRow(row('on_now',{live:live([{...channel('one'),actions:{play:true,favorite:true,editMetadata:true,queue:true}}])})).live!.channels[0];
+  assert.deepEqual(offered.actions,{play:true,favorite:true});
+  const unavailable=validateHomeRow(row('on_now',{live:live([{...channel('one'),channel:{...channel('one').channel,tuneAvailable:false},actions:{play:true,favorite:true}}])})).live!.channels[0];
+  assert.deepEqual(unavailable.actions,{play:false,favorite:true});
   assert.equal(validateHomeDocument(doc([row('on_now',{live:live([channel('one')]),total:2000})])).rows.length,1);
   for(const bad of [live([{...channel('one'),channel:{...channel('one').channel,mark:undefined}}]),live([channel('one')],{sort:'name'}),live(Array(51).fill(channel('one'))),live([{...channel('one'),channel:{...channel('one').channel,programmes:[...channel('one').channel.programmes,...channel('one').channel.programmes]}}]),live([channel('one')],{observedAt:'2026-10-22T01:00:00Z',expiresAt:'2026-10-22T01:01:00Z'})])assert.throws(()=>validateHomeRow(row('on_now',{live:bad})));
   assert.deepEqual(validateHomeSeeAll({type:'guide',group:'Sports',sourceId:'source'}),{type:'guide',group:'Sports',sourceId:'source'});
@@ -112,7 +117,7 @@ test('deferred collection/live hydration survives empty entries and denied live 
   let denied=false;
   const service=new HomeService(api(path=>{
     if(path==='/v1/home')return doc([row('featured_collection',{deferred:true}),row('on_now',{deferred:true})]);
-    if(path.includes('featured_collection'))return row('featured_collection',{kind:'collection_banner',collection:{collection:{id:'collection',libraryId:'videos',name:'Collection',itemCount:1,revision:1},members:[entry('member')]},total:1});
+    if(path.includes('featured_collection'))return row('featured_collection',{kind:'collection_banner',collection:{mediaKind:'movie',collection:{id:'collection',libraryId:'videos',name:'Collection',itemCount:1,revision:1},members:[entry('member')]},total:1});
     if(denied)throw {status:404,code:'not_found'};
     return row('on_now',{live:live([channel('one')]),total:2000,nextCursor:'next',hasMore:true});
   }));

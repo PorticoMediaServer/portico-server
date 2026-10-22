@@ -6,13 +6,13 @@ import styles from './layout.module.css';
 function useDebouncedValue<T>(value: T, key: string | null, hold: boolean, initialValue: T, initialKey: string | null): T {
   const [settled, setSettled] = useState(initialValue);
   const latest = useRef(value), settledKey = useRef(initialKey); latest.current = value;
-  useEffect(() => { if (!hold && key === settledKey.current) setSettled(value); }, [value, key, hold]);
+  useEffect(() => { if (key === settledKey.current) setSettled(value); }, [value, key]);
   useEffect(() => {
     if (hold) return;
     const timer = window.setTimeout(() => { settledKey.current = key; setSettled(latest.current); }, 250);
     return () => window.clearTimeout(timer);
   }, [key, hold]);
-  return settled;
+  return key === settledKey.current ? value : settled;
 }
 
 export function usePreviewDebounce<T>(value: T, key: string | null, hold = false): T {
@@ -41,8 +41,10 @@ export function FocusPreviewHero<T extends HeroCandidate>({entry, holdingDirecti
       return shown && shown.id !== settled.id ? [shown, settled] : [settled];
     });
   }, [settled]);
+  const renderedLayers = layers.map(candidate => candidate.id === settled?.id ? settled : candidate);
   return <div className={[styles.preview, className].filter(Boolean).join(' ')}>
-    <Hero {...props} reducedMotion={motion.reduced} candidates={layers} activeIndex={Math.max(0, layers.findIndex(candidate => candidate.id === activeId))} contentVisible={activeId !== null} showNavigation={false}
-      renderArtwork={renderArtwork} onArtworkReady={candidate => { if (candidate.id === incoming.current?.id) { setActiveId(candidate.id); onPreviewReady?.(candidate); } }} onArtworkError={candidate => { if (candidate.id === incoming.current?.id) onPreviewError?.(); }} active={false} platform="tv" />
+    <Hero {...props} reducedMotion={motion.reduced} candidates={renderedLayers} activeIndex={Math.max(0, layers.findIndex(candidate => candidate.id === activeId))} contentVisible={activeId !== null} showNavigation={false}
+      renderArtwork={(candidate, context) => renderArtwork(candidate, {...context, visible: props.visible !== false && motion.visible && (context.visible || candidate.id === settled?.id)})}
+      onArtworkReady={candidate => { if (candidate.id === incoming.current?.id) { setActiveId(candidate.id); onPreviewReady?.(candidate); } }} onArtworkError={candidate => { if (candidate.id === incoming.current?.id) onPreviewError?.(); }} active={false} platform="tv" />
   </div>;
 }

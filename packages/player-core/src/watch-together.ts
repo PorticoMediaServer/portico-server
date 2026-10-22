@@ -1,6 +1,6 @@
 import {clockMs, counter, invalidState, record, seconds, wireId} from './validation.ts';
 import {queueScope, type QueueScope} from './queues.ts';
-import {playbackFence, sameFence, sameScope, type PlaybackFence} from './identity.ts';
+import {playbackFence, sameFence, sameScope, type QueuePlaybackFence} from './identity.ts';
 export type GroupTimeline = Readonly<{itemId:string;currentEntryId:string;state:'idle'|'playing'|'paused'|'stopped';anchorPositionUs:string;anchorAt:string;rate:Readonly<{numerator:string;denominator:string}>;queuePosition:number;waitUntil:string|null}>;
 export type GroupSync = Readonly<{noCorrectionUnderMs:number;rateCorrectionMinimum:string;rateCorrectionMaximum:string;rateCorrectionMaxMs:number;seekAtOrOverMs:number}>;
 export function groupTargetPositionUs(timeline:GroupTimeline,serverTimeMs:number,atMs:number):bigint{
@@ -50,8 +50,8 @@ export type WatchTogetherState=Readonly<{
   phase:'live'|'reconnecting'|'ended';hostPresence:'connected'|'reconnecting'|'absent';
   isHost:boolean;canControl:boolean;waiting:boolean;timeline:GroupTimeline;sync:GroupSync;
 }>;
-export type FollowerLocal=Readonly<{fence:PlaybackFence;positionSeconds:number;playing:boolean;buffering:boolean;ready:boolean;seeking?:boolean;durationSeconds?:number}>;
-export type FollowerEffect=Readonly<{fence:PlaybackFence;room:WatchTogetherFence;playbackRevision:string} & (
+export type FollowerLocal=Readonly<{fence:QueuePlaybackFence;positionSeconds:number;playing:boolean;buffering:boolean;ready:boolean;seeking?:boolean;durationSeconds?:number}>;
+export type FollowerEffect=Readonly<{fence:QueuePlaybackFence;room:WatchTogetherFence;playbackRevision:string} & (
   {kind:'load';itemId:string;entryId:string;positionSeconds:number;playing:boolean}|
   {kind:'play'|'pause'}|{kind:'seek';positionSeconds:number}|{kind:'rate';rate:number}|
   {kind:'readiness';readiness:'buffering'|'ready'|'lagging';positionUs:string;ended:boolean}
@@ -71,7 +71,7 @@ function parseState(raw:unknown,roomId:string):WatchTogetherState {
 /** GroupFollower's correction/settling state without timers, HTTP or React. The existing group
  * service supplies viewer-projected snapshots; stale room/session callbacks are ignored. */
 export class WatchTogetherSync {
-  private room?:WatchTogetherFence; private state:WatchTogetherState|null=null; private local?:PlaybackFence;
+  private room?:WatchTogetherFence; private state:WatchTogetherState|null=null; private local?:QueuePlaybackFence;
   readonly clock=new GroupClock();
   private correctingUntil=0; private own?:{at:number;clock:string;aim:number};private lead=0;
   private loadedFor='';private epoch='';private endReported='';private lastAt=-1;private lastReport=-Infinity;private lastReadiness='';
@@ -80,8 +80,8 @@ export class WatchTogetherSync {
     const effects=this.leave();this.room=Object.freeze({...room,scope:queueScope(room.scope)});return effects;
   }
   leave():readonly FollowerEffect[] { const effects:readonly FollowerEffect[]=this.room&&this.state&&this.local?Object.freeze([Object.freeze({kind:'rate' as const,rate:1,fence:this.local,room:this.room,playbackRevision:this.state.playbackRevision})]):Object.freeze([]); this.room=undefined;this.state=null;this.local=undefined;this.clock.reset();this.correctingUntil=0;this.own=undefined;this.lead=0;this.loadedFor='';this.epoch='';this.endReported='';this.lastAt=-1;this.lastReadiness='';this.lastReport=-Infinity;return effects; }
-  bind(fence:PlaybackFence):void {
-    const next=playbackFence(fence);if(!this.room||!sameScope(this.room.scope,next.playback.scope))invalidState();
+  bind(fence:QueuePlaybackFence):void {
+    const next=playbackFence(fence);if(next.kind!=='queue'||!this.room||!sameScope(this.room.scope,next.playback.scope))invalidState();
     if(sameFence(this.local,next))return;
     this.local=next;this.correctingUntil=0;this.own=undefined;this.lead=0;
   }

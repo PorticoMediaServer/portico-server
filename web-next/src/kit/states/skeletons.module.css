@@ -8,6 +8,7 @@
 .caption { margin-top: 12px; }
 .grid[data-phone=true] .caption { margin-top: 9px; }
 .homeGlow { position: absolute; inset: 0 0 auto; height: 620px; pointer-events: none; background: radial-gradient(60% 80% at 75% 20%,rgba(29,56,72,.55),transparent 70%); }
+.homeArt { position: absolute; inset: 0 0 auto; height: 620px; pointer-events: none; }
 .heroWords { position: absolute; left: 64px; top: 200px; width: 600px; }
 .heroWords > .block { margin-bottom: 14px; }
 .accentLine { background: rgba(64,159,212,.18); }
@@ -40,6 +41,7 @@
 .episodeList { display: flex; gap: 14px; margin-top: 18px; align-items: center; }
 .episodeList .small { margin-top: 9px; }
 .phone .homeGlow { height: 560px; background: radial-gradient(80% 60% at 50% 30%,rgba(29,56,72,.6),transparent 72%); }
+.phone .homeArt { height: 560px; }
 .phone .heroWords { left: 0; right: 0; top: 330px; width: auto; display: flex; flex-direction: column; align-items: center; gap: 12px; }
 .phone .heroWords > .block { margin-bottom: 0; }
 .phone .heroTitle, .phone .heroMeta { margin-top: 4px; }
