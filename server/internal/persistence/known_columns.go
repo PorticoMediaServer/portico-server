@@ -14,9 +14,9 @@ access_invitations.bound_username
 access_invitations.code_hash
 access_invitations.created_by
 access_invitations.created_ms
-access_invitations.email
 access_invitations.expires_ms
 access_invitations.id
+access_invitations.notes
 access_invitations.revision
 access_invitations.role
 access_invitations.state
@@ -1685,6 +1685,9 @@ direct_memberships.allowed_libraries
 direct_memberships.disabled
 direct_memberships.disabled_ms
 direct_memberships.disabled_reason
+direct_memberships.joined_ms
+direct_memberships.joined_via
+direct_memberships.notes
 direct_memberships.revision
 direct_memberships.role
 direct_profile_pin_attempts.device_id
