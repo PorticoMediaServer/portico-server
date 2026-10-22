@@ -1,1 +1,20 @@
-export const statesNativeMessages = {} as const satisfies Record<`next.states.native.${string}`, string>;
+/** Platform wording from states.html; shared state copy lives in states.ts. */
+export const statesNativeMessages = {
+  'next.states.native.galleryTitle': 'Errors, empty states and loading',
+  'next.states.native.connectionPhone': 'Phone app, opening',
+  'next.states.native.connectionTV': "Can't reach the server, TV",
+  'next.states.native.pageFailure': "Something didn't load",
+  'next.states.native.details': 'Details',
+  'next.states.native.homeLoading': 'Home',
+  'next.states.native.titleLoading': 'A title page',
+  'next.states.native.gridLoading': 'A library',
+  'next.states.native.inlineEmpty': 'Nothing shared yet',
+  'next.states.native.playerFailure': 'Playback stopped',
+  'next.states.native.crash': 'Something went wrong',
+  'next.states.native.phoneConnectionBody': "You're still signed in. Portico keeps trying and opens as soon as the server answers.",
+  'next.states.native.tvConnectionBody': "You're still signed in. Portico keeps trying and opens your Home the moment the server answers.",
+  'next.states.native.phoneConnectionHelp': 'If the server is asleep or switched off, it may need waking. Check this phone is on the same network, or that the server can be reached from outside.',
+  'next.states.native.tvConnectionHelp': 'If the server is asleep or switched off, it may need waking. Check that this TV is on the same network as the server.',
+  'next.states.native.phoneOffline': "This phone is offline. Portico reconnects as soon as it's back.",
+  'next.states.native.phoneCrashBody': "Portico ran into a problem it couldn't recover from. Trying again usually fixes it, and nothing you saved was lost.",
+} as const satisfies Record<`next.states.native.${string}`, string>;
