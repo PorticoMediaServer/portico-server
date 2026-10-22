@@ -11,3 +11,4 @@
 .gridFixture[data-platform='phone'] .unloaded { height: 162px; }
 .unloaded { width: 100%; height: 255px; border-radius: 10px; background: linear-gradient(160deg, var(--color-raised-high), var(--color-raised)); }
 .fixtureCards { display: flex; gap: 16px; }
+.fixtureMovieGrid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 16px; }

@@ -3,9 +3,9 @@ import {Hero, type HeroCandidate, type HeroProps} from './Hero';
 import {useLayoutMotion} from './motion';
 import styles from './layout.module.css';
 
-export function usePreviewDebounce<T>(value: T, key: string | null, hold = false): T {
-  const [settled, setSettled] = useState(value);
-  const latest = useRef(value), settledKey = useRef(key); latest.current = value;
+function useDebouncedValue<T>(value: T, key: string | null, hold: boolean, initialValue: T, initialKey: string | null): T {
+  const [settled, setSettled] = useState(initialValue);
+  const latest = useRef(value), settledKey = useRef(initialKey); latest.current = value;
   useEffect(() => { if (!hold && key === settledKey.current) setSettled(value); }, [value, key, hold]);
   useEffect(() => {
     if (hold) return;
@@ -13,6 +13,10 @@ export function usePreviewDebounce<T>(value: T, key: string | null, hold = false
     return () => window.clearTimeout(timer);
   }, [key, hold]);
   return settled;
+}
+
+export function usePreviewDebounce<T>(value: T, key: string | null, hold = false): T {
+  return useDebouncedValue(value, key, hold, value, key);
 }
 
 export function PreviewDebounce<T>({value, getKey, hold = false, children}: {value: T; getKey: (value: T) => string | null; hold?: boolean; children: (settled: T) => ReactNode}) {
@@ -27,7 +31,7 @@ export type FocusPreviewHeroProps<T extends HeroCandidate> = Omit<HeroProps<T>, 
 
 /** Only an actual bounded focus summary is accepted; artwork remains owned by its renderer. */
 export function FocusPreviewHero<T extends HeroCandidate>({entry, holdingDirection = false, reducedMotion = false, renderArtwork, onPreviewError, onPreviewReady, className, ...props}: FocusPreviewHeroProps<T>) {
-  const settled = usePreviewDebounce(entry, entry?.id ?? null, holdingDirection), [layers, setLayers] = useState<readonly T[]>([]), [activeId, setActiveId] = useState<string | null>(null);
+  const settled = useDebouncedValue(entry, entry?.id ?? null, holdingDirection, null, null), [layers, setLayers] = useState<readonly T[]>([]), [activeId, setActiveId] = useState<string | null>(null);
   const motion = useLayoutMotion(reducedMotion), active = useRef(activeId), incoming = useRef(settled);
   active.current = activeId; incoming.current = settled;
   useEffect(() => {

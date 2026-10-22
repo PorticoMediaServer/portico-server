@@ -28,7 +28,7 @@ export type HeroProps<T extends HeroCandidate> = Omit<HTMLAttributes<HTMLElement
 
 export function HeroFacts({parts, platform = 'desktop', children}: {parts: readonly FactPart[]; platform?: LayoutPlatform; children?: ReactNode}) {
   return <div className={styles.facts} style={layoutType(platformType(platform).meta)}>{parts.map(part =>
-    <span key={part.id} className={part.id === 'content-rating' || part.id === 'season-count' ? styles.tag : undefined} data-fact-role={part.role}>{part.text}</span>)}{children}</div>;
+    <span key={part.id} className={part.id === 'content-rating' || part.id === 'season-count' || part.id === 'duration' ? styles.tag : undefined} data-fact-role={part.role}>{part.text}</span>)}{children}</div>;
 }
 
 export function HeroProgress({progress, remaining, label = defaultI18n.t('next.layout.progress')}: {progress: number; remaining: ReactNode; label?: string}) {

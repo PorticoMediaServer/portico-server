@@ -62,7 +62,6 @@
 .heroProgress { display: inline-flex; align-items: center; gap: 14px; color: var(--color-text); font-weight: 700; }
 .progressTrack { display: inline-block; width: 160px; height: 6px; border-radius: 6px; background: rgba(237,245,250,.22); overflow: hidden; }
 .progressTrack i { display: block; height: 100%; background: var(--color-accent-strong); border-radius: 6px; transform-origin: left; }
-.decodeStage { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .row { --layout-gutter: clamp(32px, calc(32px + (100vw - 1024px) * .076923), 64px); position: relative; margin-top: 44px; }
 .row:first-child { margin-top: 0; }
 .rowHead { display: flex; align-items: baseline; gap: 14px; padding: 0 var(--layout-gutter); margin-bottom: 14px; }
