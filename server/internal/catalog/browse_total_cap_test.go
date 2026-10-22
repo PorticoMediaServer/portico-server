@@ -102,3 +102,48 @@ func TestFilteredTotalsStopAtTheThreshold(t *testing.T) {
 		t.Fatalf("broad grouping: %+v", wide)
 	}
 }
+
+func TestBrowseFacetAndDurationLowerBoundsNeverCapSource(t *testing.T) {
+	defer func(n int) { browseTotalThreshold = n }(browseTotalThreshold)
+	browseTotalThreshold = 20
+	c := catalogtest.Open(t)
+	lib := c.Library("m", "Movies", "movie", "/m")
+	for i := 0; i < 61; i++ {
+		item := c.Movie(lib, fmt.Sprintf("/m/%03d.mkv", i), fmt.Sprintf("Film %03d", i), 2026)
+		c.Genres(item.ID, "fixture", "Drama")
+		if i == 60 {
+			c.Genres(item.ID, "fixture", "Rare beyond count bound")
+		}
+	}
+	c.Drain()
+	s := New(c.DB)
+	v := Viewer{Profile: "p", Fence: "f", Libraries: []string{"m"}}
+	q := &BrowseNode{Field: "year", Operator: "equals", Value: float64(2026)}
+	facet, err := s.Facets(v, FacetRequest{Library: "m", Pivot: "movies", Field: "genre", Query: q})
+	if err != nil || len(facet.Values) != 2 || facet.Values[0].Count != 20 || !facet.Values[0].CountIsLowerBound || facet.Total != 2 || facet.TotalIsLowerBound {
+		t.Fatalf("capped facet %+v %v", facet, err)
+	}
+	rare, err := s.Facets(v, FacetRequest{Library: "m", Pivot: "movies", Field: "genre", Query: q, Q: "Rare beyond"})
+	if err != nil || len(rare.Values) != 1 || rare.Values[0].Count != 1 || rare.Values[0].CountIsLowerBound {
+		t.Fatalf("facet source truncated %+v %v", rare, err)
+	}
+	page, err := s.BrowseEntities(v, BrowseRequest{Library: "m", Pivot: "movies", Query: q, Limit: 7})
+	if err != nil || !page.PageInfo.DurationIsLowerBound || page.PageInfo.DurationMs <= 0 {
+		t.Fatalf("duration lower bound %+v %v", page, err)
+	}
+	// Candidate/count bounds never become source-membership limits.
+	got := 0
+	for {
+		got += len(page.Entries)
+		if page.PageInfo.NextCursor == "" {
+			break
+		}
+		page, err = s.BrowseEntities(v, BrowseRequest{Library: "m", Pivot: "movies", Query: q, Limit: 7, Cursor: page.PageInfo.NextCursor})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got != 61 {
+		t.Fatalf("source capped at %d", got)
+	}
+}

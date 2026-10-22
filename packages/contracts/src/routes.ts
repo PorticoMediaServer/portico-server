@@ -100,6 +100,28 @@ export const routes = [
     "admission": "browsing"
   },
   {
+    "id": "browse_across_counts",
+    "method": "POST",
+    "path": "/v1/browse/counts",
+    "summary": "Read bounded group counts for filter relax suggestions",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "invalid_query",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
     "id": "browse_library",
     "method": "POST",
     "path": "/v1/libraries/{id}/browse",
@@ -114,6 +136,28 @@ export const routes = [
       "unauthorized",
       "not_permitted",
       "not_found",
+      "internal"
+    ],
+    "status": 200,
+    "admission": "browsing"
+  },
+  {
+    "id": "browse_library_counts",
+    "method": "POST",
+    "path": "/v1/libraries/{id}/browse/counts",
+    "summary": "Read bounded counts for filter relax suggestions",
+    "access": "device",
+    "requires": "read",
+    "lane": "browsing",
+    "cost": "page_sized",
+    "bodyLimit": 65536,
+    "errors": [
+      "invalid_request",
+      "invalid_query",
+      "unauthorized",
+      "not_permitted",
+      "not_found",
+      "stale_continuation",
       "internal"
     ],
     "status": 200,
@@ -3022,7 +3066,9 @@ export const routes = [
       "q",
       "limit",
       "group",
-      "value"
+      "value",
+      "query",
+      "pivot"
     ],
     "errors": [
       "invalid_request",
@@ -5355,7 +5401,9 @@ export const routes = [
     "query": [
       "field",
       "q",
-      "limit"
+      "limit",
+      "query",
+      "pivot"
     ],
     "errors": [
       "invalid_request",
@@ -16432,7 +16480,9 @@ export const routePaths = {
   "add_queue_segment": "/v1/queues/{id}/segments",
   "advance_queue": "/v1/queues/{id}:advance",
   "browse_across": "/v1/browse",
+  "browse_across_counts": "/v1/browse/counts",
   "browse_library": "/v1/libraries/{id}/browse",
+  "browse_library_counts": "/v1/libraries/{id}/browse/counts",
   "change_connectivity_policy": "/v1/admin/connectivity/policy",
   "change_console_settings": "/v1/admin/console/settings",
   "change_playback_session": "/v1/playback/sessions/{id}",

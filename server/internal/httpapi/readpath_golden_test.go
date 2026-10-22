@@ -146,10 +146,11 @@ type goldenCase struct {
 
 // goldenFixture names the deterministic catalogue the matrix addresses.
 type goldenFixture struct {
-	library fixture.Libraries
-	item    string
-	db      *sql.DB
-	public  map[string]string
+	library         fixture.Libraries
+	item            string
+	db              *sql.DB
+	public          map[string]string
+	browsePlayables map[string][]goldenPlayable
 }
 
 func buildGoldenFixture(t *testing.T) (*goldenFixture, func(method, path, body, viewer string) (int, string)) {
@@ -439,8 +440,15 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 	for _, entry := range expected {
 		byName[entry.Name] = entry
 	}
-	if len(expected) != len(cases) {
-		t.Errorf("the matrix has %d cases and the golden file has %d", len(cases), len(expected))
+	// Four newly counted fields, for both current viewers, have independent
+	// fixture-derived expectations instead of a new recorded snapshot.
+	for _, c := range cases {
+		if entry, ok := goldenNewBrowseFacets(t, f, c); ok {
+			byName[c.Name] = entry
+		}
+	}
+	if len(byName) != len(cases) {
+		t.Errorf("the matrix has %d cases and the golden file has %d", len(cases), len(byName))
 	}
 	differences := 0
 	for _, actual := range cases {
@@ -536,6 +544,7 @@ func TestReadPathGoldenEquivalence(t *testing.T) {
 		if strings.HasPrefix(actual.Name, "browse:") {
 			want.Response = goldenHomeCoverDecoration(t, f, actual, want.Response)
 		}
+		want.Response = goldenBrowseExtension(t, f, actual, want.Response)
 		if want.Status != actual.Status {
 			differences++
 			t.Errorf("%s: status %d, golden %d\n  body: %s", actual.Name, actual.Status, want.Status, truncate(actual.Response))

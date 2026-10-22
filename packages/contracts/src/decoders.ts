@@ -5,7 +5,9 @@ export function decodeActOnDownloadPreparationResponse(input: unknown): types.Ac
 export function decodeAddQueueSegmentResponse(input: unknown): types.AddQueueSegmentResponse { return decode("AddQueueSegmentResponse", input) as types.AddQueueSegmentResponse; }
 export function decodeAdvanceQueueResponse(input: unknown): types.AdvanceQueueResponse { return decode("AdvanceQueueResponse", input) as types.AdvanceQueueResponse; }
 export function decodeBrowseAcrossResponse(input: unknown): types.BrowseAcrossResponse { return decode("BrowseAcrossResponse", input) as types.BrowseAcrossResponse; }
+export function decodeBrowseAcrossCountsResponse(input: unknown): types.BrowseAcrossCountsResponse { return decode("BrowseAcrossCountsResponse", input) as types.BrowseAcrossCountsResponse; }
 export function decodeBrowseLibraryResponse(input: unknown): types.BrowseLibraryResponse { return decode("BrowseLibraryResponse", input) as types.BrowseLibraryResponse; }
+export function decodeBrowseLibraryCountsResponse(input: unknown): types.BrowseLibraryCountsResponse { return decode("BrowseLibraryCountsResponse", input) as types.BrowseLibraryCountsResponse; }
 export function decodeChangeConnectivityPolicyResponse(input: unknown): types.ChangeConnectivityPolicyResponse { return decode("ChangeConnectivityPolicyResponse", input) as types.ChangeConnectivityPolicyResponse; }
 export function decodeChangeConsoleSettingsResponse(input: unknown): types.ChangeConsoleSettingsResponse { return decode("ChangeConsoleSettingsResponse", input) as types.ChangeConsoleSettingsResponse; }
 export function decodeChangePlaybackSessionResponse(input: unknown): types.ChangePlaybackSessionResponse { return decode("ChangePlaybackSessionResponse", input) as types.ChangePlaybackSessionResponse; }

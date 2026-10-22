@@ -355,6 +355,12 @@ export const errors = [
     "retry": "after_refresh"
   },
   {
+    "code": "invalid_query",
+    "status": 400,
+    "message": "Check the request and try again.",
+    "retry": "never"
+  },
+  {
     "code": "invalid_request",
     "status": 400,
     "message": "Check the request and try again.",

@@ -1,12 +1,14 @@
 package httpapi
 
 import (
+	"context"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"portico.local/apikit"
 	"portico.local/server/internal/catalog"
 	"portico.local/server/internal/dbwork"
 	"portico.local/server/internal/identity"
@@ -66,13 +68,14 @@ func (d Dependencies) browseLibrary(w http.ResponseWriter, r *http.Request) (ide
 }
 
 type browseRequestBody struct {
-	Pivot  string                        `json:"pivot"`
-	Query  json.RawMessage               `json:"query"`
-	Sort   []catalog.BrowseSortSelection `json:"sort"`
-	Limit  int                           `json:"limit"`
-	Cursor string                        `json:"cursor"`
-	Range  *catalog.BrowseRange          `json:"range"`
-	Seek   *catalog.BrowseSeek           `json:"seek"`
+	HomeRowDisplay string                        `json:"homeRowDisplay,omitempty"`
+	Pivot          string                        `json:"pivot"`
+	Query          json.RawMessage               `json:"query"`
+	Sort           []catalog.BrowseSortSelection `json:"sort"`
+	Limit          int                           `json:"limit"`
+	Cursor         string                        `json:"cursor"`
+	Range          *catalog.BrowseRange          `json:"range"`
+	Seek           *catalog.BrowseSeek           `json:"seek"`
 }
 
 func (d Dependencies) browseRoutes(mux *http.ServeMux) {
@@ -190,8 +193,16 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 		failure(w, e)
 		return
 	}
+	if e := catalog.ValidateHomeRowDisplayQueryLimit(body.HomeRowDisplay, body.Limit); e != nil {
+		browseFailure(w, e)
+		return
+	}
 	query, e := catalog.ParseBrowseQuery(body.Query, "query")
 	if e != nil {
+		browseFailure(w, e)
+		return
+	}
+	if e = catalog.ValidateHomeRowDisplay(query, body.HomeRowDisplay); e != nil {
 		browseFailure(w, e)
 		return
 	}
@@ -216,10 +227,17 @@ func (d Dependencies) browseHandler(w http.ResponseWriter, r *http.Request) {
 		if composeErr != nil {
 			return composeErr
 		}
-		out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: restrictions, RowSources: rows})
-		return composeErr
+		out, composeErr = cat.BrowseEntities(viewer, catalog.BrowseRequest{ServerID: d.Identity.ID(), Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), ViewerFence: fence, HomeRowDisplay: body.HomeRowDisplay, Pivot: body.Pivot, Query: query, Sort: body.Sort, Limit: min(body.Limit, catalog.BrowseMaximumLimit), Cursor: body.Cursor, Range: body.Range, Seek: body.Seek, Restrictions: restrictions, RowSources: rows})
+		if composeErr != nil {
+			return composeErr
+		}
+		return d.projectBrowseDisplay(r, p, viewer, cat, body.HomeRowDisplay, query, &out)
 	})
 	if e != nil {
+		browseFailure(w, e)
+		return
+	}
+	if e = d.browseAuthorityAfter(r, p, catalog.Viewer{Fence: fence}); e != nil {
 		browseFailure(w, e)
 		return
 	}
@@ -239,7 +257,7 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	q := r.URL.Query()
 	for key, values := range q {
-		if (key != "field" && key != "q" && key != "limit") || len(values) != 1 {
+		if (key != "field" && key != "q" && key != "limit" && key != "pivot" && key != "query") || len(values) != 1 {
 			failure(w, catalog.ErrCursor)
 			return
 		}
@@ -253,25 +271,29 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		limit = min(parsed, 200)
 	}
-	restrictions, restrictionFence, e := d.viewerRestrictions(r, p)
+	restrictions, _, e := d.viewerRestrictions(r, p)
+	restrictionFence, fenceErr := d.browseFence(r, p)
+	if e == nil {
+		e = fenceErr
+	}
 	if e != nil {
 		failure(w, e)
 		return
 	}
-	// Facet counts change only when the catalogue does, and they are already
-	// keyed on the restriction fence inside the service. The validator says
-	// the same thing to the client.
-	if revision, revisionErr := d.Catalog.WithContext(r.Context()).ContentRevision(r.PathValue("id"), identity.PersonalKey(p.Viewer)); revisionErr == nil {
-		tag := responseTag("facets", r.PathValue("id"), presentationIdentity(p), restrictionFence, q.Get("field"), q.Get("q"), strconv.Itoa(limit), number(revision.Catalog), number(revision.Viewer))
-		if conditional(w, r, tag) {
-			return
-		}
+	query, e := catalog.ParseBrowseQuery(json.RawMessage(q.Get("query")), "query")
+	if e != nil {
+		browseFailure(w, e)
+		return
 	}
 	var out catalog.FacetPage
 	e = d.compose(r, restrictions, func(cat *catalog.Service) error {
 		var composeErr error
 		viewer := catalog.Viewer{Profile: identity.PersonalKey(p.Viewer), Fence: restrictionFence, Libraries: []string{r.PathValue("id")}, Restrictions: restrictions}
-		out, composeErr = cat.Facets(viewer, catalog.FacetRequest{Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Restrictions: restrictions})
+		rows, err := d.resolveHomeRows(r, p, viewer, query, cat)
+		if err != nil {
+			return err
+		}
+		out, composeErr = cat.Facets(viewer, catalog.FacetRequest{Pivot: q.Get("pivot"), Query: query, RowSources: rows, Library: r.PathValue("id"), Profile: identity.PersonalKey(p.Viewer), Field: q.Get("field"), Q: q.Get("q"), Limit: limit, Restrictions: restrictions})
 		return composeErr
 	})
 	if e != nil {
@@ -282,5 +304,123 @@ func (d Dependencies) facetsHandler(w http.ResponseWriter, r *http.Request) {
 		failure(w, e)
 		return
 	}
+	if e = d.browseAuthorityAfter(r, p, catalog.Viewer{Fence: restrictionFence}); e != nil {
+		browseFailure(w, e)
+		return
+	}
 	write(w, 200, out)
+}
+
+// projectBrowseDisplay keeps canonical membership for every browse operation,
+// while the explicitly requested cards and their command offers name actual
+// targets. No stale member is skipped or substituted.
+func (d Dependencies) projectBrowseDisplay(r *http.Request, p identity.Principal, viewer catalog.Viewer, cat *catalog.Service, rowID string, query *catalog.BrowseNode, out *catalog.BrowseResult) error {
+	if rowID == "" {
+		return nil
+	}
+	if err := catalog.ValidateHomeRowDisplay(query, rowID); err != nil {
+		return err
+	}
+	rr := r.WithContext(cat.Context())
+	request, err := d.homeRequestFor(rr, p, viewer.Restrictions)
+	if err != nil {
+		return err
+	}
+	ids := make([]string, len(out.Entries))
+	for i, entry := range out.Entries {
+		ids[i] = entry.ID
+	}
+	projected, err := cat.ProjectHomeRowDisplayTargets(request, rowID, ids)
+	if err != nil {
+		return err
+	}
+	if len(projected) != len(ids) {
+		return catalog.ErrStaleContinuation
+	}
+	out.DisplayTargets = make([]catalog.HomeDisplayTarget, len(projected))
+	for i, target := range projected {
+		if target.MembershipID != ids[i] {
+			return catalog.ErrStaleContinuation
+		}
+		out.Entries[i] = target.Entry
+		out.DisplayTargets[i] = catalog.HomeDisplayTarget{MembershipID: target.MembershipID, EntryID: target.Entry.ID}
+	}
+	return d.projectHomeActions(cat.Context(), p, request.Viewer, cat, []catalog.HomeRow{{Entries: out.Entries}}, nil)
+}
+
+func registerBrowseCountRoutes(registry *apikit.Registry, d Dependencies) error {
+	failures := []string{"invalid_request", "invalid_query", "unauthorized", "not_permitted", "not_found", "stale_continuation", "internal"}
+	if err := apikit.RegisterRaw(registry, apikit.RawRoute[catalog.BrowseCountRequest, catalog.BrowseCountBatch]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "browse_library_counts", Method: "POST", Path: "/v1/libraries/{id}/browse/counts", Summary: "Read bounded counts for filter relax suggestions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 65536, Errors: failures}, Serve: d.browseCountsHandler}); err != nil {
+		return err
+	}
+	return apikit.RegisterRaw(registry, apikit.RawRoute[catalog.BrowseCountRequest, catalog.BrowseCountBatch]{Metadata: apikit.Metadata{Admission: laneBrowsing, ID: "browse_across_counts", Method: "POST", Path: "/v1/browse/counts", Summary: "Read bounded group counts for filter relax suggestions", Access: apikit.Device, Requires: apikit.ScopeRead, Lane: apikit.Browsing, Cost: apikit.PageSized, Status: 200, BodyLimit: 65536, Errors: failures}, Serve: d.browseCountsHandler})
+}
+func (d Dependencies) browseCountsHandler(w http.ResponseWriter, r *http.Request) {
+	p, viewer, err := d.acrossViewer(r)
+	if err != nil {
+		failure(w, err)
+		return
+	}
+	library := r.PathValue("id")
+	if library != "" {
+		if err = d.allowedLibrary(r.Context(), p, library); err != nil {
+			failure(w, err)
+			return
+		}
+	}
+	var body catalog.BrowseCountRequest
+	if err = decode(w, r, &body); err != nil {
+		failure(w, err)
+		return
+	}
+	if len(body.Queries) < 1 || len(body.Queries) > catalog.BrowseCountMaximum {
+		browseFailure(w, &catalog.BrowseValidationError{Path: "queries", Message: "send between 1 and 8 count queries"})
+		return
+	}
+	var out catalog.BrowseCountBatch
+	err = d.composeScope(r, viewer.Restrictions, func(ctx context.Context, cat *catalog.Service) error {
+		sources := map[string]catalog.HomeRowMembership{}
+		for _, q := range body.Queries {
+			rows, e := d.resolveHomeRows(r.WithContext(ctx), p, viewer, q.Query, cat)
+			if e != nil {
+				return e
+			}
+			for id, row := range rows {
+				sources[id] = row
+			}
+		}
+		var e error
+		out, e = cat.BrowseCounts(viewer, library, body, sources)
+		return e
+	})
+	if err != nil {
+		browseFailure(w, err)
+		return
+	}
+	if err = d.browseAuthorityAfter(r, p, viewer); err != nil {
+		browseFailure(w, err)
+		return
+	}
+	write(w, 200, out)
+}
+
+// Read the current family and policy again after leaving the snapshot.
+func (d Dependencies) browseAuthorityAfter(r *http.Request, p identity.Principal, before catalog.Viewer) error {
+	if _, err := d.homeActionFenceAfter(r, p); err != nil {
+		return err
+	}
+	_, after, err := d.acrossViewer(r)
+	if err != nil {
+		return err
+	}
+	// A library page's fence has no cross-library suffix; it still rechecks both
+	// its content and session facts, and the explicit library check follows it.
+	fence, err := d.browseFence(r, p)
+	if err != nil {
+		return err
+	}
+	if before.Fence != after.Fence && before.Fence != fence {
+		return catalog.ErrStaleContinuation
+	}
+	return nil
 }

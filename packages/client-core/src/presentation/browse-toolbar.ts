@@ -71,7 +71,7 @@ export type ToolbarModel = Readonly<{
 export function toolbarModel(capabilities: BrowseCapabilities, libraryKind: string, predicates: readonly ToolbarPredicate[], sort: BrowseSortSelection, options: {owner?: boolean; /** False on a television: a filter that can only be typed is left out. */ textEntry?: boolean} = {}): ToolbarModel {
   const pivot = capabilities.resolvedPivot?.id ?? '';
   const audio = libraryKind === 'music' || /artist|album|song/.test(pivot);
-  const fields = capabilities.fields.filter(f => !HIDDEN.has(f.id) && !FOLDED_INTO_YEAR.has(f.id) && (options.owner || f.id !== 'match') && (options.textEntry !== false || filterControlOf(f) !== 'text'));
+  const fields = capabilities.fields.filter(f => !HIDDEN.has(f.id) && !FOLDED_INTO_YEAR.has(f.id) && (options.textEntry !== false || filterControlOf(f) !== 'text'));
   const byId = new Map(fields.map(f => [f.id, f]));
   const promoted = (PROMOTED[libraryKind] ?? PROMOTED.movie!).map(id => byId.get(id)).filter((f): f is BrowseFieldCapability => !!f).slice(0, 4);
   // Music has no "watched": its quick toggles are favorites only (played/unplayed stay inside Filter).
@@ -84,7 +84,7 @@ export function toolbarModel(capabilities: BrowseCapabilities, libraryKind: stri
     .filter(g => g.fields.length > 0);
   const directions = capabilities.sorts.find(s => s.id === sort.field)?.directions ?? ['asc', 'desc'];
   // A group's own order is offered by the group's page as its first sort, never in the list itself.
-  return Object.freeze({promoted, quick, groups, sorts: capabilities.sorts.filter(s => !s.requiresGroup), sort: Object.freeze({field: sort.field, direction: sort.direction, flippable: directions.length > 1}), applied});
+  return Object.freeze({promoted, quick, groups, sorts: capabilities.sorts.filter(s => !s.requiresGroup && (options.owner || !s.ownerOnly)), sort: Object.freeze({field: sort.field, direction: sort.direction, flippable: directions.length > 1}), applied});
 }
 
 /** Server ids whose catalogue name is filed under another word (`filter.field.*`). */

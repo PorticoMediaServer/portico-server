@@ -2103,9 +2103,125 @@
         ],
         "type": "object"
       },
+      "BrowseAcrossCountsRequest": {
+        "properties": {
+          "pivot": {
+            "type": "string"
+          },
+          "queries": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "query": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                      "properties": {
+                        "all": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "any": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "field": {
+                          "type": "string"
+                        },
+                        "not": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "operator": {
+                          "type": "string"
+                        },
+                        "value": {}
+                      },
+                      "required": [],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "query"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pivot",
+          "queries"
+        ],
+        "type": "object"
+      },
+      "BrowseAcrossCountsResponse": {
+        "properties": {
+          "counts": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "string"
+                },
+                "total": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "totalIsLowerBound": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "total",
+                "totalIsLowerBound",
+                "revision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "counts"
+        ],
+        "type": "object"
+      },
       "BrowseAcrossRequest": {
         "properties": {
           "cursor": {
+            "type": "string"
+          },
+          "homeRowDisplay": {
             "type": "string"
           },
           "limit": {
@@ -2291,6 +2407,24 @@
             ],
             "type": "object"
           },
+          "displayTargets": {
+            "items": {
+              "properties": {
+                "entryId": {
+                  "type": "string"
+                },
+                "membershipId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "membershipId",
+                "entryId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "entries": {
             "items": {
               "additionalProperties": false,
@@ -3340,6 +3474,14 @@
           },
           "pageInfo": {
             "properties": {
+              "durationIsLowerBound": {
+                "type": "boolean"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "hasMore": {
                 "type": "boolean"
               },
@@ -3369,7 +3511,9 @@
               "totalIsLowerBound",
               "revision",
               "hasMore",
-              "nextCursor"
+              "nextCursor",
+              "durationMs",
+              "durationIsLowerBound"
             ],
             "type": "object"
           },
@@ -3406,9 +3550,125 @@
         ],
         "type": "object"
       },
+      "BrowseLibraryCountsRequest": {
+        "properties": {
+          "pivot": {
+            "type": "string"
+          },
+          "queries": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "query": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                      "properties": {
+                        "all": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "any": {
+                          "items": {
+                            "additionalProperties": {},
+                            "properties": {},
+                            "required": [],
+                            "type": "object"
+                          },
+                          "maxItems": 40,
+                          "minItems": 1,
+                          "type": "array"
+                        },
+                        "field": {
+                          "type": "string"
+                        },
+                        "not": {
+                          "additionalProperties": {},
+                          "properties": {},
+                          "required": [],
+                          "type": "object"
+                        },
+                        "operator": {
+                          "type": "string"
+                        },
+                        "value": {}
+                      },
+                      "required": [],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "id",
+                "query"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pivot",
+          "queries"
+        ],
+        "type": "object"
+      },
+      "BrowseLibraryCountsResponse": {
+        "properties": {
+          "counts": {
+            "items": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "revision": {
+                  "type": "string"
+                },
+                "total": {
+                  "maximum": 9007199254740991,
+                  "minimum": -9007199254740991,
+                  "type": "integer"
+                },
+                "totalIsLowerBound": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "total",
+                "totalIsLowerBound",
+                "revision"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "counts"
+        ],
+        "type": "object"
+      },
       "BrowseLibraryRequest": {
         "properties": {
           "cursor": {
+            "type": "string"
+          },
+          "homeRowDisplay": {
             "type": "string"
           },
           "limit": {
@@ -3594,6 +3854,24 @@
             ],
             "type": "object"
           },
+          "displayTargets": {
+            "items": {
+              "properties": {
+                "entryId": {
+                  "type": "string"
+                },
+                "membershipId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "membershipId",
+                "entryId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "entries": {
             "items": {
               "additionalProperties": false,
@@ -4643,6 +4921,14 @@
           },
           "pageInfo": {
             "properties": {
+              "durationIsLowerBound": {
+                "type": "boolean"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "hasMore": {
                 "type": "boolean"
               },
@@ -4672,7 +4958,9 @@
               "totalIsLowerBound",
               "revision",
               "hasMore",
-              "nextCursor"
+              "nextCursor",
+              "durationMs",
+              "durationIsLowerBound"
             ],
             "type": "object"
           },
@@ -27610,6 +27898,9 @@
                 "labelKey": {
                   "type": "string"
                 },
+                "ownerOnly": {
+                  "type": "boolean"
+                },
                 "requiresGroup": {
                   "type": "boolean"
                 },
@@ -27624,6 +27915,7 @@
                 "defaultDirection",
                 "expensive",
                 "seeded",
+                "ownerOnly",
                 "requiresGroup",
                 "applicableKinds"
               ],
@@ -27692,10 +27984,16 @@
           "field": {
             "type": "string"
           },
+          "revision": {
+            "type": "string"
+          },
           "total": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "type": "boolean"
           },
           "values": {
             "items": {
@@ -27704,6 +28002,9 @@
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "countIsLowerBound": {
+                  "type": "boolean"
                 },
                 "label": {
                   "type": "string"
@@ -27715,7 +28016,8 @@
               "required": [
                 "value",
                 "label",
-                "count"
+                "count",
+                "countIsLowerBound"
               ],
               "type": "object"
             },
@@ -27724,6 +28026,7 @@
         },
         "required": [
           "field",
+          "totalIsLowerBound",
           "total",
           "values"
         ],
@@ -72794,6 +73097,9 @@
                 "labelKey": {
                   "type": "string"
                 },
+                "ownerOnly": {
+                  "type": "boolean"
+                },
                 "requiresGroup": {
                   "type": "boolean"
                 },
@@ -72808,6 +73114,7 @@
                 "defaultDirection",
                 "expensive",
                 "seeded",
+                "ownerOnly",
                 "requiresGroup",
                 "applicableKinds"
               ],
@@ -81707,10 +82014,16 @@
           "field": {
             "type": "string"
           },
+          "revision": {
+            "type": "string"
+          },
           "total": {
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "totalIsLowerBound": {
+            "type": "boolean"
           },
           "values": {
             "items": {
@@ -81719,6 +82032,9 @@
                   "maximum": 9007199254740991,
                   "minimum": -9007199254740991,
                   "type": "integer"
+                },
+                "countIsLowerBound": {
+                  "type": "boolean"
                 },
                 "label": {
                   "type": "string"
@@ -81730,7 +82046,8 @@
               "required": [
                 "value",
                 "label",
-                "count"
+                "count",
+                "countIsLowerBound"
               ],
               "type": "object"
             },
@@ -81739,6 +82056,7 @@
         },
         "required": [
           "field",
+          "totalIsLowerBound",
           "total",
           "values"
         ],
@@ -96023,6 +96341,24 @@
                 ],
                 "type": "object"
               },
+              "displayTargets": {
+                "items": {
+                  "properties": {
+                    "entryId": {
+                      "type": "string"
+                    },
+                    "membershipId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "membershipId",
+                    "entryId"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
               "entries": {
                 "items": {
                   "additionalProperties": false,
@@ -97072,6 +97408,14 @@
               },
               "pageInfo": {
                 "properties": {
+                  "durationIsLowerBound": {
+                    "type": "boolean"
+                  },
+                  "durationMs": {
+                    "maximum": 9007199254740991,
+                    "minimum": -9007199254740991,
+                    "type": "integer"
+                  },
                   "hasMore": {
                     "type": "boolean"
                   },
@@ -97101,7 +97445,9 @@
                   "totalIsLowerBound",
                   "revision",
                   "hasMore",
-                  "nextCursor"
+                  "nextCursor",
+                  "durationMs",
+                  "durationIsLowerBound"
                 ],
                 "type": "object"
               },
@@ -219261,6 +219607,9 @@
                   "cursor": {
                     "type": "string"
                   },
+                  "homeRowDisplay": {
+                    "type": "string"
+                  },
                   "limit": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -219451,6 +219800,24 @@
                         "sort"
                       ],
                       "type": "object"
+                    },
+                    "displayTargets": {
+                      "items": {
+                        "properties": {
+                          "entryId": {
+                            "type": "string"
+                          },
+                          "membershipId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "membershipId",
+                          "entryId"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "entries": {
                       "items": {
@@ -220501,6 +220868,14 @@
                     },
                     "pageInfo": {
                       "properties": {
+                        "durationIsLowerBound": {
+                          "type": "boolean"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "hasMore": {
                           "type": "boolean"
                         },
@@ -220530,7 +220905,9 @@
                         "totalIsLowerBound",
                         "revision",
                         "hasMore",
-                        "nextCursor"
+                        "nextCursor",
+                        "durationMs",
+                        "durationIsLowerBound"
                       ],
                       "type": "object"
                     },
@@ -221043,6 +221420,9 @@
                           "labelKey": {
                             "type": "string"
                           },
+                          "ownerOnly": {
+                            "type": "boolean"
+                          },
                           "requiresGroup": {
                             "type": "boolean"
                           },
@@ -221057,6 +221437,7 @@
                           "defaultDirection",
                           "expensive",
                           "seeded",
+                          "ownerOnly",
                           "requiresGroup",
                           "applicableKinds"
                         ],
@@ -221165,6 +221546,186 @@
         "x-scope": "read"
       }
     },
+    "/v1/browse/counts": {
+      "post": {
+        "operationId": "browse_across_counts",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "pivot": {
+                    "type": "string"
+                  },
+                  "queries": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "query": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                              "properties": {
+                                "all": {
+                                  "items": {
+                                    "additionalProperties": {},
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 40,
+                                  "minItems": 1,
+                                  "type": "array"
+                                },
+                                "any": {
+                                  "items": {
+                                    "additionalProperties": {},
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 40,
+                                  "minItems": 1,
+                                  "type": "array"
+                                },
+                                "field": {
+                                  "type": "string"
+                                },
+                                "not": {
+                                  "additionalProperties": {},
+                                  "properties": {},
+                                  "required": [],
+                                  "type": "object"
+                                },
+                                "operator": {
+                                  "type": "string"
+                                },
+                                "value": {}
+                              },
+                              "required": [],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "query"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "pivot",
+                  "queries"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "counts": {
+                      "items": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "type": "string"
+                          },
+                          "total": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "totalIsLowerBound": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "total",
+                          "totalIsLowerBound",
+                          "revision"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "counts"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read bounded group counts for filter relax suggestions",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_query",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "stale_continuation",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-max-body-bytes": 65536,
+        "x-scope": "read"
+      }
+    },
     "/v1/browse/facets": {
       "get": {
         "operationId": "get_browse_facets",
@@ -221208,6 +221769,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pivot",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -221219,10 +221796,16 @@
                     "field": {
                       "type": "string"
                     },
+                    "revision": {
+                      "type": "string"
+                    },
                     "total": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "totalIsLowerBound": {
+                      "type": "boolean"
                     },
                     "values": {
                       "items": {
@@ -221231,6 +221814,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "countIsLowerBound": {
+                            "type": "boolean"
                           },
                           "label": {
                             "type": "string"
@@ -221242,7 +221828,8 @@
                         "required": [
                           "value",
                           "label",
-                          "count"
+                          "count",
+                          "countIsLowerBound"
                         ],
                         "type": "object"
                       },
@@ -221251,6 +221838,7 @@
                   },
                   "required": [
                     "field",
+                    "totalIsLowerBound",
                     "total",
                     "values"
                   ],
@@ -305867,6 +306455,9 @@
                   "cursor": {
                     "type": "string"
                   },
+                  "homeRowDisplay": {
+                    "type": "string"
+                  },
                   "limit": {
                     "maximum": 9007199254740991,
                     "minimum": -9007199254740991,
@@ -306057,6 +306648,24 @@
                         "sort"
                       ],
                       "type": "object"
+                    },
+                    "displayTargets": {
+                      "items": {
+                        "properties": {
+                          "entryId": {
+                            "type": "string"
+                          },
+                          "membershipId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "membershipId",
+                          "entryId"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
                     },
                     "entries": {
                       "items": {
@@ -307107,6 +307716,14 @@
                     },
                     "pageInfo": {
                       "properties": {
+                        "durationIsLowerBound": {
+                          "type": "boolean"
+                        },
+                        "durationMs": {
+                          "maximum": 9007199254740991,
+                          "minimum": -9007199254740991,
+                          "type": "integer"
+                        },
                         "hasMore": {
                           "type": "boolean"
                         },
@@ -307136,7 +307753,9 @@
                         "totalIsLowerBound",
                         "revision",
                         "hasMore",
-                        "nextCursor"
+                        "nextCursor",
+                        "durationMs",
+                        "durationIsLowerBound"
                       ],
                       "type": "object"
                     },
@@ -307657,6 +308276,9 @@
                           "labelKey": {
                             "type": "string"
                           },
+                          "ownerOnly": {
+                            "type": "boolean"
+                          },
                           "requiresGroup": {
                             "type": "boolean"
                           },
@@ -307671,6 +308293,7 @@
                           "defaultDirection",
                           "expensive",
                           "seeded",
+                          "ownerOnly",
                           "requiresGroup",
                           "applicableKinds"
                         ],
@@ -307776,6 +308399,196 @@
           "internal"
         ],
         "x-lane": "browsing",
+        "x-scope": "read"
+      }
+    },
+    "/v1/libraries/{id}/browse/counts": {
+      "post": {
+        "operationId": "browse_library_counts",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "properties": {
+                  "pivot": {
+                    "type": "string"
+                  },
+                  "queries": {
+                    "items": {
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "query": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+                              "properties": {
+                                "all": {
+                                  "items": {
+                                    "additionalProperties": {},
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 40,
+                                  "minItems": 1,
+                                  "type": "array"
+                                },
+                                "any": {
+                                  "items": {
+                                    "additionalProperties": {},
+                                    "properties": {},
+                                    "required": [],
+                                    "type": "object"
+                                  },
+                                  "maxItems": 40,
+                                  "minItems": 1,
+                                  "type": "array"
+                                },
+                                "field": {
+                                  "type": "string"
+                                },
+                                "not": {
+                                  "additionalProperties": {},
+                                  "properties": {},
+                                  "required": [],
+                                  "type": "object"
+                                },
+                                "operator": {
+                                  "type": "string"
+                                },
+                                "value": {}
+                              },
+                              "required": [],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "query"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "pivot",
+                  "queries"
+                ],
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "counts": {
+                      "items": {
+                        "properties": {
+                          "id": {
+                            "type": "string"
+                          },
+                          "revision": {
+                            "type": "string"
+                          },
+                          "total": {
+                            "maximum": 9007199254740991,
+                            "minimum": -9007199254740991,
+                            "type": "integer"
+                          },
+                          "totalIsLowerBound": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": [
+                          "id",
+                          "total",
+                          "totalIsLowerBound",
+                          "revision"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "counts"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "default": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "error": {
+                      "properties": {
+                        "code": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "code",
+                        "message"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "error"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Request refused or unavailable"
+          }
+        },
+        "summary": "Read bounded counts for filter relax suggestions",
+        "x-access": "device",
+        "x-admission": "browsing",
+        "x-cost": "page_sized",
+        "x-error-codes": [
+          "invalid_request",
+          "invalid_query",
+          "unauthorized",
+          "not_permitted",
+          "not_found",
+          "stale_continuation",
+          "internal"
+        ],
+        "x-lane": "browsing",
+        "x-max-body-bytes": 65536,
         "x-scope": "read"
       }
     },
@@ -312339,6 +313152,22 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "in": "query",
+            "name": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "pivot",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -312350,10 +313179,16 @@
                     "field": {
                       "type": "string"
                     },
+                    "revision": {
+                      "type": "string"
+                    },
                     "total": {
                       "maximum": 9007199254740991,
                       "minimum": -9007199254740991,
                       "type": "integer"
+                    },
+                    "totalIsLowerBound": {
+                      "type": "boolean"
                     },
                     "values": {
                       "items": {
@@ -312362,6 +313197,9 @@
                             "maximum": 9007199254740991,
                             "minimum": -9007199254740991,
                             "type": "integer"
+                          },
+                          "countIsLowerBound": {
+                            "type": "boolean"
                           },
                           "label": {
                             "type": "string"
@@ -312373,7 +313211,8 @@
                         "required": [
                           "value",
                           "label",
-                          "count"
+                          "count",
+                          "countIsLowerBound"
                         ],
                         "type": "object"
                       },
@@ -312382,6 +313221,7 @@
                   },
                   "required": [
                     "field",
+                    "totalIsLowerBound",
                     "total",
                     "values"
                   ],
@@ -360089,6 +360929,24 @@
                           ],
                           "type": "object"
                         },
+                        "displayTargets": {
+                          "items": {
+                            "properties": {
+                              "entryId": {
+                                "type": "string"
+                              },
+                              "membershipId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "membershipId",
+                              "entryId"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
                         "entries": {
                           "items": {
                             "additionalProperties": false,
@@ -361138,6 +361996,14 @@
                         },
                         "pageInfo": {
                           "properties": {
+                            "durationIsLowerBound": {
+                              "type": "boolean"
+                            },
+                            "durationMs": {
+                              "maximum": 9007199254740991,
+                              "minimum": -9007199254740991,
+                              "type": "integer"
+                            },
                             "hasMore": {
                               "type": "boolean"
                             },
@@ -361167,7 +362033,9 @@
                             "totalIsLowerBound",
                             "revision",
                             "hasMore",
-                            "nextCursor"
+                            "nextCursor",
+                            "durationMs",
+                            "durationIsLowerBound"
                           ],
                           "type": "object"
                         },

@@ -2023,9 +2023,119 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "BrowseAcrossCountsRequest": {
+    "properties": {
+      "pivot": {
+        "type": "string"
+      },
+      "queries": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "query": {
+              "additionalProperties": false,
+              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "nullable": true,
+              "properties": {
+                "all": {
+                  "items": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "maxItems": 40,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "any": {
+                  "items": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "maxItems": 40,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "not": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "operator": {
+                  "type": "string"
+                },
+                "value": {}
+              },
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "query"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "pivot",
+      "queries"
+    ],
+    "type": "object"
+  },
+  "BrowseAcrossCountsResponse": {
+    "properties": {
+      "counts": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "total": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "totalIsLowerBound": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "total",
+            "totalIsLowerBound",
+            "revision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "counts"
+    ],
+    "type": "object"
+  },
   "BrowseAcrossRequest": {
     "properties": {
       "cursor": {
+        "type": "string"
+      },
+      "homeRowDisplay": {
         "type": "string"
       },
       "limit": {
@@ -2193,6 +2303,24 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "displayTargets": {
+        "items": {
+          "properties": {
+            "entryId": {
+              "type": "string"
+            },
+            "membershipId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "membershipId",
+            "entryId"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
       "entries": {
         "items": {
           "additionalProperties": false,
@@ -3200,6 +3328,14 @@ export const schemas = {
       },
       "pageInfo": {
         "properties": {
+          "durationIsLowerBound": {
+            "type": "boolean"
+          },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "hasMore": {
             "type": "boolean"
           },
@@ -3229,7 +3365,9 @@ export const schemas = {
           "totalIsLowerBound",
           "revision",
           "hasMore",
-          "nextCursor"
+          "nextCursor",
+          "durationMs",
+          "durationIsLowerBound"
         ],
         "type": "object"
       },
@@ -3266,9 +3404,119 @@ export const schemas = {
     ],
     "type": "object"
   },
+  "BrowseLibraryCountsRequest": {
+    "properties": {
+      "pivot": {
+        "type": "string"
+      },
+      "queries": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "query": {
+              "additionalProperties": false,
+              "description": "A predicate or all/any/not group. The parser enforces the published depth and clause bounds.",
+              "nullable": true,
+              "properties": {
+                "all": {
+                  "items": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "maxItems": 40,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "any": {
+                  "items": {
+                    "additionalProperties": {},
+                    "properties": {},
+                    "required": [],
+                    "type": "object"
+                  },
+                  "maxItems": 40,
+                  "minItems": 1,
+                  "type": "array"
+                },
+                "field": {
+                  "type": "string"
+                },
+                "not": {
+                  "additionalProperties": {},
+                  "properties": {},
+                  "required": [],
+                  "type": "object"
+                },
+                "operator": {
+                  "type": "string"
+                },
+                "value": {}
+              },
+              "required": [],
+              "type": "object"
+            }
+          },
+          "required": [
+            "id",
+            "query"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "pivot",
+      "queries"
+    ],
+    "type": "object"
+  },
+  "BrowseLibraryCountsResponse": {
+    "properties": {
+      "counts": {
+        "items": {
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            },
+            "total": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "totalIsLowerBound": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "id",
+            "total",
+            "totalIsLowerBound",
+            "revision"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "counts"
+    ],
+    "type": "object"
+  },
   "BrowseLibraryRequest": {
     "properties": {
       "cursor": {
+        "type": "string"
+      },
+      "homeRowDisplay": {
         "type": "string"
       },
       "limit": {
@@ -3436,6 +3684,24 @@ export const schemas = {
         ],
         "type": "object"
       },
+      "displayTargets": {
+        "items": {
+          "properties": {
+            "entryId": {
+              "type": "string"
+            },
+            "membershipId": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "membershipId",
+            "entryId"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
       "entries": {
         "items": {
           "additionalProperties": false,
@@ -4443,6 +4709,14 @@ export const schemas = {
       },
       "pageInfo": {
         "properties": {
+          "durationIsLowerBound": {
+            "type": "boolean"
+          },
+          "durationMs": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
           "hasMore": {
             "type": "boolean"
           },
@@ -4472,7 +4746,9 @@ export const schemas = {
           "totalIsLowerBound",
           "revision",
           "hasMore",
-          "nextCursor"
+          "nextCursor",
+          "durationMs",
+          "durationIsLowerBound"
         ],
         "type": "object"
       },
@@ -25681,6 +25957,9 @@ export const schemas = {
             "labelKey": {
               "type": "string"
             },
+            "ownerOnly": {
+              "type": "boolean"
+            },
             "requiresGroup": {
               "type": "boolean"
             },
@@ -25695,6 +25974,7 @@ export const schemas = {
             "defaultDirection",
             "expensive",
             "seeded",
+            "ownerOnly",
             "requiresGroup",
             "applicableKinds"
           ],
@@ -25763,10 +26043,16 @@ export const schemas = {
       "field": {
         "type": "string"
       },
+      "revision": {
+        "type": "string"
+      },
       "total": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "totalIsLowerBound": {
+        "type": "boolean"
       },
       "values": {
         "items": {
@@ -25775,6 +26061,9 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "countIsLowerBound": {
+              "type": "boolean"
             },
             "label": {
               "type": "string"
@@ -25786,7 +26075,8 @@ export const schemas = {
           "required": [
             "value",
             "label",
-            "count"
+            "count",
+            "countIsLowerBound"
           ],
           "type": "object"
         },
@@ -25795,6 +26085,7 @@ export const schemas = {
     },
     "required": [
       "field",
+      "totalIsLowerBound",
       "total",
       "values"
     ],
@@ -69715,6 +70006,9 @@ export const schemas = {
             "labelKey": {
               "type": "string"
             },
+            "ownerOnly": {
+              "type": "boolean"
+            },
             "requiresGroup": {
               "type": "boolean"
             },
@@ -69729,6 +70023,7 @@ export const schemas = {
             "defaultDirection",
             "expensive",
             "seeded",
+            "ownerOnly",
             "requiresGroup",
             "applicableKinds"
           ],
@@ -78338,10 +78633,16 @@ export const schemas = {
       "field": {
         "type": "string"
       },
+      "revision": {
+        "type": "string"
+      },
       "total": {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
+      },
+      "totalIsLowerBound": {
+        "type": "boolean"
       },
       "values": {
         "items": {
@@ -78350,6 +78651,9 @@ export const schemas = {
               "maximum": 9007199254740991,
               "minimum": -9007199254740991,
               "type": "integer"
+            },
+            "countIsLowerBound": {
+              "type": "boolean"
             },
             "label": {
               "type": "string"
@@ -78361,7 +78665,8 @@ export const schemas = {
           "required": [
             "value",
             "label",
-            "count"
+            "count",
+            "countIsLowerBound"
           ],
           "type": "object"
         },
@@ -78370,6 +78675,7 @@ export const schemas = {
     },
     "required": [
       "field",
+      "totalIsLowerBound",
       "total",
       "values"
     ],
@@ -92290,6 +92596,24 @@ export const schemas = {
             ],
             "type": "object"
           },
+          "displayTargets": {
+            "items": {
+              "properties": {
+                "entryId": {
+                  "type": "string"
+                },
+                "membershipId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "membershipId",
+                "entryId"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
           "entries": {
             "items": {
               "additionalProperties": false,
@@ -93297,6 +93621,14 @@ export const schemas = {
           },
           "pageInfo": {
             "properties": {
+              "durationIsLowerBound": {
+                "type": "boolean"
+              },
+              "durationMs": {
+                "maximum": 9007199254740991,
+                "minimum": -9007199254740991,
+                "type": "integer"
+              },
               "hasMore": {
                 "type": "boolean"
               },
@@ -93326,7 +93658,9 @@ export const schemas = {
               "totalIsLowerBound",
               "revision",
               "hasMore",
-              "nextCursor"
+              "nextCursor",
+              "durationMs",
+              "durationIsLowerBound"
             ],
             "type": "object"
           },

@@ -30,7 +30,7 @@ func TestBrowseAdHocCountsAreExactAndRangesUnbounded(t *testing.T) {
 	}
 }
 
-func TestBrowseAdHocPagesWithoutAnchors(t *testing.T) {
+func TestBrowseAdHocPagesWithFilteredTitleAnchors(t *testing.T) {
 	_, s, names := browseFixture(t)
 	query, err := ParseBrowseQuery(json.RawMessage(`{"field":"year","operator":"at-least","value":0}`), "query")
 	if err != nil {
@@ -44,7 +44,10 @@ func TestBrowseAdHocPagesWithoutAnchors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if page.PageInfo.Total != 5 || len(page.PositionIndex) != 0 {
+		// D37 / CB-7 supersedes the old filtered-rail exclusion. Every
+		// initial filtered title page carries the same authoritative positions.
+		wantAnchors := []BrowsePositionAnchor{{Key: "#", Index: 0}, {Key: "A", Index: 1}, {Key: "B", Index: 2}, {Key: "D", Index: 3}, {Key: "G", Index: 4}}
+		if page.PageInfo.Total != 5 || request.Cursor == "" && fmt.Sprint(page.PositionIndex) != fmt.Sprint(wantAnchors) || request.Cursor != "" && len(page.PositionIndex) != 0 {
 			t.Fatalf("filtered page metadata %+v, anchors %+v", page.PageInfo, page.PositionIndex)
 		}
 		for _, entry := range page.Entries {
@@ -97,29 +100,21 @@ func TestBrowseAdHocPagesWithoutAnchors(t *testing.T) {
 	}
 }
 
-func TestBrowseAdHocRejectsSeekNavigation(t *testing.T) {
-	_, s, _ := browseFixture(t)
-	query, err := ParseBrowseQuery(json.RawMessage(`{"field":"year","operator":"at-least","value":0}`), "query")
-	if err != nil {
-		t.Fatal(err)
-	}
+// D37 requires the rail to work with filters, including direct letter jumps.
+func TestBrowseAdHocSeekUsesFilteredTitleRanking(t *testing.T) {
+	_, s, names := browseFixture(t)
+	query := &BrowseNode{Field: "year", Operator: "at-least", Value: float64(2000)}
 	viewer := Viewer{Profile: "p", Fence: "f", Libraries: []string{"a"}}
-	request := BrowseRequest{Library: "a", Profile: "p", ViewerFence: "f", Pivot: "movies", Query: query, Limit: 2}
-	for _, tc := range []struct {
-		name, path   string
-		seek         *BrowseSeek
-		rangeRequest *BrowseRange
-	}{
-		{"seek", "seek", &BrowseSeek{Prefix: "A"}, nil},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			request.Seek, request.Range = tc.seek, tc.rangeRequest
-			_, err := s.BrowseEntities(viewer, request)
-			var issue *BrowseValidationError
-			if !errors.As(err, &issue) || issue.Path != tc.path {
-				t.Fatalf("wanted %s validation, got %v", tc.path, err)
-			}
-		})
+	request := BrowseRequest{Library: "a", Pivot: "movies", Query: query, Limit: 2, Seek: &BrowseSeek{Prefix: "D"}}
+	page, err := s.BrowseEntities(viewer, request)
+	if err != nil || page.PageInfo.Start != 1 || len(page.Entries) != 2 || page.Entries[0].ID != names["m4"].Public {
+		t.Fatalf("filtered seek: %+v %v", page, err)
+	}
+	request.Sort = []BrowseSortSelection{{Field: "year", Direction: "asc"}}
+	_, err = s.BrowseEntities(viewer, request)
+	var issue *BrowseValidationError
+	if !errors.As(err, &issue) || issue.Path != "seek" {
+		t.Fatalf("non-title seek must still refuse: %v", err)
 	}
 }
 
