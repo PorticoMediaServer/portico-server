@@ -14,7 +14,7 @@
 .slide[data-active='true'] .copy > :nth-child(3) { transition-delay: 120ms; }
 .slide[data-active='true'] .copy > :nth-child(4) { transition-delay: 180ms; }
 .slide[data-active='true'] .copy > :nth-child(5) { transition-delay: 240ms; }
-.reason { color: var(--color-accent-strong); margin: 0 0 14px; }
+.reason { color: var(--color-accent-strong); margin: 0 0 14px; display: flex; gap: 16px; }
 .facts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; color: var(--color-text-secondary); margin: 0 0 16px; }
 .facts > :first-child { font-weight: 700; color: var(--color-text); }
 .tag { padding: 3px 9px; border-radius: 6px; border: 1px solid rgba(237,245,250,.28); font-size: 13px; font-weight: 600; color: var(--color-text); }
@@ -37,6 +37,7 @@
 .hero[data-platform^='phone'] .copy { left: 20px; right: 20px; bottom: 24px; width: auto; text-align: center; }
 .hero[data-platform^='phone'][data-navigation='true'] .copy { bottom: 48px; }
 .hero[data-platform^='phone'] .reason { margin-bottom: 8px; }
+.hero[data-platform^='phone'] .reason { justify-content: center; }
 .hero[data-platform^='phone'] .lockup { margin-bottom: 10px; }
 .hero[data-platform^='phone'] .facts { justify-content: center; gap: 6px 12px; margin-bottom: 18px; }
 .hero[data-platform^='phone'] .actions { justify-content: center; gap: 10px; }
@@ -46,16 +47,21 @@
 .dot::before { content: ''; position: absolute; inset: -16px -3px; }
 .dot[data-active='true'] { width: 18px; background: var(--color-text); }
 .hero[data-platform='tv'] { --layout-gutter: 200px; height: 1080px; }
-.hero[data-platform='tv'] .copy { top: var(--layout-preview-top, 156px); bottom: auto; width: 960px; }
+.hero[data-platform='tv'] .copy { top: var(--layout-preview-top, 220px); bottom: auto; width: 960px; }
 .hero[data-platform='tv'] .reason { margin-bottom: 16px; }
 .hero[data-platform='tv'] .lockup { margin-bottom: 22px; }
 .hero[data-platform='tv'] .facts { gap: 10px 26px; margin-bottom: 18px; }
 .hero[data-platform='tv'] .tag { font-size: 20px; padding: 3px 12px; border-radius: 8px; border-width: 1.5px; }
 .hero[data-platform='tv'] .overview { -webkit-line-clamp: 2; max-width: 800px; margin-bottom: 30px; }
 .hero[data-platform='tv'] .actions { gap: 18px; }
+.tvScrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(7,16,24,.86) 0%, rgba(7,16,24,.62) 30%, rgba(7,16,24,.12) 56%, rgba(7,16,24,0) 70%); }
 .preview { position: relative; }
 .preview .slide { transition-duration: var(--motion-slow); }
 .preview .copy > * { transition-duration: var(--motion-standard); transform: none; }
+.preview .hero[data-platform='tv'] .copy { top: 150px; }
+.heroProgress { display: inline-flex; align-items: center; gap: 14px; color: var(--color-text); font-weight: 700; }
+.progressTrack { display: inline-block; width: 160px; height: 6px; border-radius: 6px; background: rgba(237,245,250,.22); overflow: hidden; }
+.progressTrack i { display: block; height: 100%; background: var(--color-accent-strong); border-radius: 6px; transform-origin: left; }
 .decodeStage { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
 .row { --layout-gutter: clamp(32px, calc(32px + (100vw - 1024px) * .076923), 64px); position: relative; margin-top: 44px; }
 .row:first-child { margin-top: 0; }

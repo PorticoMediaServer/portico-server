@@ -1,6 +1,6 @@
 export {Lockup, layoutType, platformType} from './Lockup';
 export type {LockupProps, LayoutPlatform} from './Lockup';
-export {Hero, HeroFacts} from './Hero';
+export {Hero, HeroFacts, HeroProgress} from './Hero';
 export type {HeroCandidate, HeroProps, HeroRenderContext} from './Hero';
 export {FocusPreviewHero, PreviewDebounce, usePreviewDebounce} from './FocusPreviewHero';
 export type {FocusPreviewHeroProps} from './FocusPreviewHero';

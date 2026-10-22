@@ -16,6 +16,7 @@ export type HeroProps<T extends HeroCandidate> = Omit<HTMLAttributes<HTMLElement
   renderThumbnail?: (candidate: T, context: HeroRenderContext) => ReactNode;
   renderActions?: (candidate: T, context: HeroRenderContext) => ReactNode;
   renderMetadata?: (candidate: T, context: HeroRenderContext) => ReactNode;
+  renderReason?: (candidate: T, context: HeroRenderContext) => ReactNode;
   renderSupplement?: (candidate: T, context: HeroRenderContext) => ReactNode;
   activeIndex?: number; defaultIndex?: number; onIndexChange?: (index: number) => void;
   active?: boolean; visible?: boolean; heroFocused?: boolean; reducedMotion?: boolean; platform?: LayoutPlatform;
@@ -25,12 +26,18 @@ export type HeroProps<T extends HeroCandidate> = Omit<HTMLAttributes<HTMLElement
   onArtworkError?: (candidate: T) => void;
 };
 
-export function HeroFacts({parts, platform = 'desktop'}: {parts: readonly FactPart[]; platform?: LayoutPlatform}) {
+export function HeroFacts({parts, platform = 'desktop', children}: {parts: readonly FactPart[]; platform?: LayoutPlatform; children?: ReactNode}) {
   return <div className={styles.facts} style={layoutType(platformType(platform).meta)}>{parts.map(part =>
-    <span key={part.id} className={part.id === 'content-rating' || part.id === 'season-count' ? styles.tag : undefined} data-fact-role={part.role}>{part.text}</span>)}</div>;
+    <span key={part.id} className={part.id === 'content-rating' || part.id === 'season-count' ? styles.tag : undefined} data-fact-role={part.role}>{part.text}</span>)}{children}</div>;
 }
 
-export function Hero<T extends HeroCandidate>({candidates, renderArtwork, renderThumbnail, renderActions, renderMetadata, renderSupplement, activeIndex, defaultIndex = 0, onIndexChange,
+export function HeroProgress({progress, remaining, label = defaultI18n.t('next.layout.progress')}: {progress: number; remaining: ReactNode; label?: string}) {
+  if (!Number.isFinite(progress)) return null;
+  const value = Math.max(0, Math.min(1, progress));
+  return <span className={styles.heroProgress}><span className={styles.progressTrack} role="progressbar" aria-label={label} aria-valuemin={0} aria-valuemax={1} aria-valuenow={value}><i style={{transform: `scaleX(${value})`}} /></span>{remaining}</span>;
+}
+
+export function Hero<T extends HeroCandidate>({candidates, renderArtwork, renderThumbnail, renderActions, renderMetadata, renderReason, renderSupplement, activeIndex, defaultIndex = 0, onIndexChange,
   active = true, visible = true, heroFocused = false, reducedMotion = false, showNavigation = true, contentVisible = true, onArtworkReady, onArtworkError, platform = 'desktop', className, onMouseEnter, onMouseLeave, onFocusCapture, onBlurCapture, ...props}: HeroProps<T>) {
   const [ownIndex, setOwnIndex] = useState(defaultIndex), [hovered, setHovered] = useState(false), [focused, setFocused] = useState(false);
   const motion = useLayoutMotion(reducedMotion), index = boundedIndex(activeIndex ?? ownIndex, candidates.length), id = useId();
@@ -65,11 +72,12 @@ export function Hero<T extends HeroCandidate>({candidates, renderArtwork, render
       const current = candidateIndex === index, selected = current && contentVisible;
       const context = {index: candidateIndex, active: selected, visible: visible && motion.visible && (current || candidate.id === exitingId || candidateIndex === (index + 1) % candidates.length), paused, reducedMotion: motion.reduced, platform,
         onReady: onArtworkReady ? () => onArtworkReady(candidate) : undefined, onError: onArtworkError ? () => onArtworkError(candidate) : undefined};
+      const reason = renderReason ? renderReason(candidate, context) : candidate.reason;
       return <div key={candidate.id} id={`${id}-slide-${candidateIndex}`} className={styles.slide} data-active={selected} inert={!selected} aria-hidden={!selected}
         role={showNavigation && candidates.length > 1 ? 'tabpanel' : undefined} aria-labelledby={showNavigation && candidates.length > 1 ? `${id}-tab-${candidateIndex}` : undefined}>
-        <div className={styles.heroArtwork} data-hero-artwork data-drift={!motion.reduced && platform !== 'tv'}>{renderArtwork(candidate, context)}</div>
+        <div className={styles.heroArtwork} data-hero-artwork data-drift={!motion.reduced && platform !== 'tv'}>{renderArtwork(candidate, context)}{platform === 'tv' && <div className={styles.tvScrim} aria-hidden="true" />}</div>
         <div className={styles.copy}>
-          {candidate.reason && <p className={styles.reason} style={layoutType(type.eyebrow)}>{candidate.reason}</p>}
+          {reason && <p className={styles.reason} style={layoutType(type.eyebrow)}>{reason}</p>}
           <Lockup title={candidate.title} long={candidate.long} platform={platform} />
           {renderMetadata ? renderMetadata(candidate, context) : candidate.facts?.length ? <HeroFacts parts={candidate.facts} platform={platform} /> : null}
           {candidate.overview && <p className={styles.overview} style={layoutType(type.synopsis)}>{candidate.overview}</p>}
