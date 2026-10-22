@@ -97,7 +97,7 @@ test('CoverCard reserves generated copy only while the card selection overlay is
   const generated = {title: 'Supplied title', glyph: 'S', tint: {first: '#3f8f6e', second: '#153749'}};
   const model = {title: generated.title, caption: []};
   for (const selection of [undefined, {active: false, checked: false, onToggle() {}, onExit() {}}, {active: true, checked: false, onToggle() {}, onExit() {}}, {active: true, checked: true, onToggle() {}, onExit() {}}, {active: false, checked: true, onToggle() {}, onExit() {}}]) {
-    const html = renderToStaticMarkup(createElement(CoverCard, {model, generated, selection}));
+    const html = renderToStaticMarkup(createElement(CoverCard, {model, generated, selection, onNavigate() {}}));
     assert.equal(html.includes('generatedCover selectionClearance'), !!(selection?.active || selection?.checked));
     assert.match(html, /aria-label="Supplied title"/);
   }
