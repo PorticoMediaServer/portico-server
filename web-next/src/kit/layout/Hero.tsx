@@ -1,0 +1,84 @@
+import {useEffect, useId, useRef, useState, type ReactNode, type HTMLAttributes} from 'react';
+import {heroSpec} from '@design';
+import type {FactPart} from '@portico/client-core/kit-model';
+import {defaultI18n} from '@i18n';
+import {Lockup, layoutType, platformType, type LayoutPlatform} from './Lockup';
+import {boundedIndex} from './geometry';
+import {useLayoutMotion} from './motion';
+import styles from './layout.module.css';
+
+export type HeroCandidate = Readonly<{id: string; title: string; long?: boolean; reason?: string; overview?: string; facts?: readonly FactPart[]; thumbnail?: string}>;
+export type HeroRenderContext = Readonly<{index: number; active: boolean; paused: boolean; reducedMotion: boolean; platform: LayoutPlatform}>;
+export type HeroProps<T extends HeroCandidate> = Omit<HTMLAttributes<HTMLElement>, 'children' | 'onChange'> & {
+  /** A bounded, server-authored spotlight set. This primitive never chooses library entries. */
+  candidates: readonly T[];
+  renderArtwork: (candidate: T, context: HeroRenderContext) => ReactNode;
+  renderThumbnail?: (candidate: T, context: HeroRenderContext) => ReactNode;
+  renderActions?: (candidate: T, context: HeroRenderContext) => ReactNode;
+  renderMetadata?: (candidate: T, context: HeroRenderContext) => ReactNode;
+  renderSupplement?: (candidate: T, context: HeroRenderContext) => ReactNode;
+  activeIndex?: number; defaultIndex?: number; onIndexChange?: (index: number) => void;
+  active?: boolean; visible?: boolean; heroFocused?: boolean; reducedMotion?: boolean; platform?: LayoutPlatform;
+  showNavigation?: boolean;
+};
+
+export function HeroFacts({parts, platform = 'desktop'}: {parts: readonly FactPart[]; platform?: LayoutPlatform}) {
+  return <div className={styles.facts} style={layoutType(platformType(platform).meta)}>{parts.map(part =>
+    <span key={part.id} className={part.id === 'content-rating' || part.id === 'season-count' ? styles.tag : undefined} data-fact-role={part.role}>{part.text}</span>)}</div>;
+}
+
+export function Hero<T extends HeroCandidate>({candidates, renderArtwork, renderThumbnail, renderActions, renderMetadata, renderSupplement, activeIndex, defaultIndex = 0, onIndexChange,
+  active = true, visible = true, heroFocused = false, reducedMotion = false, showNavigation = true, platform = 'desktop', className, onMouseEnter, onMouseLeave, onFocusCapture, onBlurCapture, ...props}: HeroProps<T>) {
+  const [ownIndex, setOwnIndex] = useState(defaultIndex), [hovered, setHovered] = useState(false), [focused, setFocused] = useState(false);
+  const motion = useLayoutMotion(reducedMotion), index = boundedIndex(activeIndex ?? ownIndex, candidates.length), id = useId();
+  const paused = !active || !visible || !motion.visible || motion.reduced || hovered || focused || platform === 'tv' && !heroFocused;
+  const choose = (next: number) => { const value = boundedIndex(next, candidates.length); if (value >= 0 && value !== index) { if (activeIndex === undefined) setOwnIndex(value); onIndexChange?.(value); } };
+  const chooseRef = useRef(choose); chooseRef.current = choose;
+  const remaining = useRef<number>(heroSpec.rotation.intervalMs), clockId = useRef('');
+  const currentId = candidates[index]?.id ?? '';
+  useEffect(() => {
+    if (clockId.current !== currentId) { remaining.current = heroSpec.rotation.intervalMs; clockId.current = currentId; }
+    if (paused || candidates.length < 2) return;
+    const started = performance.now();
+    const timer = window.setTimeout(() => { remaining.current = heroSpec.rotation.intervalMs; chooseRef.current((index + 1) % candidates.length); }, remaining.current);
+    return () => { window.clearTimeout(timer); remaining.current = Math.max(0, remaining.current - (performance.now() - started)); };
+  }, [currentId, index, paused, candidates.length]);
+  const thumbRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const type = platformType(platform), phone = platform === 'phone-app' || platform === 'phone-web';
+  return <section {...props} className={[styles.hero, className].filter(Boolean).join(' ')} data-platform={platform} data-paused={paused} data-reduced-motion={motion.reduced} data-navigation={showNavigation && candidates.length > 1}
+    aria-label={props['aria-label'] ?? defaultI18n.t('next.layout.featured')} aria-roledescription={defaultI18n.t('next.layout.carousel')}
+    onMouseEnter={event => { setHovered(true); onMouseEnter?.(event); }} onMouseLeave={event => { setHovered(false); onMouseLeave?.(event); }}
+    onFocusCapture={event => { setFocused(true); onFocusCapture?.(event); }} onBlurCapture={event => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); onBlurCapture?.(event); }}>
+    {candidates.map((candidate, candidateIndex) => {
+      const selected = candidateIndex === index, context = {index: candidateIndex, active: selected, paused, reducedMotion: motion.reduced, platform};
+      return <div key={candidate.id} id={`${id}-slide-${candidateIndex}`} className={styles.slide} data-active={selected} inert={!selected} aria-hidden={!selected}
+        role={showNavigation && candidates.length > 1 ? 'tabpanel' : undefined} aria-labelledby={showNavigation && candidates.length > 1 ? `${id}-tab-${candidateIndex}` : undefined}>
+        <div className={styles.heroArtwork} data-hero-artwork data-drift={!motion.reduced}>{renderArtwork(candidate, context)}</div>
+        <div className={styles.copy}>
+          {candidate.reason && <p className={styles.reason} style={layoutType(type.eyebrow)}>{candidate.reason}</p>}
+          <Lockup title={candidate.title} long={candidate.long} platform={platform} />
+          {renderMetadata ? renderMetadata(candidate, context) : candidate.facts?.length ? <HeroFacts parts={candidate.facts} platform={platform} /> : null}
+          {candidate.overview && <p className={styles.overview} style={layoutType(type.synopsis)}>{candidate.overview}</p>}
+          {renderActions && <div className={styles.actions}>{renderActions(candidate, context)}</div>}
+          {renderSupplement?.(candidate, context)}
+        </div>
+      </div>;
+    })}
+    {showNavigation && candidates.length > 1 && <div className={phone ? styles.dots : styles.thumbnails} role="tablist" aria-label={defaultI18n.t('next.layout.featuredTitles')}>
+      {candidates.map((candidate, candidateIndex) => <button type="button" key={candidate.id} ref={element => { thumbRefs.current[candidateIndex] = element; }}
+        id={`${id}-tab-${candidateIndex}`} className={phone ? styles.dot : styles.thumbnail} role="tab" tabIndex={candidateIndex === index ? 0 : -1}
+        aria-label={candidate.title} aria-controls={`${id}-slide-${candidateIndex}`} aria-selected={candidateIndex === index} data-active={candidateIndex === index}
+        onClick={() => choose(candidateIndex)} onKeyDown={event => {
+          let next = candidateIndex;
+          if (event.key === 'ArrowRight') next = (candidateIndex + 1) % candidates.length;
+          else if (event.key === 'ArrowLeft') next = (candidateIndex - 1 + candidates.length) % candidates.length;
+          else if (event.key === 'Home') next = 0;
+          else if (event.key === 'End') next = candidates.length - 1;
+          else return;
+          event.preventDefault(); choose(next); thumbRefs.current[next]?.focus();
+        }}>
+        {!phone && <>{renderThumbnail && <span className={styles.thumbnailImage}>{renderThumbnail(candidate, {index: candidateIndex, active: candidateIndex === index, paused, reducedMotion: motion.reduced, platform})}</span>}<span className={styles.timer}><i key={currentId} /></span><span className={styles.thumbnailTitle}>{candidate.title}</span></>}
+      </button>)}
+    </div>}
+  </section>;
+}
