@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"portico.local/server/internal/apiwire"
 	"strings"
@@ -511,5 +512,54 @@ func TestDeviceApprovalSwitchIsTheIdentityPolicy(t *testing.T) {
 	}
 	if got := stored(); got != identity.DeviceApprovalAuto {
 		t.Fatalf("the identity policy after turning the switch off is %q", got)
+	}
+}
+
+func TestActivityAlertParamsAreSourceBackedAndBounded(t *testing.T) {
+	s, _, auth := consoleFixture(t)
+	ctx := context.Background()
+	params := map[string]string{"title": "Library scan", "reason": "source-unavailable", "time": "2026-10-22T19:00:00Z"}
+	if e := s.Alert(ctx, "job-failed-library-scan", "warning", true, params); e != nil {
+		t.Fatal(e)
+	}
+	out, e := s.Alerts(ctx, auth)
+	if e != nil || len(out) != 1 || out[0].Params["reason"] != "source-unavailable" || out[0].Params["title"] != "Library scan" {
+		t.Fatal(out, e)
+	}
+	for _, bad := range []map[string]string{{"email": "private@example.invalid"}, {"token": "secret"}, {"reason": "raw diagnostic\nsecret"}, {"time": "yesterday"}, {"title": strings.Repeat("x", 4097)}} {
+		if e = s.Alert(ctx, "job-failed-library-scan", "warning", true, bad); e == nil {
+			t.Fatal("private/unbounded params accepted", bad)
+		}
+	}
+	if e = s.Alert(ctx, "job-failed-library-scan", "warning", false); e != nil {
+		t.Fatal(e)
+	}
+	if e = s.Alert(ctx, "job-failed-library-scan", "warning", true, map[string]string{"reason": "another-failure"}); e != nil {
+		t.Fatal(e)
+	}
+	out, e = s.Alerts(ctx, auth)
+	if e != nil || out[0].Params["title"] != "" || out[0].Params["reason"] != "another-failure" {
+		t.Fatal("old failure params retained", out, e)
+	}
+}
+
+func TestActivityProgressHintsBoundCadenceAndNeverCarryPrivateJobData(t *testing.T) {
+	s, _, _ := consoleFixture(t)
+	tx, e := s.DB.Begin()
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer tx.Rollback()
+	for n := 0; n < 20; n++ {
+		if e = AppendActivityProgressTx(tx, "job.updated", "job", "job", fmt.Sprint(n), false); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if e = AppendActivityProgressTx(tx, "job.updated", "job", "job", "terminal", true); e != nil {
+		t.Fatal(e)
+	}
+	var count int
+	if e = tx.QueryRow(`SELECT count(*) FROM api_events WHERE audience='admin' AND type='job.updated' AND data=''`).Scan(&count); e != nil || count != 2 {
+		t.Fatal("unbounded progress or missing terminal hint", count, e)
 	}
 }

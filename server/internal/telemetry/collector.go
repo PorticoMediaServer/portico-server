@@ -212,6 +212,13 @@ func (c *Collector) Read(window string) (Reading, bool) {
 				points = append(points, Point{T: s.At, V: m.Value})
 			}
 		}
+		if window == "24h" && len(points) > 60 {
+			selected := make([]Point, 60)
+			for n := range selected {
+				selected[n] = points[n*(len(points)-1)/59]
+			}
+			points = selected
+		}
 		out.Series[name] = points
 		out.Status[name] = latest.Metrics[name]
 	}

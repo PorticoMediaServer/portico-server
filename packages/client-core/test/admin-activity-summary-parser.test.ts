@@ -6,13 +6,13 @@ const stamp = '2026-10-22T07:00:00.000000001Z';
 const fence = 'a'.repeat(64);
 const session = (id = 'session') => ({
   id, user: {id: 'account', username: 'account name'}, profile: {id: 'profile', name: 'profile name'}, device: {id: 'device', name: 'device name'},
-  kind: 'vod', state: 'playing', startedAt: stamp, problem: false, converting: true, positionMs: 1234, durationMs: 5000,
+  kind: 'vod', state: 'playing', startedAt: stamp, converting: true, positionMs: 1234, durationMs: 5000,
   item: {id: 'episode', title: 'Episode title', kind: 'episode', showId: 'show', showTitle: 'Show title', seasonNumber: 1, episodeNumber: 3, episodeNumbering: 'aired', airDate: '2023-01-29', year: 2023, art: [{kind: 'show', id: 'show', role: 'poster', revision: 'digest'}]},
   decision: {video: {action: 'transcode', reasons: ['quality_requested'], to: 'h264'}}, quality: {mode: 'limit', maxHeight: 1080}, videoHeight: 720,
 });
 const scan = () => ({libraryId: 'movies', libraryName: 'Movies', kind: 'movie', discovered: 80, analyzed: 51, total: 80, current: 'Film (2001)/Film.mkv', phase: 'analysis'});
 const task = (id = 'task') => ({id, kind: 'checksum', state: 'running', phase: 'checksum', libraryId: 'movies', libraryName: 'Movies', processed: 128, total: 1024, unit: 'bytes'});
-const document = (): any => ({scope: {serverId: 'server', viewerFence: fence}, observedAt: stamp, serverName: 'Home server', streams: {count: 1, convertingCount: 1, overflow: {count: 0, convertingCount: 0}, items: [session()]}, scans: [scan()], tasks: {count: 1, items: [task()]}, update: {available: true, state: 'available', current: '0.1.0-dev', latest: '0.2.0'}, health: {degraded: false}, lastScanFinishedAt: '2026-10-21T07:00:00Z'});
+const document = (): any => ({scope: {serverId: 'server', viewerFence: fence}, observedAt: stamp, serverName: 'Home server', streams: {count: 1, convertingCount: 1, overflow: {count: 0, convertingCount: 0}, items: [session()]}, scans: [scan()], tasks: {count: 1, items: [task()]}, update: {available: true, state: 'available', current: '0.1.0-dev', latest: '0.2.0'}, majorIssues:[], health: {degraded: false}, lastScanFinishedAt: '2026-10-21T07:00:00Z'});
 function rejects(change: (raw: any) => void): void { const raw = document(); change(raw); assert.throws(() => parseActivitySummary(raw), ActivitySummaryContractError); }
 
 test('busy summary retains independent source identities, episode facts, actual height and all owner facts', () => {
@@ -60,7 +60,7 @@ test('known zero denominator remains zero and unmeasured tasks remain absent, wi
 test('music facts are independent and channel identity needs no synthetic item or duration', () => {
   const raw = document(); raw.streams.items[0].item = {id: 'song', kind: 'song', title: 'Song name', artist: 'Artist name', album: 'Album name', art: []}; raw.streams.items[0].kind = 'audio';
   const parsed = parseActivitySummary(raw); assert.equal(parsed.streams.items[0].item?.artist, 'Artist name'); assert.equal(parsed.streams.items[0].item?.album, 'Album name');
-  raw.streams.convertingCount = 0; raw.streams.items[0] = {id: 'channel-session', user: {id: 'a'}, startedAt: stamp, problem: false, converting: false, profile: {id: 'p', name: ''}, device: {id: 'd', name: ''}, kind: 'channel', state: 'starting', positionMs: 0, decision: {}};
+  raw.streams.convertingCount = 0; raw.streams.items[0] = {id: 'channel-session', user: {id: 'a'}, startedAt: stamp, converting: false, profile: {id: 'p', name: ''}, device: {id: 'd', name: ''}, kind: 'channel', state: 'starting', positionMs: 0, decision: {}};
   assert.equal(parseActivitySummary(raw).streams.items[0].item, undefined);
 });
 test('nonfinite, negative, fractional and unsafe counters never become clamped rings', () => {
@@ -134,7 +134,7 @@ test('username provenance, actual start and complete overflow facts survive with
 });
 test('global priority then nanosecond recency and stable id order are validated without client reslicing', () => {
   const raw = document();
-  const problem = {...session('problem'), state: 'buffering', problem: true, converting: false, decision: {}, startedAt: '2026-10-20T00:00:00Z'};
+  const problem = {...session('problem'), state: 'buffering', problem: 'buffering', bufferingSince:'2026-10-22T06:59:40Z', converting: false, decision: {}, startedAt: '2026-10-20T00:00:00Z'};
   const converter = {...session('converter'), startedAt: '2026-10-21T00:00:00.000000001Z'};
   const recent = {...session('recent'), converting: false, decision: {video: {action: 'copy', reasons: []}}, quality: {mode: 'limit', maxHeight: 2160}};
   raw.streams = {count: 7, convertingCount: 3, overflow: {count: 4, convertingCount: 2}, items: [problem, converter, recent]};
@@ -151,4 +151,28 @@ test('global priority then nanosecond recency and stable id order are validated 
   raw.streams.items = [b, a]; assert.throws(() => parseActivitySummary(raw), ActivitySummaryContractError);
   b.startedAt = a.startedAt; raw.streams.items = [a, b]; assert.equal(parseActivitySummary(raw).streams.items[0].id, 'a');
   raw.streams.items = [b, a]; assert.throws(() => parseActivitySummary(raw), ActivitySummaryContractError);
+});
+
+test('qualified problems require current producer evidence and sustained buffering; health alone is independent',()=>{
+ const raw=document();const item=raw.streams.items[0];
+ item.transcode={speed:0.5,observedAt:'2026-10-22T06:59:59Z',cadenceMs:1000};item.problem='behind';
+ assert.equal(parseActivitySummary(raw).streams.items[0].problem,'behind');
+ for(const speed of [NaN,Infinity,-1])assert.throws(()=>parseActivitySummary({...raw,streams:{...raw.streams,items:[{...item,transcode:{...item.transcode,speed}}]}}),ActivitySummaryContractError);
+ item.transcode.observedAt='2026-10-22T06:59:54Z';assert.throws(()=>parseActivitySummary(raw),ActivitySummaryContractError);
+ delete item.transcode;delete item.problem;item.state='buffering';item.bufferingSince='2026-10-22T06:59:59Z';
+ assert.equal(parseActivitySummary(raw).streams.items[0].problem,undefined);
+ item.problem='buffering';assert.throws(()=>parseActivitySummary(raw),ActivitySummaryContractError);
+ item.bufferingSince='2026-10-22T06:59:40Z';assert.equal(parseActivitySummary(raw).streams.items[0].problem,'buffering');
+ raw.health.degraded=true;assert.deepEqual(parseActivitySummary(raw).majorIssues,[]);
+ raw.majorIssues=[{kind:'remote-source',code:'remote_unreachable',severity:'playback_stop',subject:'Archive',destination:{kind:'remote-source',target:'archive'}}];
+ assert.equal(parseActivitySummary(raw).majorIssues[0].subject,'Archive');
+ raw.majorIssues[0].token='private';assert.throws(()=>parseActivitySummary(raw),ActivitySummaryContractError);
+});
+
+test('qualified issue code, effect and destination agree instead of inferring a dot from a count',()=>{
+ const raw=document();const issue={kind:'remote-source',code:'remote_unreachable',severity:'playback_stop',subject:'Archive',destination:{kind:'remote-source',target:'archive'}};
+ raw.majorIssues=[issue];assert.equal(parseActivitySummary(raw).majorIssues.length,1);
+ for(const change of [{...issue,code:'scan_failed'},{...issue,severity:'warning'},{...issue,destination:{kind:'settings',target:'/private'}},{...issue,kind:'library'},{...issue,destination:{kind:'remote-source',target:''}}]){
+  assert.throws(()=>parseActivitySummary({...raw,majorIssues:[change]}),ActivitySummaryContractError);
+ }
 });

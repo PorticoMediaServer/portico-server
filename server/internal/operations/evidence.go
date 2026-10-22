@@ -10,6 +10,7 @@ import (
 	"portico.local/server/internal/diagnostics"
 	"portico.local/server/internal/identity"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -373,17 +374,38 @@ func (s *Store) Export(ctx context.Context, p identity.Principal, auth Authorize
 }
 
 type Alert struct {
-	ID          string          `json:"id"`
-	Code        string          `json:"code"`
-	Severity    string          `json:"severity"`
-	Status      string          `json:"status"`
-	FirstAt     apiwire.Instant `json:"firstAt"`
-	LastAt      apiwire.Instant `json:"lastAt"`
-	Occurrences int64           `json:"occurrences"`
-	Revision    int64           `json:"revision"`
+	ID          string            `json:"id"`
+	Code        string            `json:"code"`
+	Severity    string            `json:"severity"`
+	Status      string            `json:"status"`
+	FirstAt     apiwire.Instant   `json:"firstAt"`
+	LastAt      apiwire.Instant   `json:"lastAt"`
+	Occurrences int64             `json:"occurrences"`
+	Revision    int64             `json:"revision"`
+	Params      map[string]string `json:"params"`
 }
 
-func (s *Store) Alert(ctx context.Context, code, severity string, active bool) error {
+func (s *Store) Alert(ctx context.Context, code, severity string, active bool, details ...map[string]string) error {
+	params := map[string]string{}
+	if len(details) > 1 {
+		return ErrInvalid
+	}
+	if len(details) == 1 {
+		for key, value := range details[0] {
+			if key != "title" && key != "channel" && key != "reason" && key != "time" || len(value) > 4096 || strings.ContainsAny(value, "\x00\r\n\t") {
+				return ErrInvalid
+			}
+			if key == "reason" && value != "" && !validID(value) {
+				return ErrInvalid
+			}
+			if key == "time" {
+				if _, err := time.Parse(time.RFC3339Nano, value); err != nil {
+					return ErrInvalid
+				}
+			}
+			params[key] = value
+		}
+	}
 	if !validID(code) || len(code) > 64 || severity != "warning" && severity != "critical" && severity != "info" {
 		return ErrInvalid
 	}
@@ -421,6 +443,14 @@ func (s *Store) Alert(ctx context.Context, code, severity string, active bool) e
 	if _, e = tx.Exec(`INSERT INTO console_alerts VALUES(?,?,?,'open',?,?,1,1) ON CONFLICT(code) DO UPDATE SET status=CASE WHEN status='resolved' THEN 'open' ELSE status END,severity=excluded.severity,last_ms=excluded.last_ms,occurrences=occurrences+1,revision=revision+CASE WHEN status='resolved' OR severity!=excluded.severity THEN 1 ELSE 0 END`, id, code, severity, s.now(), s.now()); e != nil {
 		return e
 	}
+	if _, e = tx.Exec(`DELETE FROM console_alert_params WHERE alert_id=?`, id); e != nil {
+		return e
+	}
+	for key, value := range params {
+		if _, e = tx.Exec(`INSERT INTO console_alert_params(alert_id,key,value) VALUES(?,?,?)`, id, key, value); e != nil {
+			return e
+		}
+	}
 	if opened {
 		owners, e := ownerScopes(tx)
 		if e != nil {
@@ -443,13 +473,36 @@ func (s *Store) Alerts(ctx context.Context, auth Authorize) (out []Alert, e erro
 		}
 		defer rows.Close()
 		for rows.Next() {
-			var a Alert
+			a := Alert{Params: map[string]string{}}
 			if err = rows.Scan(&a.ID, &a.Code, &a.Severity, &a.Status, &a.FirstAt, &a.LastAt, &a.Occurrences, &a.Revision); err != nil {
 				return err
 			}
 			out = append(out, a)
 		}
-		return rows.Err()
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		params, e := tx.Query(`SELECT alert_id,key,value FROM console_alert_params ORDER BY alert_id,key`)
+		if e != nil {
+			return e
+		}
+		defer params.Close()
+		indexes := map[string]int{}
+		for n := range out {
+			indexes[out[n].ID] = n
+		}
+		for params.Next() {
+			var id, key, value string
+			if e = params.Scan(&id, &key, &value); e != nil {
+				return e
+			}
+			if n, ok := indexes[id]; ok {
+				out[n].Params[key] = value
+			}
+		}
+		return params.Err()
 	})
 	return
 }

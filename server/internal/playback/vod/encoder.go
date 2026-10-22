@@ -153,9 +153,72 @@ type Source struct {
 	Keyframes              []float64
 }
 type Request struct {
-	Index         int
-	GenerationDir string
+	Index             int
+	GenerationDir     string
+	ObserveConversion func(ConversionProgress)
 }
+
+// ConversionProgress comes from FFmpeg's machine-readable progress stream.
+// It measures media time per wall second; CPU time and output bytes are not speed.
+type ConversionProgress struct {
+	Speed      float64
+	ObservedAt time.Time
+}
+
+// ConversionProgressWriter consumes bounded progress lines, including split
+// writes. Only a complete FFmpeg report with real output time and finite speed
+// can publish. It never retains diagnostics or paths.
+type ConversionProgressWriter struct {
+	line          []byte
+	dropping      bool
+	media         int64
+	output        bool
+	previousMedia int64
+	previousAt    time.Time
+	observe       func(ConversionProgress)
+}
+
+func NewConversionProgressWriter(observe func(ConversionProgress)) *ConversionProgressWriter {
+	return &ConversionProgressWriter{observe: observe}
+}
+func (w *ConversionProgressWriter) Write(p []byte) (int, error) {
+	for _, b := range p {
+		if b != '\n' {
+			if len(w.line) < 256 && !w.dropping {
+				w.line = append(w.line, b)
+			} else {
+				w.dropping = true
+			}
+			continue
+		}
+		line := string(w.line)
+		w.line = w.line[:0]
+		if w.dropping {
+			w.dropping = false
+			continue
+		}
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if !ok {
+			continue
+		}
+		switch key {
+		case "out_time_us":
+			n, e := strconv.ParseInt(value, 10, 64)
+			w.media, w.output = n, e == nil && n > 0
+		case "progress":
+			at := time.Now()
+			if w.output {
+				if !w.previousAt.IsZero() && w.media >= w.previousMedia && at.After(w.previousAt) && w.observe != nil {
+					w.observe(ConversionProgress{Speed: float64(w.media-w.previousMedia) / 1e6 / at.Sub(w.previousAt).Seconds(), ObservedAt: at})
+				}
+				w.previousMedia, w.previousAt = w.media, at
+			}
+			w.output = false
+		}
+	}
+	return len(p), nil
+}
+
 type StreamFacts struct {
 	Kind       string
 	First, End float64
@@ -482,7 +545,7 @@ func (e *Encoder) Encode(ctx context.Context, s *Source, input Input, r Request)
 		args = append(args, "-an")
 	}
 	args = append(args, "-sn", "-dn", "-avoid_negative_ts", "disabled", "-mpegts_copyts", "1", "-muxdelay", "0", "-f", "mpegts", encoded)
-	work, err := e.runWindow(ctx, args, input.extraFiles(), []string{encoded})
+	work, err := e.runWindow(ctx, args, input.extraFiles(), []string{encoded}, r.ObserveConversion)
 	w.EncodeWork = work
 	if err != nil {
 		return w, err
@@ -590,7 +653,7 @@ func (e *Encoder) Encode(ctx context.Context, s *Source, input Input, r Request)
 
 // A single actor runs at most one encoder/copy child. All private output paths
 // share one temporary byte budget, including a closed intermediate during mux.
-func (e *Encoder) runWindow(ctx context.Context, args []string, inherited []*os.File, paths []string) (Work, error) {
+func (e *Encoder) runWindow(ctx context.Context, args []string, inherited []*os.File, paths []string, observe ...func(ConversionProgress)) (Work, error) {
 	ctx, progress := progressio.New(ctx, e.limits.EncodeTimeout, 4*time.Hour)
 	defer progress.Close()
 	ctx, cancel := context.WithCancel(ctx)
@@ -602,6 +665,9 @@ func (e *Encoder) runWindow(ctx context.Context, args []string, inherited []*os.
 		if dir := filepath.Dir(path); len(dirs) == 0 || dirs[len(dirs)-1] != dir {
 			dirs = append(dirs, dir)
 		}
+	}
+	if len(observe) > 0 && observe[0] != nil {
+		args = append([]string{"-progress", "pipe:1", "-stats_period", "1", "-nostats"}, args...)
 	}
 	job := mediaexec.Job{Executable: e.ffmpeg, Args: args, Files: inherited, WriteDirs: dirs}
 	if e.limits.OutputBytes > 0 {
@@ -615,6 +681,9 @@ func (e *Encoder) runWindow(ctx context.Context, args []string, inherited []*os.
 		return Work{}, buildErr
 	}
 	cmd.Stderr = io.Discard
+	if len(observe) > 0 && observe[0] != nil {
+		cmd.Stdout = NewConversionProgressWriter(observe[0])
+	}
 	cmd.WaitDelay = time.Second
 	started := time.Now()
 	if err := cmd.Start(); err != nil {

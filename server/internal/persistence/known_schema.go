@@ -27,6 +27,7 @@ index analysis_results_retention
 index analysis_stage_job
 index api_credentials_account
 index api_credentials_page
+index api_events_activity_progress
 index api_events_audience
 index api_events_expiry
 index api_idempotency_expiry
@@ -803,11 +804,13 @@ table compact_visibility_rows
 table compact_visibility_unavailable
 table compact_visibility_unavailable_counts
 table configuration
+table console_alert_params
 table console_alerts
 table console_audit
 table console_documents
 table console_exports
 table console_notifications
+table console_operation_totals
 table console_operations
 table console_receipts
 table console_records
@@ -1085,6 +1088,7 @@ table playback_artifacts
 table playback_audio_plans
 table playback_channel_sessions
 table playback_conversion_failures
+table playback_conversion_observations
 table playback_conversion_targets
 table playback_copy_timelines
 table playback_delivery_plans
@@ -2188,6 +2192,8 @@ trigger playback_requests_retention_insert
 trigger playback_route_failures_playback_problems_list_delete
 trigger playback_route_failures_playback_problems_list_insert
 trigger playback_route_failures_playback_problems_list_update
+trigger playback_v1_buffering_insert
+trigger playback_v1_buffering_transition
 trigger playlist_directory_insert
 trigger playlist_directory_revisions_bound_check
 trigger playlist_directory_revisions_bound_delete
@@ -2495,7 +2501,8 @@ view catalog_related_facets_serving
 view inventory_asset_availability
 view inventory_item_availability
 view inventory_library_availability
-view listening_book_context`
+view listening_book_context
+`
 
 // subsystemSchemaObjects is empty: the guardrail finds no runtime schema
 // declarations outside persistence. Persistence's own legacy installers need

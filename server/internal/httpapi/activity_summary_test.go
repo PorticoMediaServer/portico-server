@@ -335,3 +335,128 @@ func TestActivitySummaryThreeSessionWireStillOwnerPrivate(t *testing.T) {
 		}
 	}
 }
+
+func TestActivityMajorIssuesExcludeOrdinaryDiagnosticsAndResolve(t *testing.T) {
+	d, tokens, h := activitySummaryFixture(t)
+	for _, q := range []string{
+		`INSERT INTO remote_sources(id,kind,name,root,state,error_code) VALUES('remote','webdav','Archive','https://example.invalid/private','rate_limited','rate_limited')`,
+		`INSERT INTO console_alerts VALUES('overload','server_overloaded','critical','open',1,1,1,1)`,
+		`INSERT INTO console_alerts VALUES('scan','scan-failed','warning','open',1,1,1,1)`,
+	} {
+		if _, e := d.DB.Exec(q); e != nil {
+			t.Fatal(e)
+		}
+	}
+	read := func() ActivitySummary {
+		t.Helper()
+		w := activitySummaryRequest(h, tokens["owner"].AccessToken)
+		if w.Code != 200 {
+			t.Fatal(w.Code, w.Body.String())
+		}
+		var out ActivitySummary
+		if e := json.Unmarshal(w.Body.Bytes(), &out); e != nil {
+			t.Fatal(e)
+		}
+		if strings.Contains(w.Body.String(), "https://") || strings.Contains(w.Body.String(), "private") {
+			t.Fatal("secret/path escaped", w.Body.String())
+		}
+		return out
+	}
+	if out := read(); len(out.MajorIssues) != 0 {
+		t.Fatal("ordinary alerts/provider waits became major", out.MajorIssues)
+	}
+	if _, e := d.DB.Exec(`UPDATE remote_sources SET state='offline',error_code='offline' WHERE id='remote'`); e != nil {
+		t.Fatal(e)
+	}
+	out := read()
+	if len(out.MajorIssues) != 1 || out.MajorIssues[0].Code != "remote_unreachable" || out.MajorIssues[0].Subject != "Archive" || out.MajorIssues[0].Destination.Target != "remote" || out.MajorIssues[0].Severity != "playback_stop" {
+		t.Fatal(out.MajorIssues)
+	}
+	if _, e := d.DB.Exec(`UPDATE remote_sources SET state='healthy',error_code='' WHERE id='remote'`); e != nil {
+		t.Fatal(e)
+	}
+	if out = read(); len(out.MajorIssues) != 0 {
+		t.Fatal("resolved issue retained", out.MajorIssues)
+	}
+}
+
+func TestActivityDashboardAdminOnlyProjectionAndCurrentCursorFence(t *testing.T) {
+	d, tokens, _ := activitySummaryFixture(t)
+	d.v1 = &playbackv1.Service{DB: d.DB}
+	r := apikit.NewContextual(d.v1Authorize, policyCatalogue())
+	registerPlaybackV1Admin(r, d)
+	now := time.Now().UnixMilli()
+	for n := 0; n < 12; n++ {
+		_, e := d.DB.Exec(`INSERT INTO playback_v1_sessions(id,device_id,account_id,profile_id,authority,start_key,start_digest,kind,role,state,request,revision,generation,lease_expires_ms,created_ms,updated_ms) VALUES(?,?,'owner','owner-profile','local',?,'digest','audio','owner','paused','{}',1,1,?,?,?)`, fmt.Sprint(n), "dev", fmt.Sprint(n), now+3600000, now+int64(n), now)
+		if e != nil {
+			t.Fatal(e)
+		}
+	}
+	request := func(role, path string) *httptest.ResponseRecorder {
+		q := httptest.NewRequest("GET", path, nil)
+		q.Header.Set("Authorization", "Bearer "+tokens[role].AccessToken)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, q)
+		return w
+	}
+	if w := request("member", "/v1/admin/sessions"); w.Code != 403 || strings.Contains(w.Body.String(), "totals") {
+		t.Fatal("member read Dashboard", w.Code, w.Body.String())
+	}
+	w := request("admin", "/v1/admin/sessions")
+	if w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+	var out playbackv1.AdminSessionPage
+	if e := json.Unmarshal(w.Body.Bytes(), &out); e != nil {
+		t.Fatal(e)
+	}
+	if len(out.Items) != 10 || out.Totals.Streams != 12 || out.Totals.Paused != 12 || out.Scope.ViewerFence == "" || out.Page.NextCursor == "" {
+		t.Fatal(out)
+	}
+	for _, word := range []string{"majorIssues", "serverName", "health", "scans", "tasks", "update"} {
+		if strings.Contains(w.Body.String(), `"`+word+`"`) {
+			t.Fatal("owner-only fact exposed to admin", word)
+		}
+	}
+	// Another current authority cannot replay the cursor, even on the same server.
+	if w = request("owner", "/v1/admin/sessions?cursor="+out.Page.NextCursor); w.Code != 400 || strings.Contains(w.Body.String(), "totals") {
+		t.Fatal("cursor crossed authority", w.Code, w.Body.String())
+	}
+	if w = request("admin", "/v1/admin/sessions?cursor="+out.Page.NextCursor); w.Code != 200 {
+		t.Fatal(w.Code, w.Body.String())
+	}
+}
+
+func TestActivityDashboardAuthorityChangesDuringReadDiscardsBody(t *testing.T) {
+	d, tokens, _ := activitySummaryFixture(t)
+	entered, release := make(chan struct{}), make(chan struct{})
+	defer close(release)
+	d.v1 = &playbackv1.Service{DB: d.DB, Now: func() time.Time { close(entered); <-release; return time.Now() }}
+	registry := apikit.NewContextual(d.v1Authorize, policyCatalogue())
+	registerPlaybackV1Admin(registry, d)
+	response := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		r := httptest.NewRequest("GET", "/v1/admin/sessions", nil)
+		r.Header.Set("Authorization", "Bearer "+tokens["admin"].AccessToken)
+		w := httptest.NewRecorder()
+		registry.ServeHTTP(w, r)
+		response <- w
+	}()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("read did not start")
+	}
+	if _, e := d.DB.Exec(`UPDATE direct_memberships SET disabled=1 WHERE account_id='admin'`); e != nil {
+		t.Fatal(e)
+	}
+	release <- struct{}{}
+	select {
+	case w := <-response:
+		if w.Code != 401 || strings.Contains(w.Body.String(), "totals") || strings.Contains(w.Body.String(), "items") {
+			t.Fatal("revoked administrator received private body", w.Code, w.Body.String())
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("read did not return")
+	}
+}

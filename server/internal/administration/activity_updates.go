@@ -18,7 +18,7 @@ func (s *Service) publishUpdateTransition(ctx context.Context, previous, next Up
 		return nil
 	}
 	return dbwork.WithWriteTx(ctx, s.db, dbwork.ClassMaintenance, func(tx *sql.Tx) error {
-		return apievents.Append(tx, apievents.AdminAudience, "server.update", "server", "updates", next.CheckedAt, nil)
+		return apievents.Append(tx, apievents.AdminAudience, "server.updated", "server", "updates", next.CheckedAt, nil)
 	})
 }
 func updateVersion(r UpdateReport) string {

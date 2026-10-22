@@ -922,7 +922,7 @@ export const webMessages = {
   'web.nowPlaying.empty': 'Nobody is watching right now',
   'web.nowPlaying.untitled': 'Untitled',
   'web.nowPlaying.viewer': 'Viewer',
-  'web.nowPlaying.viewerWithAccount': '{profile} ({account})',
+  'web.nowPlaying.viewerWithAccount': '{account} {profile}',
   'web.nowPlaying.onDevice': 'on {device}',
   'web.nowPlaying.started': 'Started {time}',
   'web.nowPlaying.rate': '{rate} Mb/s',

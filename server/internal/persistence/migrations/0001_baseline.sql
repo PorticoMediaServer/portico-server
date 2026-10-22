@@ -3440,7 +3440,7 @@ CREATE TABLE playback_v1_sessions(
  updated_ms INTEGER NOT NULL,
  ended_ms INTEGER NOT NULL DEFAULT 0,
  end_reason TEXT NOT NULL DEFAULT '',
- message TEXT NOT NULL DEFAULT '', paused_since_ms INTEGER NOT NULL DEFAULT 0,
+ message TEXT NOT NULL DEFAULT '', buffering_since_ms INTEGER NOT NULL DEFAULT 0, paused_since_ms INTEGER NOT NULL DEFAULT 0,
  UNIQUE(device_id,start_key)
 ) STRICT;
 CREATE TABLE api_events(
@@ -8193,3 +8193,23 @@ CREATE INDEX segment_shows_dirty ON segment_shows(dirty,show_id) WHERE dirty=1;
 
 CREATE INDEX identity_devices_people_name ON identity_devices(name,id);
 CREATE INDEX identity_devices_people_first_seen ON identity_devices(first_seen DESC,id DESC);
+
+-- Current converter reports are ephemeral runtime facts, never configuration.
+CREATE TABLE playback_conversion_observations(
+ session_id TEXT NOT NULL REFERENCES playback_sessions(id) ON DELETE CASCADE,
+ generation INTEGER NOT NULL,
+ producer TEXT NOT NULL,
+ speed REAL NOT NULL CHECK(speed>=0),
+ observed_ms INTEGER NOT NULL,
+ PRIMARY KEY(session_id,producer)
+) WITHOUT ROWID, STRICT;
+CREATE TRIGGER playback_v1_buffering_insert AFTER INSERT ON playback_v1_sessions WHEN NEW.state='buffering' BEGIN
+ UPDATE playback_v1_sessions SET buffering_since_ms=NEW.updated_ms WHERE id=NEW.id;
+END;
+CREATE TRIGGER playback_v1_buffering_transition AFTER UPDATE OF state ON playback_v1_sessions WHEN NEW.state IS NOT OLD.state BEGIN
+ UPDATE playback_v1_sessions SET buffering_since_ms=CASE WHEN NEW.state='buffering' THEN NEW.updated_ms ELSE 0 END WHERE id=NEW.id;
+END;
+
+CREATE INDEX api_events_activity_progress ON api_events(audience,type,resource_kind,resource_id,at_ms DESC);
+CREATE TABLE console_operation_totals(operation_id TEXT PRIMARY KEY REFERENCES console_operations(id) ON DELETE CASCADE,total INTEGER NOT NULL CHECK(total>=0)) STRICT;
+CREATE TABLE console_alert_params(alert_id TEXT NOT NULL REFERENCES console_alerts(id) ON DELETE CASCADE,key TEXT NOT NULL CHECK(key IN('title','channel','reason','time')),value TEXT NOT NULL CHECK(length(value)<=4096),PRIMARY KEY(alert_id,key)) WITHOUT ROWID, STRICT;

@@ -155,7 +155,7 @@ func TestActivitySummaryPrioritizesFullActiveSetBeforeThreeAndCountsOverflow(t *
 		{"old-audio", "playing", `{"decision":{"audio":{"action":"transcode","reasons":[]}}}`, 30},
 		{"old-burn", "playing", `{"decision":{"subtitles":{"action":"burn","reasons":[]}}}`, 0},
 	} {
-		insertPausedSession(t, c.DB, v.id, "vod", v.state, now.UnixMilli()-100+v.at, 0)
+		insertPausedSession(t, c.DB, v.id, "vod", v.state, now.UnixMilli()-20000+v.at, 0)
 		c.Exec(`UPDATE playback_v1_sessions SET presentation=? WHERE id=?`, v.presentation, v.id)
 	}
 	// A requested 2160 ceiling is no committed conversion. Malformed JSON is unknown.
@@ -177,15 +177,15 @@ func TestActivitySummaryPrioritizesFullActiveSetBeforeThreeAndCountsOverflow(t *
 			t.Fatalf("priority before cap: %+v", out.Items)
 		}
 	}
-	if !out.Items[0].Problem || out.Items[0].Converting || out.Items[1].Problem || !out.Items[1].Converting {
+	if out.Items[0].Problem == "" || out.Items[0].Converting || out.Items[1].Problem != "" || !out.Items[1].Converting {
 		t.Fatalf("actual state/decisions: %+v", out.Items)
 	}
-	// The legacy endpoint remains newest-first and keeps its four-row request.
+	// Dashboard uses the same qualified priority and keeps the requested page cap.
 	page, err := s.AdminSessions(context.Background(), 4, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Items) != 4 || page.Items[0].ID != "new-3" {
+	if len(page.Items) != 4 || page.Items[0].ID != "old-problem" {
 		t.Fatalf("legacy pagination changed: %+v", page)
 	}
 }
@@ -230,5 +230,148 @@ func TestActivitySummaryRealUsernameAbsentHostedAndStableRecentOrder(t *testing.
 	}
 	if out.Items[2].User.Username != "renamed_username" {
 		t.Fatal("cached identity escaped source change")
+	}
+}
+
+func TestActivityDashboardFirstTenGlobalTotalsAndQualifiedProblems(t *testing.T) {
+	c := catalogtest.Open(t)
+	now := time.UnixMilli(1_790_000_000_000)
+	s := &Service{DB: c.DB, Now: func() time.Time { return now }}
+	for n := 0; n < 58; n++ {
+		id := fmt.Sprintf("s%02d", n)
+		insertPausedSession(t, c.DB, id, "vod", "playing", now.UnixMilli()+int64(n), 0)
+		c.Exec(`UPDATE playback_v1_sessions SET bandwidth_kbps=100,location='remote' WHERE id=?`, id)
+	}
+	c.Exec(`UPDATE playback_v1_sessions SET state='paused',location='local' WHERE id IN('s00','s01')`)
+	// One momentary buffer, an error, and a requested quality do not qualify.
+	c.Exec(`UPDATE playback_v1_sessions SET state='buffering' WHERE id='s57'`)
+	c.Exec(`UPDATE playback_v1_sessions SET state='error' WHERE id='s56'`)
+	c.Exec(`UPDATE playback_v1_sessions SET presentation='{"quality":{"mode":"fixed","id":"1080p-low"}}' WHERE id='s55'`)
+	c.Exec(`UPDATE playback_v1_sessions SET presentation='{"decision":{"video":{"action":"transcode","reasons":[]}},"bitrateKbps":500}',bandwidth_kbps=0 WHERE id='s02'`)
+	c.Exec(`UPDATE playback_v1_sessions SET state='buffering',updated_ms=? WHERE id='s03'`, now.UnixMilli()-10000)
+	page, err := s.AdminSessions(context.Background(), 0, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 10 || page.Items[0].ID != "s03" || page.Items[0].Problem != "buffering" || page.Items[1].ID != "s02" || page.Items[2].ID != "s57" || page.Items[2].Problem != "" || page.Totals.Streams != 58 || page.Totals.Paused != 2 || page.Totals.Converting != 1 || page.Totals.BandwidthKbps != 6200 || page.Totals.People != 1 || page.Totals.AtHome != 2 || page.Totals.Away != 56 {
+		t.Fatalf("bounded page and global totals: %+v", page)
+	}
+	summary, err := s.ActivitySummarySessions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for n, v := range summary.Items {
+		if v.ID != page.Items[n].ID {
+			t.Fatal("popover/Dashboard order diverged")
+		}
+	}
+	seen := map[string]bool{}
+	cursor := ""
+	for {
+		page, err = s.AdminSessions(context.Background(), 10, cursor)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if page.Totals.Streams != 58 || len(page.Items) > 10 {
+			t.Fatal("page-local total substituted")
+		}
+		for _, v := range page.Items {
+			if seen[v.ID] {
+				t.Fatal("duplicate page item", v.ID)
+			}
+			seen[v.ID] = true
+		}
+		if page.Page.NextCursor == "" {
+			break
+		}
+		cursor = page.Page.NextCursor
+	}
+	if len(seen) != 58 {
+		t.Fatal("Show all omitted streams", len(seen))
+	}
+	for _, cursor := range []string{"t:0:id", "a:3:0:id", "a:0:-1:id", "a:0:0:"} {
+		if _, err = s.AdminSessions(context.Background(), 10, cursor); err == nil {
+			t.Fatal("invalid cursor accepted", cursor)
+		}
+	}
+	// Repeated buffering reports retain their first transition; leaving clears it.
+	c.Exec(`UPDATE playback_v1_sessions SET state='buffering',updated_ms=? WHERE id='s03'`, now.UnixMilli())
+	summary, err = s.ActivitySummarySessions(context.Background())
+	if err != nil || summary.Items[0].Problem != "buffering" {
+		t.Fatal(summary, err)
+	}
+	c.Exec(`UPDATE playback_v1_sessions SET state='playing' WHERE id='s03'`)
+	summary, err = s.ActivitySummarySessions(context.Background())
+	if err != nil || summary.Items[0].ID != "s02" {
+		t.Fatal(summary, err)
+	}
+}
+
+func TestActivityHostedNamesUseCanonicalMembershipAndExactProfile(t *testing.T) {
+	c := catalogtest.Open(t)
+	now := time.Now()
+	c.Exec(`INSERT INTO accounts VALUES('canonical','actual_username',X'00','own-profile',1)`)
+	c.Exec(`INSERT INTO accounts VALUES('unrelated','different_username',X'00','different-profile',1)`)
+	c.Exec(`UPDATE direct_profiles SET name='Chosen profile' WHERE id='own-profile'`)
+	c.Exec(`INSERT INTO account_portico_links(account_id,hosted_account_id,consent) VALUES('canonical','hosted-account','private signed assertion with personal display name')`)
+	insertPausedSession(t, c.DB, "hosted", "audio", "playing", now.UnixMilli(), 0)
+	c.Exec(`UPDATE playback_v1_sessions SET authority='hosted',account_id='hosted-account',profile_id='own-profile' WHERE id='hosted'`)
+	s := &Service{DB: c.DB}
+	out, err := s.ActivitySummarySessions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Items[0].User.Username != "actual_username" || out.Items[0].Profile.Name != "Chosen profile" {
+		t.Fatal(out)
+	}
+	raw, _ := json.Marshal(out)
+	if strings.Contains(string(raw), "assertion") || strings.Contains(string(raw), "display name") {
+		t.Fatal("private identity escaped", string(raw))
+	}
+	c.Exec(`UPDATE playback_v1_sessions SET profile_id='different-profile'`)
+	out, err = s.ActivitySummarySessions(context.Background())
+	if err != nil || out.Items[0].Profile.Name != "" {
+		t.Fatal("unrelated profile crossed account fence", out, err)
+	}
+}
+
+func TestActivityConversionSpeedFreshnessAndMediaGeneration(t *testing.T) {
+	c := catalogtest.Open(t)
+	lib := c.Library("movies", "Movies", "movie", "/private")
+	movie := c.Movie(lib, "/private/movie.mp4", "Movie", 2026)
+	_, asset := c.File(movie.ID, "/private/speed.mp4", 60)
+	now := time.Now()
+	s := &Service{DB: c.DB, Now: func() time.Time { return now }}
+	c.Exec(`INSERT INTO playback_sessions(id,session_hash,account_id,profile_id,item_id,asset_id,generation,state,grant_hash,grant_token,expires_at,request_id,duration) VALUES('media','hash','owner','primary',?,?,1,'playing','grant','private-token','2099-01-01T00:00:00Z','request',60)`, movie.ID, asset)
+	insertPausedSession(t, c.DB, "measured", "vod", "playing", now.UnixMilli(), 0)
+	c.Exec(`UPDATE playback_v1_sessions SET media_session_id='media',media_generation=1,presentation='{"decision":{"video":{"action":"transcode","reasons":[]}}}' WHERE id='measured'`)
+	c.Exec(`INSERT INTO playback_conversion_observations VALUES('media',1,'producer',0.5,?)`, now.UnixMilli())
+	out, err := s.ActivitySummarySessions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Items[0].Problem != "behind" || out.Items[0].Transcode == nil || out.Items[0].Transcode.Speed != 0.5 {
+		t.Fatal(out)
+	}
+	now = now.Add(5001 * time.Millisecond)
+	out, err = s.ActivitySummarySessions(context.Background())
+	if err != nil || out.Items[0].Problem != "" || out.Items[0].Transcode != nil {
+		t.Fatal("stale speed treated as current", out, err)
+	}
+	c.Exec(`UPDATE playback_conversion_observations SET observed_ms=?,generation=2`, now.UnixMilli())
+	out, err = s.ActivitySummarySessions(context.Background())
+	if err != nil || out.Items[0].Transcode != nil {
+		t.Fatal("replaced media generation escaped", out, err)
+	}
+	c.Exec(`UPDATE playback_conversion_observations SET generation=1`)
+	c.Exec(`UPDATE playback_v1_sessions SET state='paused'`)
+	out, err = s.ActivitySummarySessions(context.Background())
+	if err != nil || out.Items[0].Problem != "" {
+		t.Fatal("paused converter classified behind", out, err)
+	}
+	c.Exec(`DELETE FROM playback_conversion_observations`)
+	out, err = s.ActivitySummarySessions(context.Background())
+	if err != nil || out.Items[0].Transcode != nil {
+		t.Fatal("finished producer speed retained", out, err)
 	}
 }

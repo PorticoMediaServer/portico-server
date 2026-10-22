@@ -243,6 +243,9 @@ func bulkEvent(tx *sql.Tx, p identity.Principal, id string) error {
 	if err = tx.QueryRow(`SELECT revision FROM personal_jobs WHERE id=?`, id).Scan(&revision); err != nil {
 		return err
 	}
+	if err = operations.AppendActivityProgressTx(tx, "job.updated", "job", id, strconv.FormatInt(revision, 10), j.State != "running" && j.State != "queued"); err != nil {
+		return err
+	}
 	return apievents.Append(tx, apievents.ProfileAudience(p.Authority, p.AccountID, p.ProfileID), "job.updated", "job", id, strconv.FormatInt(revision, 10), j)
 }
 
@@ -427,7 +430,13 @@ func (s *Service) BulkAdapter(access BulkAccess) operations.Adapter {
 			if state == "complete" || state == "partial" {
 				state = "succeeded"
 			}
-			return operations.JobObservation{State: state, Phase: j.State, Processed: &n, ErrorCode: j.ErrorCode}, nil
+			return operations.JobObservation{State: state, Phase: j.State, Processed: &n, Total: func() *int64 {
+				if j.TotalKnown {
+					n := j.Total
+					return &n
+				}
+				return nil
+			}(), ErrorCode: j.ErrorCode}, nil
 		}}
 }
 

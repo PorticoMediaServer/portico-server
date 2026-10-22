@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"portico.local/server/internal/assets"
+	"portico.local/server/internal/playback/vod"
 	"regexp"
 	"strconv"
 	"strings"
@@ -661,10 +662,20 @@ func (h *HLS) produceRendition(ctx context.Context, id string, r AudioRenditionP
 			_, _ = tail.Write([]byte(windowConverterDiagnostic(err, "", h.root)))
 		}
 	} else {
+		var progress *vod.ConversionProgressWriter
+		if r.Action == "convert" {
+			observe, finish := h.observeConversion(ctx, id, generation)
+			defer finish()
+			args = append([]string{"-progress", "pipe:1", "-stats_period", "1", "-nostats"}, args...)
+			progress = vod.NewConversionProgressWriter(observe)
+		}
 		var cmd *exec.Cmd
 		if cmd, err = mediaexec.CommandContext(run, mediaexec.Job{Executable: h.binary, Args: args, Files: input.ExtraFiles(), ReadPaths: input.ReadPaths(), WriteDirs: []string{dir}}); err == nil {
 			cmd.WaitDelay = 2 * time.Second
 			cmd.Stderr = tail
+			if progress != nil {
+				cmd.Stdout = progress
+			}
 			err = cmd.Run()
 		}
 	}
