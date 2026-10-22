@@ -30,6 +30,7 @@ test('spotlight preserves server reasons and order, real show resume identity an
   assert.equal(models[0].primary!.entry.duration,3000);
   assert.equal(models[1].facts.runtimeSeconds,7200);
   assert.equal(models[0].facts.seasonCount,3);
+  assert.deepEqual(models[0].actions,[{key:'next.home.myList'}]);
   assert.equal('hero' in parsed,false);
   assert.equal(JSON.stringify(parsed).includes('"hero"'),false);
   const unicode=validateHomeDocument(doc([],{spotlight:[{...spotlight[1],entry:entry('unicode','movie',{overview:'🎬'.repeat(300)})}]}));
@@ -111,6 +112,7 @@ test('dedicated Home copy has readable ICU and uses the exact frame headings',()
   for(const message of Object.values(homeContractsMessages))assert.doesNotThrow(()=>parseMessage(message));
   assert.equal(homeContractsMessages['next.home.videoKinds'],'Movies, shows and anime');
   assert.equal(homeContractsMessages['next.home.audioKinds'],'Audiobooks and music');
+  assert.equal(formatMessage(homeContractsMessages['next.home.reason.recentTo'],{library:'Movies'}),'Recently added to Movies');
   assert.equal(formatMessage(homeContractsMessages['next.home.becauseYouWatched'],{title:'Actual title'}),'Because you watched Actual title');
   assert.equal(formatMessage(homeContractsMessages['next.home.resumeEpisode'],{season:2,episode:3}),'Resume S2 E3');
 });

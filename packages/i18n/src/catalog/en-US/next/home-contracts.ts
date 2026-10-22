@@ -14,14 +14,13 @@ export const homeContractsMessages = {
   'next.home.continueBooks': 'Continue your books',
   'next.home.reason.recommended': 'Recommended for you',
   'next.home.reason.newIn': 'New in {library}',
-  'next.home.reason.recentIn': 'Recently added in {library}',
+  'next.home.reason.recentTo': 'Recently added to {library}',
   'next.home.sourceName': '{source}',
   'next.home.play': 'Play',
   'next.home.resume': 'Resume',
   'next.home.playEpisode': 'Play S{season} E{episode}',
   'next.home.resumeEpisode': 'Resume S{season} E{episode}',
   'next.home.myList': 'My List',
-  'next.home.details': 'Details',
   'next.home.seeAll': 'See all',
 } as const;
 export type HomeContractsMessageId = keyof typeof homeContractsMessages;

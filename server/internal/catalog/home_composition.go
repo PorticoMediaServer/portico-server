@@ -325,7 +325,7 @@ func (s *Service) homeSpotlight(r HomeRequest) ([]HomeSpotlight, error) {
 	recentReason := func(v [2]string) HomeReason {
 		added := strings.Split(v[1], "\x1f")[0]
 		at, _ := time.Parse(time.RFC3339Nano, added)
-		kind, code, fallback := "recent", "next.home.reason.recentIn", "Recently added in {library}"
+		kind, code, fallback := "recent", "next.home.reason.recentTo", "Recently added to {library}"
 		if !at.IsZero() && !at.After(r.now()) && r.now().Sub(at) <= homeNewWindow {
 			kind, code, fallback = "new", "next.home.reason.newIn", "New in {library}"
 		}
@@ -403,7 +403,7 @@ func (s *Service) homeSpotlight(r HomeRequest) ([]HomeSpotlight, error) {
 			}
 			if !unwatched {
 				p.Reason.Kind = "recent"
-				p.Reason.Text = ServerText{Code: "next.home.reason.recentIn", Fallback: "Recently added in {library}"}
+				p.Reason.Text = ServerText{Code: "next.home.reason.recentTo", Fallback: "Recently added to {library}"}
 			}
 		}
 		if p.Reason.Kind == "new" || p.Reason.Kind == "recent" {

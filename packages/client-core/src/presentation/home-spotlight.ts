@@ -24,7 +24,7 @@ export function homeSpotlightModels(document:Pick<HomeDocument,'spotlight'>):rea
       facts:Object.freeze({...(entry.year===undefined?{}:{year:entry.year}),genres:entry.genres??Object.freeze([]),...(entry.duration===undefined?{}:{runtimeSeconds:entry.duration}),...(entry.seasonCount===undefined?{}:{seasonCount:entry.seasonCount})}),
       artwork:Object.freeze({...(entry.backdropUrl?{backdropUrl:entry.backdropUrl}:{}),...(entry.posterUrl?{posterUrl:entry.posterUrl}:{})}),
       ...(target.playback&&target.available!==false&&!target.missing?{primary:Object.freeze({target:target.playback,entry:target,label:Object.freeze(label)})}:{}),
-      actions:Object.freeze([{key:'next.home.myList'},{key:'next.home.details'}] as const)});
+      actions:Object.freeze([{key:'next.home.myList'}] as const)});
   }));
 }
 /** Keep every row in its published position and geometry. Renderers format these facts with the generic kit. */
