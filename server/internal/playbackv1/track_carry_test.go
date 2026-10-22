@@ -362,7 +362,14 @@ func TestQueueCarryAdvanceFromAnotherDeviceKeepsContinuation(t *testing.T) {
 
 func TestQueueCarryExplicitReplacementRetainsReplayAndRecovery(t *testing.T) {
 	for _, reason := range []string{"", "ended", "lease_expired"} {
-		t.Run(reason, func(t *testing.T) {
+		// An empty name becomes #00 in TempDir; the current database opener
+		// treats that unescaped # as a file URI fragment. Name the live case
+		// explicitly while retaining its empty end reason and real Settings.
+		name := reason
+		if name == "" {
+			name = "active"
+		}
+		t.Run(name, func(t *testing.T) {
 			f := newCarryFixture(t, false)
 			f.settings("en", "en", "always")
 			q := f.queue()
