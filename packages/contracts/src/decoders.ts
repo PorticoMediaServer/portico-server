@@ -53,7 +53,6 @@ export function decodeDeleteSessionsCurrentResponse(input: unknown): types.Delet
 export function decodeDeleteStorageMountsIdResponse(input: unknown): types.DeleteStorageMountsIdResponse { return decode("DeleteStorageMountsIdResponse", input) as types.DeleteStorageMountsIdResponse; }
 export function decodeDeleteStorageSourcesWebdavIdResponse(input: unknown): types.DeleteStorageSourcesWebdavIdResponse { return decode("DeleteStorageSourcesWebdavIdResponse", input) as types.DeleteStorageSourcesWebdavIdResponse; }
 export function decodeDeleteTitleVersionResponse(input: unknown): types.DeleteTitleVersionResponse { return decode("DeleteTitleVersionResponse", input) as types.DeleteTitleVersionResponse; }
-export function decodeDeleteUpgradeCopyResponse(input: unknown): types.DeleteUpgradeCopyResponse { return decode("DeleteUpgradeCopyResponse", input) as types.DeleteUpgradeCopyResponse; }
 export function decodeDeleteV1ItemsItemIdSubtitlesResourceResponse(input: unknown): types.DeleteV1ItemsItemIdSubtitlesResourceResponse { return decode("DeleteV1ItemsItemIdSubtitlesResourceResponse", input) as types.DeleteV1ItemsItemIdSubtitlesResourceResponse; }
 export function decodeDeleteWebhookResponse(input: unknown): types.DeleteWebhookResponse { return decode("DeleteWebhookResponse", input) as types.DeleteWebhookResponse; }
 export function decodeDownloadClientLogResponse(input: unknown): types.DownloadClientLogResponse { return decode("DownloadClientLogResponse", input) as types.DownloadClientLogResponse; }

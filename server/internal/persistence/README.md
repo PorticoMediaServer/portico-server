@@ -1,61 +1,26 @@
 # persistence
 
-The state database: one SQLite file, one baseline migration, and the rules every
-later change follows.
+The state database is one SQLite file installed from one directly edited
+pre-release baseline: `migrations/0001_baseline.sql`. There is no migration
+runner, upgrade chain, automatic upgrade copy or conversion of old state.
 
-## The baseline
+Change the baseline directly and update all affected consumers together. Run
+`python3 scripts/schema-sync.py` from the repository root to refresh its digest
+and the known-object and known-column lists, then run persistence and affected
+feature tests. A fresh install applies the entire baseline atomically and stores
+its SHA256 digest under `schema_baseline_digest` in `configuration`. A matching database
+reopens without applying schema DDL.
 
-`migrations/0001_baseline.sql` is the schema a new install starts from. It
-replaced the earlier development migration chain; no historical data backfill
-runs at startup. A database whose ledger
-(`schema_migrations`) does not record migration 1 was written by an earlier
-pre-release Portico; `Open` refuses it, and backup restore refuses it, with one
-plain message:
+An existing database with a missing or different digest is refused, including
+restore candidates, with this instruction:
 
-> This database was created by an earlier pre-release Portico and can't be
-> upgraded. Move it aside and start fresh.
+> This database does not match this pre-release Portico baseline. Stop Portico,
+> move aside or reset its state directory, then start Portico again.
 
-The baseline is immutable like every applied migration. The demo server and
-every tester's server have recorded it with its digest, which is checked on
-every open, so editing it would leave each of them unable to start without
-moving its database aside (`TestSchemaMigrationsAreNumberedAndImmutable` pins
-the digest). Each schema change is a new numbered migration that follows the
-rules below, with `schemaVersion` raised to the highest number; then
-`python3 scripts/schema-sync.py` (from the repository root) refreshes the
-known-object and known-column lists. `0002_segment_detection.sql` is the first.
-
-## Migration rules
-
-Every migration after the baseline follows these rules. They keep migration
-work bounded and allow new kinds without rewriting an existing large table. They are design rules, not a measured upgrade-time claim.
-
-1. **Additive only.** Add tables, add nullable or defaulted columns
-   (`ALTER TABLE ... ADD COLUMN`), add indexes, add triggers. Never drop or
-   rename a column of a large table, and never rebuild one (the
-   create-copy-drop-rename dance) inside a migration.
-2. **Never rewrite a large table at startup.** A migration's cost must not grow
-   with the library. Anything that has to touch every row is a backfill, not a
-   migration.
-3. **Derived data is rebuildable.** Tables the derived worker fills (search
-   documents, browse rows, visibility rows, counts) can be emptied and rebuilt.
-   A change to how one is computed bumps that derivation's version in
-   `catalog_derivations`; the worker rebuilds it in the background after
-   startup, in bounded batches, while the old rows keep serving.
-4. **Backfills run in the background after startup**, through the derived
-   worker or a supervised job, never inside `migrate`.
-5. **Enum numbers are permanent.** Catalogue kinds (`catalog_kinds.id`),
-   vocabularies (`catalog_terms.vocab`), progress units and every other integer
-   enum stored in a row: a number, once shipped, keeps its meaning forever and is
-   never reused, even after the thing it named is retired.
-6. **Kinds are data.** A new kind is an `INSERT INTO catalog_kinds` plus, if it
-   has facts of its own, a new narrow side table keyed by `entity_id`. No
-   existing table, CHECK or trigger lists every kind; range checks use the
-   permanent 1–99 range.
-7. **Settings are one typed document with defaults.** A new setting is a new
-   field with a default in the settings type; old databases read the default.
-   No migration writes a settings row just to introduce a field.
-8. **Applied migrations are immutable.** A mistake is corrected by a new
-   migration, never by editing one that has shipped.
+Reset only disposable development state deliberately. Opening or inspecting a
+mismatched database never wipes it, converts it, or creates an upgrade backup.
+`schema_version` is a fixed diagnostic format marker for backup metadata; it is
+not a numbered schema history. Exact baseline compatibility uses the digest.
 
 ## Kinds
 

@@ -12814,16 +12814,6 @@ export const schemas = {
     ],
     "type": "object"
   },
-  "DeleteUpgradeCopyRequest": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
-  "DeleteUpgradeCopyResponse": {
-    "properties": {},
-    "required": [],
-    "type": "object"
-  },
   "DeleteV1ItemsItemIdSubtitlesResourceRequest": {
     "properties": {
       "expectedRevision": {
@@ -103471,34 +103461,6 @@ export const schemas = {
         "maximum": 9007199254740991,
         "minimum": -9007199254740991,
         "type": "integer"
-      },
-      "upgradeCopies": {
-        "items": {
-          "properties": {
-            "bytes": {
-              "maximum": 9007199254740991,
-              "minimum": -9007199254740991,
-              "type": "integer"
-            },
-            "createdAt": {
-              "type": "string"
-            },
-            "id": {
-              "type": "string"
-            },
-            "path": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "id",
-            "createdAt",
-            "bytes",
-            "path"
-          ],
-          "type": "object"
-        },
-        "type": "array"
       }
     },
     "required": [
@@ -103506,8 +103468,7 @@ export const schemas = {
       "cacheDirectory",
       "backupDirectory",
       "reclaimableBytes",
-      "lastReclaimedBytes",
-      "upgradeCopies"
+      "lastReclaimedBytes"
     ],
     "type": "object"
   },

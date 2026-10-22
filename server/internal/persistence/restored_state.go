@@ -15,13 +15,13 @@ import (
 // A database the server can run on is more than one that opens and passes its
 // integrity check. Start-up, and every service it constructs, runs statements
 // against the whole schema and reads rows a fresh install always has. Nothing
-// recreates those: a migration already recorded is never run again. The two
+// recreates those: the baseline is never run again. The two
 // checks here say whether a database still has them. They read only, and they
 // are derived from the same sources a fresh install is built from, so a new
 // table or a new seeded row is covered the day it is added.
 var (
 	// ErrSchemaIncomplete is a database missing a table, index, trigger or view
-	// this build's migrations create.
+	// this build's baseline create.
 	ErrSchemaIncomplete = errors.New("the database is missing part of the schema this version requires")
 	// ErrSeededRowMissing is a database missing a row every install starts with.
 	ErrSeededRowMissing = errors.New("the database is missing a row every install starts with")
@@ -111,22 +111,15 @@ var (
 // updated in place.
 var ownerReplacedSeeds = map[string]bool{"maintenance_windows": true, "maintenance_window_days": true, "maintenance_window_tasks": true}
 
-// SeededTables lists the tables this build's migrations populate with fixed
+// SeededTables lists the tables this build's baseline populate with fixed
 // rows: the settings, policies, revisions, cursors and vocabularies that exist
 // from the first start. Start-up and the services it constructs read them and
 // nothing recreates them. Tables the owner's settings replace are left out.
 func SeededTables() ([]string, error) {
 	seededOnce.Do(func() {
-		steps, err := schemaMigrations()
-		if err != nil {
-			seededErr = err
-			return
-		}
 		seeded := map[string]bool{}
-		for _, step := range steps {
-			for _, match := range seededTable.FindAllStringSubmatch(step.sql, -1) {
-				seeded[match[1]] = true
-			}
+		for _, match := range seededTable.FindAllStringSubmatch(baselineSQL, -1) {
+			seeded[match[1]] = true
 		}
 		for name := range seeded {
 			if !ownerReplacedSeeds[name] {
@@ -157,7 +150,7 @@ func verifySeededRows(ctx context.Context, tx *sql.Tx) error {
 		return err
 	}
 	for _, table := range tables {
-		// The name comes from this build's own migrations, never from a caller.
+		// The name comes from this build's own baseline, never from a caller.
 		var present bool
 		if err = tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM "`+table+`")`).Scan(&present); err != nil {
 			return err

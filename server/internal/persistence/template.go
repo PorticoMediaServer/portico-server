@@ -48,7 +48,7 @@ func openFromTemplate(path string) (*sql.DB, bool, error) {
 		return nil, false, nil
 	}
 	if info, err := os.Stat(path); err == nil && info.Size() > 0 {
-		// An existing database installs and migrates normally: the template says
+		// An existing database verifies its baseline: the template says
 		// what a *new* database looks like, never what an old one should become.
 		return nil, false, nil
 	}

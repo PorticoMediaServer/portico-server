@@ -10,7 +10,7 @@ import (
 )
 
 // The list of tables every install starts with rows in is derived from the
-// migrations' text. It is only right if it is exactly the tables a fresh
+// baseline text. It is only right if it is exactly the tables a fresh
 // install leaves populated, so a new seeded table can never be forgotten here:
 // it either joins the list by itself or this fails until someone says the
 // owner's settings replace it.
@@ -50,15 +50,13 @@ func TestSeededTablesMatchAFreshInstall(t *testing.T) {
 		}
 		return false
 	}
-	// Not seeds: the migration runner's own ledger, whose absence Open refuses.
-	runner := map[string]bool{"schema_migrations": true}
 	var populated []string
 	for _, name := range tables {
 		var present bool
 		if err = db.QueryRow(`SELECT EXISTS(SELECT 1 FROM "` + name + `")`).Scan(&present); err != nil {
 			t.Fatal(err)
 		}
-		if present && !runner[name] && !ownerReplacedSeeds[name] && !owned(name) {
+		if present && !ownerReplacedSeeds[name] && !owned(name) {
 			populated = append(populated, name)
 		}
 		if ownerReplacedSeeds[name] && !present {

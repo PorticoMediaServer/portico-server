@@ -12,23 +12,11 @@ import (
 // uses INSERT OR IGNORE aborts instead of ignoring when the UPDATE comes from
 // an upsert's DO UPDATE path, because SQLite applies the outer statement's
 // conflict algorithm. No such trigger may sit on a table that any server code
-// or migration upserts; use INSERT ... ON CONFLICT DO NOTHING in the trigger.
+// or baseline upserts; use INSERT ... ON CONFLICT DO NOTHING in the trigger.
 func TestNoInsertOrIgnoreUpdateTriggerOnAnUpsertedTable(t *testing.T) {
 	root := filepath.Join("..", "..")
 	var sql strings.Builder
-	files, err := filepath.Glob(filepath.Join("migrations", "*.sql"))
-	if err != nil || len(files) == 0 {
-		t.Fatal("no migrations", err)
-	}
-	for _, file := range files {
-		raw, err := os.ReadFile(file)
-		if err != nil {
-			t.Fatal(err)
-		}
-		sql.Write(raw)
-	}
-	// Replay CREATE and DROP in migration order: a later migration may have
-	// replaced a trigger (0050 replaced 0029's dirty marks).
+	sql.WriteString(BaselineSQL())
 	events := regexp.MustCompile(`(?is)CREATE\s+TRIGGER\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)\s+(?:AFTER|BEFORE)\s+UPDATE(?:\s+OF\s+[\w\s,]+?)?\s+ON\s+(\w+)(.*?)\bEND;|DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?(\w+)`)
 	type trigger struct{ table, body string }
 	current := map[string]trigger{}
@@ -47,7 +35,7 @@ func TestNoInsertOrIgnoreUpdateTriggerOnAnUpsertedTable(t *testing.T) {
 	}
 	var code strings.Builder
 	code.WriteString(sql.String())
-	err = filepath.Walk(filepath.Join(root, "internal"), func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(filepath.Join(root, "internal"), func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return err
 		}
