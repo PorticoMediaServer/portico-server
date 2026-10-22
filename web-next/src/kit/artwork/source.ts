@@ -6,16 +6,16 @@ export function scheduledAmbientSource(scheduler: ArtworkScheduler<ArtworkImage>
   return Object.freeze({scheduler, key: source.cacheKey, variant: source.variant, maxEdge: source.maxEdge, version: source.version, ...(request ? {request} : {})});
 }
 
-export type ArtworkRead = Readonly<{status: ArtworkStatus; image?: ArtworkImage}>;
+export type ArtworkRead = Readonly<{status: ArtworkStatus; image?: ArtworkImage; cached?: boolean}>;
 /** One mounted interest, sharing the canonical queue, retries and cooldown. */
 export function observeArtwork(source: ArtworkSource, receive: (read: ArtworkRead) => void): () => void {
   const controller = new AbortController();
   const release = source.retain?.();
   const cached = source.scheduler.peek(source.key);
-  if (cached) receive({status: 'ready', image: cached});
+  if (cached) receive({status: 'ready', image: cached, cached: true});
   else receive({status: 'loading'});
   void source.scheduler.load(source.key, {...source.request, signal: controller.signal}).then(image => {
-    if (!controller.signal.aborted) receive({status: 'ready', image});
+    if (!controller.signal.aborted) receive({status: 'ready', image, cached: !!cached});
   }, () => {
     if (!controller.signal.aborted) receive({status: 'error'});
   });

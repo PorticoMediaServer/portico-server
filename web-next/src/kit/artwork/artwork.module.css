@@ -1,5 +1,6 @@
 .artwork { position: relative; display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; border-radius: inherit; line-height: normal; }
-.image { display: block; width: 100%; height: 100%; opacity: 0; transition: opacity var(--motion-standard) var(--ease-out); }
+.artworkFallback { position: absolute; inset: 0; display: block; border-radius: inherit; }
+.image { position: absolute; inset: 0; display: block; width: 100%; height: 100%; opacity: 0; transition: opacity var(--art-arrival-duration, var(--motion-standard)) var(--ease-out); }
 .image.decoded { opacity: 1; }
 
 .colour { position: absolute; inset: 0; pointer-events: none; overflow: hidden; background-color: var(--color-ink); }
@@ -24,6 +25,7 @@
 .foreground { position: absolute; top: 0; right: 0; width: 76%; height: 100%;
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 38%), linear-gradient(0deg, transparent 0, #000 42%); -webkit-mask-composite: source-in;
   mask-image: linear-gradient(90deg, transparent 0, #000 38%), linear-gradient(0deg, transparent 0, #000 42%); mask-composite: intersect; }
+.foregroundArt { position: absolute; inset: 0; display: block; width: 100%; height: 100%; }
 .foreground .image { object-position: center 30%; }
 .title .foreground { width: 72%; }
 .title .foreground .image { object-position: 30% 25%; }
@@ -147,8 +149,9 @@
   .pickerauto .fullPin { display: none; }
   .pickerauto .shortPin { display: inline; }
 }
-@media (prefers-reduced-motion: reduce) { .image { transition-duration: var(--motion-reduced); } .profileTile, .profileTile > .profileFace, .profileFace::after { transition: opacity var(--motion-reduced) linear; } .profileTile:hover > .profileFace, .profileTile:focus-visible > .profileFace, .profileTile[data-selected] > .profileFace, .profileTile:active > .profileFace, .pickertv .profileTile:focus-visible { transform: none; } }
-:global([data-reduce-motion="true"]) .image { transition-duration: var(--motion-reduced); }
+@media (prefers-reduced-motion: reduce) { .image { transition-duration: var(--motion-reduced); transition-timing-function: linear; } .profileTile, .profileTile > .profileFace, .profileFace::after { transition: opacity var(--motion-reduced) linear; } .profileTile:hover > .profileFace, .profileTile:focus-visible > .profileFace, .profileTile[data-selected] > .profileFace, .profileTile:active > .profileFace, .pickertv .profileTile:focus-visible { transform: none; } }
+:global([data-reduce-motion="true"]) .image { transition-duration: var(--motion-reduced); transition-timing-function: linear; }
+.artwork[data-artwork-cached="true"] .image { transition-duration: 0ms; }
 :global([data-reduce-motion="true"]) .profileTile > .profileFace, :global([data-reduce-motion="true"]) .profileFace::after { transition: opacity var(--motion-reduced) linear; }
 :global([data-reduce-motion="true"]) .profileTile > .profileFace { transform: none; }
 :global([data-reduce-motion="true"]) .pickertv .profileTile { transform: none; transition: opacity var(--motion-reduced) linear; }

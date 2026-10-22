@@ -81,7 +81,7 @@ function picker(layout: 'desktop' | 'phone' | 'tv'): ComponentType {
 function Faces() { return <Stage><div className={styles.row}>{(['blue', 'violet', 'mint', 'coral', 'gold', 'slate', 'rose', 'sky'] as const).map(art => <ProfileFace key={art} initial="D" art={art} size={64} locked={art === 'violet'} selected={art === 'blue'} />)}</div></Stage>; }
 function Lifecycle() {
   const refs = useReferenceArt(), [which, setWhich] = useState<'ready' | 'error' | 'empty'>('empty');
-  return <Stage className={styles.lifecycle}><div className={styles.artworkBox}><Artwork source={which === 'ready' ? refs.jujutsu : which === 'error' ? refs.nonImage : undefined} alt={t('next.artwork.case.lifecycle')} fallback={<span className={styles.fallbackLabel}>{t('next.artwork.noArtwork')}</span>} /></div>
+  return <Stage className={styles.lifecycle}><div className={styles.artworkBox}><Artwork source={which === 'ready' ? refs.jujutsu : which === 'error' ? refs.nonImage : undefined} arrivalDurationMs={240} alt={t('next.artwork.case.lifecycle')} fallback={<span className={styles.fallbackLabel}>{t('next.artwork.noArtwork')}</span>} /></div>
     <div className={styles.lifecycleControls}><button type="button" className={styles.button} onClick={() => setWhich('ready')}>{fixture('next.artwork.fixture.showArtwork')}</button><button type="button" className={styles.button} onClick={() => setWhich('error')}>{t('next.artwork.case.lifecycle')}</button></div>
   </Stage>;
 }
